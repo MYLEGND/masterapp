@@ -1112,6 +1112,61 @@ public sealed class BillingCentralizationTests
         Assert.Equal("SUBSCRIPTION_CANCELLED", entitlement.ReasonCode);
     }
 
+    [Fact]
+    public async Task CancelClientSubscription_ImmediatelyRevokesClientAppAccess()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        var subscription = await AddSubscriptionAsync(
+            db,
+            profile.Id,
+            offer.Id,
+            status: ClientSubscriptionStatus.Active,
+            paymentStanding: ClientSubscriptionPaymentStanding.Current,
+            providerSubscriptionId: "sub_immediate");
+
+        var gateway = BuildGateway();
+        gateway
+            .Setup(x => x.CancelSubscriptionAsync(
+                It.Is<BillingSubscriptionCancellationRequest>(request =>
+                    request.ProviderSubscriptionId == "sub_immediate" &&
+                    !request.CancelAtPeriodEnd),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingSubscriptionResult(
+                true,
+                "sub_immediate",
+                "ACTIVE",
+                null,
+                "Provider cancellation accepted.",
+                "req_cancel_now",
+                false,
+                AmountCents: ClientSubscriptionOfferPricing.Fixed100Cents,
+                Currency: "USD"));
+
+        var entitlements = BuildEntitlementService(db);
+        await entitlements.RefreshAsync(profile.Id, BillingEntitlementKeys.ClientAppFullAccess);
+
+        var orchestrator = new MasterAppBillingOrchestrator(db, gateway.Object, entitlements);
+        var result = await orchestrator.CancelClientSubscriptionAsync(
+            new CancelClientSubscriptionCommand(
+                subscription.Id,
+                false,
+                BillingActorType.Client,
+                "client-1"));
+
+        var updatedSubscription = await db.ClientSubscriptions.SingleAsync(x => x.Id == subscription.Id);
+        var entitlement = await db.ClientEntitlements.SingleAsync(x => x.ClientProfileId == profile.Id);
+
+        Assert.True(result.Success);
+        Assert.False(updatedSubscription.CancelAtPeriodEnd);
+        Assert.Equal(ClientSubscriptionStatus.Canceled, updatedSubscription.Status);
+        Assert.Equal(ClientSubscriptionPaymentStanding.Failed, updatedSubscription.PaymentStanding);
+        Assert.NotNull(updatedSubscription.CancelledUtc);
+        Assert.Equal(ClientEntitlementStatus.NotGranted, entitlement.Status);
+        Assert.Equal("SUBSCRIPTION_CANCELLED", entitlement.ReasonCode);
+    }
+
     private static MasterAppBillingOrchestrator BuildOrchestrator(MasterAppDbContext db)
     {
         var gateway = BuildGateway();

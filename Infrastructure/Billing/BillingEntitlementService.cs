@@ -75,7 +75,7 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
         DateTime evaluatedUtc,
         ClientSubscriptionActivationPolicyOptions activationPolicyOptions)
     {
-        if (IsLegacyGrandfatheredProfile(profile, activationPolicyOptions))
+        if (subscription is null && IsLegacyGrandfatheredProfile(profile, activationPolicyOptions))
         {
             return new BillingEntitlementEvaluationResult(
                 ClientEntitlementStatus.Active,
@@ -161,7 +161,7 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
             subscription.ActivatedUtc ?? subscription.CreatedUtc,
             subscription.CurrentPeriodEndUtc,
             subscription.GracePeriodEndsUtc,
-            $"SUBSCRIPTION_{subscription.Status}",
+            $"SUBSCRIPTION_{subscription.Status.ToString().ToUpperInvariant()}",
             ClientEntitlementSourceType.Subscription,
             sourceId,
             $"{entitlementKey}: subscription is not eligible for access.");

@@ -72,6 +72,5 @@ public sealed class ClientSubscriptionManagementViewModel
     public string CurrentPeriodDisplay { get; set; } = "Not available";
     public string CancellationState { get; set; } = "Active";
     public string PaymentRepairInstructions { get; set; } = "Contact your agent if you need help updating billing.";
-    public bool CanCancelAtPeriodEnd { get; set; }
     public string ReturnUrl { get; set; } = "/profile";
 }

@@ -18,7 +18,6 @@ using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
-using Microsoft.Extensions.Hosting;
 using Moq;
 using Xunit;
 using ClientAccountController = ClientApp.Controllers.AccountController;
@@ -53,6 +52,30 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
 
         Assert.Equal(ClientEntitlementStatus.Active, result.Status);
         Assert.Equal("LEGACY_PROFILE_PRE_SUBSCRIPTION_CUTOFF", result.ReasonCode);
+    }
+
+    [Fact]
+    public async Task GrandfatheredProfile_WithCanceledSubscription_LosesClientAppAccess()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddProfileAsync(db, CutoverUtc.AddTicks(-1));
+        db.ClientSubscriptions.Add(new ClientSubscription
+        {
+            ClientProfileId = profile.Id,
+            AcceptedOfferId = Guid.NewGuid(),
+            OwnerAgentUserId = "agent-1",
+            Status = ClientSubscriptionStatus.Canceled,
+            PaymentStanding = ClientSubscriptionPaymentStanding.Failed,
+            CancelledUtc = CutoverUtc.AddDays(1),
+            CreatedUtc = CutoverUtc,
+            UpdatedUtc = CutoverUtc.AddDays(1)
+        });
+        await db.SaveChangesAsync();
+
+        var result = await EvaluateAsync(db, profile.Id);
+
+        Assert.Equal(ClientEntitlementStatus.NotGranted, result.Status);
+        Assert.Equal("SUBSCRIPTION_CANCELED", result.ReasonCode);
     }
 
     [Fact]
@@ -220,7 +243,7 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
             new ActionContext(requestContext, new RouteData(), new ActionDescriptor()),
             new List<IFilterMetadata>());
 
-        var filter = new ClientSubscriptionAuthorizeFilter(authorization.Object, normalizer, CreateEnvironment());
+        var filter = new ClientSubscriptionAuthorizeFilter(authorization.Object, normalizer);
         await filter.OnAuthorizationAsync(filterContext);
 
         var subscriptionRedirect = Assert.IsType<RedirectToActionResult>(filterContext.Result);
@@ -259,7 +282,7 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
             new ActionContext(requestContext, new RouteData(), new ActionDescriptor()),
             new List<IFilterMetadata>());
 
-        var filter = new ClientSubscriptionAuthorizeFilter(authorization.Object, normalizer, CreateEnvironment());
+        var filter = new ClientSubscriptionAuthorizeFilter(authorization.Object, normalizer);
         await filter.OnAuthorizationAsync(filterContext);
 
         Assert.Null(filterContext.Result);
@@ -272,7 +295,7 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
     }
 
     [Fact]
-    public async Task DevelopmentEnvironment_DoesNotGateLocalClientAppTestingOnSubscription()
+    public async Task DevelopmentEnvironment_StillEnforcesSubscriptionAccess()
     {
         var authorization = new Mock<IAuthorizationService>();
         var normalizer = new ClientAppReturnUrlNormalizer();
@@ -282,16 +305,21 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
             new ActionContext(requestContext, new RouteData(), new ActionDescriptor()),
             new List<IFilterMetadata>());
 
-        var filter = new ClientSubscriptionAuthorizeFilter(authorization.Object, normalizer, CreateEnvironment(Environments.Development));
+        authorization
+            .Setup(x => x.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), null!, ClientAppAuthorizationPolicies.ClientSubscriptionActive))
+            .ReturnsAsync(AuthorizationResult.Failed());
+
+        var filter = new ClientSubscriptionAuthorizeFilter(authorization.Object, normalizer);
         await filter.OnAuthorizationAsync(filterContext);
 
-        Assert.Null(filterContext.Result);
+        var redirect = Assert.IsType<RedirectToActionResult>(filterContext.Result);
+        Assert.Equal("Subscription", redirect.ControllerName);
         authorization.Verify(
             service => service.AuthorizeAsync(
                 It.IsAny<ClaimsPrincipal>(),
                 null!,
                 ClientAppAuthorizationPolicies.ClientSubscriptionActive),
-            Times.Never);
+            Times.Once);
     }
 
     private static async Task<BillingEntitlementEvaluationResult> EvaluateAsync(MasterAppDbContext db, Guid profileId)
@@ -374,13 +402,6 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
             continuation,
             normalizer);
         return new ClientAppSignInEntryPoint(identityAccess, normalizer);
-    }
-
-    private static IHostEnvironment CreateEnvironment(string environmentName = "Production")
-    {
-        var environment = new Mock<IHostEnvironment>();
-        environment.SetupGet(value => value.EnvironmentName).Returns(environmentName);
-        return environment.Object;
     }
 
     private static DefaultHttpContext CreateAuthenticatedContext(string oid)

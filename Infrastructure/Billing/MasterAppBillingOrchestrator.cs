@@ -630,14 +630,26 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             return new CancelClientSubscriptionResult(false, providerResult.SafeErrorCode, providerResult.SanitizedSummary, providerResult.ProviderRequestId, providerResult.Retryable, subscription, null, providerResult);
         }
 
+        var cancelledUtc = DateTime.UtcNow;
         subscription.CancelAtPeriodEnd = command.CancelAtPeriodEnd;
         subscription.ProviderSubscriptionId = providerResult.ExternalId ?? subscription.ProviderSubscriptionId;
         subscription.CurrentPeriodEndUtc = providerResult.CurrentPeriodEndUtc ?? subscription.CurrentPeriodEndUtc;
         subscription.NextBillingDateUtc = providerResult.NextBillingDateUtc ?? subscription.NextBillingDateUtc;
-        subscription.UpdatedUtc = DateTime.UtcNow;
+        subscription.UpdatedUtc = cancelledUtc;
 
         var mappedStatus = BillingStateMapper.MapSubscriptionStatus(providerResult.NormalizedStatus);
-        if (command.CancelAtPeriodEnd && mappedStatus != ClientSubscriptionStatus.Canceled)
+        if (!command.CancelAtPeriodEnd)
+        {
+            // A client-initiated cancellation ends portal access now. Do not allow a
+            // delayed or stale provider status to leave the entitlement active.
+            subscription.Status = ClientSubscriptionStatus.Canceled;
+            subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Failed;
+            subscription.CancelAtPeriodEnd = false;
+            subscription.CancelledUtc = cancelledUtc;
+            subscription.GracePeriodEndsUtc = null;
+            subscription.NextBillingDateUtc = null;
+        }
+        else if (mappedStatus != ClientSubscriptionStatus.Canceled)
         {
             subscription.Status = ClientSubscriptionStatus.Active;
         }
@@ -645,7 +657,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         {
             subscription.Status = mappedStatus;
             if (subscription.Status == ClientSubscriptionStatus.Canceled)
-                subscription.CancelledUtc = DateTime.UtcNow;
+                subscription.CancelledUtc = cancelledUtc;
         }
 
         AddAuditEntry("ClientSubscription", subscription.Id, "cancelled", null, subscription.Status.ToString(), command.ActorType, command.ActorId, "billing_orchestrator", null, correlationId);

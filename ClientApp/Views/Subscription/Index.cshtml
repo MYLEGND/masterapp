@@ -63,14 +63,7 @@
                     </div>
 
                     <div class="d-flex flex-column flex-md-row gap-2">
-                        @if (Model.CanCancelAtPeriodEnd)
-                        {
-                            <form asp-action="CancelAtPeriodEnd" method="post">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
-                                <button type="submit" class="btn btn-dark">Cancel At Period End</button>
-                            </form>
-                        }
+                        <a class="btn btn-dark" href="/profile#subscriptions-heading">Manage Subscription</a>
                         <a class="btn btn-outline-secondary" href="@Model.ReturnUrl">Back</a>
                     </div>
                 </div>

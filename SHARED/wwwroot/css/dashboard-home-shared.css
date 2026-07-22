@@ -705,7 +705,7 @@ button.dashboard-tool {
     margin: 0;
 }
 
-.dashboard-page-shell .dashboard-tool .tool-desc {
+.home-command-page a.dashboard-tool .tool-desc {
     position: absolute;
     inset: 0;
     display: flex;
@@ -726,12 +726,12 @@ button.dashboard-tool {
     box-shadow: inset 0 0 0 1px rgba(240, 217, 145, 0.16);
 }
 
-.dashboard-page-shell .dashboard-tool:hover .tool-desc {
+.home-command-page a.dashboard-tool:hover .tool-desc {
     opacity: 1;
 }
 
-.dashboard-page-shell .dashboard-tool:hover img,
-.dashboard-page-shell .dashboard-tool:hover .tool-name {
+.home-command-page a.dashboard-tool:hover img,
+.home-command-page a.dashboard-tool:hover .tool-name {
     opacity: 0.16;
 }
 

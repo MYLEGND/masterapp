@@ -4,6 +4,8 @@ using ClientApp.Services;
 using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Data;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -110,16 +112,13 @@ public sealed class SubscriptionController : Controller
                         ? "Canceled"
                         : "Active",
             PaymentRepairInstructions = BuildRepairInstructions(latestSubscription, entitlement.Status, entitlement.ReasonCode),
-            CanCancelAtPeriodEnd = latestSubscription is not null &&
-                                   latestSubscription.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod &&
-                                   !latestSubscription.CancelAtPeriodEnd,
             ReturnUrl = target
         });
     }
 
-    [HttpPost("/subscription/cancel-at-period-end")]
+    [HttpPost("/subscription/cancel")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CancelAtPeriodEnd(string? returnUrl = null)
+    public async Task<IActionResult> Cancel(string? returnUrl = null)
     {
         var target = _returnUrlNormalizer.Normalize(returnUrl);
         var context = await _clientContextService.ResolveAsync(User, Request.Cookies, allowRelink: false);
@@ -131,6 +130,9 @@ public sealed class SubscriptionController : Controller
                 message = "Client sign-in is required before subscription changes can be made."
             });
         }
+
+        if (context.IsAgentView)
+            return Forbid();
 
         var entitlement = await _entitlementService.EvaluateAsync(
             new BillingEntitlementEvaluationRequest(
@@ -162,17 +164,27 @@ public sealed class SubscriptionController : Controller
         var cancellation = await _billingOrchestrator.CancelClientSubscriptionAsync(
             new CancelClientSubscriptionCommand(
                 latestSubscription.Id,
-                true,
+                false,
                 BillingActorType.Client,
                 User.GetCanonicalUserId(),
                 $"client-cancel-{latestSubscription.Id:N}"),
             HttpContext.RequestAborted);
 
-        TempData["SubscriptionNotice"] = cancellation.Success
-            ? "Cancellation at period end has been scheduled."
-            : cancellation.SanitizedSummary ?? "The subscription could not be updated right now.";
+        if (!cancellation.Success)
+        {
+            TempData["SubscriptionNotice"] = cancellation.SanitizedSummary ?? "The subscription could not be updated right now.";
+            return Redirect(target);
+        }
 
-        return RedirectToAction(nameof(Index), new { returnUrl = target });
+        Response.Cookies.Delete("impClientProfileId");
+        Response.Cookies.Delete("selfClientProfileId");
+        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+
+        return RedirectToAction("Login", "Account", new
+        {
+            returnUrl = ClientAppReturnUrlNormalizer.SafeLandingPath,
+            message = "Your subscription has been cancelled and portal access has ended."
+        });
     }
 
     private static string FormatDate(DateTime? value)
@@ -203,7 +215,7 @@ public sealed class SubscriptionController : Controller
             return "Use your activation link or contact your agent to begin service.";
 
         if (entitlementStatus is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod)
-            return "Your subscription is in good standing. If you need changes, contact your agent or schedule cancellation at period end.";
+            return "Your subscription is in good standing. You can cancel anytime from View / Edit Profile.";
 
         if (subscription.PaymentStanding is ClientSubscriptionPaymentStanding.PastDue or ClientSubscriptionPaymentStanding.Failed or ClientSubscriptionPaymentStanding.RequiresAction)
             return "Billing needs attention. Contact your agent so they can help repair the payment method and restore access.";

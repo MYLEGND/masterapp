@@ -1,5 +1,6 @@
 using ClientApp.Models;
 using ClientApp.Services;
+using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Identity;
@@ -150,16 +151,32 @@ public class ProfileController : Controller
         };
     }
 
-    private ViewResult ProfileView(
+    private async Task<ViewResult> ProfileViewAsync(
         EditClientViewModel model,
-        bool isAgentView,
+        EffectiveClientContext context,
         string? notice = null,
         string? warning = null)
     {
-        ViewBag.ViewMode = isAgentView ? "agent" : "client";
+        ViewBag.ViewMode = context.IsAgentView ? "agent" : "client";
         ViewBag.ViewingClientName = $"{model.FirstName} {model.LastName}".Trim();
         ViewBag.ProfileSaveNotice = notice;
         ViewBag.ProfileSaveWarning = warning;
+
+        if (!context.IsAgentView)
+        {
+            var latestSubscription = await _db.ClientSubscriptions
+                .AsNoTracking()
+                .Where(subscription => subscription.ClientProfileId == context.ClientProfileId)
+                .OrderByDescending(subscription => subscription.UpdatedUtc)
+                .Select(subscription => new { subscription.Status })
+                .FirstOrDefaultAsync(HttpContext.RequestAborted);
+
+            ViewBag.HasClientSubscription = latestSubscription is not null;
+            ViewBag.CanCancelSubscription = latestSubscription?.Status is
+                ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod;
+            ViewBag.SubscriptionNotice = TempData["SubscriptionNotice"]?.ToString();
+        }
+
         return View("Index", model);
     }
 
@@ -171,7 +188,7 @@ public class ProfileController : Controller
             return NotFound("No client profile found for this user.");
 
         var model = await BuildProfileViewModelAsync(context.Profile);
-        return ProfileView(model, context.IsAgentView);
+        return await ProfileViewAsync(model, context);
     }
 
     [HttpPost("/profile")]
@@ -186,13 +203,13 @@ public class ProfileController : Controller
             return Forbid();
 
         if (!ModelState.IsValid)
-            return ProfileView(model, context.IsAgentView);
+            return await ProfileViewAsync(model, context);
 
         var email = NormalizeEmail(model.Email);
         if (string.IsNullOrWhiteSpace(email))
         {
             ModelState.AddModelError(nameof(EditClientViewModel.Email), "Email is required.");
-            return ProfileView(model, context.IsAgentView);
+            return await ProfileViewAsync(model, context);
         }
 
         var emailInUse = await _db.ClientProfiles
@@ -202,7 +219,7 @@ public class ProfileController : Controller
         if (emailInUse)
         {
             ModelState.AddModelError(nameof(EditClientViewModel.Email), "That email is already used by another client.");
-            return ProfileView(model, context.IsAgentView);
+            return await ProfileViewAsync(model, context);
         }
 
         await using var transaction = await _db.Database.BeginTransactionAsync();
@@ -293,7 +310,7 @@ public class ProfileController : Controller
                 string.IsNullOrWhiteSpace(updateResult.Message)
                     ? "We couldn't update your sign-in email in Azure. No changes were saved. Please try again."
                     : updateResult.Message);
-            return ProfileView(model, context.IsAgentView);
+            return await ProfileViewAsync(model, context);
         }
 
         await _subscriptionIdentitySync.SynchronizeAfterEmailChangeAsync(
@@ -312,9 +329,9 @@ public class ProfileController : Controller
         model.Phone = profile.Phone;
         model.MaritalStatus = profile.MaritalStatus;
 
-        return ProfileView(
+        return await ProfileViewAsync(
             model,
-            context.IsAgentView,
+            context,
             "Profile saved.",
             updateResult.Skipped
                 ? updateResult.Message ?? "Profile saved locally; your sign-in email did not need to change."

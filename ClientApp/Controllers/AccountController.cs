@@ -58,7 +58,7 @@ public class AccountController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> Login(string returnUrl = "/")
+    public async Task<IActionResult> Login(string returnUrl = "/", string? message = null)
     {
         var target = _returnUrlNormalizer.Normalize(returnUrl);
 
@@ -86,7 +86,8 @@ public class AccountController : Controller
 
         return View(new ClientLoginViewModel
         {
-            ReturnUrl = target
+            ReturnUrl = target,
+            Message = string.IsNullOrWhiteSpace(message) ? null : message.Trim()
         });
     }
 
