@@ -859,7 +859,7 @@
       return btn;
     }
 
-        async function createWorkstationQuickViewCalendarAdapter(){
+        function createWorkstationQuickViewCalendarAdapter(){
       return {
         getContext(){
           const currentLead = resolveCurrentLead();

@@ -23,6 +23,7 @@ using System.Text;
 using System.Text.Json;
 using System.Collections.Generic;
 using System.Linq;
+using System.Collections.Concurrent;
 
 namespace AgentPortal.Controllers;
 
@@ -30,6 +31,17 @@ namespace AgentPortal.Controllers;
 [Route("calendar")]
 public class CalendarController : Controller
 {
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> CreateEventLocks = new(StringComparer.Ordinal);
+    private static readonly LeadAppointmentStatus[] DuplicateProtectedAppointmentStatuses = new[]
+    {
+        LeadAppointmentStatus.Requested,
+        LeadAppointmentStatus.SchedulingOffered,
+        LeadAppointmentStatus.Booked,
+        LeadAppointmentStatus.Confirmed,
+        LeadAppointmentStatus.Rescheduled,
+        LeadAppointmentStatus.Completed
+    };
+
     private readonly ITokenAcquisition _tokenAcquisition;
     private readonly ILogger<CalendarController> _logger;
     private readonly MasterAppDbContext _db;
@@ -456,6 +468,68 @@ public class CalendarController : Controller
             rescheduledUtc = UtcDate(appointment.RescheduledUtc)
         };
     }
+
+    private static string BuildCreateEventLockKey(
+        string ownerAgentUserId,
+        string recordKey,
+        DateTime utcStart,
+        DateTime utcEnd)
+        => $"{Norm(ownerAgentUserId)}|{Norm(recordKey)}|{utcStart:O}|{utcEnd:O}";
+
+    private static SemaphoreSlim GetCreateEventLock(string key)
+        => CreateEventLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+
+    private async Task<LeadAppointment?> FindExistingAppointmentForSameTimeAsync(
+        string ownerAgentUserId,
+        string? clientProfileId,
+        string? workstationLeadId,
+        DateTime utcStart,
+        DateTime utcEnd,
+        CancellationToken cancellationToken)
+    {
+        var normalizedOwnerAgentUserId = Norm(ownerAgentUserId);
+        var normalizedClientProfileId = CleanOptional(clientProfileId);
+        var normalizedWorkstationLeadId = Norm(workstationLeadId);
+        var hasClientProfileId = !string.IsNullOrWhiteSpace(normalizedClientProfileId);
+        var hasWorkstationLeadId = !string.IsNullOrWhiteSpace(normalizedWorkstationLeadId);
+
+        if (!hasClientProfileId && !hasWorkstationLeadId)
+            return null;
+
+        return await _db.LeadAppointments
+            .AsNoTracking()
+            .Where(x =>
+                DuplicateProtectedAppointmentStatuses.Contains(x.Status) &&
+                x.ScheduledStartUtc == utcStart &&
+                x.ScheduledEndUtc == utcEnd &&
+                (x.OwnerAgentUserId ?? string.Empty).Trim().ToLower() == normalizedOwnerAgentUserId &&
+                (
+                    (hasClientProfileId && x.ClientProfileId == normalizedClientProfileId) ||
+                    (hasWorkstationLeadId && (x.WorkstationLeadId ?? string.Empty).Trim().ToLower() == normalizedWorkstationLeadId)
+                ))
+            .OrderByDescending(x => x.UpdatedUtc)
+            .ThenByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private static object BuildExistingAppointmentResult(
+        LeadAppointment appointment,
+        string? crmLastTouch,
+        IEnumerable<ClientCrmActivity>? activities)
+        => new
+        {
+            ok = true,
+            deduped = true,
+            eventId = appointment.CalendarEventId,
+            webLink = appointment.CalendarEventWebLink,
+            crmLastTouch,
+            activities = (activities ?? Enumerable.Empty<ClientCrmActivity>())
+                .OrderByDescending(x => x.Date)
+                .ThenByDescending(x => x.CreatedUtc)
+                .ToList(),
+            latestAppointment = BuildLeadAppointmentPayload(appointment),
+            warning = "This appointment was already booked for that client and time. Reusing the existing calendar event."
+        };
 
     private static DateTime? UtcDate(DateTime? value)
         => value.HasValue
@@ -1045,6 +1119,73 @@ public class CalendarController : Controller
                 ? (string.IsNullOrWhiteSpace(leadProfile?.AgentUserId) ? agentOid : leadProfile!.AgentUserId)
                 : agentOid;
 
+            var lockRecordKey = profile != null
+                ? profile.Id.ToString()
+                : (leadProfile?.LeadId ?? clientUserId ?? string.Empty);
+
+            var createEventLock = GetCreateEventLock(
+                BuildCreateEventLockKey(
+                    ownerAgentUserId,
+                    lockRecordKey,
+                    utcStart,
+                    utcEnd));
+
+            await createEventLock.WaitAsync(cancellationToken);
+
+            try
+            {
+                var existingAppointment = await FindExistingAppointmentForSameTimeAsync(
+                    ownerAgentUserId,
+                    profile?.Id.ToString(),
+                    profile == null ? leadProfile?.LeadId : null,
+                    utcStart,
+                    utcEnd,
+                    cancellationToken);
+
+                if (existingAppointment != null)
+                {
+                    if (profile != null)
+                    {
+                        var refreshedProfile = await _db.ClientProfiles
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(
+                                x => x.Id == profile.Id,
+                                cancellationToken)
+                            ?? profile;
+
+                        var refreshedMeta =
+                            ClientCrmMetaSerializer.Deserialize(
+                                refreshedProfile.CrmNotes);
+
+                        return Ok(
+                            BuildExistingAppointmentResult(
+                                existingAppointment,
+                                refreshedProfile.CrmLastTouch?.ToString("yyyy-MM-dd"),
+                                refreshedMeta.Activities));
+                    }
+
+                    var refreshedLeadProfile =
+                        await _db.WorkstationLeadProfiles
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(
+                                x =>
+                                    (x.LeadId ?? string.Empty).Trim().ToLower() ==
+                                    (leadProfile!.LeadId ?? string.Empty).Trim().ToLower() &&
+                                    (x.AgentUserId ?? string.Empty).Trim().ToLower() ==
+                                    ownerAgentUserId.Trim().ToLower(),
+                                cancellationToken)
+                        ?? leadProfile!;
+
+                    var refreshedLeadMeta =
+                        ReadLeadMeta(refreshedLeadProfile);
+
+                    return Ok(
+                        BuildExistingAppointmentResult(
+                            existingAppointment,
+                            DateTime.Today.ToString("yyyy-MM-dd"),
+                            refreshedLeadMeta.Activities));
+                }
+
             var ownerAgentProfile = await _db.AgentProfiles.AsNoTracking()
                 .FirstOrDefaultAsync(x => (x.AgentUserId ?? "").Trim().ToLower() == ownerAgentUserId.Trim().ToLower());
 
@@ -1511,6 +1652,11 @@ public class CalendarController : Controller
                     .ToList(),
                 latestAppointment = BuildLeadAppointmentPayload(persistedAppointment)
             });
+            }
+            finally
+            {
+                createEventLock.Release();
+            }
         }
         catch (Exception ex)
         {

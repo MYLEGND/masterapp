@@ -3279,10 +3279,21 @@ function parseUtcDate(value){
     return Number.isNaN(value.getTime()) ? null : value;
   }
 
+  const sharedParser = window.crmParseUtcDate;
+  if (typeof sharedParser === "function"){
+    return sharedParser(value);
+  }
+
   const raw = String(value).trim();
   if (!raw) return null;
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+
+  const hasTimeZoneDesignator = /(?:z|[+-]\d{2}:\d{2})$/i.test(raw);
+  const normalized = hasTimeZoneDesignator ? raw : `${raw}Z`;
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  const fallback = new Date(raw);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
 }
 
 

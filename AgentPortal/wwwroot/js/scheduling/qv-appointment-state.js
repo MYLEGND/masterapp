@@ -25,12 +25,23 @@
         return "";
     }
 
-    function parseAppointmentDate(value) {
+    function parseUtcLikeDate(value) {
         const raw = appointmentText(value);
         if (!raw) return null;
 
-        const parsed = new Date(raw);
-        return Number.isNaN(parsed.getTime()) ? null : parsed;
+        const hasTimeZoneDesignator = /(?:z|[+-]\d{2}:\d{2})$/i.test(raw);
+        const normalized = hasTimeZoneDesignator ? raw : `${raw}Z`;
+        const parsed = new Date(normalized);
+
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+
+        const fallback = new Date(raw);
+        return Number.isNaN(fallback.getTime()) ? null : fallback;
+    }
+
+    function parseAppointmentDate(value) {
+        const parsed = parseUtcLikeDate(value);
+        return parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
     }
 
     function normalizeAppointmentSnapshot(snapshot) {
@@ -278,6 +289,7 @@
         read: rowLatestAppointment,
         store: storeRowLatestAppointment,
         hasBooked: hasBookedAppointment,
+        parseUtc: parseUtcLikeDate,
         humanizeStatus: humanizeAppointmentStatus,
         formatDateTimeRange: formatAppointmentDateTimeRange,
         summarizeStatus: summarizeLeadAppointmentStatus,
@@ -292,6 +304,7 @@
     window.rowLatestAppointment = rowLatestAppointment;
     window.storeRowLatestAppointment = storeRowLatestAppointment;
     window.hasBookedAppointment = hasBookedAppointment;
+    window.crmParseUtcDate = parseUtcLikeDate;
     window.humanizeAppointmentStatus = humanizeAppointmentStatus;
     window.formatAppointmentDateTimeRange =
         formatAppointmentDateTimeRange;

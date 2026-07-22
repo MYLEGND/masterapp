@@ -1,4 +1,10 @@
 (() => {
+    if (window.__legendQuickViewBookingInitialized) {
+        return;
+    }
+
+    window.__legendQuickViewBookingInitialized = true;
+
     let selectedSlotTime = "";
     const calendarState = { visibleMonth: null };
     const optimisticBookedSlots = new Map();
@@ -7,6 +13,7 @@
     let availabilityRequestSequence = 0;
     let availabilityRefreshIntervalId = 0;
     let scheduledAvailabilityRefreshIds = [];
+    let createEventInFlight = false;
 
     const $ = (id) => document.getElementById(id);
     const LegendModalApi = window.LegendModal || {};
@@ -266,6 +273,16 @@
 
         if (tone) status.dataset.state = tone;
         else status.removeAttribute("data-state");
+    }
+
+    function setBookingSubmitBusy(isBusy) {
+        const submitButton = $("btnBookAppointment");
+        createEventInFlight = isBusy;
+
+        if (!submitButton) return;
+
+        submitButton.disabled = isBusy;
+        submitButton.setAttribute("aria-busy", isBusy ? "true" : "false");
     }
 
     function clearScheduledAvailabilityRefreshes() {
@@ -684,6 +701,7 @@
         stopLiveAvailabilityRefresh();
         clearOptimisticBookedSlots();
         availabilityRequestSequence += 1;
+        setBookingSubmitBusy(false);
         const timeInput = $("qvBookTime");
         if (timeInput) timeInput.value = "";
         setStatus("");
@@ -1336,6 +1354,12 @@
     async function createQuickViewCalendarEvent() {
         window.__lastBookingStopReason = "";
 
+        if (createEventInFlight) {
+            window.__lastBookingStopReason =
+                "booking already in progress";
+            return false;
+        }
+
         const adapter = window.quickViewCalendarAdapter;
 
         if (
@@ -1429,6 +1453,8 @@
         };
 
         try {
+            setBookingSubmitBusy(true);
+
             const data = await window.qvCalendarCreateEvent(
                 payload,
                 adapter.request.bind(adapter)
@@ -1454,6 +1480,8 @@
             );
 
             return false;
+        } finally {
+            setBookingSubmitBusy(false);
         }
     }
 
@@ -1480,7 +1508,16 @@
     });
 
     document.addEventListener("click", async (event) => {
-        if (!event.target || event.target.id !== "btnBookAppointment") return;
+        const trigger =
+            event.target?.closest?.("#btnBookAppointment");
+
+        if (!trigger) return;
+
+        event.preventDefault();
+
+        if (createEventInFlight || trigger.disabled) {
+            return;
+        }
 
         const date = $("qvBookDate")?.value || "";
         const time = $("qvBookTime")?.value || selectedSlotTime;
