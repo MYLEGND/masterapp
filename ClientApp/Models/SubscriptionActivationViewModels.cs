@@ -10,10 +10,7 @@ public sealed class SubscriptionActivationPageViewModel
     public string ClientEmail { get; set; } = string.Empty;
     public string MonthlyAmountDisplay { get; set; } = "$0.00";
     public string Currency { get; set; } = "USD";
-    public string BillingAnchorLabel { get; set; } = "Provider default";
-    public int? SelectedBillingAnchorDay { get; set; }
-    public bool AllowClientAnchorSelection { get; set; }
-    public IReadOnlyList<SubscriptionActivationAnchorOptionViewModel> AnchorOptions { get; set; } = Array.Empty<SubscriptionActivationAnchorOptionViewModel>();
+    public string BillingAnchorLabel { get; set; } = "Scheduled monthly";
     public string FirstChargeDateDisplay { get; set; } = string.Empty;
     public string FirstRecurringRenewalDateDisplay { get; set; } = string.Empty;
     public string BillingTimeZoneLabel { get; set; } = "UTC";
@@ -26,32 +23,8 @@ public sealed class SubscriptionActivationPageViewModel
     public string SquareEnvironment { get; set; } = "Sandbox";
 }
 
-public sealed class SubscriptionActivationAnchorOptionViewModel
-{
-    public int Day { get; set; }
-    public string Label { get; set; } = string.Empty;
-    public bool Selected { get; set; }
-}
-
-public sealed class SubscriptionActivationPrepareRequest
-{
-    public int? BillingAnchorDay { get; set; }
-}
-
-public sealed class SubscriptionActivationPrepareResponse
-{
-    public bool Ok { get; set; }
-    public string? Message { get; set; }
-    public int? BillingAnchorDay { get; set; }
-    public string BillingAnchorLabel { get; set; } = string.Empty;
-    public string FirstChargeDateDisplay { get; set; } = string.Empty;
-    public string FirstRecurringRenewalDateDisplay { get; set; } = string.Empty;
-}
-
 public sealed class SubscriptionActivationPaymentInput
 {
-    public int? BillingAnchorDay { get; set; }
-
     [Required]
     public string SourceId { get; set; } = string.Empty;
 

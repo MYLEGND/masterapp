@@ -1,10 +1,16 @@
 @model AgentPortal.Models.CreateClientViewModel
+@{
+    var canSetFounderSubscriptionOptions = ViewData["CanSetFounderSubscriptionOptions"] is bool founderOptions && founderOptions;
+    var customMinimum = canSetFounderSubscriptionOptions ? "0" : "50";
+    var customAmountPlaceholder = canSetFounderSubscriptionOptions ? "0.00" : "50.00";
+}
 
 @{
     ViewData["Title"] = "Create Pipeline Record";
 
     // allows controller to redirect back to index with a target client
     var returnUrl = (string)(ViewBag.ReturnUrl ?? Context.Request.Query["returnUrl"].ToString() ?? Url.Action("Index", "Clients") ?? "/Clients");
+    var conversionSourceName = (ViewData["ConversionSourceName"] as string ?? string.Empty).Trim();
     var emailErrors = ViewData.ModelState[nameof(Model.Email)]?.Errors;
     var blocked = emailErrors != null && emailErrors.Any(e => (e.ErrorMessage ?? "").Contains("BLOCKED", StringComparison.OrdinalIgnoreCase));
 }
@@ -30,6 +36,15 @@
                 @Html.AntiForgeryToken()
 
                 <input type="hidden" name="returnUrl" id="returnUrl" value="@returnUrl" />
+                <input asp-for="SourceLeadClientUserId" type="hidden" />
+                <input asp-for="SourceWorkstationLeadId" type="hidden" />
+
+                @if (!string.IsNullOrWhiteSpace(conversionSourceName))
+                {
+                    <div class="client-create-section-copy" role="status">
+                        Completing account setup for @conversionSourceName. Review the client type and subscription before creating access.
+                    </div>
+                }
 
                 <div asp-validation-summary="ModelOnly" class="client-create-summary text-danger"></div>
                 @if (!ViewData.ModelState.IsValid && ViewData.ModelState.Values.Any(v => v.Errors.Count > 0))
@@ -191,7 +206,7 @@
 
                         <div id="subscriptionCustomAmountWrap" class="is-hidden">
                             <label class="client-create-label" asp-for="SubscriptionCustomMonthlyAmount">Custom Monthly Amount (USD)</label>
-                            <input asp-for="SubscriptionCustomMonthlyAmount" class="client-create-input" id="SubscriptionCustomMonthlyAmount" type="number" min="50" max="2500" step="0.01" placeholder="100.00" />
+                            <input asp-for="SubscriptionCustomMonthlyAmount" class="client-create-input" id="SubscriptionCustomMonthlyAmount" type="number" min="@customMinimum" max="2500" step="0.01" placeholder="@customAmountPlaceholder" />
                             <span asp-validation-for="SubscriptionCustomMonthlyAmount" class="text-danger client-create-validation"></span>
                         </div>
 
@@ -200,22 +215,28 @@
                             <select asp-for="SubscriptionBillingAnchorMode" class="client-create-input" id="SubscriptionBillingAnchorMode">
                                 <option value="FirstOfMonth">1st of month</option>
                                 <option value="FifteenthOfMonth">15th of month</option>
-                                <option value="SpecificDayOfMonth">Agent-selected day</option>
-                                <option value="ClientSelectedIfAllowed">Client-selected when policy allows</option>
-                                <option value="ProviderDefault">Provider default</option>
+                                @if (canSetFounderSubscriptionOptions)
+                                {
+                                    <option value="SpecificDayOfMonth">Agent-selected day</option>
+                                }
                             </select>
                             <span asp-validation-for="SubscriptionBillingAnchorMode" class="text-danger client-create-validation"></span>
                         </div>
 
-                        <div id="subscriptionAnchorDayWrap" class="is-hidden">
-                            <label class="client-create-label" asp-for="SubscriptionBillingAnchorDay">Agent-Selected Day</label>
-                            <input asp-for="SubscriptionBillingAnchorDay" class="client-create-input" id="SubscriptionBillingAnchorDay" type="number" min="1" max="31" step="1" placeholder="15" />
-                            <span asp-validation-for="SubscriptionBillingAnchorDay" class="text-danger client-create-validation"></span>
-                        </div>
+                        @if (canSetFounderSubscriptionOptions)
+                        {
+                            <div id="subscriptionAnchorDayWrap" class="is-hidden">
+                                <label class="client-create-label" asp-for="SubscriptionBillingAnchorDay">Agent-Selected Day</label>
+                                <input asp-for="SubscriptionBillingAnchorDay" class="client-create-input" id="SubscriptionBillingAnchorDay" type="number" min="1" max="31" step="1" placeholder="15" />
+                                <span asp-validation-for="SubscriptionBillingAnchorDay" class="text-danger client-create-validation"></span>
+                            </div>
+                        }
 
                         <div class="client-create-full">
                             <div class="client-create-section-copy">
-                                Fixed tiers are enforced on the server. Custom amounts stay in USD and must remain within the allowed range.
+                                @(canSetFounderSubscriptionOptions
+                                    ? "Founder custom amounts can start at $0.00."
+                                    : "Custom amounts start at $50.00.") Fixed tiers and billing anchors are enforced on the server.
                             </div>
                         </div>
                     </div>

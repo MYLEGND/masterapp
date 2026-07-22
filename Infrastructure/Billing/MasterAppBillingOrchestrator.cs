@@ -28,7 +28,10 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         var nowUtc = DateTime.UtcNow;
         var authoritativeAmount = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
             command.PriceType,
-            command.CustomMonthlyAmountCents);
+            command.CustomMonthlyAmountCents,
+            command.AllowFounderZeroDollarCustomAmount
+                ? ClientSubscriptionOfferPricing.FounderCustomMinimumCents
+                : ClientSubscriptionOfferPricing.CustomMinimumCents);
         var resolvedBillingAnchorDay = ClientSubscriptionOfferPricing.ResolveBillingAnchorDay(
             command.BillingAnchorSelectionMode,
             command.SelectedBillingAnchorDay);

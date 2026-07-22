@@ -5,7 +5,6 @@ namespace Infrastructure.Billing;
 
 internal sealed class ClientSubscriptionActivationPolicyService : IClientSubscriptionActivationPolicyService
 {
-    private static readonly int[] SupportedClientAnchorDays = [1, 15];
     private readonly ClientSubscriptionActivationPolicyOptions _options;
     private readonly TimeZoneInfo _businessTimeZone;
 
@@ -15,11 +14,11 @@ internal sealed class ClientSubscriptionActivationPolicyService : IClientSubscri
         _businessTimeZone = ResolveTimeZone(options.BusinessTimeZoneId);
     }
 
-    public ClientSubscriptionActivationSchedule ResolveActivationSchedule(ClientSubscriptionOffer offer, int? requestedBillingAnchorDay, DateTime nowUtc)
+    public ClientSubscriptionActivationSchedule ResolveActivationSchedule(ClientSubscriptionOffer offer, DateTime nowUtc)
     {
         var effectiveNowUtc = EnsureUtc(nowUtc);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(effectiveNowUtc, _businessTimeZone);
-        var anchorDay = ResolveAnchorDay(offer, requestedBillingAnchorDay);
+        var anchorDay = ResolveAnchorDay(offer);
         var firstChargeUtc = effectiveNowUtc;
 
         DateOnly firstRecurringRenewalLocalDate;
@@ -66,27 +65,15 @@ internal sealed class ClientSubscriptionActivationPolicyService : IClientSubscri
         return _options.DefaultProviderPlanVariationId;
     }
 
-    private static int? ResolveAnchorDay(ClientSubscriptionOffer offer, int? requestedBillingAnchorDay)
+    private static int? ResolveAnchorDay(ClientSubscriptionOffer offer)
     {
         return offer.BillingAnchorSelectionMode switch
         {
-            BillingAnchorSelectionMode.ProviderDefault => null,
             BillingAnchorSelectionMode.FirstOfMonth => 1,
             BillingAnchorSelectionMode.FifteenthOfMonth => 15,
             BillingAnchorSelectionMode.SpecificDayOfMonth => ClampAnchorDay(offer.SelectedBillingAnchorDay),
-            BillingAnchorSelectionMode.ClientSelectedIfAllowed => ResolveClientSelectedAnchorDay(requestedBillingAnchorDay),
-            _ => ClampAnchorDay(offer.SelectedBillingAnchorDay)
+            _ => throw new InvalidOperationException("Unsupported billing anchor selection mode.")
         };
-    }
-
-    private static int? ResolveClientSelectedAnchorDay(int? requestedBillingAnchorDay)
-    {
-        if (!requestedBillingAnchorDay.HasValue)
-            return 1;
-
-        return SupportedClientAnchorDays.Contains(requestedBillingAnchorDay.Value)
-            ? requestedBillingAnchorDay.Value
-            : throw new InvalidOperationException("Only the 1st or 15th can be selected for recurring billing.");
     }
 
     private static int? ClampAnchorDay(int? day)

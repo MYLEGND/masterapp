@@ -63,7 +63,7 @@ public sealed class SubscriptionActivationService
     public string SquareLocationId => _squareOptions.LocationId ?? string.Empty;
     public string SquareEnvironment => _squareOptions.Environment == BillingProviderEnvironment.Production ? "Production" : "Sandbox";
 
-    public async Task<SubscriptionActivationContextResult> GetContextAsync(string token, int? requestedBillingAnchorDay, CancellationToken cancellationToken = default)
+    public async Task<SubscriptionActivationContextResult> GetContextAsync(string token, CancellationToken cancellationToken = default)
     {
         var invitation = await FindInvitationAsync(token, cancellationToken);
         if (invitation is null)
@@ -109,7 +109,7 @@ public sealed class SubscriptionActivationService
             await _db.SaveChangesAsync(cancellationToken);
         }
 
-        var schedule = _activationPolicyService.ResolveActivationSchedule(invitation.ClientSubscriptionOffer, requestedBillingAnchorDay, nowUtc);
+        var schedule = _activationPolicyService.ResolveActivationSchedule(invitation.ClientSubscriptionOffer, nowUtc);
         return new SubscriptionActivationContextResult(
             SubscriptionActivationAvailability.Ready,
             null,
@@ -122,7 +122,7 @@ public sealed class SubscriptionActivationService
 
     public async Task<SubscriptionActivationExecutionResult> ActivateAsync(string token, SubscriptionActivationPaymentInput input, CancellationToken cancellationToken = default)
     {
-        var context = await GetContextAsync(token, input.BillingAnchorDay, cancellationToken);
+        var context = await GetContextAsync(token, cancellationToken);
         if (context.Availability != SubscriptionActivationAvailability.Ready ||
             context.Invitation is null ||
             context.Client is null ||
@@ -197,7 +197,6 @@ public sealed class SubscriptionActivationService
         if (context.Client is null || context.Offer is null || context.Schedule is null)
             throw new InvalidOperationException("Activation page models can only be created from a ready activation context.");
 
-        var selectedAnchorDay = context.Schedule.BillingAnchorDay;
         return new SubscriptionActivationPageViewModel
         {
             Token = token,
@@ -206,10 +205,7 @@ public sealed class SubscriptionActivationService
             ClientEmail = context.Client.Email,
             MonthlyAmountDisplay = (context.Schedule.MonthlyAmountCents / 100m).ToString("C", CultureInfo.GetCultureInfo("en-US")),
             Currency = context.Schedule.Currency,
-            BillingAnchorLabel = BuildAnchorLabel(selectedAnchorDay),
-            SelectedBillingAnchorDay = selectedAnchorDay,
-            AllowClientAnchorSelection = context.Offer.BillingAnchorSelectionMode == BillingAnchorSelectionMode.ClientSelectedIfAllowed,
-            AnchorOptions = BuildAnchorOptions(selectedAnchorDay),
+            BillingAnchorLabel = BuildAnchorLabel(context.Schedule.BillingAnchorDay),
             FirstChargeDateDisplay = FormatDate(context.Schedule.FirstChargeUtc, context.Schedule.BillingTimeZoneId),
             FirstRecurringRenewalDateDisplay = FormatDate(context.Schedule.FirstRecurringRenewalUtc, context.Schedule.BillingTimeZoneId),
             BillingTimeZoneLabel = context.Schedule.BillingTimeZoneId,
@@ -220,19 +216,6 @@ public sealed class SubscriptionActivationService
             SquareApplicationId = SquareApplicationId,
             SquareLocationId = SquareLocationId,
             SquareEnvironment = SquareEnvironment
-        };
-    }
-
-    public SubscriptionActivationPrepareResponse BuildPrepareResponse(SubscriptionActivationContextResult context)
-    {
-        return new SubscriptionActivationPrepareResponse
-        {
-            Ok = context.Availability == SubscriptionActivationAvailability.Ready,
-            Message = context.Message,
-            BillingAnchorDay = context.Schedule?.BillingAnchorDay,
-            BillingAnchorLabel = BuildAnchorLabel(context.Schedule?.BillingAnchorDay),
-            FirstChargeDateDisplay = context.Schedule is null ? string.Empty : FormatDate(context.Schedule.FirstChargeUtc, context.Schedule.BillingTimeZoneId),
-            FirstRecurringRenewalDateDisplay = context.Schedule is null ? string.Empty : FormatDate(context.Schedule.FirstRecurringRenewalUtc, context.Schedule.BillingTimeZoneId)
         };
     }
 
@@ -259,17 +242,8 @@ public sealed class SubscriptionActivationService
             1 => "1st of each month",
             15 => "15th of each month",
             int value => $"Day {value} of each month",
-            _ => "Provider default"
+            _ => "Scheduled monthly"
         };
-    }
-
-    private static IReadOnlyList<SubscriptionActivationAnchorOptionViewModel> BuildAnchorOptions(int? selectedAnchorDay)
-    {
-        return
-        [
-            new SubscriptionActivationAnchorOptionViewModel { Day = 1, Label = "1st of each month", Selected = selectedAnchorDay == 1 },
-            new SubscriptionActivationAnchorOptionViewModel { Day = 15, Label = "15th of each month", Selected = selectedAnchorDay == 15 }
-        ];
     }
 
     private static TimeZoneInfo ResolveTimeZone(string timeZoneId)

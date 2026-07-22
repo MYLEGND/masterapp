@@ -18,7 +18,6 @@
 <body class="subscription-activation-standalone">
     <main class="activation-page"
           data-subscription-activation
-          data-prepare-url="@Url.Action("Prepare", "SubscriptionActivation", new { token = Model.Token })"
           data-square-app-id="@Model.SquareApplicationId"
           data-square-location-id="@Model.SquareLocationId">
         <section class="activation-card">
@@ -65,23 +64,6 @@
                         <h2 class="activation-form-title">Payment details</h2>
 
                         <div class="activation-fields">
-                            @if (Model.AllowClientAnchorSelection)
-                            {
-                                <div class="activation-field is-wide">
-                                    <label for="billingAnchorDaySelect">Billing day <span>*</span></label>
-                                    <select name="BillingAnchorDay" id="billingAnchorDaySelect" required>
-                                        @foreach (var option in Model.AnchorOptions)
-                                        {
-                                            <option value="@option.Day" selected="@(option.Selected ? "selected" : null)">@option.Label</option>
-                                        }
-                                    </select>
-                                </div>
-                            }
-                            else if (Model.SelectedBillingAnchorDay.HasValue)
-                            {
-                                <input type="hidden" name="BillingAnchorDay" value="@Model.SelectedBillingAnchorDay" />
-                            }
-
                             <div class="activation-field">
                                 <label for="cardholderName">Name on card <span>*</span></label>
                                 <input id="cardholderName" name="CardholderName" autocomplete="cc-name" required />

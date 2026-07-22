@@ -22,11 +22,9 @@ public enum ClientSubscriptionOfferPriceType
 
 public enum BillingAnchorSelectionMode
 {
-    ProviderDefault = 0,
     FirstOfMonth = 1,
     FifteenthOfMonth = 2,
-    SpecificDayOfMonth = 3,
-    ClientSelectedIfAllowed = 4
+    SpecificDayOfMonth = 3
 }
 
 public enum ClientSubscriptionOfferStatus

@@ -51,12 +51,8 @@
                 return "15th of month";
             case "SpecificDayOfMonth":
                 return Number.isFinite(day) ? `Day ${day} of month` : "Agent-selected day";
-            case "ClientSelectedIfAllowed":
-                return "Client-selected during activation";
-            case "ProviderDefault":
-                return "Provider default";
             default:
-                return "—";
+                return "Scheduled monthly";
         }
     }
 

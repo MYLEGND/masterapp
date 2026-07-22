@@ -33,16 +33,11 @@ public static class FounderGuard
                 user.FindFirstValue("oid") ??
                 user.FindFirstValue("http://schemas.microsoft.com/identity/claims/objectidentifier");
 
-            if (!string.IsNullOrWhiteSpace(oid) &&
-                oid.Equals(FounderOid, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
+            return !string.IsNullOrWhiteSpace(oid) &&
+                   oid.Equals(FounderOid, StringComparison.OrdinalIgnoreCase);
         }
 
-        // Fallback gate: email. Active when FOUNDER_OID is not configured (e.g. local dev
-        // without the env var set). Do not remove — keeps local dev workflow functional
-        // and provides a recovery path if the OID env var is misconfigured.
+        // Local-development fallback when an OID has intentionally not been configured.
         var email =
             user.FindFirstValue(ClaimTypes.Email) ??
             user.FindFirstValue("email") ??

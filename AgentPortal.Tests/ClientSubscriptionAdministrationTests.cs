@@ -327,7 +327,7 @@ public sealed class ClientSubscriptionAdministrationTests
             PriceType = ClientSubscriptionOfferPriceType.Fixed100,
             MonthlyAmountCents = ClientSubscriptionOfferPricing.Fixed100Cents,
             Currency = "USD",
-            BillingAnchorSelectionMode = BillingAnchorSelectionMode.ProviderDefault,
+            BillingAnchorSelectionMode = BillingAnchorSelectionMode.FirstOfMonth,
             Status = ClientSubscriptionOfferStatus.Offered,
             CreatedUtc = DateTime.UtcNow.AddMinutes(-1),
             UpdatedUtc = DateTime.UtcNow.AddMinutes(-1)

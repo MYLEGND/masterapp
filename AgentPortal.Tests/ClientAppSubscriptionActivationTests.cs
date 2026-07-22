@@ -260,7 +260,7 @@ public class ClientAppSubscriptionActivationTests
             new Mock<IBillingOrchestrator>(),
             BuildActivationPolicyService());
 
-        var result = await service.GetContextAsync(token, null);
+        var result = await service.GetContextAsync(token);
 
         Assert.Equal(SubscriptionActivationAvailability.Expired, result.Availability);
         var persisted = await db.SubscriptionActivationInvitations.SingleAsync(x => x.Id == invitation.Id);
@@ -287,7 +287,7 @@ public class ClientAppSubscriptionActivationTests
             new Mock<IBillingOrchestrator>(),
             BuildActivationPolicyService());
 
-        var result = await service.GetContextAsync(token, null);
+        var result = await service.GetContextAsync(token);
 
         Assert.Equal(SubscriptionActivationAvailability.Unavailable, result.Availability);
     }
@@ -334,7 +334,7 @@ public class ClientAppSubscriptionActivationTests
     {
         using var db = BuildDb();
         var profile = await AddProfileAsync(db, "client@example.com");
-        var offer = await AddOfferAsync(db, profile.Id, BillingAnchorSelectionMode.ClientSelectedIfAllowed, 15);
+        var offer = await AddOfferAsync(db, profile.Id, BillingAnchorSelectionMode.SpecificDayOfMonth, 15);
         const string token = "activation-success-token";
         var invitation = await AddInvitationAsync(
             db,
@@ -386,7 +386,7 @@ public class ClientAppSubscriptionActivationTests
                 new BillingSubscriptionResult(true, "sub-1", "ACTIVE", null, "Activated.", null, false)));
 
         var service = BuildActivationService(db, orchestrator, policyService);
-        var result = await service.ActivateAsync(token, BuildPaymentInput(15));
+        var result = await service.ActivateAsync(token, BuildPaymentInput());
 
         Assert.True(result.Success);
         Assert.False(string.IsNullOrWhiteSpace(result.ProtectedContinuationState));
@@ -457,7 +457,7 @@ public class ClientAppSubscriptionActivationTests
         var resolvedSchedule = schedule ?? BuildSchedule(1);
         var policyService = new Mock<IClientSubscriptionActivationPolicyService>();
         policyService
-            .Setup(x => x.ResolveActivationSchedule(It.IsAny<ClientSubscriptionOffer>(), It.IsAny<int?>(), It.IsAny<DateTime>()))
+            .Setup(x => x.ResolveActivationSchedule(It.IsAny<ClientSubscriptionOffer>(), It.IsAny<DateTime>()))
             .Returns(resolvedSchedule);
         policyService
             .Setup(x => x.ResolveProviderPlanVariationId(It.IsAny<ClientSubscriptionOffer>()))
@@ -533,7 +533,7 @@ public class ClientAppSubscriptionActivationTests
     private static async Task<ClientSubscriptionOffer> AddOfferAsync(
         MasterAppDbContext db,
         Guid clientProfileId,
-        BillingAnchorSelectionMode selectionMode = BillingAnchorSelectionMode.ProviderDefault,
+        BillingAnchorSelectionMode selectionMode = BillingAnchorSelectionMode.FirstOfMonth,
         int? selectedBillingAnchorDay = 1)
     {
         var offer = new ClientSubscriptionOffer
@@ -584,11 +584,10 @@ public class ClientAppSubscriptionActivationTests
         return invitation;
     }
 
-    private static SubscriptionActivationPaymentInput BuildPaymentInput(int? billingAnchorDay = 1)
+    private static SubscriptionActivationPaymentInput BuildPaymentInput()
     {
         return new SubscriptionActivationPaymentInput
         {
-            BillingAnchorDay = billingAnchorDay,
             SourceId = "cnon:card-nonce-ok",
             CardholderName = "Test Client",
             ReturnUrl = "/profile",

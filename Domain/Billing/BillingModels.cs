@@ -206,7 +206,8 @@ public sealed record CreateClientSubscriptionOfferCommand(
     BillingAnchorSelectionMode BillingAnchorSelectionMode,
     int? SelectedBillingAnchorDay,
     DateTime? EffectiveUtc,
-    DateTime? ExpiresUtc);
+    DateTime? ExpiresUtc,
+    bool AllowFounderZeroDollarCustomAmount = false);
 
 public sealed record CreateSubscriptionActivationInvitationCommand(
     Guid ClientProfileId,

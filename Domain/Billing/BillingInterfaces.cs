@@ -31,7 +31,7 @@ public interface IBillingOrchestrator
 
 public interface IClientSubscriptionActivationPolicyService
 {
-    ClientSubscriptionActivationSchedule ResolveActivationSchedule(ClientSubscriptionOffer offer, int? requestedBillingAnchorDay, DateTime nowUtc);
+    ClientSubscriptionActivationSchedule ResolveActivationSchedule(ClientSubscriptionOffer offer, DateTime nowUtc);
     string? ResolveProviderPlanVariationId(ClientSubscriptionOffer offer);
 }
 

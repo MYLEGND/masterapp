@@ -48,6 +48,22 @@ public sealed class BillingCentralizationTests
     }
 
     [Fact]
+    public void OfferPricing_ZeroCustomAmount_RequiresFounderAllowance()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
+                ClientSubscriptionOfferPriceType.Custom,
+                0));
+
+        var founderAmount = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
+            ClientSubscriptionOfferPriceType.Custom,
+            0,
+            ClientSubscriptionOfferPricing.FounderCustomMinimumCents);
+
+        Assert.Equal(0, founderAmount);
+    }
+
+    [Fact]
     public void OfferPricing_InvalidSpecificBillingAnchor_IsRejected()
     {
         var ex = Assert.Throws<ArgumentOutOfRangeException>(() =>
@@ -69,7 +85,7 @@ public sealed class BillingCentralizationTests
             ownerAgentUserId: "agent-1",
             priceType: ClientSubscriptionOfferPriceType.Fixed50,
             monthlyAmountCents: ClientSubscriptionOfferPricing.Fixed50Cents,
-            billingAnchorSelectionMode: BillingAnchorSelectionMode.ProviderDefault,
+            billingAnchorSelectionMode: BillingAnchorSelectionMode.FirstOfMonth,
             selectedBillingAnchorDay: null,
             status: ClientSubscriptionOfferStatus.Draft);
 
@@ -1144,7 +1160,7 @@ public sealed class BillingCentralizationTests
         string ownerAgentUserId = "agent-1",
         ClientSubscriptionOfferPriceType priceType = ClientSubscriptionOfferPriceType.Fixed100,
         int monthlyAmountCents = ClientSubscriptionOfferPricing.Fixed100Cents,
-        BillingAnchorSelectionMode billingAnchorSelectionMode = BillingAnchorSelectionMode.ProviderDefault,
+        BillingAnchorSelectionMode billingAnchorSelectionMode = BillingAnchorSelectionMode.FirstOfMonth,
         int? selectedBillingAnchorDay = null,
         ClientSubscriptionOfferStatus status = ClientSubscriptionOfferStatus.Offered)
     {

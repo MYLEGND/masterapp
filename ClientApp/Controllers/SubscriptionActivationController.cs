@@ -27,16 +27,8 @@ public sealed class SubscriptionActivationController : Controller
     [HttpGet("/activate/{token}")]
     public async Task<IActionResult> Index(string token, string returnUrl = "/profile")
     {
-        var context = await _activationService.GetContextAsync(token, null, HttpContext.RequestAborted);
+        var context = await _activationService.GetContextAsync(token, HttpContext.RequestAborted);
         return RenderContext(token, returnUrl, context);
-    }
-
-    [HttpPost("/activate/{token}/prepare")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Prepare(string token, SubscriptionActivationPrepareRequest request)
-    {
-        var context = await _activationService.GetContextAsync(token, request.BillingAnchorDay, HttpContext.RequestAborted);
-        return Json(_activationService.BuildPrepareResponse(context));
     }
 
     [HttpPost("/activate/{token}/payment-method")]
@@ -45,7 +37,7 @@ public sealed class SubscriptionActivationController : Controller
     {
         if (!ModelState.IsValid)
         {
-            var invalidContext = await _activationService.GetContextAsync(token, input.BillingAnchorDay, HttpContext.RequestAborted);
+            var invalidContext = await _activationService.GetContextAsync(token, HttpContext.RequestAborted);
             return View("Index", _activationService.BuildPageViewModel(invalidContext, token, input.ReturnUrl, "Complete the required consent and payment fields before continuing."));
         }
 
@@ -75,7 +67,7 @@ public sealed class SubscriptionActivationController : Controller
     [HttpGet("/activate/{token}/status")]
     public async Task<IActionResult> Status(string token)
     {
-        var context = await _activationService.GetContextAsync(token, null, HttpContext.RequestAborted);
+        var context = await _activationService.GetContextAsync(token, HttpContext.RequestAborted);
         return Json(new
         {
             ok = context.Availability == SubscriptionActivationAvailability.Ready,

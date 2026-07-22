@@ -225,8 +225,7 @@ public sealed class ClientSubscriptionInvitationEmailService
             BillingAnchorSelectionMode.FirstOfMonth => "1st of the month",
             BillingAnchorSelectionMode.FifteenthOfMonth => "15th of the month",
             BillingAnchorSelectionMode.SpecificDayOfMonth when offer.SelectedBillingAnchorDay.HasValue => $"Day {offer.SelectedBillingAnchorDay.Value} of the month",
-            BillingAnchorSelectionMode.ClientSelectedIfAllowed => "Client-selected during activation when policy allows it",
-            _ => "Provider default"
+            _ => "Scheduled monthly"
         };
     }
 

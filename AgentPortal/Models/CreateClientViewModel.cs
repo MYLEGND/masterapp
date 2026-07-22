@@ -68,6 +68,8 @@ namespace AgentPortal.Models
         public string? AgentPhone { get; set; }
 
         public string? OneTimePassword { get; set; }
+        public string? SourceLeadClientUserId { get; set; }
+        public string? SourceWorkstationLeadId { get; set; }
         public string SubscriptionPriceType { get; set; } = "";
         public decimal? SubscriptionCustomMonthlyAmount { get; set; }
         public string SubscriptionCurrency { get; set; } = "USD";
@@ -203,11 +205,11 @@ namespace AgentPortal.Models
                         }
 
                         var customCents = decimal.ToInt32(decimal.Round(customAmount * 100m, 0, MidpointRounding.AwayFromZero));
-                        if (customCents < ClientSubscriptionOfferPricing.CustomMinimumCents ||
+                        if (customCents < ClientSubscriptionOfferPricing.FounderCustomMinimumCents ||
                             customCents > ClientSubscriptionOfferPricing.CustomMaximumCents)
                         {
                             yield return new ValidationResult(
-                                $"Custom monthly amount must be between {(ClientSubscriptionOfferPricing.CustomMinimumCents / 100m):0.00} and {(ClientSubscriptionOfferPricing.CustomMaximumCents / 100m):0.00}.",
+                                $"Custom monthly amount must be between {(ClientSubscriptionOfferPricing.FounderCustomMinimumCents / 100m):0.00} and {(ClientSubscriptionOfferPricing.CustomMaximumCents / 100m):0.00}.",
                                 new[] { nameof(SubscriptionCustomMonthlyAmount) });
                         }
                     }

@@ -13,7 +13,7 @@ public sealed class ClientSubscriptionOffer
     public ClientSubscriptionOfferPriceType PriceType { get; set; } = ClientSubscriptionOfferPriceType.Fixed100;
     public int MonthlyAmountCents { get; set; }
     public string Currency { get; set; } = "USD";
-    public BillingAnchorSelectionMode BillingAnchorSelectionMode { get; set; } = BillingAnchorSelectionMode.ProviderDefault;
+    public BillingAnchorSelectionMode BillingAnchorSelectionMode { get; set; } = BillingAnchorSelectionMode.FirstOfMonth;
     public int? SelectedBillingAnchorDay { get; set; }
     public ClientSubscriptionOfferStatus Status { get; set; } = ClientSubscriptionOfferStatus.Draft;
     public DateTime? EffectiveUtc { get; set; }

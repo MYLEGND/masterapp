@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Models;
 using AgentPortal.Helpers;
+using AgentPortal.Security;
 using AgentPortal.Services;
 using Domain.Billing;
 using Domain.Entities;
@@ -1001,6 +1002,66 @@ namespace AgentPortal.Controllers;
     private static string CreateLeadClientUserId()
         => $"lead-{Guid.NewGuid():N}";
 
+    private static bool IsLeadPlaceholderEmail(string? email)
+        => !string.IsNullOrWhiteSpace(email) &&
+           email.Trim().EndsWith("@leads.local", StringComparison.OrdinalIgnoreCase);
+
+    private static void PopulateCreateModelFromClientLead(
+        CreateClientViewModel model,
+        ClientProfile profile,
+        string recordType)
+    {
+        var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+
+        model.RecordType = recordType;
+        model.SourceLeadClientUserId = profile.ClientUserId;
+        model.FirstName = profile.FirstName;
+        model.LastName = profile.LastName;
+        model.Email = IsLeadPlaceholderEmail(profile.Email) ? string.Empty : profile.Email;
+        model.Phone = profile.Phone;
+        model.DOB = profile.DOB;
+        model.MaritalStatus = profile.MaritalStatus;
+        model.SignificantOtherFirstName = profile.SignificantOtherFirstName;
+        model.SignificantOtherLastName = profile.SignificantOtherLastName;
+        model.SignificantOtherDOB = profile.SignificantOtherDOB;
+        model.SignificantOtherEmail = profile.SignificantOtherEmail;
+        model.SignificantOtherPhone = profile.SignificantOtherPhone;
+        model.CrmStatus = profile.CrmStatus;
+        model.CrmPriority = profile.CrmPriority;
+        model.CrmTags = profile.CrmTags;
+        model.CrmLastTouch = profile.CrmLastTouch;
+        model.CrmNextDate = profile.CrmNextDate;
+        model.CrmNextText = profile.CrmNextText;
+        model.CrmNotes = profile.AgentNotes;
+        model.PipelineStage = DefaultPipelineStageForRecordType(recordType);
+        model.SubscriptionBillingAnchorMode = nameof(BillingAnchorSelectionMode.FirstOfMonth);
+    }
+
+    private static void PopulateCreateModelFromWorkstationLead(
+        CreateClientViewModel model,
+        WorkstationLeadProfile lead,
+        string recordType)
+    {
+        var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(lead.CrmNotes));
+
+        model.RecordType = recordType;
+        model.SourceWorkstationLeadId = lead.LeadId;
+        model.FirstName = lead.FirstName;
+        model.LastName = lead.LastName;
+        model.Email = IsLeadPlaceholderEmail(lead.Email) ? string.Empty : lead.Email;
+        model.Phone = lead.Phone;
+        model.DOB = lead.DOB;
+        model.CrmStatus = string.IsNullOrWhiteSpace(lead.CrmStatus) ? "Lead" : lead.CrmStatus;
+        model.CrmPriority = string.IsNullOrWhiteSpace(meta.CrmPriority) ? "Normal" : meta.CrmPriority;
+        model.CrmTags = string.IsNullOrWhiteSpace(meta.CrmTags) ? lead.Bucket : meta.CrmTags;
+        model.CrmLastTouch = lead.UpdatedUtc;
+        model.CrmNextDate = meta.CrmNextDate;
+        model.CrmNextText = meta.CrmNextText;
+        model.CrmNotes = meta.AgentNotes;
+        model.PipelineStage = DefaultPipelineStageForRecordType(recordType);
+        model.SubscriptionBillingAnchorMode = nameof(BillingAnchorSelectionMode.FirstOfMonth);
+    }
+
     private static string DefaultPipelineStageForRecordType(string? recordType)
         => NormalizeRecordType(recordType) switch
         {
@@ -1114,10 +1175,100 @@ namespace AgentPortal.Controllers;
         bool EmailSent,
         string? Warning);
 
+    private static void ApplyCreateFormDetailsToLeadProfile(
+        ClientProfile profile,
+        CreateClientViewModel model,
+        string firstName,
+        string lastName,
+        string emailNorm,
+        string phone,
+        string maritalStatus,
+        string crmStatus,
+        string crmPriority,
+        string crmTags,
+        string crmNotes,
+        string recordType,
+        string pipelineStage,
+        string agentUpn)
+    {
+        profile.FirstName = firstName;
+        profile.LastName = lastName;
+        profile.Email = emailNorm;
+        profile.NormalizedEmail = emailNorm;
+        profile.Phone = phone;
+        profile.DOB = model.DOB;
+        profile.MaritalStatus = maritalStatus;
+        profile.SignificantOtherFirstName = (model.SignificantOtherFirstName ?? string.Empty).Trim();
+        profile.SignificantOtherLastName = (model.SignificantOtherLastName ?? string.Empty).Trim();
+        profile.SignificantOtherDOB = model.SignificantOtherDOB;
+        profile.SignificantOtherEmail = (model.SignificantOtherEmail ?? string.Empty).Trim();
+        profile.SignificantOtherPhone = (model.SignificantOtherPhone ?? string.Empty).Trim();
+        profile.CrmStatus = crmStatus;
+        profile.CrmPriority = crmPriority;
+        profile.CrmLastTouch = model.CrmLastTouch;
+        profile.CrmNextDate = model.CrmNextDate;
+        profile.CrmNextText = (model.CrmNextText ?? string.Empty).Trim();
+        profile.CrmTags = crmTags;
+        profile.AgentNotes = crmNotes;
+        profile.UpdatedUtc = DateTime.UtcNow;
+
+        var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+        meta.RecordType = recordType;
+        meta.PipelineStage = pipelineStage;
+        meta.StageEnteredUtc = DateTime.UtcNow;
+        meta.Collaboration.Owner ??= agentUpn;
+        profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
+    }
+
+    private async Task ApplySignificantOtherFromCreateFormAsync(
+        string clientUserId,
+        CreateClientViewModel model,
+        bool needsSignificantOther)
+    {
+        var existing = await _db.HouseholdMembers
+            .Where(x => x.ClientUserId == clientUserId &&
+                        (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
+            .OrderByDescending(x => x.UpdatedUtc)
+            .ToListAsync();
+
+        if (!needsSignificantOther)
+        {
+            if (existing.Count > 0)
+                _db.HouseholdMembers.RemoveRange(existing);
+            return;
+        }
+
+        var significantOther = existing.FirstOrDefault();
+        if (significantOther is null)
+        {
+            significantOther = new HouseholdMember
+            {
+                ClientUserId = clientUserId,
+                RelationshipType = "SignificantOther",
+                CreatedUtc = DateTime.UtcNow
+            };
+            _db.HouseholdMembers.Add(significantOther);
+        }
+        else if (existing.Count > 1)
+        {
+            _db.HouseholdMembers.RemoveRange(existing.Skip(1));
+        }
+
+        significantOther.RelationshipType = "SignificantOther";
+        significantOther.FirstName = (model.SignificantOtherFirstName ?? string.Empty).Trim();
+        significantOther.LastName = (model.SignificantOtherLastName ?? string.Empty).Trim();
+        significantOther.DOB = model.SignificantOtherDOB;
+        significantOther.Email = (model.SignificantOtherEmail ?? string.Empty).Trim();
+        significantOther.Phone = (model.SignificantOtherPhone ?? string.Empty).Trim();
+        significantOther.UpdatedUtc = DateTime.UtcNow;
+    }
+
     private async Task<PortalAccessEnableResult> EnablePortalAccessInternalAsync(
         ClientProfile profile,
         string recordType,
-        string emailNorm)
+        string emailNorm,
+        bool sendWelcomeEmail = true,
+        Func<ClientProfile, Task>? beforeCommitAsync = null)
     {
         var oldClientUserId = NormLower(profile.ClientUserId);
         var firstName = Norm(profile.FirstName);
@@ -1215,6 +1366,13 @@ namespace AgentPortal.Controllers;
                 _db.HouseholdMembers.AddRange(recreatedHousehold);
 
             await _db.SaveChangesAsync();
+
+            var convertedProfile = await _db.ClientProfiles
+                .SingleAsync(x => x.Id == profileId);
+
+            if (beforeCommitAsync is not null)
+                await beforeCommitAsync(convertedProfile);
+
             await tx.CommitAsync();
             committed = true;
 
@@ -1222,28 +1380,31 @@ namespace AgentPortal.Controllers;
             var clientPortalBaseUrl = GetClientPortalBaseUrl();
             string? emailWarning = null;
 
-            try
+            if (sendWelcomeEmail)
             {
-                await _provisioning.SendClientWelcomeEmailAsync(
-                    emailNorm,
-                    firstName,
-                    loginUpn,
-                    oneTimePassword,
-                    clientPortalBaseUrl,
-                    newClientObjectId,
-                    forceIdLink: true
-                );
-            }
-            catch (Exception mailEx)
-            {
-                _logger.LogError(
-                    mailEx,
-                    "Portal access email failed after successful conversion. Email={Email} ClientUserId={ClientUserId}",
-                    emailNorm,
-                    newClientObjectId
-                );
+                try
+                {
+                    await _provisioning.SendClientWelcomeEmailAsync(
+                        emailNorm,
+                        firstName,
+                        loginUpn,
+                        oneTimePassword,
+                        clientPortalBaseUrl,
+                        newClientObjectId,
+                        forceIdLink: true
+                    );
+                }
+                catch (Exception mailEx)
+                {
+                    _logger.LogError(
+                        mailEx,
+                        "Portal access email failed after successful conversion. Email={Email} ClientUserId={ClientUserId}",
+                        emailNorm,
+                        newClientObjectId
+                    );
 
-                emailWarning = $"Portal access was enabled, but the welcome email failed to send: {mailEx.Message}";
+                    emailWarning = $"Portal access was enabled, but the welcome email failed to send: {mailEx.Message}";
+                }
             }
 
             return new PortalAccessEnableResult(
@@ -2760,13 +2921,48 @@ namespace AgentPortal.Controllers;
     // GET: /Clients/Create
     // =====================================================================
     [HttpGet]
-    public IActionResult Create(string? returnUrl = null)
+    public async Task<IActionResult> Create(
+        string? returnUrl = null,
+        string? sourceLeadClientUserId = null,
+        string? sourceWorkstationLeadId = null,
+        string? recordType = null)
     {
         string agentOid;
         try { agentOid = GetAgentOidOrThrow(); }
         catch { return Challenge(); }
 
         var model = new CreateClientViewModel();
+        var sourceClientId = NormLower(sourceLeadClientUserId);
+        var sourceWorkstationId = Norm(sourceWorkstationLeadId);
+        if (!string.IsNullOrWhiteSpace(sourceClientId) && !string.IsNullOrWhiteSpace(sourceWorkstationId))
+            return BadRequest("Choose one lead source for account creation.");
+
+        var requestedRecordType = NormalizeRecordType(recordType);
+        if (!IsPortalRecordType(requestedRecordType))
+            requestedRecordType = "Client";
+
+        if (!string.IsNullOrWhiteSpace(sourceClientId))
+        {
+            var sourceProfile = await GetOwnedClientProfileAsync(agentOid, sourceClientId);
+            if (sourceProfile is null)
+                return Forbid();
+
+            if (HasPortalAccess(sourceProfile.ClientUserId))
+                return BadRequest("This record already has client portal access.");
+
+            PopulateCreateModelFromClientLead(model, sourceProfile, requestedRecordType);
+            ViewData["ConversionSourceName"] = $"{sourceProfile.FirstName} {sourceProfile.LastName}".Trim();
+        }
+        else if (!string.IsNullOrWhiteSpace(sourceWorkstationId))
+        {
+            var sourceLead = await _db.WorkstationLeadProfiles
+                .FirstOrDefaultAsync(x => x.AgentUserId == agentOid && x.LeadId == sourceWorkstationId);
+            if (sourceLead is null)
+                return Forbid();
+
+            PopulateCreateModelFromWorkstationLead(model, sourceLead, requestedRecordType);
+            ViewData["ConversionSourceName"] = $"{sourceLead.FirstName} {sourceLead.LastName}".Trim();
+        }
 
         var agentProfile = _db.AgentProfiles
             .AsNoTracking()
@@ -2780,6 +2976,7 @@ namespace AgentPortal.Controllers;
         ViewBag.ReturnUrl = !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
             ? returnUrl
             : (Url.Action(nameof(Index), "Clients") ?? "/Clients");
+        ViewData["CanSetFounderSubscriptionOptions"] = FounderGuard.IsFounder(User);
 
         return View(model);
     }
@@ -2798,6 +2995,8 @@ namespace AgentPortal.Controllers;
         ViewBag.ReturnUrl = !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
             ? returnUrl
             : (Url.Action(nameof(Index), "Clients") ?? "/Clients");
+        var canSetFounderSubscriptionOptions = FounderGuard.IsFounder(User);
+        ViewData["CanSetFounderSubscriptionOptions"] = canSetFounderSubscriptionOptions;
 
         if (!ModelState.IsValid)
             return View(model);
@@ -2860,6 +3059,43 @@ namespace AgentPortal.Controllers;
         var recordType = NormalizeRecordType(model.RecordType);
         model.RecordType = recordType;
         var isPortalClient = IsPortalRecordType(recordType);
+        var sourceLeadClientUserId = NormLower(model.SourceLeadClientUserId);
+        var sourceWorkstationLeadId = Norm(model.SourceWorkstationLeadId);
+        if (!string.IsNullOrWhiteSpace(sourceLeadClientUserId) && !string.IsNullOrWhiteSpace(sourceWorkstationLeadId))
+        {
+            ModelState.AddModelError("", "Choose one lead source for account creation.");
+            return View(model);
+        }
+
+        if (!isPortalClient && (!string.IsNullOrWhiteSpace(sourceLeadClientUserId) || !string.IsNullOrWhiteSpace(sourceWorkstationLeadId)))
+        {
+            ModelState.AddModelError(nameof(CreateClientViewModel.RecordType), "A lead conversion must be completed as a Client or Business Client.");
+            return View(model);
+        }
+
+        ClientProfile? conversionSourceLead = null;
+        if (!string.IsNullOrWhiteSpace(sourceLeadClientUserId))
+        {
+            conversionSourceLead = await GetOwnedClientProfileAsync(agentOid, sourceLeadClientUserId);
+            if (conversionSourceLead is null)
+                return Forbid();
+
+            if (HasPortalAccess(conversionSourceLead.ClientUserId))
+            {
+                ModelState.AddModelError("", "This record already has client portal access.");
+                return View(model);
+            }
+        }
+
+        WorkstationLeadProfile? conversionSourceWorkstationLead = null;
+        if (!string.IsNullOrWhiteSpace(sourceWorkstationLeadId))
+        {
+            conversionSourceWorkstationLead = await _db.WorkstationLeadProfiles
+                .FirstOrDefaultAsync(x => x.AgentUserId == agentOid && x.LeadId == sourceWorkstationLeadId);
+            if (conversionSourceWorkstationLead is null)
+                return Forbid();
+        }
+
         var agentNpn = !string.IsNullOrWhiteSpace(agentProfile.Npn)
             ? agentProfile.Npn.Trim()
             : (model.AgentNpn ?? "").Trim();
@@ -2879,9 +3115,20 @@ namespace AgentPortal.Controllers;
                 subscriptionBillingAnchorDay = subscriptionBillingAnchorMode == BillingAnchorSelectionMode.SpecificDayOfMonth
                     ? model.SubscriptionBillingAnchorDay
                     : null;
+                if (!canSetFounderSubscriptionOptions &&
+                    subscriptionBillingAnchorMode == BillingAnchorSelectionMode.SpecificDayOfMonth)
+                {
+                    ModelState.AddModelError(
+                        nameof(CreateClientViewModel.SubscriptionBillingAnchorMode),
+                        "Only the founder can set an agent-selected billing day.");
+                    return View(model);
+                }
                 _ = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
                     subscriptionPriceType,
-                    subscriptionCustomMonthlyAmountCents);
+                    subscriptionCustomMonthlyAmountCents,
+                    canSetFounderSubscriptionOptions
+                        ? ClientSubscriptionOfferPricing.FounderCustomMinimumCents
+                        : ClientSubscriptionOfferPricing.CustomMinimumCents);
                 _ = ClientSubscriptionOfferPricing.ResolveBillingAnchorDay(
                     subscriptionBillingAnchorMode,
                     subscriptionBillingAnchorDay);
@@ -3172,7 +3419,8 @@ namespace AgentPortal.Controllers;
                         subscriptionBillingAnchorMode,
                         subscriptionBillingAnchorDay,
                         DateTime.UtcNow,
-                        null));
+                        null,
+                        canSetFounderSubscriptionOptions));
 
                 createdSubscriptionInvitation = await _billingOrchestrator.CreateSubscriptionActivationInvitationAsync(
                     new CreateSubscriptionActivationInvitationCommand(
