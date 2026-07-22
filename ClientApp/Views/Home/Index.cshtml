@@ -134,15 +134,10 @@
 
     <section class="category-container home-tools-panel">
         <div class="category-head">
-            <div class="category-head-copy">
-                <div class="category-kicker">Build And Protect Your Legacy</div>
-                <h2 class="category-toggle">Open the same premium dashboard language used inside AgentPortal.</h2>
-                <p class="category-copy">Select any focus area to read a cleaner explanation without leaving the shared dashboard system.</p>
-            </div>
-            <div class="category-count-pill" aria-label="Focus area count">
-                <span class="category-count-number">@focusAreas.Length</span>
-                <span class="category-count-label">Focus Areas</span>
-            </div>
+            <h2 class="category-summary-pill">
+                <span class="category-summary-count">@focusAreas.Length</span>
+                <span>Focus Areas · Build &amp; Protect Your Legacy</span>
+            </h2>
         </div>
 
         <div class="dashboard-command-center-divider" aria-hidden="true"></div>
@@ -167,11 +162,7 @@
 
     <section class="category-container home-factfinder-panel">
         <div class="category-head">
-            <div class="category-head-copy">
-                <div class="category-kicker">Shared Client And Agent View</div>
-                <h2 class="category-toggle">Move from reflection into a real planning workspace.</h2>
-                <p class="category-copy">Track readiness, legal and beneficiary reviews, life events, and follow-up focus in one premium workspace.</p>
-            </div>
+            <h2 class="category-summary-pill">Shared Planning Workspace</h2>
             <a class="client-create-button client-create-button-primary" asp-controller="ProtectionSnapshot" asp-action="Index">Launch Protection Snapshot</a>
         </div>
     </section>

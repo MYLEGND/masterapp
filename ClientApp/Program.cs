@@ -359,9 +359,12 @@ builder.Services.AddAuthentication(options =>
             var returnUrl = ctx.HttpContext.RequestServices
                 .GetRequiredService<ClientAppReturnUrlNormalizer>()
                 .Normalize(ctx.Properties?.RedirectUri);
-            var loginUrl = $"{ctx.Request.PathBase}/Account/AzureLogin?returnUrl={Uri.EscapeDataString(returnUrl)}";
+            var loginUrl = $"{ctx.Request.PathBase}/Account/Login?returnUrl={Uri.EscapeDataString(returnUrl)}";
 
             OidcTransientCookieCleanup.Clear(ctx.HttpContext, callbackPath);
+            ctx.HttpContext.RequestServices
+                .GetRequiredService<ClientIdentityAccessService>()
+                .ClearChallengeContinuationCookie(ctx.HttpContext.Response);
             await ctx.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             ctx.HandleResponse();
             ctx.Response.Redirect(loginUrl);
@@ -380,7 +383,7 @@ builder.Services.Configure<CookieAuthenticationOptions>(CookieAuthenticationDefa
         }
 
         var signInEntryPoint = ctx.HttpContext.RequestServices.GetRequiredService<ClientAppSignInEntryPoint>();
-        ctx.Response.Redirect(await signInEntryPoint.ResolveAsync(ctx.HttpContext, ctx.HttpContext.RequestAborted));
+        ctx.Response.Redirect(signInEntryPoint.Resolve(ctx.HttpContext));
     };
 
     options.Events.OnRedirectToAccessDenied = ctx =>

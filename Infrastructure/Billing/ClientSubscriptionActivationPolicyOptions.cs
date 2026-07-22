@@ -7,7 +7,6 @@ public sealed class ClientSubscriptionActivationPolicyOptions
     public string BusinessTimeZoneId { get; init; } = "America/Phoenix";
     public int SameDayAnchorCutoffHourLocal { get; init; } = 17;
     public int MinimumDaysBeforeAnchoredRenewal { get; init; } = 14;
-    public DateTime SubscriptionRequiredForProfilesCreatedOnOrAfterUtc { get; init; } = new(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc);
     public string? DefaultProviderPlanVariationId { get; init; }
     public IReadOnlyDictionary<string, string> PlanVariationIds { get; init; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -32,14 +31,6 @@ public sealed class ClientSubscriptionActivationPolicyOptions
             MinimumDaysBeforeAnchoredRenewal = int.TryParse(section["MinimumDaysBeforeAnchoredRenewal"], out var minDays) && minDays > 0
                 ? minDays
                 : 14,
-            SubscriptionRequiredForProfilesCreatedOnOrAfterUtc =
-                DateTime.TryParse(
-                    section["SubscriptionRequiredForProfilesCreatedOnOrAfterUtc"],
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
-                    out var subscriptionCutoverUtc)
-                    ? subscriptionCutoverUtc
-                    : new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc),
             DefaultProviderPlanVariationId = defaultPlanVariationId,
             PlanVariationIds = mappings
         };

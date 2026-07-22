@@ -56,16 +56,11 @@
 
     <section class="category-container home-tools-panel mb-5">
         <div class="category-head">
-            <div class="category-head-copy">
-                <div class="category-kicker">Frequently Used Tools</div>
-                <h2 class="category-toggle">Core launches that keep the day moving.</h2>
-                <p class="category-copy">Jump into the systems you touch most without burying the important paths.</p>
-            </div>
+            <h2 class="category-summary-pill">
+                <span class="category-summary-count">@homeQuickLaunches.Length</span>
+                <span>Quick Launches</span>
+            </h2>
             <div class="home-tools-head-actions">
-                <div class="category-count-pill" aria-label="Quick launch count">
-                    <span class="category-count-number">@homeQuickLaunches.Length</span>
-                    <span class="category-count-label">Tools</span>
-                </div>
                 <button type="button" class="home-clients-trigger home-clients-trigger-inline" id="homeClientsTrigger">Clients</button>
             </div>
         </div>
@@ -114,7 +109,6 @@
                     <img src="@Url.Content($"~/images/{tool.Folder}/{tool.Icon}")"
                          alt="@tool.Name" />
                     <div class="tool-name">@tool.Name</div>
-                    <div class="tool-desc">@tool.Desc</div>
                 </a>
             }
         </div>
@@ -122,11 +116,7 @@
 
     <section class="category-container home-factfinder-panel mt-5">
         <div class="category-head">
-            <div class="category-head-copy">
-                <div class="category-kicker">Legend™ Intake</div>
-                <h2 class="category-toggle">Fact Finder — Quick Access</h2>
-                <p class="category-copy">Choose the intake that matches the client’s stage. Answer what applies. Generate a clean PDF.</p>
-            </div>
+            <h2 class="category-summary-pill">Legend™ Intake · Fact Finder</h2>
         </div>
 
         <div class="dashboard-command-center-divider" aria-hidden="true"></div>

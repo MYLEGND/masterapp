@@ -94,6 +94,32 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
+    public async Task AccountController_AzureLogin_WithInactiveEntitlement_RedirectsToActivationRequired()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.NotGranted);
+        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+
+        var (protectedState, expiresUtc) = await continuationService.CreateProtectedStateAsync(
+            profile.Id,
+            profile.NormalizedEmail ?? profile.Email,
+            "/profile",
+            ClientIdentityContinuationPurpose.SignIn);
+
+        var httpContext = new DefaultHttpContext();
+        AttachContinuationCookie(httpContext, continuationService, protectedState, expiresUtc);
+
+        var controller = BuildAccountController(identityAccessService, httpContext);
+        var result = await controller.AzureLogin("/profile");
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal("ActivationRequired", redirect.ActionName);
+        Assert.Contains("subscription", redirect.RouteValues?["message"]?.ToString() ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task AccountController_Login_NormalizesAccountLoopReturnUrl()
     {
         using var db = BuildDb();

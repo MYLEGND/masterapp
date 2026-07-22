@@ -280,11 +280,7 @@ public sealed class ClientSubscriptionAdministrationTests
 
     private static BillingEntitlementService BuildEntitlementService(MasterAppDbContext db)
     {
-        return new BillingEntitlementService(db, new ClientSubscriptionActivationPolicyOptions
-        {
-            BusinessTimeZoneId = "America/Phoenix",
-            SubscriptionRequiredForProfilesCreatedOnOrAfterUtc = new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc)
-        });
+        return new BillingEntitlementService(db);
     }
 
     private static async Task<ClientProfile> AddOwnedProfileAsync(

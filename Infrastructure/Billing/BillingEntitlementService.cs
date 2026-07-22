@@ -8,22 +8,14 @@ namespace Infrastructure.Billing;
 internal sealed class BillingEntitlementService : IBillingEntitlementService
 {
     private readonly MasterAppDbContext _db;
-    private readonly ClientSubscriptionActivationPolicyOptions _activationPolicyOptions;
 
-    public BillingEntitlementService(
-        MasterAppDbContext db,
-        ClientSubscriptionActivationPolicyOptions activationPolicyOptions)
+    public BillingEntitlementService(MasterAppDbContext db)
     {
         _db = db;
-        _activationPolicyOptions = activationPolicyOptions;
     }
 
     public async Task<BillingEntitlementEvaluationResult> EvaluateAsync(BillingEntitlementEvaluationRequest request, CancellationToken cancellationToken = default)
     {
-        var profile = await _db.ClientProfiles
-            .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == request.ClientProfileId, cancellationToken);
-
         var subscription = await _db.ClientSubscriptions
             .AsNoTracking()
             .Where(x => x.ClientProfileId == request.ClientProfileId)
@@ -31,7 +23,7 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
             .ThenByDescending(x => x.CreatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return BuildEvaluation(profile, subscription, request.EntitlementKey, request.EvaluatedUtc, _activationPolicyOptions);
+        return BuildEvaluation(subscription, request.EntitlementKey, request.EvaluatedUtc);
     }
 
     public async Task<ClientEntitlement> RefreshAsync(Guid clientProfileId, string entitlementKey, string? reasonCode = null, CancellationToken cancellationToken = default)
@@ -69,25 +61,10 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
     }
 
     private static BillingEntitlementEvaluationResult BuildEvaluation(
-        ClientProfile? profile,
         ClientSubscription? subscription,
         string entitlementKey,
-        DateTime evaluatedUtc,
-        ClientSubscriptionActivationPolicyOptions activationPolicyOptions)
+        DateTime evaluatedUtc)
     {
-        if (subscription is null && IsLegacyGrandfatheredProfile(profile, activationPolicyOptions))
-        {
-            return new BillingEntitlementEvaluationResult(
-                ClientEntitlementStatus.Active,
-                profile!.CreatedUtc,
-                null,
-                null,
-                "LEGACY_PROFILE_PRE_SUBSCRIPTION_CUTOFF",
-                ClientEntitlementSourceType.Manual,
-                $"legacy-profile:{profile.Id:N}",
-                $"{entitlementKey}: legacy client profile remains active without a subscription.");
-        }
-
         if (subscription is null)
         {
             return new BillingEntitlementEvaluationResult(
@@ -165,23 +142,6 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
             ClientEntitlementSourceType.Subscription,
             sourceId,
             $"{entitlementKey}: subscription is not eligible for access.");
-    }
-
-    private static bool IsLegacyGrandfatheredProfile(
-        ClientProfile? profile,
-        ClientSubscriptionActivationPolicyOptions activationPolicyOptions)
-    {
-        if (profile is null)
-            return false;
-
-        return EnsureUtc(profile.CreatedUtc) < activationPolicyOptions.SubscriptionRequiredForProfilesCreatedOnOrAfterUtc;
-    }
-
-    private static DateTime EnsureUtc(DateTime value)
-    {
-        return value.Kind == DateTimeKind.Utc
-            ? value
-            : DateTime.SpecifyKind(value, DateTimeKind.Utc);
     }
 
 }

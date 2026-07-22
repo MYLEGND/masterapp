@@ -47,10 +47,49 @@ public sealed class ClientIdentityAccessService
                string.Equals(returnUrl, "/support", StringComparison.OrdinalIgnoreCase);
     }
 
-    public async Task<bool> HasValidChallengeContinuationAsync(HttpContext httpContext, CancellationToken cancellationToken = default)
+    public async Task<ClientSignInCompletionResult> ValidateAzureChallengeAsync(
+        HttpContext httpContext,
+        string? fallbackReturnUrl = null,
+        CancellationToken cancellationToken = default)
     {
         var validation = await _continuationService.ValidateCookieAsync(httpContext.Request, cancellationToken);
-        return validation.Success;
+        var safeFallbackReturnUrl = _returnUrlNormalizer.Normalize(fallbackReturnUrl);
+        if (!validation.Success || validation.Continuation is null)
+        {
+            return new ClientSignInCompletionResult(
+                false,
+                safeFallbackReturnUrl,
+                validation.SafeErrorCode,
+                validation.SanitizedMessage);
+        }
+
+        var continuation = validation.Continuation;
+        var profile = await _db.ClientProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == continuation.ClientProfileId, cancellationToken);
+        if (profile is null)
+        {
+            return new ClientSignInCompletionResult(
+                false,
+                safeFallbackReturnUrl,
+                "UNKNOWN_CLIENT",
+                "The linked client profile could not be found.");
+        }
+
+        var entitlement = await _entitlementService.EvaluateAsync(
+            new BillingEntitlementEvaluationRequest(
+                profile.Id,
+                BillingEntitlementKeys.ClientAppFullAccess,
+                DateTime.UtcNow),
+            cancellationToken);
+
+        return entitlement.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod
+            ? new ClientSignInCompletionResult(true, continuation.ReturnUrl)
+            : new ClientSignInCompletionResult(
+                false,
+                continuation.ReturnUrl,
+                "INACTIVE_ENTITLEMENT",
+                "The client subscription is not active for access.");
     }
 
     public void StoreChallengeContinuationCookie(HttpResponse response, string protectedState, DateTime expiresUtc)

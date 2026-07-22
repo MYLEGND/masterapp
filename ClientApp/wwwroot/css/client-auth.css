@@ -5,7 +5,6 @@
     --client-auth-text: #14213a;
     --client-auth-muted: #64748b;
     --client-auth-line: #d7e0ee;
-    --client-auth-surface: #f6f8fc;
     --client-auth-danger: #a6384a;
 }
 
@@ -30,7 +29,7 @@ body.client-auth-page {
 }
 
 .client-auth-card {
-    width: min(100%, 480px);
+    width: min(100%, 680px);
     overflow: hidden;
     border: 1px solid var(--client-auth-line);
     border-radius: 18px;
@@ -41,52 +40,52 @@ body.client-auth-page {
 .client-auth-brand {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 18px 22px;
+    gap: 24px;
+    padding: 28px 34px;
     background: linear-gradient(135deg, var(--client-auth-navy), var(--client-auth-navy-strong));
     color: #ffffff;
 }
 
 .client-auth-brand img {
     display: block;
-    width: 42px;
-    height: 42px;
+    width: 150px;
+    height: 150px;
     object-fit: contain;
 }
 
 .client-auth-brand-copy {
     display: grid;
-    gap: 2px;
+    gap: 5px;
 }
 
 .client-auth-brand-name {
-    font-size: 0.92rem;
+    font-size: 1.35rem;
     font-weight: 850;
     letter-spacing: 0.08em;
 }
 
 .client-auth-brand-label {
     color: #cbdcff;
-    font-size: 0.68rem;
+    font-size: 0.9rem;
     font-weight: 750;
     letter-spacing: 0.12em;
 }
 
 .client-auth-content {
-    padding: 28px 30px 30px;
+    padding: 40px 46px 46px;
 }
 
 .client-auth-eyebrow {
     margin: 0 0 7px;
     color: var(--client-auth-blue);
-    font-size: 0.7rem;
+    font-size: 0.8rem;
     font-weight: 850;
     letter-spacing: 0.11em;
 }
 
 .client-auth-content h1 {
     margin: 0;
-    font-size: clamp(1.65rem, 5vw, 2rem);
+    font-size: clamp(2rem, 5vw, 2.5rem);
     line-height: 1.08;
     letter-spacing: -0.04em;
 }
@@ -94,7 +93,7 @@ body.client-auth-page {
 .client-auth-intro {
     margin: 11px 0 0;
     color: var(--client-auth-muted);
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     line-height: 1.5;
 }
 
@@ -153,16 +152,15 @@ body.client-auth-page {
     line-height: 1.35;
 }
 
-.client-auth-primary,
-.client-auth-secondary {
+.client-auth-primary {
     display: inline-flex;
-    min-height: 44px;
+    min-height: 52px;
     align-items: center;
     justify-content: center;
     padding: 0 16px;
     border-radius: 10px;
     font: inherit;
-    font-size: 0.88rem;
+    font-size: 0.98rem;
     font-weight: 800;
     text-align: center;
     text-decoration: none;
@@ -178,18 +176,6 @@ body.client-auth-page {
 .client-auth-primary:hover,
 .client-auth-primary:focus-visible {
     background: #17376d;
-}
-
-.client-auth-secondary {
-    border: 1px solid #cbd7e8;
-    background: #ffffff;
-    color: var(--client-auth-navy);
-}
-
-.client-auth-secondary:hover,
-.client-auth-secondary:focus-visible {
-    border-color: var(--client-auth-blue);
-    background: var(--client-auth-surface);
 }
 
 .client-auth-help {
@@ -216,6 +202,6 @@ body.client-auth-page {
     }
 
     .client-auth-content {
-        padding: 24px 20px;
+        padding: 30px 24px;
     }
 }

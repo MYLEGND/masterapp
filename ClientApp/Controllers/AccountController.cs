@@ -44,16 +44,24 @@ public class AccountController : Controller
     public async Task<IActionResult> AzureLogin(string returnUrl = "/")
     {
         var target = _returnUrlNormalizer.Normalize(returnUrl);
-        if (ClientIdentityAccessService.IsSupportReturnUrl(target) ||
-            await _identityAccessService.HasValidChallengeContinuationAsync(HttpContext, HttpContext.RequestAborted))
+        if (ClientIdentityAccessService.IsSupportReturnUrl(target))
         {
             return await StartChallengeAsync(target);
         }
 
+        var challenge = await _identityAccessService.ValidateAzureChallengeAsync(
+            HttpContext,
+            target,
+            HttpContext.RequestAborted);
+        if (challenge.Success)
+            return await StartChallengeAsync(challenge.ReturnUrl);
+
+        _identityAccessService.ClearChallengeContinuationCookie(Response);
+
         return RedirectToAction(nameof(ActivationRequired), new
         {
             returnUrl = target,
-            message = "Use your activation link or the client sign-in form before continuing to Microsoft sign-in."
+            message = challenge.SanitizedMessage ?? "Use your activation link or the client sign-in form before continuing to Microsoft sign-in."
         });
     }
 
@@ -97,6 +105,7 @@ public class AccountController : Controller
     public async Task<IActionResult> LoginSubmit(ClientLoginViewModel model)
     {
         model.ReturnUrl = _returnUrlNormalizer.Normalize(model.ReturnUrl);
+        _identityAccessService.ClearChallengeContinuationCookie(Response);
 
         if (ClientIdentityAccessService.IsSupportReturnUrl(model.ReturnUrl))
             return await AzureLogin(model.ReturnUrl);

@@ -28,8 +28,7 @@
                 <h1 id="activation-required-title">@Model.Title</h1>
                 <p class="client-auth-intro">@Model.Message</p>
                 <div class="client-auth-actions">
-                    <a class="client-auth-primary" href="@Url.Action("Login", "Account", new { returnUrl = Model.ReturnUrl })">Go to client sign-in</a>
-                    <a class="client-auth-secondary" href="@Model.ReturnUrl">Return</a>
+                    <a class="client-auth-primary" href="@Url.Action("Login", "Account", new { returnUrl = Model.ReturnUrl })">Return to client sign-in</a>
                 </div>
             </div>
         </section>

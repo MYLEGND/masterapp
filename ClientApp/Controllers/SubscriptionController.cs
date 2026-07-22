@@ -73,39 +73,20 @@ public sealed class SubscriptionController : Controller
             .OrderByDescending(x => x.UpdatedUtc)
             .FirstOrDefaultAsync();
 
-        var isLegacyGrandfatheredAccess =
-            latestSubscription is null &&
-            entitlement.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod &&
-            string.Equals(entitlement.ReasonCode, "LEGACY_PROFILE_PRE_SUBSCRIPTION_CUTOFF", StringComparison.OrdinalIgnoreCase);
-
         ViewData["SubscriptionNotice"] = TempData["SubscriptionNotice"]?.ToString();
         return View(new ClientSubscriptionManagementViewModel
         {
             ClientName = $"{context.Profile.FirstName} {context.Profile.LastName}".Trim(),
-            MonthlyAmountDisplay = isLegacyGrandfatheredAccess
-                ? "Not required"
-                : latestSubscription is null
-                    ? "$0.00"
-                    : (latestSubscription.MonthlyAmountCents / 100m).ToString("C"),
-            SubscriptionStatus = isLegacyGrandfatheredAccess
-                ? "Grandfathered access"
-                : latestSubscription?.Status.ToString() ?? "Not Started",
-            PaymentStanding = isLegacyGrandfatheredAccess
-                ? "Not required"
-                : latestSubscription?.PaymentStanding.ToString() ?? "Unknown",
-            EntitlementStatus = isLegacyGrandfatheredAccess
-                ? "Active (Legacy Access)"
-                : entitlement.Status.ToString(),
-            NextBillingDateDisplay = isLegacyGrandfatheredAccess
-                ? "Not required"
-                : FormatDate(latestSubscription?.NextBillingDateUtc),
-            CurrentPeriodDisplay = isLegacyGrandfatheredAccess
-                ? "Legacy client access remains available without a subscription."
-                : BuildCurrentPeriodDisplay(latestSubscription),
-            CancellationState = isLegacyGrandfatheredAccess
-                ? "No subscription on file"
-                : latestSubscription is null
-                    ? "No active cancellation"
+            MonthlyAmountDisplay = latestSubscription is null
+                ? "$0.00"
+                : (latestSubscription.MonthlyAmountCents / 100m).ToString("C"),
+            SubscriptionStatus = latestSubscription?.Status.ToString() ?? "Not Started",
+            PaymentStanding = latestSubscription?.PaymentStanding.ToString() ?? "Unknown",
+            EntitlementStatus = entitlement.Status.ToString(),
+            NextBillingDateDisplay = FormatDate(latestSubscription?.NextBillingDateUtc),
+            CurrentPeriodDisplay = BuildCurrentPeriodDisplay(latestSubscription),
+            CancellationState = latestSubscription is null
+                ? "No active cancellation"
                 : latestSubscription.CancelAtPeriodEnd
                     ? "Cancellation scheduled at period end"
                     : latestSubscription.Status == ClientSubscriptionStatus.Canceled
@@ -204,13 +185,6 @@ public sealed class SubscriptionController : Controller
 
     private static string BuildRepairInstructions(ClientSubscription? subscription, ClientEntitlementStatus entitlementStatus, string? entitlementReasonCode)
     {
-        if (subscription is null &&
-            entitlementStatus is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod &&
-            string.Equals(entitlementReasonCode, "LEGACY_PROFILE_PRE_SUBSCRIPTION_CUTOFF", StringComparison.OrdinalIgnoreCase))
-        {
-            return "This client profile existed before subscriptions became required, so access remains available without adding billing.";
-        }
-
         if (subscription is null)
             return "Use your activation link or contact your agent to begin service.";
 

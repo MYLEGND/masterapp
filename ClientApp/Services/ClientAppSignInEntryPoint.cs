@@ -5,22 +5,16 @@ namespace ClientApp.Services;
 /// </summary>
 public sealed class ClientAppSignInEntryPoint
 {
-    private readonly ClientIdentityAccessService _identityAccessService;
     private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
 
-    public ClientAppSignInEntryPoint(
-        ClientIdentityAccessService identityAccessService,
-        ClientAppReturnUrlNormalizer returnUrlNormalizer)
+    public ClientAppSignInEntryPoint(ClientAppReturnUrlNormalizer returnUrlNormalizer)
     {
-        _identityAccessService = identityAccessService;
         _returnUrlNormalizer = returnUrlNormalizer;
     }
 
-    public async Task<string> ResolveAsync(HttpContext httpContext, CancellationToken cancellationToken = default)
+    public string Resolve(HttpContext httpContext)
     {
         var target = _returnUrlNormalizer.Normalize($"{httpContext.Request.Path}{httpContext.Request.QueryString}");
-        var hasContinuation = await _identityAccessService.HasValidChallengeContinuationAsync(httpContext, cancellationToken);
-        var entryPath = hasContinuation ? "/Account/AzureLogin" : "/Account/Login";
-        return $"{entryPath}?returnUrl={Uri.EscapeDataString(target)}";
+        return $"/Account/Login?returnUrl={Uri.EscapeDataString(target)}";
     }
 }

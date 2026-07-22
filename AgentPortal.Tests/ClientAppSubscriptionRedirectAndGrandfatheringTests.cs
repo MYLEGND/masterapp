@@ -25,40 +25,26 @@ using ClientSubscriptionController = ClientApp.Controllers.SubscriptionControlle
 
 namespace AgentPortal.Tests;
 
-public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
+public sealed class ClientAppSubscriptionRedirectTests
 {
-    private static readonly DateTime CutoverUtc = new(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc);
-
     [Fact]
-    public async Task PreCutoverProfile_IsGrantedClientAppAccessWithoutSubscription()
+    public async Task PreexistingProfile_StillRequiresSubscriptionActivation()
     {
         using var db = ControllerTestHelpers.BuildDb();
-        var profile = await AddProfileAsync(db, CutoverUtc.AddDays(-1));
+        var profile = await AddProfileAsync(db, DateTime.UtcNow.AddYears(-1));
 
         var result = await EvaluateAsync(db, profile.Id);
 
-        Assert.Equal(ClientEntitlementStatus.Active, result.Status);
-        Assert.Equal("LEGACY_PROFILE_PRE_SUBSCRIPTION_CUTOFF", result.ReasonCode);
+        Assert.Equal(ClientEntitlementStatus.NotGranted, result.Status);
+        Assert.Equal("NO_SUBSCRIPTION", result.ReasonCode);
         Assert.Empty(db.ClientSubscriptions);
     }
 
     [Fact]
-    public async Task ProfileCreatedImmediatelyBeforeCutover_IsGrandfathered()
+    public async Task CanceledSubscription_LosesClientAppAccess()
     {
         using var db = ControllerTestHelpers.BuildDb();
-        var profile = await AddProfileAsync(db, CutoverUtc.AddTicks(-1));
-
-        var result = await EvaluateAsync(db, profile.Id);
-
-        Assert.Equal(ClientEntitlementStatus.Active, result.Status);
-        Assert.Equal("LEGACY_PROFILE_PRE_SUBSCRIPTION_CUTOFF", result.ReasonCode);
-    }
-
-    [Fact]
-    public async Task GrandfatheredProfile_WithCanceledSubscription_LosesClientAppAccess()
-    {
-        using var db = ControllerTestHelpers.BuildDb();
-        var profile = await AddProfileAsync(db, CutoverUtc.AddTicks(-1));
+        var profile = await AddProfileAsync(db, DateTime.UtcNow.AddYears(-1));
         db.ClientSubscriptions.Add(new ClientSubscription
         {
             ClientProfileId = profile.Id,
@@ -66,9 +52,9 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
             OwnerAgentUserId = "agent-1",
             Status = ClientSubscriptionStatus.Canceled,
             PaymentStanding = ClientSubscriptionPaymentStanding.Failed,
-            CancelledUtc = CutoverUtc.AddDays(1),
-            CreatedUtc = CutoverUtc,
-            UpdatedUtc = CutoverUtc.AddDays(1)
+            CancelledUtc = DateTime.UtcNow,
+            CreatedUtc = DateTime.UtcNow.AddDays(-1),
+            UpdatedUtc = DateTime.UtcNow
         });
         await db.SaveChangesAsync();
 
@@ -76,30 +62,6 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
 
         Assert.Equal(ClientEntitlementStatus.NotGranted, result.Status);
         Assert.Equal("SUBSCRIPTION_CANCELED", result.ReasonCode);
-    }
-
-    [Fact]
-    public async Task ProfileCreatedAtCutover_IsNotGrandfathered()
-    {
-        using var db = ControllerTestHelpers.BuildDb();
-        var profile = await AddProfileAsync(db, CutoverUtc);
-
-        var result = await EvaluateAsync(db, profile.Id);
-
-        Assert.Equal(ClientEntitlementStatus.NotGranted, result.Status);
-        Assert.Equal("NO_SUBSCRIPTION", result.ReasonCode);
-    }
-
-    [Fact]
-    public async Task ProfileCreatedAfterCutover_StillRequiresSubscriptionActivation()
-    {
-        using var db = ControllerTestHelpers.BuildDb();
-        var profile = await AddProfileAsync(db, CutoverUtc.AddTicks(1));
-
-        var result = await EvaluateAsync(db, profile.Id);
-
-        Assert.Equal(ClientEntitlementStatus.NotGranted, result.Status);
-        Assert.Equal("NO_SUBSCRIPTION", result.ReasonCode);
     }
 
     [Fact]
@@ -170,7 +132,7 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
     public async Task EntitledSubscribedUserCanOpenSubscriptionManagement()
     {
         using var db = ControllerTestHelpers.BuildDb();
-        var profile = await AddProfileAsync(db, CutoverUtc.AddDays(1), "subscribed-client");
+        var profile = await AddProfileAsync(db, DateTime.UtcNow, "subscribed-client");
         db.ClientSubscriptions.Add(new ClientSubscription
         {
             ClientProfileId = profile.Id,
@@ -199,7 +161,7 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
     public async Task NewlyCreatedUnentitledUserGetsOneActivationRedirectWithNoSubscriptionContinuation()
     {
         using var db = ControllerTestHelpers.BuildDb();
-        var profile = await AddProfileAsync(db, CutoverUtc, "new-client");
+        var profile = await AddProfileAsync(db, DateTime.UtcNow, "new-client");
         var controller = BuildSubscriptionController(db, CreateAuthenticatedContext("new-client"), ClientEntitlementStatus.NotGranted);
 
         var result = await controller.Index("/Subscription");
@@ -217,9 +179,9 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
         var normalizer = new ClientAppReturnUrlNormalizer();
         var requestContext = new DefaultHttpContext();
         requestContext.Request.Path = "/subscription";
-        var entryPoint = BuildSignInEntryPoint(db, normalizer);
+        var entryPoint = BuildSignInEntryPoint(normalizer);
 
-        var location = await entryPoint.ResolveAsync(requestContext);
+        var location = entryPoint.Resolve(requestContext);
 
         Assert.Equal("/Account/Login?returnUrl=%2FHome%2FIndex", location);
         Assert.DoesNotContain("Subscription", location, StringComparison.OrdinalIgnoreCase);
@@ -324,15 +286,12 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
 
     private static async Task<BillingEntitlementEvaluationResult> EvaluateAsync(MasterAppDbContext db, Guid profileId)
     {
-        var service = new BillingEntitlementService(db, new ClientSubscriptionActivationPolicyOptions
-        {
-            SubscriptionRequiredForProfilesCreatedOnOrAfterUtc = CutoverUtc
-        });
+        var service = new BillingEntitlementService(db);
 
         return await service.EvaluateAsync(new BillingEntitlementEvaluationRequest(
             profileId,
             BillingEntitlementKeys.ClientAppFullAccess,
-            CutoverUtc.AddDays(10)));
+            DateTime.UtcNow));
     }
 
     private static ClientSubscriptionController BuildSubscriptionController(
@@ -389,19 +348,9 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
         return controller;
     }
 
-    private static ClientAppSignInEntryPoint BuildSignInEntryPoint(
-        MasterAppDbContext db,
-        ClientAppReturnUrlNormalizer normalizer)
+    private static ClientAppSignInEntryPoint BuildSignInEntryPoint(ClientAppReturnUrlNormalizer normalizer)
     {
-        var dataProtection = Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create(
-            new DirectoryInfo(Path.Combine(Path.GetTempPath(), "clientapp-redirect-tests", Guid.NewGuid().ToString("N"))));
-        var continuation = new ClientIdentityContinuationService(db, dataProtection, normalizer);
-        var identityAccess = new ClientIdentityAccessService(
-            db,
-            Mock.Of<IBillingEntitlementService>(),
-            continuation,
-            normalizer);
-        return new ClientAppSignInEntryPoint(identityAccess, normalizer);
+        return new ClientAppSignInEntryPoint(normalizer);
     }
 
     private static DefaultHttpContext CreateAuthenticatedContext(string oid)
