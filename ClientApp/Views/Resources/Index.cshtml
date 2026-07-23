@@ -10,9 +10,9 @@
 
 <div class="resources-page container py-4">
 
-    <div class="resources-hero mb-4">
-        <h1 class="hero-title m-0">@ViewData["Title"]</h1>
-        <p class="hero-sub m-0 mt-2">
+    <div class="resources-page-hero mb-4">
+        <h1 class="resources-hero-title m-0">@ViewData["Title"]</h1>
+        <p class="resources-hero-sub m-0 mt-2">
             Keep your policy documents close, review educational material quickly, and access important support information in one place.
         </p>
     </div>
@@ -175,7 +175,7 @@
         </div>
     </section>
 
-    <section class="controls-card mb-4">
+    <section class="resources-controls-card mb-4">
         <div class="controls-head">
             <div>
                 <div class="info-kicker">Education Library</div>
@@ -194,7 +194,7 @@
                         <option value="@r.File">@r.Name</option>
                     }
                 </select>
-                <div class="control-help">Choose a file to preview below.</div>
+                <div class="resources-control-help">Choose a file to preview below.</div>
             </div>
 
             <div class="col-12 col-lg-6">
@@ -204,12 +204,12 @@
                     <input id="resourceSearch" type="text" class="form-control premium-field premium-input" placeholder="Search by name…" />
                 </div>
                 <ul id="searchResults" class="search-results" style="display:none;"></ul>
-                <div class="control-help">Type to filter resources instantly.</div>
+                <div class="resources-control-help">Type to filter resources instantly.</div>
             </div>
         </div>
     </section>
 
-    <div id="resourceContainer" class="preview-shell mb-4" style="display:none;">
+    <div id="resourceContainer" class="resources-preview-shell mb-4" style="display:none;">
         <div class="preview-head">
             <div>
                 <h2 id="resourceTitle" class="preview-title m-0"></h2>
@@ -227,10 +227,10 @@
         </div>
     </div>
 
-    <div id="emptyState" class="empty-state mb-4">
+    <div id="emptyState" class="resources-empty-state mb-4">
         <div class="empty-chip">Preview</div>
-        <div class="empty-title">Select a policy document or resource to view it here</div>
-        <div class="empty-text">Use the policy vault above or the educational resource tools below. Supported documents will open directly in this preview area.</div>
+        <div class="resources-empty-title">Select a policy document or resource to view it here</div>
+        <div class="resources-empty-text">Use the policy vault above or the educational resource tools below. Supported documents will open directly in this preview area.</div>
     </div>
 
     <div class="resource-grid">
@@ -286,11 +286,11 @@
     padding:12px;
 }
 
-.resources-hero,
+.resources-page-hero,
 .priority-card,
-.controls-card,
+.resources-controls-card,
 .info-card,
-.preview-shell{
+.resources-preview-shell{
     border:1px solid var(--line);
     border-radius:var(--r18);
     background:linear-gradient(180deg,#10213f,#0b1a33);
@@ -299,11 +299,11 @@
     overflow:hidden;
 }
 
-.resources-hero::before,
+.resources-page-hero::before,
 .priority-card::before,
-.controls-card::before,
+.resources-controls-card::before,
 .info-card::before,
-.preview-shell::before{
+.resources-preview-shell::before{
     content:"";
     position:absolute;
     left:0; right:0; top:0;
@@ -311,7 +311,7 @@
     background:linear-gradient(90deg,var(--gold2),var(--gold3),var(--gold2));
 }
 
-.resources-hero{
+.resources-page-hero{
     padding:22px 20px 20px;
     background:
         radial-gradient(1200px 420px at 12% 0%, rgba(240,207,120,.18), transparent 58%),
@@ -330,9 +330,10 @@
     color:#f3d995;
 }
 
-.hero-title,
+.resources-hero-title,
 .info-title,
 .preview-title,
+.resources-empty-title,
 .policy-library-title,
 .policy-name,
 .control-label,
@@ -341,18 +342,18 @@
     font-weight:900;
 }
 
-.hero-title{
+.resources-hero-title{
     margin-top:10px !important;
     font-size:clamp(1.9rem,3vw,2.45rem);
     line-height:1.08;
     text-shadow:0 1px 0 rgba(34,23,5,.8);
 }
 
-.hero-sub,
+.resources-hero-sub,
 .info-copy,
-.control-help,
+.resources-control-help,
 .preview-meta,
-.empty-text,
+.resources-empty-text,
 .policy-dropzone-copy,
 .policy-dropzone-state,
 .policy-meta,
@@ -364,7 +365,7 @@
 }
 
 .priority-card,
-.controls-card,
+.resources-controls-card,
 .info-card{ padding:20px 18px 18px; }
 
 .priority-head,
@@ -663,8 +664,8 @@
 
 .result-tag{ font-size:.76rem; font-weight:950; padding:4px 8px; border-radius:999px; }
 
-.preview-shell{ overflow:hidden; }
-.preview-shell{ scroll-margin-top: 18px; }
+.resources-preview-shell{ overflow:hidden; }
+.resources-preview-shell{ scroll-margin-top: 18px; }
 
 .preview-head{
     padding:16px 18px;
@@ -692,11 +693,11 @@
 
 .preview-content iframe{ height:min(82vh,980px); }
 
-.empty-state{
+.resources-empty-state{
     padding:22px 18px;
     border:1px dashed rgba(201,155,54,.48);
     border-radius:var(--r18);
-    background:rgba(17,36,65,.68);
+    background:linear-gradient(180deg,#10213f,#0b1a33);
 }
 
 .support-list{ display:grid; gap:12px; }
@@ -730,178 +731,6 @@
     color:#fecaca;
 }
 
-/* Hard overrides for Education Library + Preview sections */
-.resources-page .controls-card,
-.resources-page .preview-shell,
-.resources-page #emptyState{
-    background:linear-gradient(180deg,#122747,#0d1f3b) !important;
-    border:1px solid rgba(201,155,54,.46) !important;
-    box-shadow:0 20px 44px rgba(2,8,20,.42) !important;
-}
-
-.resources-page .controls-card .info-kicker,
-.resources-page .controls-card .info-title,
-.resources-page .controls-card .control-label,
-.resources-page .preview-shell .preview-title,
-.resources-page #emptyState .empty-chip,
-.resources-page #emptyState .empty-title{
-    color:#f4d88f !important;
-}
-
-.resources-page .controls-card .info-copy,
-.resources-page .controls-card .control-help,
-.resources-page .preview-shell .preview-meta,
-.resources-page #emptyState .empty-text{
-    color:#d7e2f7 !important;
-}
-
-.resources-page .controls-card .form-select,
-.resources-page .controls-card .form-control,
-.resources-page .controls-card .premium-field,
-.resources-page .controls-card .premium-input{
-    background:#f8fbff !important;
-    color:#0f1d38 !important;
-    border:1px solid rgba(201,155,54,.62) !important;
-}
-
-.resources-page .controls-card .form-select option{
-    color:#0f1d38;
-    background:#ffffff;
-}
-
-.resources-page .controls-card .search-results{
-    background:rgba(12,25,46,.98) !important;
-    border:1px solid rgba(201,155,54,.46) !important;
-}
-
-.resources-page .controls-card .search-results li{
-    color:#edf3ff !important;
-}
-
-.resources-page .controls-card .search-results li:hover{
-    background:rgba(201,155,54,.18) !important;
-}
-
-.resources-page .controls-card .result-tag{
-    color:#f4d88f !important;
-    border-color:rgba(201,155,54,.52) !important;
-    background:rgba(18,37,67,.95) !important;
-}
-
-.resources-page .preview-shell .preview-head{
-    background:linear-gradient(180deg, rgba(201,155,54,.20), rgba(18,40,73,.18) 62%, transparent 100%) !important;
-    border-bottom:1px solid rgba(201,155,54,.46) !important;
-}
-
-.resources-page .preview-shell .preview-open,
-.resources-page .preview-shell .preview-download{
-    color:#1b1104 !important;
-    border:1px solid rgba(201,155,54,.58) !important;
-    background:linear-gradient(180deg,#f8e2a8,#c89a35) !important;
-}
-
-/* Requested gold text tone update */
-.resources-page{
-    --gold3:#b4891f;
-}
-
-.resources-page .hero-kicker,
-.resources-page .hero-title,
-.resources-page .info-kicker,
-.resources-page .info-title,
-.resources-page .control-label,
-.resources-page .preview-title,
-.resources-page .policy-library-title,
-.resources-page .policy-name,
-.resources-page .empty-chip,
-.resources-page .empty-title,
-.resources-page .policy-year-group > summary span {
-    color:#b4891f !important;
-}
-
-.resources-page .policy-dropzone-title,
-.resources-page .policy-year-group > summary small,
-.resources-page .result-tag,
-.resources-page .topic-chip,
-.resources-page .support-item,
-.resources-page .policy-preview-trigger:hover .policy-name,
-.resources-page .policy-preview-trigger:focus .policy-name {
-    color:#b4891f !important;
-}
-
-/* Hard overrides for top page header + Preview chip */
-.resources-page .resources-hero{
-    background:
-        radial-gradient(1200px 420px at 12% 0%, rgba(240,207,120,.22), transparent 58%),
-        radial-gradient(1000px 320px at 100% 0%, rgba(84,115,176,.18), transparent 56%),
-        linear-gradient(180deg,#163055,#102544) !important;
-    border:1px solid rgba(201,155,54,.54) !important;
-    box-shadow:0 24px 56px rgba(4,10,24,.48) !important;
-}
-
-.resources-page .resources-hero .hero-kicker{
-    color:#f6dda0 !important;
-    text-shadow:0 1px 0 rgba(21,14,4,.7);
-}
-
-.resources-page .resources-hero .hero-title{
-    color:#f0cf78 !important;
-    text-shadow:0 1px 0 rgba(24,16,4,.75);
-}
-
-.resources-page .resources-hero .hero-sub{
-    color:#dce8ff !important;
-}
-
-.resources-page #emptyState .empty-chip{
-    display:inline-flex !important;
-    align-items:center;
-    justify-content:center;
-    padding:6px 12px;
-    border-radius:999px;
-    border:1px solid rgba(201,155,54,.55);
-    background:linear-gradient(180deg, rgba(201,155,54,.22), rgba(201,155,54,.10));
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.1);
-    font-weight:900;
-}
-
-/* Ensure Browse educational resources panel fully matches premium navy/gold */
-.controls-card .info-title,
-.controls-card .control-label,
-.controls-card .result-name,
-.controls-card .result-tag{
-    color:#f0cf78 !important;
-}
-
-.controls-card .info-copy,
-.controls-card .control-help{
-    color:rgba(226,236,255,.82) !important;
-}
-
-.controls-card .premium-field,
-.controls-card .premium-input,
-.controls-card .form-select,
-.controls-card .form-control{
-    border-color:rgba(201,155,54,.58) !important;
-    background:#f8fbff !important;
-    color:#0f1d38 !important;
-}
-
-.controls-card .search-results{
-    border-color:rgba(201,155,54,.42) !important;
-    background:rgba(9,21,39,.96) !important;
-}
-
-/* Final explicit lock for requested labels */
-.resources-page .resources-hero .hero-kicker,
-.resources-page .resources-hero .hero-title,
-.resources-page .controls-card .info-kicker,
-.resources-page .controls-card .info-title,
-.resources-page .controls-card .control-label,
-.resources-page #emptyState .empty-chip,
-.resources-page #emptyState .empty-title {
-    color:#b4891f !important;
-}
 
 @@media (max-width: 991.98px){
     .policy-layout,
