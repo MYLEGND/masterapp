@@ -194,15 +194,39 @@ public sealed class ClientIdentityAccessService
     public async Task<ClientSignInCompletionResult> CompleteClientSignInAsync(HttpContext httpContext, ClaimsPrincipal principal, string? fallbackReturnUrl = null, CancellationToken cancellationToken = default)
     {
         var safeFallbackReturnUrl = _returnUrlNormalizer.Normalize(fallbackReturnUrl);
-        var continuationValidation = await _continuationService.ValidateCookieAsync(httpContext.Request, cancellationToken);
-        if (!continuationValidation.Success)
+        var continuationValidation = await _continuationService.ValidateCookieAsync(
+            httpContext.Request,
+            cancellationToken);
+
+        if (!continuationValidation.Success || continuationValidation.Continuation is null)
         {
+            // A continuation is required only when binding a Microsoft identity
+            // to a client profile for the first time. An already-bound client
+            // can be authenticated directly from the stable Microsoft object ID,
+            // provided the linked profile still has an active entitlement.
+            var existingClientSession = await ValidateAuthenticatedClientSessionAsync(
+                principal,
+                safeFallbackReturnUrl,
+                cancellationToken);
+
+            if (existingClientSession.Success)
+            {
+                _continuationService.ClearCookie(httpContext.Response);
+                return existingClientSession;
+            }
+
             return IsAgentPrincipal(principal) && IsSupportReturnUrl(safeFallbackReturnUrl)
                 ? new ClientSignInCompletionResult(true, safeFallbackReturnUrl)
-                : new ClientSignInCompletionResult(false, safeFallbackReturnUrl, continuationValidation.SafeErrorCode, continuationValidation.SanitizedMessage);
+                : new ClientSignInCompletionResult(
+                    false,
+                    safeFallbackReturnUrl,
+                    existingClientSession.SafeErrorCode
+                        ?? continuationValidation.SafeErrorCode,
+                    existingClientSession.SanitizedMessage
+                        ?? continuationValidation.SanitizedMessage);
         }
 
-        var continuation = continuationValidation.Continuation!;
+        var continuation = continuationValidation.Continuation;
         var profile = await _db.ClientProfiles.FirstOrDefaultAsync(x => x.Id == continuation.ClientProfileId, cancellationToken);
         if (profile is null)
             return new ClientSignInCompletionResult(false, "/", "UNKNOWN_CLIENT", "The linked client profile could not be found.");
