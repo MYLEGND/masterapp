@@ -70,7 +70,7 @@ namespace AgentPortal.Models
         public string? OneTimePassword { get; set; }
         public string? SourceLeadClientUserId { get; set; }
         public string? SourceWorkstationLeadId { get; set; }
-        public string SubscriptionPriceType { get; set; } = "";
+        public string? SubscriptionPriceType { get; set; }
         public decimal? SubscriptionCustomMonthlyAmount { get; set; }
         public string SubscriptionCurrency { get; set; } = "USD";
         public string SubscriptionBillingAnchorMode { get; set; } = nameof(BillingAnchorSelectionMode.FirstOfMonth);
