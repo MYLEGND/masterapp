@@ -33,10 +33,88 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
         string? correlationId = null,
         CancellationToken cancellationToken = default)
     {
-        // MASTERAPP owns the subscription schedule and lifecycle. Provider payment
-        // lookups reconcile payment records only; Square Subscription state is never
-        // read or applied to a local membership.
-        return await _db.ClientSubscriptions.FirstOrDefaultAsync(x => x.Id == clientSubscriptionId, cancellationToken);
+        var subscription = await _db.ClientSubscriptions.FirstOrDefaultAsync(x => x.Id == clientSubscriptionId, cancellationToken);
+        if (subscription is null || subscription.Status != ClientSubscriptionStatus.ReconciliationRequired)
+            return subscription;
+
+        var latestInitialAttempt = await _db.SubscriptionPayments
+            .Where(x => x.ClientSubscriptionId == subscription.Id && x.Kind == SubscriptionPaymentKind.InitialActivation)
+            .OrderByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (latestInitialAttempt is null ||
+            latestInitialAttempt.AmountCents != subscription.MonthlyAmountCents ||
+            !string.Equals(latestInitialAttempt.Currency, subscription.Currency, StringComparison.OrdinalIgnoreCase))
+        {
+            return subscription;
+        }
+
+        if (latestInitialAttempt.Status == SubscriptionPaymentStatus.Completed)
+        {
+            var nowUtc = DateTime.UtcNow;
+            subscription.IsPlatformManaged = true;
+            subscription.PlatformManagedSinceUtc ??= nowUtc;
+            subscription.Status = ClientSubscriptionStatus.Active;
+            subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Current;
+            subscription.CurrentPeriodStartUtc = latestInitialAttempt.BillingPeriodStartUtc ?? subscription.FirstChargeUtc;
+            subscription.CurrentPeriodEndUtc = latestInitialAttempt.BillingPeriodEndUtc ?? subscription.FirstRecurringRenewalUtc;
+            subscription.NextBillingDateUtc = subscription.CurrentPeriodEndUtc;
+            subscription.NextChargeAttemptUtc = subscription.NextBillingDateUtc;
+            subscription.LastChargeAttemptUtc ??= latestInitialAttempt.ClaimedUtc ?? latestInitialAttempt.CreatedUtc;
+            subscription.LastSuccessfulChargeUtc ??= latestInitialAttempt.ProviderOccurredUtc ?? nowUtc;
+            subscription.ActivatedUtc ??= nowUtc;
+            subscription.UpdatedUtc = nowUtc;
+
+            var invitation = await _db.SubscriptionActivationInvitations
+                .Where(x => x.ClientProfileId == subscription.ClientProfileId &&
+                            x.ClientSubscriptionOfferId == subscription.AcceptedOfferId &&
+                            x.Status == SubscriptionActivationInvitationStatus.PaymentStarted)
+                .OrderByDescending(x => x.PaymentStartedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (invitation is not null)
+            {
+                invitation.Status = SubscriptionActivationInvitationStatus.Redeemed;
+                invitation.RedeemedUtc = nowUtc;
+            }
+
+            AddAuditEntry(
+                "ClientSubscription",
+                subscription.Id,
+                "initial_payment_reconciled",
+                ClientSubscriptionStatus.ReconciliationRequired.ToString(),
+                subscription.Status.ToString(),
+                BillingActorType.System,
+                null,
+                "billing_reconciliation",
+                null,
+                correlationId,
+                "A completed, durable initial-payment attempt activated the platform-managed subscription.");
+            await _db.SaveChangesAsync(cancellationToken);
+            await RefreshEntitlementAsync(subscription.ClientProfileId, "INITIAL_PAYMENT_RECONCILED", cancellationToken);
+            return subscription;
+        }
+
+        if (latestInitialAttempt.Status is SubscriptionPaymentStatus.Failed or SubscriptionPaymentStatus.Canceled)
+        {
+            subscription.Status = ClientSubscriptionStatus.ActivationFailed;
+            subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Failed;
+            subscription.UpdatedUtc = DateTime.UtcNow;
+            AddAuditEntry(
+                "ClientSubscription",
+                subscription.Id,
+                "initial_payment_reconciliation_failed",
+                ClientSubscriptionStatus.ReconciliationRequired.ToString(),
+                subscription.Status.ToString(),
+                BillingActorType.System,
+                null,
+                "billing_reconciliation",
+                latestInitialAttempt.SafeFailureCode,
+                correlationId,
+                "The durable initial-payment attempt was not completed.");
+            await _db.SaveChangesAsync(cancellationToken);
+            await RefreshEntitlementAsync(subscription.ClientProfileId, "INITIAL_PAYMENT_RECONCILIATION_FAILED", cancellationToken);
+        }
+
+        return subscription;
     }
 
     public async Task<int> ReconcilePendingProviderEventsAsync(int maxItems, CancellationToken cancellationToken = default)
@@ -139,18 +217,10 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
             payment = await FindOpenSubscriptionPaymentAsync(subscription.Id, providerEvent.Provider, providerEvent.ProviderEnvironment, cancellationToken);
         }
 
-        if (payment is null && subscription is null)
-            return CreateExpectedResolutionDecision(providerEvent, "PAYMENT_SUBSCRIPTION_NOT_FOUND");
-
-        payment ??= CreateSubscriptionPayment(
-            subscription!,
-            providerEvent,
-            providerPaymentId,
-            providerResult.ProviderInvoiceId,
-            null,
-            providerResult.AmountCents,
-            providerResult.Currency,
-            providerResult.ProviderOccurredUtc);
+        if (payment is null)
+            return CreateExpectedResolutionDecision(
+                providerEvent,
+                subscription is null ? "PAYMENT_SUBSCRIPTION_NOT_FOUND" : "PAYMENT_ATTEMPT_NOT_FOUND");
 
         if (payment.ClientSubscriptionId is null && subscription is not null)
         {
@@ -325,41 +395,6 @@ internal sealed class BillingReconciliationService : IBillingReconciliationServi
         }
 
         return null;
-    }
-
-    private SubscriptionPayment CreateSubscriptionPayment(
-        ClientSubscription subscription,
-        BillingProviderEvent providerEvent,
-        string? providerPaymentId,
-        string? providerInvoiceId,
-        string? providerRefundId,
-        int? amountCents,
-        string? currency,
-        DateTime? providerOccurredUtc)
-    {
-        var nowUtc = DateTime.UtcNow;
-        var payment = new SubscriptionPayment
-        {
-            ClientSubscriptionId = subscription.Id,
-            ClientSubscription = subscription,
-            Provider = providerEvent.Provider,
-            ProviderEnvironment = providerEvent.ProviderEnvironment,
-            ProviderPaymentId = providerPaymentId,
-            ProviderInvoiceId = providerInvoiceId,
-            ProviderRefundId = providerRefundId,
-            AmountCents = amountCents ?? subscription.MonthlyAmountCents,
-            Currency = NormalizeCurrency(currency ?? subscription.Currency),
-            Kind = SubscriptionPaymentKind.Renewal,
-            AttemptNumber = 1,
-            Status = SubscriptionPaymentStatus.Pending,
-            BillingPeriodStartUtc = subscription.CurrentPeriodStartUtc,
-            BillingPeriodEndUtc = subscription.CurrentPeriodEndUtc,
-            ProviderOccurredUtc = providerOccurredUtc,
-            CreatedUtc = nowUtc,
-            UpdatedUtc = nowUtc
-        };
-        _db.SubscriptionPayments.Add(payment);
-        return payment;
     }
 
     private static void ApplyPaymentMutation(
