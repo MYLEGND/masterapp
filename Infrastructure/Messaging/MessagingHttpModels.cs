@@ -1,8 +1,7 @@
 namespace Infrastructure.Messaging;
 
 public sealed record StartMessagingConversationRequest(
-    string TargetUserId,
-    string TargetParticipantType,
+    string? ContactKey,
     string? Subject,
     string? Body,
     string? ClientMessageId);

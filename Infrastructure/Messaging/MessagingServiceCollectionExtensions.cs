@@ -21,6 +21,7 @@ public static class MessagingServiceCollectionExtensions
         services.AddSingleton<ICommunityTextModerationService>(_ => new CommunityTextModerationService(configuration));
         services.AddScoped<IJourneyCirclesService, JourneyCirclesService>();
         services.AddScoped<IMessagingProfileImageResolver, MessagingProfileImageResolver>();
+        services.AddSingleton<IMessagingContactKeyProtector, MessagingContactKeyProtector>();
         services.AddSingleton<IMessageAttachmentStorage, MessagingAttachmentStorage>();
         services.AddSingleton<IMessagingRealtimePublisher, MessagingRealtimePublisher>();
         services.AddHostedService<MessagingRealtimeNotificationHostedService>();

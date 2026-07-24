@@ -6,10 +6,12 @@ using Infrastructure.JourneyCircles;
 using Domain.Messaging;
 using Infrastructure.Moderation;
 using Infrastructure.Messaging;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -398,6 +400,9 @@ public sealed class MessagingServiceTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        var environment = new Mock<IWebHostEnvironment>();
+        environment.SetupGet(value => value.ContentRootPath).Returns(AppContext.BaseDirectory);
+        services.AddSingleton<IWebHostEnvironment>(environment.Object);
         services.AddDbContext<Infrastructure.Data.MasterAppDbContext>(options =>
             options.UseInMemoryDatabase(Guid.NewGuid().ToString()));
         services.AddMasterAppMessaging(new ConfigurationBuilder().Build());
@@ -413,7 +418,13 @@ public sealed class MessagingServiceTests
     {
         var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
         var journeys = new JourneyCirclesService(db, moderation, NullLogger<JourneyCirclesService>.Instance);
-        return new MessagingService(db, NullLogger<MessagingService>.Instance, moderation, journeys);
+        var environment = new Mock<IWebHostEnvironment>();
+        environment.SetupGet(value => value.ContentRootPath).Returns(AppContext.BaseDirectory);
+        var images = new MessagingProfileImageResolver(
+            db,
+            environment.Object,
+            NullLogger<MessagingProfileImageResolver>.Instance);
+        return new MessagingService(db, NullLogger<MessagingService>.Instance, moderation, journeys, images);
     }
 
     private static async Task SeedAgentAndClientAsync(

@@ -80,7 +80,7 @@ public sealed class JourneyCirclesController : Controller
         var visible = dashboard.Recommendations.Select(x => x.Profile).Concat(dashboard.Connections.Select(x => x.Profile)).Concat(dashboard.Requests.Select(x => x.Profile)).Any(x => x.ClientProfileId == targetClientProfileId);
         if (!visible) return Forbid();
         var target = await _db.ClientProfiles.FindAsync([targetClientProfileId], HttpContext.RequestAborted); if (target is null) return NotFound();
-        var image = await _images.ResolveAsync(new MessagingRecipientSummary(target.ClientUserId, MessagingParticipantTypes.Client, target.FirstName + " " + target.LastName, null), HttpContext.RequestAborted);
+        var image = await _images.ResolveClientProfileImageAsync(target.Id, HttpContext.RequestAborted);
         return image is null ? NotFound() : PhysicalFile(image.PhysicalPath, image.ContentType);
     }
 

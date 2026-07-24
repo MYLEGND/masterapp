@@ -23,17 +23,20 @@ internal sealed class MessagingService : IMessagingService
     private readonly ILogger<MessagingService> _logger;
     private readonly ICommunityTextModerationService _moderation;
     private readonly IJourneyCirclesService _journeyCircles;
+    private readonly IMessagingProfileImageResolver _participantIdentities;
 
     public MessagingService(
         MasterAppDbContext db,
         ILogger<MessagingService> logger,
         ICommunityTextModerationService moderation,
-        IJourneyCirclesService journeyCircles)
+        IJourneyCirclesService journeyCircles,
+        IMessagingProfileImageResolver participantIdentities)
     {
         _db = db;
         _logger = logger;
         _moderation = moderation;
         _journeyCircles = journeyCircles;
+        _participantIdentities = participantIdentities;
     }
 
     public async Task<MessagingConversationListResult> ListConversationsAsync(
@@ -295,6 +298,14 @@ internal sealed class MessagingService : IMessagingService
 
         var conversationType = GetConversationType(actor.ParticipantType, targetParticipantType);
         if (conversationType is null || !await IsPermittedPairAsync(actor, targetUserId, targetParticipantType, cancellationToken))
+            return MessagingConversationResult.Failure("MESSAGING_RECIPIENT_FORBIDDEN", "Messaging is not permitted for the requested recipient.");
+
+        var authorizedRecipient = await GetAuthorizedParticipantAsync(
+            actor,
+            targetUserId,
+            targetParticipantType,
+            cancellationToken);
+        if (!authorizedRecipient.Succeeded)
             return MessagingConversationResult.Failure("MESSAGING_RECIPIENT_FORBIDDEN", "Messaging is not permitted for the requested recipient.");
 
         var directConversationKey = BuildDirectConversationKey(
@@ -954,7 +965,9 @@ internal sealed class MessagingService : IMessagingService
         var candidates = actor.ParticipantType == MessagingParticipantTypes.Agent
             ? await ListAgentRecipientsAsync(actor.UserId, cancellationToken)
             : await ListClientRecipientsAsync(actor.UserId, cancellationToken);
-        var recipients = CollapseAuthorizedRecipients(actor, candidates);
+        var recipients = await ResolveRecipientIdentitiesAsync(
+            CollapseAuthorizedRecipients(actor, candidates),
+            cancellationToken);
         return await AttachExistingConversationIdsAsync(actor, recipients, cancellationToken);
     }
 
@@ -964,40 +977,16 @@ internal sealed class MessagingService : IMessagingService
         CancellationToken cancellationToken)
     {
         var normalizedUserId = NormalizeUserId(userId);
-        if (participantType == MessagingParticipantTypes.Agent)
-        {
-            var agent = await _db.AgentProfiles
-                .AsNoTracking()
-                .Where(x => x.IsActive && x.AgentUserId.ToLower() == normalizedUserId)
-                .Select(x => new RecipientAgentRow(x.AgentUserId, x.FullName, x.AgentUpn))
-                .FirstOrDefaultAsync(cancellationToken);
-            return agent is null
-                ? null
-                : new MessagingRecipientSummary(
-                    agent.UserId,
-                    MessagingParticipantTypes.Agent,
-                    FirstNonEmpty(agent.FullName, agent.Email, "Agent"),
-                    agent.Email);
-        }
-
-        if (participantType == MessagingParticipantTypes.Client)
-        {
-            var client = await _db.ClientProfiles
-                .AsNoTracking()
-                .Where(x => x.ClientUserId.ToLower() == normalizedUserId ||
-                            (x.ExternalIdentityObjectId != null && x.ExternalIdentityObjectId.ToLower() == normalizedUserId))
-                .Select(x => new RecipientClientRow(x.ClientUserId, x.FirstName, x.LastName, x.Email))
-                .FirstOrDefaultAsync(cancellationToken);
-            return client is null
-                ? null
-                : new MessagingRecipientSummary(
-                    client.UserId,
-                    MessagingParticipantTypes.Client,
-                    FirstNonEmpty($"{client.FirstName} {client.LastName}".Trim(), client.Email, "Client"),
-                    client.Email);
-        }
-
-        return null;
+        var identities = await _participantIdentities.ResolveIdentitiesAsync(
+            [new MessagingParticipantReference(normalizedUserId, participantType)],
+            cancellationToken);
+        return identities.TryGetValue((normalizedUserId, participantType), out var identity)
+            ? new MessagingRecipientSummary(
+                identity.UserId,
+                identity.ParticipantType,
+                identity.DisplayName,
+                identity.Email)
+            : null;
     }
 
     private static bool MatchesContactSearch(MessagingRecipientSummary recipient, string search)
@@ -1102,13 +1091,41 @@ internal sealed class MessagingService : IMessagingService
                 !string.IsNullOrWhiteSpace(recipient.UserId) &&
                 IsParticipantType(recipient.ParticipantType) &&
                 !string.Equals(recipient.UserId, actor.UserId, StringComparison.OrdinalIgnoreCase))
-            .GroupBy(recipient => recipient.UserId, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(recipient => (recipient.UserId, recipient.ParticipantType))
             .Select(group => group
-                .OrderBy(recipient => recipient.ParticipantType)
-                .ThenBy(recipient => recipient.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(recipient => recipient.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .First())
             .OrderBy(recipient => recipient.ParticipantType)
             .ThenBy(recipient => recipient.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private async Task<List<MessagingRecipientSummary>> ResolveRecipientIdentitiesAsync(
+        IReadOnlyCollection<MessagingRecipientSummary> recipients,
+        CancellationToken cancellationToken)
+    {
+        if (recipients.Count == 0)
+            return Array.Empty<MessagingRecipientSummary>().ToList();
+
+        var identities = await _participantIdentities.ResolveIdentitiesAsync(
+            recipients.Select(recipient => new MessagingParticipantReference(
+                recipient.UserId,
+                recipient.ParticipantType)),
+            cancellationToken);
+
+        return recipients
+            .Where(recipient => identities.ContainsKey((recipient.UserId, recipient.ParticipantType)))
+            .Select(recipient =>
+            {
+                var identity = identities[(recipient.UserId, recipient.ParticipantType)];
+                return recipient with
+                {
+                    UserId = identity.UserId,
+                    ParticipantType = identity.ParticipantType,
+                    DisplayName = identity.DisplayName,
+                    Email = identity.Email
+                };
+            })
             .ToList();
     }
 
@@ -1239,42 +1256,14 @@ internal sealed class MessagingService : IMessagingService
         IReadOnlyCollection<ParticipantRow> participants,
         CancellationToken cancellationToken)
     {
-        var agentIds = participants
-            .Where(x => x.ParticipantType == MessagingParticipantTypes.Agent)
-            .Select(x => x.UserId)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var clientIds = participants
-            .Where(x => x.ParticipantType == MessagingParticipantTypes.Client)
-            .Select(x => x.UserId)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        var agentNames = await _db.AgentProfiles.AsNoTracking()
-            .Where(x => agentIds.Contains(x.AgentUserId.ToLower()))
-            .Select(x => new { x.AgentUserId, x.FullName, x.AgentUpn })
-            .ToListAsync(cancellationToken);
-        var clientNames = await _db.ClientProfiles.AsNoTracking()
-            .Where(x => clientIds.Contains(x.ClientUserId.ToLower()) ||
-                        (x.ExternalIdentityObjectId != null && clientIds.Contains(x.ExternalIdentityObjectId.ToLower())))
-            .Select(x => new { x.ClientUserId, x.ExternalIdentityObjectId, x.FirstName, x.LastName, x.Email })
-            .ToListAsync(cancellationToken);
-
-        var result = new Dictionary<(string UserId, string ParticipantType), string>();
-        foreach (var agent in agentNames)
-        {
-            result[(agent.AgentUserId, MessagingParticipantTypes.Agent)] = FirstNonEmpty(agent.FullName, agent.AgentUpn, "Agent");
-        }
-
-        foreach (var client in clientNames)
-        {
-            var displayName = FirstNonEmpty($"{client.FirstName} {client.LastName}".Trim(), client.Email, "Client");
-            result[(client.ClientUserId, MessagingParticipantTypes.Client)] = displayName;
-            if (!string.IsNullOrWhiteSpace(client.ExternalIdentityObjectId))
-                result[(client.ExternalIdentityObjectId, MessagingParticipantTypes.Client)] = displayName;
-        }
-
-        return result;
+        var identities = await _participantIdentities.ResolveIdentitiesAsync(
+            participants.Select(participant => new MessagingParticipantReference(
+                participant.UserId,
+                participant.ParticipantType)),
+            cancellationToken);
+        return identities.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value.DisplayName);
     }
 
     private async Task<MessagingOperationResult> SaveOperationAsync(
@@ -1419,7 +1408,7 @@ internal sealed class MessagingService : IMessagingService
         return new MessagingParticipantSummary(
             participant.UserId,
             participant.ParticipantType,
-            displayNames.TryGetValue((participant.UserId, participant.ParticipantType), out var displayName)
+            displayNames.TryGetValue((NormalizeUserId(participant.UserId), participant.ParticipantType), out var displayName)
                 ? displayName
                 : participant.ParticipantType);
     }

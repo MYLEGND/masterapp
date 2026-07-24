@@ -334,7 +334,7 @@
   }
 
   function setComposerState(target, isClosed) {
-    const isAvailable = Boolean(target) && !isClosed;
+    const isAvailable = Boolean(target?.contactKey || conversation) && !isClosed;
     elements.messageBody.disabled = !isAvailable;
     elements.files.disabled = !isAvailable;
     elements.sendButton.disabled = !isAvailable;
@@ -736,8 +736,7 @@
           const result = await request('/Messaging/Conversations', {
             method: 'POST',
             body: JSON.stringify({
-              targetUserId: target.userId,
-              targetParticipantType: target.participantType,
+              contactKey: target.contactKey,
               subject: null,
               body,
               clientMessageId: submission.clientMessageId

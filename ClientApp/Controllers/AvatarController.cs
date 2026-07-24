@@ -58,12 +58,9 @@ namespace ClientApp.Controllers
         private async Task<string?> GetClientAvatarKeyAsync()
         {
             var context = await _clientContext.ResolveAsync(User, Request.Cookies);
-            var clientUserId = context?.ClientUserId?.Trim();
-
-            // Avatar files are keyed to the client profile identity, never the viewing agent.
-            return Guid.TryParse(clientUserId, out var parsed)
-                ? parsed.ToString("D")
-                : null;
+            // Avatar files are keyed to the stable client profile identity, never
+            // an Identity user, servicing agent, invitation sender, or email.
+            return context is null ? null : context.ClientProfileId.ToString("D");
         }
 
         [HttpPost("/avatar/upload")]

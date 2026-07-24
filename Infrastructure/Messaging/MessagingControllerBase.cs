@@ -12,17 +12,20 @@ public abstract class MessagingControllerBase : Controller
     private readonly IMessageAttachmentStorage _attachmentStorage;
     private readonly IMessagingRealtimePublisher _realtimePublisher;
     private readonly IMessagingProfileImageResolver _profileImageResolver;
+    private readonly IMessagingContactKeyProtector _contactKeys;
 
     protected MessagingControllerBase(
         IMessagingService messagingService,
         IMessageAttachmentStorage attachmentStorage,
         IMessagingRealtimePublisher realtimePublisher,
-        IMessagingProfileImageResolver profileImageResolver)
+        IMessagingProfileImageResolver profileImageResolver,
+        IMessagingContactKeyProtector contactKeys)
     {
         _messagingService = messagingService;
         _attachmentStorage = attachmentStorage;
         _realtimePublisher = realtimePublisher;
         _profileImageResolver = profileImageResolver;
+        _contactKeys = contactKeys;
     }
 
     protected abstract Task<MessagingActor?> ResolveMessagingActorAsync(CancellationToken cancellationToken);
@@ -66,7 +69,13 @@ public abstract class MessagingControllerBase : Controller
             return Forbid();
 
         var result = await _messagingService.ListRecipientsAsync(actor, search, HttpContext.RequestAborted);
-        return result.Succeeded ? Ok(result) : Failure(result.ErrorCode, result.ErrorMessage);
+        if (!result.Succeeded)
+            return Failure(result.ErrorCode, result.ErrorMessage);
+
+        var protectedRecipients = result.Recipients
+            .Select(recipient => recipient with { ContactKey = _contactKeys.Protect(actor, recipient) })
+            .ToList();
+        return Ok(result with { Recipients = protectedRecipients });
     }
 
     [HttpGet("/Messaging/Participants/{userId}/Avatar")]
@@ -85,7 +94,13 @@ public abstract class MessagingControllerBase : Controller
         if (!participant.Succeeded || participant.Recipient is null)
             return Failure(participant.ErrorCode, participant.ErrorMessage);
 
-        var image = await _profileImageResolver.ResolveAsync(participant.Recipient, HttpContext.RequestAborted);
+        var identities = await _profileImageResolver.ResolveIdentitiesAsync(
+            [new MessagingParticipantReference(participant.Recipient.UserId, participant.Recipient.ParticipantType)],
+            HttpContext.RequestAborted);
+        if (!identities.TryGetValue((participant.Recipient.UserId, participant.Recipient.ParticipantType), out var identity))
+            return NotFound();
+
+        var image = await _profileImageResolver.ResolveAsync(identity, HttpContext.RequestAborted);
         return image is null
             ? NotFound()
             : PhysicalFile(image.PhysicalPath, image.ContentType);
@@ -110,11 +125,14 @@ public abstract class MessagingControllerBase : Controller
         if (actor is null)
             return Forbid();
 
+        if (!_contactKeys.TryUnprotect(actor, request.ContactKey, out var participant))
+            return Failure("MESSAGING_RECIPIENT_NOT_FOUND", "The requested participant is not available.");
+
         var result = await _messagingService.StartConversationAsync(
             new StartMessagingConversationCommand(
                 actor,
-                request.TargetUserId,
-                request.TargetParticipantType,
+                participant.UserId,
+                participant.ParticipantType,
                 request.Subject,
                 request.Body,
                 request.ClientMessageId),

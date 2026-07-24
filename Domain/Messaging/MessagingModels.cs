@@ -184,13 +184,34 @@ public sealed record MessagingParticipantSummary(
     string ParticipantType,
     string DisplayName);
 
+/// <summary>
+/// A typed messaging identity reference. The user ID is interpreted only with its
+/// participant type; it is never an email-address lookup key.
+/// </summary>
+public sealed record MessagingParticipantReference(
+    string UserId,
+    string ParticipantType);
+
+/// <summary>
+/// The current, typed profile projection used by messaging. Profile IDs remain
+/// server-side and are not sent to the browser as routing authority.
+/// </summary>
+public sealed record MessagingParticipantIdentity(
+    string UserId,
+    string ParticipantType,
+    Guid ProfileId,
+    string DisplayName,
+    string? Email,
+    string Initials);
+
 public sealed record MessagingRecipientSummary(
     string UserId,
     string ParticipantType,
     string DisplayName,
     string? Email,
     string? RelationshipLabel = null,
-    Guid? ExistingConversationId = null);
+    Guid? ExistingConversationId = null,
+    string? ContactKey = null);
 
 public sealed record MessagingMessageSummary(
     Guid Id,

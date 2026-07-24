@@ -17,8 +17,9 @@ public sealed class MessagingController : MessagingControllerBase
         IMessagingService messagingService,
         IMessageAttachmentStorage attachmentStorage,
         IMessagingRealtimePublisher realtimePublisher,
-        IMessagingProfileImageResolver profileImageResolver)
-        : base(messagingService, attachmentStorage, realtimePublisher, profileImageResolver)
+        IMessagingProfileImageResolver profileImageResolver,
+        IMessagingContactKeyProtector contactKeys)
+        : base(messagingService, attachmentStorage, realtimePublisher, profileImageResolver, contactKeys)
     {
         _agentContext = agentContext;
     }
