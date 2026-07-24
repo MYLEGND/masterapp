@@ -334,7 +334,7 @@
   }
 
   function setComposerState(target, isClosed) {
-    const isAvailable = Boolean(target?.contactKey || conversation) && !isClosed;
+    const isAvailable = Boolean(target?.contactKey || state.active?.id) && !isClosed;
     elements.messageBody.disabled = !isAvailable;
     elements.files.disabled = !isAvailable;
     elements.sendButton.disabled = !isAvailable;
@@ -828,36 +828,11 @@
     }
   }
 
-  async function ensureDashboardStyles() {
-    const existing = document.querySelector('link[href*="dashboard-home-shared.css"]');
-    if (existing) {
-      if (existing.sheet || existing.dataset.messagingDashboardReady === 'true') return;
-      await new Promise(resolve => {
-        existing.addEventListener('load', resolve, { once: true });
-        existing.addEventListener('error', resolve, { once: true });
-      });
-      return;
-    }
-    await new Promise(resolve => {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = '/_content/Shared/css/dashboard-home-shared.css';
-      link.dataset.messagingDashboardSource = 'true';
-      link.onload = () => {
-        link.dataset.messagingDashboardReady = 'true';
-        resolve();
-      };
-      link.onerror = resolve;
-      document.head.append(link);
-    });
-  }
-
   async function openCommandCenter(trigger) {
     if (state.isOpen || state.isOpening) return;
     state.isOpening = true;
     state.lastTrigger = trigger || document.activeElement;
     try {
-      await ensureDashboardStyles();
       root.hidden = false;
       root.setAttribute('aria-hidden', 'false');
       root.classList.add('is-open');
@@ -993,7 +968,7 @@
   if (isCommandCenterMarkedOpen()) {
     openCommandCenter(null).catch(() => { });
   } else {
-    ensureDashboardStyles().then(() => refreshList()).catch(() => { });
+    refreshList().catch(() => { });
   }
   startRealtime();
 })();

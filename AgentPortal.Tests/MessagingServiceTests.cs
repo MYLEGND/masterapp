@@ -57,6 +57,123 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task AgentAndClient_CompleteConversationFlow_TracksBothUnreadStates()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent,
+            client.UserId,
+            MessagingParticipantTypes.Client,
+            Subject: "Protection review",
+            InitialMessageBody: "Your protection review is ready.",
+            ClientMessageId: "agent-opens-client-flow"));
+        var conversationId = Assert.IsType<MessagingConversationDetail>(opened.Conversation).Id;
+
+        var clientInbox = await service.ListConversationsAsync(client, new MessagingConversationListQuery());
+        Assert.Equal(1, Assert.Single(clientInbox.Conversations).UnreadCount);
+        Assert.True((await service.MarkConversationReadAsync(new MessagingConversationActionCommand(client, conversationId))).Succeeded);
+
+        var reply = await service.SendMessageAsync(new SendMessagingMessageCommand(
+            client,
+            conversationId,
+            "Thank you. I will review it today.",
+            "client-replies-client-flow"));
+        Assert.True(reply.Succeeded);
+
+        var agentInbox = await service.ListConversationsAsync(agent, new MessagingConversationListQuery());
+        Assert.Equal(1, Assert.Single(agentInbox.Conversations).UnreadCount);
+        Assert.True((await service.MarkConversationReadAsync(new MessagingConversationActionCommand(agent, conversationId))).Succeeded);
+        Assert.Equal(0, Assert.Single((await service.ListConversationsAsync(agent, new MessagingConversationListQuery())).Conversations).UnreadCount);
+    }
+
+    [Fact]
+    public async Task AgentAndAgent_CompleteConversationFlow_TracksBothUnreadStates()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.AgentProfiles.AddRange(
+            new AgentProfile { AgentUserId = "agent-one", AgentUpn = "agent.one@example.test", FullName = "Agent One", IsActive = true },
+            new AgentProfile { AgentUserId = "agent-two", AgentUpn = "agent.two@example.test", FullName = "Agent Two", IsActive = true });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var firstAgent = new MessagingActor("agent-one", MessagingParticipantTypes.Agent);
+        var secondAgent = new MessagingActor("agent-two", MessagingParticipantTypes.Agent);
+
+        Assert.Contains((await service.ListRecipientsAsync(firstAgent)).Recipients,
+            recipient => recipient.UserId == secondAgent.UserId && recipient.ParticipantType == MessagingParticipantTypes.Agent);
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            firstAgent,
+            secondAgent.UserId,
+            MessagingParticipantTypes.Agent,
+            InitialMessageBody: "Could you review this case?",
+            ClientMessageId: "agent-opens-agent-flow"));
+        var conversation = Assert.IsType<MessagingConversationDetail>(opened.Conversation);
+        Assert.Equal(MessagingConversationTypes.AgentDirect, conversation.ConversationType);
+        Assert.Equal(1, Assert.Single((await service.ListConversationsAsync(secondAgent, new MessagingConversationListQuery())).Conversations).UnreadCount);
+
+        Assert.True((await service.MarkConversationReadAsync(new MessagingConversationActionCommand(secondAgent, conversation.Id))).Succeeded);
+        Assert.True((await service.SendMessageAsync(new SendMessagingMessageCommand(
+            secondAgent,
+            conversation.Id,
+            "Reviewed. The case is ready for the next step.",
+            "agent-replies-agent-flow"))).Succeeded);
+        Assert.Equal(1, Assert.Single((await service.ListConversationsAsync(firstAgent, new MessagingConversationListQuery())).Conversations).UnreadCount);
+    }
+
+    [Fact]
+    public async Task ClientAndAcceptedJourneyCirclePeer_CompleteConversationFlow_TracksBothUnreadStates()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var first = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "journey-client-one", FirstName = "Journey", LastName = "One", Email = "one@example.test" };
+        var second = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "journey-client-two", FirstName = "Journey", LastName = "Two", Email = "two@example.test" };
+        db.ClientProfiles.AddRange(first, second);
+        db.JourneyCircleProfiles.AddRange(
+            new JourneyCircleProfile { Id = Guid.NewGuid(), ClientProfileId = first.Id, IsOptedIn = true, IsDiscoverable = true, AllowSuggestions = true, AllowConnectionRequests = true, DisplayName = "Journey One", CommunityAccessState = "Active" },
+            new JourneyCircleProfile { Id = Guid.NewGuid(), ClientProfileId = second.Id, IsOptedIn = true, IsDiscoverable = true, AllowSuggestions = true, AllowConnectionRequests = true, DisplayName = "Journey Two", CommunityAccessState = "Active" });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var journey = new JourneyCirclesService(db, new CommunityTextModerationService(new ConfigurationBuilder().Build()), NullLogger<JourneyCirclesService>.Instance);
+        var firstClient = new MessagingActor(first.ClientUserId, MessagingParticipantTypes.Client);
+        var secondClient = new MessagingActor(second.ClientUserId, MessagingParticipantTypes.Client);
+
+        var beforeAcceptance = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            firstClient,
+            secondClient.UserId,
+            MessagingParticipantTypes.Client,
+            InitialMessageBody: "This must wait for accepted connection."));
+        Assert.False(beforeAcceptance.Succeeded);
+        Assert.Equal("MESSAGING_RECIPIENT_FORBIDDEN", beforeAcceptance.ErrorCode);
+
+        Assert.True((await journey.RequestConnectionAsync(first.ClientUserId, second.Id, "Shared goals", "Hello there")).Succeeded);
+        var request = Assert.Single(db.JourneyCircleConnections);
+        Assert.True((await journey.RespondToConnectionAsync(second.ClientUserId, request.Id, true)).Succeeded);
+
+        Assert.Contains((await service.ListRecipientsAsync(firstClient)).Recipients,
+            recipient => recipient.UserId == secondClient.UserId && recipient.RelationshipLabel == "Journey Connection");
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            firstClient,
+            secondClient.UserId,
+            MessagingParticipantTypes.Client,
+            InitialMessageBody: "Glad we connected.",
+            ClientMessageId: "client-opens-journey-flow"));
+        var conversation = Assert.IsType<MessagingConversationDetail>(opened.Conversation);
+        Assert.Equal(MessagingConversationTypes.ClientJourney, conversation.ConversationType);
+        Assert.Equal(1, Assert.Single((await service.ListConversationsAsync(secondClient, new MessagingConversationListQuery())).Conversations).UnreadCount);
+
+        Assert.True((await service.MarkConversationReadAsync(new MessagingConversationActionCommand(secondClient, conversation.Id))).Succeeded);
+        Assert.True((await service.SendMessageAsync(new SendMessagingMessageCommand(
+            secondClient,
+            conversation.Id,
+            "Glad to connect with you too.",
+            "client-replies-journey-flow"))).Succeeded);
+        Assert.Equal(1, Assert.Single((await service.ListConversationsAsync(firstClient, new MessagingConversationListQuery())).Conversations).UnreadCount);
+    }
+
+    [Fact]
     public async Task ActiveMessagingGrant_AllowsMessaging_WhenAgentClientRelationshipDoesNotExist()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -243,6 +360,52 @@ public sealed class MessagingServiceTests
         Assert.Contains(agentRecipients.Recipients, x => x.UserId == "client-1");
         Assert.Contains(agentRecipients.Recipients, x => x.UserId == "agent-2");
         Assert.DoesNotContain(agentRecipients.Recipients, x => x.UserId == "client-2");
+    }
+
+    [Fact]
+    public async Task AgentRecipientLookup_ReturnsOnlyConvertedClientAndBusinessClientRecords()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        db.ClientProfiles.AddRange(
+            new ClientProfile
+            {
+                ClientUserId = "business-client",
+                ExternalIdentityObjectId = "business-client",
+                FirstName = "Business",
+                LastName = "Client",
+                Email = "business@example.test",
+                CrmNotes = "{\"recordType\":\"BusinessClient\",\"pipelineStage\":\"BusinessClient\"}"
+            },
+            new ClientProfile
+            {
+                ClientUserId = "lead-client",
+                ExternalIdentityObjectId = "lead-client",
+                FirstName = "Excluded",
+                LastName = "Lead",
+                Email = "lead@example.test",
+                CrmNotes = "{\"recordType\":\"Lead\",\"pipelineStage\":\"NewLead\"}"
+            });
+        db.AgentClients.AddRange(
+            new AgentClient { AgentUserId = "agent-1", AgentUpn = "agent.one@mylegnd.com", ClientUserId = "business-client" },
+            new AgentClient { AgentUserId = "agent-1", AgentUpn = "agent.one@mylegnd.com", ClientUserId = "lead-client" });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+
+        var recipients = await service.ListRecipientsAsync(agent);
+        var excludedStart = await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                agent,
+                "lead-client",
+                MessagingParticipantTypes.Client,
+                InitialMessageBody: "This lead must not be messageable from the client recipient search."));
+
+        Assert.Contains(recipients.Recipients, recipient => recipient.UserId == "client-1");
+        Assert.Contains(recipients.Recipients, recipient => recipient.UserId == "business-client");
+        Assert.DoesNotContain(recipients.Recipients, recipient => recipient.UserId == "lead-client");
+        Assert.False(excludedStart.Succeeded);
+        Assert.Equal("MESSAGING_RECIPIENT_FORBIDDEN", excludedStart.ErrorCode);
     }
 
     [Fact]
@@ -445,7 +608,8 @@ public sealed class MessagingServiceTests
             ExternalIdentityObjectId = "client-1",
             FirstName = "Client",
             LastName = "One",
-            Email = "client.one@example.test"
+            Email = "client.one@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
         });
         if (linkClientToAgent)
         {

@@ -1030,7 +1030,7 @@ internal sealed class MessagingService : IMessagingService
             .ToListAsync(cancellationToken);
         var clientRows = await _db.ClientProfiles.AsNoTracking()
             .Where(x => linkedClientIds.Contains(x.ClientUserId.ToLower()))
-            .Select(x => new RecipientClientRow(x.ClientUserId, x.FirstName, x.LastName, x.Email))
+            .Select(x => new RecipientClientRow(x.ClientUserId, x.FirstName, x.LastName, x.Email, x.CrmNotes))
             .ToListAsync(cancellationToken);
 
         var agents = agentRows.Select(x => new MessagingRecipientSummary(
@@ -1039,7 +1039,9 @@ internal sealed class MessagingService : IMessagingService
             FirstNonEmpty(x.FullName, x.Email, "Agent"),
             x.Email,
             "Agent"));
-        var clients = clientRows.Select(x => new MessagingRecipientSummary(
+        var clients = clientRows
+            .Where(x => ClientRecordClassification.IsClientOrBusinessClient(x.UserId, x.CrmNotes))
+            .Select(x => new MessagingRecipientSummary(
             x.UserId,
             MessagingParticipantTypes.Client,
             FirstNonEmpty($"{x.FirstName} {x.LastName}".Trim(), x.Email, "Client"),
@@ -1527,5 +1529,5 @@ internal sealed class MessagingService : IMessagingService
 
     private sealed record RecipientAgentRow(string UserId, string? FullName, string? Email);
 
-    private sealed record RecipientClientRow(string UserId, string? FirstName, string? LastName, string? Email);
+    private sealed record RecipientClientRow(string UserId, string? FirstName, string? LastName, string? Email, string? CrmNotes);
 }
