@@ -35,6 +35,7 @@
     conversations: [],
     recipients: [],
     recipientMatches: [],
+    recipientMatchesQuery: '',
     recipientsLoaded: false,
     active: null,
     draftTarget: null,
@@ -44,6 +45,8 @@
     searchAbortController: null,
     searchRequestId: 0,
     isSearchingContacts: false,
+    searchResultNodes: new Map(),
+    searchStatusNode: null,
     pollTimer: null,
     realtime: null,
     realtimeStarted: false,
@@ -461,10 +464,60 @@
     return 4;
   }
 
+  function searchResultKey(kind, userId, participantType) {
+    return `${kind}:${normalize(participantType)}:${normalize(userId)}`;
+  }
+
+  function createSearchResultNode() {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'messaging-search-result';
+    const copy = document.createElement('span');
+    const title = document.createElement('strong');
+    const subtitle = document.createElement('small');
+    copy.append(title, subtitle);
+    item.append(copy);
+    item.addEventListener('click', () => item._messagingSelect?.());
+    item._messagingCopy = copy;
+    item._messagingTitle = title;
+    item._messagingSubtitle = subtitle;
+    return item;
+  }
+
+  function updateSearchResultNode(item, result) {
+    const identity = `${normalize(result.person?.userId)}:${normalize(result.person?.participantType)}`;
+    if (item.dataset.identity !== identity) {
+      item.dataset.identity = identity;
+      item.querySelector('.messaging-avatar')?.remove();
+      item.insertBefore(createAvatar(result.person), item._messagingCopy);
+    }
+    item._messagingTitle.textContent = result.title;
+    item._messagingSubtitle.textContent = result.subtitle || '';
+    item._messagingSubtitle.hidden = !result.subtitle;
+    item._messagingSelect = result.select;
+  }
+
+  function setSearchStatus(message) {
+    if (!message) {
+      state.searchStatusNode?.remove();
+      state.searchStatusNode = null;
+      return;
+    }
+
+    if (!state.searchStatusNode) {
+      state.searchStatusNode = createTextElement('p', 'messaging-search-empty', message);
+    } else {
+      state.searchStatusNode.textContent = message;
+    }
+    elements.searchResults.append(state.searchStatusNode);
+  }
+
   function renderSearchResults() {
-    const query = normalize(elements.search.value);
-    elements.searchResults.replaceChildren();
+    const query = normalizeSearch(elements.search.value);
     if (!query) {
+      state.searchResultNodes.forEach(item => item.remove());
+      state.searchResultNodes.clear();
+      setSearchStatus('');
       elements.searchResults.hidden = true;
       return;
     }
@@ -476,59 +529,70 @@
         (parseUtcTimestamp(right.lastMessageUtc)?.getTime() || 0) -
         (parseUtcTimestamp(left.lastMessageUtc)?.getTime() || 0));
     const existingCounterparties = new Set(matchingConversations.map(conversation => normalize(conversation.counterparty?.userId)));
-    const matchingRecipients = state.recipientMatches.filter(recipient =>
+    const recipientSource = state.recipientMatchesQuery === query
+      ? state.recipientMatches
+      : state.recipients;
+    const matchingRecipients = recipientSource.filter(recipient =>
       !existingCounterparties.has(normalize(recipient.userId)) &&
       matchesSearch([recipient.displayName, recipient.email].filter(Boolean).join(' '), query))
       .sort((left, right) =>
         searchRank(left, query) - searchRank(right, query) ||
         left.displayName.localeCompare(right.displayName));
 
-    matchingConversations.forEach(conversation => {
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'messaging-search-result';
-      item.append(createAvatar(conversation.counterparty));
-      const copy = document.createElement('span');
-      copy.append(createTextElement('strong', '', conversation.counterparty?.displayName || 'Conversation'));
-      copy.append(createTextElement(
-        'small',
-        '',
-        `Existing conversation${conversation.unreadCount > 0 ? ` · ${conversation.unreadCount} unread` : ''}`));
-      item.append(copy);
-      item.addEventListener('click', () => {
-        elements.search.value = '';
-        renderSearchResults();
-        loadConversation(conversation.id, true).catch(error => showError(error.message));
-      });
+    const results = [
+      ...matchingConversations.map(conversation => ({
+        key: searchResultKey('conversation', conversation.id, 'conversation'),
+        person: conversation.counterparty,
+        title: conversation.counterparty?.displayName || 'Conversation',
+        subtitle: `Existing conversation${conversation.unreadCount > 0 ? ` · ${conversation.unreadCount} unread` : ''}`,
+        select: () => {
+          elements.search.value = '';
+          renderSearchResults();
+          loadConversation(conversation.id, true).catch(error => showError(error.message));
+        }
+      })),
+      ...matchingRecipients.map(recipient => ({
+        key: searchResultKey('recipient', recipient.userId, recipient.participantType),
+        person: recipient,
+        title: recipient.displayName,
+        subtitle: recipient.email || '',
+        select: () => {
+          state.active = null;
+          state.draftTarget = recipient;
+          state.pendingSubmission = null;
+          elements.search.value = '';
+          renderSearchResults();
+          renderConversations();
+          renderConversation();
+          elements.messageBody.focus({ preventScroll: true });
+        }
+      }))
+    ];
+
+    const desiredKeys = new Set();
+    results.forEach(result => {
+      desiredKeys.add(result.key);
+      let item = state.searchResultNodes.get(result.key);
+      if (!item) {
+        item = createSearchResultNode();
+        state.searchResultNodes.set(result.key, item);
+      }
+      updateSearchResultNode(item, result);
       elements.searchResults.append(item);
     });
-
-    matchingRecipients.forEach(recipient => {
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'messaging-search-result';
-      item.append(createAvatar(recipient));
-      const copy = document.createElement('span');
-      copy.append(createTextElement('strong', '', recipient.displayName));
-      if (recipient.email) copy.append(createTextElement('small', '', recipient.email));
-      item.append(copy);
-      item.addEventListener('click', () => {
-        state.active = null;
-        state.draftTarget = recipient;
-        state.pendingSubmission = null;
-        elements.search.value = '';
-        renderSearchResults();
-        renderConversations();
-        renderConversation();
-        elements.messageBody.focus({ preventScroll: true });
-      });
-      elements.searchResults.append(item);
+    state.searchResultNodes.forEach((item, key) => {
+      if (!desiredKeys.has(key)) {
+        item.remove();
+        state.searchResultNodes.delete(key);
+      }
     });
 
-    if (state.isSearchingContacts) {
-      elements.searchResults.append(createTextElement('p', 'messaging-search-empty', 'Searching authorized contacts…'));
-    } else if (!matchingConversations.length && !matchingRecipients.length) {
-      elements.searchResults.append(createTextElement('p', 'messaging-search-empty', 'No authorized conversations or recipients found.'));
+    if (!results.length) {
+      setSearchStatus(state.isSearchingContacts
+        ? 'Searching authorized contacts…'
+        : 'No authorized conversations or recipients found.');
+    } else {
+      setSearchStatus('');
     }
     elements.searchResults.hidden = false;
   }
@@ -568,17 +632,18 @@
     if (state.recipientsLoaded) return;
     const result = await request('/Messaging/Recipients');
     state.recipients = result.recipients || [];
-    state.recipientMatches = state.recipients;
+    if (!state.recipientMatchesQuery) state.recipientMatches = state.recipients;
     state.recipientsLoaded = true;
     renderSearchResults();
   }
 
-  async function searchRecipients(query) {
-    const requestId = ++state.searchRequestId;
-    state.searchAbortController?.abort();
-    if (!query) {
+  async function searchRecipients(query, requestId) {
+    const normalizedQuery = normalizeSearch(query);
+    if (!normalizedQuery) {
+      if (requestId !== state.searchRequestId) return;
       state.isSearchingContacts = false;
       state.recipientMatches = state.recipients;
+      state.recipientMatchesQuery = '';
       renderSearchResults();
       return;
     }
@@ -591,10 +656,10 @@
       const result = await request(`/Messaging/Recipients?search=${encodeURIComponent(query)}`, { signal: controller.signal });
       if (requestId !== state.searchRequestId) return;
       state.recipientMatches = result.recipients || [];
+      state.recipientMatchesQuery = normalizedQuery;
     } catch (error) {
       if (error?.name !== 'AbortError' && requestId === state.searchRequestId) {
         showError(error.message);
-        state.recipientMatches = [];
       }
     } finally {
       if (requestId === state.searchRequestId) {
@@ -852,8 +917,16 @@
   elements.search.addEventListener('input', () => {
     window.clearTimeout(state.searchTimer);
     const query = elements.search.value.trim();
+    const requestId = ++state.searchRequestId;
+    state.searchAbortController?.abort();
+    state.isSearchingContacts = false;
     renderSearchResults();
-    state.searchTimer = window.setTimeout(() => searchRecipients(query), 260);
+    if (!normalizeSearch(query)) {
+      state.recipientMatches = state.recipients;
+      state.recipientMatchesQuery = '';
+      return;
+    }
+    state.searchTimer = window.setTimeout(() => searchRecipients(query, requestId), 260);
   });
   elements.messageBody.addEventListener('input', () => {
     saveDraft();

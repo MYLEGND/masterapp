@@ -16,26 +16,26 @@ public partial class AddJourneyCircles : Migration
             name: "JourneyCircleProfiles",
             columns: table => new
             {
-                Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                ClientProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                IsOptedIn = table.Column<bool>(type: "bit", nullable: false),
-                IsDiscoverable = table.Column<bool>(type: "bit", nullable: false),
-                AllowSuggestions = table.Column<bool>(type: "bit", nullable: false),
-                AllowConnectionRequests = table.Column<bool>(type: "bit", nullable: false),
-                DisplayName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                LifeStage = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: true),
-                LocationLabel = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                Introduction = table.Column<string>(type: "nvarchar(600)", maxLength: 600, nullable: true),
-                GoalsJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                InterestsJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                CircleCodesJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                ConnectionTypesJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                CommunicationStyle = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: true),
-                AccountabilityFrequency = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: true),
-                CommunityAccessState = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: true),
-                ConsentAffirmedUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                Id = table.Column<Guid>(nullable: false),
+                ClientProfileId = table.Column<Guid>(nullable: false),
+                IsOptedIn = table.Column<bool>(nullable: false),
+                IsDiscoverable = table.Column<bool>(nullable: false),
+                AllowSuggestions = table.Column<bool>(nullable: false),
+                AllowConnectionRequests = table.Column<bool>(nullable: false),
+                DisplayName = table.Column<string>(maxLength: 100, nullable: false),
+                LifeStage = table.Column<string>(maxLength: 80, nullable: true),
+                LocationLabel = table.Column<string>(maxLength: 100, nullable: true),
+                Introduction = table.Column<string>(maxLength: 600, nullable: true),
+                GoalsJson = table.Column<string>(nullable: false),
+                InterestsJson = table.Column<string>(nullable: false),
+                CircleCodesJson = table.Column<string>(nullable: false),
+                ConnectionTypesJson = table.Column<string>(nullable: false),
+                CommunicationStyle = table.Column<string>(maxLength: 80, nullable: true),
+                AccountabilityFrequency = table.Column<string>(maxLength: 80, nullable: true),
+                CommunityAccessState = table.Column<string>(maxLength: 40, nullable: true),
+                ConsentAffirmedUtc = table.Column<DateTime>(nullable: true),
+                CreatedUtc = table.Column<DateTime>(nullable: false),
+                UpdatedUtc = table.Column<DateTime>(nullable: false)
             },
             constraints: table =>
             {
@@ -47,32 +47,32 @@ public partial class AddJourneyCircles : Migration
             name: "JourneyCircleConnections",
             columns: table => new
             {
-                Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                ConnectionKey = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
-                RequesterClientProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                RecipientClientProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                Status = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
-                ConnectionReason = table.Column<string>(type: "nvarchar(160)", maxLength: 160, nullable: true),
-                Introduction = table.Column<string>(type: "nvarchar(600)", maxLength: 600, nullable: true),
-                CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                RespondedUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                Id = table.Column<Guid>(nullable: false),
+                ConnectionKey = table.Column<string>(maxLength: 80, nullable: false),
+                RequesterClientProfileId = table.Column<Guid>(nullable: false),
+                RecipientClientProfileId = table.Column<Guid>(nullable: false),
+                Status = table.Column<string>(maxLength: 40, nullable: false),
+                ConnectionReason = table.Column<string>(maxLength: 160, nullable: true),
+                Introduction = table.Column<string>(maxLength: 600, nullable: true),
+                CreatedUtc = table.Column<DateTime>(nullable: false),
+                UpdatedUtc = table.Column<DateTime>(nullable: false),
+                RespondedUtc = table.Column<DateTime>(nullable: true)
             },
             constraints: table => table.PrimaryKey("PK_JourneyCircleConnections", x => x.Id));
 
         migrationBuilder.CreateTable(
             name: "JourneyCircleBlocks",
-            columns: table => new { Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false), BlockerClientProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false), BlockedClientProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false), CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false) },
+            columns: table => new { Id = table.Column<Guid>(nullable: false), BlockerClientProfileId = table.Column<Guid>(nullable: false), BlockedClientProfileId = table.Column<Guid>(nullable: false), CreatedUtc = table.Column<DateTime>(nullable: false) },
             constraints: table => table.PrimaryKey("PK_JourneyCircleBlocks", x => x.Id));
 
         migrationBuilder.CreateTable(
             name: "JourneyCircleReports",
-            columns: table => new { Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false), ReporterClientProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false), ReportedClientProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false), Category = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false), Detail = table.Column<string>(type: "nvarchar(600)", maxLength: 600, nullable: true), Status = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false), CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false) },
+            columns: table => new { Id = table.Column<Guid>(nullable: false), ReporterClientProfileId = table.Column<Guid>(nullable: false), ReportedClientProfileId = table.Column<Guid>(nullable: false), Category = table.Column<string>(maxLength: 80, nullable: false), Detail = table.Column<string>(maxLength: 600, nullable: true), Status = table.Column<string>(maxLength: 40, nullable: false), CreatedUtc = table.Column<DateTime>(nullable: false) },
             constraints: table => table.PrimaryKey("PK_JourneyCircleReports", x => x.Id));
 
         migrationBuilder.CreateTable(
             name: "JourneyCircleModerationEvents",
-            columns: table => new { Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false), ActorUserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false), Surface = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false), Category = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false), Severity = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false), Action = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false), PolicyVersion = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false), ConnectionId = table.Column<Guid>(type: "uniqueidentifier", nullable: true), RequiresReview = table.Column<bool>(type: "bit", nullable: false), CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false) },
+            columns: table => new { Id = table.Column<Guid>(nullable: false), ActorUserId = table.Column<string>(maxLength: 450, nullable: false), Surface = table.Column<string>(maxLength: 80, nullable: false), Category = table.Column<string>(maxLength: 80, nullable: false), Severity = table.Column<string>(maxLength: 40, nullable: false), Action = table.Column<string>(maxLength: 80, nullable: false), PolicyVersion = table.Column<string>(maxLength: 40, nullable: false), ConnectionId = table.Column<Guid>(nullable: true), RequiresReview = table.Column<bool>(nullable: false), CreatedUtc = table.Column<DateTime>(nullable: false) },
             constraints: table => table.PrimaryKey("PK_JourneyCircleModerationEvents", x => x.Id));
 
         migrationBuilder.CreateIndex(name: "IX_JourneyCircleProfiles_ClientProfileId", table: "JourneyCircleProfiles", column: "ClientProfileId", unique: true);
