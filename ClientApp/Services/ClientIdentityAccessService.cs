@@ -220,10 +220,8 @@ public sealed class ClientIdentityAccessService
                 : new ClientSignInCompletionResult(
                     false,
                     safeFallbackReturnUrl,
-                    existingClientSession.SafeErrorCode
-                        ?? continuationValidation.SafeErrorCode,
-                    existingClientSession.SanitizedMessage
-                        ?? continuationValidation.SanitizedMessage);
+                    continuationValidation.SafeErrorCode,
+                    continuationValidation.SanitizedMessage);
         }
 
         var continuation = continuationValidation.Continuation;
