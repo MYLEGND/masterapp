@@ -373,7 +373,38 @@ internal sealed class MessagingService : IMessagingService
         }
         catch (DbUpdateException ex)
         {
-            _logger.LogError(ex, "Messaging conversation creation failed. ActorUserId={ActorUserId} TargetUserId={TargetUserId}", actor.UserId, targetUserId);
+            var diagnosticId = Guid.NewGuid().ToString("N");
+            var rootCause = (Exception)ex;
+
+            while (rootCause.InnerException is not null)
+                rootCause = rootCause.InnerException;
+
+            var rootCauseMessage = rootCause.Message
+                .Replace('\r', ' ')
+                .Replace('\n', ' ')
+                .Trim();
+
+            var failedEntries = ex.Entries.Count == 0
+                ? "None"
+                : string.Join(
+                    ", ",
+                    ex.Entries.Select(entry =>
+                        $"{entry.Entity.GetType().FullName}:{entry.State}"));
+
+            _logger.LogError(
+                ex,
+                "Messaging conversation creation failed. DiagnosticId={DiagnosticId} ActorUserId={ActorUserId} TargetUserId={TargetUserId} ConversationId={ConversationId} ConversationType={ConversationType} DirectConversationKey={DirectConversationKey} RootExceptionType={RootExceptionType} RootExceptionMessage={RootExceptionMessage} FailedEntries={FailedEntries} OccurredUtc={OccurredUtc}",
+                diagnosticId,
+                actor.UserId,
+                targetUserId,
+                conversation.Id,
+                conversationType,
+                directConversationKey,
+                rootCause.GetType().FullName,
+                rootCauseMessage,
+                failedEntries,
+                DateTime.UtcNow);
+
             _db.ChangeTracker.Clear();
             var concurrent = await FindDirectConversationAsync(
                 actor.UserId,
@@ -384,7 +415,9 @@ internal sealed class MessagingService : IMessagingService
             if (concurrent is not null)
                 return await ContinueExistingConversationAsync(actor, concurrent.Id, initialMessage, clientMessageId, cancellationToken);
 
-            return MessagingConversationResult.Failure("MESSAGING_CONVERSATION_SAVE_FAILED", "The conversation could not be saved.");
+            return MessagingConversationResult.Failure(
+                "MESSAGING_CONVERSATION_SAVE_FAILED",
+                $"The conversation could not be saved. Diagnostic ID: {diagnosticId}. Reason: {rootCause.GetType().Name}: {rootCauseMessage}");
         }
 
         return await GetConversationAsync(actor, conversation.Id, cancellationToken);
