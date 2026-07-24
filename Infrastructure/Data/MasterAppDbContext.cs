@@ -1,6 +1,7 @@
 using System;
 using Domain.Billing;
 using Domain.Entities;
+using Domain.Entities.FinancialIntelligence;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +16,11 @@ public class MasterAppDbContext : DbContext
     public DbSet<AgentAssistant> AgentAssistants => Set<AgentAssistant>();
     public DbSet<HouseholdMember> HouseholdMembers => Set<HouseholdMember>();
     public DbSet<FinanceToolState> FinanceToolStates => Set<FinanceToolState>();
+    public DbSet<FinancialDataConnection> FinancialDataConnections => Set<FinancialDataConnection>();
+    public DbSet<ImportedFinancialAccount> ImportedFinancialAccounts => Set<ImportedFinancialAccount>();
+    public DbSet<ImportedFinancialTransaction> ImportedFinancialTransactions => Set<ImportedFinancialTransaction>();
+    public DbSet<RecurringFinancialStream> RecurringFinancialStreams => Set<RecurringFinancialStream>();
+    public DbSet<ExpenseLensStreamLink> ExpenseLensStreamLinks => Set<ExpenseLensStreamLink>();
     public DbSet<AgentFinanceToolState> AgentFinanceToolStates => Set<AgentFinanceToolState>();
     public DbSet<BookkeepingEntry> BookkeepingEntries => Set<BookkeepingEntry>();
     public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();
@@ -1237,6 +1243,289 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => new { x.AgentUserId, x.LeadId });
             e.HasIndex(x => x.AgentUserId);
             e.HasIndex(x => x.ProductCode);
+        });
+
+        // ==========================================================
+        // FINANCIAL INTELLIGENCE IMPORT + RECONCILIATION
+        //
+        // FinanceToolStates remains the planning authority. These
+        // records contain provider facts, detected recurring streams,
+        // and links to stable existing Expense Lens item identifiers.
+        // ==========================================================
+        modelBuilder.Entity<FinancialDataConnection>(e =>
+        {
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.ProviderKey)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            e.Property(x => x.ProviderItemId)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            e.Property(x => x.ProviderInstitutionId)
+                .HasMaxLength(200);
+
+            e.Property(x => x.DisplayName)
+                .HasMaxLength(200);
+
+            e.Property(x => x.Status)
+                .IsRequired()
+                .HasMaxLength(40);
+
+            e.Property(x => x.EncryptedAccessToken)
+                .HasMaxLength(4000);
+
+            e.Property(x => x.SyncCursor)
+                .HasMaxLength(4000);
+
+            e.Property(x => x.LastErrorCode)
+                .HasMaxLength(100);
+
+            e.Property(x => x.LastErrorMessage)
+                .HasMaxLength(2000);
+
+            e.HasIndex(x => new
+                {
+                    x.ClientProfileId,
+                    x.ProviderKey,
+                    x.ProviderItemId
+                })
+                .IsUnique();
+
+            e.HasIndex(x => new
+                {
+                    x.ClientProfileId,
+                    x.Status
+                });
+
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ImportedFinancialAccount>(e =>
+        {
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.ProviderAccountId)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            e.Property(x => x.PersistentAccountKey)
+                .HasMaxLength(200);
+
+            e.Property(x => x.Name)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            e.Property(x => x.OfficialName)
+                .HasMaxLength(300);
+
+            e.Property(x => x.Mask)
+                .HasMaxLength(20);
+
+            e.Property(x => x.AccountType)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            e.Property(x => x.AccountSubtype)
+                .HasMaxLength(80);
+
+            e.Property(x => x.CurrencyCode)
+                .IsRequired()
+                .HasMaxLength(3);
+
+            e.HasIndex(x => new
+                {
+                    x.FinancialDataConnectionId,
+                    x.ProviderAccountId
+                })
+                .IsUnique();
+
+            e.HasIndex(x => new
+                {
+                    x.ClientProfileId,
+                    x.IsClosed
+                });
+
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<FinancialDataConnection>()
+                .WithMany()
+                .HasForeignKey(x => x.FinancialDataConnectionId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ImportedFinancialTransaction>(e =>
+        {
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.ProviderTransactionId)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            e.Property(x => x.ProviderPendingTransactionId)
+                .HasMaxLength(200);
+
+            e.Property(x => x.OriginalName)
+                .IsRequired()
+                .HasMaxLength(500);
+
+            e.Property(x => x.OriginalMerchantName)
+                .HasMaxLength(500);
+
+            e.Property(x => x.CurrencyCode)
+                .IsRequired()
+                .HasMaxLength(3);
+
+            e.Property(x => x.ProviderPayloadJson)
+                .IsRequired();
+
+            e.HasIndex(x => new
+                {
+                    x.FinancialDataConnectionId,
+                    x.ProviderTransactionId
+                })
+                .IsUnique();
+
+            e.HasIndex(x => new
+                {
+                    x.ClientProfileId,
+                    x.PostedUtc
+                });
+
+            e.HasIndex(x => new
+                {
+                    x.ImportedFinancialAccountId,
+                    x.PostedUtc
+                });
+
+            e.HasIndex(x => new
+                {
+                    x.ClientProfileId,
+                    x.IsPending,
+                    x.IsRemoved
+                });
+
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<FinancialDataConnection>()
+                .WithMany()
+                .HasForeignKey(x => x.FinancialDataConnectionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<ImportedFinancialAccount>()
+                .WithMany()
+                .HasForeignKey(x => x.ImportedFinancialAccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RecurringFinancialStream>(e =>
+        {
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.StreamKey)
+                .IsRequired()
+                .HasMaxLength(240);
+
+            e.Property(x => x.NormalizedMerchantKey)
+                .IsRequired()
+                .HasMaxLength(240);
+
+            e.Property(x => x.DisplayName)
+                .IsRequired()
+                .HasMaxLength(300);
+
+            e.Property(x => x.Cadence)
+                .IsRequired()
+                .HasMaxLength(40);
+
+            e.Property(x => x.Status)
+                .IsRequired()
+                .HasMaxLength(40);
+
+            e.Property(x => x.Confidence)
+                .HasPrecision(5, 4);
+
+            e.Property(x => x.EvidenceJson)
+                .IsRequired();
+
+            e.HasIndex(x => new
+                {
+                    x.ClientProfileId,
+                    x.StreamKey
+                })
+                .IsUnique();
+
+            e.HasIndex(x => new
+                {
+                    x.ClientProfileId,
+                    x.Status
+                });
+
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<FinancialDataConnection>()
+                .WithMany()
+                .HasForeignKey(x => x.FinancialDataConnectionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<ImportedFinancialAccount>()
+                .WithMany()
+                .HasForeignKey(x => x.ImportedFinancialAccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ExpenseLensStreamLink>(e =>
+        {
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.ExpenseLensToolId)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            e.Property(x => x.ExpenseLensItemId)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            e.Property(x => x.Status)
+                .IsRequired()
+                .HasMaxLength(40);
+
+            e.Property(x => x.ConfirmedByUserId)
+                .HasMaxLength(450);
+
+            e.HasIndex(x => x.RecurringFinancialStreamId)
+                .IsUnique();
+
+            e.HasIndex(x => new
+                {
+                    x.ClientProfileId,
+                    x.ExpenseLensToolId,
+                    x.ExpenseLensItemId
+                });
+
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<RecurringFinancialStream>()
+                .WithMany()
+                .HasForeignKey(x => x.RecurringFinancialStreamId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ==========================================================
