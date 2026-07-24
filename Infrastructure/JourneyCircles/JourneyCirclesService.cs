@@ -37,8 +37,7 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
         var recommendations = profile.IsOptedIn && profile.IsDiscoverable && profile.AllowSuggestions
             ? await RecommendationsAsync(client, profile, cancellationToken)
             : Array.Empty<JourneyCircleRecommendation>();
-        return new JourneyCircleDashboard(ToPublic(profile, client), recommendations, connections, requests,
-            JourneyCircleTaxonomy.Goals.OrderBy(x => x).ToArray(), JourneyCircleTaxonomy.Circles.OrderBy(x => x).ToArray());
+        return Dashboard(ToPublic(profile, client), Preferences(profile), recommendations, connections, requests);
     }
 
     public async Task<JourneyCircleOperationResult> SaveProfileAsync(string clientUserId, JourneyCircleProfileInput input, CancellationToken cancellationToken = default)
@@ -47,19 +46,24 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
         if (client is null) return JourneyCircleOperationResult.Failure("JOURNEY_ACTOR_INVALID", "Journey Circles is not available for this account.");
         if (input.IsOptedIn && !input.ConsentAffirmed) return JourneyCircleOperationResult.Failure("JOURNEY_CONSENT_REQUIRED", "Please affirm consent before joining Journey Circles.");
 
-        var values = new[] { input.DisplayName, input.LifeStage, input.LocationLabel, input.Introduction, input.CommunicationStyle, input.AccountabilityFrequency }
-            .Concat(input.Interests ?? Array.Empty<string>()).Concat(input.ConnectionTypes ?? Array.Empty<string>());
-        var moderation = values.Select(value => _moderation.Evaluate(value, "JourneyProfile")).FirstOrDefault(x => !x.IsAllowed);
-        if (moderation is not null)
+        var moderation = _moderation.Evaluate(input.Introduction, "JourneyProfile");
+        if (!moderation.IsAllowed)
         {
             AddModeration(client.ClientUserId, "JourneyProfile", moderation, null);
             await _db.SaveChangesAsync(cancellationToken);
             return JourneyCircleOperationResult.Failure("JOURNEY_CONTENT_BLOCKED", "This content cannot be saved because it violates Legend Legacy Protection’s respectful-communication policy. Please revise it and try again.");
         }
 
-        var goals = NormalizeControlled(input.Goals, JourneyCircleTaxonomy.Goals);
-        var circles = NormalizeControlled(input.CircleCodes, JourneyCircleTaxonomy.Circles);
-        if (goals is null || circles is null) return JourneyCircleOperationResult.Failure("JOURNEY_TAXONOMY_INVALID", "Choose goals and circles from the available Journey Circles options.");
+        var lifeStages = NormalizeControlled(input.LifeStages, JourneyCircleTaxonomy.LifeStages, 3);
+        var locations = NormalizeControlled(input.Locations, JourneyCircleTaxonomy.Locations, 3);
+        var goals = NormalizeControlled(input.Goals, JourneyCircleTaxonomy.Goals, 6);
+        var interests = NormalizeControlled(input.Interests, JourneyCircleTaxonomy.Interests, 6);
+        var circles = NormalizeControlled(input.CircleCodes, JourneyCircleTaxonomy.Circles, 4);
+        var connectionTypes = NormalizeControlled(input.ConnectionTypes, JourneyCircleTaxonomy.ConnectionTypes, 4);
+        var communicationStyles = NormalizeControlled(input.CommunicationStyles, JourneyCircleTaxonomy.CommunicationStyles, 3);
+        var accountabilityFrequencies = NormalizeControlled(input.AccountabilityFrequencies, JourneyCircleTaxonomy.AccountabilityFrequencies, 3);
+        if (lifeStages is null || locations is null || goals is null || interests is null || circles is null || connectionTypes is null || communicationStyles is null || accountabilityFrequencies is null)
+            return JourneyCircleOperationResult.Failure("JOURNEY_TAXONOMY_INVALID", "Choose Journey Circles options from the available selections.");
 
         var now = DateTime.UtcNow;
         var profile = await _db.JourneyCircleProfiles.FirstOrDefaultAsync(x => x.ClientProfileId == client.Id, cancellationToken);
@@ -73,16 +77,16 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
         profile.IsDiscoverable = input.IsOptedIn && input.IsDiscoverable;
         profile.AllowSuggestions = input.IsOptedIn && input.AllowSuggestions;
         profile.AllowConnectionRequests = input.IsOptedIn && input.AllowConnectionRequests;
-        profile.DisplayName = Limit(input.DisplayName, 100) ?? DisplayName(client);
-        profile.LifeStage = Limit(input.LifeStage, 80);
-        profile.LocationLabel = Limit(input.LocationLabel, 100);
+        profile.DisplayName = DisplayName(client);
+        profile.LifeStage = ToDelimited(lifeStages, 80);
+        profile.LocationLabel = ToDelimited(locations, 100);
         profile.Introduction = Limit(input.Introduction, 600);
         profile.GoalsJson = ToJson(goals);
-        profile.InterestsJson = ToJson(NormalizeOpen(input.Interests, 20, 80));
+        profile.InterestsJson = ToJson(interests);
         profile.CircleCodesJson = ToJson(circles);
-        profile.ConnectionTypesJson = ToJson(NormalizeOpen(input.ConnectionTypes, 8, 60));
-        profile.CommunicationStyle = Limit(input.CommunicationStyle, 80);
-        profile.AccountabilityFrequency = Limit(input.AccountabilityFrequency, 80);
+        profile.ConnectionTypesJson = ToJson(connectionTypes);
+        profile.CommunicationStyle = ToDelimited(communicationStyles, 80);
+        profile.AccountabilityFrequency = ToDelimited(accountabilityFrequencies, 80);
         profile.CommunityAccessState = "Active";
         profile.ConsentAffirmedUtc = input.IsOptedIn ? now : profile.ConsentAffirmedUtc;
         profile.UpdatedUtc = now;
@@ -180,24 +184,42 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
             .Where(x => !blockedPeerIds.Contains(x.ClientProfileId) &&
                         !string.IsNullOrWhiteSpace(x.ClientProfile.ClientUserId))
             .GroupBy(x => x.ClientProfile.ClientUserId, StringComparer.OrdinalIgnoreCase)
-            .Select(group => (group.First().ClientProfile.ClientUserId, SafeDisplayName(group.First())))
+            .Select(group => (group.First().ClientProfile.ClientUserId, SafeDisplayName(group.First(), group.First().ClientProfile)))
             .ToArray();
     }
 
     private async Task<IReadOnlyList<JourneyCircleRecommendation>> RecommendationsAsync(ClientProfile client, JourneyCircleProfile source, CancellationToken ct)
     {
         var candidates = await _db.JourneyCircleProfiles.AsNoTracking().Include(x => x.ClientProfile).Where(x => x.ClientProfileId != client.Id && x.IsOptedIn && x.IsDiscoverable && x.AllowSuggestions && x.CommunityAccessState == "Active").Take(200).ToListAsync(ct);
-        var sourceGoals = FromJson(source.GoalsJson); var sourceInterests = FromJson(source.InterestsJson); var sourceCircles = FromJson(source.CircleCodesJson);
+        var sourceGoals = FromJson(source.GoalsJson);
+        var sourceInterests = FromJson(source.InterestsJson);
+        var sourceCircles = FromJson(source.CircleCodesJson);
+        var sourceStages = FromDelimited(source.LifeStage);
+        var sourceLocations = FromDelimited(source.LocationLabel);
+        var sourceConnectionTypes = FromJson(source.ConnectionTypesJson);
+        var sourceCommunicationStyles = FromDelimited(source.CommunicationStyle);
+        var sourceFrequencies = FromDelimited(source.AccountabilityFrequency);
         var rows = new List<(JourneyCircleProfile Profile, int Score, string Explanation)>();
         foreach (var candidate in candidates)
         {
             if (await IsBlockedAsync(client.Id, candidate.ClientProfileId, ct)) continue;
             var link = await _db.JourneyCircleConnections.AsNoTracking().FirstOrDefaultAsync(x => x.ConnectionKey == PairKey(client.Id, candidate.ClientProfileId), ct);
             if (link is not null && link.Status is JourneyCircleConnectionStatuses.Accepted or JourneyCircleConnectionStatuses.Pending or JourneyCircleConnectionStatuses.Declined) continue;
-            var sharedGoals = sourceGoals.Intersect(FromJson(candidate.GoalsJson), StringComparer.OrdinalIgnoreCase).ToArray(); var sharedInterests = sourceInterests.Intersect(FromJson(candidate.InterestsJson), StringComparer.OrdinalIgnoreCase).ToArray(); var sharedCircles = sourceCircles.Intersect(FromJson(candidate.CircleCodesJson), StringComparer.OrdinalIgnoreCase).ToArray();
-            var sameStage = !string.IsNullOrWhiteSpace(source.LifeStage) && string.Equals(source.LifeStage, candidate.LifeStage, StringComparison.OrdinalIgnoreCase);
-            var score = sharedGoals.Length * 6 + sharedInterests.Length * 3 + sharedCircles.Length * 4 + (sameStage ? 2 : 0); if (score == 0) continue;
-            var explanation = sharedGoals.FirstOrDefault() is { } goal ? $"You both selected {goal}." : sharedCircles.FirstOrDefault() is { } circle ? $"You are both part of {circle}." : $"You share an interest in {sharedInterests[0]}.";
+            var sharedGoals = sourceGoals.Intersect(FromJson(candidate.GoalsJson), StringComparer.OrdinalIgnoreCase).ToArray();
+            var sharedInterests = sourceInterests.Intersect(FromJson(candidate.InterestsJson), StringComparer.OrdinalIgnoreCase).ToArray();
+            var sharedCircles = sourceCircles.Intersect(FromJson(candidate.CircleCodesJson), StringComparer.OrdinalIgnoreCase).ToArray();
+            var sharedStages = sourceStages.Intersect(FromDelimited(candidate.LifeStage), StringComparer.OrdinalIgnoreCase).ToArray();
+            var sharedLocations = sourceLocations.Intersect(FromDelimited(candidate.LocationLabel), StringComparer.OrdinalIgnoreCase).ToArray();
+            var sharedConnectionTypes = sourceConnectionTypes.Intersect(FromJson(candidate.ConnectionTypesJson), StringComparer.OrdinalIgnoreCase).ToArray();
+            var sharedCommunicationStyles = sourceCommunicationStyles.Intersect(FromDelimited(candidate.CommunicationStyle), StringComparer.OrdinalIgnoreCase).ToArray();
+            var sharedFrequencies = sourceFrequencies.Intersect(FromDelimited(candidate.AccountabilityFrequency), StringComparer.OrdinalIgnoreCase).ToArray();
+            var score = sharedGoals.Length * 6 + sharedCircles.Length * 4 + sharedInterests.Length * 3 + sharedStages.Length * 3 + sharedConnectionTypes.Length * 2 + sharedCommunicationStyles.Length * 2 + sharedLocations.Length + sharedFrequencies.Length;
+            if (score == 0) continue;
+            var explanation = sharedGoals.FirstOrDefault() is { } goal ? $"You both selected {goal}."
+                : sharedCircles.FirstOrDefault() is { } circle ? $"You are both in {circle}."
+                : sharedStages.FirstOrDefault() is { } stage ? $"You share the {stage} life stage."
+                : sharedConnectionTypes.FirstOrDefault() is { } connectionType ? $"You are both looking for a {connectionType.ToLowerInvariant()}."
+                : $"You share an interest in {sharedInterests.FirstOrDefault() ?? sharedCommunicationStyles.FirstOrDefault() ?? sharedLocations.FirstOrDefault() ?? sharedFrequencies.FirstOrDefault()}.";
             rows.Add((candidate, score, explanation));
         }
         return rows.OrderByDescending(x => x.Score).ThenBy(x => x.Profile.UpdatedUtc).Take(12).Select(x => new JourneyCircleRecommendation(ToPublic(x.Profile, x.Profile.ClientProfile), x.Explanation)).ToArray();
@@ -214,14 +236,37 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
     private Task<bool> IsBlockedAsync(Guid first, Guid second, CancellationToken ct) => _db.JourneyCircleBlocks.AsNoTracking().AnyAsync(x => (x.BlockerClientProfileId == first && x.BlockedClientProfileId == second) || (x.BlockerClientProfileId == second && x.BlockedClientProfileId == first), ct);
     private static bool Eligible(JourneyCircleProfile? p) => p is { IsOptedIn: true, IsDiscoverable: true, CommunityAccessState: "Active" };
     private static string PairKey(Guid first, Guid second) => string.CompareOrdinal(first.ToString("N"), second.ToString("N")) < 0 ? $"{first:N}|{second:N}" : $"{second:N}|{first:N}";
-    private static JourneyCircleDashboard EmptyDashboard() => new(null, Array.Empty<JourneyCircleRecommendation>(), Array.Empty<JourneyCircleConnectionSummary>(), Array.Empty<JourneyCircleConnectionSummary>(), JourneyCircleTaxonomy.Goals.OrderBy(x => x).ToArray(), JourneyCircleTaxonomy.Circles.OrderBy(x => x).ToArray());
-    private static JourneyCirclePublicProfile ToPublic(JourneyCircleProfile p, ClientProfile c) => new(p.ClientProfileId, SafeDisplayName(p), p.LifeStage, p.LocationLabel, p.Introduction, FromJson(p.GoalsJson), FromJson(p.InterestsJson), FromJson(p.CircleCodesJson), FromJson(p.ConnectionTypesJson), p.CommunicationStyle, p.AccountabilityFrequency, $"/JourneyCircles/Profiles/{p.ClientProfileId}/Avatar");
-    private static string SafeDisplayName(JourneyCircleProfile p) => string.IsNullOrWhiteSpace(p.DisplayName) ? DisplayName(p.ClientProfile) : p.DisplayName;
+    private static JourneyCircleDashboard EmptyDashboard() => Dashboard(null, null, Array.Empty<JourneyCircleRecommendation>(), Array.Empty<JourneyCircleConnectionSummary>(), Array.Empty<JourneyCircleConnectionSummary>());
+    private static JourneyCircleDashboard Dashboard(JourneyCirclePublicProfile? profile, JourneyCircleProfilePreferences? preferences, IReadOnlyList<JourneyCircleRecommendation> recommendations, IReadOnlyList<JourneyCircleConnectionSummary> connections, IReadOnlyList<JourneyCircleConnectionSummary> requests) => new(
+        profile, preferences, recommendations, connections, requests,
+        JourneyCircleTaxonomy.Goals.OrderBy(x => x).ToArray(), JourneyCircleTaxonomy.Circles.OrderBy(x => x).ToArray(),
+        JourneyCircleTaxonomy.LifeStages.OrderBy(x => x).ToArray(), JourneyCircleTaxonomy.Locations.OrderBy(x => x).ToArray(),
+        JourneyCircleTaxonomy.Interests.OrderBy(x => x).ToArray(), JourneyCircleTaxonomy.ConnectionTypes.OrderBy(x => x).ToArray(),
+        JourneyCircleTaxonomy.CommunicationStyles.OrderBy(x => x).ToArray(), JourneyCircleTaxonomy.AccountabilityFrequencies.OrderBy(x => x).ToArray());
+    private static JourneyCirclePublicProfile ToPublic(JourneyCircleProfile p, ClientProfile c) => new(
+        p.ClientProfileId, SafeDisplayName(p, c), p.Introduction, FromDelimited(p.LifeStage), FromDelimited(p.LocationLabel),
+        FromJson(p.GoalsJson), FromJson(p.InterestsJson), FromJson(p.CircleCodesJson), FromJson(p.ConnectionTypesJson),
+        FromDelimited(p.CommunicationStyle), FromDelimited(p.AccountabilityFrequency), $"/JourneyCircles/Profiles/{p.ClientProfileId}/Avatar");
+    private static JourneyCircleProfilePreferences Preferences(JourneyCircleProfile profile) => new(
+        profile.ConsentAffirmedUtc is not null, profile.IsOptedIn, profile.IsDiscoverable, profile.AllowSuggestions, profile.AllowConnectionRequests);
+    private static string SafeDisplayName(JourneyCircleProfile profile, ClientProfile client) => string.IsNullOrWhiteSpace(profile.DisplayName) ? DisplayName(client) : profile.DisplayName;
     private static string DisplayName(ClientProfile p) => string.Join(' ', new[] { p.FirstName, p.LastName }.Where(x => !string.IsNullOrWhiteSpace(x))).Trim() is { Length: > 0 } name ? name : "Journey member";
-    private static IReadOnlyList<string>? NormalizeControlled(IReadOnlyList<string>? values, IReadOnlySet<string> allowed) { var normalized = NormalizeOpen(values, 20, 120); return normalized.All(x => allowed.Contains(x)) ? normalized : null; }
+    private static IReadOnlyList<string>? NormalizeControlled(IReadOnlyList<string>? values, IReadOnlySet<string> allowed, int maximum)
+    {
+        var normalized = NormalizeOpen(values, maximum, 120);
+        return normalized.All(allowed.Contains) ? normalized : null;
+    }
     private static IReadOnlyList<string> NormalizeOpen(IReadOnlyList<string>? values, int maximum, int length) => (values ?? Array.Empty<string>()).SelectMany(x => (x ?? string.Empty).Split(new[] { '\r', '\n', ',' }, StringSplitOptions.RemoveEmptyEntries)).Select(x => Limit(x, length)).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!).Distinct(StringComparer.OrdinalIgnoreCase).Take(maximum).ToArray();
     private static string ToJson(IReadOnlyList<string> values) => JsonSerializer.Serialize(values);
     private static IReadOnlyList<string> FromJson(string? json) { try { return JsonSerializer.Deserialize<string[]>(json ?? "[]")?.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).ToArray() ?? Array.Empty<string>(); } catch { return Array.Empty<string>(); } }
+    private static string? ToDelimited(IReadOnlyList<string> values, int maximum)
+    {
+        var value = string.Join('|', values);
+        return value.Length <= maximum ? value : null;
+    }
+    private static IReadOnlyList<string> FromDelimited(string? value) => string.IsNullOrWhiteSpace(value)
+        ? Array.Empty<string>()
+        : value.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     private static string? Limit(string? value, int maximum) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().Length <= maximum ? value.Trim() : value.Trim()[..maximum];
     private void AddAudit(string actor, string action, Guid? connectionId, Guid? target) => _db.JourneyCircleModerationEvents.Add(new JourneyCircleModerationEvent { Id = Guid.NewGuid(), ActorUserId = actor, Surface = "JourneyCircles", Category = "Audit", Severity = "Info", Action = action, PolicyVersion = PolicyVersion, ConnectionId = connectionId, RequiresReview = false, CreatedUtc = DateTime.UtcNow });
     private void AddModeration(string actor, string surface, CommunityTextModerationResult result, Guid? connectionId) => _db.JourneyCircleModerationEvents.Add(new JourneyCircleModerationEvent { Id = Guid.NewGuid(), ActorUserId = actor, Surface = surface, Category = result.Category ?? "Policy", Severity = result.Severity ?? "Medium", Action = "Blocked", PolicyVersion = PolicyVersion, ConnectionId = connectionId, RequiresReview = result.RequiresReview, CreatedUtc = DateTime.UtcNow });

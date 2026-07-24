@@ -53,4 +53,38 @@ public sealed class JourneyCirclesServiceTests
         var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
         Assert.True(moderation.Evaluate("I am building a class schedule.", "JourneyProfile").IsAllowed);
     }
+
+    [Fact]
+    public async Task ProfileSelections_AreControlledMultiSelectValues_AndImproveRecommendations()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var first = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "client-one", FirstName = "One", LastName = "Client", Email = "one@example.test" };
+        var second = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "client-two", FirstName = "Two", LastName = "Client", Email = "two@example.test" };
+        db.ClientProfiles.AddRange(first, second);
+        await db.SaveChangesAsync();
+        var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
+        var service = new JourneyCirclesService(db, moderation, NullLogger<JourneyCirclesService>.Instance);
+
+        var firstInput = new JourneyCircleProfileInput(true, true, true, true, true, "Looking for practical accountability.",
+            ["Career transition", "Business ownership"], ["Southwest"], ["Growing a business"], ["Small business", "Leadership"],
+            ["Entrepreneurs Circle"], ["Business peer"], ["Detailed planning"], ["Weekly"]);
+        var secondInput = new JourneyCircleProfileInput(true, true, true, true, true, "Building with other founders.",
+            ["Career transition"], ["Southwest"], ["Growing a business"], ["Small business"],
+            ["Entrepreneurs Circle"], ["Business peer"], ["Detailed planning"], ["Weekly"]);
+
+        Assert.True((await service.SaveProfileAsync(first.ClientUserId, firstInput)).Succeeded);
+        Assert.True((await service.SaveProfileAsync(second.ClientUserId, secondInput)).Succeeded);
+
+        var dashboard = await service.GetDashboardAsync(first.ClientUserId);
+        Assert.Equal(["Career transition", "Business ownership"], dashboard.Profile!.LifeStages);
+        Assert.Equal(["Southwest"], dashboard.Profile.Locations);
+        Assert.Equal("One Client", dashboard.Profile.DisplayName);
+        Assert.Single(dashboard.Recommendations);
+        Assert.Equal(second.Id, dashboard.Recommendations[0].Profile.ClientProfileId);
+
+        var invalid = firstInput with { Locations = ["Unverified free-form location"] };
+        var rejected = await service.SaveProfileAsync(first.ClientUserId, invalid);
+        Assert.False(rejected.Succeeded);
+        Assert.Equal("JOURNEY_TAXONOMY_INVALID", rejected.ErrorCode);
+    }
 }

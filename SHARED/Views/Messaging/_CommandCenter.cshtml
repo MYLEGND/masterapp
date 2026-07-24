@@ -41,6 +41,10 @@
                 }
             </div>
             <div class="messaging-command-center-header-actions">
+                @if (Model.SupportsJourneyCircles)
+                {
+                    <button type="button" class="messaging-command-center-journey" id="messagingJourneyCirclesOpen" aria-controls="messagingJourneyCircles" aria-expanded="false">Journey Circles</button>
+                }
                 <span class="messaging-command-center-unread" id="messagingCommandCenterUnread" hidden></span>
                 <button type="button" class="messaging-command-center-close" id="messagingCommandCenterClose" aria-label="Close Messages">×</button>
             </div>
@@ -48,7 +52,82 @@
 
         <div class="messaging-error" id="messagingError" role="alert" hidden></div>
 
-        <div class="messaging-command-center-grid">
+        <section class="messaging-journey-panel" id="messagingJourneyCircles" aria-labelledby="messagingJourneyCirclesTitle" hidden>
+            <header class="messaging-journey-header">
+                <div>
+                    <p class="messaging-command-center-kicker">Profile-connected community</p>
+                    <h3 id="messagingJourneyCirclesTitle">Journey Circles</h3>
+                    <p>Choose shared goals and preferences to find relevant, authorized connections.</p>
+                </div>
+                <button type="button" class="messaging-text-button messaging-journey-back" id="messagingJourneyCirclesBack">Back to messages</button>
+            </header>
+
+            <div class="messaging-journey-status" id="messagingJourneyStatus" role="status" hidden></div>
+
+            <div class="messaging-journey-content">
+                <form id="messagingJourneyProfileForm" class="messaging-journey-profile-form">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="ConsentAffirmed" value="false" />
+                    <input type="hidden" name="IsOptedIn" value="false" />
+                    <input type="hidden" name="IsDiscoverable" value="false" />
+                    <input type="hidden" name="AllowSuggestions" value="false" />
+                    <input type="hidden" name="AllowConnectionRequests" value="false" />
+
+                    <div class="messaging-journey-section-heading">
+                        <div>
+                            <h4>Your connection profile</h4>
+                            <p>Every list supports multiple selections.</p>
+                        </div>
+                        <button type="submit" class="messaging-primary-button">Save profile</button>
+                    </div>
+
+                    <label class="messaging-journey-field">
+                        <span>Participation and privacy</span>
+                        <select name="PrivacyChoices" multiple size="5" aria-describedby="messagingJourneyPrivacyHelp">
+                            <option value="consent">I affirm the Journey Circles community consent</option>
+                            <option value="opt-in">Join Journey Circles</option>
+                            <option value="discoverable">Appear in relevant recommendations</option>
+                            <option value="suggestions">Receive recommendations</option>
+                            <option value="requests">Allow connection requests</option>
+                        </select>
+                        <small id="messagingJourneyPrivacyHelp">Hold Command or Control to choose more than one option.</small>
+                    </label>
+
+                    <div class="messaging-journey-fields">
+                        <label class="messaging-journey-field"><span>Life stages</span><select name="LifeStages" multiple size="5"></select></label>
+                        <label class="messaging-journey-field"><span>Regions</span><select name="Locations" multiple size="5"></select></label>
+                        <label class="messaging-journey-field"><span>Goals</span><select name="Goals" multiple size="6"></select></label>
+                        <label class="messaging-journey-field"><span>Interests</span><select name="Interests" multiple size="6"></select></label>
+                        <label class="messaging-journey-field"><span>Journey Circles</span><select name="CircleCodes" multiple size="5"></select></label>
+                        <label class="messaging-journey-field"><span>Connection types</span><select name="ConnectionTypes" multiple size="5"></select></label>
+                        <label class="messaging-journey-field"><span>Communication styles</span><select name="CommunicationStyles" multiple size="5"></select></label>
+                        <label class="messaging-journey-field"><span>Check-in cadence</span><select name="AccountabilityFrequencies" multiple size="5"></select></label>
+                    </div>
+
+                    <label class="messaging-journey-field">
+                        <span>Introduction</span>
+                        <textarea name="Introduction" rows="3" maxlength="600" placeholder="Share a brief introduction"></textarea>
+                    </label>
+                </form>
+
+                <div class="messaging-journey-results">
+                    <section class="messaging-journey-result-section">
+                        <div class="messaging-journey-section-heading"><div><h4>Recommended connections</h4><p>Ranked from shared saved selections.</p></div></div>
+                        <div class="messaging-journey-card-list" id="messagingJourneyRecommendations"></div>
+                    </section>
+                    <section class="messaging-journey-result-section">
+                        <div class="messaging-journey-section-heading"><div><h4>Incoming requests</h4></div></div>
+                        <div class="messaging-journey-card-list" id="messagingJourneyRequests"></div>
+                    </section>
+                    <section class="messaging-journey-result-section">
+                        <div class="messaging-journey-section-heading"><div><h4>Your connections</h4></div></div>
+                        <div class="messaging-journey-card-list" id="messagingJourneyConnections"></div>
+                    </section>
+                </div>
+            </div>
+        </section>
+
+        <div class="messaging-command-center-grid" id="messagingCommandCenterGrid">
             <aside class="messaging-command-center-sidebar" aria-label="Conversations">
                 <label class="visually-hidden" for="messagingUniversalSearch">@Model.SearchPlaceholder</label>
                 <input id="messagingUniversalSearch"

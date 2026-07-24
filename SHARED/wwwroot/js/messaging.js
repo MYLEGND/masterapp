@@ -10,6 +10,7 @@
     window: root.querySelector('.messaging-command-center-window'),
     close: root.querySelector('#messagingCommandCenterClose'),
     error: root.querySelector('#messagingError'),
+    grid: root.querySelector('#messagingCommandCenterGrid'),
     unread: root.querySelector('#messagingCommandCenterUnread'),
     search: root.querySelector('#messagingUniversalSearch'),
     searchResults: root.querySelector('#messagingSearchResults'),
@@ -28,7 +29,15 @@
     fileLabel: root.querySelector('.messaging-file-label'),
     sendButton: root.querySelector('#messagingSendButton'),
     mute: root.querySelector('#messagingMuteConversation'),
-    closeConversation: root.querySelector('#messagingCloseConversation')
+    closeConversation: root.querySelector('#messagingCloseConversation'),
+    journeyOpen: root.querySelector('#messagingJourneyCirclesOpen'),
+    journeyPanel: root.querySelector('#messagingJourneyCircles'),
+    journeyBack: root.querySelector('#messagingJourneyCirclesBack'),
+    journeyStatus: root.querySelector('#messagingJourneyStatus'),
+    journeyProfileForm: root.querySelector('#messagingJourneyProfileForm'),
+    journeyRecommendations: root.querySelector('#messagingJourneyRecommendations'),
+    journeyRequests: root.querySelector('#messagingJourneyRequests'),
+    journeyConnections: root.querySelector('#messagingJourneyConnections')
   };
   const unreadBadges = Array.from(document.querySelectorAll('[data-messaging-unread-badge]'));
   const state = {
@@ -52,6 +61,8 @@
     realtimeStarted: false,
     isOpen: false,
     isOpening: false,
+    isJourneyOpen: false,
+    journeyDashboard: null,
     lastTrigger: null,
     pendingSubmission: null
   };
@@ -102,6 +113,30 @@
       window.localStorage.removeItem(`${storagePrefix}command-center-open`);
     } catch (_) {
       // The modal has already closed in the current document.
+    }
+  }
+
+  function isJourneyCirclesMarkedOpen() {
+    try {
+      return window.localStorage.getItem(`${storagePrefix}journey-circles-open`) === 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function markJourneyCirclesOpen() {
+    try {
+      window.localStorage.setItem(`${storagePrefix}journey-circles-open`, 'true');
+    } catch (_) {
+      // The active panel remains available even when persistent browser storage is unavailable.
+    }
+  }
+
+  function clearJourneyCirclesOpenMark() {
+    try {
+      window.localStorage.removeItem(`${storagePrefix}journey-circles-open`);
+    } catch (_) {
+      // The panel has already closed in the current document.
     }
   }
 
@@ -253,6 +288,223 @@
       throw new Error(data?.errorMessage || 'The messaging request could not be completed.');
     }
     return data;
+  }
+
+  function supportsJourneyCircles() {
+    return Boolean(elements.journeyOpen && elements.journeyPanel && elements.journeyProfileForm);
+  }
+
+  function setJourneyStatus(message, isError = false) {
+    if (!elements.journeyStatus) return;
+    elements.journeyStatus.hidden = !message;
+    elements.journeyStatus.textContent = message || '';
+    elements.journeyStatus.classList.toggle('is-error', Boolean(message && isError));
+  }
+
+  function selectedValues(select) {
+    return Array.from(select?.selectedOptions || []).map(option => option.value).filter(Boolean);
+  }
+
+  function setSelectedValues(select, values) {
+    if (!select) return;
+    const selected = new Set((values || []).map(normalize));
+    Array.from(select.options).forEach(option => {
+      option.selected = selected.has(normalize(option.value));
+    });
+  }
+
+  function replaceJourneyOptions(name, values, selected) {
+    const select = elements.journeyProfileForm?.elements.namedItem(name);
+    if (!(select instanceof HTMLSelectElement)) return;
+    select.replaceChildren();
+    (values || []).forEach(value => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      select.append(option);
+    });
+    setSelectedValues(select, selected);
+  }
+
+  function journeyFormField(name) {
+    return elements.journeyProfileForm?.elements.namedItem(name);
+  }
+
+  function setJourneyBoolean(name, value) {
+    const field = journeyFormField(name);
+    if (field instanceof HTMLInputElement) field.value = String(Boolean(value));
+  }
+
+  function createJourneyEmpty(message) {
+    return createTextElement('p', 'messaging-journey-empty', message);
+  }
+
+  function createJourneyCard(profile, detail, actions) {
+    const card = document.createElement('article');
+    card.className = 'messaging-journey-card';
+    card.append(createTextElement('h5', '', profile?.displayName || 'Journey member'));
+    if (detail) card.append(createTextElement('p', '', detail));
+    if (actions?.length) {
+      const actionRow = document.createElement('div');
+      actionRow.className = 'messaging-journey-card-actions';
+      actions.forEach(action => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = action.label;
+        button.addEventListener('click', action.run);
+        actionRow.append(button);
+      });
+      card.append(actionRow);
+    }
+    return card;
+  }
+
+  function journeyFormData(values = {}) {
+    const data = new FormData();
+    if (token) data.append('__RequestVerificationToken', token);
+    Object.entries(values).forEach(([name, value]) => data.append(name, String(value)));
+    return data;
+  }
+
+  async function runJourneyAction(url, data, successMessage) {
+    setJourneyStatus('Saving…');
+    try {
+      const dashboard = await request(url, {
+        method: 'POST',
+        body: data,
+        headers: { 'X-Journey-Circles-Modal': '1' }
+      });
+      state.journeyDashboard = dashboard;
+      renderJourneyDashboard();
+      setJourneyStatus(successMessage);
+      state.recipientsLoaded = false;
+      await loadRecipients();
+    } catch (error) {
+      setJourneyStatus(error.message, true);
+    }
+  }
+
+  function renderJourneyCards(container, items, emptyMessage, buildCard) {
+    if (!container) return;
+    container.replaceChildren();
+    if (!items?.length) {
+      container.append(createJourneyEmpty(emptyMessage));
+      return;
+    }
+    items.forEach(item => container.append(buildCard(item)));
+  }
+
+  function returnToMessages(profile) {
+    closeJourneyCircles();
+    if (profile?.displayName) {
+      elements.search.value = profile.displayName;
+      renderSearchResults();
+    }
+    elements.search.focus({ preventScroll: true });
+  }
+
+  function renderJourneyDashboard() {
+    if (!supportsJourneyCircles()) return;
+    const dashboard = state.journeyDashboard || {};
+    const profile = dashboard.profile || null;
+    const preferences = dashboard.preferences || {};
+    const privacy = journeyFormField('PrivacyChoices');
+    if (privacy instanceof HTMLSelectElement) {
+      setSelectedValues(privacy, [
+        preferences.consentAffirmed ? 'consent' : '',
+        preferences.isOptedIn ? 'opt-in' : '',
+        preferences.isDiscoverable ? 'discoverable' : '',
+        preferences.allowSuggestions ? 'suggestions' : '',
+        preferences.allowConnectionRequests ? 'requests' : ''
+      ]);
+    }
+    setJourneyBoolean('ConsentAffirmed', preferences.consentAffirmed);
+    setJourneyBoolean('IsOptedIn', preferences.isOptedIn);
+    setJourneyBoolean('IsDiscoverable', preferences.isDiscoverable);
+    setJourneyBoolean('AllowSuggestions', preferences.allowSuggestions);
+    setJourneyBoolean('AllowConnectionRequests', preferences.allowConnectionRequests);
+    replaceJourneyOptions('LifeStages', dashboard.lifeStages, profile?.lifeStages);
+    replaceJourneyOptions('Locations', dashboard.locations, profile?.locations);
+    replaceJourneyOptions('Goals', dashboard.goals, profile?.goals);
+    replaceJourneyOptions('Interests', dashboard.interests, profile?.interests);
+    replaceJourneyOptions('CircleCodes', dashboard.circles, profile?.circleCodes);
+    replaceJourneyOptions('ConnectionTypes', dashboard.connectionTypes, profile?.connectionTypes);
+    replaceJourneyOptions('CommunicationStyles', dashboard.communicationStyles, profile?.communicationStyles);
+    replaceJourneyOptions('AccountabilityFrequencies', dashboard.accountabilityFrequencies, profile?.accountabilityFrequencies);
+    const introduction = journeyFormField('Introduction');
+    if (introduction instanceof HTMLTextAreaElement) introduction.value = profile?.introduction || '';
+
+    renderJourneyCards(
+      elements.journeyRecommendations,
+      dashboard.recommendations,
+      profile ? 'No recommendations match your current selections yet.' : 'Save your profile to receive relevant recommendations.',
+      recommendation => createJourneyCard(recommendation.profile, recommendation.explanation, [{
+        label: 'Connect',
+        run: () => runJourneyAction('/JourneyCircles/Connections', journeyFormData({ targetClientProfileId: recommendation.profile.clientProfileId }), 'Connection request sent.')
+      }]));
+    renderJourneyCards(
+      elements.journeyRequests,
+      dashboard.requests,
+      'No incoming requests.',
+      connection => createJourneyCard(connection.profile, connection.introduction || 'Connection request', [
+        { label: 'Accept', run: () => runJourneyAction(`/JourneyCircles/Connections/${encodeURIComponent(connection.id)}/Response`, journeyFormData({ accept: true }), 'Connection accepted.') },
+        { label: 'Decline', run: () => runJourneyAction(`/JourneyCircles/Connections/${encodeURIComponent(connection.id)}/Response`, journeyFormData({ accept: false }), 'Connection declined.') }
+      ]));
+    renderJourneyCards(
+      elements.journeyConnections,
+      dashboard.connections,
+      'No active connections yet.',
+      connection => createJourneyCard(connection.profile, connection.profile?.goals?.slice(0, 2).join(' · ') || 'Accepted Journey Circles connection', [
+        { label: 'Message', run: () => returnToMessages(connection.profile) },
+        { label: 'Disconnect', run: () => runJourneyAction(`/JourneyCircles/Connections/${encodeURIComponent(connection.id)}/Disconnect`, journeyFormData(), 'Connection removed.') },
+        { label: 'Block', run: () => runJourneyAction(`/JourneyCircles/Profiles/${encodeURIComponent(connection.profile.clientProfileId)}/Block`, journeyFormData(), 'Connection blocked.') },
+        { label: 'Report', run: () => runJourneyAction(`/JourneyCircles/Profiles/${encodeURIComponent(connection.profile.clientProfileId)}/Report`, journeyFormData({ category: 'Safety concern' }), 'Report submitted.') }
+      ]));
+  }
+
+  async function loadJourneyDashboard() {
+    const dashboard = await request('/JourneyCircles/Modal');
+    state.journeyDashboard = dashboard;
+    renderJourneyDashboard();
+  }
+
+  async function openJourneyCircles() {
+    if (!supportsJourneyCircles()) return;
+    if (!state.isOpen) await openCommandCenter(null);
+    if (!state.isOpen) return;
+    state.isJourneyOpen = true;
+    elements.grid.hidden = true;
+    elements.journeyPanel.hidden = false;
+    elements.journeyOpen.setAttribute('aria-expanded', 'true');
+    markJourneyCirclesOpen();
+    setJourneyStatus('');
+    try {
+      await loadJourneyDashboard();
+    } catch (error) {
+      setJourneyStatus(error.message, true);
+    }
+  }
+
+  function closeJourneyCircles() {
+    if (!supportsJourneyCircles() || !state.isJourneyOpen) return;
+    state.isJourneyOpen = false;
+    elements.journeyPanel.hidden = true;
+    elements.grid.hidden = false;
+    elements.journeyOpen.setAttribute('aria-expanded', 'false');
+    clearJourneyCirclesOpenMark();
+    elements.search.focus({ preventScroll: true });
+  }
+
+  function saveJourneyProfile(event) {
+    event.preventDefault();
+    const privacy = new Set(selectedValues(journeyFormField('PrivacyChoices')));
+    setJourneyBoolean('ConsentAffirmed', privacy.has('consent'));
+    setJourneyBoolean('IsOptedIn', privacy.has('opt-in'));
+    setJourneyBoolean('IsDiscoverable', privacy.has('discoverable'));
+    setJourneyBoolean('AllowSuggestions', privacy.has('suggestions'));
+    setJourneyBoolean('AllowConnectionRequests', privacy.has('requests'));
+    const data = new FormData(elements.journeyProfileForm);
+    runJourneyAction('/JourneyCircles/Profile', data, 'Journey Circles profile saved.');
   }
 
   function activeDraftKey() {
@@ -861,6 +1113,13 @@
       state.scrollPositions[state.active.id] = elements.messages.scrollTop;
       writeSession('scroll-positions', state.scrollPositions);
     }
+    if (state.isJourneyOpen) {
+      state.isJourneyOpen = false;
+      elements.journeyPanel.hidden = true;
+      elements.grid.hidden = false;
+      elements.journeyOpen?.setAttribute('aria-expanded', 'false');
+      clearJourneyCirclesOpenMark();
+    }
     root.classList.remove('is-open');
     root.setAttribute('aria-hidden', 'true');
     root.hidden = true;
@@ -875,7 +1134,11 @@
     trigger.addEventListener('click', () => openCommandCenter(trigger));
   });
   window.addEventListener('messaging:open', () => openCommandCenter(null));
+  window.addEventListener('messaging:journey-open', () => openJourneyCircles());
   elements.close.addEventListener('click', closeCommandCenter);
+  elements.journeyOpen?.addEventListener('click', () => openJourneyCircles());
+  elements.journeyBack?.addEventListener('click', closeJourneyCircles);
+  elements.journeyProfileForm?.addEventListener('submit', saveJourneyProfile);
   elements.search.addEventListener('input', () => {
     window.clearTimeout(state.searchTimer);
     const query = elements.search.value.trim();
@@ -965,8 +1228,19 @@
     }
   }, true);
 
-  if (isCommandCenterMarkedOpen()) {
-    openCommandCenter(null).catch(() => { });
+  const launchUrl = new URL(window.location.href);
+  const shouldOpenFromRoute = launchUrl.searchParams.get('openMessages') === '1';
+  const shouldOpenJourneyFromRoute = launchUrl.searchParams.get('journeyCircles') === 'open';
+  if (shouldOpenFromRoute || shouldOpenJourneyFromRoute) {
+    launchUrl.searchParams.delete('openMessages');
+    launchUrl.searchParams.delete('journeyCircles');
+    window.history.replaceState({}, '', `${launchUrl.pathname}${launchUrl.search}${launchUrl.hash}`);
+  }
+
+  if (isCommandCenterMarkedOpen() || shouldOpenFromRoute || shouldOpenJourneyFromRoute) {
+    openCommandCenter(null)
+      .then(() => (shouldOpenJourneyFromRoute || isJourneyCirclesMarkedOpen()) ? openJourneyCircles() : undefined)
+      .catch(error => showError(error.message));
   } else {
     refreshList().catch(() => { });
   }

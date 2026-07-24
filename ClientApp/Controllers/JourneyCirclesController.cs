@@ -25,7 +25,15 @@ public sealed class JourneyCirclesController : Controller
     public async Task<IActionResult> Index()
     {
         var client = await CurrentAsync(); if (client is null) return Forbid();
-        return View(await _journeys.GetDashboardAsync(client.ClientUserId, HttpContext.RequestAborted));
+        return RedirectToAction("Index", "Home", new { openMessages = "1", journeyCircles = "open" });
+    }
+
+    [HttpGet("Modal")]
+    public async Task<IActionResult> Modal()
+    {
+        var client = await CurrentAsync();
+        if (client is null) return Forbid();
+        return Ok(await _journeys.GetDashboardAsync(client.ClientUserId, HttpContext.RequestAborted));
     }
 
     [HttpPost("Profile")]
@@ -33,42 +41,47 @@ public sealed class JourneyCirclesController : Controller
     public async Task<IActionResult> SaveProfile(JourneyCircleProfileInput input)
     {
         var client = await CurrentAsync(); if (client is null) return Forbid();
-        SetResult(await _journeys.SaveProfileAsync(client.ClientUserId, input, HttpContext.RequestAborted)); return RedirectToAction(nameof(Index));
+        return await FinishAsync(client, await _journeys.SaveProfileAsync(client.ClientUserId, input, HttpContext.RequestAborted));
     }
 
     [HttpPost("Connections")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> RequestConnection(Guid targetClientProfileId, string? reason, string? introduction)
     {
-        var client = await CurrentAsync(); if (client is null) return Forbid(); SetResult(await _journeys.RequestConnectionAsync(client.ClientUserId, targetClientProfileId, reason, introduction, HttpContext.RequestAborted)); return RedirectToAction(nameof(Index));
+        var client = await CurrentAsync(); if (client is null) return Forbid();
+        return await FinishAsync(client, await _journeys.RequestConnectionAsync(client.ClientUserId, targetClientProfileId, reason, introduction, HttpContext.RequestAborted));
     }
 
     [HttpPost("Connections/{connectionId:guid}/Response")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Respond(Guid connectionId, bool accept)
     {
-        var client = await CurrentAsync(); if (client is null) return Forbid(); SetResult(await _journeys.RespondToConnectionAsync(client.ClientUserId, connectionId, accept, HttpContext.RequestAborted)); return RedirectToAction(nameof(Index));
+        var client = await CurrentAsync(); if (client is null) return Forbid();
+        return await FinishAsync(client, await _journeys.RespondToConnectionAsync(client.ClientUserId, connectionId, accept, HttpContext.RequestAborted));
     }
 
     [HttpPost("Connections/{connectionId:guid}/Disconnect")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Disconnect(Guid connectionId)
     {
-        var client = await CurrentAsync(); if (client is null) return Forbid(); SetResult(await _journeys.DisconnectAsync(client.ClientUserId, connectionId, HttpContext.RequestAborted)); return RedirectToAction(nameof(Index));
+        var client = await CurrentAsync(); if (client is null) return Forbid();
+        return await FinishAsync(client, await _journeys.DisconnectAsync(client.ClientUserId, connectionId, HttpContext.RequestAborted));
     }
 
     [HttpPost("Profiles/{targetClientProfileId:guid}/Block")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Block(Guid targetClientProfileId)
     {
-        var client = await CurrentAsync(); if (client is null) return Forbid(); SetResult(await _journeys.BlockAsync(client.ClientUserId, targetClientProfileId, HttpContext.RequestAborted)); return RedirectToAction(nameof(Index));
+        var client = await CurrentAsync(); if (client is null) return Forbid();
+        return await FinishAsync(client, await _journeys.BlockAsync(client.ClientUserId, targetClientProfileId, HttpContext.RequestAborted));
     }
 
     [HttpPost("Profiles/{targetClientProfileId:guid}/Report")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Report(Guid targetClientProfileId, string category, string? detail)
     {
-        var client = await CurrentAsync(); if (client is null) return Forbid(); SetResult(await _journeys.ReportAsync(client.ClientUserId, targetClientProfileId, category, detail, HttpContext.RequestAborted)); return RedirectToAction(nameof(Index));
+        var client = await CurrentAsync(); if (client is null) return Forbid();
+        return await FinishAsync(client, await _journeys.ReportAsync(client.ClientUserId, targetClientProfileId, category, detail, HttpContext.RequestAborted));
     }
 
     [HttpGet("Profiles/{targetClientProfileId:guid}/Avatar")]
@@ -93,5 +106,19 @@ public sealed class JourneyCirclesController : Controller
     private void SetResult(JourneyCircleOperationResult result)
     {
         TempData[result.Succeeded ? "JourneySuccess" : "JourneyError"] = result.Succeeded ? "Journey Circles updated." : result.ErrorMessage;
+    }
+
+    private async Task<IActionResult> FinishAsync(EffectiveClientContext client, JourneyCircleOperationResult result)
+    {
+        if (Request.Headers.TryGetValue("X-Journey-Circles-Modal", out var modal) && modal == "1")
+        {
+            if (!result.Succeeded)
+                return BadRequest(new { result.ErrorCode, result.ErrorMessage });
+
+            return Ok(await _journeys.GetDashboardAsync(client.ClientUserId, HttpContext.RequestAborted));
+        }
+
+        SetResult(result);
+        return RedirectToAction("Index", "Home", new { openMessages = "1", journeyCircles = "open" });
     }
 }
