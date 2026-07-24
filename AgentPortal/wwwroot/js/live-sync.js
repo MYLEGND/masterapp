@@ -1,6 +1,4 @@
 (() => {
-  if (!window.signalR) return;
-
   const listeners = { call: [], del: [], page: [], reorder: [], update: [] };
 
   // App Insights trace helper — no-op when AI not loaded
@@ -23,7 +21,7 @@
   const MAX_BACKOFF_MS = 30000; // 30 s ceiling
   let attempt = 0;
 
-  const connection = new signalR.HubConnectionBuilder()
+  const connection = new window.signalR.HubConnectionBuilder()
     .withUrl("/livesync")
     .withAutomaticReconnect({
       // Custom backoff: 0, 2, 4, 8, 16, 30, 30, 30 … seconds
@@ -36,55 +34,23 @@
     })
     .build();
 
-  // Some older SignalR client builds expose onreconnecting as a property,
-  // others as a function. Guard for both so the hook never throws.
-  if (typeof connection.onreconnecting === 'function') {
-    connection.onreconnecting(err => {
-      console.warn('[live-sync] connection lost, reconnecting…', err);
-      if (err) aiException(err, { phase: 'reconnecting' });
-    });
-  } else if ('onreconnecting' in connection) {
-    connection.onreconnecting = err => {
-      console.warn('[live-sync] connection lost, reconnecting…', err);
-      if (err) aiException(err, { phase: 'reconnecting' });
-    };
-  } else {
-    // Fallback: no hook available — silently continue
-  }
+  connection.onreconnecting(err => {
+    console.warn('[live-sync] connection lost, reconnecting…', err);
+    if (err) aiException(err, { phase: 'reconnecting' });
+  });
 
-  if (typeof connection.onreconnected === 'function') {
-    connection.onreconnected(connId => {
-      console.info('[live-sync] reconnected', connId);
-      attempt = 0;
-      aiTrace('LiveSync.Reconnected', { connectionId: connId });
-    });
-  } else if ('onreconnected' in connection) {
-    connection.onreconnected = connId => {
-      console.info('[live-sync] reconnected', connId);
-      attempt = 0;
-      aiTrace('LiveSync.Reconnected', { connectionId: connId });
-    };
-  } else {
-    // No hook exposed — silently continue
-  }
+  connection.onreconnected(connId => {
+    console.info('[live-sync] reconnected', connId);
+    attempt = 0;
+    aiTrace('LiveSync.Reconnected', { connectionId: connId });
+  });
 
-  const attachOnClose = () => {
-    const handler = err => {
-      console.error('[live-sync] connection closed', err);
-      if (err) aiException(err, { phase: 'closed' });
-      // Manual restart with exponential backoff after final close
-      scheduleRestart();
-    };
-
-    if (typeof connection.onclose === 'function') {
-      connection.onclose(handler);
-    } else if ('onclose' in connection) {
-      connection.onclose = handler;
-    } else {
-      // No onclose hook exposed; rely on promise rejection in start()
-    }
-  };
-  attachOnClose();
+  connection.onclose(err => {
+    console.error('[live-sync] connection closed', err);
+    if (err) aiException(err, { phase: 'closed' });
+    // Manual restart with exponential backoff after final close.
+    scheduleRestart();
+  });
 
   connection.on("callUpdated", (leadId, callCount) => {
     if (!leadId) return;

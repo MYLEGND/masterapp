@@ -81,7 +81,6 @@
   ]);
   const agentTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
   const agentTzOffset = String(new Date().getTimezoneOffset());
-  const signalRAvailable = typeof signalR !== 'undefined';
   const leadBridgeControllers = [];
 
   function pickLeadBridgeController(queueKey){
@@ -3765,18 +3764,15 @@
     });
     syncAllNoteTextareaTones();
     syncNotePrefixVisual();
-    // Initialize SignalR and active state sync
-    if (signalRAvailable){
-      try {
-        const connection = new signalR.HubConnectionBuilder()
-          .withUrl('/leadbridgehub')
-          .withAutomaticReconnect()
-          .build();
-
-        connection.on('LeadChanged', payload => applyRemoteState(payload, true));
-        connection.start().then(fetchActiveState).catch(()=>{});
-      } catch {}
-    }
+    // Initialize SignalR and active state sync with the shared Microsoft client.
+    const connection = new window.signalR.HubConnectionBuilder()
+      .withUrl('/leadbridgehub')
+      .withAutomaticReconnect()
+      .build();
+    connection.on('LeadChanged', payload => applyRemoteState(payload, true));
+    connection.start()
+      .then(fetchActiveState)
+      .catch(error => console.error('[leadbridge] SignalR start failed.', error));
 
     try {
       baseLeads = await fetchLeads();

@@ -795,33 +795,9 @@
     state.pollTimer = null;
   }
 
-  async function ensureSignalR() {
-    if (window.signalR) return true;
-    const existing = document.querySelector('script[data-messaging-signalr]');
-    if (existing) {
-      return new Promise(resolve => {
-        existing.addEventListener('load', () => resolve(Boolean(window.signalR)), { once: true });
-        existing.addEventListener('error', () => resolve(false), { once: true });
-      });
-    }
-    return new Promise(resolve => {
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.5/signalr.min.js';
-      script.crossOrigin = 'anonymous';
-      script.dataset.messagingSignalr = 'true';
-      script.onload = () => resolve(Boolean(window.signalR));
-      script.onerror = () => resolve(false);
-      document.head.append(script);
-    });
-  }
-
   async function startRealtime() {
     if (state.realtimeStarted) return;
     state.realtimeStarted = true;
-    if (!await ensureSignalR()) {
-      startPolling();
-      return;
-    }
 
     const connection = new window.signalR.HubConnectionBuilder()
       .withUrl('/messaginghub')
@@ -846,7 +822,8 @@
     try {
       await connection.start();
       stopPolling();
-    } catch (_) {
+    } catch (error) {
+      console.error('[messaging] SignalR connection start failed.', error);
       startPolling();
     }
   }

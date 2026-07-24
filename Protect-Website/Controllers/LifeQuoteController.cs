@@ -458,8 +458,6 @@ if (!ModelState.IsValid)
                         });
                     }
 
-                    if (IsAjax())
-                        return StatusCode(500, new { error = "Workstation capture skipped", reason = captureResult.Reason ?? "unknown", bucket = captureResult.Bucket, agentUserId = captureResult.AgentUserId });
                 }
             }
             catch (Exception captureEx)

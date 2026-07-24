@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
+using AgentPortal.Helpers;
 using AgentPortal.Models;
 using AgentPortal.Services;
 using Domain.Entities;
@@ -58,40 +59,43 @@ public class LeadsControllerTests
     }
 
     [Fact]
-    public async Task Leads_List_Uses_Canonical_Row()
+    public async Task Leads_List_Returns_Stored_Lead_Row()
     {
         var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
-        db.WorkstationLeadProfiles.AddRange(
-            new WorkstationLeadProfile
-            {
-                LeadId = "L-1",
-                AgentUserId = "agent-1",
-                Bucket = "MortgageProtection",
-                CrmStage = "New",
-                CallCount = 1,
-                UpdatedUtc = now.AddMinutes(-5),
-                CreatedUtc = now.AddHours(-1)
-            },
-            new WorkstationLeadProfile
-            {
-                LeadId = "L-1",
-                AgentUserId = "agent-1",
-                Bucket = "MortgageProtection",
-                CrmStage = "New",
-                CallCount = 4,
-                UpdatedUtc = now,
-                CreatedUtc = now.AddMinutes(-30)
-            });
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-1",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            CrmStage = "New",
+            CallCount = 4,
+            UpdatedUtc = now,
+            CreatedUtc = now.AddMinutes(-30)
+        });
         await db.SaveChangesAsync();
 
         var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
 
         var result = await controller.Leads(null);
         var json = Assert.IsType<JsonResult>(result);
-        var list = Assert.IsAssignableFrom<IEnumerable<dynamic>>(json.Value);
-        var single = Assert.Single(list);
-        Assert.Equal(4, (int)single.CallCount);
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(json.Value));
+        var single = Assert.Single(payload.RootElement.EnumerateArray());
+        Assert.Equal(4, single.GetProperty("CallCount").GetInt32());
+    }
+
+    [Fact]
+    public void LeadCanonicalizer_SelectsNewestDuplicateInMemory()
+    {
+        var now = DateTime.UtcNow;
+        var canonical = LeadCanonicalizer.SelectCanonical(new[]
+        {
+            new WorkstationLeadProfile { LeadId = "L-CANONICAL", CallCount = 1, CreatedUtc = now.AddHours(-1), UpdatedUtc = now.AddMinutes(-5) },
+            new WorkstationLeadProfile { LeadId = "L-CANONICAL", CallCount = 4, CreatedUtc = now.AddMinutes(-30), UpdatedUtc = now }
+        });
+
+        Assert.NotNull(canonical);
+        Assert.Equal(4, canonical.CallCount);
     }
 
     [Fact]
@@ -440,31 +444,20 @@ public class LeadsControllerTests
     }
 
     [Fact]
-    public async Task IncrementCall_Targets_Canonical_Row()
+    public async Task IncrementCall_Increments_Owned_Lead()
     {
         var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
-        db.WorkstationLeadProfiles.AddRange(
-            new WorkstationLeadProfile
-            {
-                LeadId = "L-2",
-                AgentUserId = "agent-1",
-                Bucket = "MortgageProtection",
-                CrmStage = "New",
-                CallCount = 0,
-                UpdatedUtc = now.AddMinutes(-10),
-                CreatedUtc = now.AddHours(-2)
-            },
-            new WorkstationLeadProfile
-            {
-                LeadId = "L-2",
-                AgentUserId = "agent-1",
-                Bucket = "MortgageProtection",
-                CrmStage = "New",
-                CallCount = 2,
-                UpdatedUtc = now,
-                CreatedUtc = now.AddHours(-1)
-            });
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-2",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            CrmStage = "New",
+            CallCount = 2,
+            UpdatedUtc = now,
+            CreatedUtc = now.AddHours(-1)
+        });
         await db.SaveChangesAsync();
 
         var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
@@ -472,11 +465,8 @@ public class LeadsControllerTests
         var ok = await controller.IncrementCall("L-2");
         Assert.IsType<OkObjectResult>(ok);
 
-        var rows = await db.WorkstationLeadProfiles.ToListAsync();
-        var canonical = Assert.Single(rows.OrderByDescending(r => r.UpdatedUtc).Take(1));
-        Assert.Equal(3, canonical.CallCount); // incremented
-        var older = rows.OrderBy(r => r.UpdatedUtc).First();
-        Assert.Equal(0, older.CallCount); // untouched
+        var lead = await db.WorkstationLeadProfiles.SingleAsync();
+        Assert.Equal(3, lead.CallCount);
     }
 
     [Fact]
@@ -719,7 +709,7 @@ public class LeadsControllerTests
             new LeadsController.LeadAppointmentStatusRequest("L-APPT-NODOWNGRADE-1", appointmentId, "Requested"));
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.Equal("Booked, confirmed, or completed appointments cannot be downgraded back to Requested.", badRequest.Value);
+        Assert.Equal("Booked, confirmed, completed, or rescheduled appointments cannot be downgraded back to Requested.", badRequest.Value);
 
         var appointment = await db.LeadAppointments.SingleAsync(x => x.Id == appointmentId);
         Assert.Equal(LeadAppointmentStatus.Booked, appointment.Status);
@@ -956,65 +946,44 @@ public class LeadsControllerTests
     }
 
     [Fact]
-    public async Task Leads_Default_Excludes_NotInterested_Even_With_Duplicate()
+    public async Task Leads_Default_Excludes_NotInterested()
     {
         var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
-        db.WorkstationLeadProfiles.AddRange(
-            new WorkstationLeadProfile
-            {
-                LeadId = "L-3",
-                AgentUserId = "agent-1",
-                Bucket = "NotInterested",
-                CrmStage = "NotInterested",
-                CallCount = 5,
-                UpdatedUtc = now
-            },
-            new WorkstationLeadProfile
-            {
-                LeadId = "L-3",
-                AgentUserId = "agent-1",
-                Bucket = "MortgageProtection",
-                CrmStage = "New",
-                CallCount = 2,
-                UpdatedUtc = now.AddMinutes(-5)
-            });
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-3",
+            AgentUserId = "agent-1",
+            Bucket = "NotInterested",
+            CrmStage = "NotInterested",
+            CallCount = 5,
+            UpdatedUtc = now
+        });
         await db.SaveChangesAsync();
 
         var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
 
         var result = await controller.Leads(null);
         var json = Assert.IsType<JsonResult>(result);
-        var list = Assert.IsAssignableFrom<IEnumerable<dynamic>>(json.Value);
-        Assert.Empty(list); // canonical row is NotInterested; excluded from default
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(json.Value));
+        Assert.Equal(0, payload.RootElement.GetArrayLength());
     }
 
     [Fact]
-    public async Task LeadBridge_Queue_Uses_Canonical_Row()
+    public async Task LeadBridge_Queue_Returns_Stored_Lead()
     {
         var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
-        db.WorkstationLeadProfiles.AddRange(
-            new WorkstationLeadProfile
-            {
-                LeadId = "LQ-1",
-                AgentUserId = "agent-1",
-                Bucket = "MortgageProtection",
-                CrmStage = "New",
-                CallCount = 0,
-                UpdatedUtc = now.AddMinutes(-5),
-                CreatedUtc = now.AddHours(-1)
-            },
-            new WorkstationLeadProfile
-            {
-                LeadId = "LQ-1",
-                AgentUserId = "agent-1",
-                Bucket = "MortgageProtection",
-                CrmStage = "New",
-                CallCount = 5,
-                UpdatedUtc = now,
-                CreatedUtc = now.AddMinutes(-30)
-            });
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "LQ-1",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            CrmStage = "New",
+            CallCount = 5,
+            UpdatedUtc = now,
+            CreatedUtc = now.AddMinutes(-30)
+        });
         await db.SaveChangesAsync();
 
         var stateService = new LeadBridgeStateService();
@@ -1022,10 +991,10 @@ public class LeadsControllerTests
 
         var result = await controller.Active(null);
         var ok = Assert.IsType<OkObjectResult>(result);
-        dynamic payload = ok.Value!;
-        Assert.Equal("LQ-1", (string)payload.ActiveLeadId);
-        Assert.Equal(1, (int)payload.Total); // duplicate collapsed by canonicalization
-        Assert.Equal(1, (int)payload.Position);
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(ok.Value));
+        Assert.Equal("LQ-1", payload.RootElement.GetProperty("ActiveLeadId").GetString());
+        Assert.Equal(1, payload.RootElement.GetProperty("Total").GetInt32());
+        Assert.Equal(1, payload.RootElement.GetProperty("Position").GetInt32());
     }
 
     [Fact]
@@ -1077,9 +1046,9 @@ public class LeadsControllerTests
 
         var result = await controller.Active("LifeInsurance");
         var ok = Assert.IsType<OkObjectResult>(result);
-        dynamic payload = ok.Value!;
-        Assert.Equal(3, (int)payload.Total);
-        Assert.Contains((string)payload.ActiveLeadId, new[] { "LT-1", "LW-1", "LI-1" });
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(ok.Value));
+        Assert.Equal(3, payload.RootElement.GetProperty("Total").GetInt32());
+        Assert.Contains(payload.RootElement.GetProperty("ActiveLeadId").GetString(), new[] { "LT-1", "LW-1", "LI-1" });
     }
 
     [Fact]
@@ -1117,78 +1086,53 @@ public class LeadsControllerTests
 
         var result = await controller.Active("MortgageProtection");
         var ok = Assert.IsType<OkObjectResult>(result);
-        dynamic payload = ok.Value!;
-        Assert.Equal("NEW-BAD-ORDER", (string)payload.ActiveLeadId);
-        Assert.Equal(2, (int)payload.Total);
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(ok.Value));
+        Assert.Equal("NEW-BAD-ORDER", payload.RootElement.GetProperty("ActiveLeadId").GetString());
+        Assert.Equal(2, payload.RootElement.GetProperty("Total").GetInt32());
     }
 
     [Fact]
-    public async Task ApplyOutcome_Uses_Canonical_Row()
+    public async Task ApplyOutcome_Updates_Owned_Lead()
     {
         var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
-        db.WorkstationLeadProfiles.AddRange(
-            new WorkstationLeadProfile
-            {
-                LeadId = "L-4",
-                AgentUserId = "agent-1",
-                Bucket = "MortgageProtection",
-                CrmStage = "New",
-                CallCount = 1,
-                UpdatedUtc = now.AddMinutes(-5),
-                CreatedUtc = now.AddHours(-1)
-            },
-            new WorkstationLeadProfile
-            {
-                LeadId = "L-4",
-                AgentUserId = "agent-1",
-                Bucket = "MortgageProtection",
-                CrmStage = "New",
-                CallCount = 3,
-                UpdatedUtc = now,
-                CreatedUtc = now.AddMinutes(-30)
-            });
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-4",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            CrmStage = "New",
+            CallCount = 3,
+            UpdatedUtc = now,
+            CreatedUtc = now.AddMinutes(-30)
+        });
         await db.SaveChangesAsync();
 
         var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
         var result = await controller.ApplyOutcome(new LeadsController.LeadOutcomeRequest("L-4", "NotInterested", "note"));
         var json = Assert.IsType<JsonResult>(result);
-        dynamic payload = json.Value!;
-        Assert.Equal("NotInterested", (string)payload.payload.bucket);
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(json.Value));
+        Assert.Equal("NotInterested", payload.RootElement.GetProperty("payload").GetProperty("bucket").GetString());
 
-        var rows = await db.WorkstationLeadProfiles.Where(l => l.LeadId == "L-4").ToListAsync();
-        var canonical = rows.OrderByDescending(r => r.UpdatedUtc).First();
-        Assert.Equal("NotInterested", canonical.Bucket);
-        var stale = rows.OrderBy(r => r.UpdatedUtc).First();
-        Assert.Equal("New", stale.CrmStage); // untouched
+        var lead = await db.WorkstationLeadProfiles.SingleAsync(l => l.LeadId == "L-4");
+        Assert.Equal("NotInterested", lead.Bucket);
     }
 
     [Fact]
-    public async Task SaveQuickView_Uses_Canonical_Row()
+    public async Task SaveQuickView_Updates_Owned_Lead()
     {
         var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
-        db.WorkstationLeadProfiles.AddRange(
-            new WorkstationLeadProfile
-            {
-                LeadId = "L-5",
-                AgentUserId = "agent-1",
-                Bucket = "MortgageProtection",
-                CrmStage = "New",
-                FirstName = "Old",
-                UpdatedUtc = now.AddMinutes(-5),
-                CreatedUtc = now.AddHours(-1)
-            },
-            new WorkstationLeadProfile
-            {
-                LeadId = "L-5",
-                AgentUserId = "agent-1",
-                Bucket = "MortgageProtection",
-                CrmStage = "New",
-                FirstName = "Newer",
-                UpdatedUtc = now,
-                CreatedUtc = now.AddMinutes(-30)
-            });
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-5",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            CrmStage = "New",
+            FirstName = "Newer",
+            UpdatedUtc = now,
+            CreatedUtc = now.AddMinutes(-30)
+        });
         await db.SaveChangesAsync();
 
         var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
@@ -1204,14 +1148,11 @@ public class LeadsControllerTests
         );
         var result = await controller.SaveQuickView(req);
         var json = Assert.IsType<JsonResult>(result);
-        dynamic payload = ((dynamic)json.Value!).payload;
-        Assert.Equal("Updated", (string)payload.firstName);
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(json.Value));
+        Assert.Equal("Updated", payload.RootElement.GetProperty("payload").GetProperty("firstName").GetString());
 
-        var rows = await db.WorkstationLeadProfiles.Where(l => l.LeadId == "L-5").ToListAsync();
-        var canonical = rows.OrderByDescending(r => r.UpdatedUtc).First();
-        Assert.Equal("Updated", canonical.FirstName);
-        var stale = rows.OrderBy(r => r.UpdatedUtc).First();
-        Assert.Equal("Old", stale.FirstName); // untouched
+        var lead = await db.WorkstationLeadProfiles.SingleAsync(l => l.LeadId == "L-5");
+        Assert.Equal("Updated", lead.FirstName);
     }
 
     [Fact]
@@ -1281,11 +1222,12 @@ public class LeadsControllerTests
 
         var result = await controller.SaveQuickView(req);
         var json = Assert.IsType<JsonResult>(result);
-        dynamic payload = ((dynamic)json.Value!).payload;
-        Assert.Equal("High", (string)payload.crmPriority);
-        Assert.Equal("Follow up on docs", (string)payload.crmNextText);
-        Assert.Equal("Agent note", (string)payload.agentNotes);
-        Assert.Equal("Zoom Call", (string)payload.meetingLocation);
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(json.Value));
+        var savedPayload = payload.RootElement.GetProperty("payload");
+        Assert.Equal("High", savedPayload.GetProperty("crmPriority").GetString());
+        Assert.Equal("Follow up on docs", savedPayload.GetProperty("crmNextText").GetString());
+        Assert.Equal("Agent note", savedPayload.GetProperty("agentNotes").GetString());
+        Assert.Equal("Zoom Call", savedPayload.GetProperty("meetingLocation").GetString());
 
         var persisted = await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == "L-meta");
         var meta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);

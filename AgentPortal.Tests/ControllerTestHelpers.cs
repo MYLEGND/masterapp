@@ -19,6 +19,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Graph;
 using Microsoft.Identity.Web;
 using Moq;
 
@@ -171,6 +172,7 @@ internal static class ControllerTestHelpers
         MasterAppDbContext db,
         ClaimsPrincipal user,
         HttpMessageHandler handler,
+        GraphServiceClient appGraph,
         string accessToken = "test-access-token")
     {
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
@@ -190,13 +192,18 @@ internal static class ControllerTestHelpers
             .Setup(x => x.CreateClient(It.IsAny<string>()))
             .Returns(client);
 
+        var timeResolver = new Mock<IAgentTimeZoneResolver>();
+        timeResolver
+            .Setup(resolver => resolver.Resolve(It.IsAny<HttpContext>()))
+            .Returns(TimeZoneInfo.Utc);
+
         return new CalendarController(
             tokenAcquisition.Object,
             NullLogger<CalendarController>.Instance,
             db,
             httpClientFactory.Object,
-            Mock.Of<IAgentTimeZoneResolver>(),
-            null!)
+            timeResolver.Object,
+            appGraph)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };

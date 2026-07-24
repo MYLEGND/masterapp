@@ -1648,19 +1648,7 @@
         document.write('<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"><\\/script>');
     }
 </script>
-<script src="~/lib/signalr/signalr.min.js"></script>
-<script>
-    // Prefer local stub; if missing/blocked, fall back to public CDNs.
-    if (typeof window.signalR === "undefined") {
-        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.5/signalr.min.js" crossorigin="anonymous"><\\/script>');
-    }
-    if (typeof window.signalR === "undefined") {
-        document.write('<script src="https://unpkg.com/@@microsoft/signalr@8.0.5/dist/browser/signalr.min.js" crossorigin="anonymous"><\\/script>');
-    }
-    if (typeof window.signalR === "undefined") {
-        document.write('<script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8.0.5/dist/browser/signalr.min.js" crossorigin="anonymous"><\\/script>');
-    }
-</script>
+@await Html.PartialAsync("~/Views/Messaging/_SignalRClient.cshtml")
 <script>
     // Final guard: if bootstrap JS still failed to load, install a minimal stub to prevent ReferenceErrors.
     if (typeof window.bootstrap === "undefined") {

@@ -64,11 +64,11 @@ public class AssistantContextService
         var tid = user.FindFirstValue("tid")
                   ?? user.FindFirstValue("http://schemas.microsoft.com/identity/claims/tenantid");
         if (!string.IsNullOrWhiteSpace(firstPartyTenantId)
-            && !string.IsNullOrWhiteSpace(tid)
-            && string.Equals(tid.Trim(), firstPartyTenantId.Trim(), StringComparison.OrdinalIgnoreCase))
+            && !string.IsNullOrWhiteSpace(tid))
         {
-            // Same-tenant user; treat as first-party even if other heuristics would flag guest.
-            return false;
+            // Tenant identity is authoritative when available. A user from another tenant must
+            // be an active assistant before the portal grants agent access.
+            return !string.Equals(tid.Trim(), firstPartyTenantId.Trim(), StringComparison.OrdinalIgnoreCase);
         }
 
         if (!string.IsNullOrWhiteSpace(firstPartyDomain))

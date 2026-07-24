@@ -796,6 +796,7 @@
     })();
 </script>
 <script src="~/_content/Shared/js/legend-global-navigation.js" asp-append-version="true"></script>
+@await Html.PartialAsync("~/Views/Messaging/_SignalRClient.cshtml")
 <script src="~/_content/Shared/js/messaging.js" asp-append-version="true"></script>
 @await RenderSectionAsync("Scripts", required: false)
     <script src="~/js/app-date-format.js" asp-append-version="true"></script>

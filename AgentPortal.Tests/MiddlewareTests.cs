@@ -260,9 +260,8 @@ public class MiddlewareTests
 
         var user = AuthenticatedUser("regular-oid", "agent@mylegnd.com");
         var httpCtx = BuildHttpContext(user);
-        var svc = Mock.Of<FounderImpersonationService>();
-
-        await mw.InvokeAsync(httpCtx, svc);
+        // A non-founder never resolves impersonation, so no service instance is required.
+        await mw.InvokeAsync(httpCtx, null!);
 
         Assert.True(nextCalled);
         Assert.False(httpCtx.Items.ContainsKey("ImpersonatedAgentOid"));

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net;
@@ -13,6 +14,12 @@ using Domain.Entities;
 using Domain.Enums;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Graph;
+using Microsoft.Graph.Models;
+using Microsoft.Kiota.Abstractions;
+using Microsoft.Kiota.Abstractions.Serialization;
+using Microsoft.Kiota.Serialization.Json;
+using Moq;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -51,6 +58,12 @@ public class CalendarControllerTests
             CreatedUtc = new DateTime(2026, 5, 21, 7, 0, 0, DateTimeKind.Utc),
             UpdatedUtc = new DateTime(2026, 5, 21, 7, 0, 0, DateTimeKind.Utc)
         });
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "agent-1",
+            AgentUpn = "agent@example.test",
+            BookingPageIdOrMailbox = "booking-business-1"
+        });
         db.WebsiteLeadIntakeLinks.Add(new WebsiteLeadIntakeLink
         {
             Id = intakeId,
@@ -65,14 +78,43 @@ public class CalendarControllerTests
         });
         await db.SaveChangesAsync();
 
-        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.Created)
-        {
-            Content = new StringContent(
-                "{\"id\":\"evt-123\",\"webLink\":\"https://outlook.test/events/evt-123\"}",
-                Encoding.UTF8,
-                "application/json")
-        });
-        var controller = ControllerTestHelpers.BuildCalendarController(db, ControllerTestHelpers.BuildUser(), handler);
+        var requestAdapter = new Mock<IRequestAdapter>();
+        requestAdapter.SetupGet(adapter => adapter.BaseUrl).Returns("https://graph.microsoft.com/v1.0");
+        requestAdapter.SetupGet(adapter => adapter.SerializationWriterFactory).Returns(new JsonSerializationWriterFactory());
+        requestAdapter
+            .Setup(adapter => adapter.SendAsync(
+                It.Is<RequestInformation>(request => request.HttpMethod == Method.GET),
+                It.IsAny<ParsableFactory<BookingServiceCollectionResponse>>(),
+                It.IsAny<Dictionary<string, ParsableFactory<IParsable>>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BookingServiceCollectionResponse
+            {
+                Value = new List<BookingService>
+                {
+                    new()
+                    {
+                        Id = "booking-service-30",
+                        DisplayName = "30-minute review",
+                        DefaultDuration = TimeSpan.FromMinutes(30),
+                        IsHiddenFromCustomers = false
+                    }
+                }
+            });
+        requestAdapter
+            .Setup(adapter => adapter.SendAsync(
+                It.Is<RequestInformation>(request => request.HttpMethod == Method.POST),
+                It.IsAny<ParsableFactory<BookingAppointment>>(),
+                It.IsAny<Dictionary<string, ParsableFactory<IParsable>>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BookingAppointment
+            {
+                Id = "evt-123",
+                SelfServiceAppointmentId = "https://outlook.test/events/evt-123"
+            });
+
+        var graphClient = new GraphServiceClient(requestAdapter.Object);
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var controller = ControllerTestHelpers.BuildCalendarController(db, ControllerTestHelpers.BuildUser(), handler, graphClient);
 
         var result = await controller.CreateEvent(new CalendarController.CreateEventRequest
         {
@@ -92,18 +134,8 @@ public class CalendarControllerTests
         var latestAppointmentPayload = payloadDoc.RootElement.GetProperty("latestAppointment");
 
         var appointment = await db.LeadAppointments.SingleAsync();
-        var expectedStartUtc = DateTime.ParseExact(
-                "2026-05-21T09:00:00",
-                "yyyy-MM-dd'T'HH:mm:ss",
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeLocal)
-            .ToUniversalTime();
-        var expectedEndUtc = DateTime.ParseExact(
-                "2026-05-21T09:30:00",
-                "yyyy-MM-dd'T'HH:mm:ss",
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeLocal)
-            .ToUniversalTime();
+        var expectedStartUtc = new DateTime(2026, 5, 21, 9, 0, 0, DateTimeKind.Utc);
+        var expectedEndUtc = new DateTime(2026, 5, 21, 9, 30, 0, DateTimeKind.Utc);
 
         Assert.Equal("L-CALENDAR-1", appointment.WorkstationLeadId);
         Assert.Equal("agent-1", appointment.OwnerAgentUserId);
