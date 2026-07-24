@@ -15,14 +15,14 @@ namespace Infrastructure.Migrations
                 name: "ClientAgentMessagingGrants",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ClientUserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: false),
-                    AgentUserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: false),
-                    GrantedByAgentUserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: false),
-                    IsActive = table.Column<bool>(type: "INTEGER", nullable: false),
-                    GrantedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    RevokedUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    Reason = table.Column<string>(type: "TEXT", maxLength: 1000, nullable: true)
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ClientUserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false),
+                    AgentUserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false),
+                    GrantedByAgentUserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    GrantedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    RevokedUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Reason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -33,16 +33,16 @@ namespace Infrastructure.Migrations
                 name: "MessageConversations",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ConversationType = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    Subject = table.Column<string>(type: "TEXT", maxLength: 240, nullable: true),
-                    CreatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    LastMessageUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    IsClosed = table.Column<bool>(type: "INTEGER", nullable: false),
-                    ClosedUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    CreatedByUserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: false),
-                    RowVersion = table.Column<byte[]>(type: "BLOB", nullable: false)
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ConversationType = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
+                    Subject = table.Column<string>(type: "nvarchar(240)", maxLength: 240, nullable: true),
+                    CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    LastMessageUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    IsClosed = table.Column<bool>(type: "bit", nullable: false),
+                    ClosedUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CreatedByUserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false),
+                    RowVersion = table.Column<byte[]>(type: "varbinary(max)", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -53,14 +53,14 @@ namespace Infrastructure.Migrations
                 name: "MessagingAuditEntries",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ActorUserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: false),
-                    Action = table.Column<string>(type: "TEXT", maxLength: 100, nullable: false),
-                    ConversationId = table.Column<Guid>(type: "TEXT", nullable: true),
-                    InternalMessageId = table.Column<Guid>(type: "TEXT", nullable: true),
-                    TargetUserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: true),
-                    Detail = table.Column<string>(type: "TEXT", maxLength: 1000, nullable: true),
-                    CreatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ActorUserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false),
+                    Action = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    ConversationId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    InternalMessageId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    TargetUserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: true),
+                    Detail = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -71,17 +71,17 @@ namespace Infrastructure.Migrations
                 name: "InternalMessages",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ConversationId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    SenderUserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: false),
-                    SenderType = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    Body = table.Column<string>(type: "TEXT", maxLength: 10000, nullable: false),
-                    SentUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    EditedUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    DeletedUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    IsDeleted = table.Column<bool>(type: "INTEGER", nullable: false),
-                    ClientMessageId = table.Column<string>(type: "TEXT", maxLength: 100, nullable: true),
-                    RowVersion = table.Column<byte[]>(type: "BLOB", nullable: false)
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ConversationId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    SenderUserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false),
+                    SenderType = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
+                    Body = table.Column<string>(type: "nvarchar(10000)", maxLength: 10000, nullable: false),
+                    SentUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    EditedUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    DeletedUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
+                    ClientMessageId = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
+                    RowVersion = table.Column<byte[]>(type: "varbinary(max)", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -98,16 +98,16 @@ namespace Infrastructure.Migrations
                 name: "MessageConversationParticipants",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ConversationId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    UserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: false),
-                    ParticipantType = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    IsActive = table.Column<bool>(type: "INTEGER", nullable: false),
-                    JoinedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    LeftUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    LastReadUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    LastReadMessageId = table.Column<Guid>(type: "TEXT", nullable: true),
-                    IsMuted = table.Column<bool>(type: "INTEGER", nullable: false)
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ConversationId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    UserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false),
+                    ParticipantType = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    JoinedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    LeftUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    LastReadUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    LastReadMessageId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    IsMuted = table.Column<bool>(type: "bit", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -124,15 +124,15 @@ namespace Infrastructure.Migrations
                 name: "MessageAttachments",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    InternalMessageId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    OriginalFileName = table.Column<string>(type: "TEXT", maxLength: 255, nullable: false),
-                    StoredFileName = table.Column<string>(type: "TEXT", maxLength: 255, nullable: false),
-                    ContentType = table.Column<string>(type: "TEXT", maxLength: 150, nullable: false),
-                    SizeBytes = table.Column<long>(type: "INTEGER", nullable: false),
-                    StoragePath = table.Column<string>(type: "TEXT", maxLength: 1000, nullable: false),
-                    ScanStatus = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    CreatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    InternalMessageId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    OriginalFileName = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    StoredFileName = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: false),
+                    ContentType = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
+                    SizeBytes = table.Column<long>(type: "bigint", nullable: false),
+                    StoragePath = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
+                    ScanStatus = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
+                    CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -166,7 +166,7 @@ namespace Infrastructure.Migrations
                 table: "InternalMessages",
                 column: "ClientMessageId",
                 unique: true,
-                filter: "\"ClientMessageId\" IS NOT NULL");
+                filter: "[ClientMessageId] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_InternalMessages_ConversationId_SentUtc",

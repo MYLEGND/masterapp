@@ -16,7 +16,7 @@ public partial class AddMessagingDirectConversationKey : Migration
         migrationBuilder.AddColumn<string>(
             name: "DirectConversationKey",
             table: "MessageConversations",
-            type: "TEXT",
+            type: "nvarchar(1000)",
             maxLength: 1000,
             nullable: true);
 
@@ -25,7 +25,7 @@ public partial class AddMessagingDirectConversationKey : Migration
             table: "MessageConversations",
             column: "DirectConversationKey",
             unique: true,
-            filter: "\"DirectConversationKey\" IS NOT NULL");
+            filter: "[DirectConversationKey] IS NOT NULL");
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
