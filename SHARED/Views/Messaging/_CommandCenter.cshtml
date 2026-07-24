@@ -43,7 +43,24 @@
             <div class="messaging-command-center-header-actions">
                 @if (Model.SupportsJourneyCircles)
                 {
-                    <button type="button" class="messaging-command-center-journey" id="messagingJourneyCirclesOpen" aria-controls="messagingJourneyCircles" aria-expanded="false">Journey Circles</button>
+                    <button type="button"
+                            class="messaging-command-center-journey"
+                            id="messagingJourneyCirclesOpen"
+                            aria-controls="messagingJourneyCircles"
+                            aria-expanded="false">
+                        <span class="messaging-journey-button-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <circle cx="8" cy="8" r="3"></circle>
+                                <circle cx="16.5" cy="9" r="2.5"></circle>
+                                <path d="M3 20v-2a5 5 0 0 1 10 0v2"></path>
+                                <path d="M14 15.5a4.5 4.5 0 0 1 6.5 4"></path>
+                            </svg>
+                        </span>
+                        <span class="messaging-journey-button-label">Journey Circles</span>
+                        <span class="messaging-journey-recommendation-badge"
+                              id="messagingJourneyRecommendationBadge"
+                              aria-label="0 Journey Circles recommendations">0</span>
+                    </button>
                 }
                 <span class="messaging-command-center-unread" id="messagingCommandCenterUnread" hidden></span>
                 <button type="button" class="messaging-command-center-close" id="messagingCommandCenterClose" aria-label="Close Messages">×</button>
@@ -55,9 +72,29 @@
         <section class="messaging-journey-panel" id="messagingJourneyCircles" aria-labelledby="messagingJourneyCirclesTitle" hidden>
             <header class="messaging-journey-header">
                 <div class="messaging-journey-header-copy">
-                    <p class="messaging-command-center-kicker">Profile-connected community</p>
-                    <h3 id="messagingJourneyCirclesTitle">Journey Circles</h3>
-                    <p>Choose shared goals and preferences to find relevant, authorized connections.</p>
+                    <div class="messaging-journey-title-lockup">
+                        <span class="messaging-journey-title-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <circle cx="8" cy="8" r="3"></circle>
+                                <circle cx="16.5" cy="9" r="2.5"></circle>
+                                <path d="M3 20v-2a5 5 0 0 1 10 0v2"></path>
+                                <path d="M14 15.5a4.5 4.5 0 0 1 6.5 4"></path>
+                            </svg>
+                        </span>
+
+                        <div class="messaging-journey-title-copy">
+                            <p class="messaging-command-center-kicker">Profile-connected community</p>
+
+                            <div class="messaging-journey-title-row">
+                                <h3 id="messagingJourneyCirclesTitle">Journey Circles</h3>
+                                <span class="messaging-journey-title-badge"
+                                      id="messagingJourneyTitleBadge"
+                                      aria-label="0 Journey Circles recommendations">0</span>
+                            </div>
+
+                            <p>Choose shared goals and preferences to find relevant, authorized connections.</p>
+                        </div>
+                    </div>
                 </div>
 
                 <button type="button"

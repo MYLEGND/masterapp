@@ -3276,7 +3276,9 @@ header .legend-global-nav .container-fluid {
 
 .messaging-command-center-unread,
 .messaging-unread-count,
-.messaging-nav-unread-badge {
+.messaging-nav-unread-badge,
+.messaging-journey-recommendation-badge,
+.messaging-journey-title-badge {
     display: inline-grid;
     place-items: center;
     min-width: 1.4rem;
@@ -3372,8 +3374,85 @@ header .legend-global-nav .container-fluid {
 }
 
 .messaging-command-center-journey {
-    min-height: 2.25rem;
-    padding: 0.42rem 0.74rem;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    min-height: 2.5rem;
+    padding: 0.48rem 0.82rem;
+    border: 1px solid rgba(51, 214, 111, 0.72);
+    border-radius: 999px;
+    background:
+        linear-gradient(
+            145deg,
+            rgba(28, 111, 64, 0.38),
+            rgba(8, 39, 24, 0.72)
+        );
+    color: #71ec9e;
+    box-shadow:
+        0 0 0 1px rgba(51, 214, 111, 0.08),
+        0 0 20px rgba(34, 197, 94, 0.16);
+    font-weight: 800;
+    letter-spacing: 0.01em;
+}
+
+.messaging-command-center-journey:hover,
+.messaging-command-center-journey:focus-visible {
+    border-color: #67e894;
+    background:
+        linear-gradient(
+            145deg,
+            rgba(35, 135, 77, 0.56),
+            rgba(9, 48, 29, 0.88)
+        );
+    color: #a4f7bf;
+    box-shadow:
+        0 0 0 3px rgba(34, 197, 94, 0.13),
+        0 0 25px rgba(34, 197, 94, 0.24);
+}
+
+.messaging-journey-button-icon {
+    display: inline-grid;
+    width: 1.72rem;
+    height: 1.72rem;
+    flex: 0 0 1.72rem;
+    place-items: center;
+    border: 1px solid rgba(126, 242, 165, 0.72);
+    border-radius: 50%;
+    background:
+        radial-gradient(
+            circle at 32% 28%,
+            #37d86d,
+            #16803c 72%
+        );
+    color: #ffffff;
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.34);
+}
+
+.messaging-journey-button-icon svg {
+    width: 1.05rem;
+    height: 1.05rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.messaging-journey-button-label {
+    white-space: nowrap;
+}
+
+.messaging-journey-recommendation-badge {
+    position: absolute;
+    top: -0.46rem;
+    right: -0.42rem;
+    min-width: 1.38rem;
+    height: 1.38rem;
+    padding-inline: 0.26rem;
+    font-size: 0.72rem;
+    line-height: 1;
 }
 
 .messaging-command-center-journey:hover,
@@ -3411,6 +3490,63 @@ header .legend-global-nav .container-fluid {
     min-width: 0;
 }
 
+.messaging-journey-title-lockup {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.messaging-journey-title-icon {
+    display: grid;
+    width: 4.35rem;
+    height: 4.35rem;
+    flex: 0 0 4.35rem;
+    place-items: center;
+    border: 2px solid rgba(87, 237, 137, 0.92);
+    border-radius: 50%;
+    background:
+        radial-gradient(
+            circle at 32% 26%,
+            #39de70,
+            #16813d 64%,
+            #0b4423
+        );
+    color: #ffffff;
+    box-shadow:
+        0 0 0 5px rgba(34, 197, 94, 0.08),
+        0 0 26px rgba(34, 197, 94, 0.32);
+}
+
+.messaging-journey-title-icon svg {
+    width: 2.55rem;
+    height: 2.55rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.messaging-journey-title-copy {
+    min-width: 0;
+}
+
+.messaging-journey-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.72rem;
+    margin: 0.16rem 0 0.42rem;
+}
+
+.messaging-journey-title-badge {
+    position: static;
+    min-width: 1.55rem;
+    height: 1.55rem;
+    padding-inline: 0.34rem;
+    font-size: 0.76rem;
+    line-height: 1;
+}
+
 .messaging-journey-header h3,
 .messaging-journey-profile-heading h4,
 .messaging-journey-result-heading h4,
@@ -3422,8 +3558,12 @@ header .legend-global-nav .container-fluid {
 }
 
 .messaging-journey-header h3 {
-    font-size: clamp(1.25rem, 2vw, 1.55rem);
-    letter-spacing: -0.025em;
+    margin: 0;
+    color: #ffffff;
+    font-size: clamp(1.85rem, 2.35vw, 2.65rem);
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: -0.035em;
 }
 
 .messaging-journey-header p,

@@ -31,6 +31,8 @@
     mute: root.querySelector('#messagingMuteConversation'),
     closeConversation: root.querySelector('#messagingCloseConversation'),
     journeyOpen: root.querySelector('#messagingJourneyCirclesOpen'),
+    journeyRecommendationBadge: root.querySelector('#messagingJourneyRecommendationBadge'),
+    journeyTitleBadge: root.querySelector('#messagingJourneyTitleBadge'),
     journeyPanel: root.querySelector('#messagingJourneyCircles'),
     journeyBack: root.querySelector('#messagingJourneyCirclesBack'),
     journeyStatus: root.querySelector('#messagingJourneyStatus'),
@@ -479,7 +481,24 @@
 
   function renderJourneyDashboard() {
     if (!supportsJourneyCircles()) return;
+
     const dashboard = state.journeyDashboard || {};
+    const recommendationCount = Array.isArray(dashboard.recommendations)
+      ? dashboard.recommendations.length
+      : 0;
+
+    [
+      elements.journeyRecommendationBadge,
+      elements.journeyTitleBadge
+    ].forEach(badge => {
+      if (!badge) return;
+
+      badge.textContent = String(recommendationCount);
+      badge.setAttribute(
+        'aria-label',
+        `${recommendationCount} Journey Circles recommendation${recommendationCount === 1 ? '' : 's'}`
+      );
+    });
     const profile = dashboard.profile || null;
     const preferences = dashboard.preferences || {};
     const privacy = journeyFormField('PrivacyChoices');
@@ -1233,6 +1252,15 @@
   elements.close.addEventListener('click', closeCommandCenter);
   elements.journeyOpen?.addEventListener('click', () => openJourneyCircles());
   elements.journeyBack?.addEventListener('click', closeJourneyCircles);
+
+  if (supportsJourneyCircles()) {
+    loadJourneyDashboard().catch(error => {
+      console.error(
+        'Journey Circles recommendation count failed to load.',
+        error
+      );
+    });
+  }
   elements.journeyProfileForm?.addEventListener('click', event => {
     const choice = event.target.closest('[data-journey-privacy-choice]');
     if (!(choice instanceof HTMLButtonElement)) return;
