@@ -720,50 +720,62 @@ internal sealed class MessagingService : IMessagingService
     {
         var actorUserId = NormalizeRequired(actor.UserId);
         var actorParticipantType = NormalizeRequired(actor.ParticipantType);
-        return _db.MessageConversations.Where(conversation =>
+        var participantConversations = _db.MessageConversations.Where(conversation =>
             conversation.Participants.Any(participant =>
                 participant.IsActive &&
                 participant.UserId.ToLower() == actorUserId &&
-                participant.ParticipantType == actorParticipantType) &&
-            (
-                (conversation.ConversationType == MessagingConversationTypes.AgentDirect &&
-                 conversation.Participants.All(participant =>
-                     participant.ParticipantType == MessagingParticipantTypes.Agent &&
-                     participant.IsActive &&
-                     _db.AgentProfiles.Any(profile =>
-                         profile.IsActive && profile.AgentUserId.ToLower() == participant.UserId.ToLower()))) ||
-                (conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
-                 conversation.Participants.Where(participant =>
-                         participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client)
-                     .Any(client => conversation.Participants.Where(participant =>
-                             participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Agent)
-                         .Any(agent =>
-                             _db.AgentClients.Any(link =>
-                                 link.ClientUserId.ToLower() == client.UserId.ToLower() &&
-                                 link.AgentUserId.ToLower() == agent.UserId.ToLower()) ||
-                             _db.ClientAgentMessagingGrants.Any(grant =>
-                                 grant.IsActive &&
-                                 grant.ClientUserId.ToLower() == client.UserId.ToLower() &&
-                                 grant.AgentUserId.ToLower() == agent.UserId.ToLower()))))
-                ||
-                (conversation.ConversationType == MessagingConversationTypes.ClientJourney &&
-                 conversation.Participants.Count(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client) == 2 &&
-                 conversation.Participants.Where(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client)
-                     .All(participant => _db.JourneyCircleProfiles.Any(profile =>
-                         profile.IsOptedIn && profile.CommunityAccessState == "Active" &&
-                         profile.ClientProfile.ClientUserId.ToLower() == participant.UserId.ToLower())) &&
-                 _db.JourneyCircleConnections.Any(connection =>
-                     connection.Status == JourneyCircleConnectionStatuses.Accepted &&
-                     _db.ClientProfiles.Any(profile => profile.Id == connection.RequesterClientProfileId &&
-                         conversation.Participants.Any(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client && participant.UserId.ToLower() == profile.ClientUserId.ToLower())) &&
-                     _db.ClientProfiles.Any(profile => profile.Id == connection.RecipientClientProfileId &&
-                         conversation.Participants.Any(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client && participant.UserId.ToLower() == profile.ClientUserId.ToLower()))) &&
-                 !_db.JourneyCircleBlocks.Any(block =>
-                     _db.ClientProfiles.Any(profile => profile.Id == block.BlockerClientProfileId &&
-                         conversation.Participants.Any(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client && participant.UserId.ToLower() == profile.ClientUserId.ToLower())) &&
-                     _db.ClientProfiles.Any(profile => profile.Id == block.BlockedClientProfileId &&
-                         conversation.Participants.Any(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client && participant.UserId.ToLower() == profile.ClientUserId.ToLower()))))
-            ));
+                participant.ParticipantType == actorParticipantType));
+
+        var journeyConversations = participantConversations.Where(conversation =>
+            conversation.ConversationType == MessagingConversationTypes.ClientJourney &&
+            conversation.Participants.Count(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client) == 2 &&
+            conversation.Participants.Where(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client)
+                .All(participant => _db.JourneyCircleProfiles.Any(profile =>
+                    profile.IsOptedIn && profile.CommunityAccessState == "Active" &&
+                    profile.ClientProfile.ClientUserId.ToLower() == participant.UserId.ToLower())) &&
+            _db.JourneyCircleConnections.Any(connection =>
+                connection.Status == JourneyCircleConnectionStatuses.Accepted &&
+                _db.ClientProfiles.Any(profile => profile.Id == connection.RequesterClientProfileId &&
+                    conversation.Participants.Any(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client && participant.UserId.ToLower() == profile.ClientUserId.ToLower())) &&
+                _db.ClientProfiles.Any(profile => profile.Id == connection.RecipientClientProfileId &&
+                    conversation.Participants.Any(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client && participant.UserId.ToLower() == profile.ClientUserId.ToLower()))) &&
+            !_db.JourneyCircleBlocks.Any(block =>
+                _db.ClientProfiles.Any(profile => profile.Id == block.BlockerClientProfileId &&
+                    conversation.Participants.Any(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client && participant.UserId.ToLower() == profile.ClientUserId.ToLower())) &&
+                _db.ClientProfiles.Any(profile => profile.Id == block.BlockedClientProfileId &&
+                    conversation.Participants.Any(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client && participant.UserId.ToLower() == profile.ClientUserId.ToLower()))));
+
+        if (actorParticipantType == MessagingParticipantTypes.Agent)
+        {
+            var authorizedClientIds = AuthorizedClientIdsForAgentQuery(actorUserId);
+            var agentDirectConversations = participantConversations.Where(conversation =>
+                conversation.ConversationType == MessagingConversationTypes.AgentDirect &&
+                conversation.Participants.All(participant =>
+                    participant.ParticipantType == MessagingParticipantTypes.Agent &&
+                    participant.IsActive &&
+                    _db.AgentProfiles.Any(profile =>
+                        profile.IsActive && profile.AgentUserId.ToLower() == participant.UserId.ToLower())));
+            var clientAgentConversations = participantConversations.Where(conversation =>
+                conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
+                conversation.Participants.Where(participant =>
+                        participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client)
+                    .Any(client => authorizedClientIds.Contains(client.UserId.ToLower())));
+            return agentDirectConversations.Union(clientAgentConversations).Union(journeyConversations);
+        }
+
+        if (actorParticipantType == MessagingParticipantTypes.Client)
+        {
+            var authorizedAgentIds = AuthorizedAgentProfilesForClientQuery(actorUserId)
+                .Select(profile => profile.AgentUserId.ToLower());
+            var clientAgentConversations = participantConversations.Where(conversation =>
+                conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
+                conversation.Participants.Where(participant =>
+                        participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Agent)
+                    .Any(agent => authorizedAgentIds.Contains(agent.UserId.ToLower())));
+            return clientAgentConversations.Union(journeyConversations);
+        }
+
+        return participantConversations.Where(_ => false);
     }
 
     private async Task<MessageConversationParticipant?> FindAuthorizedParticipantAsync(
@@ -967,13 +979,7 @@ internal sealed class MessagingService : IMessagingService
             .Select(x => new RecipientAgentRow(x.AgentUserId, x.FullName, x.AgentUpn))
             .ToListAsync(cancellationToken);
 
-        var linkedClientIds = await _db.AgentClients.AsNoTracking()
-            .Where(x => x.AgentUserId.ToLower() == agentUserId)
-            .Select(x => x.ClientUserId.ToLower())
-            .Union(_db.ClientAgentMessagingGrants.AsNoTracking()
-                .Where(x => x.IsActive && x.AgentUserId.ToLower() == agentUserId)
-                .Select(x => x.ClientUserId.ToLower()))
-            .Distinct()
+        var linkedClientIds = await AuthorizedClientIdsForAgentQuery(agentUserId)
             .ToListAsync(cancellationToken);
         var clientRows = await _db.ClientProfiles.AsNoTracking()
             .Where(x => linkedClientIds.Contains(x.ClientUserId.ToLower()))
@@ -1000,17 +1006,7 @@ internal sealed class MessagingService : IMessagingService
         string clientUserId,
         CancellationToken cancellationToken)
     {
-        var agentIds = await _db.AgentClients.AsNoTracking()
-            .Where(x => x.ClientUserId.ToLower() == clientUserId)
-            .Select(x => x.AgentUserId.ToLower())
-            .Union(_db.ClientAgentMessagingGrants.AsNoTracking()
-                .Where(x => x.IsActive && x.ClientUserId.ToLower() == clientUserId)
-                .Select(x => x.AgentUserId.ToLower()))
-            .Distinct()
-            .ToListAsync(cancellationToken);
-
-        var agentRows = await _db.AgentProfiles.AsNoTracking()
-            .Where(x => x.IsActive && agentIds.Contains(x.AgentUserId.ToLower()))
+        var agentRows = await AuthorizedAgentProfilesForClientQuery(clientUserId)
             .Where(x => !_db.AgentAssistants.Any(assistant =>
                 assistant.AssistantUserId != null &&
                 assistant.AssistantUserId.ToLower() == x.AgentUserId.ToLower()))
@@ -1033,17 +1029,75 @@ internal sealed class MessagingService : IMessagingService
         string agentUserId,
         CancellationToken cancellationToken)
     {
-        var linked = await _db.AgentClients.AsNoTracking().AnyAsync(
-            link => link.ClientUserId.ToLower() == clientUserId && link.AgentUserId.ToLower() == agentUserId,
-            cancellationToken);
+        var linked = await PrimaryClientAgentLinks(clientUserId, agentUserId).AnyAsync(cancellationToken);
         if (linked)
             return true;
 
-        return await _db.ClientAgentMessagingGrants.AsNoTracking().AnyAsync(
-            grant => grant.IsActive &&
-                     grant.ClientUserId.ToLower() == clientUserId &&
-                     grant.AgentUserId.ToLower() == agentUserId,
-            cancellationToken);
+        return await ActiveMessagingGrants(clientUserId, agentUserId).AnyAsync(cancellationToken);
+    }
+
+    private IQueryable<AgentClient> PrimaryClientAgentLinks(string clientUserId, string agentUserId)
+    {
+        var clientKey = NormalizeUserId(clientUserId);
+        var agentKey = NormalizeUserId(agentUserId);
+        return _db.AgentClients.AsNoTracking().Where(link =>
+            link.ClientUserId.ToLower() == clientKey &&
+            (link.AgentUserId.ToLower() == agentKey ||
+             (!string.IsNullOrWhiteSpace(link.AgentUpn) && _db.AgentProfiles.Any(profile =>
+                 profile.IsActive &&
+                 profile.AgentUserId.ToLower() == agentKey &&
+                 profile.AgentUpn.ToLower() == link.AgentUpn.ToLower()))));
+    }
+
+    private IQueryable<AgentClient> PrimaryClientAgentLinksForAgent(string agentUserId)
+    {
+        var agentKey = NormalizeUserId(agentUserId);
+        return _db.AgentClients.AsNoTracking().Where(link =>
+            link.AgentUserId.ToLower() == agentKey ||
+            (!string.IsNullOrWhiteSpace(link.AgentUpn) && _db.AgentProfiles.Any(profile =>
+                profile.IsActive &&
+                profile.AgentUserId.ToLower() == agentKey &&
+                profile.AgentUpn.ToLower() == link.AgentUpn.ToLower())));
+    }
+
+    private IQueryable<ClientAgentMessagingGrant> ActiveMessagingGrants(string clientUserId, string agentUserId)
+    {
+        var clientKey = NormalizeUserId(clientUserId);
+        var agentKey = NormalizeUserId(agentUserId);
+        return _db.ClientAgentMessagingGrants.AsNoTracking().Where(grant =>
+            grant.IsActive && grant.ClientUserId.ToLower() == clientKey && grant.AgentUserId.ToLower() == agentKey);
+    }
+
+    private IQueryable<ClientAgentMessagingGrant> ActiveMessagingGrantsForAgent(string agentUserId)
+    {
+        var agentKey = NormalizeUserId(agentUserId);
+        return _db.ClientAgentMessagingGrants.AsNoTracking().Where(grant => grant.IsActive && grant.AgentUserId.ToLower() == agentKey);
+    }
+
+    private IQueryable<string> AuthorizedClientIdsForAgentQuery(string agentUserId) =>
+        PrimaryClientAgentLinksForAgent(agentUserId)
+            .Select(link => link.ClientUserId.ToLower())
+            .Union(ActiveMessagingGrantsForAgent(agentUserId)
+                .Select(grant => grant.ClientUserId.ToLower()))
+            .Distinct();
+
+    private IQueryable<AgentProfile> AuthorizedAgentProfilesForClientQuery(string clientUserId)
+    {
+        var clientKey = NormalizeUserId(clientUserId);
+        var linkedAgentKeys = _db.AgentClients.AsNoTracking()
+            .Where(link => link.ClientUserId.ToLower() == clientKey)
+            .Select(link => link.AgentUserId.ToLower())
+            .Union(_db.AgentClients.AsNoTracking()
+                .Where(link => link.ClientUserId.ToLower() == clientKey && !string.IsNullOrWhiteSpace(link.AgentUpn))
+                .Select(link => link.AgentUpn.ToLower()))
+            .Union(_db.ClientAgentMessagingGrants.AsNoTracking()
+                .Where(grant => grant.IsActive && grant.ClientUserId.ToLower() == clientKey)
+                .Select(grant => grant.AgentUserId.ToLower()));
+
+        return _db.AgentProfiles.AsNoTracking()
+            .Where(profile => profile.IsActive &&
+                (linkedAgentKeys.Contains(profile.AgentUserId.ToLower()) ||
+                 linkedAgentKeys.Contains(profile.AgentUpn.ToLower())));
     }
 
     private async Task<Dictionary<(string UserId, string ParticipantType), string>> LoadDisplayNamesAsync(

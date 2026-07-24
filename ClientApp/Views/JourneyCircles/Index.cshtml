@@ -48,7 +48,7 @@
             <h2>Suggested connections</h2>
             @if (profile is null || !profile.Goals.Any()) { <p class="journey-empty">Complete your voluntary profile to receive privacy-safe suggestions.</p> }
             else if (!Model.Recommendations.Any()) { <p class="journey-empty">No recommendations yet. Your preferences remain private while we look for a meaningful match.</p> }
-            else { <div class="journey-card-list">@foreach (var recommendation in Model.Recommendations) { <article class="journey-member-card"><img src="@recommendation.Profile.AvatarUrl" alt="" onerror="this.remove()" /><div><h3>@recommendation.Profile.DisplayName</h3><p>@recommendation.Explanation</p><p class="journey-muted">@recommendation.Profile.Introduction</p><form asp-action="RequestConnection" method="post">@Html.AntiForgeryToken()<input type="hidden" name="targetClientProfileId" value="@recommendation.Profile.ClientProfileId" /><input name="reason" maxlength="160" placeholder="Connection reason (optional)" /><textarea name="introduction" maxlength="600" placeholder="A respectful introduction (optional)"></textarea><button class="journey-primary" type="submit">Connect</button></form><form asp-action="Block" asp-route-targetClientProfileId="@recommendation.Profile.ClientProfileId" method="post">@Html.AntiForgeryToken()<button class="journey-link" type="submit">Block</button></form></div></article> }</div> }
+            else { <div class="journey-card-list">@foreach (var recommendation in Model.Recommendations) { <article class="journey-member-card"><span class="journey-avatar"><span>@Initials(recommendation.Profile.DisplayName)</span><img src="@recommendation.Profile.AvatarUrl" alt="" onerror="this.remove()" /></span><div><h3>@recommendation.Profile.DisplayName</h3><p>@recommendation.Explanation</p><p class="journey-muted">@recommendation.Profile.Introduction</p><form asp-action="RequestConnection" method="post">@Html.AntiForgeryToken()<input type="hidden" name="targetClientProfileId" value="@recommendation.Profile.ClientProfileId" /><input name="reason" maxlength="160" placeholder="Connection reason (optional)" /><textarea name="introduction" maxlength="600" placeholder="A respectful introduction (optional)"></textarea><button class="journey-primary" type="submit">Connect</button></form><form asp-action="Block" asp-route-targetClientProfileId="@recommendation.Profile.ClientProfileId" method="post">@Html.AntiForgeryToken()<button class="journey-link" type="submit">Block</button></form></div></article> }</div> }
         </section>
     </div>
 
@@ -60,3 +60,7 @@
         </div>
     </section>
 </section>
+
+@functions {
+    private static string Initials(string? name) => string.Concat((name ?? "Journey member").Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(x => char.ToUpperInvariant(x[0])));
+}

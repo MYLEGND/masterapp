@@ -5,6 +5,7 @@
      class="messaging-command-center-modal"
      data-messaging-command-center
      data-current-user-id="@Model.CurrentUserId"
+     data-messaging-compose-prompt="@Model.ComposePrompt"
      aria-hidden="true"
      hidden>
     <section class="messaging-command-center-window"
@@ -49,11 +50,11 @@
 
         <div class="messaging-command-center-grid">
             <aside class="messaging-command-center-sidebar" aria-label="Conversations">
-                <label class="visually-hidden" for="messagingUniversalSearch">Search clients or agents</label>
+                <label class="visually-hidden" for="messagingUniversalSearch">@Model.SearchPlaceholder</label>
                 <input id="messagingUniversalSearch"
                        class="messaging-command-center-search"
                        type="search"
-                       placeholder="Search clients or agents..."
+                       placeholder="@Model.SearchPlaceholder"
                        autocomplete="off" />
                 <div class="messaging-command-center-search-results" id="messagingSearchResults" hidden></div>
                 <div class="messaging-conversation-list" id="messagingConversationList"></div>
@@ -61,8 +62,8 @@
 
             <main class="messaging-command-center-thread" aria-live="polite">
                 <div class="messaging-thread-empty" id="messagingThreadEmpty">
-                    <h3>Search to start a conversation</h3>
-                    <p>Find an authorized client or agent, or choose a recent conversation.</p>
+                    <h3>Choose an authorized contact</h3>
+                    <p>@Model.ComposePrompt</p>
                 </div>
 
                 <div id="messagingThreadContent" hidden>
@@ -84,7 +85,7 @@
                 </div>
 
                 <form id="messagingSendForm" class="messaging-send-form" enctype="multipart/form-data">
-                    <div class="messaging-compose-target" id="messagingComposeTarget">Search clients or agents to begin.</div>
+                    <div class="messaging-compose-target" id="messagingComposeTarget">@Model.ComposePrompt</div>
                     <label class="visually-hidden" for="messagingMessageBody">Write a message</label>
                     <textarea id="messagingMessageBody"
                               rows="3"

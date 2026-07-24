@@ -703,7 +703,10 @@
 
 @if (!isAssistant && !isOnboardingPublic && !string.IsNullOrWhiteSpace(messagingActorId))
 {
-    @await Html.PartialAsync("~/Views/Messaging/_CommandCenter.cshtml", new MessagingCommandCenterViewModel(messagingActorId))
+    @await Html.PartialAsync("~/Views/Messaging/_CommandCenter.cshtml", new MessagingCommandCenterViewModel(
+        messagingActorId,
+        SearchPlaceholder: "Search company agents or your authorized clients...",
+        ComposePrompt: "Choose a company agent or a client you are authorized to serve."))
 }
 
 @* ===== EXPLORE TRIGGER + DRAWER (OUTSIDE NAVBAR) ===== *@

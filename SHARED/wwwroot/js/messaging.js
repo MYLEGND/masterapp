@@ -3,6 +3,7 @@
   if (!root) return;
 
   const currentUserId = (root.dataset.currentUserId || '').trim().toLowerCase();
+  const composePrompt = root.dataset.messagingComposePrompt || 'Choose an authorized contact to begin.';
   const storagePrefix = `masterapp.messaging.${currentUserId || 'current'}.`;
   const token = root.querySelector('#messagingAntiForgery input[name="__RequestVerificationToken"]')?.value || '';
   const elements = {
@@ -335,7 +336,7 @@
     elements.files.disabled = !isAvailable;
     elements.sendButton.disabled = !isAvailable;
     elements.fileLabel.classList.toggle('is-disabled', !isAvailable);
-    if (!target) elements.composeTarget.textContent = 'Search clients or agents to begin.';
+    if (!target) elements.composeTarget.textContent = composePrompt;
     else if (isClosed) elements.composeTarget.textContent = 'This conversation is closed.';
     else elements.composeTarget.textContent = `Secure message to ${target.displayName || 'recipient'}.`;
   }

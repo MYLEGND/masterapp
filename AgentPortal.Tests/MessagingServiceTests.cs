@@ -134,6 +134,20 @@ public sealed class MessagingServiceTests
             FullName = "Agent Two",
             IsActive = true
         });
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            ClientUserId = "client-2",
+            ExternalIdentityObjectId = "client-2",
+            FirstName = "Client",
+            LastName = "Two",
+            Email = "client.two@example.test"
+        });
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "agent-2",
+            AgentUpn = "agent.two@mylegnd.com",
+            ClientUserId = "client-2"
+        });
         await db.SaveChangesAsync();
         var service = CreateService(db);
 
@@ -146,6 +160,7 @@ public sealed class MessagingServiceTests
         Assert.Equal("agent-1", clientRecipient.UserId);
         Assert.Contains(agentRecipients.Recipients, x => x.UserId == "client-1");
         Assert.Contains(agentRecipients.Recipients, x => x.UserId == "agent-2");
+        Assert.DoesNotContain(agentRecipients.Recipients, x => x.UserId == "client-2");
     }
 
     [Fact]
@@ -180,6 +195,32 @@ public sealed class MessagingServiceTests
         Assert.Equal("Agent One", participant.Recipient!.DisplayName);
         Assert.False(unauthorized.Succeeded);
         Assert.Equal("MESSAGING_RECIPIENT_NOT_FOUND", unauthorized.ErrorCode);
+    }
+
+    [Fact]
+    public async Task LegacyAgentUpnLink_UsesTheSameAuthorizedRecipientScope()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: false, grantClientToAgent: false);
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "legacy-agent-key",
+            AgentUpn = "agent.one@mylegnd.com",
+            ClientUserId = "client-1"
+        });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var agentRecipients = await service.ListRecipientsAsync(new MessagingActor("agent-1", MessagingParticipantTypes.Agent));
+        var clientRecipients = await service.ListRecipientsAsync(new MessagingActor("client-1", MessagingParticipantTypes.Client));
+
+        Assert.Contains(agentRecipients.Recipients, x => x.UserId == "client-1");
+        Assert.Contains(clientRecipients.Recipients, x => x.UserId == "agent-1");
+        Assert.True((await service.StartConversationAsync(new StartMessagingConversationCommand(
+            new MessagingActor("agent-1", MessagingParticipantTypes.Agent),
+            "client-1",
+            MessagingParticipantTypes.Client,
+            InitialMessageBody: "Authorized through the established client relationship."))).Succeeded);
     }
 
     [Fact]

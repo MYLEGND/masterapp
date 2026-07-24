@@ -1,9 +1,13 @@
 using Microsoft.EntityFrameworkCore.Migrations;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 #nullable disable
 
 namespace Infrastructure.Migrations;
 
+[DbContext(typeof(MasterAppDbContext))]
+[Migration("20260724030000_AddJourneyCircles")]
 public partial class AddJourneyCircles : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
