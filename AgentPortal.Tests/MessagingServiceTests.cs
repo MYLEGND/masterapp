@@ -71,6 +71,37 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task RepeatedDirectConversationStarts_ReuseTheSameConversationKey()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+
+        var first = await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                agent,
+                "client-1",
+                MessagingParticipantTypes.Client,
+                InitialMessageBody: "First message.",
+                ClientMessageId: "first-direct-start"));
+        var repeated = await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                agent,
+                "client-1",
+                MessagingParticipantTypes.Client,
+                InitialMessageBody: "Second message.",
+                ClientMessageId: "repeated-direct-start"));
+
+        Assert.True(first.Succeeded);
+        Assert.True(repeated.Succeeded);
+        Assert.Equal(first.Conversation!.Id, repeated.Conversation!.Id);
+        var stored = Assert.Single(await db.MessageConversations.ToListAsync());
+        Assert.Equal("ClientAgent|agent-1|client-1", stored.DirectConversationKey);
+        Assert.Equal(2, await db.InternalMessages.CountAsync());
+    }
+
+    [Fact]
     public async Task NoAgentClientRelationshipOrGrant_DeniesClientMessaging()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -113,6 +144,40 @@ public sealed class MessagingServiceTests
         Assert.Equal("agent-1", clientRecipient.UserId);
         Assert.Contains(agentRecipients.Recipients, x => x.UserId == "client-1");
         Assert.Contains(agentRecipients.Recipients, x => x.UserId == "agent-2");
+    }
+
+    [Fact]
+    public async Task RecipientSearch_NormalizesWordsAndReturnsOnlyAuthorizedParticipant()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "agent-2",
+            AgentUpn = "other.agent@mylegnd.com",
+            FullName = "Other Agent",
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+
+        var search = await service.ListRecipientsAsync(client, "One, Agent");
+        var participant = await service.GetAuthorizedParticipantAsync(
+            client,
+            "agent-1",
+            MessagingParticipantTypes.Agent);
+        var unauthorized = await service.GetAuthorizedParticipantAsync(
+            client,
+            "agent-2",
+            MessagingParticipantTypes.Agent);
+
+        var recipient = Assert.Single(search.Recipients);
+        Assert.Equal("agent-1", recipient.UserId);
+        Assert.True(participant.Succeeded);
+        Assert.Equal("Agent One", participant.Recipient!.DisplayName);
+        Assert.False(unauthorized.Succeeded);
+        Assert.Equal("MESSAGING_RECIPIENT_NOT_FOUND", unauthorized.ErrorCode);
     }
 
     [Fact]

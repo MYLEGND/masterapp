@@ -4,6 +4,7 @@
 @using System.IO
 @using Microsoft.EntityFrameworkCore
 @using Infrastructure.Data
+@using Shared.Messaging
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @inject MasterAppDbContext _db
@@ -25,6 +26,9 @@
     {
         isAssistant = b;
     }
+    var messagingActorId = Context.Items.TryGetValue("EffectiveAgentOid", out var messagingActorValue)
+        ? messagingActorValue as string ?? ""
+        : "";
     var impersonatedAgentId = Context.Items.TryGetValue("ImpersonatedAgentOid", out var impOid) ? impOid as string : null;
     var impersonatedAgentName = Context.Items.TryGetValue("ImpersonatedAgentName", out var impName) ? impName as string : null;
     var impersonatedAgentEmail = Context.Items.TryGetValue("ImpersonatedAgentEmail", out var impEmail) ? impEmail as string : null;
@@ -59,7 +63,6 @@
     <!-- Bootstrap -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/_content/Shared/css/messaging.css" asp-append-version="true" />
     @if (string.Equals(currentController, "Finance", StringComparison.OrdinalIgnoreCase))
     {
         <link rel="stylesheet" href="~/_content/Shared/css/legend-finance-shared.css" asp-append-version="true" />
@@ -90,334 +93,6 @@
             background: #ffffff;
             color: #151109;
             font-family: 'Inter', sans-serif;
-        }
-
-        .navbar {
-            background: linear-gradient(160deg, var(--legend-navy), var(--legend-navy-deep)) !important;
-            border: 2px solid var(--legend-line-strong) !important;
-            padding: 0.5rem 1.5rem 2rem;
-            display: flex;
-            flex-wrap: wrap;
-            align-items: flex-start;
-            min-height: 110px;
-            max-height: none;
-            position: relative;
-            box-shadow:
-                0 22px 42px rgba(0,0,0,.32),
-                inset 0 0 0 1px rgba(255,255,255,.05);
-            border-radius: 18px;
-            overflow: visible;
-        }
-
-        .navbar-brand.disabled-logo {
-            cursor: default;
-            pointer-events: none;
-        }
-
-        .navbar-brand img {
-            height: auto;
-            max-height: 100px;
-            width: auto;
-            max-width: 100%;
-            display: block;
-            filter: drop-shadow(0 6px 14px rgba(0,0,0,.35));
-        }
-
-        .navbar-brand {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            align-self: center;
-            flex: 0 0 auto;
-            margin: 0;
-        }
-
-        header .navbar .container-fluid {
-            display: grid !important;
-            grid-template-columns: auto minmax(0, 1fr) auto;
-            align-items: center !important;
-            column-gap: 1rem;
-            row-gap: 0.7rem;
-        }
-
-        .nav-toggle {
-            display: none;
-            align-items: center;
-            justify-content: center;
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            border: 1.4px solid rgba(199,153,49,0.55);
-            background: linear-gradient(160deg, #0c1427, #0a1020);
-            box-shadow: 0 10px 18px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.06);
-            cursor: pointer;
-            padding: 0;
-            transition: transform .12s ease, box-shadow .16s ease, background .16s ease;
-        }
-        .nav-toggle:focus-visible { outline: 2px solid var(--legend-gold-bright); outline-offset: 3px; }
-        .nav-toggle:hover { transform: translateY(-1px); box-shadow: 0 12px 22px rgba(0,0,0,.28); }
-        .nav-toggle-bars,
-        .nav-toggle-bars::before,
-        .nav-toggle-bars::after {
-            display: block;
-            width: 20px;
-            height: 2px;
-            background: #f8fafc;
-            border-radius: 4px;
-            position: relative;
-            transition: transform .18s ease, opacity .18s ease;
-        }
-        .nav-toggle-bars::before,
-        .nav-toggle-bars::after {
-            content: "";
-            position: absolute;
-            left: 0;
-        }
-        .nav-toggle-bars::before { top: -6px; }
-        .nav-toggle-bars::after { top: 6px; }
-        .navbar.mobile-open .nav-toggle-bars { transform: rotate(45deg); }
-        .navbar.mobile-open .nav-toggle-bars::before { transform: rotate(-90deg) translateX(-6px); }
-        .navbar.mobile-open .nav-toggle-bars::after { opacity: 0; }
-
-        .navbar-left {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-self: center;
-            min-width: 0;
-            margin-left: 0;
-        }
-
-        .navbar-left .nav-rows-grid {
-            display: grid;
-            row-gap: 0.5rem;
-        }
-
-        .navbar-left .nav-row {
-            display: flex;
-            gap: 0.6rem;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .navbar-left li { list-style: none; }
-
-        .navbar-left .nav-link {
-            font-weight: 800;
-            color: #f8fafc !important;
-            white-space: nowrap;
-            padding: 0.5rem 1.1rem;
-            border-radius: 50px;
-            transition: all 0.25s ease;
-            letter-spacing: 0.35px;
-            border: 1.4px solid rgba(166,128,35,.42);
-            background: transparent;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
-        }
-
-        .navbar-left .nav-link:hover,
-        .navbar-left .nav-link.active {
-            color: var(--legend-gold-bright) !important;
-            background: rgba(166,128,35,0.16);
-            border-color: var(--legend-line-strong);
-            transform: translateY(-2px);
-            box-shadow:
-                0 14px 24px rgba(0,0,0,.28),
-                inset 0 1px 0 rgba(255,255,255,.12);
-        }
-
-        /* =========================
-           RIGHT NAV (HEADER ONLY)
-           ========================= */
-
-        .navbar-right {
-            display: flex;
-            width: auto;
-            min-width: 0;
-            justify-content: flex-end;
-            gap: 0.65rem;
-            align-items: center;
-            align-self: center;
-            margin-left: auto;
-            position: relative;
-            flex-wrap: nowrap;
-            overflow: visible;
-        }
-
-        .navbar-right .nav-link,
-        .navbar-right .btn-link {
-            color: #f8fafc !important;
-            font-weight: 800;
-            transition: all 0.25s ease;
-            white-space: nowrap;
-            padding: .5rem 1.1rem;
-            border-radius: 50px;
-            border: 1.4px solid rgba(166,128,35,.42);
-            background: transparent;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
-        }
-
-        .navbar-right .nav-link:hover,
-        .navbar-right .btn-link:hover {
-            color: var(--legend-gold-bright) !important;
-            background: rgba(166,128,35,0.16);
-            border-color: var(--legend-line-strong);
-            transform: translateY(-2px);
-            box-shadow:
-                0 14px 24px rgba(0,0,0,.28),
-                inset 0 1px 0 rgba(255,255,255,.12);
-        }
-
-        .profile-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            padding: 0.4rem 0.85rem;
-            border-radius: 999px;
-            border: 1.5px solid rgba(166,128,35,.65);
-            background: #0f172a;
-            box-shadow:
-                0 10px 22px rgba(0,0,0,.28),
-                inset 0 1px 0 rgba(255,255,255,.08);
-            text-decoration: none;
-            color: #f8fafc;
-            font-weight: 900;
-            min-width: 150px;
-        }
-
-        .profile-avatar {
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            overflow: hidden;
-            border: 1.5px solid rgba(166,128,35,.45);
-            background: linear-gradient(135deg, #0f172a, #1e293b);
-            display: grid;
-            place-items: center;
-            color: #f8fafc;
-            font-weight: 900;
-            letter-spacing: .5px;
-        }
-
-        .profile-avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-
-        .profile-meta {
-            display: flex;
-            flex-direction: column;
-            line-height: 1.2;
-        }
-        .profile-name { color: #f8fafc; font-weight: 900; }
-        .profile-note { color: #cbd5e1; font-size: 0.8rem; font-weight: 800; }
-        .profile-role-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 0.22rem 0.7rem;
-            border-radius: 999px;
-            background: #0f172a;
-            color: #f8fafc;
-            border: 1.5px solid rgba(166,128,35,.55);
-            font-weight: 800;
-            letter-spacing: .02em;
-            font-size: 0.78rem;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 8px 16px rgba(0,0,0,.18);
-        }
-        .profile-contact-menu a {
-            font-weight: 800;
-            padding: 8px 14px;
-        }
-        .profile-contact-menu .disabled {
-            pointer-events: none;
-            opacity: .55;
-        }
-        .profile-contact-menu {
-            z-index: 9999;
-            background: #0b1529;
-            border: 1.6px solid rgba(199,153,49,.75);
-            border-radius: 12px;
-            box-shadow: 0 16px 40px rgba(0,0,0,0.35);
-        }
-        .profile-contact-menu .dropdown-item {
-            color: #f8fafc;
-            font-weight: 800;
-        }
-        .profile-contact-menu .dropdown-item:hover {
-            background: rgba(166,128,35,0.18);
-            color: #f8fafc;
-        }
-        .profile-contact-menu .dropdown-divider {
-            border-color: rgba(166,128,35,0.45);
-        }
-
-        /* Ensure all header dropdowns (including bootstrap default) keep the navy / gold theme */
-        header .navbar .dropdown-menu {
-            background: #0b1529;
-            border: 1.6px solid rgba(199,153,49,.75);
-            color: #f8fafc;
-            box-shadow: 0 16px 40px rgba(0,0,0,0.35);
-            border-radius: 12px;
-        }
-        header .navbar .dropdown-menu .dropdown-item {
-            color: #f8fafc;
-            font-weight: 800;
-        }
-        header .navbar .dropdown-menu .dropdown-item:hover {
-            background: rgba(166,128,35,0.18);
-            color: #f8fafc;
-        }
-        header .navbar .dropdown-menu .dropdown-divider {
-            border-color: rgba(166,128,35,0.45);
-        }
-
-        .header-psalms {
-            position: absolute;
-            bottom: 0.45rem;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 1.18rem;
-            font-weight: 900;
-            color: var(--legend-gold-bright);
-            letter-spacing: 1.1px;
-            text-align: center;
-            font-family: 'Inter', sans-serif;
-            max-width: calc(100% - 3rem);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            line-height: 1.05;
-            padding: 0.55rem 1.25rem;
-            border-radius: 999px;
-            border: 1.5px solid rgba(166,128,35,.65);
-            background: #0f172a;
-            box-shadow:
-                0 10px 22px rgba(0,0,0,.28),
-                inset 0 1px 0 rgba(255,255,255,.08);
-            z-index: 1200;
-            cursor: pointer;
-            transition: transform .15s ease, box-shadow .18s ease, background .18s ease;
-        }
-
-        .header-psalms:hover,
-        .header-psalms:focus-visible {
-            transform: translateX(-50%) translateY(-1px);
-            box-shadow:
-                0 14px 30px rgba(0,0,0,.32),
-                inset 0 1px 0 rgba(255,255,255,.14);
-            background: #111d33;
-            outline: none;
-        }
-
-        .header-psalms:active {
-            transform: translateX(-50%) translateY(0);
-            box-shadow:
-                0 8px 16px rgba(0,0,0,.28),
-                inset 0 1px 0 rgba(255,255,255,.08);
-            background: #0d172b;
         }
 
         .no-scroll {
@@ -563,34 +238,6 @@
         }
         }
 
-        /* ===== MINI TOOLS (NOW USED IN MAIN CONTENT) ===== */
-        .navbar-mini-tools {
-            border: 1.5px solid rgba(166,128,35,.54);
-            border-radius: 14px;
-            padding: 1rem 1rem;
-            width: 290px;
-            background: #ffffff;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 0;
-            box-shadow:
-                0 16px 30px rgba(64,47,11,.10),
-                inset 0 0 0 1px rgba(255,255,255,.82);
-            position: relative;
-        }
-
-        .navbar-mini-tools img.outlook-link {
-            height: 25px;
-            width: 25px;
-            flex-shrink: 0;
-            transition: transform 0.2s ease;
-        }
-
-        .navbar-mini-tools img.outlook-link:hover {
-            transform: translateY(-2px);
-        }
-
         /* =========================
            EXPLORE (VERTICAL DRAWER)
            ========================= */
@@ -658,12 +305,6 @@
 
         .explore-trigger:hover .explore-bars span{
             background: linear-gradient(90deg, #f8fafc, #efc866);
-        }
-
-        .navbar-left .nav-item-explore{
-            display: flex;
-            align-items: center;
-            flex: 0 0 auto;
         }
 
         /* Drawer shell */
@@ -875,108 +516,17 @@
             background:linear-gradient(180deg, #f8fbeF, #eef5df);
         }
 
-        /* Mobile-friendly */
         @@media (max-width: 576px){
-            .navbar{
-                max-height: none;
-                padding: 14px 14px 12px;
-                border-radius: 16px;
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            header .navbar .container-fluid{
-                display:flex !important;
-                flex-wrap:wrap;
-                align-items:center !important;
-                gap:.5rem;
-            }
-
-            .header-psalms{
-                position: static;
-                transform: none;
-                margin-top: .75rem;
-                width: 100%;
-                text-align: center;
-                font-size: 1.1rem;
-            }
-
-            .nav-toggle { display: inline-flex; }
-
-            .navbar-left .nav-item-explore .explore-trigger{
+            .legend-global-nav .navbar-left .nav-item-explore .explore-trigger{
                 width: 40px;
                 height: 40px;
             }
 
-            .navbar-left,
-            .navbar-right{
+            .mini-tools{
                 width: 100%;
-                margin-top: .65rem;
-                display: none;
-                background: linear-gradient(175deg, #0b1224, #0c142a);
-                border: 1.4px solid rgba(199,153,49,0.55);
-                border-radius: 14px;
-                padding: 8px 10px;
-                box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+                max-width: none;
+                margin: 0;
             }
-            .navbar.mobile-open .navbar-left,
-            .navbar.mobile-open .navbar-right{
-                display: block;
-            }
-
-            .navbar-left .nav-row{
-                flex-direction: column !important;
-                flex-wrap: nowrap;
-                gap: .35rem;
-                padding-bottom: 4px;
-                justify-content: flex-start;
-                width: 100%;
-            }
-
-            .navbar-left .nav-link{
-                padding: 0.55rem 0.95rem;
-                font-size: 0.97rem;
-                width: 100%;
-                border-radius: 12px;
-                background: transparent;
-                border: 1.2px solid rgba(166,128,35,.42);
-                text-align: center;
-            }
-
-            .navbar-nav.nav-row .nav-item{
-                flex: 0 0 auto;
-            }
-
-            .navbar-left .nav-rows-grid{
-                row-gap: 0.35rem;
-            }
-
-            .navbar-right{
-                justify-content: stretch;
-                flex-wrap: wrap;
-                gap: 8px;
-                min-width: 0;
-            }
-
-            .navbar-right .nav-link,
-        .navbar-right .btn-link{
-            width: 100%;
-            text-align: left;
-            justify-content: flex-start;
-        }
-
-        .mini-tools{
-            width: 100%;
-            max-width: none;
-            margin: 0;
-        }
-
-        /* Desktop force layout (ensure hamburger stays hidden and nav is flex) */
-        @@media (min-width: 577px){
-            .nav-toggle{ display: none !important; }
-            .navbar-left{ display: flex !important; }
-            .navbar-right{ display: flex !important; }
-        }
 
             .explore-drawer{
                 top: 154px;
@@ -998,24 +548,6 @@
         /* Lighten heavy shadows on public onboarding to keep scroll smooth */
         .onboarding-public-only .navbar{
             box-shadow: 0 10px 22px rgba(0,0,0,.22);
-        }
-
-        @@media (min-width: 577px) and (max-width: 992px) {
-            header .navbar .container-fluid{
-                display:flex !important;
-                flex-wrap:wrap;
-                align-items:center !important;
-                gap:.75rem;
-            }
-
-            header .navbar .navbar-left{
-                margin-left:0;
-                flex:1 1 520px;
-            }
-
-            header .navbar .navbar-left .nav-row{
-                flex-wrap:wrap;
-            }
         }
 
         .layout-content {
@@ -1040,6 +572,7 @@
         .impersonation-text { font-weight: 800; letter-spacing: 0.02em; }
         .impersonation-text .muted { color: #4b5563; font-weight: 700; margin-left: 6px; }
     </style>
+<link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
 <link rel="stylesheet" href="~/css/qv-booking.css" asp-append-version="true" />
 </head>
 
@@ -1062,7 +595,7 @@
 }
 
 <header>
-    <nav class="navbar navbar-expand-sm navbar-light">
+    <nav class="navbar navbar-expand-sm navbar-light legend-global-nav" data-legend-global-nav>
         <div class="container-fluid d-flex flex-wrap align-items-start justify-content-between">
 
             @if (isOnboardingPublic)
@@ -1084,7 +617,7 @@
                 </a>
             }
 
-            <button class="nav-toggle" id="apNavToggle" aria-label="Toggle navigation" aria-expanded="false">
+            <button class="nav-toggle" id="apNavToggle" data-legend-nav-toggle aria-label="Toggle navigation" aria-expanded="false">
                 <span class="nav-toggle-bars"></span>
             </button>
 
@@ -1122,7 +655,6 @@
                                         Finance
                                     </a>
                                 </li>
-                                <li class="nav-item"><a class="nav-link @Active("Messaging")" asp-controller="Messaging" asp-action="Index">Messages</a></li>
                             }
 
                             @* EXPLORE REMOVED FROM TOP NAV — MOVED TO LEFT VERTICAL DRAWER *@
@@ -1274,6 +806,10 @@
 }
 
                     <a class="nav-link" href="https://shopparfait.com/store" target="_blank">Store</a>
+                    @if (!isAssistant)
+                    {
+                        @await Html.PartialAsync("~/Views/Messaging/_NavButton.cshtml")
+                    }
                     @if (isAssistant)
                     {
                         <a class="nav-link" asp-controller="Assistant" asp-action="Index">Workspace</a>
@@ -1313,6 +849,11 @@
         </div>
     </nav>
 </header>
+
+@if (!isAssistant && !isOnboardingPublic && !string.IsNullOrWhiteSpace(messagingActorId))
+{
+    @await Html.PartialAsync("~/Views/Messaging/_CommandCenter.cshtml", new MessagingCommandCenterViewModel(messagingActorId))
+}
 
 @* ===== EXPLORE TRIGGER + DRAWER (OUTSIDE NAVBAR) ===== *@
 <div id="exploreOverlay" class="explore-overlay" aria-hidden="true"></div>
@@ -2298,45 +1839,8 @@
     }
 </script>
 <script src="~/js/live-sync.js" asp-append-version="true"></script>
+<script src="~/_content/Shared/js/legend-global-navigation.js" asp-append-version="true"></script>
 <script src="~/_content/Shared/js/messaging.js" asp-append-version="true"></script>
-
-<script>
-    (function () {
-        const nav = document.querySelector('.navbar');
-        const toggle = document.getElementById('apNavToggle');
-        const navLeft = document.querySelector('.navbar-left');
-        const navRight = document.querySelector('.navbar-right');
-
-        if (!nav || !toggle) return;
-
-        function closeNav() {
-            nav.classList.remove('mobile-open');
-            toggle.setAttribute('aria-expanded', 'false');
-        }
-
-        toggle.addEventListener('click', function () {
-            const isOpen = nav.classList.toggle('mobile-open');
-            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        });
-
-        [navLeft, navRight].forEach(group => {
-            if (!group) return;
-            group.querySelectorAll('a, button').forEach(el => {
-                el.addEventListener('click', () => closeNav());
-            });
-        });
-
-        document.addEventListener('click', function (e) {
-            if (!nav.classList.contains('mobile-open')) return;
-            if (nav.contains(e.target) || e.target === toggle) return;
-            closeNav();
-        });
-
-        window.addEventListener('resize', function () {
-            if (window.innerWidth > 840) closeNav();
-        });
-    }());
-</script>
 
 <script>
     (function () {

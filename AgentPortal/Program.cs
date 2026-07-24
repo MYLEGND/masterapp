@@ -61,7 +61,7 @@ builder.Services
         options.Filters.Add<AgentTrackingProvisioningFilter>();
     })
     .AddMicrosoftIdentityUI()
-    .AddApplicationPart(typeof(MessagingWorkspaceViewModel).Assembly);
+    .AddApplicationPart(typeof(MessagingHub).Assembly);
 
 // ✅ REQUIRED: Identity UI endpoints are Razor Pages
 builder.Services.AddRazorPages().AddMicrosoftIdentityUI();

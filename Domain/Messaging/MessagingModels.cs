@@ -95,6 +95,16 @@ public sealed record MessagingRecipientListResult(
         new(false, errorCode, errorMessage, Array.Empty<MessagingRecipientSummary>());
 }
 
+public sealed record MessagingRecipientResult(
+    bool Succeeded,
+    string? ErrorCode,
+    string? ErrorMessage,
+    MessagingRecipientSummary? Recipient)
+{
+    public static MessagingRecipientResult Failure(string errorCode, string errorMessage) =>
+        new(false, errorCode, errorMessage, null);
+}
+
 public sealed record MessagingConversationResult(
     bool Succeeded,
     string? ErrorCode,

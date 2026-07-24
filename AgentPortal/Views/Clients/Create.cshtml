@@ -15,10 +15,6 @@
     var blocked = emailErrors != null && emailErrors.Any(e => (e.ErrorMessage ?? "").Contains("BLOCKED", StringComparison.OrdinalIgnoreCase));
 }
 
-@section Styles {
-    <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
-}
-
 <main class="dashboard-page-shell client-create-page">
     <div class="client-create-shell">
     <div class="client-create-panel">

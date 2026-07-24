@@ -1,0 +1,104 @@
+@using Shared.Messaging
+@model MessagingCommandCenterViewModel
+
+<div id="messagingCommandCenter"
+     class="messaging-command-center-modal"
+     data-messaging-command-center
+     data-current-user-id="@Model.CurrentUserId"
+     aria-hidden="true"
+     hidden>
+    <section class="messaging-command-center-window"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="messagingCommandCenterTitle"
+             tabindex="-1">
+        <form id="messagingAntiForgery" class="visually-hidden">@Html.AntiForgeryToken()</form>
+
+        <header class="messaging-command-center-header">
+            <div>
+                <p class="messaging-command-center-kicker">Secure communication</p>
+                <h2 id="messagingCommandCenterTitle">Messages</h2>
+                @if (!string.IsNullOrWhiteSpace(Model.ServiceContactName) ||
+                     !string.IsNullOrWhiteSpace(Model.ServiceContactPhone) ||
+                     !string.IsNullOrWhiteSpace(Model.ServiceContactEmail))
+                {
+                    <div class="messaging-service-contact" aria-label="Your servicing agent contact details">
+                        <span>Your servicing agent</span>
+                        @if (!string.IsNullOrWhiteSpace(Model.ServiceContactName))
+                        {
+                            <strong>@Model.ServiceContactName</strong>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Model.ServiceContactPhone))
+                        {
+                            <a href="tel:@Model.ServiceContactPhone">@Model.ServiceContactPhone</a>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(Model.ServiceContactEmail))
+                        {
+                            <a href="mailto:@Model.ServiceContactEmail">@Model.ServiceContactEmail</a>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="messaging-command-center-header-actions">
+                <span class="messaging-command-center-unread" id="messagingCommandCenterUnread" hidden></span>
+                <button type="button" class="messaging-command-center-close" id="messagingCommandCenterClose" aria-label="Close Messages">×</button>
+            </div>
+        </header>
+
+        <div class="messaging-error" id="messagingError" role="alert" hidden></div>
+
+        <div class="messaging-command-center-grid">
+            <aside class="messaging-command-center-sidebar" aria-label="Conversations">
+                <label class="visually-hidden" for="messagingUniversalSearch">Search clients or agents</label>
+                <input id="messagingUniversalSearch"
+                       class="messaging-command-center-search"
+                       type="search"
+                       placeholder="Search clients or agents..."
+                       autocomplete="off" />
+                <div class="messaging-command-center-search-results" id="messagingSearchResults" hidden></div>
+                <div class="messaging-conversation-list" id="messagingConversationList"></div>
+            </aside>
+
+            <main class="messaging-command-center-thread" aria-live="polite">
+                <div class="messaging-thread-empty" id="messagingThreadEmpty">
+                    <h3>Search to start a conversation</h3>
+                    <p>Find an authorized client or agent, or choose a recent conversation.</p>
+                </div>
+
+                <div id="messagingThreadContent" hidden>
+                    <header class="messaging-thread-header">
+                        <div class="messaging-thread-identity">
+                            <span id="messagingThreadAvatar"></span>
+                            <div>
+                                <h3 id="messagingThreadTitle"></h3>
+                                <p id="messagingThreadSubject"></p>
+                            </div>
+                        </div>
+                        <div class="messaging-thread-actions">
+                            <button type="button" class="messaging-text-button" id="messagingMuteConversation">Mute</button>
+                            <button type="button" class="messaging-text-button" id="messagingCloseConversation">Close</button>
+                        </div>
+                    </header>
+                    <div class="messaging-messages" id="messagingMessages"></div>
+                    <button type="button" class="messaging-new-messages" id="messagingNewMessages" hidden>New messages</button>
+                </div>
+
+                <form id="messagingSendForm" class="messaging-send-form" enctype="multipart/form-data">
+                    <div class="messaging-compose-target" id="messagingComposeTarget">Search clients or agents to begin.</div>
+                    <label class="visually-hidden" for="messagingMessageBody">Write a message</label>
+                    <textarea id="messagingMessageBody"
+                              rows="3"
+                              maxlength="10000"
+                              placeholder="Write a message"
+                              disabled></textarea>
+                    <div class="messaging-send-actions">
+                        <label class="messaging-file-label" for="messagingFiles">Attach files</label>
+                        <input id="messagingFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.txt,.doc,.docx,.xls,.xlsx" disabled />
+                        <button type="submit" class="messaging-primary-button" id="messagingSendButton" disabled>Send</button>
+                    </div>
+                    <p class="messaging-attachment-note">Attachments remain unavailable until malware scanning marks them clean.</p>
+                </form>
+            </main>
+        </div>
+    </section>
+</div>

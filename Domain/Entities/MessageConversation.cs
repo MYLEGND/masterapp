@@ -6,6 +6,8 @@ public class MessageConversation
 
     public string ConversationType { get; set; } = string.Empty;
 
+    public string? DirectConversationKey { get; set; }
+
     public string? Subject { get; set; }
 
     public DateTime CreatedUtc { get; set; }

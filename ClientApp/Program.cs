@@ -35,7 +35,7 @@ builder.Services.AddControllersWithViews(options =>
     options.Filters.Add(new AuthorizeFilter(policy));
     options.Filters.AddService<ClientSubscriptionAuthorizeFilter>();
 })
-    .AddApplicationPart(typeof(MessagingWorkspaceViewModel).Assembly);
+    .AddApplicationPart(typeof(MessagingHub).Assembly);
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMasterAppBilling(builder.Configuration);

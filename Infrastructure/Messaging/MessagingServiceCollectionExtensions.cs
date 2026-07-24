@@ -14,6 +14,7 @@ public static class MessagingServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configuration);
 
         services.AddScoped<IMessagingService, MessagingService>();
+        services.AddScoped<IMessagingProfileImageResolver, MessagingProfileImageResolver>();
         services.AddSingleton<IMessageAttachmentStorage, MessagingAttachmentStorage>();
         services.AddSingleton<IMessagingRealtimePublisher, MessagingRealtimePublisher>();
         services.AddHostedService<MessagingRealtimeNotificationHostedService>();

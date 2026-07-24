@@ -3387,6 +3387,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(450)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DirectConversationKey")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");
 
@@ -3413,6 +3417,10 @@ namespace Infrastructure.Migrations
                     b.HasIndex("IsClosed");
 
                     b.HasIndex("LastMessageUtc");
+
+                    b.HasIndex("DirectConversationKey")
+                        .IsUnique()
+                        .HasFilter("\"DirectConversationKey\" IS NOT NULL");
 
                     b.ToTable("MessageConversations", (string)null);
                 });

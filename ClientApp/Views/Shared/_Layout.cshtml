@@ -4,6 +4,7 @@
 @using System.Text.Json
 @using Domain.Entities
 @using System.IO
+@using Shared.Messaging
 @inject IHttpContextAccessor HttpContextAccessor
 @inject ClientApp.Services.EffectiveClientContextService ClientContextService
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
@@ -16,6 +17,20 @@
         string.Equals(layoutController, "Home", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(layoutController, "Profile", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(layoutController, "Dashboard", StringComparison.OrdinalIgnoreCase);
+    var messagingClientContext = ClientContextService.ResolveAsync(User, Context.Request.Cookies).GetAwaiter().GetResult();
+    var messagingActorId = messagingClientContext is { IsAgentView: false } &&
+        !string.IsNullOrWhiteSpace(messagingClientContext.ClientUserId)
+            ? messagingClientContext.ClientUserId.Trim()
+            : "";
+    var messagingServiceContactName = messagingClientContext is { IsAgentView: false }
+        ? messagingClientContext.AgentDisplayName?.Trim()
+        : null;
+    var messagingServiceContactPhone = messagingClientContext is { IsAgentView: false }
+        ? messagingClientContext.AgentPhone?.Trim()
+        : null;
+    var messagingServiceContactEmail = messagingClientContext is { IsAgentView: false }
+        ? messagingClientContext.AgentEmail?.Trim()
+        : null;
 }
 <html lang="en">
 <head>
@@ -27,7 +42,7 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css?v=20260528-royal2" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/layout-inline.css?v=20260528-royal2" asp-append-version="true" />
-    <link rel="stylesheet" href="~/_content/Shared/css/messaging.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/LegendCorePlatform.styles.css" asp-append-version="true" />
     @if (loadSharedFinanceStyles)
     {
@@ -43,12 +58,16 @@
 <body class="d-flex flex-column min-vh-100@(loadSharedFinanceStyles ? " finance-page" : "")@(usesSharedDashboardHost ? " dashboard-shared-host" : "")">
 
 <header>
-    <nav class="navbar navbar-expand-sm navbar-dark">
+    <nav class="navbar navbar-expand-sm navbar-dark legend-global-nav" data-legend-global-nav>
         <div class="container-fluid d-flex flex-wrap align-items-start justify-content-between">
 
             <a class="navbar-brand" asp-controller="Home" asp-action="Index">
                 <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
             </a>
+
+            <button class="nav-toggle" id="clientNavToggle" data-legend-nav-toggle aria-label="Toggle navigation" aria-expanded="false">
+                <span class="nav-toggle-bars"></span>
+            </button>
 
             <div class="navbar-left">
                 <div class="nav-rows-grid">
@@ -60,7 +79,7 @@
                         }
 
                         @{
-                            var ctx = ClientContextService.ResolveAsync(User, Context.Request.Cookies).GetAwaiter().GetResult();
+                            var ctx = messagingClientContext;
                             bool isBusinessClient = false;
                             string managedClientName = "Client";
                             var currentReturnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
@@ -93,14 +112,8 @@
                             </button>
                         </li>
 
-                        <li class="nav-item nav-item-mobile-toggle">
-                            <button class="nav-toggle" id="clientNavToggle" aria-label="Toggle navigation" aria-expanded="false">
-                                <span class="nav-toggle-bars"></span>
-                            </button>
-                        </li>
                         <li class="nav-item"><a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a></li>
                         <li class="nav-item"><a class="nav-link @Active("Finance")" asp-controller="Finance" asp-action="Index">Finance</a></li>
-                        <li class="nav-item"><a class="nav-link @Active("Messaging")" asp-controller="Messaging" asp-action="Index">Messages</a></li>
                         <li class="nav-item"><a class="nav-link" href="https://protect.mylegnd.com/Quote" target="_blank" rel="noopener">Insurance Quote</a></li>
                     </ul>
                     @if (isAgentView)
@@ -126,12 +139,6 @@
             @{
                     var user = HttpContextAccessor.HttpContext?.User;
                     var isAuthenticated = user?.Identity?.IsAuthenticated == true;
-                    var clientContext = ctx; // from earlier resolution
-                    var agentPillName = string.IsNullOrWhiteSpace(clientContext?.AgentDisplayName)
-                        ? "Your Agent"
-                        : clientContext.AgentDisplayName;
-                    var agentPillNpn = clientContext?.AgentNpn;
-                    var showAgentPill = isAuthenticated && clientContext != null && (!string.IsNullOrWhiteSpace(agentPillName) || !string.IsNullOrWhiteSpace(agentPillNpn));
                     string? CleanToken(string? s)
                     {
                         if (string.IsNullOrWhiteSpace(s)) return null;
@@ -200,41 +207,12 @@
                     }
                 }
 
-                @if (showAgentPill)
+                <a class="nav-link" href="https://www.mylegnd.com/store" target="_blank">Store</a>
+                @if (!isAgentView && !string.IsNullOrWhiteSpace(messagingActorId))
                 {
-                    var agentPhone = clientContext?.AgentPhone;
-                    var agentEmail = clientContext?.AgentEmail;
-                    <div class="dropdown agent-pill-shell" aria-label="Assigned agent">
-                        <button class="agent-pill-chip dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <span class="agent-name">@agentPillName</span>
-                            @if (!string.IsNullOrWhiteSpace(agentPillNpn))
-                            {
-                                <span class="npn-chip"><span class="npn-label">NPN</span><span class="npn-value">@agentPillNpn</span></span>
-                            }
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end agent-pill-menu">
-                            @if (!string.IsNullOrWhiteSpace(agentPhone))
-                            {
-                                <li><a class="dropdown-item" href="tel:@agentPhone">Call @agentPhone</a></li>
-                                <li><a class="dropdown-item" href="sms:@agentPhone">Text @agentPhone</a></li>
-                            }
-                            else
-                            {
-                                <li><span class="dropdown-item disabled">No phone on file</span></li>
-                            }
-                            @if (!string.IsNullOrWhiteSpace(agentEmail))
-                            {
-                                <li><a class="dropdown-item" href="mailto:@agentEmail">Email @agentEmail</a></li>
-                            }
-                            else
-                            {
-                                <li><span class="dropdown-item disabled">No email on file</span></li>
-                            }
-                        </ul>
-                    </div>
+                    @await Html.PartialAsync("~/Views/Messaging/_NavButton.cshtml")
                 }
 
-                <a class="nav-link" href="https://www.mylegnd.com/store" target="_blank">Store</a>
                 @if (isAuthenticated)
                 {
                     <div class="dropdown">
@@ -271,6 +249,17 @@
         </div>
     </nav>
 </header>
+
+@if (!string.IsNullOrWhiteSpace(messagingActorId))
+{
+    @await Html.PartialAsync(
+        "~/Views/Messaging/_CommandCenter.cshtml",
+        new MessagingCommandCenterViewModel(
+            messagingActorId,
+            messagingServiceContactName,
+            messagingServiceContactPhone,
+            messagingServiceContactEmail))
+}
 
 <div id="exploreOverlay" class="explore-overlay" aria-hidden="true"></div>
 
@@ -429,66 +418,6 @@
         safeRun(() => sessionStorage.setItem(sessionClientKey, clientProfileId));
         deleteCookie(launchCookieName);
     })();
-</script>
-<script>
-    (function () {
-        const nav = document.querySelector('.navbar');
-        const toggle = document.getElementById('clientNavToggle');
-        const navLeft = document.querySelector('.navbar-left');
-        const navRight = document.querySelector('.navbar-right');
-
-        if (!nav || !toggle) return;
-
-        function closeNav() {
-            nav.classList.remove('mobile-open');
-            toggle.setAttribute('aria-expanded', 'false');
-            // defensive: ensure nav blocks stay hidden when closed on mobile
-            if (window.innerWidth <= 840) {
-                if (navLeft) navLeft.style.display = 'none';
-                if (navRight) navRight.style.display = 'none';
-            } else {
-                if (navLeft) navLeft.style.display = '';
-                if (navRight) navRight.style.display = '';
-            }
-
-            const drawer = document.getElementById('exploreDrawer');
-            const overlay = document.getElementById('exploreOverlay');
-            const trigger = document.getElementById('exploreTrigger');
-            if (drawer) drawer.classList.remove('open');
-            if (overlay) overlay.classList.remove('open');
-            if (trigger) trigger.setAttribute('aria-expanded', 'false');
-        }
-
-        toggle.addEventListener('click', function () {
-            const isOpen = nav.classList.toggle('mobile-open');
-            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-            if (window.innerWidth <= 840) {
-                if (navLeft) navLeft.style.display = isOpen ? 'block' : 'none';
-                if (navRight) navRight.style.display = isOpen ? 'block' : 'none';
-            }
-        });
-
-        [navLeft, navRight].forEach(group => {
-            if (!group) return;
-            group.querySelectorAll('a, button:not([data-bs-toggle])').forEach(el => {
-                el.addEventListener('click', () => closeNav());
-            });
-        });
-
-        document.addEventListener('click', function (e) {
-            if (!nav.classList.contains('mobile-open')) return;
-            if (nav.contains(e.target) || e.target === toggle) return;
-            if (e.target.closest('#exploreTrigger, #psalmsModal, .scripture-card')) return;
-            closeNav();
-        });
-
-        window.addEventListener('resize', function () {
-            if (window.innerWidth > 840) closeNav();
-        });
-
-        // On first load: ensure closed state on mobile
-        closeNav();
-    }());
 </script>
 <script>
     (function () {
@@ -693,7 +622,7 @@
         });
     })();
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.5/signalr.min.js" crossorigin="anonymous"></script>
+<script src="~/_content/Shared/js/legend-global-navigation.js" asp-append-version="true"></script>
 <script src="~/_content/Shared/js/messaging.js" asp-append-version="true"></script>
 @await RenderSectionAsync("Scripts", required:false)
 </body>

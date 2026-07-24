@@ -30,6 +30,22 @@ internal static class MessagingModelConfiguration
             .IsRequired()
             .HasMaxLength(40);
 
+        entity.Property(x => x.DirectConversationKey)
+            .HasMaxLength(1_000);
+
+        var directConversationKeyIndex = entity
+            .HasIndex(x => x.DirectConversationKey)
+            .IsUnique();
+
+        if (IsSqlServer(providerName))
+        {
+            directConversationKeyIndex.HasFilter("[DirectConversationKey] IS NOT NULL");
+        }
+        else if (IsSqlite(providerName))
+        {
+            directConversationKeyIndex.HasFilter("\"DirectConversationKey\" IS NOT NULL");
+        }
+
         entity.Property(x => x.Subject)
             .HasMaxLength(240);
 

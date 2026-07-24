@@ -2,7 +2,6 @@ using Domain.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Shared.Messaging;
 
 namespace Infrastructure.Messaging;
 
@@ -12,15 +11,18 @@ public abstract class MessagingControllerBase : Controller
     private readonly IMessagingService _messagingService;
     private readonly IMessageAttachmentStorage _attachmentStorage;
     private readonly IMessagingRealtimePublisher _realtimePublisher;
+    private readonly IMessagingProfileImageResolver _profileImageResolver;
 
     protected MessagingControllerBase(
         IMessagingService messagingService,
         IMessageAttachmentStorage attachmentStorage,
-        IMessagingRealtimePublisher realtimePublisher)
+        IMessagingRealtimePublisher realtimePublisher,
+        IMessagingProfileImageResolver profileImageResolver)
     {
         _messagingService = messagingService;
         _attachmentStorage = attachmentStorage;
         _realtimePublisher = realtimePublisher;
+        _profileImageResolver = profileImageResolver;
     }
 
     protected abstract Task<MessagingActor?> ResolveMessagingActorAsync(CancellationToken cancellationToken);
@@ -39,17 +41,7 @@ public abstract class MessagingControllerBase : Controller
         if (!result.Succeeded)
             return Failure(result.ErrorCode, result.ErrorMessage);
 
-        return View(new MessagingWorkspaceViewModel(
-            actor.UserId,
-            result.Conversations.Select(x => new MessagingWorkspaceConversationViewModel(
-                x.Id,
-                x.ConversationType,
-                x.Counterparty.DisplayName,
-                x.Subject,
-                x.LastMessagePreview,
-                x.LastMessageUtc,
-                x.UnreadCount,
-                x.IsClosed)).ToList()));
+        return View();
     }
 
     [HttpGet("/Messaging/Conversations")]
@@ -75,6 +67,28 @@ public abstract class MessagingControllerBase : Controller
 
         var result = await _messagingService.ListRecipientsAsync(actor, search, HttpContext.RequestAborted);
         return result.Succeeded ? Ok(result) : Failure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpGet("/Messaging/Participants/{userId}/Avatar")]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    public async Task<IActionResult> ParticipantAvatar(string userId, string participantType)
+    {
+        var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
+        if (actor is null)
+            return Forbid();
+
+        var participant = await _messagingService.GetAuthorizedParticipantAsync(
+            actor,
+            userId,
+            participantType,
+            HttpContext.RequestAborted);
+        if (!participant.Succeeded || participant.Recipient is null)
+            return Failure(participant.ErrorCode, participant.ErrorMessage);
+
+        var image = await _profileImageResolver.ResolveAsync(participant.Recipient, HttpContext.RequestAborted);
+        return image is null
+            ? NotFound()
+            : PhysicalFile(image.PhysicalPath, image.ContentType);
     }
 
     [HttpGet("/Messaging/Conversations/{conversationId:guid}")]

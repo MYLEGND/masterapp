@@ -12,6 +12,12 @@ public interface IMessagingService
         string? search = null,
         CancellationToken cancellationToken = default);
 
+    Task<MessagingRecipientResult> GetAuthorizedParticipantAsync(
+        MessagingActor actor,
+        string userId,
+        string participantType,
+        CancellationToken cancellationToken = default);
+
     Task<MessagingConversationResult> GetConversationAsync(
         MessagingActor actor,
         Guid conversationId,
