@@ -75,7 +75,7 @@ namespace Infrastructure.Migrations
                     ConversationId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     SenderUserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false),
                     SenderType = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
-                    Body = table.Column<string>(type: "nvarchar(10000)", maxLength: 10000, nullable: false),
+                    Body = table.Column<string>(type: "nvarchar(max)", maxLength: 10000, nullable: false),
                     SentUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     EditedUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     DeletedUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
