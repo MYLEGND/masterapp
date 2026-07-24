@@ -202,39 +202,294 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
 
     private async Task<IReadOnlyList<JourneyCircleRecommendation>> RecommendationsAsync(ClientProfile client, JourneyCircleProfile source, CancellationToken ct)
     {
-        var candidates = await _db.JourneyCircleProfiles.AsNoTracking().Include(x => x.ClientProfile).Where(x => x.ClientProfileId != client.Id && x.IsOptedIn && x.IsDiscoverable && x.CommunityAccessState == "Active").Take(200).ToListAsync(ct);
-        var sourceGoals = FromJson(source.GoalsJson);
-        var sourceInterests = FromJson(source.InterestsJson);
-        var sourceCircles = FromJson(source.CircleCodesJson);
-        var sourceStages = FromDelimited(source.LifeStage);
-        var sourceLocations = FromDelimited(source.LocationLabel);
-        var sourceConnectionTypes = FromJson(source.ConnectionTypesJson);
-        var sourceCommunicationStyles = FromDelimited(source.CommunicationStyle);
-        var sourceFrequencies = FromDelimited(source.AccountabilityFrequency);
-        var rows = new List<(JourneyCircleProfile Profile, int Score, string Explanation)>();
+        const int minimumCompatibilityScore = 55;
+        const int minimumComparableCategories = 3;
+
+        static HashSet<string> Normalize(IEnumerable<string> values)
+        {
+            return values
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        static double DiceSimilarity(
+            HashSet<string> first,
+            HashSet<string> second)
+        {
+            if (first.Count == 0 || second.Count == 0)
+                return 0d;
+
+            var sharedCount = first.Count(second.Contains);
+
+            return (2d * sharedCount) /
+                   (first.Count + second.Count);
+        }
+
+        static bool IsComparable(
+            HashSet<string> first,
+            HashSet<string> second)
+        {
+            return first.Count > 0 && second.Count > 0;
+        }
+
+        static string? FirstShared(
+            HashSet<string> first,
+            HashSet<string> second)
+        {
+            return first.FirstOrDefault(second.Contains);
+        }
+
+        var candidates = await _db.JourneyCircleProfiles
+            .AsNoTracking()
+            .Include(x => x.ClientProfile)
+            .Where(x =>
+                x.ClientProfileId != client.Id &&
+                x.IsOptedIn &&
+                x.IsDiscoverable &&
+                x.CommunityAccessState == "Active")
+            .Take(200)
+            .ToListAsync(ct);
+
+        var sourceGoals = Normalize(FromJson(source.GoalsJson));
+        var sourceInterests = Normalize(FromJson(source.InterestsJson));
+        var sourceCircles = Normalize(FromJson(source.CircleCodesJson));
+        var sourceStages = Normalize(FromDelimited(source.LifeStage));
+        var sourceLocations = Normalize(FromDelimited(source.LocationLabel));
+        var sourceConnectionTypes =
+            Normalize(FromJson(source.ConnectionTypesJson));
+        var sourceCommunicationStyles =
+            Normalize(FromDelimited(source.CommunicationStyle));
+        var sourceFrequencies =
+            Normalize(FromDelimited(source.AccountabilityFrequency));
+
+        var rows = new List<(
+            JourneyCircleProfile Profile,
+            int Score,
+            string Explanation)>();
+
         foreach (var candidate in candidates)
         {
-            if (await IsBlockedAsync(client.Id, candidate.ClientProfileId, ct)) continue;
-            var link = await _db.JourneyCircleConnections.AsNoTracking().FirstOrDefaultAsync(x => x.ConnectionKey == PairKey(client.Id, candidate.ClientProfileId), ct);
-            if (link is not null && link.Status is JourneyCircleConnectionStatuses.Accepted or JourneyCircleConnectionStatuses.Pending or JourneyCircleConnectionStatuses.Declined) continue;
-            var sharedGoals = sourceGoals.Intersect(FromJson(candidate.GoalsJson), StringComparer.OrdinalIgnoreCase).ToArray();
-            var sharedInterests = sourceInterests.Intersect(FromJson(candidate.InterestsJson), StringComparer.OrdinalIgnoreCase).ToArray();
-            var sharedCircles = sourceCircles.Intersect(FromJson(candidate.CircleCodesJson), StringComparer.OrdinalIgnoreCase).ToArray();
-            var sharedStages = sourceStages.Intersect(FromDelimited(candidate.LifeStage), StringComparer.OrdinalIgnoreCase).ToArray();
-            var sharedLocations = sourceLocations.Intersect(FromDelimited(candidate.LocationLabel), StringComparer.OrdinalIgnoreCase).ToArray();
-            var sharedConnectionTypes = sourceConnectionTypes.Intersect(FromJson(candidate.ConnectionTypesJson), StringComparer.OrdinalIgnoreCase).ToArray();
-            var sharedCommunicationStyles = sourceCommunicationStyles.Intersect(FromDelimited(candidate.CommunicationStyle), StringComparer.OrdinalIgnoreCase).ToArray();
-            var sharedFrequencies = sourceFrequencies.Intersect(FromDelimited(candidate.AccountabilityFrequency), StringComparer.OrdinalIgnoreCase).ToArray();
-            var score = sharedGoals.Length * 6 + sharedCircles.Length * 4 + sharedInterests.Length * 3 + sharedStages.Length * 3 + sharedConnectionTypes.Length * 2 + sharedCommunicationStyles.Length * 2 + sharedLocations.Length + sharedFrequencies.Length;
-            if (score == 0) continue;
-            var explanation = sharedGoals.FirstOrDefault() is { } goal ? $"You both selected {goal}."
-                : sharedCircles.FirstOrDefault() is { } circle ? $"You are both in {circle}."
-                : sharedStages.FirstOrDefault() is { } stage ? $"You share the {stage} life stage."
-                : sharedConnectionTypes.FirstOrDefault() is { } connectionType ? $"You are both looking for a {connectionType.ToLowerInvariant()}."
-                : $"You share an interest in {sharedInterests.FirstOrDefault() ?? sharedCommunicationStyles.FirstOrDefault() ?? sharedLocations.FirstOrDefault() ?? sharedFrequencies.FirstOrDefault()}.";
+            if (await IsBlockedAsync(
+                    client.Id,
+                    candidate.ClientProfileId,
+                    ct))
+            {
+                continue;
+            }
+
+            var link = await _db.JourneyCircleConnections
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.ConnectionKey == PairKey(
+                        client.Id,
+                        candidate.ClientProfileId),
+                    ct);
+
+            if (link is not null &&
+                link.Status is
+                    JourneyCircleConnectionStatuses.Accepted or
+                    JourneyCircleConnectionStatuses.Pending or
+                    JourneyCircleConnectionStatuses.Declined)
+            {
+                continue;
+            }
+
+            var candidateGoals =
+                Normalize(FromJson(candidate.GoalsJson));
+
+            var candidateInterests =
+                Normalize(FromJson(candidate.InterestsJson));
+
+            var candidateCircles =
+                Normalize(FromJson(candidate.CircleCodesJson));
+
+            var candidateStages =
+                Normalize(FromDelimited(candidate.LifeStage));
+
+            var candidateLocations =
+                Normalize(FromDelimited(candidate.LocationLabel));
+
+            var candidateConnectionTypes =
+                Normalize(FromJson(candidate.ConnectionTypesJson));
+
+            var candidateCommunicationStyles =
+                Normalize(FromDelimited(candidate.CommunicationStyle));
+
+            var candidateFrequencies =
+                Normalize(FromDelimited(
+                    candidate.AccountabilityFrequency));
+
+            var comparableCategoryCount =
+                (IsComparable(sourceGoals, candidateGoals) ? 1 : 0) +
+                (IsComparable(
+                    sourceConnectionTypes,
+                    candidateConnectionTypes) ? 1 : 0) +
+                (IsComparable(sourceCircles, candidateCircles) ? 1 : 0) +
+                (IsComparable(sourceStages, candidateStages) ? 1 : 0) +
+                (IsComparable(sourceInterests, candidateInterests) ? 1 : 0) +
+                (IsComparable(
+                    sourceCommunicationStyles,
+                    candidateCommunicationStyles) ? 1 : 0) +
+                (IsComparable(
+                    sourceFrequencies,
+                    candidateFrequencies) ? 1 : 0) +
+                (IsComparable(sourceLocations, candidateLocations) ? 1 : 0);
+
+            if (comparableCategoryCount < minimumComparableCategories)
+                continue;
+
+            var sharedGoal =
+                FirstShared(sourceGoals, candidateGoals);
+
+            var sharedConnectionType =
+                FirstShared(
+                    sourceConnectionTypes,
+                    candidateConnectionTypes);
+
+            var sharedCircle =
+                FirstShared(sourceCircles, candidateCircles);
+
+            var hasMeaningfulAnchor =
+                sharedGoal is not null ||
+                sharedConnectionType is not null ||
+                sharedCircle is not null;
+
+            if (!hasMeaningfulAnchor)
+                continue;
+
+            double earnedWeight = 0d;
+            double availableWeight = 0d;
+
+            void ScoreCategory(
+                HashSet<string> first,
+                HashSet<string> second,
+                double weight)
+            {
+                if (!IsComparable(first, second))
+                    return;
+
+                availableWeight += weight;
+                earnedWeight += DiceSimilarity(first, second) * weight;
+            }
+
+            ScoreCategory(sourceGoals, candidateGoals, 25d);
+
+            ScoreCategory(
+                sourceConnectionTypes,
+                candidateConnectionTypes,
+                15d);
+
+            ScoreCategory(sourceCircles, candidateCircles, 15d);
+            ScoreCategory(sourceStages, candidateStages, 10d);
+            ScoreCategory(sourceInterests, candidateInterests, 10d);
+
+            ScoreCategory(
+                sourceCommunicationStyles,
+                candidateCommunicationStyles,
+                10d);
+
+            ScoreCategory(
+                sourceFrequencies,
+                candidateFrequencies,
+                10d);
+
+            ScoreCategory(sourceLocations, candidateLocations, 5d);
+
+            if (availableWeight <= 0d)
+                continue;
+
+            var score = (int)Math.Round(
+                earnedWeight / availableWeight * 100d,
+                MidpointRounding.AwayFromZero);
+
+            if (score < minimumCompatibilityScore)
+                continue;
+
+            var matchStrength =
+                score >= 85
+                    ? "Exceptional match"
+                    : score >= 70
+                        ? "Excellent match"
+                        : score >= 60
+                            ? "Strong match"
+                            : "Good match";
+
+            var reasons = new List<string>();
+
+            if (sharedGoal is not null)
+                reasons.Add($"shared goal: {sharedGoal}");
+
+            if (sharedConnectionType is not null)
+            {
+                reasons.Add(
+                    $"shared connection preference: " +
+                    sharedConnectionType);
+            }
+
+            if (sharedCircle is not null)
+                reasons.Add($"shared Journey Circle: {sharedCircle}");
+
+            var sharedStage =
+                FirstShared(sourceStages, candidateStages);
+
+            if (sharedStage is not null)
+                reasons.Add($"shared life stage: {sharedStage}");
+
+            var sharedInterest =
+                FirstShared(sourceInterests, candidateInterests);
+
+            if (sharedInterest is not null)
+                reasons.Add($"shared interest: {sharedInterest}");
+
+            var sharedCommunicationStyle =
+                FirstShared(
+                    sourceCommunicationStyles,
+                    candidateCommunicationStyles);
+
+            if (sharedCommunicationStyle is not null)
+            {
+                reasons.Add(
+                    $"shared communication style: " +
+                    sharedCommunicationStyle);
+            }
+
+            var sharedFrequency =
+                FirstShared(sourceFrequencies, candidateFrequencies);
+
+            if (sharedFrequency is not null)
+            {
+                reasons.Add(
+                    $"shared accountability preference: " +
+                    sharedFrequency);
+            }
+
+            var sharedLocation =
+                FirstShared(sourceLocations, candidateLocations);
+
+            if (sharedLocation is not null)
+                reasons.Add($"shared location: {sharedLocation}");
+
+            var explanation =
+                reasons.Count == 0
+                    ? $"{matchStrength}."
+                    : $"{matchStrength}. " +
+                      string.Join("; ", reasons.Take(3)) +
+                      ".";
+
             rows.Add((candidate, score, explanation));
         }
-        return rows.OrderByDescending(x => x.Score).ThenBy(x => x.Profile.UpdatedUtc).Take(12).Select(x => new JourneyCircleRecommendation(ToPublic(x.Profile, x.Profile.ClientProfile), x.Explanation)).ToArray();
+
+        return rows
+            .OrderByDescending(x => x.Score)
+            .ThenByDescending(x => x.Profile.UpdatedUtc)
+            .Take(12)
+            .Select(x => new JourneyCircleRecommendation(
+                ToPublic(
+                    x.Profile,
+                    x.Profile.ClientProfile),
+                x.Explanation))
+            .ToArray();
     }
 
     private async Task<IReadOnlyList<JourneyCircleConnectionSummary>> ConnectionSummariesAsync(ClientProfile client, string status, bool recipientOnly, CancellationToken ct)
