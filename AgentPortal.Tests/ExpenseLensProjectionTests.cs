@@ -55,6 +55,8 @@ function run(argv) {
     } else if (functionName === 'getScheduledOccurrenceDays') {
         result = api.getScheduledOccurrenceDays(payload.anchorDate, payload.frequency, payload.options || {})
             .map(formatLocalDate);
+    } else if (functionName === 'summarizeExpenseCategories') {
+        result = api.summarizeExpenseCategories(payload.state || {}, payload.options || {});
     } else {
         throw new Error('Unsupported function: ' + functionName);
     }
@@ -530,5 +532,53 @@ function run(argv) {
         Assert.True(normalized.GetProperty("monthlyStartingBalanceOverrides").EnumerateObject().Count() == 0);
         Assert.True(normalized.GetProperty("occurrenceHistory").GetProperty("incomes").EnumerateObject().Count() == 0);
         Assert.True(normalized.GetProperty("occurrenceHistory").GetProperty("expenses").EnumerateObject().Count() == 0);
+    }
+
+    [Fact]
+    public void NormalizeState_UsesLegacyExpensesWhenCategoriesAreEmpty()
+    {
+        using var result = InvokeProjectionApi("normalizeState", new
+        {
+            categories = Array.Empty<object>(),
+            expenses = new object[]
+            {
+                new { id = "legacy-rent", name = "Rent", occurrenceAmount = "1500", due = "2026-01-05" }
+            }
+        });
+
+        var categories = result.RootElement.GetProperty("categories");
+        Assert.Equal(1, categories.GetArrayLength());
+        Assert.Equal("legacy-rent", categories[0].GetProperty("id").GetString());
+        Assert.Equal("1500", categories[0].GetProperty("amount").GetString());
+    }
+
+    [Fact]
+    public void SummarizeExpenseCategories_UsesOccurrenceAmountsFromLiveExpenseLensUpdates()
+    {
+        using var result = InvokeProjectionApi("summarizeExpenseCategories", new
+        {
+            options = new { monthKey = "2026-07" },
+            state = new
+            {
+                expenses = new object[]
+                {
+                    new
+                    {
+                        id = "weekly-insurance",
+                        name = "Weekly Insurance",
+                        amount = "500",
+                        occurrenceAmount = "100",
+                        due = "2026-07-03",
+                        frequency = "weekly",
+                        paymentMethod = "debit"
+                    }
+                }
+            }
+        });
+
+        var summary = result.RootElement;
+        Assert.Equal(43333, summary.GetProperty("normalizedMonthlyTotalCents").GetInt32());
+        Assert.Equal(50000, summary.GetProperty("scheduledMonthTotalCents").GetInt32());
+        Assert.Equal(10000, summary.GetProperty("items")[0].GetProperty("amountCents").GetInt32());
     }
 }

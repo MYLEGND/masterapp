@@ -147,7 +147,7 @@
     };
 
     const getDefaultAnchorDate = (options = {}) => {
-        const monthKey = options.monthKey || formatMonthKey(options.now || new Date());
+        const monthKey = formatMonthKey(options.monthKey || options.now || new Date());
         const monthContext = getMonthContext(monthKey);
         return `${monthContext.year}-${pad2(monthContext.month + 1)}-01`;
     };
@@ -175,7 +175,7 @@
         if (!anchorDate) return [];
 
         const frequency = normalizeFrequency(frequencyValue);
-        const monthKey = options.monthKey || formatMonthKey(options.now || new Date());
+        const monthKey = formatMonthKey(options.monthKey || options.now || new Date());
         const monthContext = getMonthContext(monthKey);
         const week = options.week || null;
         const rangeStart = week ? new Date(week.startDate) : new Date(monthContext.startDate);
@@ -407,6 +407,7 @@
         const due = formatDateKey(parseDate(category?.due) || parseDate(getDefaultAnchorDate())) || getDefaultAnchorDate();
         const baseId = String(category?.id || "").trim();
         const fallbackId = `cat-${index + 1}-${escapeKeyPart(String(category?.name || "").toLowerCase()) || "expense"}`;
+        const occurrenceAmount = String(category?.occurrenceAmount ?? "").trim();
 
         return {
             id: baseId || fallbackId,
@@ -415,7 +416,7 @@
             due,
             frequency: normalizeFrequency(category?.frequency || category?.recurrence),
             paymentMethod: String(category?.paymentMethod || "").trim().toLowerCase() === "credit" ? "credit" : "debit",
-            amount: String(category?.amount || category?.occurrenceAmount || "").trim(),
+            amount: occurrenceAmount || String(category?.amount ?? "").trim(),
             isTemplate: category?.isTemplate === true,
             isPinned: category?.isPinned === true,
             debtCategory: normalizeDebtCategory(category?.name, category?.debtCategory)
@@ -528,11 +529,14 @@
 
     const normalizeState = (rawState, options = {}) => {
         const state = rawState && typeof rawState === "object" ? rawState : {};
-        const normalizedCategories = Array.isArray(state.categories)
-            ? state.categories.map((category, index) => normalizeCategory(category, index))
+        const sourceCategories = Array.isArray(state.categories) && state.categories.length > 0
+            ? state.categories
             : Array.isArray(state.expenses)
-                ? state.expenses.map((category, index) => normalizeCategory(category, index))
-                : [];
+                ? state.expenses
+                : Array.isArray(state.categories)
+                    ? state.categories
+                    : [];
+        const normalizedCategories = sourceCategories.map((category, index) => normalizeCategory(category, index));
         const normalizedDebt = normalizeDebtState(state.debt || {
             openingBalance: state.creditCardAndPersonalLoanDebt || 0
         });
@@ -624,6 +628,60 @@
             },
             hits,
             count: hits.length
+        };
+    };
+
+    const summarizeExpenseCategories = (rawState, options = {}) => {
+        const state = normalizeState(rawState || {});
+        const monthKey = options.monthKey || formatMonthKey(options.now || new Date());
+        const scheduledTotalsBySourceId = new Map();
+
+        buildScheduledExpenseOccurrences(state, monthKey).forEach((occurrence) => {
+            const sourceId = String(occurrence.sourceId || "").trim();
+            if (!sourceId) return;
+            scheduledTotalsBySourceId.set(
+                sourceId,
+                (scheduledTotalsBySourceId.get(sourceId) || 0) + Math.max(0, Math.round(occurrence.amountCents || 0))
+            );
+        });
+
+        const items = state.categories.map((category) => {
+            const amountCents = Math.max(0, parseMoneyToCents(category.amount));
+            const normalizedMonthlyAmountCents = category.frequency === "weekly"
+                ? Math.round((amountCents * 52) / 12)
+                : category.frequency === "biweekly"
+                    ? Math.round((amountCents * 26) / 12)
+                    : amountCents;
+            const scheduledMonthAmountCents = scheduledTotalsBySourceId.get(category.id) || 0;
+
+            return {
+                id: category.id,
+                name: category.name,
+                frequency: category.frequency,
+                paymentMethod: category.paymentMethod,
+                debtCategory: category.debtCategory,
+                amountCents,
+                normalizedMonthlyAmountCents,
+                scheduledMonthAmountCents
+            };
+        });
+
+        const normalizedMonthlyTotalCents = items.reduce(
+            (sum, item) => sum + item.normalizedMonthlyAmountCents,
+            0
+        );
+        const scheduledMonthTotalCents = items.reduce(
+            (sum, item) => sum + item.scheduledMonthAmountCents,
+            0
+        );
+
+        return {
+            monthKey,
+            items,
+            normalizedMonthlyTotalCents,
+            normalizedMonthlyTotal: centsToDollars(normalizedMonthlyTotalCents),
+            scheduledMonthTotalCents,
+            scheduledMonthTotal: centsToDollars(scheduledMonthTotalCents)
         };
     };
 
@@ -1171,6 +1229,7 @@
         buildOccurrenceKey,
         normalizeState,
         summarizeIncomeGroups,
+        summarizeExpenseCategories,
         projectExpenseLensTimeline
     };
 });

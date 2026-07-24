@@ -104,6 +104,55 @@ public sealed class FinancialIntelligenceServicesTests
     }
 
     [Fact]
+    public async Task SynchronizeAsync_UsesLegacyExpensesWhenCategoriesAreEmpty()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var stream = new RecurringFinancialStream
+        {
+            ClientProfileId = profile.Id,
+            StreamKey = "checking:rent",
+            NormalizedMerchantKey = "rent",
+            DisplayName = "Rent",
+            Cadence = "Monthly",
+            AverageAmountCents = 150_000,
+            Status = "Candidate",
+            Confidence = 0.9m,
+            EvidenceJson = "{}",
+            FirstSeenUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            LastSeenUtc = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc)
+        };
+        db.RecurringFinancialStreams.Add(stream);
+        db.FinanceToolStates.Add(new FinanceToolState
+        {
+            ClientProfileId = profile.Id,
+            ToolId = "ExpenseLens",
+            JsonState = """{"categories":[],"expenses":[{"id":"rent"}]}"""
+        });
+        await db.SaveChangesAsync();
+
+        var synchronization = new ExpenseLensSynchronizationService(
+            db,
+            NullLogger<ExpenseLensSynchronizationService>.Instance);
+        var link = await synchronization.LinkStreamAsync(
+            new ExpenseLensStreamLinkCommand(
+                profile.Id,
+                stream.Id,
+                "rent",
+                Confirmed: true,
+                ConfirmedByUserId: "client-user"));
+
+        Assert.True(link.Success);
+
+        var result = await synchronization.SynchronizeAsync(profile.Id);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, result.ValidLinkCount);
+        Assert.Equal(0, result.StaleLinkCount);
+        Assert.Equal("Confirmed", (await db.ExpenseLensStreamLinks.SingleAsync()).Status);
+    }
+
+    [Fact]
     public void AddMasterAppFinancialIntelligence_RegistersEveryPhaseTwoServiceOnce()
     {
         var services = new ServiceCollection();

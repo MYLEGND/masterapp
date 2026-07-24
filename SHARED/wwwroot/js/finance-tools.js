@@ -181,106 +181,11 @@ document.addEventListener("DOMContentLoaded", async function () {
     const parseSavingsMoney = (value) => +(String(value || '').replace(/[,$\s]/g, '')) || 0;
     const hasNonBlankValue = (value) => value !== undefined && value !== null && String(value).trim() !== '';
 
-    const normalizeScheduledFrequency = (value) => expenseLensProjectionApi?.normalizeFrequency
-        ? expenseLensProjectionApi.normalizeFrequency(value)
-        : (() => {
-            const normalized = (value || '').toString().toLowerCase().replace(/[^a-z]/g, '');
-            if (normalized === 'weekly') return 'weekly';
-            if (normalized === 'biweekly') return 'biweekly';
-            return 'monthly';
-        })();
-
-    const parseScheduledAnchorDate = (value) => expenseLensProjectionApi?.parseDate
-        ? expenseLensProjectionApi.parseDate(value)
-        : (() => {
-            const parts = (value || '').split('-').map(part => parseInt(part, 10));
-            if (parts.length < 3 || parts.some(part => !Number.isFinite(part))) return null;
-            return new Date(parts[0], parts[1] - 1, parts[2]);
-        })();
-
-    const getScheduledMonthContext = (options = {}) => {
-        const now = options.now instanceof Date ? new Date(options.now) : new Date();
-        const year = Number.isInteger(options.year) ? options.year : now.getFullYear();
-        const month = Number.isInteger(options.month) ? options.month : now.getMonth();
-        const days = Number.isInteger(options.days) ? options.days : new Date(year, month + 1, 0).getDate();
-        return { now, year, month, days };
-    };
-
-    const getDefaultScheduledAnchorDate = (options = {}) => {
-        if (expenseLensProjectionApi?.getDefaultAnchorDate) {
-            const monthKey = `${options.year ?? new Date().getFullYear()}-${String((options.month ?? new Date().getMonth()) + 1).padStart(2, '0')}`;
-            return expenseLensProjectionApi.getDefaultAnchorDate({ monthKey, now: options.now });
-        }
-        const { year, month } = getScheduledMonthContext(options);
-        return `${year}-${String(month + 1).padStart(2, '0')}-01`;
-    };
-
-    const getScheduledOccurrenceDays = (anchorValue, frequencyValue, options = {}) => {
-        if (expenseLensProjectionApi?.getScheduledOccurrenceDays) {
-            const monthKey = options.monthKey
-                || `${options.year ?? new Date().getFullYear()}-${String((options.month ?? new Date().getMonth()) + 1).padStart(2, '0')}`;
-            return expenseLensProjectionApi.getScheduledOccurrenceDays(anchorValue, frequencyValue, {
-                monthKey,
-                week: options.week,
-                now: options.now
-            });
-        }
-
-        const anchorDate = parseScheduledAnchorDate(anchorValue);
-        if (!anchorDate) return [];
-
-        anchorDate.setHours(0, 0, 0, 0);
-
-        const { year, month, days } = getScheduledMonthContext(options);
-        const frequency = normalizeScheduledFrequency(frequencyValue);
-        const week = options.week || null;
-        const rangeStart = week ? new Date(week.startDate) : new Date(year, month, 1);
-        const rangeEnd = week ? new Date(week.endDate) : new Date(year, month, days, 23, 59, 59, 999);
-
-        rangeStart.setHours(0, 0, 0, 0);
-        rangeEnd.setHours(23, 59, 59, 999);
-
-        const occurrences = [];
-        const cursor = new Date(anchorDate);
-
-        if (frequency === 'monthly') {
-            const anchorDay = anchorDate.getDate();
-            const monthDays = new Date(year, month + 1, 0).getDate();
-            cursor.setFullYear(year, month, Math.min(anchorDay, monthDays));
-
-            if (cursor >= anchorDate && cursor >= rangeStart && cursor <= rangeEnd) {
-                occurrences.push(new Date(cursor));
-            }
-
-            return occurrences;
-        }
-
-        const intervalDays = frequency === 'biweekly' ? 14 : 7;
-        const msPerDay = 86400000;
-        const daysFromAnchorToRangeStart = Math.floor(
-            (Date.UTC(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate()) -
-             Date.UTC(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate())) / msPerDay
-        );
-
-        if (daysFromAnchorToRangeStart > 0) {
-            const intervalsToAdvance = Math.ceil(daysFromAnchorToRangeStart / intervalDays);
-            cursor.setDate(cursor.getDate() + intervalsToAdvance * intervalDays);
-        }
-
-        while (cursor <= rangeEnd) {
-            if (cursor >= rangeStart && cursor >= anchorDate) {
-                occurrences.push(new Date(cursor));
-            }
-            cursor.setDate(cursor.getDate() + intervalDays);
-        }
-
-        return occurrences;
-    };
-
-    const getSavingsExpenseOccurrences = (category) => getScheduledOccurrenceDays(
-        category?.due || '',
-        category?.frequency || category?.recurrence,
-    ).length;
+    const normalizeScheduledFrequency = (value) => expenseLensProjectionApi?.normalizeFrequency?.(value) || 'monthly';
+    const parseScheduledAnchorDate = (value) => expenseLensProjectionApi?.parseDate?.(value) || null;
+    const getDefaultScheduledAnchorDate = (options = {}) => expenseLensProjectionApi?.getDefaultAnchorDate?.(options) || '';
+    const getScheduledOccurrenceDays = (anchorValue, frequencyValue, options = {}) =>
+        expenseLensProjectionApi?.getScheduledOccurrenceDays?.(anchorValue, frequencyValue, options) || [];
 
     const sanitizeExpenseLensIncomeStream = (stream) => ({
         label: String(stream?.label || '').trim(),
@@ -336,70 +241,20 @@ document.addEventListener("DOMContentLoaded", async function () {
         return { primary, secondary };
     };
 
-    const parseExpenseLensMoneyToCents = (value) => expenseLensProjectionApi?.parseMoneyToCents
-        ? expenseLensProjectionApi.parseMoneyToCents(value)
-        : Math.round(parseSavingsMoney(value) * 100);
+    const parseExpenseLensMoneyToCents = (value) => expenseLensProjectionApi?.parseMoneyToCents?.(value)
+        ?? Math.round(parseSavingsMoney(value) * 100);
 
     const centsToExpenseLensDollars = (value) => Math.round(Number(value) || 0) / 100;
 
-    const summarizeExpenseLensIncomeGroups = (groups, options = {}) => {
-        if (expenseLensProjectionApi?.summarizeIncomeGroups) {
-            return expenseLensProjectionApi.summarizeIncomeGroups(groups, options);
-        }
-
-        const groupLabelMap = options.groupLabelMap || {};
-        const groupTotalsCents = { primary: 0, secondary: 0 };
-        const hits = [];
-
-        ['primary', 'secondary'].forEach((groupKey) => {
-            const streams = Array.isArray(groups?.[groupKey]) ? groups[groupKey] : [];
-            const baseLabel = groupLabelMap[groupKey]
-                || (groupKey === 'secondary' ? 'Partner Income' : 'Income');
-
-            streams.forEach((stream, index) => {
-                const amountCents = parseExpenseLensMoneyToCents(stream?.amount);
-                if (amountCents <= 0) return;
-
-                const frequency = normalizeScheduledFrequency(stream?.frequency);
-                const anchorDate = String(stream?.anchorDate || '').trim() || getDefaultScheduledAnchorDate(options);
-                const label = String(stream?.label || '').trim()
-                    || (streams.length > 1 ? `${baseLabel} Stream ${index + 1}` : baseLabel);
-
-                const normalizedMonthlyAmountCents = frequency === 'weekly'
-                    ? Math.round((amountCents * 52) / 12)
-                    : frequency === 'biweekly'
-                        ? Math.round((amountCents * 26) / 12)
-                        : amountCents;
-
-                groupTotalsCents[groupKey] += normalizedMonthlyAmountCents;
-
-                getScheduledOccurrenceDays(anchorDate, frequency, options).forEach((date) => {
-                    hits.push({
-                        groupKey,
-                        label,
-                        amount: centsToExpenseLensDollars(amountCents),
-                        date,
-                        frequency,
-                        anchorDate
-                    });
-                });
-            });
-        });
-
-        hits.sort((a, b) => (a.date - b.date) || a.label.localeCompare(b.label));
-
-        return {
-            monthlyTotalCents: groupTotalsCents.primary + groupTotalsCents.secondary,
-            monthlyTotal: centsToExpenseLensDollars(groupTotalsCents.primary + groupTotalsCents.secondary),
-            groupTotalsCents,
-            groupTotals: {
-                primary: centsToExpenseLensDollars(groupTotalsCents.primary),
-                secondary: centsToExpenseLensDollars(groupTotalsCents.secondary)
-            },
-            hits,
-            count: hits.length
+    const summarizeExpenseLensIncomeGroups = (groups, options = {}) =>
+        expenseLensProjectionApi?.summarizeIncomeGroups?.(groups, options) || {
+            monthlyTotalCents: 0,
+            monthlyTotal: 0,
+            groupTotalsCents: { primary: 0, secondary: 0 },
+            groupTotals: { primary: 0, secondary: 0 },
+            hits: [],
+            count: 0
         };
-    };
 
     const hasExpenseLensExpenseRows = (state) => {
         const categories = Array.isArray(state?.categories) ? state.categories : [];
@@ -411,31 +266,12 @@ document.addEventListener("DOMContentLoaded", async function () {
         return expenses.some(expense => parseSavingsMoney(expense?.occurrenceAmount || expense?.amount) > 0);
     };
 
+    const getExpenseLensExpenseSummary = (state, options = {}) =>
+        expenseLensProjectionApi?.summarizeExpenseCategories?.(state, options) || null;
+
     const calculateExpenseLensMonthlyTotal = (state) => {
-        const categories = Array.isArray(state?.categories) ? state.categories : [];
-        if (categories.length > 0) {
-            const totalCents = categories.reduce((sum, category) => {
-                const amountCents = parseExpenseLensMoneyToCents(category?.occurrenceAmount || category?.amount);
-                const occurrences = getSavingsExpenseOccurrences(category);
-                return sum + (amountCents * occurrences);
-            }, 0);
-            return centsToExpenseLensDollars(totalCents);
-        }
-
-        const expenses = Array.isArray(state?.expenses) ? state.expenses : [];
-        if (expenses.length > 0) {
-            const totalCents = expenses.reduce((sum, expense) => {
-                const occurrenceAmountCents = parseExpenseLensMoneyToCents(expense?.occurrenceAmount);
-                const monthlyAmountCents = parseExpenseLensMoneyToCents(expense?.amount);
-                const hasRecurringShape = occurrenceAmountCents > 0 && String(expense?.due || '').trim().length > 0;
-                if (hasRecurringShape) {
-                    return sum + (occurrenceAmountCents * getSavingsExpenseOccurrences(expense));
-                }
-                return sum + monthlyAmountCents;
-            }, 0);
-            return centsToExpenseLensDollars(totalCents);
-        }
-
+        const summary = getExpenseLensExpenseSummary(state);
+        if (summary) return summary.normalizedMonthlyTotal;
         return centsToExpenseLensDollars(parseExpenseLensMoneyToCents(state?.monthlyExpenseTotal));
     };
 
@@ -8983,6 +8819,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const refreshExpenseLensViews = (options = {}) => {
+            invalidateExpenseLensProjection();
             syncExpenseLensProjectionViews({ sortRows: options.sortRows });
             if (weekPanelBackdrop && weekPanelBackdrop.style.display !== 'none') renderWeekPanel();
         };

@@ -1555,6 +1555,12 @@
         delete loadedState._linkedStateLocks;
 
         function getExpenseLensIncome(source) {
+            const projectionApi = window.LegendExpenseLensProjection;
+            if (projectionApi?.normalizeState && projectionApi?.summarizeIncomeGroups) {
+                const stateSource = projectionApi.normalizeState(source || {});
+                return projectionApi.summarizeIncomeGroups(stateSource.incomeStreams).monthlyTotal;
+            }
+
             if (String(source?.income ?? "").trim() !== "") {
                 return parseNumber(source?.income ?? 0);
             }
@@ -1585,26 +1591,25 @@
         }
 
         function expenseLensMonthlyInsurance(stateSource) {
-            const frequencyMultipliers = { monthly: 1, weekly: 4.33, biweekly: 2.17 };
-            const rows = Array.isArray(stateSource?.expenses)
-                ? stateSource.expenses
-                : (Array.isArray(stateSource?.categories) ? stateSource.categories : []);
+            const projectionApi = window.LegendExpenseLensProjection;
+            const summary = projectionApi?.summarizeExpenseCategories?.(stateSource || {});
+            if (!summary) return 0;
 
-            return rows
-                .filter((row) => (row?.name || "").toLowerCase().includes("insurance"))
-                .reduce((sum, row) => {
-                    const multiplier = frequencyMultipliers[String(row?.frequency || "").toLowerCase()] || 1;
-                    return sum + (parseNumber(row?.amount || 0) * multiplier);
-                }, 0);
+            return summary.items
+                .filter((item) => item.name.toLowerCase().includes("insurance"))
+                .reduce((sum, item) => sum + item.normalizedMonthlyAmountCents, 0) / 100;
+        }
+
+        function getExpenseLensMonthlyExpenses(stateSource) {
+            const summary = window.LegendExpenseLensProjection?.summarizeExpenseCategories?.(stateSource || {});
+            return summary?.normalizedMonthlyTotal
+                ?? Math.max(0, parseNumber(stateSource?.monthlyExpenseTotal ?? 0));
         }
 
         function calculateAnnualSavingsFromSharedState(expenseLensState, savingsAcceleratorState) {
             const incomeMonthly = getExpenseLensIncome(expenseLensState || {});
-            const expenseMonthly = Math.max(0, parseNumber(expenseLensState?.monthlyExpenseTotal ?? 0));
-            const rawRemaining = String(expenseLensState?.monthlyRemaining ?? "").trim() !== ""
-                ? parseNumber(expenseLensState?.monthlyRemaining ?? 0)
-                : (incomeMonthly - expenseMonthly);
-            const remainingMonthly = Math.max(0, rawRemaining);
+            const expenseMonthly = getExpenseLensMonthlyExpenses(expenseLensState);
+            const remainingMonthly = Math.max(0, incomeMonthly - expenseMonthly);
             const allocationPercent = resolveSavingsAcceleratorPercent(savingsAcceleratorState?.allocations);
             return {
                 allocationPercent,
@@ -1626,7 +1631,7 @@
             const saState = await (persistence?.loadState?.("SavingsAccelerator") || {});
             latestExpenseLensLinkedState = elState || {};
             const insMonthly = expenseLensMonthlyInsurance(elState || {});
-            const debtMonthly = Math.max(0, parseNumber((elState || {}).monthlyExpenseTotal ?? 0) - insMonthly);
+            const debtMonthly = Math.max(0, getExpenseLensMonthlyExpenses(elState) - insMonthly);
             const elIncome = getExpenseLensIncome(elState || {});
             const savingsSync = calculateAnnualSavingsFromSharedState(elState || {}, saState || {});
             savingsAllocationPercent = savingsSync.allocationPercent;
@@ -2236,7 +2241,7 @@
                             ?.then((savingsAcceleratorState) => {
                                 latestExpenseLensLinkedState = expenseLensState || {};
                                 const insMonthly = expenseLensMonthlyInsurance(expenseLensState || {});
-                                const debtMonthly = Math.max(0, parseNumber((expenseLensState || {}).monthlyExpenseTotal ?? 0) - insMonthly);
+                                const debtMonthly = Math.max(0, getExpenseLensMonthlyExpenses(expenseLensState) - insMonthly);
                                 const earningsAnnual = Math.round(Math.max(0, getExpenseLensIncome(expenseLensState || {})) * 12);
                                 const savingsSync = calculateAnnualSavingsFromSharedState(expenseLensState || {}, savingsAcceleratorState || {});
                                 savingsAllocationPercent = savingsSync.allocationPercent;
@@ -2354,14 +2359,13 @@
             latestExpenseLensLinkedState = detail;
             const insMonthly = expenseLensMonthlyInsurance(detail || {});
             const insAnnual = Math.round(insMonthly * 12);
-            const debtAnnual = Math.round(Math.max(0, parseNumber(detail.monthlyExpenseTotal ?? 0) - insMonthly) * 12);
+            const monthlyExpenses = getExpenseLensMonthlyExpenses(detail);
+            const debtAnnual = Math.round(Math.max(0, monthlyExpenses - insMonthly) * 12);
             const earningsAnnual = Math.round(Math.max(0, getExpenseLensIncome(detail)) * 12);
             const savingsAnnual = Math.round(
                 Math.max(
                     0,
-                    (String(detail.monthlyRemaining ?? "").trim() !== ""
-                        ? parseNumber(detail.monthlyRemaining ?? 0)
-                        : (getExpenseLensIncome(detail) - parseNumber(detail.monthlyExpenseTotal ?? 0)))
+                    getExpenseLensIncome(detail) - monthlyExpenses
                 ) * (savingsAllocationPercent / 100) * 12
             );
             const prevIns = nonNegative(getPath(state, "cashFlow.insuranceCosts"));

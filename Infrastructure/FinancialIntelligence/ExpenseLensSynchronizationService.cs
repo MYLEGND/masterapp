@@ -200,11 +200,13 @@ internal sealed class ExpenseLensSynchronizationService : IExpenseLensSynchroniz
             if (document.RootElement.ValueKind != JsonValueKind.Object)
                 return false;
 
-            var categories = document.RootElement.TryGetProperty("categories", out var categoriesElement)
+            var categories = document.RootElement.TryGetProperty("categories", out var categoriesElement) &&
+                             categoriesElement.ValueKind == JsonValueKind.Array &&
+                             categoriesElement.GetArrayLength() > 0
                 ? categoriesElement
                 : document.RootElement.TryGetProperty("expenses", out var expensesElement)
                     ? expensesElement
-                    : default;
+                    : categoriesElement;
             if (categories.ValueKind != JsonValueKind.Array)
                 return true;
 
