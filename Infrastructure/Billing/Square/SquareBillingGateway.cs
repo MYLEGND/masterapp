@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Domain.Billing;
@@ -36,7 +37,7 @@ internal sealed class SquareBillingGateway : IBillingGateway
 
         var body = new Dictionary<string, object?>
         {
-            ["idempotency_key"] = request.IdempotencyKey,
+            ["idempotency_key"] = ToSquareIdempotencyKey(request.IdempotencyKey),
             ["source_id"] = request.SourceId,
             ["location_id"] = _options.LocationId,
             ["amount_money"] = new Dictionary<string, object?>
@@ -118,7 +119,8 @@ internal sealed class SquareBillingGateway : IBillingGateway
 
         var createBody = new Dictionary<string, object?>
         {
-            ["idempotency_key"] = request.IdempotencyKey ?? BillingIdempotency.CreateDeterministic("square-customer", request.Customer.Email, request.Customer.ReferenceId),
+            ["idempotency_key"] = ToSquareIdempotencyKey(
+                request.IdempotencyKey ?? BillingIdempotency.CreateDeterministic("square-customer", request.Customer.Email, request.Customer.ReferenceId)),
             ["given_name"] = request.Customer.GivenName,
             ["family_name"] = request.Customer.FamilyName,
             ["email_address"] = request.Customer.Email,
@@ -148,7 +150,7 @@ internal sealed class SquareBillingGateway : IBillingGateway
 
         var body = new Dictionary<string, object?>
         {
-            ["idempotency_key"] = request.IdempotencyKey,
+            ["idempotency_key"] = ToSquareIdempotencyKey(request.IdempotencyKey),
             ["source_id"] = request.SourceId,
             ["card"] = new Dictionary<string, object?>
             {
@@ -266,13 +268,21 @@ internal sealed class SquareBillingGateway : IBillingGateway
             return new SquareGatewayResponse(true, providerRequestId, response.StatusCode.ToString().ToUpperInvariant(), null, null, false, json);
         }
 
-        var (safeErrorCode, sanitizedSummary) = ParseSquareError(json, response.StatusCode);
+        var squareError = ParseSquareError(json, response.StatusCode);
+        _logger.LogWarning(
+            "Square request failed. Path={Path} StatusCode={StatusCode} SafeErrorCode={SafeErrorCode} Field={Field} ProviderRequestId={ProviderRequestId}",
+            path,
+            (int)response.StatusCode,
+            squareError.SafeErrorCode,
+            squareError.Field,
+            providerRequestId);
+
         return new SquareGatewayResponse(
             false,
             providerRequestId,
             $"HTTP_{(int)response.StatusCode}",
-            safeErrorCode,
-            sanitizedSummary,
+            squareError.SafeErrorCode,
+            squareError.SanitizedSummary,
             IsRetryable(response.StatusCode),
             json);
     }
@@ -320,7 +330,7 @@ internal sealed class SquareBillingGateway : IBillingGateway
         return null;
     }
 
-    private static (string? SafeErrorCode, string SanitizedSummary) ParseSquareError(JsonDocument? json, HttpStatusCode statusCode)
+    private static SquareError ParseSquareError(JsonDocument? json, HttpStatusCode statusCode)
     {
         if (json?.RootElement.TryGetProperty("errors", out var errors) == true &&
             errors.ValueKind == JsonValueKind.Array &&
@@ -331,10 +341,39 @@ internal sealed class SquareBillingGateway : IBillingGateway
             var detail = GetString(first, "detail")
                 ?? GetString(first, "category")
                 ?? $"Square request failed with HTTP {(int)statusCode}.";
-            return (code, TrimSummary(detail));
+            var field = GetString(first, "field");
+            return new SquareError(code, BuildSafeErrorSummary(code, detail, field), field);
         }
 
-        return ($"HTTP_{(int)statusCode}", $"Square request failed with HTTP {(int)statusCode}.");
+        return new SquareError(
+            $"HTTP_{(int)statusCode}",
+            $"Square request failed with HTTP {(int)statusCode}.",
+            null);
+    }
+
+    private static string BuildSafeErrorSummary(string code, string detail, string? field)
+    {
+        if (string.Equals(code, "VALUE_TOO_LONG", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(field, "idempotency_key", StringComparison.OrdinalIgnoreCase))
+        {
+            return "The payment setup request used an internal identifier that exceeds Square's 45-character limit. No card was charged.";
+        }
+
+        return TrimSummary(detail);
+    }
+
+    private static string ToSquareIdempotencyKey(string idempotencyKey)
+    {
+        const int maximumLength = 45;
+        var normalized = idempotencyKey.Trim();
+        if (normalized.Length <= maximumLength)
+            return normalized;
+
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
+        return Convert.ToBase64String(hash)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
     }
 
     private static bool IsRetryable(HttpStatusCode statusCode)
@@ -432,4 +471,9 @@ internal sealed class SquareBillingGateway : IBillingGateway
         string? SanitizedSummary,
         bool Retryable,
         JsonDocument? Json);
+
+    private sealed record SquareError(
+        string SafeErrorCode,
+        string SanitizedSummary,
+        string? Field);
 }
