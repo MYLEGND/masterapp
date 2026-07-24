@@ -1,0 +1,15 @@
+@model IReadOnlyList<AgentPortal.Models.FounderDistributionVm>
+
+@if (Model.Count == 0)
+{
+    <p class="founder-subscriber-empty">No data available.</p>
+}
+else
+{
+    <ul class="founder-subscriber-distribution-list">
+        @foreach (var item in Model)
+        {
+            <li><span>@item.Label</span><strong>@item.Value</strong><small>@item.Detail</small></li>
+        }
+    </ul>
+}

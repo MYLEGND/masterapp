@@ -90,6 +90,7 @@ builder.Services.AddScoped<IClientSubscriptionIdentitySyncService, ClientSubscri
 builder.Services.AddScoped<AssistantContextService>();
 builder.Services.AddScoped<AgentRegistryService>();
 builder.Services.AddScoped<AgencyCommandService>();
+builder.Services.AddScoped<FounderSubscribersService>();
 builder.Services.AddScoped<FounderImpersonationService>();
 builder.Services.AddScoped<ProductionService>();
 builder.Services.AddScoped<MetaSignalCrmOutcomeService>();

@@ -1,0 +1,126 @@
+@model AgentPortal.Models.FounderSubscriberGroupDetailVm
+
+@if (Model.Subscribers.Count == 0)
+{
+    <p class="founder-subscriber-empty" role="status">No subscribers found.</p>
+}
+else
+{
+    <div class="action-table-wrap founder-subscriber-table-wrap">
+        <table class="table action-table founder-subscriber-table">
+        <thead>
+            <tr>
+                <th>Customer</th>
+                <th>Owner</th>
+                <th>Plan</th>
+                <th>Status</th>
+                <th>Dates</th>
+                <th>Lifetime</th>
+                <th>Payments</th>
+                <th>Access</th>
+                <th>Contact</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in Model.Subscribers)
+        {
+            <tr>
+                <td>
+                    <strong>@row.Customer</strong>
+                    @if (row.CancelledUtc.HasValue)
+                    {
+                        <small class="founder-subscriber-row-detail">Cancelled <time data-local-utc="@row.CancelledUtc.Value.ToString("O")">@row.CancelledUtc.Value.ToString("u")</time> · @row.DaysSinceCancellation days</small>
+                        <small class="founder-subscriber-row-detail">@row.CancellationReason · @row.LastAgent · @row.MarketingEligibility · @row.PotentialWinBack</small>
+                    }
+                </td>
+                <td>
+                    <strong>@row.AgentOwner</strong>
+                </td>
+                <td>
+                    <strong>@row.SubscriptionAmount</strong>
+                    @if (!string.Equals(row.CurrentPlan, "Subscription", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <small class="founder-subscriber-row-detail">@row.CurrentPlan</small>
+                    }
+                    <small class="founder-subscriber-row-detail">@row.PaymentProvider</small>
+                </td>
+                <td><span class="founder-subscriber-status founder-subscriber-status-@row.StatusTone.ToLowerInvariant()">@row.Status</span></td>
+                <td>
+                    <small class="founder-subscriber-row-detail"><b>Start</b>
+                        @if (row.StartedUtc.HasValue)
+                        {
+                            <time data-local-utc="@row.StartedUtc.Value.ToString("O")">@row.StartedUtc.Value.ToString("u")</time>
+                        }
+                        else
+                        {
+                            @:—
+                        }
+                    </small>
+                    <small class="founder-subscriber-row-detail"><b>Renew</b>
+                        @if (row.RenewalUtc.HasValue)
+                        {
+                            <time data-local-utc="@row.RenewalUtc.Value.ToString("O")">@row.RenewalUtc.Value.ToString("u")</time>
+                        }
+                        else
+                        {
+                            @:—
+                        }
+                    </small>
+                    <small class="founder-subscriber-row-detail">@row.MonthsActive</small>
+                </td>
+                <td><strong>@row.LifetimeValue</strong></td>
+                <td>
+                    <small class="founder-subscriber-row-detail"><b>Success</b>
+                        @if (row.LastSuccessfulPaymentUtc.HasValue)
+                        {
+                            <time data-local-utc="@row.LastSuccessfulPaymentUtc.Value.ToString("O")">@row.LastSuccessfulPaymentUtc.Value.ToString("u")</time>
+                        }
+                        else
+                        {
+                            @:—
+                        }
+                    </small>
+                    <small class="founder-subscriber-row-detail"><b>Failed</b>
+                        @if (row.LastFailedPaymentUtc.HasValue)
+                        {
+                            <time data-local-utc="@row.LastFailedPaymentUtc.Value.ToString("O")">@row.LastFailedPaymentUtc.Value.ToString("u")</time>
+                        }
+                        else
+                        {
+                            @:—
+                        }
+                    </small>
+                </td>
+                <td>@row.ClientAppStatus</td>
+                <td>
+                    <a href="mailto:@row.Email">@row.Email</a>
+                    <small class="founder-subscriber-row-detail">@row.Phone</small>
+                </td>
+                <td>
+                    <button type="button"
+                            class="founder-subscriber-action-select"
+                            data-open-subscriber-actions
+                            data-customer="@row.Customer"
+                            data-client-profile-id="@row.ClientProfileId"
+                            data-agent-user-id="@row.AgentUserId"
+                            aria-label="Actions for @row.Customer">
+                        <span>-- Select --</span>
+                        <span class="founder-subscriber-select-chevron" aria-hidden="true"></span>
+                    </button>
+                </td>
+            </tr>
+        }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (Model.PageCount > 1)
+{
+    <nav class="founder-subscriber-pagination" aria-label="Subscriber rows pages" data-pricing-group-pagination data-page="@Model.Page" data-page-count="@Model.PageCount">
+        <button type="button" class="dashboard-command-action btn-clear-search" data-pricing-group-page="@(Model.Page - 1)" disabled="@(Model.Page <= 1)">Previous</button>
+        <span>Page @Model.Page of @Model.PageCount</span>
+        <button type="button" class="dashboard-command-action btn-clear-search" data-pricing-group-page="@(Model.Page + 1)" disabled="@(Model.Page >= Model.PageCount)">Next</button>
+    </nav>
+}

@@ -1,0 +1,292 @@
+@model AgentPortal.Models.FounderSubscribersDashboardVm
+@{
+    ViewData["Title"] = "Subscribers";
+
+    string GroupPageUrl(int page) => Url.Action("Index", "FounderSubscribers", new
+    {
+        Model.Query.Search,
+        Model.Query.Status,
+        Model.Query.AgentId,
+        Model.Query.MonthlyAmountCents,
+        Model.Query.CreatedFromUtc,
+        Model.Query.CreatedToUtc,
+        Model.Query.RenewalFromUtc,
+        Model.Query.RenewalToUtc,
+        Model.Query.ShowCancelled,
+        Model.Query.Sort,
+        GroupPage = page
+    })!;
+}
+
+<main class="dashboard-page-shell founder-subscribers-page">
+    <section class="dashboard-command-center-panel" aria-labelledby="founder-subscribers-title">
+        <div class="dashboard-command-center-top">
+            <div class="dashboard-hero-copy">
+                <span class="dashboard-eyebrow">Founder · Revenue intelligence</span>
+                <h1 class="dashboard-hero-title" id="founder-subscribers-title">Subscribers</h1>
+            </div>
+
+            <div class="dashboard-hero-stats" aria-label="Subscriber revenue snapshot">
+                <div class="dashboard-stat-card is-primary">
+                    <span class="dashboard-stat-label">Active revenue</span>
+                    <span class="dashboard-stat-value">@Model.Metrics.TotalActiveRevenue</span>
+                </div>
+                <div class="dashboard-stat-card">
+                    <span class="dashboard-stat-label">Active subscribers</span>
+                    <span class="dashboard-stat-value">@Model.Metrics.ActiveSubscribers.ToString("N0")</span>
+                </div>
+                <div class="dashboard-stat-card">
+                    <span class="dashboard-stat-label">MRR</span>
+                    <span class="dashboard-stat-value">@Model.Metrics.MonthlyRecurringRevenue</span>
+                </div>
+                <div class="dashboard-stat-card">
+                    <span class="dashboard-stat-label">Collection success</span>
+                    <span class="dashboard-stat-value">@Model.Metrics.CollectionSuccessRate</span>
+                </div>
+            </div>
+        </div>
+        <div class="dashboard-command-center-divider" aria-hidden="true"></div>
+        <p class="founder-subscribers-updated">Last updated <time data-local-utc="@Model.Metrics.LastUpdatedUtc.ToString("O")">@Model.Metrics.LastUpdatedUtc.ToString("u")</time></p>
+    </section>
+
+    <section class="category-container founder-subscriber-pricing" aria-labelledby="pricing-groups-title">
+        <div class="category-head">
+            <div>
+                <span class="dashboard-section-kicker">Pricing</span>
+                <h2 class="dashboard-section-title" id="pricing-groups-title">Subscription groups</h2>
+            </div>
+            <span class="category-summary-pill"><span class="category-summary-count">@Model.TotalGroupCount</span><span>Groups</span></span>
+        </div>
+
+        @if (Model.PricingGroups.Count == 0)
+        {
+            <p class="founder-subscriber-empty" role="status">No matching subscriptions.</p>
+        }
+        else
+        {
+            <div class="founder-subscriber-tier-list">
+                @foreach (var group in Model.PricingGroups)
+                {
+                    <button type="button"
+                            class="founder-subscriber-tier"
+                            data-open-pricing-group
+                            data-amount-cents="@group.MonthlyAmountCents"
+                            data-currency="@group.Currency"
+                            data-group-label="@group.AmountLabel"
+                            aria-label="View @group.AmountLabel subscriber group">
+                        <span class="founder-subscriber-tier-primary">
+                            <strong>@group.AmountLabel</strong>
+                            <span>@group.SubscriberCount.ToString("N0") subscriber@(group.SubscriberCount == 1 ? string.Empty : "s")</span>
+                        </span>
+                        <span class="founder-subscriber-tier-summary">
+                            <span><b>MRR</b> @group.MonthlyRevenue</span>
+                            <span><b>ARR</b> @group.AnnualRevenue</span>
+                            <span><b>Share</b> @group.RevenueShare</span>
+                        </span>
+                        <span class="founder-subscriber-tier-chevron" aria-hidden="true"></span>
+                    </button>
+                }
+            </div>
+        }
+
+        @if (Model.GroupPageCount > 1)
+        {
+            <nav class="founder-subscriber-pagination" aria-label="Pricing group pages">
+                @if (Model.GroupPage > 1)
+                {
+                    <a href="@GroupPageUrl(Model.GroupPage - 1)" class="dashboard-command-action btn-clear-search">Previous</a>
+                }
+                <span>@Model.GroupPage / @Model.GroupPageCount</span>
+                @if (Model.GroupPage < Model.GroupPageCount)
+                {
+                    <a href="@GroupPageUrl(Model.GroupPage + 1)" class="dashboard-command-action btn-clear-search">Next</a>
+                }
+            </nav>
+        }
+    </section>
+
+    <section class="dashboard-analytics-panel founder-subscriber-cancelled" aria-labelledby="cancelled-subscribers-title">
+        <div class="dashboard-section-head dashboard-section-head-tight">
+            <div>
+                <span class="dashboard-section-kicker">Subscription status</span>
+                <h2 class="dashboard-section-title" id="cancelled-subscribers-title">Cancelled subscriptions</h2>
+            </div>
+            <button type="button"
+                    class="dashboard-command-action btn-carrier-settings"
+                    data-open-cancelled-subscribers
+                    data-modal-title="Cancelled subscriptions">
+                View @Model.Metrics.CancelledSubscribers.ToString("N0")
+            </button>
+        </div>
+    </section>
+
+    <section class="dashboard-analytics-panel founder-subscriber-summary-actions" aria-label="Subscriber summaries">
+        <button type="button" class="founder-subscriber-summary-action" data-open-subscriber-summary data-summary-template="subscriptionAuthorityTemplate" data-modal-title="Current subscription authority">
+            <span>Current subscription authority</span>
+            <strong>@Model.Metrics.ActiveSubscribers.ToString("N0") active</strong>
+        </button>
+        <button type="button" class="founder-subscriber-summary-action" data-open-subscriber-summary data-summary-template="revenueRetentionTemplate" data-modal-title="Revenue and retention">
+            <span>Revenue and retention</span>
+            <strong>@Model.Metrics.MonthlyRecurringRevenue MRR</strong>
+        </button>
+        <button type="button" class="founder-subscriber-summary-action" data-open-subscriber-summary data-summary-template="subscriptionMixTemplate" data-modal-title="Subscription mix">
+            <span>Subscription mix</span>
+            <strong>@Model.TotalGroupCount.ToString("N0") pricing groups</strong>
+        </button>
+    </section>
+
+    <section class="dashboard-analytics-panel founder-subscriber-search" aria-labelledby="subscriber-filters-title">
+        <div class="dashboard-section-head dashboard-section-head-tight">
+            <div>
+                <span class="dashboard-section-kicker">Server-side search</span>
+                <h2 class="dashboard-section-title" id="subscriber-filters-title">Find a subscriber</h2>
+            </div>
+        </div>
+
+        <form method="get" asp-action="Index" class="dashboard-search-panel founder-subscriber-filter-form">
+            <div class="founder-subscriber-filter-grid">
+                <label class="founder-subscriber-field founder-subscriber-search-field">
+                    <span>Search</span>
+                    <input class="search-input" type="search" name="Search" value="@Model.Query.Search" placeholder="Customer, company, agent, email, phone, amount, ID" autocomplete="off" />
+                </label>
+                <label class="founder-subscriber-field">
+                    <span>Status</span>
+                    <select name="Status">
+                        <option value="">All statuses</option>
+                        @foreach (var status in new[] { "Active", "Past Due", "Paused", "Cancelled", "Pending Activation", "Invitation Sent", "Payment Failed", "Expired" })
+                        {
+                            <option value="@status" selected="@(string.Equals(Model.Query.Status, status, StringComparison.OrdinalIgnoreCase))">@status</option>
+                        }
+                    </select>
+                </label>
+                <label class="founder-subscriber-field">
+                    <span>Agent</span>
+                    <select name="AgentId">
+                        <option value="">All agents</option>
+                        @foreach (var agent in Model.Agents)
+                        {
+                            <option value="@agent.Value" selected="@(string.Equals(Model.Query.AgentId, agent.Value, StringComparison.OrdinalIgnoreCase))">@agent.Label</option>
+                        }
+                    </select>
+                </label>
+                <label class="founder-subscriber-field">
+                    <span>Subscription amount</span>
+                    <select name="MonthlyAmountCents">
+                        <option value="">All amounts</option>
+                        @foreach (var amount in Model.Amounts)
+                        {
+                            <option value="@amount.Value" selected="@(Model.Query.MonthlyAmountCents?.ToString() == amount.Value)">@amount.Label</option>
+                        }
+                    </select>
+                </label>
+                <label class="founder-subscriber-field">
+                    <span>Created from</span>
+                    <input type="date" name="CreatedFromUtc" value="@(Model.Query.CreatedFromUtc?.ToString("yyyy-MM-dd"))" />
+                </label>
+                <label class="founder-subscriber-field">
+                    <span>Created to</span>
+                    <input type="date" name="CreatedToUtc" value="@(Model.Query.CreatedToUtc?.ToString("yyyy-MM-dd"))" />
+                </label>
+                <label class="founder-subscriber-field">
+                    <span>Renewal from</span>
+                    <input type="date" name="RenewalFromUtc" value="@(Model.Query.RenewalFromUtc?.ToString("yyyy-MM-dd"))" />
+                </label>
+                <label class="founder-subscriber-field">
+                    <span>Renewal to</span>
+                    <input type="date" name="RenewalToUtc" value="@(Model.Query.RenewalToUtc?.ToString("yyyy-MM-dd"))" />
+                </label>
+                <label class="founder-subscriber-field">
+                    <span>Sort</span>
+                    <select name="Sort">
+                        <option value="revenue" selected="@(Model.Query.Sort == "revenue")">Revenue</option>
+                        <option value="newest" selected="@(Model.Query.Sort == "newest")">Newest</option>
+                        <option value="oldest" selected="@(Model.Query.Sort == "oldest")">Oldest</option>
+                        <option value="lifetime" selected="@(Model.Query.Sort == "lifetime")">Lifetime value</option>
+                        <option value="renewal" selected="@(Model.Query.Sort == "renewal")">Renewal date</option>
+                        <option value="alphabetical" selected="@(Model.Query.Sort == "alphabetical")">Alphabetical</option>
+                    </select>
+                </label>
+                <label class="founder-subscriber-check">
+                    <input type="checkbox" name="ShowCancelled" value="true" checked="@Model.Query.ShowCancelled" />
+                    <span>Cancelled</span>
+                </label>
+            </div>
+            <div class="search-actions">
+                <button type="submit" class="dashboard-command-action btn-carrier-settings">Apply filters</button>
+                <a class="dashboard-command-action btn-clear-search" asp-action="Index">Clear</a>
+            </div>
+        </form>
+    </section>
+
+</main>
+
+<template id="subscriptionAuthorityTemplate">
+    <section class="founder-subscriber-modal-section">
+        <div class="founder-subscriber-modal-metrics">
+            <article><span>Active revenue</span><strong>@Model.Metrics.TotalActiveRevenue</strong></article>
+            <article><span>Active subscribers</span><strong>@Model.Metrics.ActiveSubscribers.ToString("N0")</strong></article>
+            <article><span>MRR</span><strong>@Model.Metrics.MonthlyRecurringRevenue</strong></article>
+            <article><span>Collection success</span><strong>@Model.Metrics.CollectionSuccessRate</strong></article>
+        </div>
+    </section>
+</template>
+
+<template id="revenueRetentionTemplate">
+    <section class="founder-subscriber-modal-section">
+        <div class="founder-subscriber-modal-metrics">
+            <article><span>Cancelled</span><strong>@Model.Metrics.CancelledSubscribers.ToString("N0")</strong></article>
+            <article><span>Average revenue</span><strong>@Model.Metrics.AverageRevenuePerSubscriber</strong></article>
+            <article><span>New this month</span><strong>@Model.Metrics.NewSubscribersThisMonth.ToString("N0")</strong></article>
+            <article><span>Lost this month</span><strong>@Model.Metrics.LostSubscribersThisMonth.ToString("N0")</strong></article>
+            <article><span>Retention</span><strong>@Model.Metrics.RetentionRate</strong></article>
+            <article><span>Churn</span><strong>@Model.Metrics.ChurnRate</strong></article>
+            <article><span>Payment failure</span><strong>@Model.Metrics.PaymentFailureRate</strong></article>
+            <article><span>Lost revenue</span><strong>@Model.Metrics.LostRevenue</strong></article>
+        </div>
+        <div class="founder-subscriber-metric-strip" aria-label="Additional revenue analytics">
+            <span><strong>Recovered</strong> @Model.Metrics.RecoveredRevenue</span>
+            <span><strong>Expansion</strong> @Model.Metrics.ExpansionRevenue</span>
+            <span><strong>Contraction</strong> @Model.Metrics.ContractionRevenue</span>
+            <span><strong>Median</strong> @Model.Metrics.MedianSubscription</span>
+            <span><strong>Range</strong> @Model.Metrics.HighestSubscription · @Model.Metrics.LowestSubscription</span>
+        </div>
+    </section>
+</template>
+
+<template id="subscriptionMixTemplate">
+    <section class="founder-subscriber-modal-section">
+        <div class="founder-subscriber-distribution-grid">
+            <article><h3>Revenue by amount</h3><partial name="_DistributionList" model="Model.RevenueByAmount" /></article>
+            <article><h3>Subscribers by agent</h3><partial name="_DistributionList" model="Model.SubscribersByAgent" /></article>
+            <article><h3>Subscribers by status</h3><partial name="_DistributionList" model="Model.SubscribersByStatus" /></article>
+            <article><h3>Revenue by agent</h3><partial name="_DistributionList" model="Model.RevenueByAgent" /></article>
+        </div>
+    </section>
+</template>
+
+<div class="modal fade legend-modal founder-subscriber-modal" id="pricingGroupModal" tabindex="-1" aria-labelledby="pricingGroupModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="pricingGroupModalTitle">Subscribers</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="pricingGroupModalBody" aria-live="polite"></div>
+            <div class="founder-subscriber-action-modal" id="subscriberActionModal" role="dialog" aria-modal="true" aria-labelledby="subscriberActionModalTitle" hidden>
+                <div class="founder-subscriber-action-modal-card">
+                    <div class="founder-subscriber-action-modal-header">
+                        <h2 class="founder-subscriber-action-modal-title" id="subscriberActionModalTitle">Subscriber actions</h2>
+                        <button type="button" class="founder-subscriber-action-modal-close" data-close-subscriber-actions aria-label="Close">×</button>
+                    </div>
+                    <div class="founder-subscriber-action-modal-body" id="subscriberActionModalBody"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="founderSubscriberActionToken" hidden>@Html.AntiForgeryToken()</div>
+
+@section Scripts {
+    <script src="~/js/founder-subscribers.js" asp-append-version="true"></script>
+}

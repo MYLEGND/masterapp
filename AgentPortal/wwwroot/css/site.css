@@ -545,7 +545,7 @@ body:not(.finance-page) .search-results li:hover {
     color: var(--legend-gold-deep);
 }
 
-body:not(.finance-page) .table {
+body:not(.finance-page) .table:not(.action-table) {
     border: 1.5px solid var(--legend-line);
     border-radius: 18px;
     overflow: hidden;
@@ -553,18 +553,18 @@ body:not(.finance-page) .table {
     box-shadow: var(--legend-shadow);
 }
 
-body:not(.finance-page) .table > :not(caption) > * > * {
+body:not(.finance-page) .table:not(.action-table) > :not(caption) > * > * {
     border-color: rgba(166,128,35,.14);
 }
 
-body:not(.finance-page) .table thead th {
+body:not(.finance-page) .table:not(.action-table) thead th {
     background: #ffffff;
     color: var(--legend-gold-deep);
     font-weight: 900;
     border-bottom: 1.5px solid var(--legend-line);
 }
 
-body:not(.finance-page) .table tbody tr:hover {
+body:not(.finance-page) .table:not(.action-table) tbody tr:hover {
     background: rgba(166,128,35,.06);
 }
 
