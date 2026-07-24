@@ -497,13 +497,22 @@
 
   function saveJourneyProfile(event) {
     event.preventDefault();
+
+    const form = elements.journeyProfileForm;
+    if (!(form instanceof HTMLFormElement)) {
+      setJourneyStatus('Journey Circles profile form is unavailable.', true);
+      return;
+    }
+
     const privacy = new Set(selectedValues(journeyFormField('PrivacyChoices')));
-    setJourneyBoolean('ConsentAffirmed', privacy.has('consent'));
-    setJourneyBoolean('IsOptedIn', privacy.has('opt-in'));
-    setJourneyBoolean('IsDiscoverable', privacy.has('discoverable'));
-    setJourneyBoolean('AllowSuggestions', privacy.has('suggestions'));
-    setJourneyBoolean('AllowConnectionRequests', privacy.has('requests'));
-    const data = new FormData(elements.journeyProfileForm);
+    const data = new FormData(form);
+
+    data.set('ConsentAffirmed', String(privacy.has('consent')));
+    data.set('IsOptedIn', String(privacy.has('opt-in')));
+    data.set('IsDiscoverable', String(privacy.has('discoverable')));
+    data.set('AllowSuggestions', String(privacy.has('suggestions')));
+    data.set('AllowConnectionRequests', String(privacy.has('requests')));
+
     runJourneyAction('/JourneyCircles/Profile', data, 'Journey Circles profile saved.');
   }
 
