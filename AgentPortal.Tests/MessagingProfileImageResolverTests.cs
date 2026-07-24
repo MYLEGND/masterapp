@@ -74,6 +74,64 @@ public sealed class MessagingProfileImageResolverTests
     }
 
     [Fact]
+    public async Task SameCanonicalUserIdInAgentAndClientProfiles_ResolvesBothExplicitParticipantTypesIndependently()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        const string canonicalUserId = "dual-role-user";
+
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = canonicalUserId,
+            AgentUpn = "dual.role@example.test",
+            NormalizedEmail = "dual.role@example.test",
+            FullName = "Dual Role Agent",
+            IsActive = true
+        };
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = canonicalUserId,
+            ExternalIdentityObjectId = canonicalUserId,
+            Email = "dual.role@example.test",
+            NormalizedEmail = "dual.role@example.test",
+            FirstName = "Dual Role",
+            LastName = "Client"
+        };
+
+        db.AgentProfiles.Add(agent);
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var resolver = CreateResolver(db);
+        var identities = await resolver.ResolveIdentitiesAsync(
+        [
+            new MessagingParticipantReference(canonicalUserId, MessagingParticipantTypes.Agent),
+            new MessagingParticipantReference(canonicalUserId, MessagingParticipantTypes.Client)
+        ]);
+
+        Assert.Equal(2, identities.Count);
+
+        Assert.True(
+            identities.TryGetValue(
+                (canonicalUserId, MessagingParticipantTypes.Agent),
+                out var resolvedAgent));
+        Assert.NotNull(resolvedAgent);
+        Assert.Equal(agent.Id, resolvedAgent.ProfileId);
+        Assert.Equal(MessagingParticipantTypes.Agent, resolvedAgent.ParticipantType);
+        Assert.Equal("Dual Role Agent", resolvedAgent.DisplayName);
+
+        Assert.True(
+            identities.TryGetValue(
+                (canonicalUserId, MessagingParticipantTypes.Client),
+                out var resolvedClient));
+        Assert.NotNull(resolvedClient);
+        Assert.Equal(client.Id, resolvedClient.ProfileId);
+        Assert.Equal(MessagingParticipantTypes.Client, resolvedClient.ParticipantType);
+        Assert.Equal("Dual Role Client", resolvedClient.DisplayName);
+    }
+
+    [Fact]
     public async Task ClientWithoutActivatedIdentity_UsesItsOwnInitialsAndNeverTheServicingAgentAvatar()
     {
         await UseAvatarRootAsync(async root =>

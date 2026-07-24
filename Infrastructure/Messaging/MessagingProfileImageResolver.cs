@@ -159,25 +159,8 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                     profile.LastName,
                     profile.Email))
                 .ToListAsync(cancellationToken);
-            var conflictingAgentUserIds = await _db.AgentProfiles
-                .AsNoTracking()
-                .Where(profile => profile.IsActive && clientUserIds.Contains(profile.AgentUserId.ToLower()))
-                .Select(profile => profile.AgentUserId.ToLower())
-                .ToListAsync(cancellationToken);
-            var conflictingAgentSet = conflictingAgentUserIds.ToHashSet(StringComparer.Ordinal);
-
             foreach (var userId in clientUserIds)
             {
-                if (conflictingAgentSet.Contains(userId))
-                {
-                    _logger.LogWarning(
-                        "Messaging participant identity resolution rejected a conflicting client and agent identity. ParticipantUserId={ParticipantUserId} ExpectedParticipantType={ExpectedParticipantType} AmbiguityDetected={AmbiguityDetected}",
-                        userId,
-                        MessagingParticipantTypes.Client,
-                        true);
-                    continue;
-                }
-
                 var matches = clients
                     .Where(profile =>
                         string.Equals(Normalize(profile.ClientUserId), userId, StringComparison.Ordinal) ||

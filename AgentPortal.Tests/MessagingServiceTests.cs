@@ -174,6 +174,139 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task JourneyConversationWithDualRoleCounterparty_UsesClientProfileIdentityForBothParticipants()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        var first = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "dual-journey-one",
+            ExternalIdentityObjectId = "dual-journey-one",
+            FirstName = "Journey",
+            LastName = "Client One",
+            Email = "journey.one@example.test"
+        };
+        var second = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "dual-journey-two",
+            ExternalIdentityObjectId = "dual-journey-two",
+            FirstName = "Journey",
+            LastName = "Client Two",
+            Email = "journey.two@example.test"
+        };
+
+        db.ClientProfiles.AddRange(first, second);
+        db.AgentProfiles.AddRange(
+            new AgentProfile
+            {
+                Id = Guid.NewGuid(),
+                AgentUserId = first.ClientUserId,
+                AgentUpn = first.Email,
+                NormalizedEmail = first.Email,
+                FullName = "Incorrect Agent One",
+                IsActive = true
+            },
+            new AgentProfile
+            {
+                Id = Guid.NewGuid(),
+                AgentUserId = second.ClientUserId,
+                AgentUpn = second.Email,
+                NormalizedEmail = second.Email,
+                FullName = "Incorrect Agent Two",
+                IsActive = true
+            });
+        db.JourneyCircleProfiles.AddRange(
+            new JourneyCircleProfile
+            {
+                Id = Guid.NewGuid(),
+                ClientProfileId = first.Id,
+                IsOptedIn = true,
+                IsDiscoverable = true,
+                AllowSuggestions = true,
+                AllowConnectionRequests = true,
+                DisplayName = "Journey Client One",
+                CommunityAccessState = "Active"
+            },
+            new JourneyCircleProfile
+            {
+                Id = Guid.NewGuid(),
+                ClientProfileId = second.Id,
+                IsOptedIn = true,
+                IsDiscoverable = true,
+                AllowSuggestions = true,
+                AllowConnectionRequests = true,
+                DisplayName = "Journey Client Two",
+                CommunityAccessState = "Active"
+            });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var journey = new JourneyCirclesService(
+            db,
+            new CommunityTextModerationService(new ConfigurationBuilder().Build()),
+            NullLogger<JourneyCirclesService>.Instance);
+
+        Assert.True(
+            (await journey.RequestConnectionAsync(
+                first.ClientUserId,
+                second.Id,
+                "Shared goals",
+                "Hello there")).Succeeded);
+
+        var request = Assert.Single(db.JourneyCircleConnections);
+
+        Assert.True(
+            (await journey.RespondToConnectionAsync(
+                second.ClientUserId,
+                request.Id,
+                true)).Succeeded);
+
+        var firstActor = new MessagingActor(
+            first.ClientUserId,
+            MessagingParticipantTypes.Client);
+        var secondActor = new MessagingActor(
+            second.ClientUserId,
+            MessagingParticipantTypes.Client);
+
+        var opened = await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                firstActor,
+                secondActor.UserId,
+                MessagingParticipantTypes.Client,
+                InitialMessageBody: "Glad we connected.",
+                ClientMessageId: "dual-role-journey-open"));
+
+        Assert.True(opened.Succeeded);
+        var conversation = Assert.IsType<MessagingConversationDetail>(
+            opened.Conversation);
+
+        var firstView = Assert.Single(
+            (await service.ListConversationsAsync(
+                firstActor,
+                new MessagingConversationListQuery())).Conversations);
+        var secondView = Assert.Single(
+            (await service.ListConversationsAsync(
+                secondActor,
+                new MessagingConversationListQuery())).Conversations);
+
+        Assert.Equal(MessagingConversationTypes.ClientJourney, conversation.ConversationType);
+
+        Assert.Equal(second.ClientUserId, firstView.Counterparty.UserId);
+        Assert.Equal(MessagingParticipantTypes.Client, firstView.Counterparty.ParticipantType);
+        Assert.Equal("Journey Client Two", firstView.Counterparty.DisplayName);
+        Assert.NotEqual("Incorrect Agent Two", firstView.Counterparty.DisplayName);
+        Assert.NotEqual(MessagingParticipantTypes.Client, firstView.Counterparty.DisplayName);
+
+        Assert.Equal(first.ClientUserId, secondView.Counterparty.UserId);
+        Assert.Equal(MessagingParticipantTypes.Client, secondView.Counterparty.ParticipantType);
+        Assert.Equal("Journey Client One", secondView.Counterparty.DisplayName);
+        Assert.NotEqual("Incorrect Agent One", secondView.Counterparty.DisplayName);
+        Assert.NotEqual(MessagingParticipantTypes.Client, secondView.Counterparty.DisplayName);
+    }
+
+    [Fact]
     public async Task ActiveMessagingGrant_AllowsMessaging_WhenAgentClientRelationshipDoesNotExist()
     {
         await using var db = ControllerTestHelpers.BuildDb();
