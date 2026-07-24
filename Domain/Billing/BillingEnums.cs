@@ -77,13 +77,21 @@ public enum ClientSubscriptionPaymentStanding
 public enum SubscriptionPaymentStatus
 {
     Pending = 0,
-    Authorized = 1,
-    Completed = 2,
-    Failed = 3,
-    Canceled = 4,
-    PartiallyRefunded = 5,
-    Refunded = 6,
-    Disputed = 7
+    Processing = 1,
+    Authorized = 2,
+    Completed = 3,
+    Failed = 4,
+    Canceled = 5,
+    PartiallyRefunded = 6,
+    Refunded = 7,
+    Disputed = 8
+}
+
+public enum SubscriptionPaymentKind
+{
+    CommerceOneTime = 0,
+    InitialActivation = 1,
+    Renewal = 2
 }
 
 public enum BillingProviderEventProcessingStatus

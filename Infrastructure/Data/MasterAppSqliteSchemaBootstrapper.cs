@@ -12,6 +12,7 @@ public static class MasterAppSqliteSchemaBootstrapper
     private const string CommerceCoreSchemaMigrationId = "20260702164641_AddCommerceCoreSchema";
     private const string SharedBillingFoundationMigrationId = "20260722031717_AddSharedBillingFoundation";
     private const string ClientAppActivationAuthorityMigrationId = "20260722045033_AddClientAppActivationAuthority";
+    private const string PlatformManagedRecurringBillingMigrationId = "20260724100000_AddPlatformManagedRecurringBilling";
 
     private static readonly ColumnPatch[] AdditiveColumnPatches =
     {
@@ -41,7 +42,22 @@ public static class MasterAppSqliteSchemaBootstrapper
         new("ClientProfiles", "ExternalIdentityObjectId", "TEXT"),
         new("ClientSubscriptions", "BillingTimeZoneId", "TEXT NOT NULL DEFAULT 'UTC'"),
         new("ClientSubscriptions", "FirstChargeUtc", "TEXT"),
-        new("ClientSubscriptions", "FirstRecurringRenewalUtc", "TEXT")
+        new("ClientSubscriptions", "FirstRecurringRenewalUtc", "TEXT"),
+        new("ClientSubscriptions", "NextChargeAttemptUtc", "TEXT"),
+        new("ClientSubscriptions", "LastChargeAttemptUtc", "TEXT"),
+        new("ClientSubscriptions", "LastSuccessfulChargeUtc", "TEXT"),
+        new("ClientSubscriptions", "IsPlatformManaged", "INTEGER NOT NULL DEFAULT 0"),
+        new("ClientSubscriptions", "PlatformManagedSinceUtc", "TEXT"),
+        new("ClientSubscriptions", "EndedUtc", "TEXT"),
+        new("SubscriptionPayments", "Kind", "TEXT NOT NULL DEFAULT 'CommerceOneTime'"),
+        new("SubscriptionPayments", "AttemptNumber", "INTEGER NOT NULL DEFAULT 1"),
+        new("SubscriptionPayments", "IdempotencyKey", "TEXT"),
+        new("SubscriptionPayments", "ScheduledChargeUtc", "TEXT"),
+        new("SubscriptionPayments", "ClaimedUtc", "TEXT"),
+        new("SubscriptionPayments", "ClaimToken", "TEXT"),
+        new("SubscriptionPayments", "RetryNotBeforeUtc", "TEXT"),
+        new("SubscriptionPayments", "Retryable", "INTEGER NOT NULL DEFAULT 0"),
+        new("SubscriptionPayments", "ProviderRequestId", "TEXT")
     };
 
     private static readonly IndexPatch[] AnalyticsDriftAlertIndexes =
@@ -89,6 +105,8 @@ public static class MasterAppSqliteSchemaBootstrapper
         new("IX_ClientSubscriptions_Provider_ProviderEnvironment_ProviderSubscriptionId", "CREATE UNIQUE INDEX \"IX_ClientSubscriptions_Provider_ProviderEnvironment_ProviderSubscriptionId\" ON \"ClientSubscriptions\" (\"Provider\", \"ProviderEnvironment\", \"ProviderSubscriptionId\")"),
         new("IX_ClientSubscriptions_Provider_ProviderEnvironment_ProviderCustomerId", "CREATE INDEX \"IX_ClientSubscriptions_Provider_ProviderEnvironment_ProviderCustomerId\" ON \"ClientSubscriptions\" (\"Provider\", \"ProviderEnvironment\", \"ProviderCustomerId\")"),
         new("IX_ClientSubscriptions_ClientProfileId_UpdatedUtc", "CREATE INDEX \"IX_ClientSubscriptions_ClientProfileId_UpdatedUtc\" ON \"ClientSubscriptions\" (\"ClientProfileId\", \"UpdatedUtc\")"),
+        new("IX_ClientSubscriptions_Status_NextBillingDateUtc", "CREATE INDEX \"IX_ClientSubscriptions_Status_NextBillingDateUtc\" ON \"ClientSubscriptions\" (\"Status\", \"NextBillingDateUtc\")"),
+        new("IX_ClientSubscriptions_IsPlatformManaged_Status_NextBillingDateUtc", "CREATE INDEX \"IX_ClientSubscriptions_IsPlatformManaged_Status_NextBillingDateUtc\" ON \"ClientSubscriptions\" (\"IsPlatformManaged\", \"Status\", \"NextBillingDateUtc\")"),
         new("IX_SubscriptionActivationInvitations_TokenHash", "CREATE UNIQUE INDEX \"IX_SubscriptionActivationInvitations_TokenHash\" ON \"SubscriptionActivationInvitations\" (\"TokenHash\")"),
         new("IX_SubscriptionActivationInvitations_ClientProfileId_Status", "CREATE INDEX \"IX_SubscriptionActivationInvitations_ClientProfileId_Status\" ON \"SubscriptionActivationInvitations\" (\"ClientProfileId\", \"Status\")"),
         new("IX_SubscriptionActivationInvitations_ClientSubscriptionOfferId", "CREATE INDEX \"IX_SubscriptionActivationInvitations_ClientSubscriptionOfferId\" ON \"SubscriptionActivationInvitations\" (\"ClientSubscriptionOfferId\")"),
@@ -99,6 +117,9 @@ public static class MasterAppSqliteSchemaBootstrapper
         new("IX_SubscriptionPayments_CommerceOrderId", "CREATE INDEX \"IX_SubscriptionPayments_CommerceOrderId\" ON \"SubscriptionPayments\" (\"CommerceOrderId\")"),
         new("IX_SubscriptionPayments_Provider_ProviderEnvironment_ProviderPaymentId", "CREATE UNIQUE INDEX \"IX_SubscriptionPayments_Provider_ProviderEnvironment_ProviderPaymentId\" ON \"SubscriptionPayments\" (\"Provider\", \"ProviderEnvironment\", \"ProviderPaymentId\")"),
         new("IX_SubscriptionPayments_Provider_ProviderEnvironment_ProviderRefundId", "CREATE UNIQUE INDEX \"IX_SubscriptionPayments_Provider_ProviderEnvironment_ProviderRefundId\" ON \"SubscriptionPayments\" (\"Provider\", \"ProviderEnvironment\", \"ProviderRefundId\")"),
+        new("IX_SubscriptionPayments_Provider_ProviderEnvironment_IdempotencyKey", "CREATE UNIQUE INDEX \"IX_SubscriptionPayments_Provider_ProviderEnvironment_IdempotencyKey\" ON \"SubscriptionPayments\" (\"Provider\", \"ProviderEnvironment\", \"IdempotencyKey\")"),
+        new("IX_SubscriptionPayments_ClientSubscriptionId_BillingPeriodStartUtc_AttemptNumber", "CREATE UNIQUE INDEX \"IX_SubscriptionPayments_ClientSubscriptionId_BillingPeriodStartUtc_AttemptNumber\" ON \"SubscriptionPayments\" (\"ClientSubscriptionId\", \"BillingPeriodStartUtc\", \"AttemptNumber\")"),
+        new("IX_SubscriptionPayments_Status_RetryNotBeforeUtc_ScheduledChargeUtc", "CREATE INDEX \"IX_SubscriptionPayments_Status_RetryNotBeforeUtc_ScheduledChargeUtc\" ON \"SubscriptionPayments\" (\"Status\", \"RetryNotBeforeUtc\", \"ScheduledChargeUtc\")"),
         new("IX_BillingProviderEvents_Provider_ProviderEnvironment_ProviderEventId", "CREATE UNIQUE INDEX \"IX_BillingProviderEvents_Provider_ProviderEnvironment_ProviderEventId\" ON \"BillingProviderEvents\" (\"Provider\", \"ProviderEnvironment\", \"ProviderEventId\")"),
         new("IX_BillingProviderEvents_ProcessingStatus_RetryUtc", "CREATE INDEX \"IX_BillingProviderEvents_ProcessingStatus_RetryUtc\" ON \"BillingProviderEvents\" (\"ProcessingStatus\", \"RetryUtc\")"),
         new("IX_BillingProviderEvents_ProviderObjectId", "CREATE INDEX \"IX_BillingProviderEvents_ProviderObjectId\" ON \"BillingProviderEvents\" (\"ProviderObjectId\")"),
@@ -207,6 +228,7 @@ public static class MasterAppSqliteSchemaBootstrapper
             await StampMigrationIfMissingAsync(db, connection, CommerceCoreSchemaMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, SharedBillingFoundationMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, ClientAppActivationAuthorityMigrationId, cancellationToken);
+            await StampMigrationIfMissingAsync(db, connection, PlatformManagedRecurringBillingMigrationId, cancellationToken);
 
             if (createdFromModel)
             {
@@ -545,8 +567,14 @@ public static class MasterAppSqliteSchemaBootstrapper
                 "CurrentPeriodStartUtc" TEXT NULL,
                 "CurrentPeriodEndUtc" TEXT NULL,
                 "NextBillingDateUtc" TEXT NULL,
+                "NextChargeAttemptUtc" TEXT NULL,
+                "LastChargeAttemptUtc" TEXT NULL,
+                "LastSuccessfulChargeUtc" TEXT NULL,
+                "IsPlatformManaged" INTEGER NOT NULL DEFAULT 0,
+                "PlatformManagedSinceUtc" TEXT NULL,
                 "ActivatedUtc" TEXT NULL,
                 "CancelledUtc" TEXT NULL,
+                "EndedUtc" TEXT NULL,
                 "CancelAtPeriodEnd" INTEGER NOT NULL,
                 "GracePeriodEndsUtc" TEXT NULL,
                 "CreatedUtc" TEXT NOT NULL,
@@ -620,10 +648,19 @@ public static class MasterAppSqliteSchemaBootstrapper
                 "ProviderRefundId" TEXT NULL,
                 "AmountCents" INTEGER NOT NULL,
                 "Currency" TEXT NOT NULL,
+                "Kind" TEXT NOT NULL DEFAULT 'CommerceOneTime',
+                "AttemptNumber" INTEGER NOT NULL DEFAULT 1,
+                "IdempotencyKey" TEXT NULL,
                 "Status" TEXT NOT NULL,
                 "SafeFailureCode" TEXT NULL,
                 "BillingPeriodStartUtc" TEXT NULL,
                 "BillingPeriodEndUtc" TEXT NULL,
+                "ScheduledChargeUtc" TEXT NULL,
+                "ClaimedUtc" TEXT NULL,
+                "ClaimToken" TEXT NULL,
+                "RetryNotBeforeUtc" TEXT NULL,
+                "Retryable" INTEGER NOT NULL DEFAULT 0,
+                "ProviderRequestId" TEXT NULL,
                 "ProviderOccurredUtc" TEXT NULL,
                 "CreatedUtc" TEXT NOT NULL,
                 "UpdatedUtc" TEXT NOT NULL,

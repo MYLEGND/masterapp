@@ -1604,6 +1604,9 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime?>("CurrentPeriodStartUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("EndedUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("FirstChargeUtc")
                         .HasColumnType("TEXT");
 
@@ -1613,10 +1616,22 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime?>("GracePeriodEndsUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsPlatformManaged")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastChargeAttemptUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSuccessfulChargeUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("MonthlyAmountCents")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime?>("NextBillingDateUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("NextChargeAttemptUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("OwnerAgentUserId")
@@ -1627,6 +1642,9 @@ namespace Infrastructure.Migrations
                     b.Property<string>("PaymentStanding")
                         .IsRequired()
                         .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("PlatformManagedSinceUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Provider")
@@ -1677,10 +1695,14 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("ClientProfileId", "UpdatedUtc");
 
+                    b.HasIndex("IsPlatformManaged", "Status", "NextBillingDateUtc");
+
                     b.HasIndex("Provider", "ProviderEnvironment", "ProviderCustomerId");
 
                     b.HasIndex("Provider", "ProviderEnvironment", "ProviderSubscriptionId")
                         .IsUnique();
+
+                    b.HasIndex("Status", "NextBillingDateUtc");
 
                     b.ToTable("ClientSubscriptions", (string)null);
                 });
@@ -4435,6 +4457,16 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime?>("BillingPeriodStartUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ClaimedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClaimToken")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("ClientSubscriptionId")
                         .HasColumnType("TEXT");
 
@@ -4449,6 +4481,15 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Provider")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -4460,6 +4501,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProviderInvoiceId")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderRequestId")
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
 
@@ -4480,8 +4525,17 @@ namespace Infrastructure.Migrations
                         .HasColumnType("BLOB")
                         .HasDefaultValueSql("X''");
 
+                    b.Property<DateTime?>("RetryNotBeforeUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Retryable")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("SafeFailureCode")
                         .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ScheduledChargeUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Status")
@@ -4498,11 +4552,19 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("CommerceOrderId");
 
+                    b.HasIndex("ClientSubscriptionId", "BillingPeriodStartUtc", "AttemptNumber")
+                        .IsUnique();
+
                     b.HasIndex("Provider", "ProviderEnvironment", "ProviderPaymentId")
+                        .IsUnique();
+
+                    b.HasIndex("Provider", "ProviderEnvironment", "IdempotencyKey")
                         .IsUnique();
 
                     b.HasIndex("Provider", "ProviderEnvironment", "ProviderRefundId")
                         .IsUnique();
+
+                    b.HasIndex("Status", "RetryNotBeforeUtc", "ScheduledChargeUtc");
 
                     b.ToTable("SubscriptionPayments", (string)null);
                 });

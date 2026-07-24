@@ -10,9 +10,6 @@ public interface IBillingGateway
     Task<BillingOneTimePaymentResult> CreateOneTimePaymentAsync(BillingOneTimePaymentRequest request, CancellationToken cancellationToken = default);
     Task<BillingCustomerResolutionResult> ResolveCustomerAsync(BillingCustomerResolutionRequest request, CancellationToken cancellationToken = default);
     Task<BillingPaymentMethodAttachmentResult> AttachPaymentMethodAsync(BillingPaymentMethodAttachmentRequest request, CancellationToken cancellationToken = default);
-    Task<BillingSubscriptionResult> CreateSubscriptionAsync(BillingSubscriptionCreateRequest request, CancellationToken cancellationToken = default);
-    Task<BillingSubscriptionResult> GetSubscriptionAsync(string providerSubscriptionId, string? correlationId = null, CancellationToken cancellationToken = default);
-    Task<BillingSubscriptionResult> CancelSubscriptionAsync(BillingSubscriptionCancellationRequest request, CancellationToken cancellationToken = default);
     Task<BillingPaymentResult> GetPaymentAsync(BillingPaymentLookupRequest request, CancellationToken cancellationToken = default);
     Task<BillingPaymentResult> GetRefundAsync(BillingRefundLookupRequest request, CancellationToken cancellationToken = default);
 }
@@ -27,12 +24,15 @@ public interface IBillingOrchestrator
     Task<ExecuteCommerceOneTimePaymentResult> ExecuteCommerceOneTimePaymentAsync(ExecuteCommerceOneTimePaymentCommand command, CancellationToken cancellationToken = default);
     Task<ActivateClientSubscriptionResult> ActivateClientSubscriptionAsync(ActivateClientSubscriptionCommand command, CancellationToken cancellationToken = default);
     Task<CancelClientSubscriptionResult> CancelClientSubscriptionAsync(CancelClientSubscriptionCommand command, CancellationToken cancellationToken = default);
+    Task<PlatformRecurringBillingRunResult> ProcessDueClientSubscriptionRenewalsAsync(int maxItems, string workerId, CancellationToken cancellationToken = default);
 }
 
 public interface IClientSubscriptionActivationPolicyService
 {
     ClientSubscriptionActivationSchedule ResolveActivationSchedule(ClientSubscriptionOffer offer, DateTime nowUtc);
-    string? ResolveProviderPlanVariationId(ClientSubscriptionOffer offer);
+    ClientSubscriptionRenewalSchedule ResolveRenewalSchedule(ClientSubscription subscription);
+    TimeSpan? ResolveRenewalRetryDelay(int failedAttemptNumber);
+    DateTime ResolveGracePeriodEndUtc(DateTime failureUtc);
 }
 
 public interface IBillingEntitlementService

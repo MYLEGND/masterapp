@@ -4369,12 +4369,15 @@ namespace AgentPortal.Controllers;
         if (latestSubscription is null)
             return Forbid();
 
-        await _billingOrchestrator.CancelClientSubscriptionAsync(
+        var cancellation = await _billingOrchestrator.CancelClientSubscriptionAsync(
             new CancelClientSubscriptionCommand(
                 latestSubscription.Subscription.Id,
                 true,
                 BillingActorType.Agent,
                 agentOid));
+
+        if (!cancellation.Success)
+            return BadRequest(new { ok = false, code = cancellation.SafeErrorCode, message = cancellation.SanitizedSummary });
 
         return Json(new
         {

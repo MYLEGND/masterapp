@@ -92,20 +92,8 @@ public sealed record BillingPaymentMethodAttachmentResult(
     string? ProviderPaymentMethodId = null)
     : BillingProviderResult(Success, ExternalId, NormalizedStatus, SafeErrorCode, SanitizedSummary, ProviderRequestId, Retryable);
 
-public sealed record BillingSubscriptionCreateRequest(
-    string ProviderCustomerId,
-    string? ProviderPaymentMethodId,
-    string ProviderPlanVariationId,
-    int AmountCents,
-    string Currency,
-    int? BillingAnchorDay,
-    DateOnly? StartDateLocal,
-    string IdempotencyKey,
-    string? CorrelationId = null);
-
-public sealed record BillingSubscriptionResult(
+public sealed record ClientSubscriptionLifecycleResult(
     bool Success,
-    string? ExternalId,
     string? NormalizedStatus,
     string? SafeErrorCode,
     string? SanitizedSummary,
@@ -113,21 +101,13 @@ public sealed record BillingSubscriptionResult(
     bool Retryable,
     string? ProviderCustomerId = null,
     string? ProviderPaymentMethodId = null,
-    string? ProviderPlanVariationId = null,
     int? AmountCents = null,
     string? Currency = null,
     int? BillingAnchorDay = null,
     DateTime? CurrentPeriodStartUtc = null,
     DateTime? CurrentPeriodEndUtc = null,
     DateTime? NextBillingDateUtc = null,
-    bool? CancelAtPeriodEnd = null)
-    : BillingProviderResult(Success, ExternalId, NormalizedStatus, SafeErrorCode, SanitizedSummary, ProviderRequestId, Retryable);
-
-public sealed record BillingSubscriptionCancellationRequest(
-    string ProviderSubscriptionId,
-    string IdempotencyKey,
-    bool CancelAtPeriodEnd,
-    string? CorrelationId = null);
+    bool? CancelAtPeriodEnd = null);
 
 public sealed record BillingPaymentLookupRequest(
     string ProviderPaymentId,
@@ -197,6 +177,11 @@ public sealed record ClientSubscriptionActivationSchedule(
     DateTime FirstRecurringRenewalUtc,
     DateOnly FirstRecurringRenewalLocalDate);
 
+public sealed record ClientSubscriptionRenewalSchedule(
+    DateTime PeriodStartUtc,
+    DateTime PeriodEndUtc,
+    DateTime NextBillingDateUtc);
+
 public sealed record CreateClientSubscriptionOfferCommand(
     Guid ClientProfileId,
     string OwnerAgentUserId,
@@ -239,7 +224,6 @@ public sealed record ActivateClientSubscriptionCommand(
     string OwnerAgentUserId,
     string SourceId,
     string Currency,
-    string? ProviderPlanVariationId,
     int? BillingAnchorDay,
     string BillingTimeZoneId,
     DateTime FirstChargeUtc,
@@ -333,7 +317,7 @@ public sealed record ActivateClientSubscriptionResult(
     bool Retryable,
     ClientSubscription? Subscription,
     ClientEntitlement? Entitlement,
-    BillingSubscriptionResult ProviderResult)
+    ClientSubscriptionLifecycleResult LifecycleResult)
     : BillingWorkflowResult(Success, SafeErrorCode, SanitizedSummary, ProviderRequestId, Retryable);
 
 public sealed record CancelClientSubscriptionResult(
@@ -344,5 +328,12 @@ public sealed record CancelClientSubscriptionResult(
     bool Retryable,
     ClientSubscription? Subscription,
     ClientEntitlement? Entitlement,
-    BillingSubscriptionResult ProviderResult)
+    ClientSubscriptionLifecycleResult LifecycleResult)
     : BillingWorkflowResult(Success, SafeErrorCode, SanitizedSummary, ProviderRequestId, Retryable);
+
+public sealed record PlatformRecurringBillingRunResult(
+    int DueSubscriptions,
+    int ChargesAttempted,
+    int ChargesSucceeded,
+    int ChargesFailed,
+    int EndedAtPeriodBoundary);

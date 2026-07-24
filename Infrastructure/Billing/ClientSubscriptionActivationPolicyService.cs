@@ -47,22 +47,37 @@ internal sealed class ClientSubscriptionActivationPolicyService : IClientSubscri
             firstRecurringRenewalLocalDate);
     }
 
-    public string? ResolveProviderPlanVariationId(ClientSubscriptionOffer offer)
+    public ClientSubscriptionRenewalSchedule ResolveRenewalSchedule(ClientSubscription subscription)
     {
-        if (_options.PlanVariationIds.TryGetValue(offer.PriceType.ToString(), out var mappedByType) &&
-            !string.IsNullOrWhiteSpace(mappedByType))
-        {
-            return mappedByType;
-        }
+        var periodStartUtc = subscription.NextBillingDateUtc
+            ?? subscription.CurrentPeriodEndUtc
+            ?? throw new InvalidOperationException("An active subscription must have a next billing date before a renewal can be scheduled.");
+        var localPeriodStart = TimeZoneInfo.ConvertTimeFromUtc(EnsureUtc(periodStartUtc), ResolveTimeZone(subscription.BillingTimeZoneId));
+        var renewalDate = subscription.BillingAnchorDay.HasValue
+            ? BuildAnchoredDate(DateOnly.FromDateTime(localPeriodStart.Date).AddMonths(1), subscription.BillingAnchorDay.Value)
+            : DateOnly.FromDateTime(localPeriodStart.Date.AddMonths(1));
+        var timeZone = ResolveTimeZone(subscription.BillingTimeZoneId);
+        var periodEndUtc = TimeZoneInfo.ConvertTimeToUtc(
+            new DateTime(renewalDate.Year, renewalDate.Month, renewalDate.Day, 0, 0, 0, DateTimeKind.Unspecified),
+            timeZone);
 
-        var amountKey = offer.MonthlyAmountCents.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        if (_options.PlanVariationIds.TryGetValue(amountKey, out var mappedByAmount) &&
-            !string.IsNullOrWhiteSpace(mappedByAmount))
-        {
-            return mappedByAmount;
-        }
+        return new ClientSubscriptionRenewalSchedule(
+            EnsureUtc(periodStartUtc),
+            periodEndUtc,
+            periodEndUtc);
+    }
 
-        return _options.DefaultProviderPlanVariationId;
+    public TimeSpan? ResolveRenewalRetryDelay(int failedAttemptNumber)
+    {
+        if (failedAttemptNumber <= 0 || failedAttemptNumber > _options.RenewalRetryDelayMinutes.Count)
+            return null;
+
+        return TimeSpan.FromMinutes(_options.RenewalRetryDelayMinutes[failedAttemptNumber - 1]);
+    }
+
+    public DateTime ResolveGracePeriodEndUtc(DateTime failureUtc)
+    {
+        return EnsureUtc(failureUtc).AddDays(_options.GracePeriodDays);
     }
 
     private static int? ResolveAnchorDay(ClientSubscriptionOffer offer)

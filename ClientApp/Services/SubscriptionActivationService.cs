@@ -139,12 +139,6 @@ public sealed class SubscriptionActivationService
         if (!isZeroDollarSubscription && !HasCompletePaymentInput(input))
             return new SubscriptionActivationExecutionResult(false, "PAYMENT_DETAILS_REQUIRED", "Complete the required payment details before continuing.", context);
 
-        var providerPlanVariationId = isZeroDollarSubscription
-            ? string.Empty
-            : _activationPolicyService.ResolveProviderPlanVariationId(context.Offer);
-        if (!isZeroDollarSubscription && string.IsNullOrWhiteSpace(providerPlanVariationId))
-            return new SubscriptionActivationExecutionResult(false, "PLAN_UNAVAILABLE", "The billing plan is not configured yet. Please contact support.", context);
-
         var activationResult = await _billingOrchestrator.ActivateClientSubscriptionAsync(
             new ActivateClientSubscriptionCommand(
                 context.Client.Id,
@@ -152,7 +146,6 @@ public sealed class SubscriptionActivationService
                 context.Offer.OwnerAgentUserId,
                 input.SourceId?.Trim() ?? string.Empty,
                 context.Offer.Currency,
-                providerPlanVariationId,
                 context.Schedule.BillingAnchorDay,
                 context.Schedule.BillingTimeZoneId,
                 context.Schedule.FirstChargeUtc,

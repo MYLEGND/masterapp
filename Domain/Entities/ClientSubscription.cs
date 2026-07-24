@@ -30,8 +30,14 @@ public sealed class ClientSubscription
     public DateTime? CurrentPeriodStartUtc { get; set; }
     public DateTime? CurrentPeriodEndUtc { get; set; }
     public DateTime? NextBillingDateUtc { get; set; }
+    public DateTime? NextChargeAttemptUtc { get; set; }
+    public DateTime? LastChargeAttemptUtc { get; set; }
+    public DateTime? LastSuccessfulChargeUtc { get; set; }
+    public bool IsPlatformManaged { get; set; }
+    public DateTime? PlatformManagedSinceUtc { get; set; }
     public DateTime? ActivatedUtc { get; set; }
     public DateTime? CancelledUtc { get; set; }
+    public DateTime? EndedUtc { get; set; }
     public bool CancelAtPeriodEnd { get; set; }
     public DateTime? GracePeriodEndsUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;

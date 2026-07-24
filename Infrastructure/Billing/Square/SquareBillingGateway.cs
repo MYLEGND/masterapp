@@ -51,6 +51,9 @@ internal sealed class SquareBillingGateway : IBillingGateway
         if (!string.IsNullOrWhiteSpace(request.ExistingProviderCustomerId))
             body["customer_id"] = request.ExistingProviderCustomerId;
 
+        if (!string.IsNullOrWhiteSpace(request.OrderReference))
+            body["reference_id"] = request.OrderReference;
+
         var response = await SendAsync(HttpMethod.Post, "/v2/payments", body, request.CorrelationId, cancellationToken);
         if (!response.Success)
             return new BillingOneTimePaymentResult(false, null, response.NormalizedStatus, response.SafeErrorCode, response.SanitizedSummary, response.ProviderRequestId, response.Retryable);
@@ -172,67 +175,6 @@ internal sealed class SquareBillingGateway : IBillingGateway
         var card = response.Json?.RootElement.TryGetProperty("card", out var cardElement) == true ? cardElement : default;
         var cardId = GetString(card, "id");
         return new BillingPaymentMethodAttachmentResult(true, cardId, GetString(card, "card_status") ?? "ATTACHED", null, "Square payment method attached.", response.ProviderRequestId, false, request.ProviderCustomerId, cardId);
-    }
-
-    public async Task<BillingSubscriptionResult> CreateSubscriptionAsync(BillingSubscriptionCreateRequest request, CancellationToken cancellationToken = default)
-    {
-        var configurationFailure = ValidateConfigured("CREATE_SUBSCRIPTION");
-        if (configurationFailure is not null)
-            return new BillingSubscriptionResult(false, null, configurationFailure.NormalizedStatus, configurationFailure.SafeErrorCode, configurationFailure.SanitizedSummary, configurationFailure.ProviderRequestId, configurationFailure.Retryable);
-
-        var body = new Dictionary<string, object?>
-        {
-            ["idempotency_key"] = request.IdempotencyKey,
-            ["location_id"] = _options.LocationId,
-            ["customer_id"] = request.ProviderCustomerId,
-            ["plan_variation_id"] = request.ProviderPlanVariationId,
-            ["price_override_money"] = new Dictionary<string, object?>
-            {
-                ["amount"] = request.AmountCents,
-                ["currency"] = request.Currency
-            }
-        };
-
-        if (!string.IsNullOrWhiteSpace(request.ProviderPaymentMethodId))
-            body["card_id"] = request.ProviderPaymentMethodId;
-
-        if (request.BillingAnchorDay.HasValue)
-            body["monthly_billing_anchor_date"] = request.BillingAnchorDay.Value;
-
-        if (request.StartDateLocal.HasValue)
-            body["start_date"] = request.StartDateLocal.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-        var response = await SendAsync(HttpMethod.Post, "/v2/subscriptions", body, request.CorrelationId, cancellationToken);
-        if (!response.Success)
-            return new BillingSubscriptionResult(false, null, response.NormalizedStatus, response.SafeErrorCode, response.SanitizedSummary, response.ProviderRequestId, response.Retryable, request.ProviderCustomerId, request.ProviderPaymentMethodId, request.ProviderPlanVariationId, request.AmountCents, request.Currency, request.BillingAnchorDay);
-
-        return BuildSubscriptionResult(response, request.ProviderCustomerId, request.ProviderPaymentMethodId, request.ProviderPlanVariationId, request.AmountCents, request.Currency, request.BillingAnchorDay);
-    }
-
-    public async Task<BillingSubscriptionResult> GetSubscriptionAsync(string providerSubscriptionId, string? correlationId = null, CancellationToken cancellationToken = default)
-    {
-        var configurationFailure = ValidateConfigured("GET_SUBSCRIPTION");
-        if (configurationFailure is not null)
-            return new BillingSubscriptionResult(false, null, configurationFailure.NormalizedStatus, configurationFailure.SafeErrorCode, configurationFailure.SanitizedSummary, configurationFailure.ProviderRequestId, configurationFailure.Retryable);
-
-        var response = await SendAsync(HttpMethod.Get, $"/v2/subscriptions/{Uri.EscapeDataString(providerSubscriptionId)}", null, correlationId, cancellationToken);
-        if (!response.Success)
-            return new BillingSubscriptionResult(false, providerSubscriptionId, response.NormalizedStatus, response.SafeErrorCode, response.SanitizedSummary, response.ProviderRequestId, response.Retryable);
-
-        return BuildSubscriptionResult(response, null, null, null, null, null, null);
-    }
-
-    public async Task<BillingSubscriptionResult> CancelSubscriptionAsync(BillingSubscriptionCancellationRequest request, CancellationToken cancellationToken = default)
-    {
-        var configurationFailure = ValidateConfigured("CANCEL_SUBSCRIPTION");
-        if (configurationFailure is not null)
-            return new BillingSubscriptionResult(false, request.ProviderSubscriptionId, configurationFailure.NormalizedStatus, configurationFailure.SafeErrorCode, configurationFailure.SanitizedSummary, configurationFailure.ProviderRequestId, configurationFailure.Retryable);
-
-        var response = await SendAsync(HttpMethod.Post, $"/v2/subscriptions/{Uri.EscapeDataString(request.ProviderSubscriptionId)}/cancel", new Dictionary<string, object?>(), request.CorrelationId, cancellationToken);
-        if (!response.Success)
-            return new BillingSubscriptionResult(false, request.ProviderSubscriptionId, response.NormalizedStatus, response.SafeErrorCode, response.SanitizedSummary, response.ProviderRequestId, response.Retryable);
-
-        return BuildSubscriptionResult(response, null, null, null, null, null, null);
     }
 
     public async Task<BillingPaymentResult> GetPaymentAsync(BillingPaymentLookupRequest request, CancellationToken cancellationToken = default)
@@ -376,40 +318,6 @@ internal sealed class SquareBillingGateway : IBillingGateway
         }
 
         return null;
-    }
-
-    private static BillingSubscriptionResult BuildSubscriptionResult(
-        SquareGatewayResponse response,
-        string? providerCustomerId,
-        string? providerPaymentMethodId,
-        string? providerPlanVariationId,
-        int? amountCents,
-        string? currency,
-        int? billingAnchorDay)
-    {
-        var subscription = response.Json?.RootElement.TryGetProperty("subscription", out var subscriptionElement) == true ? subscriptionElement : default;
-        var phases = subscription.ValueKind == JsonValueKind.Object && subscription.TryGetProperty("phases", out var phasesElement) && phasesElement.ValueKind == JsonValueKind.Array && phasesElement.GetArrayLength() > 0
-            ? phasesElement[0]
-            : default;
-
-        return new BillingSubscriptionResult(
-            true,
-            GetString(subscription, "id"),
-            GetString(subscription, "status") ?? response.NormalizedStatus,
-            null,
-            "Square subscription response received.",
-            response.ProviderRequestId,
-            false,
-            GetString(subscription, "customer_id") ?? providerCustomerId,
-            GetString(subscription, "card_id") ?? providerPaymentMethodId,
-            GetString(subscription, "plan_variation_id") ?? providerPlanVariationId,
-            amountCents ?? GetInt(phases, "price_override_money", "amount"),
-            currency ?? GetString(phases, "price_override_money", "currency"),
-            billingAnchorDay ?? GetInt(phases, "monthly_billing_anchor_date"),
-            ParseDateTime(GetString(subscription, "start_date")),
-            ParseDateTime(GetString(subscription, "charged_through_date")),
-            ParseDateTime(GetString(subscription, "next_billing_date")),
-            !string.IsNullOrWhiteSpace(GetString(subscription, "canceled_date")));
     }
 
     private static (string? SafeErrorCode, string SanitizedSummary) ParseSquareError(JsonDocument? json, HttpStatusCode statusCode)

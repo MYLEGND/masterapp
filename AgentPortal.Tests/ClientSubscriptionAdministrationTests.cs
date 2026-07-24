@@ -273,27 +273,7 @@ public sealed class ClientSubscriptionAdministrationTests
         var gateway = new Mock<IBillingGateway>(MockBehavior.Strict);
         gateway.SetupGet(x => x.Provider).Returns(BillingProvider.Square);
         gateway.SetupGet(x => x.Environment).Returns(BillingProviderEnvironment.Sandbox);
-        gateway
-            .Setup(x => x.CancelSubscriptionAsync(
-                It.Is<BillingSubscriptionCancellationRequest>(request =>
-                    request.ProviderSubscriptionId == "sub_123" &&
-                    request.CancelAtPeriodEnd),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BillingSubscriptionResult(
-                true,
-                "sub_123",
-                "ACTIVE",
-                null,
-                "Subscription will cancel at period end.",
-                "req_cancel",
-                false,
-                AmountCents: ClientSubscriptionOfferPricing.Fixed100Cents,
-                Currency: "USD",
-                CurrentPeriodEndUtc: DateTime.UtcNow.AddDays(14),
-                NextBillingDateUtc: DateTime.UtcNow.AddDays(14),
-                CancelAtPeriodEnd: true));
-
-        var billingOrchestrator = new MasterAppBillingOrchestrator(db, gateway.Object, BuildEntitlementService(db));
+        var billingOrchestrator = new MasterAppBillingOrchestrator(db, gateway.Object, BuildEntitlementService(db), Mock.Of<IClientSubscriptionActivationPolicyService>());
         var controller = ControllerTestHelpers.BuildClientsController(
             db,
             Mock.Of<IExecutionEngine>(),
@@ -342,7 +322,7 @@ public sealed class ClientSubscriptionAdministrationTests
         var gateway = new Mock<IBillingGateway>(MockBehavior.Strict);
         gateway.SetupGet(x => x.Provider).Returns(BillingProvider.Square);
         gateway.SetupGet(x => x.Environment).Returns(BillingProviderEnvironment.Sandbox);
-        return new MasterAppBillingOrchestrator(db, gateway.Object, BuildEntitlementService(db));
+        return new MasterAppBillingOrchestrator(db, gateway.Object, BuildEntitlementService(db), Mock.Of<IClientSubscriptionActivationPolicyService>());
     }
 
     private static BillingEntitlementService BuildEntitlementService(MasterAppDbContext db)
@@ -453,6 +433,9 @@ public sealed class ClientSubscriptionAdministrationTests
             CurrentPeriodStartUtc = DateTime.UtcNow.AddDays(-1),
             CurrentPeriodEndUtc = DateTime.UtcNow.AddDays(29),
             NextBillingDateUtc = DateTime.UtcNow.AddDays(29),
+            NextChargeAttemptUtc = DateTime.UtcNow.AddDays(29),
+            IsPlatformManaged = true,
+            PlatformManagedSinceUtc = DateTime.UtcNow.AddDays(-10),
             ActivatedUtc = DateTime.UtcNow.AddDays(-10),
             CreatedUtc = DateTime.UtcNow.AddDays(-10),
             UpdatedUtc = DateTime.UtcNow

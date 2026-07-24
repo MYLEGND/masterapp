@@ -338,6 +338,8 @@ public class MasterAppDbContext : DbContext
 
             e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderCustomerId });
             e.HasIndex(x => new { x.ClientProfileId, x.UpdatedUtc });
+            e.HasIndex(x => new { x.Status, x.NextBillingDateUtc });
+            e.HasIndex(x => new { x.IsPlatformManaged, x.Status, x.NextBillingDateUtc });
 
             e.HasOne(x => x.ClientProfile)
                 .WithMany()
@@ -440,8 +442,12 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.ProviderInvoiceId).HasMaxLength(160);
             e.Property(x => x.ProviderRefundId).HasMaxLength(160);
             e.Property(x => x.Currency).HasMaxLength(8).IsRequired();
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.IdempotencyKey).HasMaxLength(128);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(40).IsRequired();
             e.Property(x => x.SafeFailureCode).HasMaxLength(120);
+            e.Property(x => x.ClaimToken).HasMaxLength(128);
+            e.Property(x => x.ProviderRequestId).HasMaxLength(160);
 
             e.HasIndex(x => x.ClientSubscriptionId);
             e.HasIndex(x => x.CommerceOrderId);
@@ -455,6 +461,23 @@ public class MasterAppDbContext : DbContext
                 e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderRefundId }).IsUnique().HasFilter("[ProviderRefundId] IS NOT NULL");
             else
                 e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderRefundId }).IsUnique();
+
+            if (isSqlServer)
+            {
+                e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.IdempotencyKey })
+                    .IsUnique()
+                    .HasFilter("[IdempotencyKey] IS NOT NULL");
+                e.HasIndex(x => new { x.ClientSubscriptionId, x.BillingPeriodStartUtc, x.AttemptNumber })
+                    .IsUnique()
+                    .HasFilter("[ClientSubscriptionId] IS NOT NULL AND [BillingPeriodStartUtc] IS NOT NULL");
+            }
+            else
+            {
+                e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.IdempotencyKey }).IsUnique();
+                e.HasIndex(x => new { x.ClientSubscriptionId, x.BillingPeriodStartUtc, x.AttemptNumber }).IsUnique();
+            }
+
+            e.HasIndex(x => new { x.Status, x.RetryNotBeforeUtc, x.ScheduledChargeUtc });
 
             e.HasOne(x => x.ClientSubscription)
                 .WithMany()

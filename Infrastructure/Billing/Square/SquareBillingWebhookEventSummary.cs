@@ -23,6 +23,7 @@ internal sealed record SquareBillingWebhookEventSummary(
     string? RefundId,
     string? DisputeId,
     string? CustomerId,
+    string? ReferenceId,
     string? NormalizedStatus,
     DateTime? ProviderOccurredUtc)
 {
@@ -42,6 +43,7 @@ internal sealed record SquareBillingWebhookEventSummary(
             ["refundId"] = RefundId,
             ["disputeId"] = DisputeId,
             ["customerId"] = CustomerId,
+            ["referenceId"] = ReferenceId,
             ["normalizedStatus"] = NormalizedStatus,
             ["providerOccurredUtc"] = ProviderOccurredUtc?.ToString("O", CultureInfo.InvariantCulture)
         };
@@ -70,6 +72,7 @@ internal static class SquareBillingWebhookEventParser
                 ResolveFallbackObjectType(fallbackEventType),
                 fallbackProviderObjectId,
                 fallbackProviderObjectId,
+                null,
                 null,
                 null,
                 null,
@@ -135,6 +138,7 @@ internal static class SquareBillingWebhookEventParser
             GetString(root, "refundId"),
             GetString(root, "disputeId"),
             GetString(root, "customerId"),
+            NormalizeReferenceId(GetString(root, "referenceId")),
             BillingStateMapper.Normalize(GetString(root, "normalizedStatus")),
             ParseDateTime(GetString(root, "providerOccurredUtc")));
     }
@@ -188,6 +192,7 @@ internal static class SquareBillingWebhookEventParser
             GetString(invoice, "primary_recipient", "customer_id") ??
             GetString(refund, "customer_id") ??
             GetString(dispute, "customer_id");
+        var referenceId = NormalizeReferenceId(GetString(payment, "reference_id"));
 
         var normalizedStatus = ResolveNormalizedStatus(eventType, subscription, payment, invoice, refund, dispute);
 
@@ -214,6 +219,7 @@ internal static class SquareBillingWebhookEventParser
             refundId,
             disputeId,
             customerId,
+            referenceId,
             normalizedStatus,
             providerOccurredUtc);
     }
@@ -244,6 +250,11 @@ internal static class SquareBillingWebhookEventParser
             return "REFUNDED";
 
         return string.Empty;
+    }
+
+    private static string? NormalizeReferenceId(string? value)
+    {
+        return Guid.TryParse(value, out var parsed) ? parsed.ToString("D") : null;
     }
 
     private static string DetectEmbeddedObjectType(

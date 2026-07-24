@@ -489,7 +489,7 @@ public class ClientAppSubscriptionActivationTests
                 false,
                 null,
                 null,
-                new BillingSubscriptionResult(false, null, "FAILED", "PAYMENT_FAILED", "The first payment was declined.", null, false)));
+                new ClientSubscriptionLifecycleResult(false, "FAILED", "PAYMENT_FAILED", "The first payment was declined.", null, false)));
 
         var service = BuildActivationService(db, orchestrator, BuildActivationPolicyService());
 
@@ -516,14 +516,13 @@ public class ClientAppSubscriptionActivationTests
             DateTime.UtcNow.AddDays(2));
 
         var expectedSchedule = BuildSchedule(15);
-        var policyService = BuildActivationPolicyService(expectedSchedule, "plan-variation-1");
+        var policyService = BuildActivationPolicyService(expectedSchedule);
         var orchestrator = new Mock<IBillingOrchestrator>();
         orchestrator
             .Setup(x => x.ActivateClientSubscriptionAsync(
                 It.Is<ActivateClientSubscriptionCommand>(command =>
                     command.ClientProfileId == profile.Id &&
                     command.ClientSubscriptionOfferId == offer.Id &&
-                    command.ProviderPlanVariationId == "plan-variation-1" &&
                     command.BillingAnchorDay == expectedSchedule.BillingAnchorDay &&
                     command.BillingTimeZoneId == expectedSchedule.BillingTimeZoneId &&
                     command.FirstChargeUtc == expectedSchedule.FirstChargeUtc &&
@@ -554,7 +553,7 @@ public class ClientAppSubscriptionActivationTests
                     Status = ClientEntitlementStatus.Active,
                     SourceId = "sub-1"
                 },
-                new BillingSubscriptionResult(true, "sub-1", "ACTIVE", null, "Activated.", null, false)));
+                new ClientSubscriptionLifecycleResult(true, "ACTIVE", null, "Activated.", null, false)));
 
         var service = BuildActivationService(db, orchestrator, policyService);
         var result = await service.ActivateAsync(token, BuildPaymentInput());
@@ -582,7 +581,7 @@ public class ClientAppSubscriptionActivationTests
             DateTime.UtcNow.AddDays(2));
 
         var expectedSchedule = BuildSchedule(1, monthlyAmountCents: 0);
-        var policyService = BuildActivationPolicyService(expectedSchedule, "unused-plan-variation");
+        var policyService = BuildActivationPolicyService(expectedSchedule);
         var orchestrator = new Mock<IBillingOrchestrator>();
         orchestrator
             .Setup(x => x.ActivateClientSubscriptionAsync(
@@ -590,7 +589,6 @@ public class ClientAppSubscriptionActivationTests
                     command.ClientProfileId == profile.Id &&
                     command.ClientSubscriptionOfferId == offer.Id &&
                     command.SourceId == string.Empty &&
-                    command.ProviderPlanVariationId == string.Empty &&
                     command.RecurringAuthorizationAccepted &&
                     command.CardOnFileConsentAccepted &&
                     command.CancellationTermsAccepted &&
@@ -620,7 +618,7 @@ public class ClientAppSubscriptionActivationTests
                     Status = ClientEntitlementStatus.Active,
                     SourceId = "zero-dollar-subscription"
                 },
-                new BillingSubscriptionResult(true, null, "ACTIVE", null, "Activated.", null, false)));
+                new ClientSubscriptionLifecycleResult(true, "ACTIVE", null, "Activated.", null, false)));
 
         var service = BuildActivationService(db, orchestrator, policyService);
         var result = await service.ActivateAsync(token, new SubscriptionActivationPaymentInput
@@ -631,7 +629,6 @@ public class ClientAppSubscriptionActivationTests
 
         Assert.True(result.Success);
         Assert.False(string.IsNullOrWhiteSpace(result.ProtectedContinuationState));
-        policyService.Verify(x => x.ResolveProviderPlanVariationId(It.IsAny<ClientSubscriptionOffer>()), Times.Never);
         orchestrator.VerifyAll();
     }
 
@@ -691,17 +688,13 @@ public class ClientAppSubscriptionActivationTests
     }
 
     private static Mock<IClientSubscriptionActivationPolicyService> BuildActivationPolicyService(
-        ClientSubscriptionActivationSchedule? schedule = null,
-        string providerPlanVariationId = "plan-variation-1")
+        ClientSubscriptionActivationSchedule? schedule = null)
     {
         var resolvedSchedule = schedule ?? BuildSchedule(1);
         var policyService = new Mock<IClientSubscriptionActivationPolicyService>();
         policyService
             .Setup(x => x.ResolveActivationSchedule(It.IsAny<ClientSubscriptionOffer>(), It.IsAny<DateTime>()))
             .Returns(resolvedSchedule);
-        policyService
-            .Setup(x => x.ResolveProviderPlanVariationId(It.IsAny<ClientSubscriptionOffer>()))
-            .Returns(providerPlanVariationId);
         return policyService;
     }
 

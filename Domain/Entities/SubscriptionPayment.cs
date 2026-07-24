@@ -19,10 +19,19 @@ public sealed class SubscriptionPayment
     public string? ProviderRefundId { get; set; }
     public int AmountCents { get; set; }
     public string Currency { get; set; } = "USD";
+    public SubscriptionPaymentKind Kind { get; set; } = SubscriptionPaymentKind.CommerceOneTime;
+    public int AttemptNumber { get; set; } = 1;
+    public string? IdempotencyKey { get; set; }
     public SubscriptionPaymentStatus Status { get; set; } = SubscriptionPaymentStatus.Pending;
     public string? SafeFailureCode { get; set; }
     public DateTime? BillingPeriodStartUtc { get; set; }
     public DateTime? BillingPeriodEndUtc { get; set; }
+    public DateTime? ScheduledChargeUtc { get; set; }
+    public DateTime? ClaimedUtc { get; set; }
+    public string? ClaimToken { get; set; }
+    public DateTime? RetryNotBeforeUtc { get; set; }
+    public bool Retryable { get; set; }
+    public string? ProviderRequestId { get; set; }
     public DateTime? ProviderOccurredUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;

@@ -50,20 +50,34 @@ public sealed class BillingReconciliationHostedService : BackgroundService
 
         using var scope = _scopeFactory.CreateScope();
         var options = scope.ServiceProvider.GetRequiredService<SquareBillingOptions>();
-        if (!options.HasServerCredentials())
-        {
-            _logger.LogInformation("Billing reconciliation skipped because Square server credentials are not configured.");
-            return;
-        }
-
+        var billingOrchestrator = scope.ServiceProvider.GetRequiredService<IBillingOrchestrator>();
         var reconciliationService = scope.ServiceProvider.GetRequiredService<IBillingReconciliationService>();
         var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+        var recurringBilling = await billingOrchestrator.ProcessDueClientSubscriptionRenewalsAsync(
+            25,
+            $"{Environment.MachineName}:{Environment.ProcessId}",
+            cancellationToken);
+
+        if (!options.HasServerCredentials())
+        {
+            if (recurringBilling.DueSubscriptions > 0)
+            {
+                _logger.LogWarning(
+                    "Platform recurring billing processed {DueSubscriptions} due subscriptions without configured Square server credentials. Attempts succeeded={Succeeded}, failed={Failed}, ended={Ended}.",
+                    recurringBilling.DueSubscriptions,
+                    recurringBilling.ChargesSucceeded,
+                    recurringBilling.ChargesFailed,
+                    recurringBilling.EndedAtPeriodBoundary);
+            }
+
+            return;
+        }
 
         var processedEvents = await reconciliationService.ReconcilePendingProviderEventsAsync(25, cancellationToken);
 
         var reconciliationRequiredSubscriptionIds = await db.ClientSubscriptions
             .AsNoTracking()
-            .Where(x => x.Status == ClientSubscriptionStatus.ReconciliationRequired)
+            .Where(x => x.IsPlatformManaged && x.Status == ClientSubscriptionStatus.ReconciliationRequired)
             .OrderBy(x => x.UpdatedUtc)
             .Select(x => x.Id)
             .Take(10)
@@ -74,12 +88,16 @@ public sealed class BillingReconciliationHostedService : BackgroundService
             await reconciliationService.ReconcileSubscriptionAsync(subscriptionId, correlationId: null, cancellationToken);
         }
 
-        if (processedEvents > 0 || reconciliationRequiredSubscriptionIds.Count > 0)
+        if (processedEvents > 0 || reconciliationRequiredSubscriptionIds.Count > 0 || recurringBilling.DueSubscriptions > 0)
         {
             _logger.LogInformation(
-                "Billing reconciliation processed {ProcessedEvents} provider events and refreshed {SubscriptionCount} reconciliation-required subscriptions.",
+                "Billing reconciliation processed {ProcessedEvents} provider events, refreshed {SubscriptionCount} reconciliation-required subscriptions, and handled {DueSubscriptions} due renewals (succeeded={Succeeded}, failed={Failed}, ended={Ended}).",
                 processedEvents,
-                reconciliationRequiredSubscriptionIds.Count);
+                reconciliationRequiredSubscriptionIds.Count,
+                recurringBilling.DueSubscriptions,
+                recurringBilling.ChargesSucceeded,
+                recurringBilling.ChargesFailed,
+                recurringBilling.EndedAtPeriodBoundary);
         }
     }
 

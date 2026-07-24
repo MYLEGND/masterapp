@@ -80,6 +80,21 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
 
         var sourceId = subscription.Id.ToString();
 
+        if (subscription.CancelAtPeriodEnd &&
+            subscription.CurrentPeriodEndUtc.HasValue &&
+            subscription.CurrentPeriodEndUtc.Value <= evaluatedUtc)
+        {
+            return new BillingEntitlementEvaluationResult(
+                ClientEntitlementStatus.NotGranted,
+                subscription.ActivatedUtc ?? subscription.CreatedUtc,
+                subscription.CurrentPeriodEndUtc,
+                null,
+                "SUBSCRIPTION_ENDED_AT_PERIOD_END",
+                ClientEntitlementSourceType.Subscription,
+                sourceId,
+                $"{entitlementKey}: scheduled cancellation reached its period boundary.");
+        }
+
         if (subscription.Status == ClientSubscriptionStatus.Active)
         {
             return new BillingEntitlementEvaluationResult(

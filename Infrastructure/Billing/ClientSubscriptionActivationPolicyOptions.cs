@@ -7,20 +7,17 @@ public sealed class ClientSubscriptionActivationPolicyOptions
     public string BusinessTimeZoneId { get; init; } = "America/Phoenix";
     public int SameDayAnchorCutoffHourLocal { get; init; } = 17;
     public int MinimumDaysBeforeAnchoredRenewal { get; init; } = 14;
-    public string? DefaultProviderPlanVariationId { get; init; }
-    public IReadOnlyDictionary<string, string> PlanVariationIds { get; init; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    public int GracePeriodDays { get; init; } = 7;
+    public IReadOnlyList<int> RenewalRetryDelayMinutes { get; init; } = [60, 1_440];
 
     public static ClientSubscriptionActivationPolicyOptions FromConfiguration(IConfiguration configuration)
     {
         var section = configuration.GetSection("Billing:ClientSubscriptions");
-        var mappings = section.GetSection("PlanVariationIds")
+        var retryDelays = section.GetSection("RenewalRetryDelayMinutes")
             .GetChildren()
-            .Where(x => !string.IsNullOrWhiteSpace(x.Key) && !string.IsNullOrWhiteSpace(x.Value))
-            .ToDictionary(x => x.Key.Trim(), x => x.Value!.Trim(), StringComparer.OrdinalIgnoreCase);
-
-        var defaultPlanVariationId =
-            Normalize(section["DefaultProviderPlanVariationId"])
-            ?? Normalize(configuration["Square:ClientSubscriptionPlanVariationId"]);
+            .Select(x => int.TryParse(x.Value, out var minutes) && minutes > 0 ? minutes : 0)
+            .Where(x => x > 0)
+            .ToArray();
 
         return new ClientSubscriptionActivationPolicyOptions
         {
@@ -31,8 +28,10 @@ public sealed class ClientSubscriptionActivationPolicyOptions
             MinimumDaysBeforeAnchoredRenewal = int.TryParse(section["MinimumDaysBeforeAnchoredRenewal"], out var minDays) && minDays > 0
                 ? minDays
                 : 14,
-            DefaultProviderPlanVariationId = defaultPlanVariationId,
-            PlanVariationIds = mappings
+            GracePeriodDays = int.TryParse(section["GracePeriodDays"], out var gracePeriodDays) && gracePeriodDays >= 0
+                ? gracePeriodDays
+                : 7,
+            RenewalRetryDelayMinutes = retryDelays.Length > 0 ? retryDelays : [60, 1_440]
         };
     }
 
