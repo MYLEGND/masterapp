@@ -76,12 +76,18 @@ public class MasterAppDbContext : DbContext
     public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
     public DbSet<ClientAgentMessagingGrant> ClientAgentMessagingGrants => Set<ClientAgentMessagingGrant>();
     public DbSet<MessagingAuditEntry> MessagingAuditEntries => Set<MessagingAuditEntry>();
+    public DbSet<JourneyCircleProfile> JourneyCircleProfiles => Set<JourneyCircleProfile>();
+    public DbSet<JourneyCircleConnection> JourneyCircleConnections => Set<JourneyCircleConnection>();
+    public DbSet<JourneyCircleBlock> JourneyCircleBlocks => Set<JourneyCircleBlock>();
+    public DbSet<JourneyCircleReport> JourneyCircleReports => Set<JourneyCircleReport>();
+    public DbSet<JourneyCircleModerationEvent> JourneyCircleModerationEvents => Set<JourneyCircleModerationEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
         MessagingModelConfiguration.Configure(modelBuilder, Database.ProviderName);
+        JourneyCirclesModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         var isSqlServer = Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
 
         modelBuilder.Entity<CommerceBusiness>(e =>

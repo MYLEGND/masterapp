@@ -1,4 +1,8 @@
 using Domain.Messaging;
+using Domain.JourneyCircles;
+using Domain.Moderation;
+using Infrastructure.JourneyCircles;
+using Infrastructure.Moderation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -14,6 +18,8 @@ public static class MessagingServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configuration);
 
         services.AddScoped<IMessagingService, MessagingService>();
+        services.AddSingleton<ICommunityTextModerationService>(_ => new CommunityTextModerationService(configuration));
+        services.AddScoped<IJourneyCirclesService, JourneyCirclesService>();
         services.AddScoped<IMessagingProfileImageResolver, MessagingProfileImageResolver>();
         services.AddSingleton<IMessageAttachmentStorage, MessagingAttachmentStorage>();
         services.AddSingleton<IMessagingRealtimePublisher, MessagingRealtimePublisher>();

@@ -1,0 +1,62 @@
+@using Domain.JourneyCircles
+@model JourneyCircleDashboard
+@{
+    ViewData["Title"] = "Journey Circles";
+    var profile = Model.Profile;
+    var selectedGoals = profile?.Goals ?? Array.Empty<string>();
+    var selectedCircles = profile?.CircleCodes ?? Array.Empty<string>();
+}
+
+<section class="journey-circles-page">
+    <header class="journey-circles-hero">
+        <p class="journey-kicker">Private community</p>
+        <h1>Journey Circles</h1>
+        <p>Meet consenting clients with shared goals and build respectful, mutual connections. Your financial accounts, contact details, and private client record are never shared.</p>
+    </header>
+
+    @if (TempData["JourneyError"] is string error)
+    { <div class="alert alert-danger" role="alert">@error</div> }
+    @if (TempData["JourneySuccess"] is string success)
+    { <div class="alert alert-success" role="status">@success</div> }
+
+    <div class="journey-circles-grid">
+        <section class="journey-panel journey-profile-panel">
+            <h2>Community profile &amp; privacy</h2>
+            <p class="journey-muted">Participation is voluntary. Only the choices below can appear in recommendations. You may opt out at any time.</p>
+            <form asp-action="SaveProfile" method="post" class="journey-form">
+                @Html.AntiForgeryToken()
+                <label><input type="checkbox" name="ConsentAffirmed" value="true" @(profile?.ClientProfileId is not null ? "checked" : "") /> I understand and consent to Journey Circles participation.</label>
+                <label><input type="checkbox" name="IsOptedIn" value="true" @(profile is not null ? "checked" : "") /> Participate in Journey Circles</label>
+                <label><input type="checkbox" name="IsDiscoverable" value="true" @(profile is not null ? "checked" : "") /> Let eligible clients discover me</label>
+                <label><input type="checkbox" name="AllowSuggestions" value="true" @(profile is not null ? "checked" : "") /> Receive privacy-safe suggestions</label>
+                <label><input type="checkbox" name="AllowConnectionRequests" value="true" @(profile is not null ? "checked" : "") /> Receive connection requests</label>
+                <label>Community display name<input name="DisplayName" maxlength="100" value="@profile?.DisplayName" /></label>
+                <label>Broad life stage<input name="LifeStage" maxlength="80" value="@profile?.LifeStage" placeholder="For example: New parenthood" /></label>
+                <label>City or state (optional)<input name="LocationLabel" maxlength="100" value="@profile?.LocationLabel" /></label>
+                <label>Introduction<textarea name="Introduction" maxlength="600" rows="3">@profile?.Introduction</textarea></label>
+                <label>Goals<select name="Goals" multiple size="7">@foreach (var goal in Model.Goals) { <option value="@goal" selected="@(selectedGoals.Contains(goal, StringComparer.OrdinalIgnoreCase))">@goal</option> }</select></label>
+                <label>Journey circles<select name="CircleCodes" multiple size="5">@foreach (var circle in Model.Circles) { <option value="@circle" selected="@(selectedCircles.Contains(circle, StringComparer.OrdinalIgnoreCase))">@circle</option> }</select></label>
+                <label>Interests (one per line)<textarea name="Interests" maxlength="400" rows="3">@string.Join("\n", profile?.Interests ?? Array.Empty<string>())</textarea></label>
+                <label>Connection preferences (one per line)<textarea name="ConnectionTypes" maxlength="240" rows="2">@string.Join("\n", profile?.ConnectionTypes ?? Array.Empty<string>())</textarea></label>
+                <label>Communication style<input name="CommunicationStyle" maxlength="80" value="@profile?.CommunicationStyle" /></label>
+                <label>Accountability frequency<input name="AccountabilityFrequency" maxlength="80" value="@profile?.AccountabilityFrequency" /></label>
+                <button class="journey-primary" type="submit">Save privacy choices</button>
+            </form>
+        </section>
+
+        <section class="journey-panel">
+            <h2>Suggested connections</h2>
+            @if (profile is null || !profile.Goals.Any()) { <p class="journey-empty">Complete your voluntary profile to receive privacy-safe suggestions.</p> }
+            else if (!Model.Recommendations.Any()) { <p class="journey-empty">No recommendations yet. Your preferences remain private while we look for a meaningful match.</p> }
+            else { <div class="journey-card-list">@foreach (var recommendation in Model.Recommendations) { <article class="journey-member-card"><img src="@recommendation.Profile.AvatarUrl" alt="" onerror="this.remove()" /><div><h3>@recommendation.Profile.DisplayName</h3><p>@recommendation.Explanation</p><p class="journey-muted">@recommendation.Profile.Introduction</p><form asp-action="RequestConnection" method="post">@Html.AntiForgeryToken()<input type="hidden" name="targetClientProfileId" value="@recommendation.Profile.ClientProfileId" /><input name="reason" maxlength="160" placeholder="Connection reason (optional)" /><textarea name="introduction" maxlength="600" placeholder="A respectful introduction (optional)"></textarea><button class="journey-primary" type="submit">Connect</button></form><form asp-action="Block" asp-route-targetClientProfileId="@recommendation.Profile.ClientProfileId" method="post">@Html.AntiForgeryToken()<button class="journey-link" type="submit">Block</button></form></div></article> }</div> }
+        </section>
+    </div>
+
+    <section class="journey-panel">
+        <h2>Requests &amp; connections</h2>
+        <div class="journey-status-grid">
+            <div><h3>Requests</h3>@if (!Model.Requests.Any()) { <p class="journey-empty">No pending requests.</p> } @foreach (var request in Model.Requests) { <article class="journey-compact-card"><strong>@request.Profile.DisplayName</strong><span>@request.Introduction</span><form asp-action="Respond" asp-route-connectionId="@request.Id" method="post">@Html.AntiForgeryToken()<button class="journey-primary" name="accept" value="true">Accept</button><button class="journey-secondary" name="accept" value="false">Decline</button></form><form asp-action="Block" asp-route-targetClientProfileId="@request.Profile.ClientProfileId" method="post">@Html.AntiForgeryToken()<button class="journey-link" type="submit">Block</button></form><form asp-action="Report" asp-route-targetClientProfileId="@request.Profile.ClientProfileId" method="post">@Html.AntiForgeryToken()<input type="hidden" name="category" value="Other safety concern" /><button class="journey-link" type="submit">Report</button></form></article> }</div>
+            <div><h3>My connections</h3>@if (!Model.Connections.Any()) { <p class="journey-empty">No active connections yet.</p> } @foreach (var connection in Model.Connections) { <article class="journey-compact-card"><strong>@connection.Profile.DisplayName</strong><span>@connection.Profile.LifeStage</span><a href="/Messaging" data-messaging-open>Message</a><form asp-action="Disconnect" asp-route-connectionId="@connection.Id" method="post">@Html.AntiForgeryToken()<button class="journey-link" type="submit">Disconnect</button></form><form asp-action="Block" asp-route-targetClientProfileId="@connection.Profile.ClientProfileId" method="post">@Html.AntiForgeryToken()<button class="journey-link" type="submit">Block</button></form><form asp-action="Report" asp-route-targetClientProfileId="@connection.Profile.ClientProfileId" method="post">@Html.AntiForgeryToken()<input type="hidden" name="category" value="Other safety concern" /><button class="journey-link" type="submit">Report</button></form></article> }</div>
+        </div>
+    </section>
+</section>

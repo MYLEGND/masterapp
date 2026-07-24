@@ -1,5 +1,7 @@
 using Domain.Entities;
+using Domain.JourneyCircles;
 using Domain.Messaging;
+using Domain.Moderation;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -18,11 +20,19 @@ internal sealed class MessagingService : IMessagingService
 
     private readonly MasterAppDbContext _db;
     private readonly ILogger<MessagingService> _logger;
+    private readonly ICommunityTextModerationService _moderation;
+    private readonly IJourneyCirclesService _journeyCircles;
 
-    public MessagingService(MasterAppDbContext db, ILogger<MessagingService> logger)
+    public MessagingService(
+        MasterAppDbContext db,
+        ILogger<MessagingService> logger,
+        ICommunityTextModerationService moderation,
+        IJourneyCirclesService journeyCircles)
     {
         _db = db;
         _logger = logger;
+        _moderation = moderation;
+        _journeyCircles = journeyCircles;
     }
 
     public async Task<MessagingConversationListResult> ListConversationsAsync(
@@ -278,6 +288,14 @@ internal sealed class MessagingService : IMessagingService
             return MessagingConversationResult.Failure("MESSAGING_CONVERSATION_INVALID", "The requested conversation is invalid.");
         }
 
+        var moderation = _moderation.Evaluate(initialMessage, "MessagingConversationStart");
+        if (!moderation.IsAllowed)
+        {
+            AddAudit(actor.UserId, "ContentBlocked", null, null, targetUserId, moderation.ReasonCode, DateTime.UtcNow);
+            await _db.SaveChangesAsync(cancellationToken);
+            return MessagingConversationResult.Failure("MESSAGING_CONTENT_BLOCKED", RespectfulCommunicationMessage);
+        }
+
         var conversationType = GetConversationType(actor.ParticipantType, targetParticipantType);
         if (conversationType is null || !await IsPermittedPairAsync(actor, targetUserId, targetParticipantType, cancellationToken))
             return MessagingConversationResult.Failure("MESSAGING_RECIPIENT_FORBIDDEN", "Messaging is not permitted for the requested recipient.");
@@ -379,6 +397,14 @@ internal sealed class MessagingService : IMessagingService
             !Fits(body, MaximumMessageBodyLength) || !Fits(clientMessageId, MaximumClientMessageIdLength))
         {
             return MessagingMessageResult.Failure("MESSAGING_MESSAGE_INVALID", "The message is invalid.");
+        }
+
+        var moderation = _moderation.Evaluate(body, "MessagingMessage");
+        if (!moderation.IsAllowed)
+        {
+            AddAudit(actor.UserId, "ContentBlocked", command.ConversationId, null, null, moderation.ReasonCode, DateTime.UtcNow);
+            await _db.SaveChangesAsync(cancellationToken);
+            return MessagingMessageResult.Failure("MESSAGING_CONTENT_BLOCKED", RespectfulCommunicationMessage);
         }
 
         var conversation = await AuthorizedConversationsQuery(actor)
@@ -561,6 +587,10 @@ internal sealed class MessagingService : IMessagingService
             return MessagingAttachmentResult.Failure("MESSAGING_ATTACHMENT_INVALID", "The attachment is invalid.");
         }
 
+        var moderation = _moderation.Evaluate(command.OriginalFileName, "MessagingAttachmentFilename");
+        if (!moderation.IsAllowed)
+            return MessagingAttachmentResult.Failure("MESSAGING_CONTENT_BLOCKED", RespectfulCommunicationMessage);
+
         var message = await _db.InternalMessages
             .Include(x => x.Conversation)
             .FirstOrDefaultAsync(x => x.Id == command.InternalMessageId, cancellationToken);
@@ -715,6 +745,24 @@ internal sealed class MessagingService : IMessagingService
                                  grant.IsActive &&
                                  grant.ClientUserId.ToLower() == client.UserId.ToLower() &&
                                  grant.AgentUserId.ToLower() == agent.UserId.ToLower()))))
+                ||
+                (conversation.ConversationType == MessagingConversationTypes.ClientJourney &&
+                 conversation.Participants.Count(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client) == 2 &&
+                 conversation.Participants.Where(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client)
+                     .All(participant => _db.JourneyCircleProfiles.Any(profile =>
+                         profile.IsOptedIn && profile.CommunityAccessState == "Active" &&
+                         profile.ClientProfile.ClientUserId.ToLower() == participant.UserId.ToLower())) &&
+                 _db.JourneyCircleConnections.Any(connection =>
+                     connection.Status == JourneyCircleConnectionStatuses.Accepted &&
+                     _db.ClientProfiles.Any(profile => profile.Id == connection.RequesterClientProfileId &&
+                         conversation.Participants.Any(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client && participant.UserId.ToLower() == profile.ClientUserId.ToLower())) &&
+                     _db.ClientProfiles.Any(profile => profile.Id == connection.RecipientClientProfileId &&
+                         conversation.Participants.Any(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client && participant.UserId.ToLower() == profile.ClientUserId.ToLower()))) &&
+                 !_db.JourneyCircleBlocks.Any(block =>
+                     _db.ClientProfiles.Any(profile => profile.Id == block.BlockerClientProfileId &&
+                         conversation.Participants.Any(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client && participant.UserId.ToLower() == profile.ClientUserId.ToLower())) &&
+                     _db.ClientProfiles.Any(profile => profile.Id == block.BlockedClientProfileId &&
+                         conversation.Participants.Any(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client && participant.UserId.ToLower() == profile.ClientUserId.ToLower()))))
             ));
     }
 
@@ -814,6 +862,9 @@ internal sealed class MessagingService : IMessagingService
                 x => x.IsActive && x.AgentUserId.ToLower() == targetUserId,
                 cancellationToken);
         }
+
+        if (actor.ParticipantType == MessagingParticipantTypes.Client && targetParticipantType == MessagingParticipantTypes.Client)
+            return await _journeyCircles.CanMessageAsync(actor.UserId, targetUserId, cancellationToken);
 
         if (actor.ParticipantType == MessagingParticipantTypes.Client &&
             targetParticipantType == MessagingParticipantTypes.Agent)
@@ -966,13 +1017,15 @@ internal sealed class MessagingService : IMessagingService
             .Select(x => new RecipientAgentRow(x.AgentUserId, x.FullName, x.AgentUpn))
             .ToListAsync(cancellationToken);
 
-        return agentRows.Select(x => new MessagingRecipientSummary(
+        var agentRecipients = agentRows.Select(x => new MessagingRecipientSummary(
                 x.UserId,
                 MessagingParticipantTypes.Agent,
                 FirstNonEmpty(x.FullName, x.Email, "Agent"),
                 x.Email))
-            .OrderBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var peers = await _journeyCircles.ListConnectedPeersAsync(clientUserId, cancellationToken);
+        var peerRecipients = peers.Select(x => new MessagingRecipientSummary(x.UserId, MessagingParticipantTypes.Client, x.DisplayName, null));
+        return agentRecipients.Concat(peerRecipients).OrderBy(x => x.ParticipantType).ThenBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     private async Task<bool> HasClientAgentMessagingPermissionAsync(
@@ -1089,6 +1142,9 @@ internal sealed class MessagingService : IMessagingService
             return MessagingConversationTypes.ClientAgent;
         }
 
+        if (actorParticipantType == MessagingParticipantTypes.Client && targetParticipantType == MessagingParticipantTypes.Client)
+            return MessagingConversationTypes.ClientJourney;
+
         return null;
     }
 
@@ -1176,6 +1232,8 @@ internal sealed class MessagingService : IMessagingService
         value is null || value.Length <= maximumLength ? value : value[..maximumLength];
 
     private static string Preview(string body) => body.Length <= 160 ? body : $"{body[..157]}...";
+
+    private const string RespectfulCommunicationMessage = "Message not sent. Legend Legacy Protection requires respectful communication. Please remove vulgar, abusive, threatening, hateful, or inappropriate language before sending.";
 
     private sealed record ConversationRow(
         Guid Id,

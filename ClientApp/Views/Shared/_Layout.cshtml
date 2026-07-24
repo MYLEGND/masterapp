@@ -114,6 +114,7 @@
 
                         <li class="nav-item"><a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a></li>
                         <li class="nav-item"><a class="nav-link @Active("Finance")" asp-controller="Finance" asp-action="Index">Finance</a></li>
+                        <li class="nav-item"><a class="nav-link @Active("JourneyCircles")" asp-controller="JourneyCircles" asp-action="Index">Journey Circles</a></li>
                         <li class="nav-item"><a class="nav-link" href="https://protect.mylegnd.com/Quote" target="_blank" rel="noopener">Insurance Quote</a></li>
                     </ul>
                     @if (isAgentView)
@@ -286,6 +287,10 @@
             <a class="explore-item" data-tone="growth" asp-controller="Training" asp-action="Index">
                 <span>Trainings</span>
                 <small>Growth</small>
+            </a>
+            <a class="explore-item" data-tone="community" asp-controller="JourneyCircles" asp-action="Index">
+                <span>Journey Circles</span>
+                <small>Community</small>
             </a>
         </div>
     </div>

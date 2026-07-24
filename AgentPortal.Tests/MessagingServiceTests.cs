@@ -2,7 +2,9 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Domain.Entities;
+using Infrastructure.JourneyCircles;
 using Domain.Messaging;
+using Infrastructure.Moderation;
 using Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -286,8 +288,12 @@ public sealed class MessagingServiceTests
         Assert.Single(services.Where(descriptor => descriptor.ServiceType == typeof(IMessagingService)));
     }
 
-    private static MessagingService CreateService(Infrastructure.Data.MasterAppDbContext db) =>
-        new(db, NullLogger<MessagingService>.Instance);
+    private static MessagingService CreateService(Infrastructure.Data.MasterAppDbContext db)
+    {
+        var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
+        var journeys = new JourneyCirclesService(db, moderation, NullLogger<JourneyCirclesService>.Instance);
+        return new MessagingService(db, NullLogger<MessagingService>.Instance, moderation, journeys);
+    }
 
     private static async Task SeedAgentAndClientAsync(
         Infrastructure.Data.MasterAppDbContext db,

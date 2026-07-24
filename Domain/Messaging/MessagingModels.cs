@@ -4,6 +4,7 @@ public static class MessagingConversationTypes
 {
     public const string ClientAgent = "ClientAgent";
     public const string AgentDirect = "AgentDirect";
+    public const string ClientJourney = "ClientJourney";
 }
 
 public static class MessagingParticipantTypes
