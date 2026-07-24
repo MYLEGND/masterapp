@@ -44,7 +44,17 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
     {
         var client = await FindClientAsync(clientUserId, cancellationToken);
         if (client is null) return JourneyCircleOperationResult.Failure("JOURNEY_ACTOR_INVALID", "Journey Circles is not available for this account.");
-        if (input.IsOptedIn && !input.ConsentAffirmed) return JourneyCircleOperationResult.Failure("JOURNEY_CONSENT_REQUIRED", "Please affirm consent before joining Journey Circles.");
+        var hasParticipationPreference =
+            input.ConsentAffirmed ||
+            input.IsOptedIn ||
+            input.IsDiscoverable ||
+            input.AllowSuggestions ||
+            input.AllowConnectionRequests;
+
+        if (!hasParticipationPreference)
+            return JourneyCircleOperationResult.Failure(
+                "JOURNEY_PREFERENCE_REQUIRED",
+                "Select at least one participation or privacy preference before saving.");
 
         var moderation = _moderation.Evaluate(input.Introduction, "JourneyProfile");
         if (!moderation.IsAllowed)
@@ -74,9 +84,9 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
         }
 
         profile.IsOptedIn = input.IsOptedIn;
-        profile.IsDiscoverable = input.IsOptedIn && input.IsDiscoverable;
-        profile.AllowSuggestions = input.IsOptedIn && input.AllowSuggestions;
-        profile.AllowConnectionRequests = input.IsOptedIn && input.AllowConnectionRequests;
+        profile.IsDiscoverable = input.IsDiscoverable;
+        profile.AllowSuggestions = input.AllowSuggestions;
+        profile.AllowConnectionRequests = input.AllowConnectionRequests;
         profile.DisplayName = DisplayName(client);
         profile.LifeStage = ToDelimited(lifeStages, 80);
         profile.LocationLabel = ToDelimited(locations, 100);
@@ -88,9 +98,11 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
         profile.CommunicationStyle = ToDelimited(communicationStyles, 80);
         profile.AccountabilityFrequency = ToDelimited(accountabilityFrequencies, 80);
         profile.CommunityAccessState = "Active";
-        profile.ConsentAffirmedUtc = input.IsOptedIn ? now : profile.ConsentAffirmedUtc;
+        profile.ConsentAffirmedUtc = input.ConsentAffirmed
+            ? profile.ConsentAffirmedUtc ?? now
+            : null;
         profile.UpdatedUtc = now;
-        AddAudit(client.ClientUserId, input.IsOptedIn ? "JourneyProfileSaved" : "JourneyOptedOut", null, null);
+        AddAudit(client.ClientUserId, "JourneyProfileSaved", null, null);
         await _db.SaveChangesAsync(cancellationToken);
         return JourneyCircleOperationResult.Success();
     }

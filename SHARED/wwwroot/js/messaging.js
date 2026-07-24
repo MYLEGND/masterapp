@@ -396,7 +396,39 @@
     return data;
   }
 
-  async function runJourneyAction(url, data, successMessage) {
+  function verifyJourneyPreferences(expected, dashboard) {
+    if (!expected) return;
+
+    const returned = dashboard?.preferences;
+    if (!returned) {
+      throw new Error(
+        'Journey Circles save verification failed: the server reported success but returned no preference record.'
+      );
+    }
+
+    const checks = [
+      ['ConsentAffirmed', 'consentAffirmed'],
+      ['IsOptedIn', 'isOptedIn'],
+      ['IsDiscoverable', 'isDiscoverable'],
+      ['AllowSuggestions', 'allowSuggestions'],
+      ['AllowConnectionRequests', 'allowConnectionRequests']
+    ];
+
+    const failures = checks
+      .filter(([submittedName, responseName]) =>
+        Boolean(expected[submittedName]) !== Boolean(returned[responseName]))
+      .map(([submittedName, responseName]) =>
+        `${submittedName}: submitted=${Boolean(expected[submittedName])}, returned=${Boolean(returned[responseName])}`);
+
+    if (failures.length) {
+      throw new Error(
+        `Journey Circles did not persist these settings: ${failures.join('; ')}. ` +
+        'The server response did not match the values submitted.'
+      );
+    }
+  }
+
+  async function runJourneyAction(url, data, successMessage, expectedPreferences = null) {
     setJourneyStatus('Saving…');
     try {
       const dashboard = await request(url, {
@@ -404,13 +436,25 @@
         body: data,
         headers: { 'X-Journey-Circles-Modal': '1' }
       });
+
+      verifyJourneyPreferences(expectedPreferences, dashboard);
+
       state.journeyDashboard = dashboard;
       renderJourneyDashboard();
       setJourneyStatus(successMessage);
       state.recipientsLoaded = false;
       await loadRecipients();
     } catch (error) {
-      setJourneyStatus(error.message, true);
+      const detail = error instanceof Error && error.message
+        ? error.message
+        : 'Journey Circles failed for an unknown reason.';
+
+      setJourneyStatus(detail, true);
+      console.error('Journey Circles action failed.', {
+        url,
+        expectedPreferences,
+        error
+      });
     }
   }
 
@@ -544,7 +588,18 @@
     data.set('AllowSuggestions', String(privacy.has('suggestions')));
     data.set('AllowConnectionRequests', String(privacy.has('requests')));
 
-    runJourneyAction('/JourneyCircles/Profile', data, 'Journey Circles profile saved.');
+    runJourneyAction(
+      '/JourneyCircles/Profile',
+      data,
+      'Journey Circles profile saved.',
+      {
+        ConsentAffirmed: privacy.has('consent'),
+        IsOptedIn: privacy.has('opt-in'),
+        IsDiscoverable: privacy.has('discoverable'),
+        AllowSuggestions: privacy.has('suggestions'),
+        AllowConnectionRequests: privacy.has('requests')
+      }
+    );
   }
 
   function activeDraftKey() {
