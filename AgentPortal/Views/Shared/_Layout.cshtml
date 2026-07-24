@@ -59,6 +59,7 @@
     <!-- Bootstrap -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/messaging.css" asp-append-version="true" />
     @if (string.Equals(currentController, "Finance", StringComparison.OrdinalIgnoreCase))
     {
         <link rel="stylesheet" href="~/_content/Shared/css/legend-finance-shared.css" asp-append-version="true" />
@@ -1121,6 +1122,7 @@
                                         Finance
                                     </a>
                                 </li>
+                                <li class="nav-item"><a class="nav-link @Active("Messaging")" asp-controller="Messaging" asp-action="Index">Messages</a></li>
                             }
 
                             @* EXPLORE REMOVED FROM TOP NAV — MOVED TO LEFT VERTICAL DRAWER *@
@@ -2296,6 +2298,7 @@
     }
 </script>
 <script src="~/js/live-sync.js" asp-append-version="true"></script>
+<script src="~/_content/Shared/js/messaging.js" asp-append-version="true"></script>
 
 <script>
     (function () {

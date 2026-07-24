@@ -4,6 +4,7 @@ using AgentPortal.Services;
 using Azure.Identity;
 using Infrastructure.Billing;
 using Infrastructure.FinancialIntelligence;
+using Infrastructure.Messaging;
 using Infrastructure.Data;
 using Infrastructure.Identity;
 using AgentPortal.Security;
@@ -32,6 +33,7 @@ using System.Threading.RateLimiting;
 using System.IO;
 using System.Linq;
 using Shared.Diagnostics;
+using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -58,7 +60,8 @@ builder.Services
         options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
         options.Filters.Add<AgentTrackingProvisioningFilter>();
     })
-    .AddMicrosoftIdentityUI();
+    .AddMicrosoftIdentityUI()
+    .AddApplicationPart(typeof(MessagingWorkspaceViewModel).Assembly);
 
 // ✅ REQUIRED: Identity UI endpoints are Razor Pages
 builder.Services.AddRazorPages().AddMicrosoftIdentityUI();
@@ -78,6 +81,7 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
+builder.Services.AddMasterAppMessaging(builder.Configuration);
 builder.Services.AddScoped<ClientBillingWorkspaceService>();
 builder.Services.AddScoped<ClientProvisioningService>();
 builder.Services.AddScoped<ClientSubscriptionInvitationEmailService>();
@@ -877,5 +881,6 @@ app.MapControllerRoute(
 
 app.MapHub<LiveSyncHub>("/livesync");
 app.MapHub<LeadBridgeHub>("/leadbridgehub");
+app.MapHub<MessagingHub>("/messaginghub");
 
 app.Run();

@@ -1,6 +1,7 @@
 using Infrastructure.Data;
 using Infrastructure.Billing;
 using Infrastructure.FinancialIntelligence;
+using Infrastructure.Messaging;
 using Infrastructure.Identity;
 using ClientApp.Infrastructure;
 using ClientApp.Services;
@@ -17,6 +18,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Shared.Diagnostics;
+using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,11 +34,13 @@ builder.Services.AddControllersWithViews(options =>
 
     options.Filters.Add(new AuthorizeFilter(policy));
     options.Filters.AddService<ClientSubscriptionAuthorizeFilter>();
-});
+})
+    .AddApplicationPart(typeof(MessagingWorkspaceViewModel).Assembly);
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
+builder.Services.AddMasterAppMessaging(builder.Configuration);
 builder.Services.AddScoped<EffectiveClientContextService>();
 builder.Services.AddSingleton<ClientAppReturnUrlNormalizer>();
 builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
@@ -49,6 +53,10 @@ builder.Services.AddScoped<SubscriptionActivationService>();
 builder.Services.AddScoped<ClientSubscriptionAuthorizeFilter>();
 builder.Services.AddScoped<IAuthorizationHandler, ClientSubscriptionActiveHandler>();
 builder.Services.AddDataProtection().SetApplicationName("MasterApp.ClientApp");
+builder.Services.AddSignalR(options =>
+{
+    options.MaximumReceiveMessageSize = 64 * 1024;
+});
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("clientapp-public", context =>
@@ -541,6 +549,7 @@ app.Use(async (context, next) =>
 
 // ✅ MVC endpoints
 app.MapControllers();
+app.MapHub<MessagingHub>("/messaginghub");
 
 app.MapControllerRoute(
     name: "default",

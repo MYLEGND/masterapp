@@ -27,6 +27,7 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css?v=20260528-royal2" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/layout-inline.css?v=20260528-royal2" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/messaging.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/LegendCorePlatform.styles.css" asp-append-version="true" />
     @if (loadSharedFinanceStyles)
     {
@@ -99,6 +100,7 @@
                         </li>
                         <li class="nav-item"><a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a></li>
                         <li class="nav-item"><a class="nav-link @Active("Finance")" asp-controller="Finance" asp-action="Index">Finance</a></li>
+                        <li class="nav-item"><a class="nav-link @Active("Messaging")" asp-controller="Messaging" asp-action="Index">Messages</a></li>
                         <li class="nav-item"><a class="nav-link" href="https://protect.mylegnd.com/Quote" target="_blank" rel="noopener">Insurance Quote</a></li>
                     </ul>
                     @if (isAgentView)
@@ -691,6 +693,8 @@
         });
     })();
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.5/signalr.min.js" crossorigin="anonymous"></script>
+<script src="~/_content/Shared/js/messaging.js" asp-append-version="true"></script>
 @await RenderSectionAsync("Scripts", required:false)
 </body>
 </html>

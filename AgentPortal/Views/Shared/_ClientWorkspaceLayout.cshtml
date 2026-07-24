@@ -775,6 +775,14 @@
                             </a>
                         </li>
 
+                        <li class="nav-item">
+                            <a class="nav-link @(string.Equals(currentController, "Messaging", StringComparison.OrdinalIgnoreCase) ? "active" : "")"
+                               asp-controller="Messaging"
+                               asp-action="Index">
+                                Messages
+                            </a>
+                        </li>
+
                         <li class="nav-item dropdown">
                             <a class="nav-link @(ActiveWorkspace("Resources") == "active" || ActiveWorkspace("Training") == "active" ? "active" : "")">Explore More</a>
                             <div class="dropdown-menu-centered">

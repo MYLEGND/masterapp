@@ -1,0 +1,96 @@
+@model Shared.Messaging.MessagingWorkspaceViewModel
+@{
+    ViewData["Title"] = "Messages";
+}
+
+<div class="messaging-workspace" data-messaging-workspace data-current-user-id="@Model.CurrentUserId">
+    <form id="messagingAntiForgery" class="visually-hidden">@Html.AntiForgeryToken()</form>
+    <div class="messaging-header">
+        <div>
+            <p class="messaging-eyebrow">Secure communication</p>
+            <h1>Messages</h1>
+            <p class="messaging-subtitle">Connect with your authorized servicing team.</p>
+        </div>
+        <button type="button" class="messaging-primary-button" id="messagingNewConversation">New message</button>
+    </div>
+
+    <div class="messaging-error" id="messagingError" role="alert" hidden></div>
+
+    <section class="messaging-compose-card" id="messagingConversationComposer" hidden aria-labelledby="messagingComposeTitle">
+        <div class="messaging-card-title-row">
+            <h2 id="messagingComposeTitle">New conversation</h2>
+            <button type="button" class="messaging-text-button" id="messagingCancelConversation">Cancel</button>
+        </div>
+        <label for="messagingRecipient">Recipient</label>
+        <select id="messagingRecipient" required>
+            <option value="">Choose a recipient</option>
+        </select>
+        <label for="messagingSubject">Subject <span>(optional)</span></label>
+        <input id="messagingSubject" type="text" maxlength="240" autocomplete="off" />
+        <label for="messagingInitialBody">Message</label>
+        <textarea id="messagingInitialBody" rows="4" maxlength="10000" required></textarea>
+        <div class="messaging-compose-actions">
+            <button type="button" class="messaging-primary-button" id="messagingStartConversation">Send message</button>
+        </div>
+    </section>
+
+    <div class="messaging-layout">
+        <aside class="messaging-sidebar" aria-label="Conversations">
+            <div class="messaging-sidebar-tools">
+                <label class="visually-hidden" for="messagingSearch">Search conversations</label>
+                <input id="messagingSearch" type="search" placeholder="Search messages" autocomplete="off" />
+                <label class="messaging-checkbox"><input id="messagingIncludeClosed" type="checkbox" /> Closed</label>
+            </div>
+            <div class="messaging-conversation-list" id="messagingConversationList">
+                @foreach (var conversation in Model.Conversations)
+                {
+                    <button type="button" class="messaging-conversation-item" data-conversation-id="@conversation.Id">
+                        <span class="messaging-conversation-title">@conversation.DisplayName</span>
+                        @if (!string.IsNullOrWhiteSpace(conversation.Subject))
+                        {
+                            <span class="messaging-conversation-subject">@conversation.Subject</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(conversation.LastMessagePreview))
+                        {
+                            <span class="messaging-conversation-preview">@conversation.LastMessagePreview</span>
+                        }
+                        @if (conversation.UnreadCount > 0)
+                        {
+                            <span class="messaging-unread-count">@conversation.UnreadCount</span>
+                        }
+                    </button>
+                }
+            </div>
+        </aside>
+
+        <main class="messaging-thread" aria-live="polite">
+            <div class="messaging-thread-empty" id="messagingThreadEmpty">
+                <h2>Select a conversation</h2>
+                <p>Choose a conversation or send a new secure message.</p>
+            </div>
+            <div id="messagingThreadContent" hidden>
+                <header class="messaging-thread-header">
+                    <div>
+                        <h2 id="messagingThreadTitle"></h2>
+                        <p id="messagingThreadSubject"></p>
+                    </div>
+                    <div class="messaging-thread-actions">
+                        <button type="button" class="messaging-text-button" id="messagingMuteConversation">Mute</button>
+                        <button type="button" class="messaging-text-button" id="messagingCloseConversation">Close</button>
+                    </div>
+                </header>
+                <div class="messaging-messages" id="messagingMessages"></div>
+                <form id="messagingSendForm" class="messaging-send-form" enctype="multipart/form-data">
+                    <label class="visually-hidden" for="messagingMessageBody">Message</label>
+                    <textarea id="messagingMessageBody" rows="3" maxlength="10000" placeholder="Write a message" required></textarea>
+                    <div class="messaging-send-actions">
+                        <label class="messaging-file-label" for="messagingFiles">Attach files</label>
+                        <input id="messagingFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.txt,.doc,.docx,.xls,.xlsx" />
+                        <button type="submit" class="messaging-primary-button" id="messagingSendButton">Send</button>
+                    </div>
+                    <p class="messaging-attachment-note">Attachments remain unavailable until a malware scanner marks them clean.</p>
+                </form>
+            </div>
+        </main>
+    </div>
+</div>
