@@ -160,10 +160,26 @@
     return avatar;
   }
 
+  function parseUtcTimestamp(value) {
+    if (!value) return null;
+
+    const timestamp = String(value).trim();
+    if (!timestamp) return null;
+
+    // Messaging timestamps are transported as UTC. Preserve an explicit offset when
+    // present; otherwise make the UTC contract explicit before the browser converts
+    // the value to the user's current local time zone.
+    const isoTimestamp = timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T');
+    const zonedTimestamp = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(isoTimestamp)
+      ? isoTimestamp
+      : `${isoTimestamp}Z`;
+    const date = new Date(zonedTimestamp);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
   function formatConversationTime(value) {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
+    const date = parseUtcTimestamp(value);
+    if (!date) return '';
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
     if (isToday) {
@@ -176,16 +192,13 @@
   }
 
   function formatMessageTime(value) {
-    if (!value) return '';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime())
-      ? ''
-      : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const date = parseUtcTimestamp(value);
+    return date ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
   }
 
   function dayLabel(value) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
+    const date = parseUtcTimestamp(value);
+    if (!date) return '';
     const now = new Date();
     if (date.toDateString() === now.toDateString()) return 'Today';
     const yesterday = new Date(now);
@@ -459,7 +472,8 @@
       .filter(conversation => matchesSearch(searchText(conversation), query))
       .sort((left, right) =>
         searchRank(left.counterparty, query, left) - searchRank(right.counterparty, query, right) ||
-        new Date(right.lastMessageUtc || 0) - new Date(left.lastMessageUtc || 0));
+        (parseUtcTimestamp(right.lastMessageUtc)?.getTime() || 0) -
+        (parseUtcTimestamp(left.lastMessageUtc)?.getTime() || 0));
     const existingCounterparties = new Set(matchingConversations.map(conversation => normalize(conversation.counterparty?.userId)));
     const matchingRecipients = state.recipientMatches.filter(recipient =>
       !existingCounterparties.has(normalize(recipient.userId)) &&

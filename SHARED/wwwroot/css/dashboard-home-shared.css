@@ -2468,6 +2468,138 @@ header .legend-global-nav .container-fluid {
     }
 }
 
+/* Life HAC modal: a single presentation source for AgentPortal and ClientApp. */
+.no-scroll { overflow: hidden; }
+
+.scripture-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 12, 24, 0.72);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s ease;
+    z-index: 1400;
+    padding: 16px;
+}
+
+.scripture-modal.open { opacity: 1; pointer-events: auto; }
+
+.scripture-card {
+    width: min(760px, 96vw);
+    background: #0b1529;
+    color: #f8fafc;
+    border-radius: 18px;
+    border: 1.6px solid var(--legend-gold-deep, rgba(166,128,35,.85));
+    box-shadow: 0 28px 60px rgba(0,0,0,.44);
+    padding: 20px 22px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.scripture-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.scripture-day {
+    font-size: .82rem;
+    letter-spacing: 0.08em;
+    color: rgba(255,255,255,.72);
+    text-transform: uppercase;
+}
+
+.scripture-reference {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--legend-gold-bright, #f2c573);
+    letter-spacing: 0.04em;
+}
+
+.scripture-translation {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(166,128,35,.60);
+    background: rgba(255,255,255,.06);
+    font-size: .85rem;
+    color: #f8fafc;
+    white-space: nowrap;
+}
+
+.scripture-close {
+    background: transparent;
+    color: #f8fafc;
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 10px;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    line-height: 1;
+    transition: background .15s ease, transform .15s ease;
+}
+
+.scripture-close:hover,
+.scripture-close:focus-visible {
+    background: rgba(255,255,255,.12);
+    transform: translateY(-1px);
+    outline: none;
+}
+
+.scripture-text {
+    max-height: 60vh;
+    overflow: auto;
+    padding-right: 6px;
+    line-height: 1.6;
+    letter-spacing: 0.01em;
+}
+
+.scripture-text p { margin-bottom: 10px; color: #e2e8f0; }
+.scripture-text p:last-child { margin-bottom: 0; }
+
+.scripture-streak-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px dashed rgba(166,128,35,.55);
+    background: rgba(255,255,255,.04);
+}
+
+.scripture-streak-label {
+    color: rgba(255,255,255,.76);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-size: .8rem;
+}
+
+.scripture-streak-value {
+    font-size: 1.3rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+}
+
+.scripture-streak-note {
+    color: rgba(255,255,255,.64);
+    font-weight: 700;
+    font-size: .85rem;
+    margin-left: auto;
+    white-space: nowrap;
+}
+
 .messaging-command-center-modal {
     position: fixed;
     z-index: 12000;
