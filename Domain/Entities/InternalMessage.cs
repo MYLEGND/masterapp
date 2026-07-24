@@ -25,4 +25,8 @@ public class InternalMessage
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 
     public MessageConversation Conversation { get; set; } = null!;
+
+
+    public ICollection<MessageAttachment> Attachments { get; set; }
+        = new List<MessageAttachment>();
 }

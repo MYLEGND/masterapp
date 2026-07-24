@@ -1,5 +1,6 @@
 using Infrastructure.Data;
 using Infrastructure.Billing;
+using Infrastructure.FinancialIntelligence;
 using Infrastructure.Identity;
 using ClientApp.Infrastructure;
 using ClientApp.Services;
@@ -35,6 +36,7 @@ builder.Services.AddControllersWithViews(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMasterAppBilling(builder.Configuration);
+builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
 builder.Services.AddScoped<EffectiveClientContextService>();
 builder.Services.AddSingleton<ClientAppReturnUrlNormalizer>();
 builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();

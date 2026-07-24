@@ -21,4 +21,11 @@ public class MessageConversation
     public string CreatedByUserId { get; set; } = string.Empty;
 
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
+
+    public ICollection<MessageConversationParticipant> Participants { get; set; }
+        = new List<MessageConversationParticipant>();
+
+    public ICollection<InternalMessage> Messages { get; set; }
+        = new List<InternalMessage>();
 }

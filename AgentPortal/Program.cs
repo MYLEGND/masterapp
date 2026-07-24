@@ -3,6 +3,7 @@ using AgentPortal.Middleware;
 using AgentPortal.Services;
 using Azure.Identity;
 using Infrastructure.Billing;
+using Infrastructure.FinancialIntelligence;
 using Infrastructure.Data;
 using Infrastructure.Identity;
 using AgentPortal.Security;
@@ -76,6 +77,7 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMasterAppBilling(builder.Configuration);
+builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
 builder.Services.AddScoped<ClientBillingWorkspaceService>();
 builder.Services.AddScoped<ClientProvisioningService>();
 builder.Services.AddScoped<ClientSubscriptionInvitationEmailService>();

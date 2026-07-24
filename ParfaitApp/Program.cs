@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Infrastructure.Billing;
+using Infrastructure.FinancialIntelligence;
 using Infrastructure.Analytics;
 using ParfaitApp.Services;
 using Infrastructure.Data;
@@ -106,6 +107,7 @@ builder.Services.AddScoped<ParfaitCustomerAutomationService>();
 builder.Services.AddSingleton<IParfaitInternalPageRegistry, ParfaitInternalPageRegistry>();
 builder.Services.AddScoped<IParfaitTeamAccessService, ParfaitTeamAccessService>();
 builder.Services.AddMasterAppBilling(builder.Configuration);
+builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
 builder.Services.AddHttpClient("ResilientDefault")
     .SetHandlerLifetime(TimeSpan.FromMinutes(5));
 builder.Services.AddHttpContextAccessor();

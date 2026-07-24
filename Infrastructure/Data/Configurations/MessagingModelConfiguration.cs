@@ -65,7 +65,7 @@ internal static class MessagingModelConfiguration
         entity.HasIndex(x => new { x.UserId, x.IsActive });
 
         entity.HasOne(x => x.Conversation)
-            .WithMany()
+            .WithMany(x => x.Participants)
             .HasForeignKey(x => x.ConversationId)
             .OnDelete(DeleteBehavior.Cascade);
     }
@@ -111,7 +111,7 @@ internal static class MessagingModelConfiguration
         }
 
         entity.HasOne(x => x.Conversation)
-            .WithMany()
+            .WithMany(x => x.Messages)
             .HasForeignKey(x => x.ConversationId)
             .OnDelete(DeleteBehavior.Cascade);
     }
@@ -146,7 +146,7 @@ internal static class MessagingModelConfiguration
         entity.HasIndex(x => x.InternalMessageId);
 
         entity.HasOne(x => x.InternalMessage)
-            .WithMany()
+            .WithMany(x => x.Attachments)
             .HasForeignKey(x => x.InternalMessageId)
             .OnDelete(DeleteBehavior.Cascade);
     }
