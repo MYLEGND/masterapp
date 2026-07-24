@@ -283,7 +283,8 @@ internal sealed class MessagingService : IMessagingService
             !Fits(subject, MaximumConversationSubjectLength) ||
             !Fits(initialMessage, MaximumMessageBodyLength) ||
             !Fits(clientMessageId, MaximumClientMessageIdLength) ||
-            string.Equals(actor.UserId, targetUserId, StringComparison.OrdinalIgnoreCase))
+            (string.Equals(actor.UserId, targetUserId, StringComparison.OrdinalIgnoreCase) &&
+             string.Equals(actor.ParticipantType, targetParticipantType, StringComparison.Ordinal)))
         {
             return MessagingConversationResult.Failure("MESSAGING_CONVERSATION_INVALID", "The requested conversation is invalid.");
         }
@@ -300,7 +301,12 @@ internal sealed class MessagingService : IMessagingService
         if (conversationType is null || !await IsPermittedPairAsync(actor, targetUserId, targetParticipantType, cancellationToken))
             return MessagingConversationResult.Failure("MESSAGING_RECIPIENT_FORBIDDEN", "Messaging is not permitted for the requested recipient.");
 
-        var directConversationKey = BuildDirectConversationKey(conversationType, actor.UserId, targetUserId);
+        var directConversationKey = BuildDirectConversationKey(
+            conversationType,
+            actor.UserId,
+            actor.ParticipantType,
+            targetUserId,
+            targetParticipantType);
 
         var existing = await FindDirectConversationAsync(
             actor.UserId,
@@ -1202,9 +1208,19 @@ internal sealed class MessagingService : IMessagingService
         return null;
     }
 
-    private static string BuildDirectConversationKey(string conversationType, string firstUserId, string secondUserId)
+    private static string BuildDirectConversationKey(
+        string conversationType,
+        string firstUserId,
+        string firstParticipantType,
+        string secondUserId,
+        string secondParticipantType)
     {
-        var participants = new[] { NormalizeUserId(firstUserId), NormalizeUserId(secondUserId) };
+        var participants = new[]
+        {
+            $"{NormalizeRequired(firstParticipantType)}:{NormalizeUserId(firstUserId)}",
+            $"{NormalizeRequired(secondParticipantType)}:{NormalizeUserId(secondUserId)}"
+        };
+
         Array.Sort(participants, StringComparer.Ordinal);
         return $"{conversationType}|{participants[0]}|{participants[1]}";
     }
