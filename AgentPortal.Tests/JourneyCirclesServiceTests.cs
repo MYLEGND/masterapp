@@ -33,6 +33,7 @@ public sealed class JourneyCirclesServiceTests
         Assert.True(await service.CanMessageAsync("client-one", "client-two"));
         Assert.True((await service.BlockAsync("client-one", second.Id)).Succeeded);
         Assert.False(await service.CanMessageAsync("client-one", "client-two"));
+        Assert.Empty(await service.ListConnectedPeersAsync("client-one"));
     }
 
     [Theory]

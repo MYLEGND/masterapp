@@ -529,11 +529,13 @@
         (parseUtcTimestamp(right.lastMessageUtc)?.getTime() || 0) -
         (parseUtcTimestamp(left.lastMessageUtc)?.getTime() || 0));
     const existingCounterparties = new Set(matchingConversations.map(conversation => normalize(conversation.counterparty?.userId)));
+    const existingConversationIds = new Set(matchingConversations.map(conversation => conversation.id));
     const recipientSource = state.recipientMatchesQuery === query
       ? state.recipientMatches
       : state.recipients;
     const matchingRecipients = recipientSource.filter(recipient =>
       !existingCounterparties.has(normalize(recipient.userId)) &&
+      !existingConversationIds.has(recipient.existingConversationId) &&
       matchesSearch([recipient.displayName, recipient.email].filter(Boolean).join(' '), query))
       .sort((left, right) =>
         searchRank(left, query) - searchRank(right, query) ||
@@ -555,8 +557,17 @@
         key: searchResultKey('recipient', recipient.userId, recipient.participantType),
         person: recipient,
         title: recipient.displayName,
-        subtitle: recipient.email || '',
+        subtitle: [
+          recipient.existingConversationId ? 'Existing conversation' : recipient.relationshipLabel,
+          recipient.email
+        ].filter(Boolean).join(' · '),
         select: () => {
+          if (recipient.existingConversationId) {
+            elements.search.value = '';
+            renderSearchResults();
+            loadConversation(recipient.existingConversationId, true).catch(error => showError(error.message));
+            return;
+          }
           state.active = null;
           state.draftTarget = recipient;
           state.pendingSubmission = null;

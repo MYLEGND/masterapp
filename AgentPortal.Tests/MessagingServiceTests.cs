@@ -104,6 +104,86 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task SameCanonicalUserIdWithDifferentParticipantTypes_IsRejectedBeforeParticipantsAreTracked()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+
+        var result = await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                new MessagingActor("agent-1", MessagingParticipantTypes.Agent),
+                "agent-1",
+                MessagingParticipantTypes.Client,
+                InitialMessageBody: "This must not create a participant duplicate."));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("MESSAGING_CONVERSATION_INVALID", result.ErrorCode);
+        Assert.Empty(await db.MessageConversations.ToListAsync());
+        Assert.Empty(await db.MessageConversationParticipants.ToListAsync());
+        Assert.DoesNotContain(
+            db.ChangeTracker.Entries<MessageConversationParticipant>(),
+            entry => entry.State == EntityState.Added);
+    }
+
+    [Fact]
+    public async Task RecipientLookup_MergesAgentClientAndMessagingGrantIntoOneRecipientWithExistingConversation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: true);
+        var service = CreateService(db);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+
+        var started = await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                client,
+                "agent-1",
+                MessagingParticipantTypes.Agent,
+                InitialMessageBody: "Please review my coverage."));
+        var recipients = await service.ListRecipientsAsync(client);
+
+        var recipient = Assert.Single(recipients.Recipients);
+        Assert.Equal("agent-1", recipient.UserId);
+        Assert.Equal("Your Servicing Agent", recipient.RelationshipLabel);
+        Assert.Equal(started.Conversation!.Id, recipient.ExistingConversationId);
+    }
+
+    [Fact]
+    public async Task RecipientLookup_ExcludesTheActorEvenWhenAnIdentityAppearsInAnotherParticipantType()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "client-1",
+            AgentUpn = "client.one@example.test",
+            FullName = "Incorrectly Mapped Self",
+            IsActive = true
+        });
+        db.ClientAgentMessagingGrants.Add(new ClientAgentMessagingGrant
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "client-1",
+            AgentUserId = "client-1",
+            GrantedByAgentUserId = "agent-1",
+            IsActive = true,
+            GrantedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var recipients = await service.ListRecipientsAsync(new MessagingActor("client-1", MessagingParticipantTypes.Client));
+        var self = await service.GetAuthorizedParticipantAsync(
+            new MessagingActor("client-1", MessagingParticipantTypes.Client),
+            "client-1",
+            MessagingParticipantTypes.Agent);
+
+        Assert.DoesNotContain(recipients.Recipients, recipient => recipient.UserId == "client-1");
+        Assert.False(self.Succeeded);
+        Assert.Equal("MESSAGING_RECIPIENT_NOT_FOUND", self.ErrorCode);
+    }
+
+    [Fact]
     public async Task NoAgentClientRelationshipOrGrant_DeniesClientMessaging()
     {
         await using var db = ControllerTestHelpers.BuildDb();

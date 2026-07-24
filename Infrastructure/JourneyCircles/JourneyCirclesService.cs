@@ -167,9 +167,21 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
     {
         var client = await FindClientAsync(clientUserId, cancellationToken); if (client is null) return Array.Empty<(string, string)>();
         var connections = await _db.JourneyCircleConnections.AsNoTracking().Where(x => x.Status == JourneyCircleConnectionStatuses.Accepted && (x.RequesterClientProfileId == client.Id || x.RecipientClientProfileId == client.Id)).ToListAsync(cancellationToken);
-        var peerIds = connections.Select(x => x.RequesterClientProfileId == client.Id ? x.RecipientClientProfileId : x.RequesterClientProfileId).ToArray();
+        var peerIds = connections
+            .Select(x => x.RequesterClientProfileId == client.Id ? x.RecipientClientProfileId : x.RequesterClientProfileId)
+            .Distinct()
+            .ToArray();
         var profiles = await _db.JourneyCircleProfiles.AsNoTracking().Include(x => x.ClientProfile).Where(x => peerIds.Contains(x.ClientProfileId) && x.IsOptedIn && x.CommunityAccessState == "Active").ToListAsync(cancellationToken);
-        return profiles.Select(x => (x.ClientProfile.ClientUserId, SafeDisplayName(x))).ToArray();
+        var blockedPeerIds = await _db.JourneyCircleBlocks.AsNoTracking()
+            .Where(x => x.BlockerClientProfileId == client.Id || x.BlockedClientProfileId == client.Id)
+            .Select(x => x.BlockerClientProfileId == client.Id ? x.BlockedClientProfileId : x.BlockerClientProfileId)
+            .ToListAsync(cancellationToken);
+        return profiles
+            .Where(x => !blockedPeerIds.Contains(x.ClientProfileId) &&
+                        !string.IsNullOrWhiteSpace(x.ClientProfile.ClientUserId))
+            .GroupBy(x => x.ClientProfile.ClientUserId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => (group.First().ClientProfile.ClientUserId, SafeDisplayName(group.First())))
+            .ToArray();
     }
 
     private async Task<IReadOnlyList<JourneyCircleRecommendation>> RecommendationsAsync(ClientProfile client, JourneyCircleProfile source, CancellationToken ct)

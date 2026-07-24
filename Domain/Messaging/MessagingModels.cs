@@ -188,7 +188,9 @@ public sealed record MessagingRecipientSummary(
     string UserId,
     string ParticipantType,
     string DisplayName,
-    string? Email);
+    string? Email,
+    string? RelationshipLabel = null,
+    Guid? ExistingConversationId = null);
 
 public sealed record MessagingMessageSummary(
     Guid Id,

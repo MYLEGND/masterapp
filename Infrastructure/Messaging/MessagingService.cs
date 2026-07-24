@@ -3,6 +3,7 @@ using Domain.JourneyCircles;
 using Domain.Messaging;
 using Domain.Moderation;
 using Infrastructure.Data;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -247,15 +248,6 @@ internal sealed class MessagingService : IMessagingService
         if (string.IsNullOrWhiteSpace(normalizedUserId) || !IsParticipantType(normalizedParticipantType))
             return MessagingRecipientResult.Failure("MESSAGING_RECIPIENT_NOT_FOUND", "The requested participant is not available.");
 
-        if (string.Equals(actor.UserId, normalizedUserId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(actor.ParticipantType, normalizedParticipantType, StringComparison.Ordinal))
-        {
-            var ownParticipant = await GetParticipantSummaryAsync(actor.UserId, actor.ParticipantType, cancellationToken);
-            return ownParticipant is null
-                ? MessagingRecipientResult.Failure("MESSAGING_RECIPIENT_NOT_FOUND", "The requested participant is not available.")
-                : new MessagingRecipientResult(true, null, null, ownParticipant);
-        }
-
         var participant = (await ListAuthorizedRecipientsAsync(actor, cancellationToken))
             .FirstOrDefault(x =>
                 string.Equals(x.UserId, normalizedUserId, StringComparison.OrdinalIgnoreCase) &&
@@ -282,9 +274,13 @@ internal sealed class MessagingService : IMessagingService
             !Fits(targetUserId, 450) ||
             !Fits(subject, MaximumConversationSubjectLength) ||
             !Fits(initialMessage, MaximumMessageBodyLength) ||
-            !Fits(clientMessageId, MaximumClientMessageIdLength) ||
-            (string.Equals(actor.UserId, targetUserId, StringComparison.OrdinalIgnoreCase) &&
-             string.Equals(actor.ParticipantType, targetParticipantType, StringComparison.Ordinal)))
+            !Fits(clientMessageId, MaximumClientMessageIdLength))
+        {
+            return MessagingConversationResult.Failure("MESSAGING_CONVERSATION_INVALID", "The requested conversation is invalid.");
+        }
+
+        var requestedParticipantCount = 2;
+        if (!TryBuildDirectParticipants(actor, targetUserId, targetParticipantType, out var participants))
         {
             return MessagingConversationResult.Failure("MESSAGING_CONVERSATION_INVALID", "The requested conversation is invalid.");
         }
@@ -304,9 +300,7 @@ internal sealed class MessagingService : IMessagingService
         var directConversationKey = BuildDirectConversationKey(
             conversationType,
             actor.UserId,
-            actor.ParticipantType,
-            targetUserId,
-            targetParticipantType);
+            targetUserId);
 
         var existing = await FindDirectConversationAsync(
             actor.UserId,
@@ -315,7 +309,17 @@ internal sealed class MessagingService : IMessagingService
             directConversationKey,
             cancellationToken);
         if (existing is not null)
+        {
+            _logger.LogInformation(
+                "Messaging direct conversation reused. ActorUserId={ActorUserId} TargetUserId={TargetUserId} ConversationId={ConversationId} ConversationType={ConversationType} RequestedParticipantCount={RequestedParticipantCount} DistinctParticipantCount={DistinctParticipantCount}",
+                actor.UserId,
+                targetUserId,
+                existing.Id,
+                conversationType,
+                requestedParticipantCount,
+                participants.Count);
             return await ContinueExistingConversationAsync(actor, existing.Id, initialMessage, clientMessageId, cancellationToken);
+        }
 
         var nowUtc = DateTime.UtcNow;
         var conversation = new MessageConversation
@@ -329,25 +333,15 @@ internal sealed class MessagingService : IMessagingService
             CreatedByUserId = actor.UserId
         };
         _db.MessageConversations.Add(conversation);
-        _db.MessageConversationParticipants.AddRange(
-            new MessageConversationParticipant
-            {
-                Id = Guid.NewGuid(),
-                ConversationId = conversation.Id,
-                UserId = actor.UserId,
-                ParticipantType = actor.ParticipantType,
-                IsActive = true,
-                JoinedUtc = nowUtc
-            },
-            new MessageConversationParticipant
-            {
-                Id = Guid.NewGuid(),
-                ConversationId = conversation.Id,
-                UserId = targetUserId,
-                ParticipantType = targetParticipantType,
-                IsActive = true,
-                JoinedUtc = nowUtc
-            });
+        _db.MessageConversationParticipants.AddRange(participants.Select(participant => new MessageConversationParticipant
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = conversation.Id,
+            UserId = participant.UserId,
+            ParticipantType = participant.ParticipantType,
+            IsActive = true,
+            JoinedUtc = nowUtc
+        }));
 
         if (!string.IsNullOrWhiteSpace(initialMessage))
         {
@@ -369,6 +363,15 @@ internal sealed class MessagingService : IMessagingService
         AddAudit(actor.UserId, "ConversationCreated", conversation.Id, null, targetUserId, conversationType, nowUtc);
         try
         {
+            _logger.LogInformation(
+                "Messaging direct conversation creation starting. ActorUserId={ActorUserId} TargetUserId={TargetUserId} ConversationId={ConversationId} ConversationType={ConversationType} DirectConversationKey={DirectConversationKey} RequestedParticipantCount={RequestedParticipantCount} DistinctParticipantCount={DistinctParticipantCount}",
+                actor.UserId,
+                targetUserId,
+                conversation.Id,
+                conversationType,
+                directConversationKey,
+                requestedParticipantCount,
+                participants.Count);
             await _db.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException ex)
@@ -405,19 +408,32 @@ internal sealed class MessagingService : IMessagingService
                 failedEntries,
                 DateTime.UtcNow);
 
-            _db.ChangeTracker.Clear();
-            var concurrent = await FindDirectConversationAsync(
-                actor.UserId,
-                targetUserId,
-                conversationType,
-                directConversationKey,
-                cancellationToken);
-            if (concurrent is not null)
-                return await ContinueExistingConversationAsync(actor, concurrent.Id, initialMessage, clientMessageId, cancellationToken);
+            if (IsVerifiedDirectConversationKeyConflict(ex))
+            {
+                _db.ChangeTracker.Clear();
+                var concurrent = await FindDirectConversationAsync(
+                    actor.UserId,
+                    targetUserId,
+                    conversationType,
+                    directConversationKey,
+                    cancellationToken);
+                if (concurrent is not null)
+                {
+                    _logger.LogInformation(
+                        "Messaging direct conversation creation resolved a verified uniqueness race. DiagnosticId={DiagnosticId} ActorUserId={ActorUserId} TargetUserId={TargetUserId} ConversationId={ConversationId} ConversationType={ConversationType} DirectConversationKey={DirectConversationKey}",
+                        diagnosticId,
+                        actor.UserId,
+                        targetUserId,
+                        concurrent.Id,
+                        conversationType,
+                        directConversationKey);
+                    return await ContinueExistingConversationAsync(actor, concurrent.Id, initialMessage, clientMessageId, cancellationToken);
+                }
+            }
 
             return MessagingConversationResult.Failure(
                 "MESSAGING_CONVERSATION_SAVE_FAILED",
-                $"The conversation could not be saved. Diagnostic ID: {diagnosticId}. Reason: {rootCause.GetType().Name}: {rootCauseMessage}");
+                $"We could not open this conversation. Please try again. If the issue continues, provide Diagnostic ID: {diagnosticId}.");
         }
 
         return await GetConversationAsync(actor, conversation.Id, cancellationToken);
@@ -844,8 +860,7 @@ internal sealed class MessagingService : IMessagingService
         return await _db.MessageConversations
             .Where(x => x.ConversationType == conversationType)
             .Where(x => x.DirectConversationKey == directConversationKey ||
-                        (x.DirectConversationKey == null &&
-                         x.Participants.Count(participant => participant.IsActive) == 2 &&
+                        (x.Participants.Count(participant => participant.IsActive) == 2 &&
                          x.Participants.Any(participant => participant.IsActive && participant.UserId.ToLower() == actorUserId) &&
                          x.Participants.Any(participant => participant.IsActive && participant.UserId.ToLower() == targetUserId)))
             .OrderByDescending(x => x.LastMessageUtc ?? x.CreatedUtc)
@@ -932,12 +947,16 @@ internal sealed class MessagingService : IMessagingService
         return false;
     }
 
-    private Task<List<MessagingRecipientSummary>> ListAuthorizedRecipientsAsync(
+    private async Task<List<MessagingRecipientSummary>> ListAuthorizedRecipientsAsync(
         MessagingActor actor,
-        CancellationToken cancellationToken) =>
-        actor.ParticipantType == MessagingParticipantTypes.Agent
-            ? ListAgentRecipientsAsync(actor.UserId, cancellationToken)
-            : ListClientRecipientsAsync(actor.UserId, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        var candidates = actor.ParticipantType == MessagingParticipantTypes.Agent
+            ? await ListAgentRecipientsAsync(actor.UserId, cancellationToken)
+            : await ListClientRecipientsAsync(actor.UserId, cancellationToken);
+        var recipients = CollapseAuthorizedRecipients(actor, candidates);
+        return await AttachExistingConversationIdsAsync(actor, recipients, cancellationToken);
+    }
 
     private async Task<MessagingRecipientSummary?> GetParticipantSummaryAsync(
         string userId,
@@ -1029,16 +1048,15 @@ internal sealed class MessagingService : IMessagingService
             x.UserId,
             MessagingParticipantTypes.Agent,
             FirstNonEmpty(x.FullName, x.Email, "Agent"),
-            x.Email));
+            x.Email,
+            "Agent"));
         var clients = clientRows.Select(x => new MessagingRecipientSummary(
             x.UserId,
             MessagingParticipantTypes.Client,
             FirstNonEmpty($"{x.FirstName} {x.LastName}".Trim(), x.Email, "Client"),
-            x.Email));
-        return agents.Concat(clients)
-            .OrderBy(x => x.ParticipantType)
-            .ThenBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            x.Email,
+            "Client"));
+        return agents.Concat(clients).ToList();
     }
 
     private async Task<List<MessagingRecipientSummary>> ListClientRecipientsAsync(
@@ -1056,11 +1074,89 @@ internal sealed class MessagingService : IMessagingService
                 x.UserId,
                 MessagingParticipantTypes.Agent,
                 FirstNonEmpty(x.FullName, x.Email, "Agent"),
-                x.Email))
+                x.Email,
+                "Your Servicing Agent"))
             .ToList();
         var peers = await _journeyCircles.ListConnectedPeersAsync(clientUserId, cancellationToken);
-        var peerRecipients = peers.Select(x => new MessagingRecipientSummary(x.UserId, MessagingParticipantTypes.Client, x.DisplayName, null));
-        return agentRecipients.Concat(peerRecipients).OrderBy(x => x.ParticipantType).ThenBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
+        var peerRecipients = peers.Select(x => new MessagingRecipientSummary(
+            x.UserId,
+            MessagingParticipantTypes.Client,
+            x.DisplayName,
+            null,
+            "Journey Connection"));
+        return agentRecipients.Concat(peerRecipients).ToList();
+    }
+
+    private static List<MessagingRecipientSummary> CollapseAuthorizedRecipients(
+        MessagingActor actor,
+        IEnumerable<MessagingRecipientSummary> candidates)
+    {
+        return candidates
+            .Select(recipient => recipient with
+            {
+                UserId = NormalizeUserId(recipient.UserId),
+                ParticipantType = NormalizeRequired(recipient.ParticipantType),
+                DisplayName = FirstNonEmpty(recipient.DisplayName, recipient.Email, "Participant")
+            })
+            .Where(recipient =>
+                !string.IsNullOrWhiteSpace(recipient.UserId) &&
+                IsParticipantType(recipient.ParticipantType) &&
+                !string.Equals(recipient.UserId, actor.UserId, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(recipient => recipient.UserId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderBy(recipient => recipient.ParticipantType)
+                .ThenBy(recipient => recipient.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .First())
+            .OrderBy(recipient => recipient.ParticipantType)
+            .ThenBy(recipient => recipient.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private async Task<List<MessagingRecipientSummary>> AttachExistingConversationIdsAsync(
+        MessagingActor actor,
+        IReadOnlyList<MessagingRecipientSummary> recipients,
+        CancellationToken cancellationToken)
+    {
+        if (recipients.Count == 0)
+            return Array.Empty<MessagingRecipientSummary>().ToList();
+
+        var recipientKeys = recipients
+            .Select(recipient => recipient.UserId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var conversations = await _db.MessageConversationParticipants
+            .AsNoTracking()
+            .Where(participant =>
+                participant.IsActive &&
+                recipientKeys.Contains(participant.UserId.ToLower()))
+            .Where(participant => participant.Conversation.Participants.Count(conversationParticipant =>
+                conversationParticipant.IsActive) == 2)
+            .Where(participant => participant.Conversation.Participants.Any(conversationParticipant =>
+                conversationParticipant.IsActive &&
+                conversationParticipant.UserId.ToLower() == actor.UserId &&
+                conversationParticipant.ParticipantType == actor.ParticipantType))
+            .OrderByDescending(participant => participant.Conversation.LastMessageUtc ?? participant.Conversation.CreatedUtc)
+            .Select(participant => new ExistingConversationRow(
+                participant.ConversationId,
+                participant.UserId,
+                participant.ParticipantType))
+            .ToListAsync(cancellationToken);
+
+        var existingByRecipient = new Dictionary<(string UserId, string ParticipantType), Guid>();
+        foreach (var conversation in conversations)
+        {
+            existingByRecipient.TryAdd(
+                (NormalizeUserId(conversation.UserId), NormalizeRequired(conversation.ParticipantType)),
+                conversation.Id);
+        }
+
+        return recipients
+            .Select(recipient => existingByRecipient.TryGetValue(
+                    (recipient.UserId, recipient.ParticipantType),
+                    out var conversationId)
+                ? recipient with { ExistingConversationId = conversationId }
+                : recipient)
+            .ToList();
     }
 
     private async Task<bool> HasClientAgentMessagingPermissionAsync(
@@ -1244,18 +1340,62 @@ internal sealed class MessagingService : IMessagingService
     private static string BuildDirectConversationKey(
         string conversationType,
         string firstUserId,
-        string firstParticipantType,
-        string secondUserId,
-        string secondParticipantType)
+        string secondUserId)
     {
-        var participants = new[]
+        var userIds = new[]
         {
-            $"{NormalizeRequired(firstParticipantType)}:{NormalizeUserId(firstUserId)}",
-            $"{NormalizeRequired(secondParticipantType)}:{NormalizeUserId(secondUserId)}"
+            NormalizeUserId(firstUserId),
+            NormalizeUserId(secondUserId)
         };
 
-        Array.Sort(participants, StringComparer.Ordinal);
-        return $"{conversationType}|{participants[0]}|{participants[1]}";
+        Array.Sort(userIds, StringComparer.Ordinal);
+        return $"{conversationType}|{userIds[0]}|{userIds[1]}";
+    }
+
+    private static bool TryBuildDirectParticipants(
+        MessagingActor actor,
+        string targetUserId,
+        string targetParticipantType,
+        out IReadOnlyList<DirectConversationParticipant> participants)
+    {
+        var requested = new[]
+        {
+            new DirectConversationParticipant(NormalizeUserId(actor.UserId), NormalizeRequired(actor.ParticipantType)),
+            new DirectConversationParticipant(NormalizeUserId(targetUserId), NormalizeRequired(targetParticipantType))
+        };
+
+        if (requested.Any(participant =>
+                string.IsNullOrWhiteSpace(participant.UserId) ||
+                !IsParticipantType(participant.ParticipantType)))
+        {
+            participants = Array.Empty<DirectConversationParticipant>();
+            return false;
+        }
+
+        var distinctParticipants = requested
+            .GroupBy(participant => participant.UserId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+
+        participants = distinctParticipants;
+        return distinctParticipants.Length == requested.Length && distinctParticipants.Length == 2;
+    }
+
+    private static bool IsVerifiedDirectConversationKeyConflict(DbUpdateException exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is not SqlException sqlException || sqlException.Number is not (2601 or 2627))
+                continue;
+
+            if (sqlException.Errors.Cast<SqlError>().Any(error =>
+                    error.Message.Contains("IX_MessageConversations_DirectConversationKey", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsParticipantType(string value) =>
@@ -1344,6 +1484,15 @@ internal sealed class MessagingService : IMessagingService
         string? Subject,
         DateTime? LastMessageUtc,
         bool IsClosed);
+
+    private sealed record DirectConversationParticipant(
+        string UserId,
+        string ParticipantType);
+
+    private sealed record ExistingConversationRow(
+        Guid Id,
+        string UserId,
+        string ParticipantType);
 
     private sealed record ConversationDetailRow(
         Guid Id,
