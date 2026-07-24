@@ -294,6 +294,36 @@
     return Boolean(elements.journeyOpen && elements.journeyPanel && elements.journeyProfileForm);
   }
 
+  function journeyPrivacyChoices() {
+    return Array.from(
+      elements.journeyProfileForm?.querySelectorAll('[data-journey-privacy-choice]') || []
+    );
+  }
+
+  function syncJourneyPrivacyTiles() {
+    const privacy = journeyFormField('PrivacyChoices');
+    if (!(privacy instanceof HTMLSelectElement)) return;
+
+    const selected = new Set(selectedValues(privacy));
+
+    journeyPrivacyChoices().forEach(choice => {
+      const value = choice.dataset.journeyPrivacyChoice || '';
+      choice.setAttribute('aria-pressed', selected.has(value) ? 'true' : 'false');
+    });
+  }
+
+  function toggleJourneyPrivacyChoice(choice) {
+    const privacy = journeyFormField('PrivacyChoices');
+    if (!(privacy instanceof HTMLSelectElement)) return;
+
+    const value = choice.dataset.journeyPrivacyChoice || '';
+    const option = Array.from(privacy.options).find(item => item.value === value);
+    if (!option) return;
+
+    option.selected = !option.selected;
+    syncJourneyPrivacyTiles();
+  }
+
   function setJourneyStatus(message, isError = false) {
     if (!elements.journeyStatus) return;
     elements.journeyStatus.hidden = !message;
@@ -417,6 +447,7 @@
         preferences.allowSuggestions ? 'suggestions' : '',
         preferences.allowConnectionRequests ? 'requests' : ''
       ]);
+      syncJourneyPrivacyTiles();
     }
     setJourneyBoolean('ConsentAffirmed', preferences.consentAffirmed);
     setJourneyBoolean('IsOptedIn', preferences.isOptedIn);
@@ -1147,6 +1178,12 @@
   elements.close.addEventListener('click', closeCommandCenter);
   elements.journeyOpen?.addEventListener('click', () => openJourneyCircles());
   elements.journeyBack?.addEventListener('click', closeJourneyCircles);
+  elements.journeyProfileForm?.addEventListener('click', event => {
+    const choice = event.target.closest('[data-journey-privacy-choice]');
+    if (!(choice instanceof HTMLButtonElement)) return;
+    toggleJourneyPrivacyChoice(choice);
+  });
+
   elements.journeyProfileForm?.addEventListener('submit', saveJourneyProfile);
   elements.search.addEventListener('input', () => {
     window.clearTimeout(state.searchTimer);
