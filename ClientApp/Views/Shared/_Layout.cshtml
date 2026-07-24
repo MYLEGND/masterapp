@@ -157,22 +157,39 @@
 
                     if (isAuthenticated && user is not null)
                     {
-                        first =
-                            CleanToken(user.FindFirst("given_name")?.Value)
-                            ?? CleanToken(user.FindFirst(ClaimTypes.GivenName)?.Value)
-                            ?? CleanToken(user.FindFirst("name")?.Value);
+                        if (!isAgentView && messagingClientContext?.Profile != null)
+                        {
+                            first = CleanToken(messagingClientContext.Profile.FirstName);
+                            last = CleanToken(messagingClientContext.Profile.LastName);
 
-                        last =
-                            CleanToken(user.FindFirst("family_name")?.Value)
-                            ?? CleanToken(user.FindFirst(ClaimTypes.Surname)?.Value);
+                            displayName = string.Join(
+                                " ",
+                                new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)));
 
-                        displayName =
-                            (!string.IsNullOrWhiteSpace(first) || !string.IsNullOrWhiteSpace(last))
-                                ? string.Join(" ", new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)))
-                                : user.FindFirst("name")?.Value
-                                  ?? user.FindFirst(ClaimTypes.Name)?.Value
-                                  ?? first
-                                  ?? "Agent";
+                            if (string.IsNullOrWhiteSpace(displayName))
+                            {
+                                displayName = "Client";
+                            }
+                        }
+                        else
+                        {
+                            first =
+                                CleanToken(user.FindFirst("given_name")?.Value)
+                                ?? CleanToken(user.FindFirst(ClaimTypes.GivenName)?.Value)
+                                ?? CleanToken(user.FindFirst("name")?.Value);
+
+                            last =
+                                CleanToken(user.FindFirst("family_name")?.Value)
+                                ?? CleanToken(user.FindFirst(ClaimTypes.Surname)?.Value);
+
+                            displayName =
+                                (!string.IsNullOrWhiteSpace(first) || !string.IsNullOrWhiteSpace(last))
+                                    ? string.Join(" ", new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)))
+                                    : user.FindFirst("name")?.Value
+                                      ?? user.FindFirst(ClaimTypes.Name)?.Value
+                                      ?? first
+                                      ?? "Agent";
+                        }
 
                         userId =
                             user.FindFirst("oid")?.Value
