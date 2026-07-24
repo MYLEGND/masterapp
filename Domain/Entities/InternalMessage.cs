@@ -1,0 +1,28 @@
+namespace Domain.Entities;
+
+public class InternalMessage
+{
+    public Guid Id { get; set; }
+
+    public Guid ConversationId { get; set; }
+
+    public string SenderUserId { get; set; } = string.Empty;
+
+    public string SenderType { get; set; } = string.Empty;
+
+    public string Body { get; set; } = string.Empty;
+
+    public DateTime SentUtc { get; set; }
+
+    public DateTime? EditedUtc { get; set; }
+
+    public DateTime? DeletedUtc { get; set; }
+
+    public bool IsDeleted { get; set; }
+
+    public string? ClientMessageId { get; set; }
+
+    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
+    public MessageConversation Conversation { get; set; } = null!;
+}

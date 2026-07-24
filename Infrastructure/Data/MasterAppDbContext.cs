@@ -4,6 +4,7 @@ using Domain.Entities;
 using Domain.Entities.FinancialIntelligence;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Infrastructure.Data.Configurations;
 
 namespace Infrastructure.Data;
 
@@ -69,9 +70,18 @@ public class MasterAppDbContext : DbContext
     public DbSet<ClientEntitlement> ClientEntitlements => Set<ClientEntitlement>();
     public DbSet<BillingAuditEntry> BillingAuditEntries => Set<BillingAuditEntry>();
 
+    public DbSet<MessageConversation> MessageConversations => Set<MessageConversation>();
+    public DbSet<MessageConversationParticipant> MessageConversationParticipants => Set<MessageConversationParticipant>();
+    public DbSet<InternalMessage> InternalMessages => Set<InternalMessage>();
+    public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
+    public DbSet<ClientAgentMessagingGrant> ClientAgentMessagingGrants => Set<ClientAgentMessagingGrant>();
+    public DbSet<MessagingAuditEntry> MessagingAuditEntries => Set<MessagingAuditEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        MessagingModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         var isSqlServer = Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
 
         modelBuilder.Entity<CommerceBusiness>(e =>
