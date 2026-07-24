@@ -3457,14 +3457,26 @@ header .legend-global-nav .container-fluid {
 
 .messaging-command-center-journey:hover,
 .messaging-command-center-journey:focus-visible,
-.messaging-journey-back:hover,
-.messaging-journey-back:focus-visible,
 .messaging-journey-card button:hover,
 .messaging-journey-card button:focus-visible {
-    border-color: #f7df90;
-    background: rgba(212, 170, 71, 0.2);
-    color: #ffffff;
-    outline: none;
+    transform: translateY(-1px);
+}
+
+.messaging-journey-back:hover,
+.messaging-journey-back:focus-visible {
+    transform: translateY(-1px);
+    border-color: #f2d36f;
+    background:
+        linear-gradient(
+            145deg,
+            rgba(137, 96, 18, 0.72),
+            rgba(59, 40, 8, 0.96)
+        );
+    color: #fff0ad;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 0 0 3px rgba(221, 182, 77, 0.12),
+        0 0 26px rgba(221, 182, 77, 0.26);
 }
 
 .messaging-journey-panel {
@@ -3589,8 +3601,63 @@ header .legend-global-nav .container-fluid {
 }
 
 .messaging-journey-back {
-    min-height: 2.1rem;
-    padding: 0.38rem 0.7rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.62rem;
+    min-height: 2.8rem;
+    padding: 0.58rem 1rem 0.58rem 0.68rem;
+    border: 1px solid rgba(221, 182, 77, 0.72);
+    border-radius: 999px;
+    background:
+        linear-gradient(
+            145deg,
+            rgba(111, 78, 16, 0.5),
+            rgba(43, 30, 8, 0.86)
+        );
+    color: #f5d979;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 0 0 1px rgba(221, 182, 77, 0.07),
+        0 0 20px rgba(221, 182, 77, 0.16);
+    font-size: 0.88rem;
+    font-weight: 850;
+    line-height: 1;
+    letter-spacing: 0.015em;
+    white-space: nowrap;
+}
+
+.messaging-journey-back-icon {
+    display: inline-grid;
+    width: 1.82rem;
+    height: 1.82rem;
+    flex: 0 0 1.82rem;
+    place-items: center;
+    border: 1px solid rgba(246, 216, 121, 0.78);
+    border-radius: 50%;
+    background:
+        radial-gradient(
+            circle at 32% 28%,
+            #dfbd56,
+            #8a6115 72%
+        );
+    color: #fff8da;
+    box-shadow:
+        0 0 12px rgba(221, 182, 77, 0.3);
+}
+
+.messaging-journey-back-icon svg {
+    width: 1.05rem;
+    height: 1.05rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.messaging-journey-back-label {
+    transform: translateY(-0.01rem);
 }
 
 .messaging-journey-back svg,
