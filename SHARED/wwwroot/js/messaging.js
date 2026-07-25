@@ -54,7 +54,6 @@
     drafts: readSession('drafts', {}),
     scrollPositions: readSession('scroll-positions', {}),
     searchTimer: null,
-    searchAbortController: null,
     searchRequestId: 0,
     isSearchingContacts: false,
     searchResultNodes: new Map(),
@@ -1069,17 +1068,15 @@
       return;
     }
 
-    const controller = new AbortController();
-    state.searchAbortController = controller;
     state.isSearchingContacts = true;
     renderSearchResults();
     try {
-      const result = await request(`/Messaging/Recipients?search=${encodeURIComponent(query)}`, { signal: controller.signal });
+      const result = await request(`/Messaging/Recipients?search=${encodeURIComponent(query)}`);
       if (requestId !== state.searchRequestId) return;
       state.recipientMatches = result.recipients || [];
       state.recipientMatchesQuery = normalizedQuery;
     } catch (error) {
-      if (error?.name !== 'AbortError' && requestId === state.searchRequestId) {
+      if (requestId === state.searchRequestId) {
         showError(error.message);
       }
     } finally {
@@ -1316,7 +1313,6 @@
     window.clearTimeout(state.searchTimer);
     const query = elements.search.value.trim();
     const requestId = ++state.searchRequestId;
-    state.searchAbortController?.abort();
     state.isSearchingContacts = false;
     renderSearchResults();
     if (!normalizeSearch(query)) {

@@ -46,6 +46,18 @@ public sealed class MessagingClientScriptContractTests
         Assert.Contains("participantIdentityKey(state.draftTarget.userId, state.draftTarget.participantType)", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void RecipientSearch_UsesRequestOrderingWithoutAbortingInFlightRequests()
+    {
+        var source = ReadRepositoryFile("SHARED", "wwwroot", "js", "messaging.js");
+        var searchBody = GetFunctionBody(source, "searchRecipients");
+
+        Assert.DoesNotContain("AbortController", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("searchAbortController", source, StringComparison.Ordinal);
+        Assert.Contains("if (requestId !== state.searchRequestId) return;", searchBody, StringComparison.Ordinal);
+        Assert.Contains("if (requestId === state.searchRequestId)", searchBody, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("AgentPortal", "Views", "Shared", "_Layout.cshtml")]
     [InlineData("AgentPortal", "Views", "Shared", "_ClientWorkspaceLayout.cshtml")]
