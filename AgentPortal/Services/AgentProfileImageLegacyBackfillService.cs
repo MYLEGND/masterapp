@@ -1,3 +1,4 @@
+using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -45,7 +46,9 @@ public sealed class AgentProfileImageLegacyBackfillService
         var imported = 0;
         foreach (var profile in profiles)
         {
-            var image = FindLegacyImage(root, profile.AgentUserId);
+            var image = FindLegacyImage(
+                root,
+                await ResolveLegacyImageKeysAsync(profile, cancellationToken));
             if (image is null)
                 continue;
 
@@ -98,22 +101,67 @@ public sealed class AgentProfileImageLegacyBackfillService
         return Path.Combine(_environment.ContentRootPath, "App_Data", "avatars");
     }
 
-    private static (string Path, string ContentType)? FindLegacyImage(string root, string? agentUserId)
+    private async Task<IReadOnlyList<string>> ResolveLegacyImageKeysAsync(
+        AgentProfile profile,
+        CancellationToken cancellationToken)
     {
-        var key = agentUserId?.Trim();
-        if (string.IsNullOrWhiteSpace(key) ||
-            !string.Equals(Path.GetFileName(key), key, StringComparison.Ordinal))
-            return null;
+        var keys = new List<string>();
+        AddLegacyImageKey(keys, profile.AgentUserId);
 
-        foreach (var imageType in ImageTypes)
+        var upn = Normalize(profile.AgentUpn);
+        if (string.IsNullOrWhiteSpace(upn))
+            return keys;
+
+        var profileKeys = await _db.AgentProfiles
+            .AsNoTracking()
+            .Where(candidate => candidate.IsActive && candidate.AgentUpn.ToLower() == upn)
+            .Select(candidate => candidate.AgentUserId)
+            .ToListAsync(cancellationToken);
+        var trackingKeys = await _db.AgentTrackingProfiles
+            .AsNoTracking()
+            .Where(candidate => candidate.AgentUpn.ToLower() == upn)
+            .Select(candidate => candidate.AgentUserId)
+            .ToListAsync(cancellationToken);
+
+        foreach (var key in profileKeys.Concat(trackingKeys))
+            AddLegacyImageKey(keys, key);
+
+        return keys;
+    }
+
+    private static (string Path, string ContentType)? FindLegacyImage(string root, IEnumerable<string> agentUserIds)
+    {
+        foreach (var agentUserId in agentUserIds)
         {
-            var path = Path.Combine(root, $"{key}{imageType.Extension}");
-            if (File.Exists(path))
-                return (path, imageType.ContentType);
+            var key = agentUserId.Trim();
+            if (!string.Equals(Path.GetFileName(key), key, StringComparison.Ordinal))
+                continue;
+
+            foreach (var imageType in ImageTypes)
+            {
+                var path = Path.Combine(root, $"{key}{imageType.Extension}");
+                if (File.Exists(path))
+                    return (path, imageType.ContentType);
+            }
         }
 
         return null;
     }
+
+    private static void AddLegacyImageKey(ICollection<string> keys, string? candidate)
+    {
+        var key = candidate?.Trim();
+        if (string.IsNullOrWhiteSpace(key) ||
+            !string.Equals(Path.GetFileName(key), key, StringComparison.Ordinal) ||
+            keys.Contains(key, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        keys.Add(key);
+    }
+
+    private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;
 }
 
 internal sealed class AgentProfileImageLegacyBackfillHostedService : IHostedService

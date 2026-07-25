@@ -425,6 +425,56 @@ public sealed class MessagingProfileImageResolverTests
     }
 
     [Fact]
+    public async Task LegacyAgentAvatarWithAReconciledTrackingIdentity_IsImportedIntoTheCanonicalAgentProfile()
+    {
+        await UseAvatarRootAsync(async root =>
+        {
+            await using var db = ControllerTestHelpers.BuildDb();
+            var agent = new AgentProfile
+            {
+                Id = Guid.NewGuid(),
+                AgentUserId = "current-agent-id",
+                AgentUpn = "agent.owner@example.test",
+                FullName = "Agent Owner",
+                IsActive = true
+            };
+            db.AgentProfiles.Add(agent);
+            db.AgentTrackingProfiles.Add(new AgentTrackingProfile
+            {
+                AgentUserId = "legacy-agent-id",
+                AgentUpn = agent.AgentUpn,
+                Slug = "agent-owner"
+            });
+            await db.SaveChangesAsync();
+
+            var imageBytes = "legacy agent profile image"u8.ToArray();
+            await File.WriteAllBytesAsync(Path.Combine(root, "legacy-agent-id.webp"), imageBytes);
+            var environment = new Mock<IWebHostEnvironment>();
+            environment.SetupGet(value => value.ContentRootPath).Returns(AppContext.BaseDirectory);
+            var importer = new AgentProfileImageLegacyBackfillService(
+                db,
+                environment.Object,
+                NullLogger<AgentProfileImageLegacyBackfillService>.Instance);
+
+            Assert.Equal(1, await importer.BackfillAsync());
+
+            var persisted = await db.AgentProfiles.SingleAsync(profile => profile.Id == agent.Id);
+            Assert.Equal(imageBytes, persisted.ProfileImageContent);
+            Assert.Equal("image/webp", persisted.ProfileImageContentType);
+
+            var resolver = CreateResolver(db);
+            var identity = (await resolver.ResolveIdentitiesAsync(
+                [new MessagingParticipantReference(agent.AgentUserId, MessagingParticipantTypes.Agent)]))
+                [(agent.AgentUserId, MessagingParticipantTypes.Agent)];
+            var image = await resolver.ResolveAsync(identity);
+
+            Assert.NotNull(image);
+            Assert.Equal(imageBytes, image!.Content);
+            Assert.Equal("image/webp", image.ContentType);
+        });
+    }
+
+    [Fact]
     public async Task AmbiguousTypedClientIdentity_FailsClosedInsteadOfSelectingTheFirstProfile()
     {
         await using var db = ControllerTestHelpers.BuildDb();
