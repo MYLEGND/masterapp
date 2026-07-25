@@ -17,6 +17,16 @@ public sealed class ClientSubscription
     public BillingProviderEnvironment ProviderEnvironment { get; set; } = BillingProviderEnvironment.Sandbox;
     public string? ProviderCustomerId { get; set; }
     public string? ProviderPaymentMethodId { get; set; }
+
+    // Safe display metadata only. Full card numbers, CVV values, and raw
+    // payment tokens must never be persisted in the application database.
+    public string? PaymentMethodBrand { get; set; }
+    public string? PaymentMethodLast4 { get; set; }
+    public int? PaymentMethodExpirationMonth { get; set; }
+    public int? PaymentMethodExpirationYear { get; set; }
+    public string? PaymentMethodCardholderName { get; set; }
+    public DateTime? PaymentMethodUpdatedUtc { get; set; }
+
     public string? ProviderSubscriptionId { get; set; }
     public string? ProviderPlanVariationId { get; set; }
     public int MonthlyAmountCents { get; set; }

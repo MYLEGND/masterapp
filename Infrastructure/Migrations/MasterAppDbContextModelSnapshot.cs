@@ -1661,6 +1661,27 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PaymentMethodBrand")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PaymentMethodCardholderName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PaymentMethodExpirationMonth")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("PaymentMethodExpirationYear")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PaymentMethodLast4")
+                        .HasMaxLength(4)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("PaymentMethodUpdatedUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ProviderPaymentMethodId")
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");

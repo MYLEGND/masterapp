@@ -319,6 +319,9 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.ProviderEnvironment).HasConversion<string>().HasMaxLength(40).IsRequired();
             e.Property(x => x.ProviderCustomerId).HasMaxLength(160);
             e.Property(x => x.ProviderPaymentMethodId).HasMaxLength(160);
+            e.Property(x => x.PaymentMethodBrand).HasMaxLength(40);
+            e.Property(x => x.PaymentMethodLast4).HasMaxLength(4);
+            e.Property(x => x.PaymentMethodCardholderName).HasMaxLength(200);
             e.Property(x => x.ProviderSubscriptionId).HasMaxLength(160);
             e.Property(x => x.ProviderPlanVariationId).HasMaxLength(160);
             e.Property(x => x.Currency).HasMaxLength(8).IsRequired();

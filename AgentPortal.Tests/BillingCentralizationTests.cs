@@ -21,6 +21,33 @@ namespace AgentPortal.Tests;
 
 public sealed class BillingCentralizationTests
 {
+    [Fact]
+    public void ClientSubscriptionModel_MapsOnlySafePaymentMethodMetadata()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+
+        var entity = db.Model.FindEntityType(typeof(ClientSubscription));
+
+        Assert.NotNull(entity);
+        Assert.Equal(40, entity!.FindProperty(nameof(ClientSubscription.PaymentMethodBrand))?.GetMaxLength());
+        Assert.Equal(4, entity.FindProperty(nameof(ClientSubscription.PaymentMethodLast4))?.GetMaxLength());
+        Assert.Equal(200, entity.FindProperty(nameof(ClientSubscription.PaymentMethodCardholderName))?.GetMaxLength());
+        Assert.NotNull(entity.FindProperty(nameof(ClientSubscription.PaymentMethodExpirationMonth)));
+        Assert.NotNull(entity.FindProperty(nameof(ClientSubscription.PaymentMethodExpirationYear)));
+        Assert.NotNull(entity.FindProperty(nameof(ClientSubscription.PaymentMethodUpdatedUtc)));
+
+        var persistedPropertyNames = entity
+            .GetProperties()
+            .Select(property => property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.DoesNotContain("CardNumber", persistedPropertyNames);
+        Assert.DoesNotContain("FullCardNumber", persistedPropertyNames);
+        Assert.DoesNotContain("Cvv", persistedPropertyNames);
+        Assert.DoesNotContain("CVC", persistedPropertyNames);
+        Assert.DoesNotContain("RawSourceToken", persistedPropertyNames);
+    }
+
     [Theory]
     [InlineData(ClientSubscriptionOfferPriceType.Fixed50, null, ClientSubscriptionOfferPricing.Fixed50Cents)]
     [InlineData(ClientSubscriptionOfferPriceType.Fixed75, null, ClientSubscriptionOfferPricing.Fixed75Cents)]
