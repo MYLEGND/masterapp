@@ -12,6 +12,16 @@ namespace Infrastructure.Migrations
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            if (ActiveProvider != "Microsoft.EntityFrameworkCore.SqlServer")
+            {
+                return;
+            }
+
+            if (ActiveProvider != "Microsoft.EntityFrameworkCore.SqlServer")
+            {
+                return;
+            }
+
             migrationBuilder.Sql(
                 @"
 IF COL_LENGTH(N'dbo.MessageConversations', N'RowVersion') IS NOT NULL
@@ -69,6 +79,16 @@ END;
 
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            if (ActiveProvider != "Microsoft.EntityFrameworkCore.SqlServer")
+            {
+                return;
+            }
+
+            if (ActiveProvider != "Microsoft.EntityFrameworkCore.SqlServer")
+            {
+                return;
+            }
+
             migrationBuilder.Sql(
                 @"
 IF COL_LENGTH(N'dbo.InternalMessages', N'RowVersion') IS NOT NULL
