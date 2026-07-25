@@ -58,6 +58,29 @@ public sealed class MessagingClientScriptContractTests
         Assert.Contains("if (requestId === state.searchRequestId)", searchBody, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AgentRecipientScope_IsRenderedOnceAndPassedToTheSharedRecipientEndpoint()
+    {
+        var view = ReadRepositoryFile("SHARED", "Views", "Messaging", "_CommandCenter.cshtml");
+        var source = ReadRepositoryFile("SHARED", "wwwroot", "js", "messaging.js");
+
+        Assert.Contains("data-messaging-recipient-scope=\"Clients\"", view, StringComparison.Ordinal);
+        Assert.Contains("data-messaging-recipient-scope=\"Agents\"", view, StringComparison.Ordinal);
+        Assert.Contains("function recipientRequestUrl(search = '')", source, StringComparison.Ordinal);
+        Assert.Contains("query.set('recipientScope', state.recipientScope);", source, StringComparison.Ordinal);
+        Assert.Contains("recipientScopeParticipantType", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void JourneyCards_UseTheServerAuthorizedClientProfileAvatarUrl()
+    {
+        var source = ReadRepositoryFile("SHARED", "wwwroot", "js", "messaging.js");
+        var cardBody = GetFunctionBody(source, "createJourneyCard");
+
+        Assert.Contains("person?.avatarUrl", source, StringComparison.Ordinal);
+        Assert.Contains("createAvatar(profile)", cardBody, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("AgentPortal", "Views", "Shared", "_Layout.cshtml")]
     [InlineData("AgentPortal", "Views", "Shared", "_ClientWorkspaceLayout.cshtml")]

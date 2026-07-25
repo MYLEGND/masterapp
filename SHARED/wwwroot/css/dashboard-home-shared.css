@@ -3242,6 +3242,48 @@ header .legend-global-nav .container-fluid {
     letter-spacing: -0.04em;
 }
 
+.messaging-command-center-title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.62rem;
+}
+
+.messaging-recipient-scope {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.16rem;
+    padding: 0.18rem;
+    border: 1px solid rgba(212, 170, 71, 0.35);
+    border-radius: 999px;
+    background: rgba(4, 14, 34, 0.54);
+}
+
+.messaging-recipient-scope-button {
+    min-height: 1.78rem;
+    padding: 0.22rem 0.6rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(232, 240, 255, 0.72);
+    font: inherit;
+    font-size: 0.68rem;
+    font-weight: 850;
+    cursor: pointer;
+}
+
+.messaging-recipient-scope-button:hover,
+.messaging-recipient-scope-button:focus-visible {
+    color: #ffffff;
+    outline: none;
+}
+
+.messaging-recipient-scope-button.is-active {
+    background: linear-gradient(145deg, rgba(48, 83, 146, 0.96), rgba(15, 35, 77, 0.96));
+    color: #f7df90;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.11);
+}
+
 .messaging-service-contact {
     display: flex;
     flex-wrap: wrap;
@@ -4052,7 +4094,23 @@ header .legend-global-nav .container-fluid {
     );
 }
 
+.messaging-journey-card-identity {
+    display: flex;
+    align-items: center;
+    gap: 0.58rem;
+    min-width: 0;
+}
+
+.messaging-journey-card-identity .messaging-avatar {
+    width: 2rem;
+    height: 2rem;
+}
+
 .messaging-journey-card h5 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 0.84rem;
 }
 
@@ -4768,6 +4826,14 @@ header .legend-global-nav .container-fluid {
 
     .messaging-command-center-header h2 {
         font-size: 1.3rem;
+    }
+
+    .messaging-command-center-title-row {
+        gap: 0.42rem;
+    }
+
+    .messaging-recipient-scope-button {
+        padding-inline: 0.48rem;
     }
 
     .messaging-command-center-grid {

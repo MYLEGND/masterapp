@@ -19,6 +19,7 @@
     placementFrame: 0,
     placementObserver: null
   };
+  pruneTransientNetworkKnowledge();
 
   const current = Object.freeze({
     log(message, detail, scope = "app") {
@@ -148,8 +149,90 @@
     return normalizeText(detail?.url || detail?.requestUrl || detail?.response?.url || detail?.filename);
   }
 
+  function normalizeNetworkTarget(value) {
+    const raw = normalizeText(value);
+    if (!raw) return "";
+    try {
+      const parsed = new URL(raw, window.location.origin);
+      const path = parsed.pathname.replace(/\/+$/, "") || "/";
+      return `${parsed.origin.toLowerCase()}${path.toLowerCase()}`;
+    } catch {
+      return raw.replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase();
+    }
+  }
+
+  function normalizeMethod(value) {
+    return normalizeText(value).toUpperCase();
+  }
+
+  function isTransientNetworkFailure(payload) {
+    if (payload.scope !== "network" || payload.status !== 0) return false;
+    const text = [payload.message, payload.errorName, payload.errorMessage].join(" ").toLowerCase();
+    return /failed to fetch|network request failed|networkerror|load failed/.test(text);
+  }
+
+  function getStoredNetworkRequest(item, fingerprint) {
+    const match = /^network request failed for\s+([a-z]+)\s+(.+)$/i.exec(normalizeText(item?.message));
+    if (!match) return { method: normalizeMethod(item?.method), target: normalizeNetworkTarget(item?.url) };
+    return { method: normalizeMethod(item?.method || match[1]), target: normalizeNetworkTarget(item?.url || match[2]) };
+  }
+
+  function isTransientNetworkKnowledge(item, fingerprint) {
+    if (normalizeText(item?.scope) !== "network") return false;
+    const text = `${normalizeText(item?.message)}|${normalizeText(fingerprint)}`.toLowerCase();
+    return text.includes("|0|") && /failed to fetch|network request failed|networkerror|load failed/.test(text);
+  }
+
+  function pruneTransientNetworkKnowledge() {
+    let changed = false;
+    Object.keys(state.knowledge).forEach(knownPageKey => {
+      const pageKnowledge = state.knowledge[knownPageKey];
+      if (!pageKnowledge || typeof pageKnowledge !== "object") return;
+      Object.entries(pageKnowledge).forEach(([fingerprint, item]) => {
+        if (!isTransientNetworkKnowledge(item, fingerprint)) return;
+        delete pageKnowledge[fingerprint];
+        changed = true;
+      });
+      if (Object.keys(pageKnowledge).length === 0) delete state.knowledge[knownPageKey];
+    });
+    if (changed) saveKnowledge();
+  }
+
+  function resolveTransientNetworkFailures(url, method) {
+    const target = normalizeNetworkTarget(url);
+    const normalizedMethod = normalizeMethod(method);
+    if (!target || !normalizedMethod) return;
+
+    const resolved = state.events.filter(event => {
+      const payload = event.payload;
+      return payload.isTransientNetworkFailure
+        && normalizeMethod(payload.method) === normalizedMethod
+        && normalizeNetworkTarget(payload.url) === target;
+    });
+    if (resolved.length === 0) return;
+
+    const resolvedFingerprints = new Set(resolved.map(event => event.fingerprint));
+    state.events = state.events.filter(event => !resolvedFingerprints.has(event.fingerprint));
+    resolvedFingerprints.forEach(fingerprint => state.indexByFingerprint.delete(fingerprint));
+
+    const pageKnowledge = state.knowledge[pageKey];
+    let knowledgeChanged = false;
+    if (pageKnowledge) {
+      Object.entries(pageKnowledge).forEach(([fingerprint, item]) => {
+        const request = getStoredNetworkRequest(item, fingerprint);
+        if (!isTransientNetworkKnowledge(item, fingerprint) || request.method !== normalizedMethod || request.target !== target) return;
+        delete pageKnowledge[fingerprint];
+        knowledgeChanged = true;
+      });
+      if (Object.keys(pageKnowledge).length === 0) delete state.knowledge[pageKey];
+    }
+    if (knowledgeChanged) saveKnowledge();
+    render();
+  }
+
   function classifyIssue(payload) {
     const text = [payload.scope, payload.message, payload.errorName, payload.errorMessage, payload.url].join(" ").toLowerCase();
+    if (payload.isTransientNetworkFailure) return issue("high", "The page is temporarily unable to reach the server.", "This request ended before the server returned a response.", "Page Health removes this issue automatically when the same request succeeds.");
     if (payload.status === 401) return issue("high", "Your session expired.", "The current sign-in session is no longer valid.", "Sign back in or refresh this page and try again.");
     if (payload.status === 403) return issue("high", "This action is blocked by permissions.", "The server rejected this request.", "Check account access or try the action with an authorized user.");
     if (payload.status === 404) return issue("medium", "A required endpoint could not be found.", "The page requested a route the server does not expose.", "Refresh once. If it repeats, inspect the route in Technical details.");
@@ -180,9 +263,11 @@
       stack: error.stack,
       status: extractStatus(detail),
       url: extractUrl(detail),
+      method: normalizeMethod(detail?.method),
       detail: safeClone(detail),
       occurredAt: nowIso()
     };
+    payload.isTransientNetworkFailure = isTransientNetworkFailure(payload);
     payload.user = classifyIssue(payload);
     payload.fingerprint = [payload.scope, payload.errorName, payload.errorMessage || payload.message, payload.status, payload.url, firstStackFrame(payload.stack)].join("|").toLowerCase();
     payload.breadcrumbs = state.breadcrumbs.slice(-8);
@@ -199,7 +284,7 @@
       if (state.events.length > MAX_SESSION_EVENTS) state.indexByFingerprint.delete(state.events.pop()?.fingerprint);
     }
 
-    updateKnowledge(event);
+    if (!payload.isTransientNetworkFailure) updateKnowledge(event);
     render();
     if (level === "error" || payload.user.severity === "critical") setDrawerOpen(true);
     const prefix = `[page-health:${pageKey}] ${payload.scope}: ${payload.message}`;
@@ -218,6 +303,9 @@
       message: event.payload.message,
       scope: event.payload.scope,
       severity: event.payload.user.severity,
+      status: event.payload.status,
+      url: event.payload.url,
+      method: event.payload.method,
       environment
     };
     const entries = Object.entries(pageKnowledge);
@@ -246,7 +334,9 @@
       const startedAt = Date.now();
       try {
         const response = await fetchWithPageHealth(input, init);
-        if (!response.ok) {
+        if (response.ok) {
+          resolveTransientNetworkFailures(url, method);
+        } else {
           const detail = { url, method, status: response.status, statusText: response.statusText, durationMs: Date.now() - startedAt };
           (response.status >= 500 || response.status === 401 || response.status === 403 ? current.error : current.warn)(`HTTP ${response.status} from ${method} ${url}`, detail, "network");
         }
@@ -387,8 +477,8 @@
   function renderEvent(event) {
     const payload = event.payload;
     const learned = state.knowledge[pageKey]?.[event.fingerprint];
-    const detail = { scope: payload.scope, message: payload.message, errorName: payload.errorName || undefined, errorMessage: payload.errorMessage || undefined, status: payload.status || undefined, url: payload.url || undefined, fingerprint: event.fingerprint, firstSeen: event.firstSeen, lastSeen: event.lastSeen, sessionCount: event.sessionCount, learnedCount: learned?.count || event.sessionCount, breadcrumbs: payload.breadcrumbs, detail: payload.detail, stack: payload.stack || undefined };
-    return `<article class="legend-page-health-event severity-${escapeHtml(payload.user.severity)}"><div class="legend-page-health-event-top"><span class="legend-page-health-chip is-${escapeHtml(payload.user.severity)}">${escapeHtml(payload.user.severity)}</span><span class="legend-page-health-meta">${escapeHtml(formatStamp(event.lastSeen))}</span></div><h4>${escapeHtml(payload.user.title)}</h4><p>${escapeHtml(payload.user.summary)}</p><p class="legend-page-health-action">${escapeHtml(payload.user.action)}</p><div class="legend-page-health-meta"><span>Scope: ${escapeHtml(payload.scope)}</span><span>Session: ${event.sessionCount}x</span><span>Learned: ${learned?.count || event.sessionCount}x</span></div><details class="legend-page-health-detail"><summary>Technical details</summary><pre class="legend-page-health-code">${escapeHtml(JSON.stringify(detail, null, 2))}</pre></details></article>`;
+    const detail = { scope: payload.scope, message: payload.message, errorName: payload.errorName || undefined, errorMessage: payload.errorMessage || undefined, status: payload.status || undefined, url: payload.url || undefined, fingerprint: event.fingerprint, firstSeen: event.firstSeen, lastSeen: event.lastSeen, sessionCount: event.sessionCount, learnedCount: learned?.count || 0, breadcrumbs: payload.breadcrumbs, detail: payload.detail, stack: payload.stack || undefined };
+    return `<article class="legend-page-health-event severity-${escapeHtml(payload.user.severity)}"><div class="legend-page-health-event-top"><span class="legend-page-health-chip is-${escapeHtml(payload.user.severity)}">${escapeHtml(payload.user.severity)}</span><span class="legend-page-health-meta">${escapeHtml(formatStamp(event.lastSeen))}</span></div><h4>${escapeHtml(payload.user.title)}</h4><p>${escapeHtml(payload.user.summary)}</p><p class="legend-page-health-action">${escapeHtml(payload.user.action)}</p><div class="legend-page-health-meta"><span>Scope: ${escapeHtml(payload.scope)}</span><span>Session: ${event.sessionCount}x</span><span>Learned: ${learned?.count || 0}x</span></div><details class="legend-page-health-detail"><summary>Technical details</summary><pre class="legend-page-health-code">${escapeHtml(JSON.stringify(detail, null, 2))}</pre></details></article>`;
   }
 
   function renderPattern([fingerprint, item]) {

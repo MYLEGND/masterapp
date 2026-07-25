@@ -35,6 +35,11 @@ public sealed class PageHealthContractTests
         Assert.Contains("window.addEventListener(\"error\"", source, StringComparison.Ordinal);
         Assert.Contains("window.addEventListener(\"unhandledrejection\"", source, StringComparison.Ordinal);
         Assert.Contains("window.fetch = async function", source, StringComparison.Ordinal);
+        Assert.Contains("function resolveTransientNetworkFailures(url, method)", source, StringComparison.Ordinal);
+        Assert.Contains("function pruneTransientNetworkKnowledge()", source, StringComparison.Ordinal);
+        Assert.Contains("if (!payload.isTransientNetworkFailure) updateKnowledge(event);", source, StringComparison.Ordinal);
+        Assert.Contains("if (response.ok)", source, StringComparison.Ordinal);
+        Assert.Contains("resolveTransientNetworkFailures(url, method);", source, StringComparison.Ordinal);
         Assert.Contains("Page Health", source, StringComparison.Ordinal);
         Assert.Contains("box-sizing: border-box", stylesheet, StringComparison.Ordinal);
         Assert.Contains("legend-page-health-bottom-reserved", stylesheet, StringComparison.Ordinal);

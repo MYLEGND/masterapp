@@ -158,6 +158,9 @@ public sealed class JourneyCirclesServiceTests
         Assert.Equal(
             visibleCandidate.Id,
             recommendation.Profile.ClientProfileId);
+        Assert.Equal(
+            $"/JourneyCircles/Profiles/{visibleCandidate.Id}/Avatar",
+            recommendation.Profile.AvatarUrl);
 
         Assert.Contains(
             "shared goal: Growing a business",

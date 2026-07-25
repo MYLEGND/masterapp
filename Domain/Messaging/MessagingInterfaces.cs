@@ -10,6 +10,7 @@ public interface IMessagingService
     Task<MessagingRecipientListResult> ListRecipientsAsync(
         MessagingActor actor,
         string? search = null,
+        string? recipientScope = null,
         CancellationToken cancellationToken = default);
 
     Task<MessagingRecipientResult> GetAuthorizedParticipantAsync(

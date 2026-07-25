@@ -242,6 +242,7 @@ internal sealed class MessagingService : IMessagingService
     public async Task<MessagingRecipientListResult> ListRecipientsAsync(
         MessagingActor actor,
         string? search = null,
+        string? recipientScope = null,
         CancellationToken cancellationToken = default)
     {
         actor = NormalizeActor(actor);
@@ -252,7 +253,10 @@ internal sealed class MessagingService : IMessagingService
         if (!Fits(search, MaximumConversationSubjectLength))
             return MessagingRecipientListResult.Failure("MESSAGING_SEARCH_INVALID", "The recipient search text is too long.");
 
-        var results = await ListAuthorizedRecipientsAsync(actor, cancellationToken);
+        if (!TryNormalizeRecipientScope(actor, recipientScope, out var normalizedScope))
+            return MessagingRecipientListResult.Failure("MESSAGING_RECIPIENT_SCOPE_INVALID", "The recipient collection is not available for this user.");
+
+        var results = await ListAuthorizedRecipientsAsync(actor, normalizedScope, cancellationToken);
         if (!string.IsNullOrWhiteSpace(search))
         {
             results = results.Where(x => MatchesContactSearch(x, search))
@@ -276,7 +280,7 @@ internal sealed class MessagingService : IMessagingService
         if (string.IsNullOrWhiteSpace(normalizedUserId) || !IsParticipantType(normalizedParticipantType))
             return MessagingRecipientResult.Failure("MESSAGING_RECIPIENT_NOT_FOUND", "The requested participant is not available.");
 
-        var participant = (await ListAuthorizedRecipientsAsync(actor, cancellationToken))
+        var participant = (await ListAuthorizedRecipientsAsync(actor, recipientScope: null, cancellationToken))
             .FirstOrDefault(x =>
                 string.Equals(x.UserId, normalizedUserId, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(x.ParticipantType, normalizedParticipantType, StringComparison.Ordinal));
@@ -992,10 +996,11 @@ internal sealed class MessagingService : IMessagingService
 
     private async Task<List<MessagingRecipientSummary>> ListAuthorizedRecipientsAsync(
         MessagingActor actor,
+        string? recipientScope,
         CancellationToken cancellationToken)
     {
         var candidates = actor.ParticipantType == MessagingParticipantTypes.Agent
-            ? await ListAgentRecipientsAsync(actor.UserId, cancellationToken)
+            ? await ListAgentRecipientsAsync(actor.UserId, recipientScope, cancellationToken)
             : await ListClientRecipientsAsync(actor.UserId, cancellationToken);
         var recipients = await ResolveRecipientIdentitiesAsync(
             CollapseAuthorizedRecipients(actor, candidates),
@@ -1030,38 +1035,48 @@ internal sealed class MessagingService : IMessagingService
 
     private async Task<List<MessagingRecipientSummary>> ListAgentRecipientsAsync(
         string agentUserId,
+        string? recipientScope,
         CancellationToken cancellationToken)
     {
-        var agentRows = await _db.AgentProfiles.AsNoTracking()
-            .Where(x => x.IsActive && x.AgentUserId.ToLower() != agentUserId)
-            .Where(x => !_db.AgentAssistants.Any(assistant =>
-                assistant.AssistantUserId != null &&
-                assistant.AssistantUserId.ToLower() == x.AgentUserId.ToLower()))
-            .Select(x => new RecipientAgentRow(x.AgentUserId, x.FullName, x.AgentUpn))
-            .ToListAsync(cancellationToken);
+        var recipients = new List<MessagingRecipientSummary>();
+        if (recipientScope is not MessagingRecipientScopes.Clients)
+        {
+            var agentRows = await _db.AgentProfiles.AsNoTracking()
+                .Where(x => x.IsActive && x.AgentUserId.ToLower() != agentUserId)
+                .Where(x => !_db.AgentAssistants.Any(assistant =>
+                    assistant.AssistantUserId != null &&
+                    assistant.AssistantUserId.ToLower() == x.AgentUserId.ToLower()))
+                .Select(x => new RecipientAgentRow(x.AgentUserId, x.FullName, x.AgentUpn))
+                .ToListAsync(cancellationToken);
 
-        var linkedClientIds = await AuthorizedClientIdsForAgentQuery(agentUserId)
-            .ToListAsync(cancellationToken);
-        var clientRows = await _db.ClientProfiles.AsNoTracking()
-            .Where(x => linkedClientIds.Contains(x.ClientUserId.ToLower()))
-            .Select(x => new RecipientClientRow(x.ClientUserId, x.FirstName, x.LastName, x.Email, x.CrmNotes))
-            .ToListAsync(cancellationToken);
+            recipients.AddRange(agentRows.Select(x => new MessagingRecipientSummary(
+                x.UserId,
+                MessagingParticipantTypes.Agent,
+                FirstNonEmpty(x.FullName, x.Email, "Agent"),
+                x.Email,
+                "Agent")));
+        }
 
-        var agents = agentRows.Select(x => new MessagingRecipientSummary(
-            x.UserId,
-            MessagingParticipantTypes.Agent,
-            FirstNonEmpty(x.FullName, x.Email, "Agent"),
-            x.Email,
-            "Agent"));
-        var clients = clientRows
-            .Where(x => ClientRecordClassification.IsClientOrBusinessClient(x.UserId, x.CrmNotes))
-            .Select(x => new MessagingRecipientSummary(
-            x.UserId,
-            MessagingParticipantTypes.Client,
-            FirstNonEmpty($"{x.FirstName} {x.LastName}".Trim(), x.Email, "Client"),
-            x.Email,
-            "Client"));
-        return agents.Concat(clients).ToList();
+        if (recipientScope is not MessagingRecipientScopes.Agents)
+        {
+            var linkedClientIds = await AuthorizedClientIdsForAgentQuery(agentUserId)
+                .ToListAsync(cancellationToken);
+            var clientRows = await _db.ClientProfiles.AsNoTracking()
+                .Where(x => linkedClientIds.Contains(x.ClientUserId.ToLower()))
+                .Select(x => new RecipientClientRow(x.ClientUserId, x.FirstName, x.LastName, x.Email, x.CrmNotes))
+                .ToListAsync(cancellationToken);
+
+            recipients.AddRange(clientRows
+                .Where(x => ClientRecordClassification.IsClientOrBusinessClient(x.UserId, x.CrmNotes))
+                .Select(x => new MessagingRecipientSummary(
+                    x.UserId,
+                    MessagingParticipantTypes.Client,
+                    FirstNonEmpty($"{x.FirstName} {x.LastName}".Trim(), x.Email, "Client"),
+                    x.Email,
+                    "Client")));
+        }
+
+        return recipients;
     }
 
     private async Task<List<MessagingRecipientSummary>> ListClientRecipientsAsync(
@@ -1425,6 +1440,24 @@ internal sealed class MessagingService : IMessagingService
 
     private static bool IsParticipantType(string value) =>
         value == MessagingParticipantTypes.Agent || value == MessagingParticipantTypes.Client;
+
+    private static bool TryNormalizeRecipientScope(
+        MessagingActor actor,
+        string? recipientScope,
+        out string? normalizedScope)
+    {
+        normalizedScope = NormalizeOptional(recipientScope)?.ToLowerInvariant() switch
+        {
+            null => null,
+            "agents" => MessagingRecipientScopes.Agents,
+            "clients" => MessagingRecipientScopes.Clients,
+            _ => string.Empty
+        };
+
+        return actor.ParticipantType == MessagingParticipantTypes.Agent
+            ? normalizedScope is null or MessagingRecipientScopes.Agents or MessagingRecipientScopes.Clients
+            : normalizedScope is null;
+    }
 
     private static bool IsSupportedScanStatus(string value) =>
         value == MessagingAttachmentScanStatuses.Scanning ||

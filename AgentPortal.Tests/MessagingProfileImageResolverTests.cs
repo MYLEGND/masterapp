@@ -335,6 +335,51 @@ public sealed class MessagingProfileImageResolverTests
     }
 
     [Fact]
+    public async Task ActiveAgentProfiles_ResolveTheirOwnImagesIncludingLegacyJpgContentTypes()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var first = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "first-active-agent",
+            AgentUpn = "first.active@example.test",
+            FullName = "First Active Agent",
+            IsActive = true,
+            ProfileImageContent = "first agent image"u8.ToArray(),
+            ProfileImageContentType = "image/png"
+        };
+        var second = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "second-active-agent",
+            AgentUpn = "second.active@example.test",
+            FullName = "Second Active Agent",
+            IsActive = true,
+            ProfileImageContent = "second agent image"u8.ToArray(),
+            ProfileImageContentType = "image/jpg"
+        };
+        db.AgentProfiles.AddRange(first, second);
+        await db.SaveChangesAsync();
+
+        var resolver = CreateResolver(db);
+        var identities = await resolver.ResolveIdentitiesAsync(
+        [
+            new MessagingParticipantReference(first.AgentUserId, MessagingParticipantTypes.Agent),
+            new MessagingParticipantReference(second.AgentUserId, MessagingParticipantTypes.Agent)
+        ]);
+
+        var firstImage = await resolver.ResolveAsync(
+            identities[(first.AgentUserId, MessagingParticipantTypes.Agent)]);
+        var secondImage = await resolver.ResolveAsync(
+            identities[(second.AgentUserId, MessagingParticipantTypes.Agent)]);
+
+        Assert.Equal("first agent image"u8.ToArray(), firstImage!.Content);
+        Assert.Equal("image/png", firstImage.ContentType);
+        Assert.Equal("second agent image"u8.ToArray(), secondImage!.Content);
+        Assert.Equal("image/jpeg", secondImage.ContentType);
+    }
+
+    [Fact]
     public async Task LegacyClientAvatar_IsImportedIntoItsMatchingClientProfileOnly()
     {
         await UseAvatarRootAsync(async root =>

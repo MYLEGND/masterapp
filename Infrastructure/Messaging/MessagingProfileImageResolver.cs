@@ -165,16 +165,17 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                 x.ProfileImageContent,
                 x.ProfileImageContentType))
             .FirstOrDefaultAsync(cancellationToken);
+        var contentType = NormalizeSupportedImageContentType(profile?.ContentType);
         if (profile is null ||
             profile.Content is not { Length: > 0 } ||
-            !IsSupportedImageContentType(profile.ContentType))
+            contentType is null)
             return null;
 
         _logger.LogDebug(
             "Messaging client profile image resolved from ClientProfiles. ClientProfileId={ClientProfileId} ImageSourceType={ImageSourceType}",
             clientProfileId,
             "ClientProfile");
-        return new MessagingProfileImage(profile.Content, profile.ContentType!);
+        return new MessagingProfileImage(profile.Content, contentType);
     }
 
     private async Task<MessagingProfileImage?> ResolveAgentProfileImageAsync(
@@ -188,16 +189,17 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                 x.ProfileImageContent,
                 x.ProfileImageContentType))
             .FirstOrDefaultAsync(cancellationToken);
+        var contentType = NormalizeSupportedImageContentType(profile?.ContentType);
         if (profile is null ||
             profile.Content is not { Length: > 0 } ||
-            !IsSupportedImageContentType(profile.ContentType))
+            contentType is null)
             return null;
 
         _logger.LogDebug(
             "Messaging agent profile image resolved from AgentProfiles. AgentProfileId={AgentProfileId} ImageSourceType={ImageSourceType}",
             agentProfileId,
             "AgentProfile");
-        return new MessagingProfileImage(profile.Content, profile.ContentType!);
+        return new MessagingProfileImage(profile.Content, contentType);
     }
 
     private void LogIdentityResolutionFailure(string userId, string participantType, int matchCount)
@@ -210,8 +212,14 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
             matchCount > 1);
     }
 
-    private static bool IsSupportedImageContentType(string? value) =>
-        value is "image/png" or "image/jpeg" or "image/webp";
+    private static string? NormalizeSupportedImageContentType(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            "image/png" => "image/png",
+            "image/jpeg" or "image/jpg" => "image/jpeg",
+            "image/webp" => "image/webp",
+            _ => null
+        };
 
     private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;
 

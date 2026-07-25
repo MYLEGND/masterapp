@@ -11,6 +11,7 @@
     window: root.querySelector('.messaging-command-center-window'),
     close: root.querySelector('#messagingCommandCenterClose'),
     error: root.querySelector('#messagingError'),
+    recipientScopeButtons: Array.from(root.querySelectorAll('[data-messaging-recipient-scope]')),
     grid: root.querySelector('#messagingCommandCenterGrid'),
     unread: root.querySelector('#messagingCommandCenterUnread'),
     search: root.querySelector('#messagingUniversalSearch'),
@@ -49,6 +50,7 @@
     recipientMatches: [],
     recipientMatchesQuery: '',
     recipientsLoaded: false,
+    recipientScope: root.querySelector('[data-messaging-recipient-scope][aria-pressed="true"]')?.dataset.messagingRecipientScope || '',
     active: null,
     draftTarget: null,
     drafts: readSession('drafts', {}),
@@ -166,6 +168,20 @@
       .trim();
   }
 
+  function recipientScopeParticipantType() {
+    if (state.recipientScope === 'Agents') return 'Agent';
+    if (state.recipientScope === 'Clients') return 'Client';
+    return '';
+  }
+
+  function recipientRequestUrl(search = '') {
+    const query = new URLSearchParams();
+    if (search) query.set('search', search);
+    if (state.recipientScope) query.set('recipientScope', state.recipientScope);
+    const queryString = query.toString();
+    return queryString ? `/Messaging/Recipients?${queryString}` : '/Messaging/Recipients';
+  }
+
   function createTextElement(tag, className, value) {
     const element = document.createElement(tag);
     if (className) element.className = className;
@@ -201,10 +217,14 @@
     fallback.setAttribute('aria-hidden', 'true');
     avatar.append(fallback);
 
-    if (!person?.userId || !person?.participantType) return avatar;
+    const avatarUrl = person?.avatarUrl ||
+      (person?.userId && person?.participantType
+        ? `/Messaging/Participants/${encodeURIComponent(person.userId)}/Avatar?participantType=${encodeURIComponent(person.participantType)}`
+        : '');
+    if (!avatarUrl) return avatar;
 
     const image = document.createElement('img');
-    image.src = `/Messaging/Participants/${encodeURIComponent(person.userId)}/Avatar?participantType=${encodeURIComponent(person.participantType)}`;
+    image.src = avatarUrl;
     image.alt = '';
     image.loading = loading;
     image.decoding = 'async';
@@ -387,7 +407,12 @@
   function createJourneyCard(profile, detail, actions) {
     const card = document.createElement('article');
     card.className = 'messaging-journey-card';
-    card.append(createTextElement('h5', '', profile?.displayName || 'Journey member'));
+    const identity = document.createElement('div');
+    identity.className = 'messaging-journey-card-identity';
+    identity.append(
+      createAvatar(profile),
+      createTextElement('h5', '', profile?.displayName || 'Journey member'));
+    card.append(identity);
     if (detail) card.append(createTextElement('p', '', detail));
     if (actions?.length) {
       const actionRow = document.createElement('div');
@@ -929,8 +954,11 @@
       return;
     }
 
+    const scopedParticipantType = recipientScopeParticipantType();
     const matchingConversations = state.conversations
       .filter(conversation => conversation.isArchivedMembership !== true)
+      .filter(conversation => !scopedParticipantType ||
+        conversation.counterparty?.participantType === scopedParticipantType)
       .filter(conversation => matchesSearch(searchText(conversation), query))
       .sort((left, right) =>
         searchRank(left.counterparty, query, left) - searchRank(right.counterparty, query, right) ||
@@ -1050,7 +1078,7 @@
 
   async function loadRecipients() {
     if (state.recipientsLoaded) return;
-    const result = await request('/Messaging/Recipients');
+    const result = await request(recipientRequestUrl());
     state.recipients = result.recipients || [];
     if (!state.recipientMatchesQuery) state.recipientMatches = state.recipients;
     state.recipientsLoaded = true;
@@ -1071,7 +1099,7 @@
     state.isSearchingContacts = true;
     renderSearchResults();
     try {
-      const result = await request(`/Messaging/Recipients?search=${encodeURIComponent(query)}`);
+      const result = await request(recipientRequestUrl(query));
       if (requestId !== state.searchRequestId) return;
       state.recipientMatches = result.recipients || [];
       state.recipientMatchesQuery = normalizedQuery;
@@ -1309,6 +1337,27 @@
   });
 
   elements.journeyProfileForm?.addEventListener('submit', saveJourneyProfile);
+  elements.recipientScopeButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const scope = button.dataset.messagingRecipientScope || '';
+      if (!scope || scope === state.recipientScope) return;
+
+      state.recipientScope = scope;
+      state.recipients = [];
+      state.recipientMatches = [];
+      state.recipientMatchesQuery = '';
+      state.recipientsLoaded = false;
+      state.searchRequestId += 1;
+      elements.search.value = '';
+      elements.recipientScopeButtons.forEach(candidate => {
+        const active = candidate === button;
+        candidate.classList.toggle('is-active', active);
+        candidate.setAttribute('aria-pressed', String(active));
+      });
+      renderSearchResults();
+      loadRecipients().catch(error => showError(error.message));
+    });
+  });
   elements.search.addEventListener('input', () => {
     window.clearTimeout(state.searchTimer);
     const query = elements.search.value.trim();

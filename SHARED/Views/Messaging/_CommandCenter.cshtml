@@ -19,7 +19,24 @@
         <header class="messaging-command-center-header">
             <div>
                 <p class="messaging-command-center-kicker">Secure communication</p>
-                <h2 id="messagingCommandCenterTitle">Messages</h2>
+                <div class="messaging-command-center-title-row">
+                    <h2 id="messagingCommandCenterTitle">Messages</h2>
+                    @if (Model.CurrentParticipantType == "Agent")
+                    {
+                        <div class="messaging-recipient-scope"
+                             aria-label="Recipient type"
+                             role="group">
+                            <button type="button"
+                                    class="messaging-recipient-scope-button is-active"
+                                    data-messaging-recipient-scope="Clients"
+                                    aria-pressed="true">Clients</button>
+                            <button type="button"
+                                    class="messaging-recipient-scope-button"
+                                    data-messaging-recipient-scope="Agents"
+                                    aria-pressed="false">Agents</button>
+                        </div>
+                    }
+                </div>
                 @if (!string.IsNullOrWhiteSpace(Model.ServiceContactName) ||
                      !string.IsNullOrWhiteSpace(Model.ServiceContactPhone) ||
                      !string.IsNullOrWhiteSpace(Model.ServiceContactEmail))

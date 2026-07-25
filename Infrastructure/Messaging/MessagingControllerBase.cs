@@ -70,13 +70,17 @@ public abstract class MessagingControllerBase : Controller
     }
 
     [HttpGet("/Messaging/Recipients")]
-    public async Task<IActionResult> Recipients(string? search)
+    public async Task<IActionResult> Recipients(string? search, string? recipientScope)
     {
         var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
         if (actor is null)
             return Forbid();
 
-        var result = await _messagingService.ListRecipientsAsync(actor, search, HttpContext.RequestAborted);
+        var result = await _messagingService.ListRecipientsAsync(
+            actor,
+            search,
+            recipientScope,
+            HttpContext.RequestAborted);
         if (!result.Succeeded)
             return Failure(result.ErrorCode, result.ErrorMessage);
 

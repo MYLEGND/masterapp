@@ -129,7 +129,9 @@ public sealed class MessagingServiceTests
         var firstAgent = new MessagingActor("agent-one", MessagingParticipantTypes.Agent);
         var secondAgent = new MessagingActor("agent-two", MessagingParticipantTypes.Agent);
 
-        Assert.Contains((await service.ListRecipientsAsync(firstAgent)).Recipients,
+        Assert.Contains((await service.ListRecipientsAsync(
+            firstAgent,
+            recipientScope: MessagingRecipientScopes.Agents)).Recipients,
             recipient => recipient.UserId == secondAgent.UserId && recipient.ParticipantType == MessagingParticipantTypes.Agent);
         var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
             firstAgent,
@@ -408,7 +410,9 @@ public sealed class MessagingServiceTests
         var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
         var client = new MessagingActor("agent-1", MessagingParticipantTypes.Client);
 
-        var recipients = await service.ListRecipientsAsync(agent);
+        var recipients = await service.ListRecipientsAsync(
+            agent,
+            recipientScope: MessagingRecipientScopes.Clients);
         Assert.Contains(recipients.Recipients, recipient =>
             recipient.UserId == client.UserId &&
             recipient.ParticipantType == MessagingParticipantTypes.Client);
@@ -631,6 +635,84 @@ public sealed class MessagingServiceTests
         Assert.DoesNotContain(recipients.Recipients, recipient => recipient.UserId == "lead-client");
         Assert.False(excludedStart.Succeeded);
         Assert.Equal("MESSAGING_RECIPIENT_FORBIDDEN", excludedStart.ErrorCode);
+    }
+
+    [Fact]
+    public async Task AgentRecipientScopes_KeepGlobalAgentsSeparateFromAuthorizedClients()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        db.AgentProfiles.AddRange(
+            new AgentProfile
+            {
+                AgentUserId = "agent-2",
+                AgentUpn = "agent.two@example.test",
+                FullName = "Active Agent",
+                IsActive = true
+            },
+            new AgentProfile
+            {
+                AgentUserId = "inactive-agent",
+                AgentUpn = "inactive.agent@example.test",
+                FullName = "Inactive Agent",
+                IsActive = false
+            });
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            ClientUserId = "business-client",
+            ExternalIdentityObjectId = "business-client",
+            FirstName = "Business",
+            LastName = "Client",
+            Email = "business@example.test",
+            CrmNotes = "{\"recordType\":\"BusinessClient\",\"pipelineStage\":\"BusinessClient\"}"
+        });
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "agent-1",
+            AgentUpn = "agent.one@mylegnd.com",
+            ClientUserId = "business-client"
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+
+        var agentScope = await service.ListRecipientsAsync(
+            agent,
+            recipientScope: MessagingRecipientScopes.Agents);
+        var clientScope = await service.ListRecipientsAsync(
+            agent,
+            recipientScope: MessagingRecipientScopes.Clients);
+
+        Assert.True(agentScope.Succeeded);
+        Assert.Contains(agentScope.Recipients, recipient =>
+            recipient.UserId == "agent-2" && recipient.ParticipantType == MessagingParticipantTypes.Agent);
+        Assert.DoesNotContain(agentScope.Recipients, recipient =>
+            recipient.UserId == "agent-1" && recipient.ParticipantType == MessagingParticipantTypes.Agent);
+        Assert.DoesNotContain(agentScope.Recipients, recipient => recipient.ParticipantType == MessagingParticipantTypes.Client);
+        Assert.DoesNotContain(agentScope.Recipients, recipient => recipient.UserId == "inactive-agent");
+
+        Assert.True(clientScope.Succeeded);
+        Assert.Contains(clientScope.Recipients, recipient =>
+            recipient.UserId == "client-1" && recipient.ParticipantType == MessagingParticipantTypes.Client);
+        Assert.Contains(clientScope.Recipients, recipient =>
+            recipient.UserId == "business-client" && recipient.ParticipantType == MessagingParticipantTypes.Client);
+        Assert.DoesNotContain(clientScope.Recipients, recipient => recipient.ParticipantType == MessagingParticipantTypes.Agent);
+    }
+
+    [Fact]
+    public async Task ClientCannotRequestAgentRecipientScopes()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+
+        var result = await service.ListRecipientsAsync(
+            new MessagingActor("client-1", MessagingParticipantTypes.Client),
+            recipientScope: MessagingRecipientScopes.Agents);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("MESSAGING_RECIPIENT_SCOPE_INVALID", result.ErrorCode);
     }
 
     [Fact]

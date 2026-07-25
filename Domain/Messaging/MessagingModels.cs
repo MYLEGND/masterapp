@@ -13,6 +13,15 @@ public static class MessagingParticipantTypes
     public const string Client = "Client";
 }
 
+/// <summary>
+/// Server-enforced recipient collections available to an agent in the messaging command center.
+/// </summary>
+public static class MessagingRecipientScopes
+{
+    public const string Agents = "Agents";
+    public const string Clients = "Clients";
+}
+
 public static class MessagingAttachmentScanStatuses
 {
     public const string Pending = "Pending";
