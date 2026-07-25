@@ -158,8 +158,8 @@
                         <section class="client-create-section client-create-section-shell client-edit-section-spaced" aria-labelledby="subscriptions-heading">
                             <div class="client-edit-section-head">
                                 <div>
-                                    <div class="client-create-section-title" id="subscriptions-heading">Subscriptions</div>
-                                    <p class="client-edit-note">Cancel anytime. Cancelling ends your Legend Client Portal access immediately.</p>
+                                    <div class="client-create-section-title" id="subscriptions-heading">Membership & Billing</div>
+                                    <p class="client-edit-note">Review your membership status, saved payment method, billing dates, and payment history.</p>
                                 </div>
                             </div>
 
@@ -168,18 +168,10 @@
                                 <p class="client-edit-note">@subscriptionNotice</p>
                             }
 
-                            @if (canCancelSubscription)
-                            {
-                                <form action="/subscription/cancel" method="post" onsubmit="return confirm('Cancel your subscription? This immediately ends portal access.');">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="returnUrl" value="/profile" />
-                                    <button type="submit" class="client-create-button client-create-button-secondary">Cancel Subscription</button>
-                                </form>
-                            }
-                            else
-                            {
-                                <p class="client-edit-note">@(hasClientSubscription ? "There is no active subscription available to cancel." : "No active subscription is on file.")</p>
-                            }
+                            <a class="client-create-button client-create-button-secondary"
+                               href="/subscription?returnUrl=%2Fprofile">
+                                View Membership & Billing
+                            </a>
                         </section>
                     }
             </div>

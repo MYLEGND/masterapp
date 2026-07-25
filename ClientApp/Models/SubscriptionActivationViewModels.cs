@@ -78,5 +78,25 @@ public sealed class ClientSubscriptionManagementViewModel
     public string CurrentPeriodDisplay { get; set; } = "Not available";
     public string CancellationState { get; set; } = "Active";
     public string PaymentRepairInstructions { get; set; } = "Contact your agent if you need help updating billing.";
+
+    public bool HasSubscription { get; set; }
+    public bool CanCancelSubscription { get; set; }
+    public bool HasPaymentMethod { get; set; }
+    public string PaymentMethodDisplay { get; set; } = "No saved payment method";
+    public string PaymentMethodExpirationDisplay { get; set; } = "Not available";
+    public string PaymentMethodCardholderName { get; set; } = "Not available";
+    public string PaymentMethodUpdatedDisplay { get; set; } = "Not available";
+    public IReadOnlyList<ClientSubscriptionPaymentHistoryItemViewModel> PaymentHistory { get; set; }
+        = Array.Empty<ClientSubscriptionPaymentHistoryItemViewModel>();
+
     public string ReturnUrl { get; set; } = "/profile";
+}
+
+public sealed class ClientSubscriptionPaymentHistoryItemViewModel
+{
+    public string DateDisplay { get; set; } = "Not available";
+    public string AmountDisplay { get; set; } = "$0.00";
+    public string Status { get; set; } = "Unknown";
+    public string Kind { get; set; } = "Unknown";
+    public string BillingPeriodDisplay { get; set; } = "Not available";
 }

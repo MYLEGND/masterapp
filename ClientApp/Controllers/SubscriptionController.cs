@@ -58,20 +58,24 @@ public sealed class SubscriptionController : Controller
                 DateTime.UtcNow),
             HttpContext.RequestAborted);
 
-        var hasClientAppAccess = entitlement.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod;
-        if (!context.IsAgentView && !hasClientAppAccess)
-        {
-            return RedirectToAction("ActivationRequired", "Account", new
-            {
-                returnUrl = target,
-                message = "Your client subscription is not active. Use the activation link from your agent to continue."
-            });
-        }
-
         var latestSubscription = await _db.ClientSubscriptions
             .Where(x => x.ClientProfileId == context.ClientProfileId)
             .OrderByDescending(x => x.UpdatedUtc)
             .FirstOrDefaultAsync();
+
+        var paymentHistory = latestSubscription is null
+            ? new List<SubscriptionPayment>()
+            : await _db.SubscriptionPayments
+                .AsNoTracking()
+                .Where(payment => payment.ClientSubscriptionId == latestSubscription.Id)
+                .OrderByDescending(payment => payment.ProviderOccurredUtc ?? payment.UpdatedUtc)
+                .ThenByDescending(payment => payment.CreatedUtc)
+                .Take(24)
+                .ToListAsync(HttpContext.RequestAborted);
+
+        var hasPaymentMethod = latestSubscription is not null &&
+            (!string.IsNullOrWhiteSpace(latestSubscription.PaymentMethodBrand) ||
+             !string.IsNullOrWhiteSpace(latestSubscription.PaymentMethodLast4));
 
         ViewData["SubscriptionNotice"] = TempData["SubscriptionNotice"]?.ToString();
         return View(new ClientSubscriptionManagementViewModel
@@ -93,6 +97,29 @@ public sealed class SubscriptionController : Controller
                         ? "Canceled"
                         : "Active",
             PaymentRepairInstructions = BuildRepairInstructions(latestSubscription, entitlement.Status, entitlement.ReasonCode),
+            HasSubscription = latestSubscription is not null,
+            CanCancelSubscription = !context.IsAgentView &&
+                latestSubscription?.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod,
+            HasPaymentMethod = hasPaymentMethod,
+            PaymentMethodDisplay = BuildPaymentMethodDisplay(latestSubscription),
+            PaymentMethodExpirationDisplay = BuildPaymentMethodExpirationDisplay(latestSubscription),
+            PaymentMethodCardholderName = string.IsNullOrWhiteSpace(latestSubscription?.PaymentMethodCardholderName)
+                ? "Not available"
+                : latestSubscription.PaymentMethodCardholderName,
+            PaymentMethodUpdatedDisplay = FormatDate(latestSubscription?.PaymentMethodUpdatedUtc),
+            PaymentHistory = paymentHistory
+                .Select(payment => new ClientSubscriptionPaymentHistoryItemViewModel
+                {
+                    DateDisplay = FormatDateTime(
+                        payment.ProviderOccurredUtc ??
+                        payment.ScheduledChargeUtc ??
+                        payment.UpdatedUtc),
+                    AmountDisplay = (payment.AmountCents / 100m).ToString("C"),
+                    Status = payment.Status.ToString(),
+                    Kind = payment.Kind.ToString(),
+                    BillingPeriodDisplay = BuildPaymentPeriodDisplay(payment)
+                })
+                .ToList(),
             ReturnUrl = target
         });
     }
@@ -175,12 +202,52 @@ public sealed class SubscriptionController : Controller
             : "Not scheduled";
     }
 
+    private static string FormatDateTime(DateTime value)
+    {
+        return DateTime.SpecifyKind(value, DateTimeKind.Utc)
+            .ToLocalTime()
+            .ToString("MMMM d, yyyy h:mm tt");
+    }
+
     private static string BuildCurrentPeriodDisplay(ClientSubscription? subscription)
     {
         if (subscription?.CurrentPeriodStartUtc is null || subscription.CurrentPeriodEndUtc is null)
             return "Not available";
 
         return $"{FormatDate(subscription.CurrentPeriodStartUtc)} - {FormatDate(subscription.CurrentPeriodEndUtc)}";
+    }
+
+    private static string BuildPaymentMethodDisplay(ClientSubscription? subscription)
+    {
+        if (subscription is null)
+            return "No saved payment method";
+
+        var brand = string.IsNullOrWhiteSpace(subscription.PaymentMethodBrand)
+            ? "Card"
+            : subscription.PaymentMethodBrand.Trim();
+
+        return string.IsNullOrWhiteSpace(subscription.PaymentMethodLast4)
+            ? brand
+            : $"{brand} ending in {subscription.PaymentMethodLast4.Trim()}";
+    }
+
+    private static string BuildPaymentMethodExpirationDisplay(ClientSubscription? subscription)
+    {
+        if (subscription?.PaymentMethodExpirationMonth is null ||
+            subscription.PaymentMethodExpirationYear is null)
+        {
+            return "Not available";
+        }
+
+        return $"{subscription.PaymentMethodExpirationMonth:00}/{subscription.PaymentMethodExpirationYear:0000}";
+    }
+
+    private static string BuildPaymentPeriodDisplay(SubscriptionPayment payment)
+    {
+        if (payment.BillingPeriodStartUtc is null || payment.BillingPeriodEndUtc is null)
+            return "Not available";
+
+        return $"{FormatDate(payment.BillingPeriodStartUtc)} - {FormatDate(payment.BillingPeriodEndUtc)}";
     }
 
     private static string BuildRepairInstructions(ClientSubscription? subscription, ClientEntitlementStatus entitlementStatus, string? entitlementReasonCode)

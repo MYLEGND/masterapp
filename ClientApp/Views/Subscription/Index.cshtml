@@ -1,15 +1,15 @@
 @model ClientApp.Models.ClientSubscriptionManagementViewModel
 @{
-    ViewData["Title"] = "Subscription";
+    ViewData["Title"] = "Membership & Billing";
     var notice = ViewData["SubscriptionNotice"] as string;
 }
 
 <div class="container py-4">
     <div class="row justify-content-center">
-        <div class="col-12 col-xl-9">
+        <div class="col-12 col-xl-10">
             <div class="card shadow-sm border-0">
                 <div class="card-body p-4">
-                    <p class="text-uppercase small text-muted mb-2">Client Billing</p>
+                    <p class="text-uppercase small text-muted mb-2">Membership & Billing</p>
                     <h1 class="h3 mb-3">@Model.ClientName</h1>
 
                     @if (!string.IsNullOrWhiteSpace(notice))
@@ -18,37 +18,37 @@
                     }
 
                     <div class="row g-3 mb-4">
-                        <div class="col-md-6">
+                        <div class="col-md-6 col-xl-4">
                             <div class="border rounded p-3 h-100">
                                 <div class="text-muted small mb-1">Monthly amount</div>
                                 <div class="fs-5 fw-semibold">@Model.MonthlyAmountDisplay</div>
                             </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="border rounded p-3 h-100">
-                                <div class="text-muted small mb-1">Entitlement</div>
-                                <div class="fs-5 fw-semibold">@Model.EntitlementStatus</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
+                        <div class="col-md-6 col-xl-4">
                             <div class="border rounded p-3 h-100">
                                 <div class="text-muted small mb-1">Subscription status</div>
-                                <div class="fw-semibold">@Model.SubscriptionStatus</div>
+                                <div class="fs-5 fw-semibold">@Model.SubscriptionStatus</div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-6 col-xl-4">
                             <div class="border rounded p-3 h-100">
                                 <div class="text-muted small mb-1">Payment standing</div>
-                                <div class="fw-semibold">@Model.PaymentStanding</div>
+                                <div class="fs-5 fw-semibold">@Model.PaymentStanding</div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-6 col-xl-4">
+                            <div class="border rounded p-3 h-100">
+                                <div class="text-muted small mb-1">Portal entitlement</div>
+                                <div class="fw-semibold">@Model.EntitlementStatus</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-xl-4">
                             <div class="border rounded p-3 h-100">
                                 <div class="text-muted small mb-1">Next billing date</div>
                                 <div class="fw-semibold">@Model.NextBillingDateDisplay</div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-6 col-xl-4">
                             <div class="border rounded p-3 h-100">
                                 <div class="text-muted small mb-1">Current period</div>
                                 <div class="fw-semibold">@Model.CurrentPeriodDisplay</div>
@@ -56,15 +56,92 @@
                         </div>
                     </div>
 
-                    <div class="border rounded p-3 mb-4">
-                        <div class="text-muted small mb-1">Cancellation state</div>
+                    <section class="border rounded p-3 mb-4" aria-labelledby="payment-method-heading">
+                        <h2 class="h5 mb-3" id="payment-method-heading">Payment Method</h2>
+
+                        @if (Model.HasPaymentMethod)
+                        {
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <div class="text-muted small mb-1">Saved card</div>
+                                    <div class="fw-semibold">@Model.PaymentMethodDisplay</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="text-muted small mb-1">Expiration</div>
+                                    <div class="fw-semibold">@Model.PaymentMethodExpirationDisplay</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="text-muted small mb-1">Cardholder</div>
+                                    <div class="fw-semibold">@Model.PaymentMethodCardholderName</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="text-muted small mb-1">Last updated</div>
+                                    <div class="fw-semibold">@Model.PaymentMethodUpdatedDisplay</div>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted mb-0">No saved payment method metadata is available.</p>
+                        }
+                    </section>
+
+                    <section class="border rounded p-3 mb-4" aria-labelledby="billing-history-heading">
+                        <h2 class="h5 mb-3" id="billing-history-heading">Billing History</h2>
+
+                        @if (Model.PaymentHistory.Count == 0)
+                        {
+                            <p class="text-muted mb-0">No subscription payments are on file yet.</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col">Date</th>
+                                            <th scope="col">Amount</th>
+                                            <th scope="col">Status</th>
+                                            <th scope="col">Type</th>
+                                            <th scope="col">Billing period</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var payment in Model.PaymentHistory)
+                                        {
+                                            <tr>
+                                                <td>@payment.DateDisplay</td>
+                                                <td>@payment.AmountDisplay</td>
+                                                <td>@payment.Status</td>
+                                                <td>@payment.Kind</td>
+                                                <td>@payment.BillingPeriodDisplay</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </section>
+
+                    <section class="border rounded p-3 mb-4" aria-labelledby="membership-state-heading">
+                        <h2 class="h5 mb-2" id="membership-state-heading">Membership Status</h2>
                         <div class="fw-semibold mb-2">@Model.CancellationState</div>
                         <p class="text-muted mb-0">@Model.PaymentRepairInstructions</p>
-                    </div>
+                    </section>
 
                     <div class="d-flex flex-column flex-md-row gap-2">
-                        <a class="btn btn-dark" href="/profile#subscriptions-heading">Manage Subscription</a>
-                        <a class="btn btn-outline-secondary" href="@Model.ReturnUrl">Back</a>
+                        @if (Model.CanCancelSubscription)
+                        {
+                            <form action="/subscription/cancel"
+                                  method="post"
+                                  onsubmit="return confirm('Cancel your subscription? This immediately ends portal access.');">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+                                <button type="submit" class="btn btn-outline-danger">Cancel Subscription</button>
+                            </form>
+                        }
+
+                        <a class="btn btn-outline-secondary" href="@Model.ReturnUrl">Back to Profile</a>
                     </div>
                 </div>
             </div>
