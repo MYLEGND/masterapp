@@ -1,3 +1,4 @@
+using Domain.Billing;
 using Domain.Entities;
 using Domain.JourneyCircles;
 using Domain.Messaging;
@@ -102,6 +103,18 @@ internal sealed class MessagingService : IMessagingService
                 x.IsDeleted))
             .ToListAsync(cancellationToken);
 
+        var clientParticipantIds = participants
+            .Where(x => x.ParticipantType == MessagingParticipantTypes.Client)
+            .Select(x => x.UserId.ToLower())
+            .Distinct()
+            .ToArray();
+        var activeClientMembershipIds = clientParticipantIds.Length == 0
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : (await ActiveClientMembershipUserIdsQuery()
+                .Where(clientUserId => clientParticipantIds.Contains(clientUserId))
+                .ToListAsync(cancellationToken))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var displayNames = await LoadDisplayNamesAsync(participants, cancellationToken);
         var actorUserId = NormalizeRequired(actor.UserId);
         var result = new List<MessagingConversationSummary>(conversations.Count);
@@ -129,6 +142,11 @@ internal sealed class MessagingService : IMessagingService
                 !string.Equals(x.SenderUserId, actorUserId, StringComparison.OrdinalIgnoreCase) &&
                 (!currentParticipant.LastReadUtc.HasValue || x.SentUtc > currentParticipant.LastReadUtc.Value));
             var latest = conversationMessages.FirstOrDefault(x => !x.IsDeleted);
+            var isArchivedMembership =
+                conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
+                conversationParticipants
+                    .Where(x => x.ParticipantType == MessagingParticipantTypes.Client)
+                    .Any(x => !activeClientMembershipIds.Contains(x.UserId));
 
             result.Add(new MessagingConversationSummary(
                 conversation.Id,
@@ -136,6 +154,7 @@ internal sealed class MessagingService : IMessagingService
                 conversation.Subject,
                 conversation.LastMessageUtc,
                 conversation.IsClosed,
+                isArchivedMembership,
                 unreadCount,
                 ToParticipantSummary(counterparty, displayNames),
                 latest is null ? null : Preview(latest.Body)));
@@ -199,6 +218,9 @@ internal sealed class MessagingService : IMessagingService
         var displayNames = await LoadDisplayNamesAsync(participants, cancellationToken);
         var currentParticipant = participants.FirstOrDefault(x =>
             string.Equals(x.UserId, NormalizeRequired(actor.UserId), StringComparison.OrdinalIgnoreCase));
+        var isArchivedMembership =
+            conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
+            !await ConversationHasActiveClientMembershipAsync(conversation.Id, cancellationToken);
 
         var detail = new MessagingConversationDetail(
             conversation.Id,
@@ -207,6 +229,7 @@ internal sealed class MessagingService : IMessagingService
             conversation.CreatedUtc,
             conversation.LastMessageUtc,
             conversation.IsClosed,
+            isArchivedMembership,
             currentParticipant?.IsMuted == true,
             participants.Select(x => ToParticipantSummary(x, displayNames)).ToList(),
             messages.Select(message => ToMessageSummary(message, attachments)).ToList());
@@ -479,6 +502,13 @@ internal sealed class MessagingService : IMessagingService
             return MessagingMessageResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The requested conversation was not found.");
         if (conversation.IsClosed)
             return MessagingMessageResult.Failure("MESSAGING_CONVERSATION_CLOSED", "Closed conversations cannot receive new messages.");
+        if (conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
+            !await ConversationHasActiveClientMembershipAsync(conversation.Id, cancellationToken))
+        {
+            return MessagingMessageResult.Failure(
+                "MESSAGING_MEMBERSHIP_INACTIVE",
+                "This client membership is inactive. The conversation history remains available, but new messages cannot be sent until membership is restored.");
+        }
 
         if (!string.IsNullOrWhiteSpace(clientMessageId))
         {
@@ -1234,6 +1264,41 @@ internal sealed class MessagingService : IMessagingService
             .Union(ActiveMessagingGrantsForAgent(agentUserId)
                 .Select(grant => grant.ClientUserId.ToLower()))
             .Distinct();
+
+    private IQueryable<string> ActiveClientMembershipUserIdsQuery() =>
+        from profile in _db.ClientProfiles.AsNoTracking()
+        where !_db.ClientSubscriptions.Any(subscription =>
+                  subscription.ClientProfileId == profile.Id) ||
+              _db.ClientSubscriptions.Any(subscription =>
+                  subscription.ClientProfileId == profile.Id &&
+                  (subscription.Status == ClientSubscriptionStatus.Active ||
+                   subscription.Status == ClientSubscriptionStatus.GracePeriod))
+        select profile.ClientUserId.ToLower();
+
+    private Task<bool> IsClientMembershipActiveAsync(
+        string clientUserId,
+        CancellationToken cancellationToken)
+    {
+        var clientKey = NormalizeUserId(clientUserId);
+        return ActiveClientMembershipUserIdsQuery()
+            .AnyAsync(userId => userId == clientKey, cancellationToken);
+    }
+
+    private async Task<bool> ConversationHasActiveClientMembershipAsync(
+        Guid conversationId,
+        CancellationToken cancellationToken)
+    {
+        var clientUserIds = _db.MessageConversationParticipants
+            .AsNoTracking()
+            .Where(participant =>
+                participant.ConversationId == conversationId &&
+                participant.IsActive &&
+                participant.ParticipantType == MessagingParticipantTypes.Client)
+            .Select(participant => participant.UserId.ToLower());
+
+        return await ActiveClientMembershipUserIdsQuery()
+            .AnyAsync(clientUserId => clientUserIds.Contains(clientUserId), cancellationToken);
+    }
 
     private IQueryable<AgentProfile> AuthorizedAgentProfilesForClientQuery(string clientUserId)
     {

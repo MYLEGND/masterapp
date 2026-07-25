@@ -659,7 +659,10 @@
       return;
     }
 
-    state.conversations.forEach(conversation => {
+    const activeConversations = state.conversations.filter(conversation => conversation.isArchivedMembership !== true);
+    const archivedConversations = state.conversations.filter(conversation => conversation.isArchivedMembership === true);
+
+    function appendConversation(conversation) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'messaging-conversation-item';
@@ -688,7 +691,16 @@
       button.append(meta);
       button.addEventListener('click', () => loadConversation(conversation.id, true).catch(error => showError(error.message)));
       elements.list.append(button);
-    });
+    }
+
+    activeConversations.forEach(appendConversation);
+
+    if (archivedConversations.length > 0) {
+      elements.list.append(
+        createTextElement('p', 'messaging-list-empty', 'Archived Clients')
+      );
+      archivedConversations.forEach(appendConversation);
+    }
   }
 
   function participantName(conversation, userId) {
@@ -700,14 +712,26 @@
   }
 
   function setComposerState(target, isClosed) {
-    const isAvailable = Boolean(target?.contactKey || state.active?.id) && !isClosed;
+    const isArchivedMembership = state.active?.isArchivedMembership === true;
+    const isAvailable =
+      Boolean(target?.contactKey || state.active?.id) &&
+      !isClosed &&
+      !isArchivedMembership;
+
     elements.messageBody.disabled = !isAvailable;
     elements.files.disabled = !isAvailable;
     elements.sendButton.disabled = !isAvailable;
     elements.fileLabel.classList.toggle('is-disabled', !isAvailable);
+
     if (!target) elements.composeTarget.textContent = composePrompt;
-    else if (isClosed) elements.composeTarget.textContent = 'This conversation is closed.';
-    else elements.composeTarget.textContent = `Secure message to ${target.displayName || 'recipient'}.`;
+    else if (isArchivedMembership) {
+      elements.composeTarget.textContent =
+        'Archived client membership. Conversation history is preserved, but messaging is read-only until membership is restored.';
+    } else if (isClosed) {
+      elements.composeTarget.textContent = 'This conversation is closed.';
+    } else {
+      elements.composeTarget.textContent = `Secure message to ${target.displayName || 'recipient'}.`;
+    }
   }
 
   function restoreMessageScroll(conversationId, shouldScrollToBottom) {
@@ -889,6 +913,7 @@
     }
 
     const matchingConversations = state.conversations
+      .filter(conversation => conversation.isArchivedMembership !== true)
       .filter(conversation => matchesSearch(searchText(conversation), query))
       .sort((left, right) =>
         searchRank(left.counterparty, query, left) - searchRank(right.counterparty, query, right) ||

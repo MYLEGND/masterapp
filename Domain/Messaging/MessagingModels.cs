@@ -164,6 +164,7 @@ public sealed record MessagingConversationSummary(
     string? Subject,
     DateTime? LastMessageUtc,
     bool IsClosed,
+    bool IsArchivedMembership,
     int UnreadCount,
     MessagingParticipantSummary Counterparty,
     string? LastMessagePreview);
@@ -175,6 +176,7 @@ public sealed record MessagingConversationDetail(
     DateTime CreatedUtc,
     DateTime? LastMessageUtc,
     bool IsClosed,
+    bool IsArchivedMembership,
     bool IsMuted,
     IReadOnlyList<MessagingParticipantSummary> Participants,
     IReadOnlyList<MessagingMessageSummary> Messages);
