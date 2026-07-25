@@ -927,25 +927,25 @@
             <section class="llbs-tax-panel" id="llbsTaxProfile" aria-label="Tax profile" data-llbs-script-key="tax">
                 <div class="llbs-tax-summary">
                     <div class="llbs-tax-copy">
-                        <h3 class="llbs-section-title">Tax Profile</h3>
-                        <span data-llbs-text="summary.taxBurdenStatement">Your estimated tax burden is 0% ($0 annually).</span>
+                        <h3 class="dashboard-section-kicker">Tax Profile</h3>
+                        <span class="dashboard-section-copy" data-llbs-text="summary.taxBurdenStatement">Your estimated tax burden is 0% ($0 annually).</span>
                     </div>
-                    <div class="llbs-tax-summary-metrics">
-                        <span>
-                            <small>Filing</small>
-                            <strong data-llbs-text="taxProfile.filingStatus">Single</strong>
+                    <div class="llbs-tax-summary-metrics dashboard-hero-stats">
+                        <span class="dashboard-stat-card">
+                            <small class="dashboard-stat-label">Filing</small>
+                            <strong class="dashboard-stat-value" data-llbs-text="taxProfile.filingStatus">Single</strong>
                         </span>
-                        <span>
-                            <small>Effective</small>
-                            <strong data-llbs-output="taxProfile.effectiveTaxRate" data-llbs-kind="percent">0%</strong>
+                        <span class="dashboard-stat-card">
+                            <small class="dashboard-stat-label">Effective</small>
+                            <strong class="dashboard-stat-value" data-llbs-output="taxProfile.effectiveTaxRate" data-llbs-kind="percent">0%</strong>
                         </span>
-                        <span>
-                            <small>Taxes</small>
-                            <strong data-llbs-output="taxProfile.calculatedTaxAmount">$0</strong>
+                        <span class="dashboard-stat-card">
+                            <small class="dashboard-stat-label">Taxes</small>
+                            <strong class="dashboard-stat-value" data-llbs-output="taxProfile.calculatedTaxAmount">$0</strong>
                         </span>
-                        <span>
-                            <small>Override</small>
-                            <strong data-llbs-tax-override>Off</strong>
+                        <span class="dashboard-stat-card">
+                            <small class="dashboard-stat-label">Override</small>
+                            <strong class="dashboard-stat-value" data-llbs-tax-override>Off</strong>
                         </span>
                     </div>
                     <button type="button"
@@ -1227,14 +1227,14 @@
         return `
             <section class="llbs-section llbs-philosophy" data-llbs-script-key="overview" aria-label="Legend philosophy">
                 <div class="llbs-section-head">
-                    <h3 class="llbs-section-title">Legend Philosophy</h3>
-                    <span class="llbs-section-note">Steps 1-4</span>
+                    <h3 class="dashboard-section-kicker">Legend Philosophy</h3>
+                    <span class="dashboard-eyebrow">Steps 1-4</span>
                 </div>
-                <div class="llbs-philosophy-grid" role="list" aria-label="Foundational health steps">
+                <div class="llbs-philosophy-grid dashboard-hero-stats" role="list" aria-label="Foundational health steps">
                     ${LEGEND_PHILOSOPHY_STEPS.map((title, index) => `
-                        <article class="llbs-philosophy-card" role="listitem">
-                            <span class="llbs-philosophy-step">${index + 1}</span>
-                            <strong class="llbs-philosophy-title">${title}</strong>
+                        <article class="llbs-philosophy-card dashboard-stat-card" role="listitem">
+                            <span class="dashboard-summary-count">${index + 1}</span>
+                            <strong class="dashboard-stat-label">${title}</strong>
                         </article>
                     `).join("")}
                 </div>

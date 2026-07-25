@@ -626,7 +626,8 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.dashboard-page-shell .category-summary-count {
+.dashboard-page-shell .category-summary-count,
+.dashboard-summary-count {
     display: inline-grid;
     place-items: center;
     min-width: 28px;
