@@ -58,6 +58,15 @@ public sealed class SubscriptionController : Controller
                 DateTime.UtcNow),
             HttpContext.RequestAborted);
 
+        if (!context.IsAgentView && entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod))
+        {
+            return RedirectToAction("ActivationRequired", "Account", new
+            {
+                returnUrl = target,
+                message = "Your client subscription is not active. Use the activation link from your agent to continue."
+            });
+        }
+
         var latestSubscription = await _db.ClientSubscriptions
             .Where(x => x.ClientProfileId == context.ClientProfileId)
             .OrderByDescending(x => x.UpdatedUtc)
