@@ -109,15 +109,7 @@ public abstract class MessagingControllerBase : Controller
             return NotFound();
 
         var image = await _profileImageResolver.ResolveAsync(identity, HttpContext.RequestAborted);
-        if (image is null)
-            return NotFound();
-
-        if (image.Content is { Length: > 0 })
-            return File(image.Content, image.ContentType);
-
-        return string.IsNullOrWhiteSpace(image.PhysicalPath)
-            ? NotFound()
-            : PhysicalFile(image.PhysicalPath, image.ContentType);
+        return image is null ? NotFound() : File(image.Content, image.ContentType);
     }
 
     [HttpGet("/Messaging/Conversations/{conversationId:guid}")]

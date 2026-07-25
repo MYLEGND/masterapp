@@ -608,6 +608,9 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.AgentUserId).HasMaxLength(450);
             e.Property(x => x.AgentUpn).HasMaxLength(450);
             e.Property(x => x.NormalizedEmail).HasMaxLength(320);
+            e.Property(x => x.ProfileImageContentType).HasMaxLength(127);
+            if (isSqlServer)
+                e.Property(x => x.ProfileImageContent).HasColumnType("varbinary(max)");
             e.Property(x => x.ShortBio).HasMaxLength(280);
             e.Property(x => x.MetaPixelId).HasMaxLength(64);
             e.Property(x => x.MetaCapiAccessToken).HasColumnName("MetaAccessToken").HasMaxLength(2048);

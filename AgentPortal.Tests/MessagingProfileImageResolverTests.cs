@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using AgentPortal.Services;
 using ClientApp.Services;
 using Domain.Entities;
 using Domain.Messaging;
@@ -12,10 +13,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 using ClientAvatarController = ClientApp.Controllers.AvatarController;
+using AgentAvatarController = AgentPortal.Controllers.AvatarController;
 
 namespace AgentPortal.Tests;
 
@@ -30,9 +33,7 @@ public sealed class MessagingProfileImageResolverTests
     [Fact]
     public async Task SharedEmail_ResolvesDistinctTypedProfilesAndTheirOwnAvatarKeys()
     {
-        await UseAvatarRootAsync(async root =>
-        {
-            await using var db = ControllerTestHelpers.BuildDb();
+        await using var db = ControllerTestHelpers.BuildDb();
             var agent = new AgentProfile
             {
                 Id = Guid.NewGuid(),
@@ -40,7 +41,9 @@ public sealed class MessagingProfileImageResolverTests
                 AgentUpn = "shared@example.test",
                 NormalizedEmail = "shared@example.test",
                 FullName = "Agent Owner",
-                IsActive = true
+                IsActive = true,
+                ProfileImageContent = "agent avatar"u8.ToArray(),
+                ProfileImageContentType = "image/png"
             };
             var client = new ClientProfile
             {
@@ -56,10 +59,8 @@ public sealed class MessagingProfileImageResolverTests
             db.ClientProfiles.Add(client);
             await db.SaveChangesAsync();
 
-            var agentAvatar = Path.Combine(root, "agent-identity.png");
             client.ProfileImageContent = "client avatar"u8.ToArray();
             client.ProfileImageContentType = "image/png";
-            await File.WriteAllTextAsync(agentAvatar, "agent avatar");
             await db.SaveChangesAsync();
 
             var resolver = CreateResolver(db);
@@ -77,12 +78,10 @@ public sealed class MessagingProfileImageResolverTests
             Assert.Equal("Client Owner", resolvedClient.DisplayName);
             var resolvedAgentImage = await resolver.ResolveAsync(resolvedAgent);
             var resolvedClientImage = await resolver.ResolveAsync(resolvedClient);
-            Assert.Equal(agentAvatar, resolvedAgentImage!.PhysicalPath);
-            Assert.Null(resolvedAgentImage.Content);
+            Assert.Equal("agent avatar"u8.ToArray(), resolvedAgentImage!.Content);
+            Assert.Equal("image/png", resolvedAgentImage.ContentType);
             Assert.Equal("image/png", resolvedClientImage!.ContentType);
             Assert.Equal("client avatar"u8.ToArray(), resolvedClientImage.Content);
-            Assert.Null(resolvedClientImage.PhysicalPath);
-        });
     }
 
     [Fact]
@@ -146,9 +145,7 @@ public sealed class MessagingProfileImageResolverTests
     [Fact]
     public async Task ClientWithoutActivatedIdentity_UsesItsOwnInitialsAndNeverTheServicingAgentAvatar()
     {
-        await UseAvatarRootAsync(async root =>
-        {
-            await using var db = ControllerTestHelpers.BuildDb();
+        await using var db = ControllerTestHelpers.BuildDb();
             var client = new ClientProfile
             {
                 Id = Guid.NewGuid(),
@@ -172,7 +169,6 @@ public sealed class MessagingProfileImageResolverTests
             });
             db.ClientProfiles.Add(client);
             await db.SaveChangesAsync();
-            await File.WriteAllTextAsync(Path.Combine(root, "servicing-agent.png"), "agent avatar");
 
             var resolver = CreateResolver(db);
             var identities = await resolver.ResolveIdentitiesAsync(
@@ -183,15 +179,12 @@ public sealed class MessagingProfileImageResolverTests
             Assert.Equal("Pending Client", identity.DisplayName);
             Assert.Equal("PC", identity.Initials);
             Assert.Null(await resolver.ResolveAsync(identity));
-        });
     }
 
     [Fact]
     public async Task ClientProfileImage_RemainsClientOwnedWhenAgentAndClientShareAUserId()
     {
-        await UseAvatarRootAsync(async root =>
-        {
-            await using var db = ControllerTestHelpers.BuildDb();
+        await using var db = ControllerTestHelpers.BuildDb();
             const string userId = "dual-role-user";
             var client = new ClientProfile
             {
@@ -209,11 +202,12 @@ public sealed class MessagingProfileImageResolverTests
                 AgentUserId = userId,
                 AgentUpn = "agent@example.test",
                 FullName = "Agent Owner",
-                IsActive = true
+                IsActive = true,
+                ProfileImageContent = "agent profile image"u8.ToArray(),
+                ProfileImageContentType = "image/png"
             });
             db.ClientProfiles.Add(client);
             await db.SaveChangesAsync();
-            await File.WriteAllTextAsync(Path.Combine(root, $"{userId}.png"), "agent avatar");
 
             var resolver = CreateResolver(db);
             var identities = await resolver.ResolveIdentitiesAsync(
@@ -227,12 +221,10 @@ public sealed class MessagingProfileImageResolverTests
             var agentImage = await resolver.ResolveAsync(agent);
             var clientImage = await resolver.ResolveAsync(clientIdentity);
 
-            Assert.Equal(Path.Combine(root, $"{userId}.png"), agentImage!.PhysicalPath);
-            Assert.Null(agentImage.Content);
-            Assert.Null(clientImage!.PhysicalPath);
-            Assert.Equal("client profile image"u8.ToArray(), clientImage.Content);
+            Assert.Equal("agent profile image"u8.ToArray(), agentImage!.Content);
+            Assert.Equal("image/png", agentImage.ContentType);
+            Assert.Equal("client profile image"u8.ToArray(), clientImage!.Content);
             Assert.Equal("image/webp", clientImage.ContentType);
-        });
     }
 
     [Fact]
@@ -285,7 +277,61 @@ public sealed class MessagingProfileImageResolverTests
         Assert.NotNull(image);
         Assert.Equal(imageBytes, image!.Content);
         Assert.Equal("image/png", image.ContentType);
-        Assert.Null(image.PhysicalPath);
+    }
+
+    [Fact]
+    public async Task AgentAvatarUpload_PersistsToAgentProfileAndIsReturnedToAnAuthorizedClient()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        const string agentUserId = "agent-avatar-owner";
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = agentUserId,
+            AgentUpn = "agent.avatar@example.test",
+            FullName = "Agent Profile Owner",
+            IsActive = true
+        };
+        db.AgentProfiles.Add(agent);
+        await db.SaveChangesAsync();
+
+        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim("oid", agentUserId)], "TestAuth"));
+        var httpContext = new DefaultHttpContext { User = user };
+        var environment = new Mock<IWebHostEnvironment>();
+        environment.SetupGet(value => value.WebRootPath).Returns(AppContext.BaseDirectory);
+        var controller = new AgentAvatarController(
+            db,
+            environment.Object,
+            NullLogger<AgentAvatarController>.Instance,
+            new AgentPortal.Services.Tracking.AgentTrackingResolver(
+                db,
+                NullLogger<AgentPortal.Services.Tracking.AgentTrackingResolver>.Instance))
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext },
+            TempData = new TempDataDictionary(httpContext, Mock.Of<ITempDataProvider>())
+        };
+        var imageBytes = "agent profile image upload"u8.ToArray();
+        await using var imageStream = new MemoryStream(imageBytes);
+        var upload = new FormFile(imageStream, 0, imageBytes.Length, "photo", "avatar.webp")
+        {
+            Headers = new HeaderDictionary { ["Content-Type"] = "image/webp" }
+        };
+
+        Assert.IsType<RedirectToActionResult>(await controller.Upload(upload));
+
+        var persisted = await db.AgentProfiles.SingleAsync(x => x.Id == agent.Id);
+        Assert.Equal(imageBytes, persisted.ProfileImageContent);
+        Assert.Equal("image/webp", persisted.ProfileImageContentType);
+
+        var resolver = CreateResolver(db);
+        var identities = await resolver.ResolveIdentitiesAsync(
+            [new MessagingParticipantReference(agentUserId, MessagingParticipantTypes.Agent)]);
+        var agentIdentity = identities[(agentUserId, MessagingParticipantTypes.Agent)];
+        var image = await resolver.ResolveAsync(agentIdentity);
+
+        Assert.NotNull(image);
+        Assert.Equal(imageBytes, image!.Content);
+        Assert.Equal("image/webp", image.ContentType);
     }
 
     [Fact]
@@ -334,6 +380,51 @@ public sealed class MessagingProfileImageResolverTests
     }
 
     [Fact]
+    public async Task LegacyAgentAvatar_IsImportedIntoItsMatchingAgentProfileOnly()
+    {
+        await UseAvatarRootAsync(async root =>
+        {
+            await using var db = ControllerTestHelpers.BuildDb();
+            var agent = new AgentProfile
+            {
+                Id = Guid.NewGuid(),
+                AgentUserId = "legacy-agent",
+                AgentUpn = "legacy.agent@example.test",
+                FullName = "Legacy Agent",
+                IsActive = true
+            };
+            var otherAgent = new AgentProfile
+            {
+                Id = Guid.NewGuid(),
+                AgentUserId = "other-agent",
+                AgentUpn = "other.agent@example.test",
+                FullName = "Other Agent",
+                IsActive = true
+            };
+            db.AgentProfiles.AddRange(agent, otherAgent);
+            await db.SaveChangesAsync();
+
+            var imageBytes = "legacy agent profile image"u8.ToArray();
+            await File.WriteAllBytesAsync(Path.Combine(root, "legacy-agent.png"), imageBytes);
+            var environment = new Mock<IWebHostEnvironment>();
+            environment.SetupGet(value => value.ContentRootPath).Returns(AppContext.BaseDirectory);
+            var importer = new AgentProfileImageLegacyBackfillService(
+                db,
+                environment.Object,
+                NullLogger<AgentProfileImageLegacyBackfillService>.Instance);
+
+            Assert.Equal(1, await importer.BackfillAsync());
+
+            var imported = await db.AgentProfiles.SingleAsync(profile => profile.Id == agent.Id);
+            var untouched = await db.AgentProfiles.SingleAsync(profile => profile.Id == otherAgent.Id);
+            Assert.Equal(imageBytes, imported.ProfileImageContent);
+            Assert.Equal("image/png", imported.ProfileImageContentType);
+            Assert.Null(untouched.ProfileImageContent);
+            Assert.Null(untouched.ProfileImageContentType);
+        });
+    }
+
+    [Fact]
     public async Task AmbiguousTypedClientIdentity_FailsClosedInsteadOfSelectingTheFirstProfile()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -374,11 +465,8 @@ public sealed class MessagingProfileImageResolverTests
 
     private static MessagingProfileImageResolver CreateResolver(Infrastructure.Data.MasterAppDbContext db)
     {
-        var environment = new Mock<IWebHostEnvironment>();
-        environment.SetupGet(value => value.ContentRootPath).Returns(AppContext.BaseDirectory);
         return new MessagingProfileImageResolver(
             db,
-            environment.Object,
             NullLogger<MessagingProfileImageResolver>.Instance);
     }
 

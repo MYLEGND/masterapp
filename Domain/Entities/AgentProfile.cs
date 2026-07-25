@@ -12,6 +12,12 @@ public class AgentProfile
     public string AgentUpn { get; set; } = "";    // email/UPN for self-healing
     public string? NormalizedEmail { get; set; }
 
+    // Agent-owned profile image shared by both portals. Keeping this on the
+    // typed profile prevents a client identity with the same UserId from ever
+    // supplying the agent image.
+    public byte[]? ProfileImageContent { get; set; }
+    public string? ProfileImageContentType { get; set; }
+
     public string? FullName { get; set; }
     public string? Title { get; set; }
     public string? Npn { get; set; }

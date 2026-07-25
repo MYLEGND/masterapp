@@ -1,7 +1,6 @@
 using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -22,26 +21,18 @@ public interface IMessagingProfileImageResolver
         CancellationToken cancellationToken = default);
 }
 
-public sealed record MessagingProfileImage(
-    string ContentType,
-    string? PhysicalPath = null,
-    byte[]? Content = null);
+public sealed record MessagingProfileImage(byte[] Content, string ContentType);
 
 internal sealed class MessagingProfileImageResolver : IMessagingProfileImageResolver
 {
-    private static readonly string[] Extensions = [".png", ".jpg", ".jpeg", ".webp"];
-
     private readonly MasterAppDbContext _db;
-    private readonly IWebHostEnvironment _environment;
     private readonly ILogger<MessagingProfileImageResolver> _logger;
 
     public MessagingProfileImageResolver(
         MasterAppDbContext db,
-        IWebHostEnvironment environment,
         ILogger<MessagingProfileImageResolver> logger)
     {
         _db = db;
-        _environment = environment;
         _logger = logger;
     }
 
@@ -49,39 +40,12 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
         MessagingParticipantIdentity participant,
         CancellationToken cancellationToken = default)
     {
-        if (participant.ParticipantType == MessagingParticipantTypes.Client)
-            return await ResolveClientProfileImageAsync(participant.ProfileId, cancellationToken);
-
-        var avatarKey = participant.ParticipantType == MessagingParticipantTypes.Agent
-            ? Normalize(participant.UserId)
-            : string.Empty;
-        if (string.IsNullOrWhiteSpace(avatarKey))
-            return null;
-
-        var root = GetAvatarRoot();
-        var safeAvatarKey = Path.GetFileName(avatarKey);
-        if (string.IsNullOrWhiteSpace(safeAvatarKey) ||
-            !string.Equals(safeAvatarKey, avatarKey, StringComparison.Ordinal))
+        return participant.ParticipantType switch
         {
-            return null;
-        }
-
-        foreach (var extension in Extensions)
-        {
-            var path = Path.Combine(root, $"{safeAvatarKey}{extension}");
-            if (!File.Exists(path))
-                continue;
-
-            _logger.LogDebug(
-                "Messaging profile image resolved. ParticipantUserId={ParticipantUserId} ParticipantType={ParticipantType} ProfileId={ProfileId} ImageSourceType={ImageSourceType}",
-                participant.UserId,
-                participant.ParticipantType,
-                participant.ProfileId,
-                "ProfileAvatarStorage");
-            return new MessagingProfileImage(ContentTypeFor(extension), PhysicalPath: path);
-        }
-
-        return null;
+            MessagingParticipantTypes.Agent => await ResolveAgentProfileImageAsync(participant.ProfileId, cancellationToken),
+            MessagingParticipantTypes.Client => await ResolveClientProfileImageAsync(participant.ProfileId, cancellationToken),
+            _ => null
+        };
     }
 
     public async Task<IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity>> ResolveIdentitiesAsync(
@@ -210,7 +174,30 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
             "Messaging client profile image resolved from ClientProfiles. ClientProfileId={ClientProfileId} ImageSourceType={ImageSourceType}",
             clientProfileId,
             "ClientProfile");
-        return new MessagingProfileImage(profile.ContentType!, Content: profile.Content);
+        return new MessagingProfileImage(profile.Content, profile.ContentType!);
+    }
+
+    private async Task<MessagingProfileImage?> ResolveAgentProfileImageAsync(
+        Guid agentProfileId,
+        CancellationToken cancellationToken)
+    {
+        var profile = await _db.AgentProfiles
+            .AsNoTracking()
+            .Where(x => x.Id == agentProfileId && x.IsActive)
+            .Select(x => new AgentProfileImageRow(
+                x.ProfileImageContent,
+                x.ProfileImageContentType))
+            .FirstOrDefaultAsync(cancellationToken);
+        if (profile is null ||
+            profile.Content is not { Length: > 0 } ||
+            !IsSupportedImageContentType(profile.ContentType))
+            return null;
+
+        _logger.LogDebug(
+            "Messaging agent profile image resolved from AgentProfiles. AgentProfileId={AgentProfileId} ImageSourceType={ImageSourceType}",
+            agentProfileId,
+            "AgentProfile");
+        return new MessagingProfileImage(profile.Content, profile.ContentType!);
     }
 
     private void LogIdentityResolutionFailure(string userId, string participantType, int matchCount)
@@ -222,44 +209,6 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
             matchCount,
             matchCount > 1);
     }
-
-    private string GetAvatarRoot()
-    {
-        var configured = Environment.GetEnvironmentVariable("LEGEND_AVATAR_ROOT");
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            try
-            {
-                return Path.GetFullPath(Environment.ExpandEnvironmentVariables(configured.Trim()));
-            }
-            catch
-            {
-                // Fall through to the repository's established hosting locations.
-            }
-        }
-
-        var home = Environment.GetEnvironmentVariable("HOME");
-        if (!string.IsNullOrWhiteSpace(home))
-        {
-            try
-            {
-                return Path.GetFullPath(Path.Combine(home.Trim(), "avatars"));
-            }
-            catch
-            {
-                // Fall through to the application-local fallback used by the existing avatar controllers.
-            }
-        }
-
-        return Path.Combine(_environment.ContentRootPath, "App_Data", "avatars");
-    }
-
-    private static string ContentTypeFor(string extension) => extension.ToLowerInvariant() switch
-    {
-        ".png" => "image/png",
-        ".webp" => "image/webp",
-        _ => "image/jpeg"
-    };
 
     private static bool IsSupportedImageContentType(string? value) =>
         value is "image/png" or "image/jpeg" or "image/webp";
@@ -289,4 +238,6 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
         string? Email);
 
     private sealed record ClientProfileImageRow(byte[]? Content, string? ContentType);
+
+    private sealed record AgentProfileImageRow(byte[]? Content, string? ContentType);
 }
