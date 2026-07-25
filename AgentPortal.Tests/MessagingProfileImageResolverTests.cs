@@ -289,6 +289,51 @@ public sealed class MessagingProfileImageResolverTests
     }
 
     [Fact]
+    public async Task LegacyClientAvatar_IsImportedIntoItsMatchingClientProfileOnly()
+    {
+        await UseAvatarRootAsync(async root =>
+        {
+            await using var db = ControllerTestHelpers.BuildDb();
+            var client = new ClientProfile
+            {
+                Id = Guid.NewGuid(),
+                ClientUserId = "legacy-client",
+                FirstName = "Legacy",
+                LastName = "Client",
+                Email = "legacy.client@example.test"
+            };
+            var otherClient = new ClientProfile
+            {
+                Id = Guid.NewGuid(),
+                ClientUserId = "other-client",
+                FirstName = "Other",
+                LastName = "Client",
+                Email = "other.client@example.test"
+            };
+            db.ClientProfiles.AddRange(client, otherClient);
+            await db.SaveChangesAsync();
+
+            var imageBytes = "legacy profile image"u8.ToArray();
+            await File.WriteAllBytesAsync(Path.Combine(root, $"{client.Id:D}.webp"), imageBytes);
+            var environment = new Mock<IWebHostEnvironment>();
+            environment.SetupGet(value => value.ContentRootPath).Returns(AppContext.BaseDirectory);
+            var importer = new ClientProfileImageLegacyBackfillService(
+                db,
+                environment.Object,
+                NullLogger<ClientProfileImageLegacyBackfillService>.Instance);
+
+            Assert.Equal(1, await importer.BackfillAsync());
+
+            var imported = await db.ClientProfiles.SingleAsync(profile => profile.Id == client.Id);
+            var untouched = await db.ClientProfiles.SingleAsync(profile => profile.Id == otherClient.Id);
+            Assert.Equal(imageBytes, imported.ProfileImageContent);
+            Assert.Equal("image/webp", imported.ProfileImageContentType);
+            Assert.Null(untouched.ProfileImageContent);
+            Assert.Null(untouched.ProfileImageContentType);
+        });
+    }
+
+    [Fact]
     public async Task AmbiguousTypedClientIdentity_FailsClosedInsteadOfSelectingTheFirstProfile()
     {
         await using var db = ControllerTestHelpers.BuildDb();
