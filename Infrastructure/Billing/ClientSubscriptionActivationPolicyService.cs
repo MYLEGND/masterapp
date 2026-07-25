@@ -80,6 +80,14 @@ internal sealed class ClientSubscriptionActivationPolicyService : IClientSubscri
         return EnsureUtc(failureUtc).AddDays(_options.GracePeriodDays);
     }
 
+    public int ResolveUpcomingRenewalReminderDays() => Math.Max(1, _options.UpcomingRenewalReminderDays);
+
+    public int ResolveGracePeriodReminderDaysBeforeEnd() =>
+        Math.Max(_options.GracePeriodFinalReminderDaysBeforeEnd, _options.GracePeriodReminderDaysBeforeEnd);
+
+    public int ResolveGracePeriodFinalReminderDaysBeforeEnd() =>
+        Math.Min(_options.GracePeriodFinalReminderDaysBeforeEnd, _options.GracePeriodReminderDaysBeforeEnd);
+
     private static int? ResolveAnchorDay(ClientSubscriptionOffer offer)
     {
         return offer.BillingAnchorSelectionMode switch

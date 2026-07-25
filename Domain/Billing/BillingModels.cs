@@ -97,6 +97,20 @@ public sealed record BillingPaymentMethodAttachmentResult(
     string? PaymentMethodCardholderName = null)
     : BillingProviderResult(Success, ExternalId, NormalizedStatus, SafeErrorCode, SanitizedSummary, ProviderRequestId, Retryable);
 
+public sealed record BillingPaymentMethodDisableRequest(
+    string ProviderPaymentMethodId,
+    string? CorrelationId = null);
+
+public sealed record BillingPaymentMethodDisableResult(
+    bool Success,
+    string? ExternalId,
+    string? NormalizedStatus,
+    string? SafeErrorCode,
+    string? SanitizedSummary,
+    string? ProviderRequestId,
+    bool Retryable)
+    : BillingProviderResult(Success, ExternalId, NormalizedStatus, SafeErrorCode, SanitizedSummary, ProviderRequestId, Retryable);
+
 public sealed record ClientSubscriptionLifecycleResult(
     bool Success,
     string? NormalizedStatus,
@@ -170,6 +184,59 @@ public sealed record BillingEntitlementEvaluationResult(
     ClientEntitlementSourceType SourceType,
     string SourceId,
     string Summary);
+
+public sealed record AddClientPaymentMethodCommand(
+    Guid ClientProfileId,
+    Guid ClientSubscriptionId,
+    string SourceId,
+    string CardholderName,
+    BillingPostalAddress BillingAddress,
+    bool MakeDefault,
+    string? DisplayName,
+    BillingActorType ActorType,
+    string? ActorId,
+    string? CorrelationId = null);
+
+public sealed record SetDefaultClientPaymentMethodCommand(
+    Guid ClientProfileId,
+    Guid ClientSubscriptionId,
+    Guid PaymentMethodId,
+    BillingActorType ActorType,
+    string? ActorId,
+    string? CorrelationId = null);
+
+public sealed record RenameClientPaymentMethodCommand(
+    Guid ClientProfileId,
+    Guid PaymentMethodId,
+    string? DisplayName,
+    BillingActorType ActorType,
+    string? ActorId,
+    string? CorrelationId = null);
+
+public sealed record RemoveClientPaymentMethodCommand(
+    Guid ClientProfileId,
+    Guid ClientSubscriptionId,
+    Guid PaymentMethodId,
+    BillingActorType ActorType,
+    string? ActorId,
+    string? CorrelationId = null);
+
+public sealed record ClientPaymentMethodOperationResult(
+    bool Success,
+    string? SafeErrorCode,
+    string? SanitizedSummary,
+    ClientPaymentMethod? PaymentMethod = null,
+    bool DefaultChanged = false);
+
+public sealed record ClientBillingNotificationRequest(
+    Guid ClientProfileId,
+    Guid ClientSubscriptionId,
+    ClientBillingNotificationKind Kind,
+    string EventKey,
+    DateTime? NotBeforeUtc = null,
+    DateTime? GracePeriodEndsUtc = null,
+    int? AmountCents = null,
+    string? Currency = null);
 
 public sealed record ClientSubscriptionActivationSchedule(
     int MonthlyAmountCents,
@@ -334,6 +401,22 @@ public sealed record CancelClientSubscriptionResult(
     ClientSubscription? Subscription,
     ClientEntitlement? Entitlement,
     ClientSubscriptionLifecycleResult LifecycleResult)
+    : BillingWorkflowResult(Success, SafeErrorCode, SanitizedSummary, ProviderRequestId, Retryable);
+
+public sealed record ManualClientSubscriptionRenewalRetryCommand(
+    Guid ClientSubscriptionId,
+    BillingActorType ActorType,
+    string? ActorId,
+    string? CorrelationId = null);
+
+public sealed record ManualClientSubscriptionRenewalRetryResult(
+    bool Success,
+    string? SafeErrorCode,
+    string? SanitizedSummary,
+    string? ProviderRequestId,
+    bool Retryable,
+    ClientSubscription? Subscription,
+    PlatformRecurringBillingRunResult RunResult)
     : BillingWorkflowResult(Success, SafeErrorCode, SanitizedSummary, ProviderRequestId, Retryable);
 
 public sealed record PlatformRecurringBillingRunResult(

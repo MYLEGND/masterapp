@@ -108,8 +108,8 @@ public sealed class ClientBillingWorkspaceService
             subscription = latestSubscription is null ? null : new
             {
                 id = latestSubscription.Id,
-                status = latestSubscription.Status.ToString(),
-                paymentStanding = latestSubscription.PaymentStanding.ToString(),
+                status = ClientSubscriptionDisplay.FormatMembershipState(latestSubscription.Status, latestSubscription.PaymentStanding),
+                paymentStanding = ClientSubscriptionDisplay.FormatPaymentStanding(latestSubscription.PaymentStanding),
                 monthlyAmountCents = latestSubscription.MonthlyAmountCents,
                 currency = latestSubscription.Currency,
                 billingAnchorDay = latestSubscription.BillingAnchorDay,

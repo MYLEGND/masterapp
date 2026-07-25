@@ -193,6 +193,62 @@ internal sealed class SquareBillingGateway : IBillingGateway
             GetString(card, "cardholder_name"));
     }
 
+    public async Task<BillingPaymentMethodDisableResult> DisablePaymentMethodAsync(BillingPaymentMethodDisableRequest request, CancellationToken cancellationToken = default)
+    {
+        var configurationFailure = ValidateConfigured("DISABLE_PAYMENT_METHOD");
+        if (configurationFailure is not null)
+        {
+            return new BillingPaymentMethodDisableResult(
+                false,
+                null,
+                configurationFailure.NormalizedStatus,
+                configurationFailure.SafeErrorCode,
+                configurationFailure.SanitizedSummary,
+                configurationFailure.ProviderRequestId,
+                configurationFailure.Retryable);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ProviderPaymentMethodId))
+        {
+            return new BillingPaymentMethodDisableResult(
+                false,
+                null,
+                "VALIDATION_ERROR",
+                "PAYMENT_METHOD_ID_REQUIRED",
+                "The payment method could not be identified.",
+                null,
+                false);
+        }
+
+        var response = await SendAsync(
+            HttpMethod.Post,
+            $"/v2/cards/{Uri.EscapeDataString(request.ProviderPaymentMethodId)}/disable",
+            new Dictionary<string, object?>(),
+            request.CorrelationId,
+            cancellationToken);
+        if (!response.Success)
+        {
+            return new BillingPaymentMethodDisableResult(
+                false,
+                request.ProviderPaymentMethodId,
+                response.NormalizedStatus,
+                response.SafeErrorCode,
+                response.SanitizedSummary,
+                response.ProviderRequestId,
+                response.Retryable);
+        }
+
+        var card = response.Json?.RootElement.TryGetProperty("card", out var cardElement) == true ? cardElement : default;
+        return new BillingPaymentMethodDisableResult(
+            true,
+            GetString(card, "id") ?? request.ProviderPaymentMethodId,
+            GetString(card, "card_status") ?? "DISABLED",
+            null,
+            "Payment method disabled.",
+            response.ProviderRequestId,
+            false);
+    }
+
     public async Task<BillingPaymentResult> GetPaymentAsync(BillingPaymentLookupRequest request, CancellationToken cancellationToken = default)
     {
         var configurationFailure = ValidateConfigured("GET_PAYMENT");

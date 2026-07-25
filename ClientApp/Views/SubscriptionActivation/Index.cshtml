@@ -77,10 +77,10 @@
                 }
                 else
                 {
-                    <form asp-action="PaymentMethod" asp-route-token="@Model.Token" method="post" id="activationPaymentForm" novalidate>
+                    <form asp-action="PaymentMethod" asp-route-token="@Model.Token" method="post" id="activationPaymentForm" data-square-payment-form novalidate>
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
-                        <input type="hidden" name="SourceId" id="activationSourceId" />
+                        <input type="hidden" name="SourceId" id="activationSourceId" data-square-source />
 
                         <div asp-validation-summary="ModelOnly" class="activation-validation"></div>
                         <h2 class="activation-form-title">Payment details</h2>
@@ -118,11 +118,11 @@
                             </div>
                             <div class="activation-field is-wide">
                                 <label>Card details <span>*</span></label>
-                                <div id="square-card" class="activation-card-surface"></div>
+                                <div id="square-card" class="activation-card-surface" data-square-card></div>
                             </div>
                         </div>
 
-                        <div id="activationMessage" class="activation-alert" role="alert" hidden></div>
+                        <div id="activationMessage" class="activation-alert" role="alert" data-square-message hidden></div>
 
                         <label class="activation-authorization" for="billingAuthorizationAccepted">
                             <input type="checkbox" id="billingAuthorizationAccepted" name="BillingAuthorizationAccepted" value="true" required />
@@ -130,7 +130,7 @@
                         </label>
 
                         <div class="activation-actions">
-                            <button type="submit" class="activation-button" id="activationSubmitButton">Activate access</button>
+                            <button type="submit" class="activation-button" id="activationSubmitButton" data-square-submit>Activate access</button>
                         </div>
                     </form>
                 }

@@ -7,7 +7,10 @@ public sealed class ClientSubscriptionActivationPolicyOptions
     public string BusinessTimeZoneId { get; init; } = "America/Phoenix";
     public int SameDayAnchorCutoffHourLocal { get; init; } = 17;
     public int MinimumDaysBeforeAnchoredRenewal { get; init; } = 14;
-    public int GracePeriodDays { get; init; } = 7;
+    public int GracePeriodDays { get; init; } = 30;
+    public int UpcomingRenewalReminderDays { get; init; } = 3;
+    public int GracePeriodReminderDaysBeforeEnd { get; init; } = 15;
+    public int GracePeriodFinalReminderDaysBeforeEnd { get; init; } = 3;
     public IReadOnlyList<int> RenewalRetryDelayMinutes { get; init; } = [60, 1_440];
 
     public static ClientSubscriptionActivationPolicyOptions FromConfiguration(IConfiguration configuration)
@@ -28,9 +31,18 @@ public sealed class ClientSubscriptionActivationPolicyOptions
             MinimumDaysBeforeAnchoredRenewal = int.TryParse(section["MinimumDaysBeforeAnchoredRenewal"], out var minDays) && minDays > 0
                 ? minDays
                 : 14,
-            GracePeriodDays = int.TryParse(section["GracePeriodDays"], out var gracePeriodDays) && gracePeriodDays >= 0
+            GracePeriodDays = int.TryParse(section["GracePeriodDays"], out var gracePeriodDays) && gracePeriodDays >= 1
                 ? gracePeriodDays
-                : 7,
+                : 30,
+            UpcomingRenewalReminderDays = int.TryParse(section["UpcomingRenewalReminderDays"], out var upcomingRenewalReminderDays) && upcomingRenewalReminderDays >= 1
+                ? upcomingRenewalReminderDays
+                : 3,
+            GracePeriodReminderDaysBeforeEnd = int.TryParse(section["GracePeriodReminderDaysBeforeEnd"], out var reminderDays) && reminderDays >= 1
+                ? reminderDays
+                : 15,
+            GracePeriodFinalReminderDaysBeforeEnd = int.TryParse(section["GracePeriodFinalReminderDaysBeforeEnd"], out var finalReminderDays) && finalReminderDays >= 1
+                ? finalReminderDays
+                : 3,
             RenewalRetryDelayMinutes = retryDelays.Length > 0 ? retryDelays : [60, 1_440]
         };
     }

@@ -11,17 +11,20 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
     private readonly IBillingGateway _gateway;
     private readonly IBillingEntitlementService _entitlements;
     private readonly IClientSubscriptionActivationPolicyService _billingPolicy;
+    private readonly IClientBillingNotificationService? _notifications;
 
     public MasterAppBillingOrchestrator(
         MasterAppDbContext db,
         IBillingGateway gateway,
         IBillingEntitlementService entitlements,
-        IClientSubscriptionActivationPolicyService billingPolicy)
+        IClientSubscriptionActivationPolicyService billingPolicy,
+        IClientBillingNotificationService? notifications = null)
     {
         _db = db;
         _gateway = gateway;
         _entitlements = entitlements;
         _billingPolicy = billingPolicy;
+        _notifications = notifications;
     }
 
     public async Task<ClientSubscriptionOffer> CreateClientSubscriptionOfferAsync(CreateClientSubscriptionOfferCommand command, CancellationToken cancellationToken = default)
@@ -520,19 +523,16 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             return new ActivateClientSubscriptionResult(false, attachmentResult.SafeErrorCode, attachmentResult.SanitizedSummary, attachmentResult.ProviderRequestId, attachmentResult.Retryable, subscription, null, new ClientSubscriptionLifecycleResult(false, subscription.Status.ToString(), attachmentResult.SafeErrorCode, attachmentResult.SanitizedSummary, attachmentResult.ProviderRequestId, attachmentResult.Retryable, customerResult.ProviderCustomerId));
         }
 
-        subscription.ProviderPaymentMethodId = attachmentResult.ProviderPaymentMethodId;
-        subscription.PaymentMethodBrand = attachmentResult.PaymentMethodBrand;
-        subscription.PaymentMethodLast4 = attachmentResult.PaymentMethodLast4;
-        subscription.PaymentMethodExpirationMonth = attachmentResult.PaymentMethodExpirationMonth;
-        subscription.PaymentMethodExpirationYear = attachmentResult.PaymentMethodExpirationYear;
-        subscription.PaymentMethodCardholderName = attachmentResult.PaymentMethodCardholderName;
-        subscription.PaymentMethodUpdatedUtc = nowUtc;
+        var paymentMethod = ClientPaymentMethodFactory.Create(subscription, attachmentResult, command.BillingAddress, null, nowUtc);
+        _db.ClientPaymentMethods.Add(paymentMethod);
+        subscription.DefaultPaymentMethodId = paymentMethod.Id;
         subscription.UpdatedUtc = nowUtc;
         await _db.SaveChangesAsync(cancellationToken);
 
         var initialPaymentRecord = new SubscriptionPayment
         {
             ClientSubscriptionId = subscription.Id,
+            ClientPaymentMethodId = paymentMethod.Id,
             Provider = _gateway.Provider,
             ProviderEnvironment = _gateway.Environment,
             AmountCents = offer.MonthlyAmountCents,
@@ -563,7 +563,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         {
             initialPaymentResult = await _gateway.CreateOneTimePaymentAsync(
                 new BillingOneTimePaymentRequest(
-                    attachmentResult.ProviderPaymentMethodId,
+                    paymentMethod.ProviderPaymentMethodId,
                     offer.MonthlyAmountCents,
                     authoritativeCurrency,
                     $"Client subscription initial payment {subscription.Id}",
@@ -624,7 +624,6 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             subscription.Status = ClientSubscriptionStatus.ActivationFailed;
             subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Failed;
             subscription.ProviderCustomerId = customerResult.ProviderCustomerId;
-            subscription.ProviderPaymentMethodId = attachmentResult.ProviderPaymentMethodId;
             subscription.LastChargeAttemptUtc = nowUtc;
             subscription.UpdatedUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
@@ -637,7 +636,6 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         subscription.Status = ClientSubscriptionStatus.Active;
         subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Current;
         subscription.ProviderCustomerId = customerResult.ProviderCustomerId;
-        subscription.ProviderPaymentMethodId = attachmentResult.ProviderPaymentMethodId;
         subscription.IsPlatformManaged = true;
         subscription.PlatformManagedSinceUtc ??= nowUtc;
         subscription.FirstChargeUtc = command.FirstChargeUtc;
@@ -661,6 +659,9 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         }
 
         AddAuditEntry("ClientSubscription", subscription.Id, "activated", ClientSubscriptionStatus.AwaitingPaymentMethod.ToString(), subscription.Status.ToString(), BillingActorType.System, null, "billing_orchestrator", null, correlationId, "Initial payment completed and recurring billing is now scheduled by MASTERAPP.");
+        QueueNotification(subscription, ClientBillingNotificationKind.MembershipActivated, $"membership-activated:{subscription.Id:N}");
+        QueueNotification(subscription, ClientBillingNotificationKind.PaymentReceived, $"initial-payment-received:{initialPaymentRecord.Id:N}", amountCents: initialPaymentRecord.AmountCents, currency: initialPaymentRecord.Currency);
+        QueueUpcomingRenewalReminder(subscription);
         await _db.SaveChangesAsync(cancellationToken);
 
         var entitlement = await _entitlements.RefreshAsync(command.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "SUBSCRIPTION_ACTIVATED", cancellationToken);
@@ -731,6 +732,8 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         }
 
         AddAuditEntry("ClientSubscription", subscription.Id, command.CancelAtPeriodEnd ? "cancellation_scheduled" : "cancelled", previousStatus, subscription.Status.ToString(), command.ActorType, command.ActorId, "billing_orchestrator", null, correlationId, command.CancelAtPeriodEnd ? "Cancellation is scheduled locally at the current period boundary." : "Subscription cancelled locally and future charges were stopped.");
+        if (!command.CancelAtPeriodEnd)
+            QueueNotification(subscription, ClientBillingNotificationKind.MembershipCancelled, $"membership-cancelled:{subscription.Id:N}:{cancelledUtc:O}");
         await _db.SaveChangesAsync(cancellationToken);
 
         var entitlement = await _entitlements.RefreshAsync(subscription.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "SUBSCRIPTION_CANCELLED", cancellationToken);
@@ -742,7 +745,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             null,
             false,
             subscription.ProviderCustomerId,
-            subscription.ProviderPaymentMethodId,
+            await GetDefaultPaymentMethodIdAsync(subscription, cancellationToken),
             subscription.MonthlyAmountCents,
             subscription.Currency,
             subscription.BillingAnchorDay,
@@ -801,11 +804,138 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             endedAtPeriodBoundary);
     }
 
+    public async Task<ManualClientSubscriptionRenewalRetryResult> RetryClientSubscriptionRenewalAsync(
+        ManualClientSubscriptionRenewalRetryCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        if (command.ActorType != BillingActorType.Client)
+        {
+            return new ManualClientSubscriptionRenewalRetryResult(
+                false,
+                "MANUAL_RENEWAL_RETRY_CLIENT_SELF_SERVICE_REQUIRED",
+                "Only the client can request a membership payment retry.",
+                null,
+                false,
+                null,
+                new PlatformRecurringBillingRunResult(0, 0, 0, 0, 0));
+        }
+
+        var subscription = await _db.ClientSubscriptions.FirstOrDefaultAsync(
+            item => item.Id == command.ClientSubscriptionId,
+            cancellationToken);
+        if (subscription is null)
+        {
+            return new ManualClientSubscriptionRenewalRetryResult(
+                false,
+                "SUBSCRIPTION_NOT_FOUND",
+                "The membership was not found.",
+                null,
+                false,
+                null,
+                new PlatformRecurringBillingRunResult(0, 0, 0, 0, 0));
+        }
+
+        if (!subscription.IsPlatformManaged || subscription.Status != ClientSubscriptionStatus.GracePeriod)
+        {
+            return new ManualClientSubscriptionRenewalRetryResult(
+                false,
+                "MANUAL_RENEWAL_RETRY_UNAVAILABLE",
+                "A payment retry is available while your membership needs a payment update.",
+                null,
+                false,
+                subscription,
+                new PlatformRecurringBillingRunResult(0, 0, 0, 0, 0));
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        if (subscription.GracePeriodEndsUtc.HasValue && subscription.GracePeriodEndsUtc <= nowUtc)
+        {
+            return new ManualClientSubscriptionRenewalRetryResult(
+                false,
+                "GRACE_PERIOD_EXPIRED",
+                "This membership's payment-update period has ended. Please contact your agent to reactivate membership.",
+                null,
+                false,
+                subscription,
+                new PlatformRecurringBillingRunResult(0, 0, 0, 0, 0));
+        }
+
+        var paymentMethod = await GetDefaultPaymentMethodAsync(subscription, cancellationToken);
+        if (paymentMethod is null)
+        {
+            return new ManualClientSubscriptionRenewalRetryResult(
+                false,
+                "PAYMENT_METHOD_MISSING",
+                "Add a payment method before trying your membership payment again.",
+                null,
+                false,
+                subscription,
+                new PlatformRecurringBillingRunResult(0, 0, 0, 0, 0));
+        }
+
+        subscription.NextChargeAttemptUtc = nowUtc;
+        subscription.UpdatedUtc = nowUtc;
+        AddAuditEntry(
+            "ClientSubscription",
+            subscription.Id,
+            "manual_renewal_retry_requested",
+            subscription.Status.ToString(),
+            subscription.Status.ToString(),
+            command.ActorType,
+            command.ActorId,
+            "client_membership_billing",
+            null,
+            command.CorrelationId,
+            $"The client requested a renewal retry using payment method {paymentMethod.Id:N}.");
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var workerId = $"client-retry:{command.ActorId?.Trim() ?? "unknown"}";
+        var outcome = await ProcessDueClientSubscriptionRenewalAsync(
+            subscription.Id,
+            workerId,
+            nowUtc,
+            cancellationToken,
+            allowTerminalRetry: true);
+        var run = new PlatformRecurringBillingRunResult(
+            1,
+            outcome.ChargesAttempted,
+            outcome.ChargesSucceeded,
+            outcome.ChargesFailed,
+            outcome.EndedAtPeriodBoundary);
+        await _db.Entry(subscription).ReloadAsync(cancellationToken);
+
+        if (outcome.ChargesSucceeded > 0)
+        {
+            return new ManualClientSubscriptionRenewalRetryResult(
+                true,
+                null,
+                "Your membership payment was received and your membership is active.",
+                null,
+                false,
+                subscription,
+                run);
+        }
+
+        var lastAttempt = await _db.SubscriptionPayments
+            .Where(payment => payment.ClientSubscriptionId == subscription.Id)
+            .OrderByDescending(payment => payment.AttemptNumber)
+            .FirstOrDefaultAsync(cancellationToken);
+        return new ManualClientSubscriptionRenewalRetryResult(
+            false,
+            lastAttempt?.SafeFailureCode ?? "RENEWAL_RETRY_NOT_SUBMITTED",
+            "We could not complete your membership payment. Your membership remains active while you review your payment method.",
+            lastAttempt?.ProviderRequestId,
+            lastAttempt?.Retryable ?? false,
+            subscription,
+            run);
+    }
+
     private async Task<RecurringBillingOutcome> ProcessDueClientSubscriptionRenewalAsync(
         Guid subscriptionId,
         string workerId,
         DateTime nowUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowTerminalRetry = false)
     {
         var subscription = await _db.ClientSubscriptions.FirstOrDefaultAsync(x => x.Id == subscriptionId, cancellationToken);
         if (subscription is null ||
@@ -837,6 +967,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
                 null,
                 workerId,
                 "Subscription ended locally at its scheduled period boundary.");
+            QueueNotification(subscription, ClientBillingNotificationKind.MembershipCancelled, $"membership-ended-at-period-boundary:{subscription.Id:N}:{subscription.CurrentPeriodEndUtc:O}");
             await _db.SaveChangesAsync(cancellationToken);
             await _entitlements.RefreshAsync(subscription.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "SUBSCRIPTION_ENDED_AT_PERIOD_END", cancellationToken);
             return new RecurringBillingOutcome(0, 0, 0, 1);
@@ -847,14 +978,20 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             subscription.GracePeriodEndsUtc <= nowUtc)
         {
             var previousStatus = subscription.Status.ToString();
-            subscription.Status = ClientSubscriptionStatus.PastDue;
-            subscription.PaymentStanding = ClientSubscriptionPaymentStanding.PastDue;
+            var endedUtc = subscription.GracePeriodEndsUtc.Value;
+            subscription.Status = ClientSubscriptionStatus.Canceled;
+            subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Failed;
+            subscription.CancelAtPeriodEnd = false;
+            subscription.CancelledUtc = endedUtc;
+            subscription.EndedUtc = endedUtc;
+            subscription.GracePeriodEndsUtc = null;
+            subscription.NextBillingDateUtc = null;
             subscription.NextChargeAttemptUtc = null;
             subscription.UpdatedUtc = nowUtc;
             AddAuditEntry(
                 "ClientSubscription",
                 subscription.Id,
-                "grace_period_expired",
+                "cancelled_after_grace_period",
                 previousStatus,
                 subscription.Status.ToString(),
                 BillingActorType.System,
@@ -862,10 +999,11 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
                 "billing_renewal_worker",
                 "GRACE_PERIOD_EXPIRED",
                 workerId,
-                "Recurring payment retries did not restore the subscription before grace expired.");
+                "The membership was cancelled after the configured grace period expired without a successful renewal payment.");
+            QueueNotification(subscription, ClientBillingNotificationKind.MembershipCancelled, $"membership-cancelled-after-grace:{subscription.Id:N}:{endedUtc:O}");
             await _db.SaveChangesAsync(cancellationToken);
-            await _entitlements.RefreshAsync(subscription.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "GRACE_PERIOD_EXPIRED", cancellationToken);
-            return RecurringBillingOutcome.None;
+            await _entitlements.RefreshAsync(subscription.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "GRACE_PERIOD_EXPIRED_CANCELLED", cancellationToken);
+            return new RecurringBillingOutcome(0, 0, 0, 1);
         }
 
         if (!subscription.NextBillingDateUtc.HasValue || subscription.NextBillingDateUtc > nowUtc)
@@ -899,12 +1037,61 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             return RecurringBillingOutcome.None;
         }
 
-        var attempt = await GetOrCreateDueRenewalAttemptAsync(subscription, renewalSchedule, nowUtc, cancellationToken);
+        var paymentMethod = await GetDefaultPaymentMethodAsync(subscription, cancellationToken);
+        var attempt = await GetOrCreateDueRenewalAttemptAsync(
+            subscription,
+            paymentMethod,
+            renewalSchedule,
+            nowUtc,
+            cancellationToken,
+            allowTerminalRetry);
         if (attempt is null || !await TryClaimPaymentAttemptAsync(attempt, workerId, nowUtc, cancellationToken))
             return RecurringBillingOutcome.None;
 
+        var primaryOutcome = await ChargeRenewalAttemptAsync(subscription, paymentMethod, attempt, workerId, nowUtc, cancellationToken);
+        if (primaryOutcome.Completed)
+            return await CompleteRenewalAsync(subscription, renewalSchedule, primaryOutcome, workerId, nowUtc, false, cancellationToken);
+
+        if (!primaryOutcome.Retryable && paymentMethod is not null)
+        {
+            var backupMethod = await GetBackupPaymentMethodAsync(subscription, paymentMethod.Id, cancellationToken);
+            if (backupMethod is not null)
+            {
+                var backupAttempt = await GetOrCreateDueRenewalAttemptAsync(
+                    subscription,
+                    backupMethod,
+                    renewalSchedule,
+                    nowUtc,
+                    cancellationToken,
+                    allowTerminalFailure: true);
+                if (backupAttempt is not null && await TryClaimPaymentAttemptAsync(backupAttempt, workerId, nowUtc, cancellationToken))
+                {
+                    var backupOutcome = await ChargeRenewalAttemptAsync(subscription, backupMethod, backupAttempt, workerId, nowUtc, cancellationToken);
+                    if (backupOutcome.Completed)
+                    {
+                        var completed = await CompleteRenewalAsync(subscription, renewalSchedule, backupOutcome, workerId, nowUtc, true, cancellationToken);
+                        return completed with { ChargesAttempted = 2, ChargesFailed = 1 };
+                    }
+
+                    var failed = await EnterRenewalRecoveryAsync(subscription, backupOutcome, workerId, nowUtc, cancellationToken);
+                    return failed with { ChargesAttempted = 2, ChargesFailed = 2 };
+                }
+            }
+        }
+
+        return await EnterRenewalRecoveryAsync(subscription, primaryOutcome, workerId, nowUtc, cancellationToken);
+    }
+
+    private async Task<RenewalChargeAttemptOutcome> ChargeRenewalAttemptAsync(
+        ClientSubscription subscription,
+        ClientPaymentMethod? paymentMethod,
+        SubscriptionPayment attempt,
+        string workerId,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
         BillingOneTimePaymentResult providerResult;
-        if (string.IsNullOrWhiteSpace(subscription.ProviderCustomerId) || string.IsNullOrWhiteSpace(subscription.ProviderPaymentMethodId))
+        if (string.IsNullOrWhiteSpace(subscription.ProviderCustomerId) || paymentMethod is null)
         {
             providerResult = new BillingOneTimePaymentResult(
                 false,
@@ -921,7 +1108,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             {
                 providerResult = await _gateway.CreateOneTimePaymentAsync(
                     new BillingOneTimePaymentRequest(
-                        subscription.ProviderPaymentMethodId,
+                        paymentMethod.ProviderPaymentMethodId,
                         subscription.MonthlyAmountCents,
                         subscription.Currency,
                         $"Client subscription renewal {subscription.Id}",
@@ -953,34 +1140,86 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         attempt.UpdatedUtc = nowUtc;
         subscription.LastChargeAttemptUtc = nowUtc;
 
-        var paymentCompleted = providerResult.Success && BillingStateMapper.MapPaymentStatus(providerResult.NormalizedStatus) == SubscriptionPaymentStatus.Completed;
-        if (paymentCompleted)
+        var completed = providerResult.Success &&
+                        BillingStateMapper.MapPaymentStatus(providerResult.NormalizedStatus) == SubscriptionPaymentStatus.Completed;
+        if (completed)
         {
             attempt.Status = SubscriptionPaymentStatus.Completed;
             attempt.Retryable = false;
             attempt.RetryNotBeforeUtc = null;
-            subscription.Status = ClientSubscriptionStatus.Active;
-            subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Current;
-            subscription.GracePeriodEndsUtc = null;
-            subscription.CurrentPeriodStartUtc = renewalSchedule.PeriodStartUtc;
-            subscription.CurrentPeriodEndUtc = renewalSchedule.PeriodEndUtc;
-            subscription.NextBillingDateUtc = renewalSchedule.NextBillingDateUtc;
-            subscription.NextChargeAttemptUtc = renewalSchedule.NextBillingDateUtc;
-            subscription.LastSuccessfulChargeUtc = nowUtc;
-            subscription.UpdatedUtc = nowUtc;
             AddAuditEntry("SubscriptionPayment", attempt.Id, "completed", previousPaymentStatus, attempt.Status.ToString(), BillingActorType.System, null, "billing_renewal_worker", null, workerId, providerResult.SanitizedSummary);
-            AddAuditEntry("ClientSubscription", subscription.Id, "renewed", null, subscription.Status.ToString(), BillingActorType.System, null, "billing_renewal_worker", null, workerId);
-            await _db.SaveChangesAsync(cancellationToken);
-            await _entitlements.RefreshAsync(subscription.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "RENEWAL_PAYMENT_COMPLETED", cancellationToken);
-            return new RecurringBillingOutcome(1, 1, 0, 0);
+        }
+        else
+        {
+            var retryDelay = providerResult.Retryable
+                ? _billingPolicy.ResolveRenewalRetryDelay(attempt.AttemptNumber)
+                : null;
+            attempt.Status = SubscriptionPaymentStatus.Failed;
+            attempt.Retryable = retryDelay.HasValue;
+            attempt.RetryNotBeforeUtc = retryDelay.HasValue ? nowUtc.Add(retryDelay.Value) : null;
+            AddAuditEntry("SubscriptionPayment", attempt.Id, "failed", previousPaymentStatus, attempt.Status.ToString(), BillingActorType.System, null, "billing_renewal_worker", attempt.SafeFailureCode ?? "RENEWAL_PAYMENT_FAILED", workerId, providerResult.SanitizedSummary);
         }
 
-        var retryDelay = providerResult.Retryable
-            ? _billingPolicy.ResolveRenewalRetryDelay(attempt.AttemptNumber)
-            : null;
-        attempt.Status = SubscriptionPaymentStatus.Failed;
-        attempt.Retryable = retryDelay.HasValue;
-        attempt.RetryNotBeforeUtc = retryDelay.HasValue ? nowUtc.Add(retryDelay.Value) : null;
+        await _db.SaveChangesAsync(cancellationToken);
+        return new RenewalChargeAttemptOutcome(attempt, providerResult, completed);
+    }
+
+    private async Task<RecurringBillingOutcome> CompleteRenewalAsync(
+        ClientSubscription subscription,
+        ClientSubscriptionRenewalSchedule renewalSchedule,
+        RenewalChargeAttemptOutcome outcome,
+        string workerId,
+        DateTime nowUtc,
+        bool backupPaymentUsed,
+        CancellationToken cancellationToken)
+    {
+        var wasInGracePeriod = subscription.Status == ClientSubscriptionStatus.GracePeriod;
+        subscription.Status = ClientSubscriptionStatus.Active;
+        subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Current;
+        subscription.GracePeriodEndsUtc = null;
+        subscription.CurrentPeriodStartUtc = renewalSchedule.PeriodStartUtc;
+        subscription.CurrentPeriodEndUtc = renewalSchedule.PeriodEndUtc;
+        subscription.NextBillingDateUtc = renewalSchedule.NextBillingDateUtc;
+        subscription.NextChargeAttemptUtc = renewalSchedule.NextBillingDateUtc;
+        subscription.LastSuccessfulChargeUtc = nowUtc;
+        subscription.UpdatedUtc = nowUtc;
+        if (backupPaymentUsed)
+        {
+            AddAuditEntry("SubscriptionPayment", outcome.Attempt.Id, "renewal_backup_payment_completed", null, outcome.Attempt.Status.ToString(), BillingActorType.System, null, "billing_renewal_worker", null, workerId, "A saved backup payment method completed the renewal.");
+            AddAuditEntry("ClientSubscription", subscription.Id, "renewal_recovered_with_backup_payment", null, subscription.Status.ToString(), BillingActorType.System, null, "billing_renewal_worker", null, workerId);
+            QueueNotification(subscription, ClientBillingNotificationKind.BackupPaymentUsed, $"backup-payment-used:{outcome.Attempt.Id:N}", amountCents: outcome.Attempt.AmountCents, currency: outcome.Attempt.Currency);
+        }
+        else
+        {
+            AddAuditEntry("ClientSubscription", subscription.Id, "renewed", null, subscription.Status.ToString(), BillingActorType.System, null, "billing_renewal_worker", null, workerId);
+        }
+
+        QueueNotification(
+            subscription,
+            wasInGracePeriod ? ClientBillingNotificationKind.MembershipReactivated : ClientBillingNotificationKind.PaymentReceived,
+            wasInGracePeriod ? $"membership-recovered:{outcome.Attempt.Id:N}" : $"renewal-payment-received:{outcome.Attempt.Id:N}",
+            amountCents: outcome.Attempt.AmountCents,
+            currency: outcome.Attempt.Currency);
+        QueueUpcomingRenewalReminder(subscription);
+
+        await _db.SaveChangesAsync(cancellationToken);
+        await _entitlements.RefreshAsync(
+            subscription.ClientProfileId,
+            BillingEntitlementKeys.ClientAppFullAccess,
+            backupPaymentUsed ? "RENEWAL_BACKUP_PAYMENT_COMPLETED" : "RENEWAL_PAYMENT_COMPLETED",
+            cancellationToken);
+        return new RecurringBillingOutcome(1, 1, 0, 0);
+    }
+
+    private async Task<RecurringBillingOutcome> EnterRenewalRecoveryAsync(
+        ClientSubscription subscription,
+        RenewalChargeAttemptOutcome outcome,
+        string workerId,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var attempt = outcome.Attempt;
+        var gracePeriodStarted = subscription.Status != ClientSubscriptionStatus.GracePeriod;
         subscription.GracePeriodEndsUtc ??= _billingPolicy.ResolveGracePeriodEndUtc(nowUtc);
         subscription.Status = subscription.GracePeriodEndsUtc <= nowUtc
             ? ClientSubscriptionStatus.PastDue
@@ -990,8 +1229,17 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             : ClientSubscriptionPaymentStanding.GracePeriod;
         subscription.NextChargeAttemptUtc = attempt.RetryNotBeforeUtc;
         subscription.UpdatedUtc = nowUtc;
-        AddAuditEntry("SubscriptionPayment", attempt.Id, "failed", previousPaymentStatus, attempt.Status.ToString(), BillingActorType.System, null, "billing_renewal_worker", attempt.SafeFailureCode ?? "RENEWAL_PAYMENT_FAILED", workerId, providerResult.SanitizedSummary);
         AddAuditEntry("ClientSubscription", subscription.Id, "renewal_payment_failed", null, subscription.Status.ToString(), BillingActorType.System, null, "billing_renewal_worker", attempt.SafeFailureCode ?? "RENEWAL_PAYMENT_FAILED", workerId);
+        QueueNotification(subscription, ClientBillingNotificationKind.PaymentFailed, $"renewal-payment-failed:{attempt.Id:N}", amountCents: attempt.AmountCents, currency: attempt.Currency);
+        if (gracePeriodStarted && subscription.GracePeriodEndsUtc.HasValue)
+        {
+            QueueNotification(
+                subscription,
+                ClientBillingNotificationKind.GracePeriodStarted,
+                $"grace-period-started:{subscription.Id:N}:{subscription.GracePeriodEndsUtc:O}",
+                gracePeriodEndsUtc: subscription.GracePeriodEndsUtc);
+            QueueGracePeriodReminders(subscription, subscription.GracePeriodEndsUtc.Value);
+        }
         await _db.SaveChangesAsync(cancellationToken);
         await _entitlements.RefreshAsync(subscription.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "RENEWAL_PAYMENT_FAILED", cancellationToken);
         return new RecurringBillingOutcome(1, 0, 1, 0);
@@ -999,9 +1247,11 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
 
     private async Task<SubscriptionPayment?> GetOrCreateDueRenewalAttemptAsync(
         ClientSubscription subscription,
+        ClientPaymentMethod? paymentMethod,
         ClientSubscriptionRenewalSchedule renewalSchedule,
         DateTime nowUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowTerminalFailure = false)
     {
         var attempts = await _db.SubscriptionPayments
             .Where(x => x.ClientSubscriptionId == subscription.Id &&
@@ -1022,18 +1272,21 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
                 return latestAttempt;
 
             if (latestAttempt.Status != SubscriptionPaymentStatus.Failed ||
-                !latestAttempt.Retryable ||
-                !latestAttempt.RetryNotBeforeUtc.HasValue ||
-                latestAttempt.RetryNotBeforeUtc > nowUtc)
+                (!allowTerminalFailure &&
+                 (!latestAttempt.Retryable ||
+                  !latestAttempt.RetryNotBeforeUtc.HasValue ||
+                  latestAttempt.RetryNotBeforeUtc > nowUtc)))
             {
                 return null;
             }
+
         }
 
         var attemptNumber = (latestAttempt?.AttemptNumber ?? 0) + 1;
         var attempt = new SubscriptionPayment
         {
             ClientSubscriptionId = subscription.Id,
+            ClientPaymentMethodId = paymentMethod?.Id,
             Provider = subscription.Provider,
             ProviderEnvironment = subscription.ProviderEnvironment,
             AmountCents = subscription.MonthlyAmountCents,
@@ -1108,6 +1361,14 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         public static readonly RecurringBillingOutcome None = new(0, 0, 0, 0);
     }
 
+    private sealed record RenewalChargeAttemptOutcome(
+        SubscriptionPayment Attempt,
+        BillingOneTimePaymentResult ProviderResult,
+        bool Completed)
+    {
+        public bool Retryable => Attempt.Retryable;
+    }
+
     private async Task<ActivateClientSubscriptionResult> ActivateZeroDollarSubscriptionAsync(
         ClientSubscription subscription,
         ClientSubscriptionOffer offer,
@@ -1139,7 +1400,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         subscription.NextBillingDateUtc = command.FirstRecurringRenewalUtc;
         subscription.NextChargeAttemptUtc = command.FirstRecurringRenewalUtc;
         subscription.ProviderCustomerId = null;
-        subscription.ProviderPaymentMethodId = null;
+        subscription.DefaultPaymentMethodId = null;
         subscription.IsPlatformManaged = true;
         subscription.PlatformManagedSinceUtc ??= nowUtc;
         subscription.ActivatedUtc ??= nowUtc;
@@ -1167,6 +1428,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             correlationId,
             "Complimentary client subscription activated without a payment method.",
             BuildConsentMetadataJson(command, currency, 0));
+        QueueNotification(subscription, ClientBillingNotificationKind.MembershipActivated, $"membership-activated:{subscription.Id:N}");
         await _db.SaveChangesAsync(cancellationToken);
 
         var entitlement = await _entitlements.RefreshAsync(
@@ -1210,6 +1472,101 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
                         x.Status != ClientSubscriptionStatus.ActivationFailed)
             .OrderByDescending(x => x.UpdatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private void QueueGracePeriodReminders(ClientSubscription subscription, DateTime gracePeriodEndsUtc)
+    {
+        var reminderDays = _billingPolicy.ResolveGracePeriodReminderDaysBeforeEnd();
+        var finalReminderDays = _billingPolicy.ResolveGracePeriodFinalReminderDaysBeforeEnd();
+        QueueNotification(
+            subscription,
+            ClientBillingNotificationKind.GracePeriodReminder,
+            $"grace-period-reminder:{subscription.Id:N}:{gracePeriodEndsUtc:O}",
+            notBeforeUtc: gracePeriodEndsUtc.AddDays(-reminderDays),
+            gracePeriodEndsUtc: gracePeriodEndsUtc);
+        QueueNotification(
+            subscription,
+            ClientBillingNotificationKind.GracePeriodFinalReminder,
+            $"grace-period-final-reminder:{subscription.Id:N}:{gracePeriodEndsUtc:O}",
+            notBeforeUtc: gracePeriodEndsUtc.AddDays(-finalReminderDays),
+            gracePeriodEndsUtc: gracePeriodEndsUtc);
+    }
+
+    private void QueueUpcomingRenewalReminder(ClientSubscription subscription)
+    {
+        if (_notifications is null || subscription.MonthlyAmountCents <= 0 || !subscription.NextBillingDateUtc.HasValue)
+            return;
+
+        var renewalUtc = subscription.NextBillingDateUtc.Value;
+        QueueNotification(
+            subscription,
+            ClientBillingNotificationKind.UpcomingRenewal,
+            $"upcoming-renewal:{subscription.Id:N}:{renewalUtc:O}",
+            notBeforeUtc: renewalUtc.AddDays(-_billingPolicy.ResolveUpcomingRenewalReminderDays()),
+            amountCents: subscription.MonthlyAmountCents,
+            currency: subscription.Currency);
+    }
+
+    private void QueueNotification(
+        ClientSubscription subscription,
+        ClientBillingNotificationKind kind,
+        string eventKey,
+        DateTime? notBeforeUtc = null,
+        DateTime? gracePeriodEndsUtc = null,
+        int? amountCents = null,
+        string? currency = null)
+    {
+        _notifications?.Queue(new ClientBillingNotificationRequest(
+            subscription.ClientProfileId,
+            subscription.Id,
+            kind,
+            eventKey,
+            notBeforeUtc,
+            gracePeriodEndsUtc,
+            amountCents,
+            currency));
+    }
+
+    private async Task<ClientPaymentMethod?> GetDefaultPaymentMethodAsync(
+        ClientSubscription subscription,
+        CancellationToken cancellationToken)
+    {
+        if (!subscription.DefaultPaymentMethodId.HasValue)
+            return null;
+
+        return await _db.ClientPaymentMethods
+            .FirstOrDefaultAsync(
+                paymentMethod =>
+                    paymentMethod.Id == subscription.DefaultPaymentMethodId.Value &&
+                    paymentMethod.ClientProfileId == subscription.ClientProfileId &&
+                    paymentMethod.Provider == subscription.Provider &&
+                    paymentMethod.ProviderEnvironment == subscription.ProviderEnvironment &&
+                    paymentMethod.RetiredUtc == null,
+                cancellationToken);
+    }
+
+    private Task<ClientPaymentMethod?> GetBackupPaymentMethodAsync(
+        ClientSubscription subscription,
+        Guid primaryPaymentMethodId,
+        CancellationToken cancellationToken)
+    {
+        return _db.ClientPaymentMethods
+            .Where(paymentMethod =>
+                paymentMethod.ClientProfileId == subscription.ClientProfileId &&
+                paymentMethod.Id != primaryPaymentMethodId &&
+                paymentMethod.Provider == subscription.Provider &&
+                paymentMethod.ProviderEnvironment == subscription.ProviderEnvironment &&
+                paymentMethod.RetiredUtc == null)
+            .OrderByDescending(paymentMethod => paymentMethod.CreatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    private async Task<string?> GetDefaultPaymentMethodIdAsync(
+        ClientSubscription subscription,
+        CancellationToken cancellationToken)
+    {
+        var paymentMethod = await GetDefaultPaymentMethodAsync(subscription, cancellationToken);
+        return paymentMethod?.ProviderPaymentMethodId;
     }
 
     private void AddAuditEntry(

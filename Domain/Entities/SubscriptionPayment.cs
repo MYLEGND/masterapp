@@ -9,6 +9,9 @@ public sealed class SubscriptionPayment
     public Guid? ClientSubscriptionId { get; set; }
     public ClientSubscription? ClientSubscription { get; set; }
 
+    public Guid? ClientPaymentMethodId { get; set; }
+    public ClientPaymentMethod? ClientPaymentMethod { get; set; }
+
     public Guid? CommerceOrderId { get; set; }
     public CommerceOrder? CommerceOrder { get; set; }
 

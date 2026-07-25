@@ -21,20 +21,33 @@ namespace AgentPortal.Tests;
 
 public sealed class BillingCentralizationTests
 {
+    [Theory]
+    [InlineData(ClientSubscriptionStatus.Canceled, ClientSubscriptionPaymentStanding.Failed, "Cancelled")]
+    [InlineData(ClientSubscriptionStatus.GracePeriod, ClientSubscriptionPaymentStanding.GracePeriod, "Grace Period")]
+    [InlineData(ClientSubscriptionStatus.Active, ClientSubscriptionPaymentStanding.Current, "Active")]
+    [InlineData(ClientSubscriptionStatus.Active, ClientSubscriptionPaymentStanding.Failed, "Payment Failed")]
+    public void ClientSubscriptionDisplay_PreservesTheAuthoritativeLifecycleState(
+        ClientSubscriptionStatus status,
+        ClientSubscriptionPaymentStanding paymentStanding,
+        string expected)
+    {
+        Assert.Equal(expected, ClientSubscriptionDisplay.FormatMembershipState(status, paymentStanding));
+    }
+
     [Fact]
-    public void ClientSubscriptionModel_MapsOnlySafePaymentMethodMetadata()
+    public void ClientPaymentMethodModel_MapsOnlySafePaymentMethodMetadata()
     {
         using var db = ControllerTestHelpers.BuildDb();
 
-        var entity = db.Model.FindEntityType(typeof(ClientSubscription));
+        var entity = db.Model.FindEntityType(typeof(ClientPaymentMethod));
 
         Assert.NotNull(entity);
-        Assert.Equal(40, entity!.FindProperty(nameof(ClientSubscription.PaymentMethodBrand))?.GetMaxLength());
-        Assert.Equal(4, entity.FindProperty(nameof(ClientSubscription.PaymentMethodLast4))?.GetMaxLength());
-        Assert.Equal(200, entity.FindProperty(nameof(ClientSubscription.PaymentMethodCardholderName))?.GetMaxLength());
-        Assert.NotNull(entity.FindProperty(nameof(ClientSubscription.PaymentMethodExpirationMonth)));
-        Assert.NotNull(entity.FindProperty(nameof(ClientSubscription.PaymentMethodExpirationYear)));
-        Assert.NotNull(entity.FindProperty(nameof(ClientSubscription.PaymentMethodUpdatedUtc)));
+        Assert.Equal(40, entity!.FindProperty(nameof(ClientPaymentMethod.CardBrand))?.GetMaxLength());
+        Assert.Equal(4, entity.FindProperty(nameof(ClientPaymentMethod.Last4))?.GetMaxLength());
+        Assert.Equal(200, entity.FindProperty(nameof(ClientPaymentMethod.CardholderName))?.GetMaxLength());
+        Assert.NotNull(entity.FindProperty(nameof(ClientPaymentMethod.ExpirationMonth)));
+        Assert.NotNull(entity.FindProperty(nameof(ClientPaymentMethod.ExpirationYear)));
+        Assert.NotNull(entity.FindProperty(nameof(ClientPaymentMethod.UpdatedUtc)));
 
         var persistedPropertyNames = entity
             .GetProperties()
@@ -46,6 +59,151 @@ public sealed class BillingCentralizationTests
         Assert.DoesNotContain("Cvv", persistedPropertyNames);
         Assert.DoesNotContain("CVC", persistedPropertyNames);
         Assert.DoesNotContain("RawSourceToken", persistedPropertyNames);
+
+        var subscriptionEntity = db.Model.FindEntityType(typeof(ClientSubscription));
+        Assert.NotNull(subscriptionEntity);
+        Assert.NotNull(subscriptionEntity!.FindProperty(nameof(ClientSubscription.DefaultPaymentMethodId)));
+        Assert.Null(subscriptionEntity.FindProperty("ProviderPaymentMethodId"));
+    }
+
+    [Fact]
+    public async Task ClientPaymentMethodService_AddsBackupAndChangesDefaultWithoutPersistingTheRawSource()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        var subscription = await AddSubscriptionAsync(
+            db,
+            profile.Id,
+            offer.Id,
+            ClientSubscriptionStatus.Active,
+            ClientSubscriptionPaymentStanding.Current,
+            "subscription_payment_methods");
+        var originalDefaultId = subscription.DefaultPaymentMethodId;
+        var gateway = BuildGateway();
+        gateway.Setup(x => x.AttachPaymentMethodAsync(It.IsAny<BillingPaymentMethodAttachmentRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingPaymentMethodAttachmentResult(
+                true,
+                "card_456",
+                "ATTACHED",
+                null,
+                "Payment method attached.",
+                "request_456",
+                false,
+                "cust_123",
+                "card_456",
+                "MASTERCARD",
+                "5454",
+                11,
+                2030,
+                "Client One"));
+
+        var service = new ClientPaymentMethodService(db, gateway.Object);
+        var added = await service.AddAsync(new AddClientPaymentMethodCommand(
+            profile.Id,
+            subscription.Id,
+            "cnon:secure-browser-token-not-for-storage",
+            "Client One",
+            new BillingPostalAddress("1 Main Street", null, "Phoenix", "AZ", "85001", "US"),
+            false,
+            "Travel card",
+            BillingActorType.Client,
+            profile.ClientUserId));
+
+        var addedMethod = Assert.IsType<ClientPaymentMethod>(added.PaymentMethod);
+        var persisted = await db.ClientPaymentMethods.SingleAsync(item => item.Id == addedMethod.Id);
+        var refreshedSubscription = await db.ClientSubscriptions.SingleAsync(item => item.Id == subscription.Id);
+
+        Assert.True(added.Success);
+        Assert.False(added.DefaultChanged);
+        Assert.Equal(originalDefaultId, refreshedSubscription.DefaultPaymentMethodId);
+        Assert.Equal("MASTERCARD", persisted.CardBrand);
+        Assert.Equal("5454", persisted.Last4);
+        Assert.Equal("Travel card", persisted.DisplayName);
+        Assert.DoesNotContain(
+            db.Entry(persisted).Properties.Select(property => property.CurrentValue?.ToString()),
+            value => string.Equals(value, "cnon:secure-browser-token-not-for-storage", StringComparison.Ordinal));
+
+        var defaultChanged = await service.SetDefaultAsync(new SetDefaultClientPaymentMethodCommand(
+            profile.Id,
+            subscription.Id,
+            persisted.Id,
+            BillingActorType.Client,
+            profile.ClientUserId));
+
+        refreshedSubscription = await db.ClientSubscriptions.SingleAsync(item => item.Id == subscription.Id);
+        Assert.True(defaultChanged.Success);
+        Assert.True(defaultChanged.DefaultChanged);
+        Assert.Equal(persisted.Id, refreshedSubscription.DefaultPaymentMethodId);
+        Assert.Contains(await db.BillingAuditEntries.ToListAsync(), entry => entry.Action == "payment_method_default_changed");
+    }
+
+    [Fact]
+    public async Task ClientPaymentMethodService_RequiresReplacementBeforeRemovingDefaultAndRetiresProviderCardAfterward()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        var subscription = await AddSubscriptionAsync(
+            db,
+            profile.Id,
+            offer.Id,
+            ClientSubscriptionStatus.Active,
+            ClientSubscriptionPaymentStanding.Current,
+            "subscription_remove_payment_method");
+        var defaultMethod = await db.ClientPaymentMethods.SingleAsync(item => item.Id == subscription.DefaultPaymentMethodId);
+        var gateway = BuildGateway();
+        var service = new ClientPaymentMethodService(db, gateway.Object);
+
+        var blocked = await service.RemoveAsync(new RemoveClientPaymentMethodCommand(
+            profile.Id,
+            subscription.Id,
+            defaultMethod.Id,
+            BillingActorType.Client,
+            profile.ClientUserId));
+
+        Assert.False(blocked.Success);
+        Assert.Equal("DEFAULT_PAYMENT_METHOD_REQUIRED", blocked.SafeErrorCode);
+        gateway.Verify(x => x.DisablePaymentMethodAsync(It.IsAny<BillingPaymentMethodDisableRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        var backup = new ClientPaymentMethod
+        {
+            ClientProfileId = profile.Id,
+            Provider = BillingProvider.Square,
+            ProviderEnvironment = BillingProviderEnvironment.Sandbox,
+            ProviderPaymentMethodId = "card_backup",
+            CardBrand = "VISA",
+            Last4 = "1111",
+            CreatedUtc = DateTime.UtcNow.AddMinutes(1),
+            UpdatedUtc = DateTime.UtcNow.AddMinutes(1)
+        };
+        db.ClientPaymentMethods.Add(backup);
+        await db.SaveChangesAsync();
+        gateway.Setup(x => x.DisablePaymentMethodAsync(
+                It.Is<BillingPaymentMethodDisableRequest>(request => request.ProviderPaymentMethodId == defaultMethod.ProviderPaymentMethodId),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingPaymentMethodDisableResult(true, defaultMethod.ProviderPaymentMethodId, "DISABLED", null, "Payment method disabled.", "request_disabled", false));
+
+        var removed = await service.RemoveAsync(new RemoveClientPaymentMethodCommand(
+            profile.Id,
+            subscription.Id,
+            defaultMethod.Id,
+            BillingActorType.Client,
+            profile.ClientUserId));
+
+        var refreshedDefault = await db.ClientSubscriptions.SingleAsync(item => item.Id == subscription.Id);
+        var retired = await db.ClientPaymentMethods.SingleAsync(item => item.Id == defaultMethod.Id);
+        var listed = await service.ListAsync(profile.Id);
+
+        Assert.True(removed.Success);
+        Assert.True(removed.DefaultChanged);
+        Assert.Equal(backup.Id, refreshedDefault.DefaultPaymentMethodId);
+        Assert.NotNull(retired.RetiredUtc);
+        Assert.DoesNotContain(listed, item => item.Id == defaultMethod.Id);
+        Assert.Contains(listed, item => item.Id == backup.Id);
+        gateway.Verify(x => x.DisablePaymentMethodAsync(
+            It.Is<BillingPaymentMethodDisableRequest>(request => request.ProviderPaymentMethodId == defaultMethod.ProviderPaymentMethodId),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Theory]
@@ -252,7 +410,7 @@ public sealed class BillingCentralizationTests
         Assert.Equal(ClientSubscriptionStatus.Active, subscription.Status);
         Assert.Equal(ClientSubscriptionPaymentStanding.Current, subscription.PaymentStanding);
         Assert.Null(subscription.ProviderCustomerId);
-        Assert.Null(subscription.ProviderPaymentMethodId);
+        Assert.Null(subscription.DefaultPaymentMethodId);
         Assert.Null(subscription.ProviderSubscriptionId);
         Assert.Equal(ClientSubscriptionOfferStatus.Accepted, offer.Status);
         Assert.Equal(SubscriptionActivationInvitationStatus.Redeemed, persistedInvitation.Status);
@@ -328,6 +486,7 @@ public sealed class BillingCentralizationTests
         var activated = await orchestrator.ActivateClientSubscriptionAsync(command);
         var duplicate = await orchestrator.ActivateClientSubscriptionAsync(command);
         var subscription = await db.ClientSubscriptions.SingleAsync();
+        var paymentMethod = await db.ClientPaymentMethods.SingleAsync();
         var payment = await db.SubscriptionPayments.SingleAsync();
         var entitlement = await db.ClientEntitlements.SingleAsync(x => x.ClientProfileId == profile.Id);
 
@@ -341,14 +500,16 @@ public sealed class BillingCentralizationTests
         Assert.Equal(12_345, subscription.MonthlyAmountCents);
         Assert.Equal(ClientSubscriptionStatus.Active, subscription.Status);
         Assert.Equal("cust_123", subscription.ProviderCustomerId);
-        Assert.Equal("card_123", subscription.ProviderPaymentMethodId);
-        Assert.Equal("VISA", subscription.PaymentMethodBrand);
-        Assert.Equal("4242", subscription.PaymentMethodLast4);
-        Assert.Equal(12, subscription.PaymentMethodExpirationMonth);
-        Assert.Equal(2031, subscription.PaymentMethodExpirationYear);
-        Assert.Equal("Client One", subscription.PaymentMethodCardholderName);
-        Assert.NotNull(subscription.PaymentMethodUpdatedUtc);
+        Assert.Equal(paymentMethod.Id, subscription.DefaultPaymentMethodId);
+        Assert.Equal("card_123", paymentMethod.ProviderPaymentMethodId);
+        Assert.Equal("VISA", paymentMethod.CardBrand);
+        Assert.Equal("4242", paymentMethod.Last4);
+        Assert.Equal(12, paymentMethod.ExpirationMonth);
+        Assert.Equal(2031, paymentMethod.ExpirationYear);
+        Assert.Equal("Client One", paymentMethod.CardholderName);
+        Assert.True(paymentMethod.UpdatedUtc >= paymentMethod.CreatedUtc);
         Assert.Equal(SubscriptionPaymentKind.InitialActivation, payment.Kind);
+        Assert.Equal(paymentMethod.Id, payment.ClientPaymentMethodId);
         Assert.Equal(12_345, payment.AmountCents);
         Assert.False(string.IsNullOrWhiteSpace(payment.IdempotencyKey));
         Assert.Equal(ClientEntitlementStatus.Active, entitlement.Status);
@@ -416,6 +577,80 @@ public sealed class BillingCentralizationTests
                     request.ExistingProviderCustomerId == "cust_123"),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task PlatformManagedRenewal_SixMonthlyCyclesRecordOneCompletedPaymentAndAdvanceTheScheduleEachMonth()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        var subscription = await AddSubscriptionAsync(
+            db,
+            profile.Id,
+            offer.Id,
+            ClientSubscriptionStatus.Active,
+            ClientSubscriptionPaymentStanding.Current,
+            "platform-managed-six-month-simulation");
+        var firstDueUtc = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddMonths(-5), DateTimeKind.Utc);
+        subscription.BillingTimeZoneId = "UTC";
+        subscription.BillingAnchorDay = null;
+        subscription.CurrentPeriodStartUtc = firstDueUtc.AddMonths(-1);
+        subscription.CurrentPeriodEndUtc = firstDueUtc;
+        subscription.NextBillingDateUtc = firstDueUtc;
+        subscription.NextChargeAttemptUtc = firstDueUtc;
+        await db.SaveChangesAsync();
+
+        var gateway = BuildGateway();
+        var paymentResults = Enumerable.Range(1, 6)
+            .Select(month => new BillingOneTimePaymentResult(
+                true,
+                $"payment_month_{month}",
+                "COMPLETED",
+                null,
+                "Payment completed.",
+                $"request_month_{month}",
+                false))
+            .ToList();
+        gateway.SetupSequence(item => item.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(paymentResults[0])
+            .ReturnsAsync(paymentResults[1])
+            .ReturnsAsync(paymentResults[2])
+            .ReturnsAsync(paymentResults[3])
+            .ReturnsAsync(paymentResults[4])
+            .ReturnsAsync(paymentResults[5]);
+        var orchestrator = new MasterAppBillingOrchestrator(
+            db,
+            gateway.Object,
+            BuildEntitlementService(db),
+            new ClientSubscriptionActivationPolicyService(new ClientSubscriptionActivationPolicyOptions { BusinessTimeZoneId = "UTC" }));
+
+        for (var month = 1; month <= 6; month++)
+        {
+            var result = await orchestrator.ProcessDueClientSubscriptionRenewalsAsync(10, $"worker-month-{month}");
+            Assert.Equal(1, result.DueSubscriptions);
+            Assert.Equal(1, result.ChargesAttempted);
+            Assert.Equal(1, result.ChargesSucceeded);
+            Assert.Equal(0, result.ChargesFailed);
+        }
+
+        var payments = await db.SubscriptionPayments
+            .Where(payment => payment.ClientSubscriptionId == subscription.Id)
+            .OrderBy(payment => payment.BillingPeriodStartUtc)
+            .ToListAsync();
+        var renewed = await db.ClientSubscriptions.SingleAsync(item => item.Id == subscription.Id);
+        var entitlement = await db.ClientEntitlements.SingleAsync(item => item.ClientProfileId == profile.Id);
+
+        Assert.Equal(6, payments.Count);
+        Assert.All(payments, payment => Assert.Equal(SubscriptionPaymentStatus.Completed, payment.Status));
+        Assert.Equal(paymentResults.Select(result => result.ExternalId), payments.Select(payment => payment.ProviderPaymentId));
+        Assert.Equal(ClientSubscriptionStatus.Active, renewed.Status);
+        Assert.Equal(ClientSubscriptionPaymentStanding.Current, renewed.PaymentStanding);
+        Assert.True(renewed.NextBillingDateUtc > DateTime.UtcNow);
+        Assert.Equal(ClientEntitlementStatus.Active, entitlement.Status);
+        gateway.Verify(
+            item => item.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(6));
     }
 
     [Fact]
@@ -544,6 +779,306 @@ public sealed class BillingCentralizationTests
         Assert.NotEqual(attempts[0].IdempotencyKey, attempts[1].IdempotencyKey);
         Assert.Equal(ClientSubscriptionStatus.Active, recovered.Status);
         gateway.Verify(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task ClientRequestedRenewalRetry_UsesTheExistingRenewalAuthorityAndRestoresGracePeriodAccess()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        var subscription = await AddSubscriptionAsync(
+            db,
+            profile.Id,
+            offer.Id,
+            status: ClientSubscriptionStatus.Active,
+            paymentStanding: ClientSubscriptionPaymentStanding.Current,
+            providerSubscriptionId: "platform-managed-manual-retry");
+        var dueUtc = DateTime.UtcNow.AddMinutes(-1);
+        subscription.BillingTimeZoneId = "UTC";
+        subscription.BillingAnchorDay = null;
+        subscription.CurrentPeriodEndUtc = dueUtc;
+        subscription.NextBillingDateUtc = dueUtc;
+        subscription.NextChargeAttemptUtc = dueUtc;
+        await db.SaveChangesAsync();
+
+        var gateway = BuildGateway();
+        gateway.SetupSequence(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingOneTimePaymentResult(false, null, "FAILED", "CARD_DECLINED", "The saved card could not be charged.", "request_initial_failure", false))
+            .ReturnsAsync(new BillingOneTimePaymentResult(true, "payment_recovered", "COMPLETED", null, "Payment completed.", "request_recovered", false));
+        var notifications = new ClientBillingNotificationService(db);
+        var orchestrator = new MasterAppBillingOrchestrator(
+            db,
+            gateway.Object,
+            BuildEntitlementService(db),
+            new ClientSubscriptionActivationPolicyService(new ClientSubscriptionActivationPolicyOptions
+            {
+                BusinessTimeZoneId = "UTC",
+                GracePeriodDays = 30,
+                GracePeriodReminderDaysBeforeEnd = 15,
+                GracePeriodFinalReminderDaysBeforeEnd = 3
+            }),
+            notifications);
+
+        var initialRun = await orchestrator.ProcessDueClientSubscriptionRenewalsAsync(10, "worker-initial");
+        var replacement = new ClientPaymentMethod
+        {
+            ClientProfileId = profile.Id,
+            Provider = BillingProvider.Square,
+            ProviderEnvironment = BillingProviderEnvironment.Sandbox,
+            ProviderPaymentMethodId = "card_replacement_456",
+            CardBrand = "VISA",
+            Last4 = "1111",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        db.ClientPaymentMethods.Add(replacement);
+        subscription.DefaultPaymentMethodId = replacement.Id;
+        await db.SaveChangesAsync();
+
+        var retry = await orchestrator.RetryClientSubscriptionRenewalAsync(
+            new ManualClientSubscriptionRenewalRetryCommand(
+                subscription.Id,
+                BillingActorType.Client,
+                profile.ClientUserId,
+                "client-retry-test"));
+        var renewed = await db.ClientSubscriptions.SingleAsync(item => item.Id == subscription.Id);
+        var attempts = await db.SubscriptionPayments
+            .Where(payment => payment.ClientSubscriptionId == subscription.Id)
+            .OrderBy(payment => payment.AttemptNumber)
+            .ToListAsync();
+        var entitlement = await db.ClientEntitlements.SingleAsync(item => item.ClientProfileId == profile.Id);
+        var queuedKinds = await db.ClientBillingNotifications
+            .Where(notification => notification.ClientSubscriptionId == subscription.Id)
+            .Select(notification => notification.Kind)
+            .ToListAsync();
+
+        Assert.Equal(1, initialRun.ChargesFailed);
+        Assert.True(retry.Success);
+        Assert.Equal(1, retry.RunResult.ChargesAttempted);
+        Assert.Equal(1, retry.RunResult.ChargesSucceeded);
+        Assert.Equal(ClientSubscriptionStatus.Active, renewed.Status);
+        Assert.Equal(ClientSubscriptionPaymentStanding.Current, renewed.PaymentStanding);
+        Assert.Equal(ClientEntitlementStatus.Active, entitlement.Status);
+        Assert.Equal(2, attempts.Count);
+        Assert.Equal("card_123", gateway.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(IBillingGateway.CreateOneTimePaymentAsync))
+            .Select(invocation => ((BillingOneTimePaymentRequest)invocation.Arguments[0]).SourceId)
+            .First());
+        Assert.Contains("card_replacement_456", gateway.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(IBillingGateway.CreateOneTimePaymentAsync))
+            .Select(invocation => ((BillingOneTimePaymentRequest)invocation.Arguments[0]).SourceId));
+        Assert.Contains(ClientBillingNotificationKind.PaymentFailed, queuedKinds);
+        Assert.Contains(ClientBillingNotificationKind.GracePeriodStarted, queuedKinds);
+        Assert.Contains(ClientBillingNotificationKind.MembershipReactivated, queuedKinds);
+        Assert.Contains(ClientBillingNotificationKind.UpcomingRenewal, queuedKinds);
+    }
+
+    [Fact]
+    public async Task ClientPaymentMethodService_RejectsAgentManagedPaymentMethodChanges()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        var subscription = await AddSubscriptionAsync(
+            db,
+            profile.Id,
+            offer.Id,
+            ClientSubscriptionStatus.Active,
+            ClientSubscriptionPaymentStanding.Current,
+            "subscription-agent-payment-method-denied");
+        var defaultPaymentMethod = await db.ClientPaymentMethods.SingleAsync(item => item.Id == subscription.DefaultPaymentMethodId);
+        var service = new ClientPaymentMethodService(db, BuildGateway().Object);
+
+        var result = await service.RenameAsync(new RenameClientPaymentMethodCommand(
+            profile.Id,
+            defaultPaymentMethod.Id,
+            "Agent-selected label",
+            BillingActorType.Agent,
+            "agent-1"));
+
+        Assert.False(result.Success);
+        Assert.Equal("PAYMENT_METHOD_CLIENT_SELF_SERVICE_REQUIRED", result.SafeErrorCode);
+        Assert.Null((await db.ClientPaymentMethods.SingleAsync(item => item.Id == defaultPaymentMethod.Id)).DisplayName);
+    }
+
+    [Fact]
+    public async Task PlatformManagedRenewal_UsesBackupPaymentMethodOnlyAfterTerminalPrimaryFailure()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        var subscription = await AddSubscriptionAsync(
+            db,
+            profile.Id,
+            offer.Id,
+            status: ClientSubscriptionStatus.Active,
+            paymentStanding: ClientSubscriptionPaymentStanding.Current,
+            providerSubscriptionId: "platform-managed-backup-payment");
+        var primaryMethodId = subscription.DefaultPaymentMethodId;
+        var backupMethod = new ClientPaymentMethod
+        {
+            ClientProfileId = profile.Id,
+            Provider = BillingProvider.Square,
+            ProviderEnvironment = BillingProviderEnvironment.Sandbox,
+            ProviderPaymentMethodId = "card_backup_456",
+            CardBrand = "VISA",
+            Last4 = "1111",
+            CreatedUtc = DateTime.UtcNow.AddMinutes(1),
+            UpdatedUtc = DateTime.UtcNow.AddMinutes(1)
+        };
+        db.ClientPaymentMethods.Add(backupMethod);
+        var dueUtc = DateTime.UtcNow.AddMinutes(-1);
+        subscription.BillingTimeZoneId = "UTC";
+        subscription.BillingAnchorDay = null;
+        subscription.CurrentPeriodEndUtc = dueUtc;
+        subscription.NextBillingDateUtc = dueUtc;
+        subscription.NextChargeAttemptUtc = dueUtc;
+        await db.SaveChangesAsync();
+
+        var gateway = BuildGateway();
+        gateway.SetupSequence(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingOneTimePaymentResult(false, null, "FAILED", "CARD_DECLINED", "Primary card declined.", "request_primary_failed", false))
+            .ReturnsAsync(new BillingOneTimePaymentResult(true, "payment_backup_completed", "COMPLETED", null, "Backup payment completed.", "request_backup_completed", false));
+        var orchestrator = new MasterAppBillingOrchestrator(
+            db,
+            gateway.Object,
+            BuildEntitlementService(db),
+            new ClientSubscriptionActivationPolicyService(new ClientSubscriptionActivationPolicyOptions { BusinessTimeZoneId = "UTC" }));
+
+        var run = await orchestrator.ProcessDueClientSubscriptionRenewalsAsync(10, "worker-backup");
+        var attempts = await db.SubscriptionPayments
+            .Where(payment => payment.ClientSubscriptionId == subscription.Id)
+            .OrderBy(payment => payment.AttemptNumber)
+            .ToListAsync();
+        var renewed = await db.ClientSubscriptions.SingleAsync(item => item.Id == subscription.Id);
+
+        Assert.Equal(2, run.ChargesAttempted);
+        Assert.Equal(1, run.ChargesSucceeded);
+        Assert.Equal(1, run.ChargesFailed);
+        Assert.Equal(2, attempts.Count);
+        Assert.Equal(SubscriptionPaymentStatus.Failed, attempts[0].Status);
+        Assert.Equal(primaryMethodId, attempts[0].ClientPaymentMethodId);
+        Assert.Equal(SubscriptionPaymentStatus.Completed, attempts[1].Status);
+        Assert.Equal(backupMethod.Id, attempts[1].ClientPaymentMethodId);
+        Assert.Equal(ClientSubscriptionStatus.Active, renewed.Status);
+        Assert.Equal(primaryMethodId, renewed.DefaultPaymentMethodId);
+        Assert.Contains(await db.BillingAuditEntries.ToListAsync(), entry => entry.Action == "renewal_backup_payment_completed");
+        Assert.Contains(await db.BillingAuditEntries.ToListAsync(), entry => entry.Action == "renewal_recovered_with_backup_payment");
+        gateway.Verify(
+            x => x.CreateOneTimePaymentAsync(
+                It.Is<BillingOneTimePaymentRequest>(request => request.SourceId == "card_123"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        gateway.Verify(
+            x => x.CreateOneTimePaymentAsync(
+                It.Is<BillingOneTimePaymentRequest>(request => request.SourceId == "card_backup_456"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task PlatformManagedRenewal_DoesNotTryBackupAfterAnUncertainPrimaryFailure()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        var subscription = await AddSubscriptionAsync(
+            db,
+            profile.Id,
+            offer.Id,
+            status: ClientSubscriptionStatus.Active,
+            paymentStanding: ClientSubscriptionPaymentStanding.Current,
+            providerSubscriptionId: "platform-managed-uncertain-primary");
+        db.ClientPaymentMethods.Add(new ClientPaymentMethod
+        {
+            ClientProfileId = profile.Id,
+            Provider = BillingProvider.Square,
+            ProviderEnvironment = BillingProviderEnvironment.Sandbox,
+            ProviderPaymentMethodId = "card_backup_456",
+            CardBrand = "VISA",
+            Last4 = "1111"
+        });
+        var dueUtc = DateTime.UtcNow.AddMinutes(-1);
+        subscription.BillingTimeZoneId = "UTC";
+        subscription.BillingAnchorDay = null;
+        subscription.CurrentPeriodEndUtc = dueUtc;
+        subscription.NextBillingDateUtc = dueUtc;
+        subscription.NextChargeAttemptUtc = dueUtc;
+        await db.SaveChangesAsync();
+
+        var gateway = BuildGateway();
+        gateway.Setup(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingOneTimePaymentResult(false, null, "FAILED", "PROCESSOR_TIMEOUT", "The provider response is uncertain.", "request_uncertain", true));
+        var orchestrator = new MasterAppBillingOrchestrator(
+            db,
+            gateway.Object,
+            BuildEntitlementService(db),
+            new ClientSubscriptionActivationPolicyService(new ClientSubscriptionActivationPolicyOptions
+            {
+                BusinessTimeZoneId = "UTC",
+                RenewalRetryDelayMinutes = [60]
+            }));
+
+        var run = await orchestrator.ProcessDueClientSubscriptionRenewalsAsync(10, "worker-uncertain");
+        var attempt = await db.SubscriptionPayments.SingleAsync(payment => payment.ClientSubscriptionId == subscription.Id);
+
+        Assert.Equal(1, run.ChargesAttempted);
+        Assert.Equal(1, run.ChargesFailed);
+        Assert.Equal(SubscriptionPaymentStatus.Failed, attempt.Status);
+        Assert.True(attempt.Retryable);
+        gateway.Verify(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task PlatformManagedRenewal_GracePeriodExpiryCancelsMembershipAndRevokesEntitlement()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        var subscription = await AddSubscriptionAsync(
+            db,
+            profile.Id,
+            offer.Id,
+            status: ClientSubscriptionStatus.GracePeriod,
+            paymentStanding: ClientSubscriptionPaymentStanding.GracePeriod,
+            providerSubscriptionId: "historical-reference-only");
+        var graceEndedUtc = DateTime.UtcNow.AddMinutes(-1);
+        subscription.BillingTimeZoneId = "UTC";
+        subscription.CurrentPeriodEndUtc = DateTime.UtcNow.AddDays(-30);
+        subscription.NextBillingDateUtc = DateTime.UtcNow.AddDays(-30);
+        subscription.NextChargeAttemptUtc = null;
+        subscription.GracePeriodEndsUtc = graceEndedUtc;
+        await db.SaveChangesAsync();
+
+        var gateway = BuildGateway();
+        var orchestrator = new MasterAppBillingOrchestrator(
+            db,
+            gateway.Object,
+            BuildEntitlementService(db),
+            new ClientSubscriptionActivationPolicyService(new ClientSubscriptionActivationPolicyOptions
+            {
+                BusinessTimeZoneId = "UTC",
+                GracePeriodDays = 30
+            }));
+
+        var result = await orchestrator.ProcessDueClientSubscriptionRenewalsAsync(10, "worker-a");
+        var cancelled = await db.ClientSubscriptions.SingleAsync(x => x.Id == subscription.Id);
+        var entitlement = await db.ClientEntitlements.SingleAsync(x => x.ClientProfileId == profile.Id);
+
+        Assert.Equal(1, result.EndedAtPeriodBoundary);
+        Assert.Equal(ClientSubscriptionStatus.Canceled, cancelled.Status);
+        Assert.Equal(ClientSubscriptionPaymentStanding.Failed, cancelled.PaymentStanding);
+        Assert.Equal(graceEndedUtc, cancelled.CancelledUtc);
+        Assert.Equal(graceEndedUtc, cancelled.EndedUtc);
+        Assert.Null(cancelled.GracePeriodEndsUtc);
+        Assert.Null(cancelled.NextBillingDateUtc);
+        Assert.Null(cancelled.NextChargeAttemptUtc);
+        Assert.Equal(ClientEntitlementStatus.NotGranted, entitlement.Status);
+        Assert.Equal("GRACE_PERIOD_EXPIRED_CANCELLED", entitlement.ReasonCode);
+        gateway.Verify(
+            x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -1677,7 +2212,6 @@ public sealed class BillingCentralizationTests
             Provider = BillingProvider.Square,
             ProviderEnvironment = BillingProviderEnvironment.Sandbox,
             ProviderCustomerId = "cust_123",
-            ProviderPaymentMethodId = "card_123",
             ProviderSubscriptionId = providerSubscriptionId,
             ProviderPlanVariationId = "plan_123",
             MonthlyAmountCents = ClientSubscriptionOfferPricing.Fixed100Cents,
@@ -1699,6 +2233,17 @@ public sealed class BillingCentralizationTests
             UpdatedUtc = DateTime.UtcNow
         };
 
+        var paymentMethod = new ClientPaymentMethod
+        {
+            ClientProfileId = clientProfileId,
+            Provider = BillingProvider.Square,
+            ProviderEnvironment = BillingProviderEnvironment.Sandbox,
+            ProviderPaymentMethodId = "card_123",
+            CardBrand = "VISA",
+            Last4 = "4242"
+        };
+        subscription.DefaultPaymentMethodId = paymentMethod.Id;
+        db.ClientPaymentMethods.Add(paymentMethod);
         db.ClientSubscriptions.Add(subscription);
         await db.SaveChangesAsync();
         return subscription;

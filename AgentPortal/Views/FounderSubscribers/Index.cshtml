@@ -153,7 +153,7 @@
                     <span>Status</span>
                     <select name="Status">
                         <option value="">All statuses</option>
-                        @foreach (var status in new[] { "Active", "Past Due", "Paused", "Cancelled", "Pending Activation", "Invitation Sent", "Payment Failed", "Expired" })
+                        @foreach (var status in new[] { "Active", "Past Due", "Grace Period", "Paused", "Cancelled", "Pending Activation", "Invitation Sent", "Payment Failed", "Expired" })
                         {
                             <option value="@status" selected="@(string.Equals(Model.Query.Status, status, StringComparison.OrdinalIgnoreCase))">@status</option>
                         }

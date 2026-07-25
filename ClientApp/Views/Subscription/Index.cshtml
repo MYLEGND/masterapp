@@ -4,6 +4,9 @@
     Layout = "~/Views/Shared/_Layout.cshtml";
 
     var notice = ViewData["SubscriptionNotice"] as string;
+    var squareScriptUrl = string.Equals(Model.SquareEnvironment, "Production", StringComparison.OrdinalIgnoreCase)
+        ? "https://web.squarecdn.com/v1/square.js"
+        : "https://sandbox.web.squarecdn.com/v1/square.js";
 }
 
 <div class="dashboard-page-shell membership-billing-page">
@@ -57,6 +60,16 @@
 
                 <dl class="membership-billing-details">
                     <div>
+                        <dt>Current Plan</dt>
+                        <dd>@Model.CurrentPlanDisplay</dd>
+                    </div>
+
+                    <div>
+                        <dt>Billing Frequency</dt>
+                        <dd>@Model.BillingFrequencyDisplay</dd>
+                    </div>
+
+                    <div>
                         <dt>Monthly Amount</dt>
                         <dd>@Model.MonthlyAmountDisplay</dd>
                     </div>
@@ -72,8 +85,23 @@
                     </div>
 
                     <div>
-                        <dt>Next Billing Date</dt>
+                        <dt>Member Since</dt>
+                        <dd>@Model.MemberSinceDisplay</dd>
+                    </div>
+
+                    <div>
+                        <dt>Upcoming Renewal</dt>
                         <dd>@Model.NextBillingDateDisplay</dd>
+                    </div>
+
+                    <div>
+                        <dt>Last Successful Payment</dt>
+                        <dd>@Model.LastSuccessfulPaymentDisplay</dd>
+                    </div>
+
+                    <div>
+                        <dt>Grace Period Ends</dt>
+                        <dd>@Model.GracePeriodEndDisplay</dd>
                     </div>
 
                     <div class="membership-billing-details-wide">
@@ -92,27 +120,57 @@
                     </div>
                 </div>
 
-                @if (Model.HasPaymentMethod)
+                @if (Model.PaymentMethods.Count > 0)
                 {
-                    <div class="membership-payment-method">
-                        <div class="membership-payment-card-icon" aria-hidden="true">
-                            ••••
-                        </div>
+                    <div class="membership-payment-method-list">
+                        @foreach (var method in Model.PaymentMethods)
+                        {
+                            <article class="membership-payment-method">
+                                <div class="membership-payment-card-icon" aria-hidden="true">••••</div>
 
-                        <div class="membership-payment-primary">
-                            <strong>@Model.PaymentMethodDisplay</strong>
-                            <span>Expires @Model.PaymentMethodExpirationDisplay</span>
-                        </div>
+                                <div class="membership-payment-primary">
+                                    <strong>@method.DisplayName</strong>
+                                    <span>@method.CardDisplay · Expires @method.ExpirationDisplay</span>
+                                </div>
 
-                        <div class="membership-payment-meta">
-                            <span>Cardholder</span>
-                            <strong>@Model.PaymentMethodCardholderName</strong>
-                        </div>
+                                <div class="membership-payment-meta">
+                                    <span>Billing address</span>
+                                    <strong>@method.BillingAddressDisplay</strong>
+                                </div>
 
-                        <div class="membership-payment-meta">
-                            <span>Last Updated</span>
-                            <strong>@Model.PaymentMethodUpdatedDisplay</strong>
-                        </div>
+                                <div class="membership-payment-actions">
+                                    @if (method.IsDefault)
+                                    {
+                                        <span class="membership-billing-payment-status">Default</span>
+                                    }
+                                    else if (Model.CanManagePaymentMethods)
+                                    {
+                                        <form action="/subscription/payment-methods/@method.Id/default" method="post">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+                                            <button type="submit" class="membership-billing-text-button">Set default</button>
+                                        </form>
+                                    }
+
+                                    @if (Model.CanManagePaymentMethods)
+                                    {
+                                        <form action="/subscription/payment-methods/@method.Id/rename" method="post" class="membership-payment-rename-form">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+                                            <label class="visually-hidden" for="paymentMethodName-@method.Id">Payment method label</label>
+                                            <input id="paymentMethodName-@method.Id" name="displayName" value="@method.DisplayName" maxlength="80" />
+                                            <button type="submit" class="membership-billing-text-button">Rename</button>
+                                        </form>
+
+                                        <form action="/subscription/payment-methods/@method.Id/remove" method="post" onsubmit="return confirm('Remove this payment method?');">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+                                            <button type="submit" class="membership-billing-text-button is-danger">Remove</button>
+                                        </form>
+                                    }
+                                </div>
+                            </article>
+                        }
                     </div>
                 }
                 else
@@ -121,6 +179,87 @@
                         <strong>No payment method available</strong>
                         <span>No saved payment-method metadata is currently on file.</span>
                     </div>
+                }
+
+                @if (Model.CanManagePaymentMethods)
+                {
+                    <section class="membership-payment-add" aria-labelledby="add-payment-method-heading">
+                        <div>
+                            <span class="membership-billing-kicker">Secure update</span>
+                            <h3 id="add-payment-method-heading">Add or replace a payment method</h3>
+                            <p>New card details are secured directly with the payment provider. Your full card number is never stored here.</p>
+                        </div>
+
+                        @if (!Model.BrowserPaymentReady)
+                        {
+                            <div class="membership-billing-empty"><span>@Model.BrowserPaymentSetupMessage</span></div>
+                        }
+                        else
+                        {
+                            <form action="/subscription/payment-methods"
+                                  method="post"
+                                  data-square-payment-form
+                                  data-square-app-id="@Model.SquareApplicationId"
+                                  data-square-location-id="@Model.SquareLocationId"
+                                  novalidate>
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+                                <input type="hidden" name="SourceId" data-square-source />
+
+                                <div class="membership-payment-form-grid">
+                                    <label>
+                                        Card label
+                                        <input name="DisplayName" maxlength="80" placeholder="e.g., Personal card" />
+                                    </label>
+                                    <label>
+                                        Name on card
+                                        <input name="CardholderName" autocomplete="cc-name" required />
+                                    </label>
+                                    <label class="is-wide">
+                                        Street address
+                                        <input name="BillingAddressLine1" autocomplete="address-line1" required />
+                                    </label>
+                                    <label>
+                                        Apartment or suite
+                                        <input name="BillingAddressLine2" autocomplete="address-line2" />
+                                    </label>
+                                    <label>
+                                        ZIP code
+                                        <input name="BillingPostalCode" autocomplete="postal-code" required />
+                                    </label>
+                                    <label>
+                                        City
+                                        <input name="BillingCity" autocomplete="address-level2" required />
+                                    </label>
+                                    <label>
+                                        State
+                                        <input name="BillingState" autocomplete="address-level1" required />
+                                    </label>
+                                    <label>
+                                        Country
+                                        <select name="BillingCountryCode" autocomplete="country-name" required>
+                                            <option value="US" selected>United States</option>
+                                        </select>
+                                    </label>
+                                    <label class="is-wide">
+                                        Card details
+                                        <span id="subscription-square-card" class="membership-square-card" data-square-card></span>
+                                    </label>
+                                </div>
+
+                                <label class="membership-payment-default-choice">
+                                    <input type="checkbox" name="MakeDefault" value="true" />
+                                    Make this my default payment method
+                                </label>
+                                <div class="membership-payment-form-actions">
+                                    <div class="membership-billing-notice" role="alert" data-square-message hidden></div>
+                                    <button type="submit" class="membership-billing-button membership-billing-button-primary" data-square-submit>
+                                        Save payment method
+                                    </button>
+                                </div>
+                            </form>
+                        }
+                    </section>
                 }
             </section>
 
@@ -220,8 +359,27 @@
                             </button>
                         </form>
                     }
+
+                    @if (Model.CanRetryPayment)
+                    {
+                        <form action="/subscription/retry-payment" method="post">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+                            <button type="submit" class="membership-billing-button membership-billing-button-primary">
+                                Try Payment Again
+                            </button>
+                        </form>
+                    }
                 </div>
             </section>
         </aside>
     </div>
 </div>
+
+@section Scripts {
+    @if (Model.CanManagePaymentMethods && Model.BrowserPaymentReady)
+    {
+        <script src="@squareScriptUrl"></script>
+        <script src="~/js/subscription-activation.js" asp-append-version="true"></script>
+    }
+}

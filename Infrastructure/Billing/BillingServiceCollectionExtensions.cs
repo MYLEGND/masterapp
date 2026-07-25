@@ -22,6 +22,8 @@ public static class BillingServiceCollectionExtensions
         services.AddScoped<IBillingGateway, SquareBillingGateway>();
         services.AddScoped<IBillingOrchestrator, MasterAppBillingOrchestrator>();
         services.AddScoped<IBillingEntitlementService, BillingEntitlementService>();
+        services.AddScoped<IClientPaymentMethodService, ClientPaymentMethodService>();
+        services.AddScoped<IClientBillingNotificationService, ClientBillingNotificationService>();
         services.AddScoped<IClientSubscriptionActivationPolicyService, ClientSubscriptionActivationPolicyService>();
         services.AddScoped<IBillingProviderEventProcessor, BillingProviderEventProcessor>();
         services.AddScoped<IBillingReconciliationService, BillingReconciliationService>();

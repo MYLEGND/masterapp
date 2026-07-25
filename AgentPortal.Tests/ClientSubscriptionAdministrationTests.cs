@@ -421,7 +421,6 @@ public sealed class ClientSubscriptionAdministrationTests
             Provider = BillingProvider.Square,
             ProviderEnvironment = BillingProviderEnvironment.Sandbox,
             ProviderCustomerId = "cust_123",
-            ProviderPaymentMethodId = "card_123",
             ProviderSubscriptionId = "sub_123",
             ProviderPlanVariationId = "plan_123",
             MonthlyAmountCents = ClientSubscriptionOfferPricing.Fixed100Cents,
@@ -441,6 +440,17 @@ public sealed class ClientSubscriptionAdministrationTests
             UpdatedUtc = DateTime.UtcNow
         };
 
+        var paymentMethod = new ClientPaymentMethod
+        {
+            ClientProfileId = clientProfileId,
+            Provider = BillingProvider.Square,
+            ProviderEnvironment = BillingProviderEnvironment.Sandbox,
+            ProviderPaymentMethodId = "card_123",
+            CardBrand = "VISA",
+            Last4 = "4242"
+        };
+        subscription.DefaultPaymentMethodId = paymentMethod.Id;
+        db.ClientPaymentMethods.Add(paymentMethod);
         db.ClientSubscriptions.Add(subscription);
         await db.SaveChangesAsync();
         return subscription;

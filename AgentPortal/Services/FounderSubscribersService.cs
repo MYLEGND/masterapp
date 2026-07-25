@@ -656,21 +656,8 @@ public sealed class FounderSubscribersService
         return totals.Select(pair => new CurrencyTotal(pair.Key, pair.Value)).ToList();
     }
 
-    private static string MapSubscriptionStatus(ClientSubscriptionStatus status, ClientSubscriptionPaymentStanding paymentStanding)
-    {
-        if (paymentStanding == ClientSubscriptionPaymentStanding.Failed || status is ClientSubscriptionStatus.ActivationFailed or ClientSubscriptionStatus.Suspended)
-            return "Payment Failed";
-
-        return status switch
-        {
-            ClientSubscriptionStatus.Active => "Active",
-            ClientSubscriptionStatus.PastDue or ClientSubscriptionStatus.GracePeriod => "Past Due",
-            ClientSubscriptionStatus.Paused => "Paused",
-            ClientSubscriptionStatus.Canceled => "Cancelled",
-            ClientSubscriptionStatus.AwaitingPaymentMethod or ClientSubscriptionStatus.PendingProviderActivation or ClientSubscriptionStatus.Draft or ClientSubscriptionStatus.ReconciliationRequired => "Pending Activation",
-            _ => "Pending Activation"
-        };
-    }
+    private static string MapSubscriptionStatus(ClientSubscriptionStatus status, ClientSubscriptionPaymentStanding paymentStanding) =>
+        ClientSubscriptionDisplay.FormatMembershipState(status, paymentStanding);
 
     private static string MapInvitationStatus(SubscriptionActivationInvitationStatus status) => status switch
     {
@@ -682,7 +669,7 @@ public sealed class FounderSubscribersService
     private static string GetStatusTone(string status) => status switch
     {
         "Active" => "success",
-        "Past Due" or "Payment Failed" => "danger",
+        "Past Due" or "Grace Period" or "Payment Failed" => "danger",
         "Paused" => "warning",
         "Cancelled" or "Expired" => "muted",
         "Invitation Sent" => "info",

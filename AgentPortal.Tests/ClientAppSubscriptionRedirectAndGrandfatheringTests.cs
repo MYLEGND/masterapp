@@ -11,6 +11,7 @@ using ClientApp.Services;
 using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Billing;
+using Infrastructure.Billing.Square;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -157,6 +158,40 @@ public sealed class ClientAppSubscriptionRedirectTests
         var model = Assert.IsType<ClientSubscriptionManagementViewModel>(view.Model);
         Assert.Equal("Active", model.EntitlementStatus);
         Assert.Equal("/profile", model.ReturnUrl);
+    }
+
+    [Fact]
+    public async Task GracePeriodMembership_ShowsPaymentUpdateNeededWithoutRemovingAccess()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddProfileAsync(db, DateTime.UtcNow, "grace-period-client");
+        db.ClientSubscriptions.Add(new ClientSubscription
+        {
+            ClientProfileId = profile.Id,
+            OwnerAgentUserId = "agent-1",
+            IsPlatformManaged = true,
+            Status = ClientSubscriptionStatus.GracePeriod,
+            PaymentStanding = ClientSubscriptionPaymentStanding.GracePeriod,
+            MonthlyAmountCents = 10000,
+            CurrentPeriodStartUtc = DateTime.UtcNow.AddDays(-30),
+            CurrentPeriodEndUtc = DateTime.UtcNow,
+            NextBillingDateUtc = DateTime.UtcNow,
+            GracePeriodEndsUtc = DateTime.UtcNow.AddDays(30)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = BuildSubscriptionController(
+            db,
+            CreateAuthenticatedContext("grace-period-client"),
+            ClientEntitlementStatus.GracePeriod);
+
+        var result = await controller.Index("/profile");
+
+        var view = Assert.IsType<ViewResult>(result);
+        var model = Assert.IsType<ClientSubscriptionManagementViewModel>(view.Model);
+        Assert.Equal("Grace Period", model.SubscriptionStatus);
+        Assert.Equal("Payment update needed", model.CancellationState);
+        Assert.Contains("remains active", model.PaymentRepairInstructions, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -349,11 +384,18 @@ public sealed class ClientAppSubscriptionRedirectTests
                 "test",
                 status.ToString()));
 
+        var paymentMethods = new Mock<IClientPaymentMethodService>();
+        paymentMethods
+            .Setup(service => service.ListAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ClientPaymentMethod>());
+
         var controller = new ClientSubscriptionController(
             db,
             new EffectiveClientContextService(db),
             entitlements.Object,
             Mock.Of<IBillingOrchestrator>(),
+            paymentMethods.Object,
+            new SquareBillingOptions(),
             returnUrlNormalizer ?? new ClientAppReturnUrlNormalizer())
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext },

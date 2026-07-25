@@ -4,6 +4,7 @@ using ClientApp.Services;
 using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Billing.Square;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -21,6 +22,8 @@ public sealed class SubscriptionController : Controller
     private readonly EffectiveClientContextService _clientContextService;
     private readonly IBillingEntitlementService _entitlementService;
     private readonly IBillingOrchestrator _billingOrchestrator;
+    private readonly IClientPaymentMethodService _paymentMethodService;
+    private readonly SquareBillingOptions _squareOptions;
     private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
 
     public SubscriptionController(
@@ -28,12 +31,16 @@ public sealed class SubscriptionController : Controller
         EffectiveClientContextService clientContextService,
         IBillingEntitlementService entitlementService,
         IBillingOrchestrator billingOrchestrator,
+        IClientPaymentMethodService paymentMethodService,
+        SquareBillingOptions squareOptions,
         ClientAppReturnUrlNormalizer returnUrlNormalizer)
     {
         _db = db;
         _clientContextService = clientContextService;
         _entitlementService = entitlementService;
         _billingOrchestrator = billingOrchestrator;
+        _paymentMethodService = paymentMethodService;
+        _squareOptions = squareOptions;
         _returnUrlNormalizer = returnUrlNormalizer;
     }
 
@@ -82,24 +89,43 @@ public sealed class SubscriptionController : Controller
                 .Take(24)
                 .ToListAsync(HttpContext.RequestAborted);
 
-        var hasPaymentMethod = latestSubscription is not null &&
-            (!string.IsNullOrWhiteSpace(latestSubscription.PaymentMethodBrand) ||
-             !string.IsNullOrWhiteSpace(latestSubscription.PaymentMethodLast4));
+        var paymentMethods = !context.IsAgentView && latestSubscription is not null
+            ? await _paymentMethodService.ListAsync(context.ClientProfileId, HttpContext.RequestAborted)
+            : await _db.ClientPaymentMethods
+                .AsNoTracking()
+                .Where(method => method.ClientProfileId == context.ClientProfileId && method.RetiredUtc == null)
+                .OrderByDescending(method => method.CreatedUtc)
+                .ToListAsync(HttpContext.RequestAborted);
+        var paymentMethod = latestSubscription?.DefaultPaymentMethodId is Guid paymentMethodId
+            ? paymentMethods.FirstOrDefault(method => method.Id == paymentMethodId)
+            : null;
 
         ViewData["SubscriptionNotice"] = TempData["SubscriptionNotice"]?.ToString();
         return View(new ClientSubscriptionManagementViewModel
         {
+            ClientSubscriptionId = latestSubscription?.Id,
             ClientName = $"{context.Profile.FirstName} {context.Profile.LastName}".Trim(),
+            CurrentPlanDisplay = BuildCurrentPlanDisplay(latestSubscription),
+            BillingFrequencyDisplay = latestSubscription is null ? "Not scheduled" : "Monthly",
             MonthlyAmountDisplay = latestSubscription is null
                 ? "$0.00"
                 : (latestSubscription.MonthlyAmountCents / 100m).ToString("C"),
-            SubscriptionStatus = latestSubscription?.Status.ToString() ?? "Not Started",
-            PaymentStanding = latestSubscription?.PaymentStanding.ToString() ?? "Unknown",
+            SubscriptionStatus = latestSubscription is null
+                ? "Not Started"
+                : ClientSubscriptionDisplay.FormatMembershipState(latestSubscription.Status, latestSubscription.PaymentStanding),
+            PaymentStanding = latestSubscription is null
+                ? "Unknown"
+                : ClientSubscriptionDisplay.FormatPaymentStanding(latestSubscription.PaymentStanding),
             EntitlementStatus = entitlement.Status.ToString(),
+            MemberSinceDisplay = FormatDate(latestSubscription?.ActivatedUtc ?? latestSubscription?.CreatedUtc),
             NextBillingDateDisplay = FormatDate(latestSubscription?.NextBillingDateUtc),
+            LastSuccessfulPaymentDisplay = FormatDateTime(latestSubscription?.LastSuccessfulChargeUtc),
+            GracePeriodEndDisplay = FormatDate(latestSubscription?.GracePeriodEndsUtc),
             CurrentPeriodDisplay = BuildCurrentPeriodDisplay(latestSubscription),
             CancellationState = latestSubscription is null
                 ? "No active cancellation"
+                : latestSubscription.Status == ClientSubscriptionStatus.GracePeriod
+                    ? "Payment update needed"
                 : latestSubscription.CancelAtPeriodEnd
                     ? "Cancellation scheduled at period end"
                     : latestSubscription.Status == ClientSubscriptionStatus.Canceled
@@ -109,13 +135,20 @@ public sealed class SubscriptionController : Controller
             HasSubscription = latestSubscription is not null,
             CanCancelSubscription = !context.IsAgentView &&
                 latestSubscription?.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod,
-            HasPaymentMethod = hasPaymentMethod,
-            PaymentMethodDisplay = BuildPaymentMethodDisplay(latestSubscription),
-            PaymentMethodExpirationDisplay = BuildPaymentMethodExpirationDisplay(latestSubscription),
-            PaymentMethodCardholderName = string.IsNullOrWhiteSpace(latestSubscription?.PaymentMethodCardholderName)
-                ? "Not available"
-                : latestSubscription.PaymentMethodCardholderName,
-            PaymentMethodUpdatedDisplay = FormatDate(latestSubscription?.PaymentMethodUpdatedUtc),
+            CanManagePaymentMethods = !context.IsAgentView &&
+                latestSubscription is { IsPlatformManaged: true } &&
+                latestSubscription.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod,
+            CanRetryPayment = !context.IsAgentView &&
+                latestSubscription is { IsPlatformManaged: true, Status: ClientSubscriptionStatus.GracePeriod } &&
+                latestSubscription.GracePeriodEndsUtc > DateTime.UtcNow,
+            HasPaymentMethod = paymentMethod is not null,
+            BrowserPaymentReady = _squareOptions.HasBrowserCredentials(),
+            BrowserPaymentSetupMessage = BuildBrowserPaymentSetupMessage(),
+            SquareApplicationId = _squareOptions.ApplicationId ?? string.Empty,
+            SquareLocationId = _squareOptions.LocationId ?? string.Empty,
+            SquareEnvironment = _squareOptions.Environment.ToString(),
+            PaymentMethodDisplay = BuildPaymentMethodDisplay(paymentMethod),
+            PaymentMethodExpirationDisplay = BuildPaymentMethodExpirationDisplay(paymentMethod),
             PaymentHistory = paymentHistory
                 .Select(payment => new ClientSubscriptionPaymentHistoryItemViewModel
                 {
@@ -129,8 +162,114 @@ public sealed class SubscriptionController : Controller
                     BillingPeriodDisplay = BuildPaymentPeriodDisplay(payment)
                 })
                 .ToList(),
+            PaymentMethods = paymentMethods
+                .Select(method => BuildPaymentMethodItem(method, latestSubscription?.DefaultPaymentMethodId == method.Id))
+                .ToList(),
             ReturnUrl = target
         });
+    }
+
+    [HttpPost("/subscription/payment-methods")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddPaymentMethod(ClientPaymentMethodInput input, string? returnUrl = null)
+    {
+        var target = _returnUrlNormalizer.Normalize(returnUrl);
+        var context = await ResolveSelfServiceContextAsync();
+        if (context is null)
+            return Forbid();
+
+        var subscription = await GetCurrentSubscriptionAsync(context.ClientProfileId);
+        if (subscription is null)
+            return RedirectToSubscriptionWithNotice("No membership was found for payment-method management.", target);
+
+        if (!HasCompletePaymentMethodInput(input))
+            return RedirectToSubscriptionWithNotice("Complete the cardholder and billing-address fields before saving a payment method.", target);
+
+        var result = await _paymentMethodService.AddAsync(
+            new AddClientPaymentMethodCommand(
+                context.ClientProfileId,
+                subscription.Id,
+                input.SourceId,
+                input.CardholderName,
+                BuildBillingAddress(input),
+                input.MakeDefault,
+                input.DisplayName,
+                BillingActorType.Client,
+                User.GetCanonicalUserId(),
+                $"client-payment-method-add-{subscription.Id:N}"),
+            HttpContext.RequestAborted);
+        return RedirectToSubscriptionWithNotice(result.SanitizedSummary ?? "The payment method could not be updated right now.", target);
+    }
+
+    [HttpPost("/subscription/payment-methods/{paymentMethodId:guid}/default")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetDefaultPaymentMethod(Guid paymentMethodId, string? returnUrl = null)
+    {
+        var target = _returnUrlNormalizer.Normalize(returnUrl);
+        var context = await ResolveSelfServiceContextAsync();
+        if (context is null)
+            return Forbid();
+
+        var subscription = await GetCurrentSubscriptionAsync(context.ClientProfileId);
+        if (subscription is null)
+            return RedirectToSubscriptionWithNotice("No membership was found for payment-method management.", target);
+
+        var result = await _paymentMethodService.SetDefaultAsync(
+            new SetDefaultClientPaymentMethodCommand(
+                context.ClientProfileId,
+                subscription.Id,
+                paymentMethodId,
+                BillingActorType.Client,
+                User.GetCanonicalUserId(),
+                $"client-payment-method-default-{paymentMethodId:N}"),
+            HttpContext.RequestAborted);
+        return RedirectToSubscriptionWithNotice(result.SanitizedSummary ?? "The default payment method could not be updated right now.", target);
+    }
+
+    [HttpPost("/subscription/payment-methods/{paymentMethodId:guid}/rename")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RenamePaymentMethod(Guid paymentMethodId, string? displayName, string? returnUrl = null)
+    {
+        var target = _returnUrlNormalizer.Normalize(returnUrl);
+        var context = await ResolveSelfServiceContextAsync();
+        if (context is null)
+            return Forbid();
+
+        var result = await _paymentMethodService.RenameAsync(
+            new RenameClientPaymentMethodCommand(
+                context.ClientProfileId,
+                paymentMethodId,
+                displayName,
+                BillingActorType.Client,
+                User.GetCanonicalUserId(),
+                $"client-payment-method-rename-{paymentMethodId:N}"),
+            HttpContext.RequestAborted);
+        return RedirectToSubscriptionWithNotice(result.SanitizedSummary ?? "The payment method label could not be updated right now.", target);
+    }
+
+    [HttpPost("/subscription/payment-methods/{paymentMethodId:guid}/remove")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemovePaymentMethod(Guid paymentMethodId, string? returnUrl = null)
+    {
+        var target = _returnUrlNormalizer.Normalize(returnUrl);
+        var context = await ResolveSelfServiceContextAsync();
+        if (context is null)
+            return Forbid();
+
+        var subscription = await GetCurrentSubscriptionAsync(context.ClientProfileId);
+        if (subscription is null)
+            return RedirectToSubscriptionWithNotice("No membership was found for payment-method management.", target);
+
+        var result = await _paymentMethodService.RemoveAsync(
+            new RemoveClientPaymentMethodCommand(
+                context.ClientProfileId,
+                subscription.Id,
+                paymentMethodId,
+                BillingActorType.Client,
+                User.GetCanonicalUserId(),
+                $"client-payment-method-remove-{paymentMethodId:N}"),
+            HttpContext.RequestAborted);
+        return RedirectToSubscriptionWithNotice(result.SanitizedSummary ?? "The payment method could not be removed right now.", target);
     }
 
     [HttpPost("/subscription/cancel")]
@@ -204,6 +343,31 @@ public sealed class SubscriptionController : Controller
         });
     }
 
+    [HttpPost("/subscription/retry-payment")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RetryPayment(string? returnUrl = null)
+    {
+        var target = _returnUrlNormalizer.Normalize(returnUrl);
+        var context = await ResolveSelfServiceContextAsync();
+        if (context is null)
+            return Forbid();
+
+        var subscription = await GetCurrentSubscriptionAsync(context.ClientProfileId);
+        if (subscription is null)
+            return RedirectToSubscriptionWithNotice("No membership was found for a payment retry.", target);
+
+        var result = await _billingOrchestrator.RetryClientSubscriptionRenewalAsync(
+            new ManualClientSubscriptionRenewalRetryCommand(
+                subscription.Id,
+                BillingActorType.Client,
+                User.GetCanonicalUserId(),
+                $"client-manual-renewal-retry-{subscription.Id:N}"),
+            HttpContext.RequestAborted);
+        return RedirectToSubscriptionWithNotice(
+            result.SanitizedSummary ?? "The membership payment retry could not be completed right now.",
+            target);
+    }
+
     private static string FormatDate(DateTime? value)
     {
         return value.HasValue
@@ -218,6 +382,8 @@ public sealed class SubscriptionController : Controller
             .ToString("MMMM d, yyyy h:mm tt");
     }
 
+    private static string FormatDateTime(DateTime? value) => value.HasValue ? FormatDateTime(value.Value) : "Not available";
+
     private static string BuildCurrentPeriodDisplay(ClientSubscription? subscription)
     {
         if (subscription?.CurrentPeriodStartUtc is null || subscription.CurrentPeriodEndUtc is null)
@@ -226,29 +392,120 @@ public sealed class SubscriptionController : Controller
         return $"{FormatDate(subscription.CurrentPeriodStartUtc)} - {FormatDate(subscription.CurrentPeriodEndUtc)}";
     }
 
-    private static string BuildPaymentMethodDisplay(ClientSubscription? subscription)
+    private static string BuildCurrentPlanDisplay(ClientSubscription? subscription)
     {
         if (subscription is null)
-            return "No saved payment method";
+            return "Not selected";
 
-        var brand = string.IsNullOrWhiteSpace(subscription.PaymentMethodBrand)
-            ? "Card"
-            : subscription.PaymentMethodBrand.Trim();
-
-        return string.IsNullOrWhiteSpace(subscription.PaymentMethodLast4)
-            ? brand
-            : $"{brand} ending in {subscription.PaymentMethodLast4.Trim()}";
+        return subscription.MonthlyAmountCents == 0
+            ? "Complimentary Membership"
+            : "Legend Client Portal Membership";
     }
 
-    private static string BuildPaymentMethodExpirationDisplay(ClientSubscription? subscription)
+    private static string BuildPaymentMethodDisplay(ClientPaymentMethod? paymentMethod)
     {
-        if (subscription?.PaymentMethodExpirationMonth is null ||
-            subscription.PaymentMethodExpirationYear is null)
+        if (paymentMethod is null)
+            return "No saved payment method";
+
+        var brand = string.IsNullOrWhiteSpace(paymentMethod.CardBrand)
+            ? "Card"
+            : paymentMethod.CardBrand.Trim();
+
+        return string.IsNullOrWhiteSpace(paymentMethod.Last4)
+            ? brand
+            : $"{brand} ending in {paymentMethod.Last4.Trim()}";
+    }
+
+    private static string BuildPaymentMethodExpirationDisplay(ClientPaymentMethod? paymentMethod)
+    {
+        if (paymentMethod?.ExpirationMonth is null ||
+            paymentMethod.ExpirationYear is null)
         {
             return "Not available";
         }
 
-        return $"{subscription.PaymentMethodExpirationMonth:00}/{subscription.PaymentMethodExpirationYear:0000}";
+        return $"{paymentMethod.ExpirationMonth:00}/{paymentMethod.ExpirationYear:0000}";
+    }
+
+    private static ClientPaymentMethodItemViewModel BuildPaymentMethodItem(ClientPaymentMethod paymentMethod, bool isDefault)
+    {
+        var addressParts = new[]
+            {
+                paymentMethod.BillingAddressLine1,
+                paymentMethod.BillingAddressLine2,
+                paymentMethod.BillingCity,
+                paymentMethod.BillingState,
+                paymentMethod.BillingPostalCode,
+                paymentMethod.BillingCountryCode
+            }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim());
+        return new ClientPaymentMethodItemViewModel
+        {
+            Id = paymentMethod.Id,
+            IsDefault = isDefault,
+            DisplayName = string.IsNullOrWhiteSpace(paymentMethod.DisplayName) ? "Payment method" : paymentMethod.DisplayName,
+            CardDisplay = BuildPaymentMethodDisplay(paymentMethod),
+            ExpirationDisplay = BuildPaymentMethodExpirationDisplay(paymentMethod),
+            BillingAddressDisplay = string.Join(", ", addressParts) is { Length: > 0 } address
+                ? address
+                : "Billing address not available"
+        };
+    }
+
+    private async Task<EffectiveClientContext?> ResolveSelfServiceContextAsync()
+    {
+        var context = await _clientContextService.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        return context is { IsAgentView: false } ? context : null;
+    }
+
+    private Task<ClientSubscription?> GetCurrentSubscriptionAsync(Guid clientProfileId)
+    {
+        return _db.ClientSubscriptions
+            .Where(subscription => subscription.ClientProfileId == clientProfileId)
+            .OrderByDescending(subscription => subscription.UpdatedUtc)
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+    }
+
+    private RedirectToActionResult RedirectToSubscriptionWithNotice(string notice, string returnUrl)
+    {
+        TempData["SubscriptionNotice"] = notice;
+        return RedirectToAction(nameof(Index), new { returnUrl });
+    }
+
+    private string BuildBrowserPaymentSetupMessage()
+    {
+        if (_squareOptions.HasBrowserCredentials())
+            return string.Empty;
+
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(_squareOptions.ApplicationId))
+            missing.Add("Square application ID");
+        if (string.IsNullOrWhiteSpace(_squareOptions.LocationId))
+            missing.Add("Square location ID");
+        return $"Secure card setup is unavailable because {string.Join(" and ", missing)} is not configured.";
+    }
+
+    private static BillingPostalAddress BuildBillingAddress(ClientPaymentMethodInput input)
+    {
+        return new BillingPostalAddress(
+            input.BillingAddressLine1.Trim(),
+            string.IsNullOrWhiteSpace(input.BillingAddressLine2) ? null : input.BillingAddressLine2.Trim(),
+            input.BillingCity.Trim(),
+            input.BillingState.Trim(),
+            input.BillingPostalCode.Trim(),
+            input.BillingCountryCode.Trim().ToUpperInvariant());
+    }
+
+    private static bool HasCompletePaymentMethodInput(ClientPaymentMethodInput input)
+    {
+        return !string.IsNullOrWhiteSpace(input.SourceId) &&
+               !string.IsNullOrWhiteSpace(input.CardholderName) &&
+               !string.IsNullOrWhiteSpace(input.BillingAddressLine1) &&
+               !string.IsNullOrWhiteSpace(input.BillingCity) &&
+               !string.IsNullOrWhiteSpace(input.BillingState) &&
+               !string.IsNullOrWhiteSpace(input.BillingPostalCode) &&
+               !string.IsNullOrWhiteSpace(input.BillingCountryCode);
     }
 
     private static string BuildPaymentPeriodDisplay(SubscriptionPayment payment)
@@ -264,11 +521,19 @@ public sealed class SubscriptionController : Controller
         if (subscription is null)
             return "Use your activation link or contact your agent to begin service.";
 
-        if (entitlementStatus is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod)
+        if (subscription.Status == ClientSubscriptionStatus.GracePeriod ||
+            subscription.PaymentStanding == ClientSubscriptionPaymentStanding.GracePeriod ||
+            entitlementStatus == ClientEntitlementStatus.GracePeriod)
+        {
+            var graceEnd = FormatDate(subscription.GracePeriodEndsUtc);
+            return $"Payment update needed. Your membership remains active while you update your payment method{(graceEnd == "Not scheduled" ? string.Empty : $" by {graceEnd}")}.";
+        }
+
+        if (entitlementStatus == ClientEntitlementStatus.Active)
             return "Your subscription is in good standing. You can cancel anytime from View / Edit Profile.";
 
         if (subscription.PaymentStanding is ClientSubscriptionPaymentStanding.PastDue or ClientSubscriptionPaymentStanding.Failed or ClientSubscriptionPaymentStanding.RequiresAction)
-            return "Billing needs attention. Contact your agent so they can help repair the payment method and restore access.";
+            return "Billing needs attention. Update your payment method, then try the payment again. Contact your agent if you need help.";
 
         return "If you need billing help, contact your agent before the current period ends.";
     }

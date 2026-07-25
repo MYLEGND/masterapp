@@ -68,6 +68,8 @@ public class MasterAppDbContext : DbContext
     public DbSet<CommerceOrderLine> CommerceOrderLines => Set<CommerceOrderLine>();
     public DbSet<ClientSubscriptionOffer> ClientSubscriptionOffers => Set<ClientSubscriptionOffer>();
     public DbSet<ClientSubscription> ClientSubscriptions => Set<ClientSubscription>();
+    public DbSet<ClientPaymentMethod> ClientPaymentMethods => Set<ClientPaymentMethod>();
+    public DbSet<ClientBillingNotification> ClientBillingNotifications => Set<ClientBillingNotification>();
     public DbSet<SubscriptionActivationInvitation> SubscriptionActivationInvitations => Set<SubscriptionActivationInvitation>();
     public DbSet<ClientIdentityContinuation> ClientIdentityContinuations => Set<ClientIdentityContinuation>();
     public DbSet<SubscriptionPayment> SubscriptionPayments => Set<SubscriptionPayment>();
@@ -323,10 +325,6 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Provider).HasConversion<string>().HasMaxLength(40).IsRequired();
             e.Property(x => x.ProviderEnvironment).HasConversion<string>().HasMaxLength(40).IsRequired();
             e.Property(x => x.ProviderCustomerId).HasMaxLength(160);
-            e.Property(x => x.ProviderPaymentMethodId).HasMaxLength(160);
-            e.Property(x => x.PaymentMethodBrand).HasMaxLength(40);
-            e.Property(x => x.PaymentMethodLast4).HasMaxLength(4);
-            e.Property(x => x.PaymentMethodCardholderName).HasMaxLength(200);
             e.Property(x => x.ProviderSubscriptionId).HasMaxLength(160);
             e.Property(x => x.ProviderPlanVariationId).HasMaxLength(160);
             e.Property(x => x.Currency).HasMaxLength(8).IsRequired();
@@ -358,6 +356,78 @@ public class MasterAppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(x => x.AcceptedOfferId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.DefaultPaymentMethod)
+                .WithMany()
+                .HasForeignKey(x => x.DefaultPaymentMethodId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<ClientPaymentMethod>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("ClientPaymentMethods");
+            e.Property(x => x.Provider).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.ProviderEnvironment).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.ProviderPaymentMethodId).HasMaxLength(160).IsRequired();
+            e.Property(x => x.DisplayName).HasMaxLength(80);
+            e.Property(x => x.CardBrand).HasMaxLength(40);
+            e.Property(x => x.Last4).HasMaxLength(4);
+            e.Property(x => x.CardholderName).HasMaxLength(200);
+            e.Property(x => x.BillingAddressLine1).HasMaxLength(200);
+            e.Property(x => x.BillingAddressLine2).HasMaxLength(200);
+            e.Property(x => x.BillingCity).HasMaxLength(120);
+            e.Property(x => x.BillingState).HasMaxLength(120);
+            e.Property(x => x.BillingPostalCode).HasMaxLength(32);
+            e.Property(x => x.BillingCountryCode).HasMaxLength(8);
+            e.HasIndex(x => new { x.ClientProfileId, x.RetiredUtc });
+            e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderPaymentMethodId }).IsUnique();
+
+            e.HasOne(x => x.ClientProfile)
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<ClientBillingNotification>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("ClientBillingNotifications");
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(48).IsRequired();
+            e.Property(x => x.EventKey).HasMaxLength(220).IsRequired();
+            e.Property(x => x.Subject).HasMaxLength(240).IsRequired();
+            e.Property(x => x.PlainTextBody).HasMaxLength(4000).IsRequired();
+            e.Property(x => x.SafeFailureCode).HasMaxLength(120);
+            e.HasIndex(x => x.EventKey).IsUnique();
+            e.HasIndex(x => new { x.SentUtc, x.NotBeforeUtc, x.NextAttemptUtc });
+            e.HasIndex(x => new { x.ClientSubscriptionId, x.Kind });
+
+            e.HasOne(x => x.ClientProfile)
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ClientSubscription)
+                .WithMany()
+                .HasForeignKey(x => x.ClientSubscriptionId)
+                .OnDelete(isSqlServer ? DeleteBehavior.NoAction : DeleteBehavior.Cascade);
 
             if (isSqlServer)
                 e.Property(x => x.RowVersion).IsRowVersion();
@@ -458,6 +528,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.ProviderRequestId).HasMaxLength(160);
 
             e.HasIndex(x => x.ClientSubscriptionId);
+            e.HasIndex(x => x.ClientPaymentMethodId);
             e.HasIndex(x => x.CommerceOrderId);
 
             if (isSqlServer)
@@ -490,6 +561,11 @@ public class MasterAppDbContext : DbContext
             e.HasOne(x => x.ClientSubscription)
                 .WithMany()
                 .HasForeignKey(x => x.ClientSubscriptionId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasOne(x => x.ClientPaymentMethod)
+                .WithMany()
+                .HasForeignKey(x => x.ClientPaymentMethodId)
                 .OnDelete(DeleteBehavior.SetNull);
 
             e.HasOne(x => x.CommerceOrder)

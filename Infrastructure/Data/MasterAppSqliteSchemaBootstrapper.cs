@@ -13,6 +13,8 @@ public static class MasterAppSqliteSchemaBootstrapper
     private const string SharedBillingFoundationMigrationId = "20260722031717_AddSharedBillingFoundation";
     private const string ClientAppActivationAuthorityMigrationId = "20260722045033_AddClientAppActivationAuthority";
     private const string PlatformManagedRecurringBillingMigrationId = "20260724100000_AddPlatformManagedRecurringBilling";
+    private const string NormalizeClientPaymentMethodsMigrationId = "20260725192303_NormalizeClientPaymentMethods";
+    private const string AddClientBillingNotificationsMigrationId = "20260725195951_AddClientBillingNotifications";
 
     private static readonly ColumnPatch[] AdditiveColumnPatches =
     {
@@ -130,6 +132,28 @@ public static class MasterAppSqliteSchemaBootstrapper
         new("IX_ClientProfiles_ExternalIdentityObjectId", "CREATE UNIQUE INDEX \"IX_ClientProfiles_ExternalIdentityObjectId\" ON \"ClientProfiles\" (\"ExternalIdentityObjectId\")")
     };
 
+    private static readonly ColumnPatch[] NormalizedBillingColumnPatches =
+    {
+        new("ClientSubscriptions", "DefaultPaymentMethodId", "TEXT"),
+        new("SubscriptionPayments", "ClientPaymentMethodId", "TEXT")
+    };
+
+    private static readonly IndexPatch[] NormalizedBillingIndexes =
+    {
+        new("IX_ClientSubscriptions_DefaultPaymentMethodId", "CREATE INDEX \"IX_ClientSubscriptions_DefaultPaymentMethodId\" ON \"ClientSubscriptions\" (\"DefaultPaymentMethodId\")"),
+        new("IX_SubscriptionPayments_ClientPaymentMethodId", "CREATE INDEX \"IX_SubscriptionPayments_ClientPaymentMethodId\" ON \"SubscriptionPayments\" (\"ClientPaymentMethodId\")"),
+        new("IX_ClientPaymentMethods_ClientProfileId_RetiredUtc", "CREATE INDEX \"IX_ClientPaymentMethods_ClientProfileId_RetiredUtc\" ON \"ClientPaymentMethods\" (\"ClientProfileId\", \"RetiredUtc\")"),
+        new("IX_ClientPaymentMethods_Provider_ProviderEnvironment_ProviderPaymentMethodId", "CREATE UNIQUE INDEX \"IX_ClientPaymentMethods_Provider_ProviderEnvironment_ProviderPaymentMethodId\" ON \"ClientPaymentMethods\" (\"Provider\", \"ProviderEnvironment\", \"ProviderPaymentMethodId\")")
+    };
+
+    private static readonly IndexPatch[] ClientBillingNotificationIndexes =
+    {
+        new("IX_ClientBillingNotifications_ClientProfileId", "CREATE INDEX \"IX_ClientBillingNotifications_ClientProfileId\" ON \"ClientBillingNotifications\" (\"ClientProfileId\")"),
+        new("IX_ClientBillingNotifications_ClientSubscriptionId_Kind", "CREATE INDEX \"IX_ClientBillingNotifications_ClientSubscriptionId_Kind\" ON \"ClientBillingNotifications\" (\"ClientSubscriptionId\", \"Kind\")"),
+        new("IX_ClientBillingNotifications_EventKey", "CREATE UNIQUE INDEX \"IX_ClientBillingNotifications_EventKey\" ON \"ClientBillingNotifications\" (\"EventKey\")"),
+        new("IX_ClientBillingNotifications_SentUtc_NotBeforeUtc_NextAttemptUtc", "CREATE INDEX \"IX_ClientBillingNotifications_SentUtc_NotBeforeUtc_NextAttemptUtc\" ON \"ClientBillingNotifications\" (\"SentUtc\", \"NotBeforeUtc\", \"NextAttemptUtc\")")
+    };
+
     public static async Task InitializeAsync(
         MasterAppDbContext db,
         ILogger logger,
@@ -223,12 +247,53 @@ public static class MasterAppSqliteSchemaBootstrapper
                 }
             }
 
+            foreach (var patch in NormalizedBillingColumnPatches)
+            {
+                if (await AddColumnIfMissingAsync(connection, patch, cancellationToken))
+                {
+                    repairs.Add($"{patch.Table}.{patch.Column}");
+                }
+            }
+
+            if (await CreateClientPaymentMethodsTableIfMissingAsync(connection, cancellationToken))
+            {
+                repairs.Add("ClientPaymentMethods");
+            }
+
+            if (await BackfillLegacyClientPaymentMethodsAsync(connection, cancellationToken))
+            {
+                repairs.Add("ClientPaymentMethods.backfill");
+            }
+
+            foreach (var index in NormalizedBillingIndexes)
+            {
+                if (await CreateIndexIfMissingAsync(connection, index, cancellationToken))
+                {
+                    repairs.Add(index.Name);
+                }
+            }
+
+            if (await CreateClientBillingNotificationsTableIfMissingAsync(connection, cancellationToken))
+            {
+                repairs.Add("ClientBillingNotifications");
+            }
+
+            foreach (var index in ClientBillingNotificationIndexes)
+            {
+                if (await CreateIndexIfMissingAsync(connection, index, cancellationToken))
+                {
+                    repairs.Add(index.Name);
+                }
+            }
+
             await StampMigrationHistoryAsync(db, connection, createdFromModel, logger, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, CommerceBusinessScopeMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, CommerceCoreSchemaMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, SharedBillingFoundationMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, ClientAppActivationAuthorityMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, PlatformManagedRecurringBillingMigrationId, cancellationToken);
+            await StampMigrationIfMissingAsync(db, connection, NormalizeClientPaymentMethodsMigrationId, cancellationToken);
+            await StampMigrationIfMissingAsync(db, connection, AddClientBillingNotificationsMigrationId, cancellationToken);
 
             if (createdFromModel)
             {
@@ -732,6 +797,177 @@ public static class MasterAppSqliteSchemaBootstrapper
             """);
 
         return created;
+    }
+
+    private static async Task<bool> CreateClientPaymentMethodsTableIfMissingAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        if (await TableExistsAsync(connection, "ClientPaymentMethods", cancellationToken))
+        {
+            return false;
+        }
+
+        await ExecuteNonQueryAsync(connection, """
+            CREATE TABLE "ClientPaymentMethods" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ClientPaymentMethods" PRIMARY KEY,
+                "ClientProfileId" TEXT NOT NULL,
+                "Provider" TEXT NOT NULL,
+                "ProviderEnvironment" TEXT NOT NULL,
+                "ProviderPaymentMethodId" TEXT NOT NULL,
+                "DisplayName" TEXT NULL,
+                "CardBrand" TEXT NULL,
+                "Last4" TEXT NULL,
+                "ExpirationMonth" INTEGER NULL,
+                "ExpirationYear" INTEGER NULL,
+                "CardholderName" TEXT NULL,
+                "BillingAddressLine1" TEXT NULL,
+                "BillingAddressLine2" TEXT NULL,
+                "BillingCity" TEXT NULL,
+                "BillingState" TEXT NULL,
+                "BillingPostalCode" TEXT NULL,
+                "BillingCountryCode" TEXT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "UpdatedUtc" TEXT NOT NULL,
+                "RetiredUtc" TEXT NULL,
+                "RowVersion" BLOB NOT NULL DEFAULT X'',
+                CONSTRAINT "FK_ClientPaymentMethods_ClientProfiles_ClientProfileId"
+                    FOREIGN KEY ("ClientProfileId") REFERENCES "ClientProfiles" ("Id") ON DELETE CASCADE
+            )
+            """, cancellationToken);
+
+        return true;
+    }
+
+    private static async Task<bool> BackfillLegacyClientPaymentMethodsAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var requiredColumns = new[]
+        {
+            "ClientProfileId",
+            "Provider",
+            "ProviderEnvironment",
+            "ProviderPaymentMethodId",
+            "PaymentMethodBrand",
+            "PaymentMethodLast4",
+            "PaymentMethodExpirationMonth",
+            "PaymentMethodExpirationYear",
+            "PaymentMethodCardholderName",
+            "CreatedUtc",
+            "PaymentMethodUpdatedUtc"
+        };
+
+        if (!await TableExistsAsync(connection, "ClientSubscriptions", cancellationToken) ||
+            !await TableExistsAsync(connection, "ClientPaymentMethods", cancellationToken))
+        {
+            return false;
+        }
+
+        foreach (var column in requiredColumns)
+        {
+            if (!await ColumnExistsAsync(connection, "ClientSubscriptions", column, cancellationToken))
+            {
+                return false;
+            }
+        }
+
+        var pendingSourceRows = await ExecuteScalarIntAsync(connection, """
+            SELECT COUNT(1)
+            FROM "ClientSubscriptions" AS subscription
+            WHERE subscription."ProviderPaymentMethodId" IS NOT NULL
+              AND trim(subscription."ProviderPaymentMethodId") <> ''
+              AND NOT EXISTS
+              (
+                  SELECT 1
+                  FROM "ClientPaymentMethods" AS existingMethod
+                  WHERE existingMethod."Provider" = subscription."Provider"
+                    AND existingMethod."ProviderEnvironment" = subscription."ProviderEnvironment"
+                    AND existingMethod."ProviderPaymentMethodId" = subscription."ProviderPaymentMethodId"
+              )
+            """, cancellationToken);
+
+        await ExecuteNonQueryAsync(connection, """
+            INSERT INTO "ClientPaymentMethods"
+            (
+                "Id", "ClientProfileId", "Provider", "ProviderEnvironment", "ProviderPaymentMethodId",
+                "CardBrand", "Last4", "ExpirationMonth", "ExpirationYear", "CardholderName",
+                "CreatedUtc", "UpdatedUtc"
+            )
+            SELECT
+                lower(
+                    substr(hex(randomblob(4)), 1, 8) || '-' ||
+                    substr(hex(randomblob(2)), 1, 4) || '-' ||
+                    substr(hex(randomblob(2)), 1, 4) || '-' ||
+                    substr(hex(randomblob(2)), 1, 4) || '-' ||
+                    substr(hex(randomblob(6)), 1, 12)),
+                subscription."ClientProfileId", subscription."Provider", subscription."ProviderEnvironment", subscription."ProviderPaymentMethodId",
+                subscription."PaymentMethodBrand", subscription."PaymentMethodLast4", subscription."PaymentMethodExpirationMonth", subscription."PaymentMethodExpirationYear", subscription."PaymentMethodCardholderName",
+                subscription."CreatedUtc", COALESCE(subscription."PaymentMethodUpdatedUtc", subscription."CreatedUtc")
+            FROM "ClientSubscriptions" AS subscription
+            WHERE subscription."ProviderPaymentMethodId" IS NOT NULL
+              AND trim(subscription."ProviderPaymentMethodId") <> ''
+              AND NOT EXISTS
+              (
+                  SELECT 1
+                  FROM "ClientPaymentMethods" AS existingMethod
+                  WHERE existingMethod."Provider" = subscription."Provider"
+                    AND existingMethod."ProviderEnvironment" = subscription."ProviderEnvironment"
+                    AND existingMethod."ProviderPaymentMethodId" = subscription."ProviderPaymentMethodId"
+              );
+
+            UPDATE "ClientSubscriptions"
+            SET "DefaultPaymentMethodId" =
+            (
+                SELECT paymentMethod."Id"
+                FROM "ClientPaymentMethods" AS paymentMethod
+                WHERE paymentMethod."Provider" = "ClientSubscriptions"."Provider"
+                  AND paymentMethod."ProviderEnvironment" = "ClientSubscriptions"."ProviderEnvironment"
+                  AND paymentMethod."ProviderPaymentMethodId" = "ClientSubscriptions"."ProviderPaymentMethodId"
+            )
+            WHERE "DefaultPaymentMethodId" IS NULL
+              AND "ProviderPaymentMethodId" IS NOT NULL
+              AND trim("ProviderPaymentMethodId") <> '';
+            """, cancellationToken);
+
+        return pendingSourceRows > 0;
+    }
+
+    private static async Task<bool> CreateClientBillingNotificationsTableIfMissingAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        if (await TableExistsAsync(connection, "ClientBillingNotifications", cancellationToken))
+        {
+            return false;
+        }
+
+        await ExecuteNonQueryAsync(connection, """
+            CREATE TABLE "ClientBillingNotifications" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ClientBillingNotifications" PRIMARY KEY,
+                "ClientProfileId" TEXT NOT NULL,
+                "ClientSubscriptionId" TEXT NOT NULL,
+                "Kind" TEXT NOT NULL,
+                "EventKey" TEXT NOT NULL,
+                "Subject" TEXT NOT NULL,
+                "PlainTextBody" TEXT NOT NULL,
+                "NotBeforeUtc" TEXT NOT NULL,
+                "SentUtc" TEXT NULL,
+                "AttemptCount" INTEGER NOT NULL,
+                "LastAttemptUtc" TEXT NULL,
+                "NextAttemptUtc" TEXT NULL,
+                "SafeFailureCode" TEXT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "UpdatedUtc" TEXT NOT NULL,
+                "RowVersion" BLOB NOT NULL DEFAULT X'',
+                CONSTRAINT "FK_ClientBillingNotifications_ClientProfiles_ClientProfileId"
+                    FOREIGN KEY ("ClientProfileId") REFERENCES "ClientProfiles" ("Id") ON DELETE CASCADE,
+                CONSTRAINT "FK_ClientBillingNotifications_ClientSubscriptions_ClientSubscriptionId"
+                    FOREIGN KEY ("ClientSubscriptionId") REFERENCES "ClientSubscriptions" ("Id") ON DELETE CASCADE
+            )
+            """, cancellationToken);
+
+        return true;
     }
 
     private static async Task<bool> CreateIndexIfMissingAsync(

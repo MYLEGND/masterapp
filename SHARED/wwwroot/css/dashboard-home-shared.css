@@ -5190,6 +5190,138 @@ header .legend-global-nav .container-fluid {
         inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
+.membership-payment-method-list {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.membership-payment-method-list .membership-payment-method {
+    grid-template-columns: auto minmax(150px, 1.2fr) minmax(130px, 1fr) minmax(180px, 1.15fr);
+}
+
+.membership-payment-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.36rem;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.membership-payment-actions form,
+.membership-payment-rename-form {
+    display: inline-flex;
+    gap: 0.3rem;
+    align-items: center;
+    margin: 0;
+}
+
+.membership-payment-rename-form input,
+.membership-payment-form-grid input,
+.membership-payment-form-grid select {
+    width: 100%;
+    min-height: 35px;
+    padding: 0.42rem 0.54rem;
+    border: 1px solid rgba(143, 106, 29, 0.23);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.88);
+    color: #17213d;
+    font: inherit;
+    font-size: 0.75rem;
+}
+
+.membership-payment-rename-form input {
+    width: min(132px, 28vw);
+}
+
+.membership-billing-text-button {
+    min-height: 30px;
+    padding: 0.34rem 0.52rem;
+    border: 1px solid rgba(143, 106, 29, 0.32);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.76);
+    color: #17356d;
+    font: inherit;
+    font-size: 0.66rem;
+    font-weight: 850;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.membership-billing-text-button.is-danger {
+    border-color: rgba(145, 45, 45, 0.24);
+    color: #962f2f;
+}
+
+.membership-payment-add {
+    display: grid;
+    gap: 0.78rem;
+    margin-top: 0.78rem;
+    padding-top: 0.88rem;
+    border-top: 1px solid rgba(143, 106, 29, 0.14);
+}
+
+.membership-payment-add h3 {
+    margin: 0;
+    color: #10254c;
+    font-size: 0.94rem;
+    font-weight: 900;
+}
+
+.membership-payment-add p {
+    margin: 0.3rem 0 0;
+    color: #718096;
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+.membership-payment-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.58rem;
+}
+
+.membership-payment-form-grid label {
+    display: grid;
+    gap: 0.28rem;
+    min-width: 0;
+    color: #31445d;
+    font-size: 0.68rem;
+    font-weight: 800;
+}
+
+.membership-payment-form-grid .is-wide {
+    grid-column: 1 / -1;
+}
+
+.membership-square-card {
+    display: block;
+    min-height: 54px;
+    padding: 0.45rem;
+    border: 1px solid rgba(143, 106, 29, 0.22);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.membership-payment-default-choice {
+    display: inline-flex;
+    gap: 0.45rem;
+    align-items: center;
+    color: #31445d;
+    font-size: 0.74rem;
+    font-weight: 720;
+}
+
+.membership-payment-form-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(165px, auto);
+    gap: 0.6rem;
+    align-items: center;
+}
+
+.membership-payment-form-actions .membership-billing-notice {
+    margin: 0;
+}
+
 .membership-payment-card-icon {
     display: grid;
     width: 44px;

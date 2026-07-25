@@ -3,6 +3,7 @@ using System;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260725192303_NormalizeClientPaymentMethods")]
+    partial class NormalizeClientPaymentMethods
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.2");
@@ -1292,83 +1295,6 @@ namespace Infrastructure.Migrations
                     b.HasIndex("ClientUserId", "IsActive");
 
                     b.ToTable("ClientAgentMessagingGrants", (string)null);
-                });
-
-            modelBuilder.Entity("Domain.Entities.ClientBillingNotification", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("AttemptCount")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid>("ClientProfileId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("ClientSubscriptionId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("EventKey")
-                        .IsRequired()
-                        .HasMaxLength(220)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(48)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("LastAttemptUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("NextAttemptUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("NotBeforeUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("PlainTextBody")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .HasColumnType("BLOB")
-                        .HasDefaultValueSql("X''");
-
-                    b.Property<string>("SafeFailureCode")
-                        .HasMaxLength(120)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("SentUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Subject")
-                        .IsRequired()
-                        .HasMaxLength(240)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClientProfileId");
-
-                    b.HasIndex("EventKey")
-                        .IsUnique();
-
-                    b.HasIndex("ClientSubscriptionId", "Kind");
-
-                    b.HasIndex("SentUtc", "NotBeforeUtc", "NextAttemptUtc");
-
-                    b.ToTable("ClientBillingNotifications", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Entities.ClientEntitlement", b =>
@@ -5978,25 +5904,6 @@ namespace Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("RecurringExpense");
-                });
-
-            modelBuilder.Entity("Domain.Entities.ClientBillingNotification", b =>
-                {
-                    b.HasOne("Domain.Entities.ClientProfile", "ClientProfile")
-                        .WithMany()
-                        .HasForeignKey("ClientProfileId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.ClientSubscription", "ClientSubscription")
-                        .WithMany()
-                        .HasForeignKey("ClientSubscriptionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ClientProfile");
-
-                    b.Navigation("ClientSubscription");
                 });
 
             modelBuilder.Entity("Domain.Entities.ClientEntitlement", b =>

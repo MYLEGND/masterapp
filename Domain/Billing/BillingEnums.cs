@@ -134,6 +134,21 @@ public enum BillingActorType
     Reconciliation = 5
 }
 
+public enum ClientBillingNotificationKind
+{
+    MembershipActivated = 0,
+    PaymentReceived = 1,
+    PaymentFailed = 2,
+    PaymentMethodUpdated = 3,
+    BackupPaymentUsed = 4,
+    GracePeriodStarted = 5,
+    GracePeriodReminder = 6,
+    GracePeriodFinalReminder = 7,
+    MembershipCancelled = 8,
+    MembershipReactivated = 9,
+    UpcomingRenewal = 10
+}
+
 public enum ClientIdentityContinuationPurpose
 {
     Activation = 0,
