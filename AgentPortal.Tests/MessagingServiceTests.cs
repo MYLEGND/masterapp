@@ -808,11 +808,8 @@ public sealed class MessagingServiceTests
     {
         var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
         var journeys = new JourneyCirclesService(db, moderation, NullLogger<JourneyCirclesService>.Instance);
-        var environment = new Mock<IWebHostEnvironment>();
-        environment.SetupGet(value => value.ContentRootPath).Returns(AppContext.BaseDirectory);
         var images = new MessagingProfileImageResolver(
             db,
-            environment.Object,
             NullLogger<MessagingProfileImageResolver>.Instance);
         return new MessagingService(db, NullLogger<MessagingService>.Instance, moderation, journeys, images);
     }
