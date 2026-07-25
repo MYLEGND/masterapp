@@ -212,7 +212,7 @@ namespace Infrastructure.Migrations
                 column: "DefaultPaymentMethodId",
                 principalTable: "ClientPaymentMethods",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.SetNull);
+                onDelete: ReferentialAction.NoAction);
 
             migrationBuilder.AddForeignKey(
                 name: "FK_SubscriptionPayments_ClientPaymentMethods_ClientPaymentMethodId",
@@ -220,7 +220,7 @@ namespace Infrastructure.Migrations
                 column: "ClientPaymentMethodId",
                 principalTable: "ClientPaymentMethods",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.SetNull);
+                onDelete: ReferentialAction.NoAction);
         }
 
         /// <inheritdoc />

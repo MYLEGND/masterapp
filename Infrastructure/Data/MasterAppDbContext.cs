@@ -360,7 +360,7 @@ public class MasterAppDbContext : DbContext
             e.HasOne(x => x.DefaultPaymentMethod)
                 .WithMany()
                 .HasForeignKey(x => x.DefaultPaymentMethodId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(isSqlServer ? DeleteBehavior.NoAction : DeleteBehavior.SetNull);
 
             if (isSqlServer)
                 e.Property(x => x.RowVersion).IsRowVersion();
@@ -566,7 +566,7 @@ public class MasterAppDbContext : DbContext
             e.HasOne(x => x.ClientPaymentMethod)
                 .WithMany()
                 .HasForeignKey(x => x.ClientPaymentMethodId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(isSqlServer ? DeleteBehavior.NoAction : DeleteBehavior.SetNull);
 
             e.HasOne(x => x.CommerceOrder)
                 .WithMany()
