@@ -89,7 +89,12 @@ public sealed record BillingPaymentMethodAttachmentResult(
     string? ProviderRequestId,
     bool Retryable,
     string? ProviderCustomerId = null,
-    string? ProviderPaymentMethodId = null)
+    string? ProviderPaymentMethodId = null,
+    string? PaymentMethodBrand = null,
+    string? PaymentMethodLast4 = null,
+    int? PaymentMethodExpirationMonth = null,
+    int? PaymentMethodExpirationYear = null,
+    string? PaymentMethodCardholderName = null)
     : BillingProviderResult(Success, ExternalId, NormalizedStatus, SafeErrorCode, SanitizedSummary, ProviderRequestId, Retryable);
 
 public sealed record ClientSubscriptionLifecycleResult(

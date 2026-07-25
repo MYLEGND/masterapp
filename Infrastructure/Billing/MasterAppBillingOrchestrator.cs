@@ -520,6 +520,16 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             return new ActivateClientSubscriptionResult(false, attachmentResult.SafeErrorCode, attachmentResult.SanitizedSummary, attachmentResult.ProviderRequestId, attachmentResult.Retryable, subscription, null, new ClientSubscriptionLifecycleResult(false, subscription.Status.ToString(), attachmentResult.SafeErrorCode, attachmentResult.SanitizedSummary, attachmentResult.ProviderRequestId, attachmentResult.Retryable, customerResult.ProviderCustomerId));
         }
 
+        subscription.ProviderPaymentMethodId = attachmentResult.ProviderPaymentMethodId;
+        subscription.PaymentMethodBrand = attachmentResult.PaymentMethodBrand;
+        subscription.PaymentMethodLast4 = attachmentResult.PaymentMethodLast4;
+        subscription.PaymentMethodExpirationMonth = attachmentResult.PaymentMethodExpirationMonth;
+        subscription.PaymentMethodExpirationYear = attachmentResult.PaymentMethodExpirationYear;
+        subscription.PaymentMethodCardholderName = attachmentResult.PaymentMethodCardholderName;
+        subscription.PaymentMethodUpdatedUtc = nowUtc;
+        subscription.UpdatedUtc = nowUtc;
+        await _db.SaveChangesAsync(cancellationToken);
+
         var initialPaymentRecord = new SubscriptionPayment
         {
             ClientSubscriptionId = subscription.Id,

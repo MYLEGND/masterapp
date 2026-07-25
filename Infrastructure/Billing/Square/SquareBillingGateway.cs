@@ -176,7 +176,21 @@ internal sealed class SquareBillingGateway : IBillingGateway
 
         var card = response.Json?.RootElement.TryGetProperty("card", out var cardElement) == true ? cardElement : default;
         var cardId = GetString(card, "id");
-        return new BillingPaymentMethodAttachmentResult(true, cardId, GetString(card, "card_status") ?? "ATTACHED", null, "Square payment method attached.", response.ProviderRequestId, false, request.ProviderCustomerId, cardId);
+        return new BillingPaymentMethodAttachmentResult(
+            true,
+            cardId,
+            GetString(card, "card_status") ?? "ATTACHED",
+            null,
+            "Square payment method attached.",
+            response.ProviderRequestId,
+            false,
+            request.ProviderCustomerId,
+            cardId,
+            GetString(card, "card_brand"),
+            GetString(card, "last_4"),
+            GetInt(card, "exp_month"),
+            GetInt(card, "exp_year"),
+            GetString(card, "cardholder_name"));
     }
 
     public async Task<BillingPaymentResult> GetPaymentAsync(BillingPaymentLookupRequest request, CancellationToken cancellationToken = default)

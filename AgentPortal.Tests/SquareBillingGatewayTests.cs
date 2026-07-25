@@ -92,6 +92,59 @@ public sealed class SquareBillingGatewayTests
             result.SanitizedSummary);
     }
 
+    [Fact]
+    public async Task AttachPaymentMethod_MapsSafeCardMetadataFromSquareResponse()
+    {
+        using var handler = new DelegatingHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("/v2/cards", request.RequestUri!.AbsolutePath);
+
+            return Task.FromResult(JsonResponse(HttpStatusCode.OK, """
+            {
+              "card": {
+                "id": "ccof_metadata_123",
+                "card_status": "ACTIVE",
+                "card_brand": "VISA",
+                "last_4": "4242",
+                "exp_month": 12,
+                "exp_year": 2031,
+                "cardholder_name": "Test Client"
+              }
+            }
+            """));
+        });
+
+        using var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://square.example/")
+        };
+
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory
+            .Setup(x => x.CreateClient("MasterAppBilling.Square"))
+            .Returns(client);
+
+        var gateway = CreateGateway(httpClientFactory.Object);
+
+        var result = await gateway.AttachPaymentMethodAsync(
+            new BillingPaymentMethodAttachmentRequest(
+                "cust_123",
+                "cnon:card-nonce-safe",
+                "metadata-test-key",
+                "Test Client",
+                "subscription_123"));
+
+        Assert.True(result.Success);
+        Assert.Equal("cust_123", result.ProviderCustomerId);
+        Assert.Equal("ccof_metadata_123", result.ProviderPaymentMethodId);
+        Assert.Equal("VISA", result.PaymentMethodBrand);
+        Assert.Equal("4242", result.PaymentMethodLast4);
+        Assert.Equal(12, result.PaymentMethodExpirationMonth);
+        Assert.Equal(2031, result.PaymentMethodExpirationYear);
+        Assert.Equal("Test Client", result.PaymentMethodCardholderName);
+    }
+
     private static SquareBillingGateway CreateGateway(IHttpClientFactory httpClientFactory) =>
         new(
             httpClientFactory,

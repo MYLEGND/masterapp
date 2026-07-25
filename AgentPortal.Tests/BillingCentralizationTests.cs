@@ -278,7 +278,21 @@ public sealed class BillingCentralizationTests
         gateway.Setup(x => x.ResolveCustomerAsync(It.IsAny<BillingCustomerResolutionRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BillingCustomerResolutionResult(true, "cust_123", "COMPLETED", null, "Customer resolved.", "req_customer", false, "cust_123"));
         gateway.Setup(x => x.AttachPaymentMethodAsync(It.IsAny<BillingPaymentMethodAttachmentRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BillingPaymentMethodAttachmentResult(true, "card_123", "COMPLETED", null, "Card vaulted.", "req_card", false, "cust_123", "card_123"));
+            .ReturnsAsync(new BillingPaymentMethodAttachmentResult(
+                true,
+                "card_123",
+                "COMPLETED",
+                null,
+                "Card vaulted.",
+                "req_card",
+                false,
+                "cust_123",
+                "card_123",
+                "VISA",
+                "4242",
+                12,
+                2031,
+                "Client One"));
         gateway.Setup(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BillingOneTimePaymentResult(true, "pay_initial_123", "COMPLETED", null, "Payment completed.", "req_payment", false));
 
@@ -326,6 +340,14 @@ public sealed class BillingCentralizationTests
         Assert.Null(subscription.ProviderPlanVariationId);
         Assert.Equal(12_345, subscription.MonthlyAmountCents);
         Assert.Equal(ClientSubscriptionStatus.Active, subscription.Status);
+        Assert.Equal("cust_123", subscription.ProviderCustomerId);
+        Assert.Equal("card_123", subscription.ProviderPaymentMethodId);
+        Assert.Equal("VISA", subscription.PaymentMethodBrand);
+        Assert.Equal("4242", subscription.PaymentMethodLast4);
+        Assert.Equal(12, subscription.PaymentMethodExpirationMonth);
+        Assert.Equal(2031, subscription.PaymentMethodExpirationYear);
+        Assert.Equal("Client One", subscription.PaymentMethodCardholderName);
+        Assert.NotNull(subscription.PaymentMethodUpdatedUtc);
         Assert.Equal(SubscriptionPaymentKind.InitialActivation, payment.Kind);
         Assert.Equal(12_345, payment.AmountCents);
         Assert.False(string.IsNullOrWhiteSpace(payment.IdempotencyKey));
