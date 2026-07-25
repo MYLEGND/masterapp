@@ -70,6 +70,7 @@
     lastTrigger: null,
     pendingSubmission: null
   };
+  syncRecipientScopeControls();
 
   function readSession(key, fallback) {
     try {
@@ -172,6 +173,65 @@
     if (state.recipientScope === 'Agents') return 'Agent';
     if (state.recipientScope === 'Clients') return 'Client';
     return '';
+  }
+
+  function recipientScopeDescription() {
+    if (state.recipientScope === 'Clients') {
+      return {
+        searchPlaceholder: 'Search your active or business clients',
+        emptyConversations: 'No client conversations yet.',
+        archivedConversations: 'Archived client conversations'
+      };
+    }
+    if (state.recipientScope === 'Agents') {
+      return {
+        searchPlaceholder: 'Search active company agents',
+        emptyConversations: 'No agent conversations yet.',
+        archivedConversations: 'Archived agent conversations'
+      };
+    }
+    return {
+      searchPlaceholder: 'Search your servicing agent or Journey Circles connections',
+      emptyConversations: 'No conversations yet.',
+      archivedConversations: 'Archived conversations'
+    };
+  }
+
+  function isConversationInRecipientScope(conversation) {
+    const participantType = recipientScopeParticipantType();
+    return !participantType || conversation?.counterparty?.participantType === participantType;
+  }
+
+  function syncRecipientScopeControls() {
+    const description = recipientScopeDescription();
+    elements.search.placeholder = description.searchPlaceholder;
+    elements.search.setAttribute('aria-label', description.searchPlaceholder);
+    elements.recipientScopeButtons.forEach(button => {
+      const active = button.dataset.messagingRecipientScope === state.recipientScope;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+  }
+
+  function setRecipientScope(scope) {
+    if (!scope || scope === state.recipientScope) return false;
+
+    saveDraft();
+    state.recipientScope = scope;
+    state.recipients = [];
+    state.recipientMatches = [];
+    state.recipientMatchesQuery = '';
+    state.recipientsLoaded = false;
+    state.searchRequestId += 1;
+    state.pendingSubmission = null;
+    elements.search.value = '';
+    elements.newMessages.hidden = true;
+
+    if (state.active && !isConversationInRecipientScope(state.active)) state.active = null;
+    if (state.draftTarget && state.draftTarget.participantType !== recipientScopeParticipantType()) state.draftTarget = null;
+
+    syncRecipientScopeControls();
+    return true;
   }
 
   function recipientRequestUrl(search = '') {
@@ -694,13 +754,15 @@
 
   function renderConversations() {
     elements.list.replaceChildren();
-    if (state.conversations.length === 0) {
-      elements.list.append(createTextElement('p', 'messaging-list-empty', 'No conversations yet.'));
+    const scopedConversations = state.conversations.filter(isConversationInRecipientScope);
+    const scope = recipientScopeDescription();
+    if (scopedConversations.length === 0) {
+      elements.list.append(createTextElement('p', 'messaging-list-empty', scope.emptyConversations));
       return;
     }
 
-    const activeConversations = state.conversations.filter(conversation => conversation.isArchivedMembership !== true);
-    const archivedConversations = state.conversations.filter(conversation => conversation.isArchivedMembership === true);
+    const activeConversations = scopedConversations.filter(conversation => conversation.isArchivedMembership !== true);
+    const archivedConversations = scopedConversations.filter(conversation => conversation.isArchivedMembership === true);
 
     function appendConversation(conversation) {
       const button = document.createElement('button');
@@ -737,7 +799,7 @@
 
     if (archivedConversations.length > 0) {
       elements.list.append(
-        createTextElement('p', 'messaging-list-empty', 'Archived Clients')
+        createTextElement('p', 'messaging-list-empty', scope.archivedConversations)
       );
       archivedConversations.forEach(appendConversation);
     }
@@ -954,11 +1016,9 @@
       return;
     }
 
-    const scopedParticipantType = recipientScopeParticipantType();
     const matchingConversations = state.conversations
       .filter(conversation => conversation.isArchivedMembership !== true)
-      .filter(conversation => !scopedParticipantType ||
-        conversation.counterparty?.participantType === scopedParticipantType)
+      .filter(isConversationInRecipientScope)
       .filter(conversation => matchesSearch(searchText(conversation), query))
       .sort((left, right) =>
         searchRank(left.counterparty, query, left) - searchRank(right.counterparty, query, right) ||
@@ -1279,7 +1339,8 @@
       elements.window.focus({ preventScroll: true });
       await Promise.all([refreshList(), loadRecipients()]);
       const lastConversationId = readSession('last-conversation', '');
-      if (!state.active && lastConversationId && state.conversations.some(conversation => conversation.id === lastConversationId)) {
+      if (!state.active && lastConversationId && state.conversations.some(conversation =>
+        conversation.id === lastConversationId && isConversationInRecipientScope(conversation))) {
         await loadConversation(lastConversationId, false);
       }
     } catch (error) {
@@ -1340,21 +1401,11 @@
   elements.recipientScopeButtons.forEach(button => {
     button.addEventListener('click', () => {
       const scope = button.dataset.messagingRecipientScope || '';
-      if (!scope || scope === state.recipientScope) return;
+      if (!setRecipientScope(scope)) return;
 
-      state.recipientScope = scope;
-      state.recipients = [];
-      state.recipientMatches = [];
-      state.recipientMatchesQuery = '';
-      state.recipientsLoaded = false;
-      state.searchRequestId += 1;
-      elements.search.value = '';
-      elements.recipientScopeButtons.forEach(candidate => {
-        const active = candidate === button;
-        candidate.classList.toggle('is-active', active);
-        candidate.setAttribute('aria-pressed', String(active));
-      });
+      renderConversations();
       renderSearchResults();
+      renderConversation();
       loadRecipients().catch(error => showError(error.message));
     });
   });

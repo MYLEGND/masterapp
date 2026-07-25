@@ -72,6 +72,23 @@ public sealed class MessagingClientScriptContractTests
     }
 
     [Fact]
+    public void AgentRecipientScope_ControlsInboxSearchAndRestoredConversationTogether()
+    {
+        var source = ReadRepositoryFile("SHARED", "wwwroot", "js", "messaging.js");
+        var conversationsBody = GetFunctionBody(source, "renderConversations");
+        var searchBody = GetFunctionBody(source, "renderSearchResults");
+        var openBody = GetFunctionBody(source, "openCommandCenter");
+
+        Assert.Contains("function isConversationInRecipientScope(conversation)", source, StringComparison.Ordinal);
+        Assert.Contains("function setRecipientScope(scope)", source, StringComparison.Ordinal);
+        Assert.Contains("Search your active or business clients", source, StringComparison.Ordinal);
+        Assert.Contains("Search active company agents", source, StringComparison.Ordinal);
+        Assert.Contains("state.conversations.filter(isConversationInRecipientScope)", conversationsBody, StringComparison.Ordinal);
+        Assert.Contains(".filter(isConversationInRecipientScope)", searchBody, StringComparison.Ordinal);
+        Assert.Contains("isConversationInRecipientScope(conversation)", openBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void JourneyCards_UseTheServerAuthorizedClientProfileAvatarUrl()
     {
         var source = ReadRepositoryFile("SHARED", "wwwroot", "js", "messaging.js");
