@@ -1,15 +1,21 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
+using ClientApp.Services;
 using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Messaging;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
+using ClientAvatarController = ClientApp.Controllers.AvatarController;
 
 namespace AgentPortal.Tests;
 
@@ -227,6 +233,59 @@ public sealed class MessagingProfileImageResolverTests
             Assert.Equal("client profile image"u8.ToArray(), clientImage.Content);
             Assert.Equal("image/webp", clientImage.ContentType);
         });
+    }
+
+    [Fact]
+    public async Task ClientAvatarUpload_PersistsToClientProfileAndIsReturnedToAnAuthorizedAgent()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        const string clientUserId = "client-avatar-owner";
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = clientUserId,
+            ExternalIdentityObjectId = clientUserId,
+            FirstName = "Profile",
+            LastName = "Owner",
+            Email = "profile.owner@example.test"
+        };
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var user = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("oid", clientUserId),
+            new Claim("preferred_username", client.Email)
+        ],
+        "TestAuth"));
+        var httpContext = new DefaultHttpContext { User = user };
+        var controller = new ClientAvatarController(db, new EffectiveClientContextService(db))
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext }
+        };
+        var imageBytes = "profile owned image"u8.ToArray();
+        await using var imageStream = new MemoryStream(imageBytes);
+        var upload = new FormFile(imageStream, 0, imageBytes.Length, "photo", "avatar.png")
+        {
+            Headers = new HeaderDictionary { ["Content-Type"] = "image/png" }
+        };
+
+        Assert.IsType<OkObjectResult>(await controller.Upload(upload));
+
+        var persisted = await db.ClientProfiles.SingleAsync(x => x.Id == client.Id);
+        Assert.Equal(imageBytes, persisted.ProfileImageContent);
+        Assert.Equal("image/png", persisted.ProfileImageContentType);
+
+        var resolver = CreateResolver(db);
+        var identities = await resolver.ResolveIdentitiesAsync(
+            [new MessagingParticipantReference(clientUserId, MessagingParticipantTypes.Client)]);
+        var clientIdentity = identities[(clientUserId, MessagingParticipantTypes.Client)];
+        var image = await resolver.ResolveAsync(clientIdentity);
+
+        Assert.NotNull(image);
+        Assert.Equal(imageBytes, image!.Content);
+        Assert.Equal("image/png", image.ContentType);
+        Assert.Null(image.PhysicalPath);
     }
 
     [Fact]
