@@ -75,7 +75,7 @@ internal static class MessagingModelConfiguration
             .IsRequired()
             .HasMaxLength(40);
 
-        entity.HasIndex(x => new { x.ConversationId, x.UserId })
+        entity.HasIndex(x => new { x.ConversationId, x.UserId, x.ParticipantType })
             .IsUnique();
 
         entity.HasIndex(x => new { x.UserId, x.IsActive });

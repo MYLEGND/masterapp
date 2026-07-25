@@ -2,6 +2,7 @@ using Domain.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Shared.Messaging;
 
 namespace Infrastructure.Messaging;
 
@@ -13,22 +14,29 @@ public abstract class MessagingControllerBase : Controller
     private readonly IMessagingRealtimePublisher _realtimePublisher;
     private readonly IMessagingProfileImageResolver _profileImageResolver;
     private readonly IMessagingContactKeyProtector _contactKeys;
+    private readonly IMessagingActorContextResolver _actorContextResolver;
 
     protected MessagingControllerBase(
         IMessagingService messagingService,
         IMessageAttachmentStorage attachmentStorage,
         IMessagingRealtimePublisher realtimePublisher,
         IMessagingProfileImageResolver profileImageResolver,
-        IMessagingContactKeyProtector contactKeys)
+        IMessagingContactKeyProtector contactKeys,
+        IMessagingActorContextResolver actorContextResolver)
     {
         _messagingService = messagingService;
         _attachmentStorage = attachmentStorage;
         _realtimePublisher = realtimePublisher;
         _profileImageResolver = profileImageResolver;
         _contactKeys = contactKeys;
+        _actorContextResolver = actorContextResolver;
     }
 
-    protected abstract Task<MessagingActor?> ResolveMessagingActorAsync(CancellationToken cancellationToken);
+    private async Task<MessagingActor?> ResolveMessagingActorAsync(CancellationToken cancellationToken)
+    {
+        var actor = await _actorContextResolver.ResolveAsync(HttpContext, cancellationToken);
+        return actor is null ? null : new MessagingActor(actor.Value.UserId, actor.Value.ParticipantType);
+    }
 
     [HttpGet("/Messaging")]
     public async Task<IActionResult> Index(string? search, bool includeClosed = false)
@@ -321,7 +329,9 @@ public abstract class MessagingControllerBase : Controller
                 conversation.Id,
                 messageId,
                 DateTime.UtcNow,
-                conversation.Participants.Select(x => x.UserId).ToArray()),
+                conversation.Participants
+                    .Select(x => new MessagingRealtimeRecipient(x.UserId, x.ParticipantType))
+                    .ToArray()),
             cancellationToken);
     }
 

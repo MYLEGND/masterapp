@@ -3,6 +3,7 @@ using AgentPortal.Services;
 using Domain.Messaging;
 using Infrastructure.Messaging;
 using Microsoft.AspNetCore.Authorization;
+using Shared.Messaging;
 
 namespace AgentPortal.Controllers;
 
@@ -10,28 +11,14 @@ namespace AgentPortal.Controllers;
 [AssistantBlock]
 public sealed class MessagingController : MessagingControllerBase
 {
-    private readonly EffectiveAgentContext _agentContext;
-
     public MessagingController(
-        EffectiveAgentContext agentContext,
         IMessagingService messagingService,
         IMessageAttachmentStorage attachmentStorage,
         IMessagingRealtimePublisher realtimePublisher,
         IMessagingProfileImageResolver profileImageResolver,
-        IMessagingContactKeyProtector contactKeys)
-        : base(messagingService, attachmentStorage, realtimePublisher, profileImageResolver, contactKeys)
+        IMessagingContactKeyProtector contactKeys,
+        IMessagingActorContextResolver actorContextResolver)
+        : base(messagingService, attachmentStorage, realtimePublisher, profileImageResolver, contactKeys, actorContextResolver)
     {
-        _agentContext = agentContext;
-    }
-
-    protected override Task<MessagingActor?> ResolveMessagingActorAsync(CancellationToken cancellationToken)
-    {
-        if (HttpContext.Items.TryGetValue("IsAssistant", out var value) && value is true)
-            return Task.FromResult<MessagingActor?>(null);
-
-        var userId = _agentContext.EffectiveAgentOid?.Trim();
-        return Task.FromResult<MessagingActor?>(string.IsNullOrWhiteSpace(userId)
-            ? null
-            : new MessagingActor(userId, MessagingParticipantTypes.Agent));
     }
 }

@@ -109,7 +109,9 @@ internal sealed class MessagingRealtimeNotificationHostedService : BackgroundSer
                         conversation.Id,
                         message.Id,
                         message.SentUtc,
-                        conversation.Participants.Select(x => x.UserId).ToArray()),
+                        conversation.Participants
+                            .Select(x => new MessagingRealtimeRecipient(x.UserId, x.ParticipantType))
+                            .ToArray()),
                     cancellationToken);
             }
         }

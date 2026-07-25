@@ -12,4 +12,6 @@ public sealed record MessagingRealtimeEvent(
     Guid ConversationId,
     Guid? MessageId,
     DateTime OccurredUtc,
-    IReadOnlyCollection<string> RecipientUserIds);
+    IReadOnlyCollection<MessagingRealtimeRecipient> Recipients);
+
+public sealed record MessagingRealtimeRecipient(string UserId, string ParticipantType);

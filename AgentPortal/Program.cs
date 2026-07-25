@@ -95,6 +95,7 @@ builder.Services.AddScoped<FounderImpersonationService>();
 builder.Services.AddScoped<ProductionService>();
 builder.Services.AddScoped<MetaSignalCrmOutcomeService>();
 builder.Services.AddScoped<EffectiveAgentContext>();
+builder.Services.AddScoped<IMessagingActorContextResolver, AgentPortalMessagingActorContextResolver>();
 builder.Services.AddScoped<IAdvancedMarketsCalculationService, AdvancedMarketsCalculationService>();
 builder.Services.AddSingleton<IAgentTimeZoneResolver, AgentTimeZoneResolver>();
 builder.Services.AddSingleton<IBudgetCalculator, BudgetCalculator>();

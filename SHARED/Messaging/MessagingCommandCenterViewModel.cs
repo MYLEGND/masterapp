@@ -7,4 +7,5 @@ public sealed record MessagingCommandCenterViewModel(
     string? ServiceContactEmail = null,
     string SearchPlaceholder = "Search authorized contacts...",
     string ComposePrompt = "Choose an authorized contact to begin.",
-    bool SupportsJourneyCircles = false);
+    bool SupportsJourneyCircles = false,
+    string CurrentParticipantType = "");

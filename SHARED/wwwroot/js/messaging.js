@@ -3,8 +3,9 @@
   if (!root) return;
 
   const currentUserId = (root.dataset.currentUserId || '').trim().toLowerCase();
+  const currentParticipantType = (root.dataset.currentParticipantType || '').trim();
   const composePrompt = root.dataset.messagingComposePrompt || 'Choose an authorized contact to begin.';
-  const storagePrefix = `masterapp.messaging.${currentUserId || 'current'}.`;
+  const storagePrefix = `masterapp.messaging.${participantIdentityKey(currentUserId, currentParticipantType) || 'current'}.`;
   const token = root.querySelector('#messagingAntiForgery input[name="__RequestVerificationToken"]')?.value || '';
   const elements = {
     window: root.querySelector('.messaging-command-center-window'),
@@ -144,6 +145,19 @@
 
   function normalize(value) {
     return (value || '').trim().toLowerCase();
+  }
+
+  function participantIdentityKey(userId, participantType) {
+    const normalizedUserId = normalize(userId);
+    const normalizedParticipantType = normalize(participantType);
+    return normalizedUserId && normalizedParticipantType
+      ? `${normalizedParticipantType}:${normalizedUserId}`
+      : '';
+  }
+
+  function isCurrentParticipant(userId, participantType) {
+    return participantIdentityKey(userId, participantType) ===
+      participantIdentityKey(currentUserId, currentParticipantType);
   }
 
   function normalizeSearch(value) {
@@ -623,7 +637,9 @@
 
   function activeDraftKey() {
     if (state.active?.id) return `conversation:${state.active.id}`;
-    if (state.draftTarget?.userId) return `recipient:${normalize(state.draftTarget.userId)}`;
+    if (state.draftTarget?.userId) {
+      return `recipient:${participantIdentityKey(state.draftTarget.userId, state.draftTarget.participantType)}`;
+    }
     return null;
   }
 
@@ -703,12 +719,14 @@
     }
   }
 
-  function participantName(conversation, userId) {
-    return conversation.participants?.find(participant => normalize(participant.userId) === normalize(userId))?.displayName || 'Participant';
+  function participantName(conversation, userId, participantType) {
+    return conversation.participants?.find(participant =>
+      participantIdentityKey(participant.userId, participant.participantType) === participantIdentityKey(userId, participantType))?.displayName || 'Participant';
   }
 
   function currentCounterparty(conversation) {
-    return conversation?.participants?.find(participant => normalize(participant.userId) !== currentUserId) || null;
+    return conversation?.participants?.find(participant =>
+      !isCurrentParticipant(participant.userId, participant.participantType)) || null;
   }
 
   function setComposerState(target, isClosed) {
@@ -787,11 +805,11 @@
 
         const card = document.createElement('article');
         card.className = 'messaging-message';
-        const isOwn = normalize(message.senderUserId) === currentUserId;
+        const isOwn = isCurrentParticipant(message.senderUserId, message.senderType);
         if (isOwn) card.classList.add('is-own');
         const meta = document.createElement('div');
         meta.className = 'messaging-message-meta';
-        meta.append(createTextElement('span', 'messaging-message-sender', isOwn ? 'You' : participantName(conversation, message.senderUserId)));
+        meta.append(createTextElement('span', 'messaging-message-sender', isOwn ? 'You' : participantName(conversation, message.senderUserId, message.senderType)));
         meta.append(createTextElement('time', '', formatMessageTime(message.sentUtc)));
         if (message.editedUtc) meta.append(createTextElement('span', 'messaging-message-edited', 'Edited'));
         card.append(meta);
@@ -919,13 +937,14 @@
         searchRank(left.counterparty, query, left) - searchRank(right.counterparty, query, right) ||
         (parseUtcTimestamp(right.lastMessageUtc)?.getTime() || 0) -
         (parseUtcTimestamp(left.lastMessageUtc)?.getTime() || 0));
-    const existingCounterparties = new Set(matchingConversations.map(conversation => normalize(conversation.counterparty?.userId)));
+    const existingCounterparties = new Set(matchingConversations.map(conversation =>
+      participantIdentityKey(conversation.counterparty?.userId, conversation.counterparty?.participantType)));
     const existingConversationIds = new Set(matchingConversations.map(conversation => conversation.id));
     const recipientSource = state.recipientMatchesQuery === query
       ? state.recipientMatches
       : state.recipients;
     const matchingRecipients = recipientSource.filter(recipient =>
-      !existingCounterparties.has(normalize(recipient.userId)) &&
+      !existingCounterparties.has(participantIdentityKey(recipient.userId, recipient.participantType)) &&
       !existingConversationIds.has(recipient.existingConversationId) &&
       matchesSearch([recipient.displayName, recipient.email].filter(Boolean).join(' '), query))
       .sort((left, right) =>
@@ -1136,7 +1155,7 @@
           const created = result.conversation;
           submission.messageId = [...(created?.messages || [])]
             .reverse()
-            .find(message => normalize(message.senderUserId) === currentUserId && message.body === body)?.id || null;
+            .find(message => isCurrentParticipant(message.senderUserId, message.senderType) && message.body === body)?.id || null;
           state.active = created;
           state.draftTarget = null;
           submission.key = activeDraftKey();

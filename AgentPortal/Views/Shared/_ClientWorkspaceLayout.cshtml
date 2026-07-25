@@ -659,7 +659,9 @@
 
 @if (!isAssistant && !string.IsNullOrWhiteSpace(messagingActorId))
 {
-    @await Html.PartialAsync("~/Views/Messaging/_CommandCenter.cshtml", new MessagingCommandCenterViewModel(messagingActorId))
+    @await Html.PartialAsync("~/Views/Messaging/_CommandCenter.cshtml", new MessagingCommandCenterViewModel(
+        messagingActorId,
+        CurrentParticipantType: "Agent"))
 }
 
 <div id="exploreOverlay" class="explore-overlay" aria-hidden="true"></div>

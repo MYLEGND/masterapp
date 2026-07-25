@@ -12,12 +12,38 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Shared.Messaging;
 using Xunit;
 
 namespace AgentPortal.Tests;
 
 public sealed class MessagingServiceTests
 {
+    [Fact]
+    public async Task ParticipantModel_UsesTheFullLogicalIdentityInItsUniqueIndex()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        var entityType = db.Model.FindEntityType(typeof(MessageConversationParticipant));
+        var index = Assert.Single(entityType!.GetIndexes(), candidate =>
+            candidate.IsUnique &&
+            candidate.Properties.Select(property => property.Name)
+                .SequenceEqual(["ConversationId", "UserId", "ParticipantType"]));
+
+        Assert.True(index.IsUnique);
+    }
+
+    [Fact]
+    public void RealtimeGroups_AreQualifiedByParticipantType()
+    {
+        var agentGroup = MessagingHub.GroupName("shared-user", MessagingParticipantTypes.Agent);
+        var clientGroup = MessagingHub.GroupName("shared-user", MessagingParticipantTypes.Client);
+
+        Assert.Equal("messaging:agent:shared-user", agentGroup);
+        Assert.Equal("messaging:client:shared-user", clientGroup);
+        Assert.NotEqual(agentGroup, clientGroup);
+    }
+
     [Fact]
     public async Task AgentClientRelationship_AllowsMessaging_AndTracksUnreadAndReadState()
     {
@@ -353,31 +379,94 @@ public sealed class MessagingServiceTests
         Assert.True(repeated.Succeeded);
         Assert.Equal(first.Conversation!.Id, repeated.Conversation!.Id);
         var stored = Assert.Single(await db.MessageConversations.ToListAsync());
-        Assert.Equal("ClientAgent|agent-1|client-1", stored.DirectConversationKey);
+        Assert.Equal("ClientAgent|5:Agent7:agent-1|6:Client8:client-1", stored.DirectConversationKey);
         Assert.Equal(2, await db.InternalMessages.CountAsync());
     }
 
     [Fact]
-    public async Task SameCanonicalUserIdWithDifferentParticipantTypes_IsRejectedBeforeParticipantsAreTracked()
+    public async Task SameCanonicalUserIdWithDifferentParticipantTypes_UsesDistinctParticipantsAndUnreadState()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            ClientUserId = "agent-1",
+            ExternalIdentityObjectId = "agent-1",
+            FirstName = "Agent",
+            LastName = "Client",
+            Email = "agent.client@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        });
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "agent-1",
+            AgentUpn = "agent.one@mylegnd.com",
+            ClientUserId = "agent-1"
+        });
+        await db.SaveChangesAsync();
         var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("agent-1", MessagingParticipantTypes.Client);
 
-        var result = await service.StartConversationAsync(
+        var recipients = await service.ListRecipientsAsync(agent);
+        Assert.Contains(recipients.Recipients, recipient =>
+            recipient.UserId == client.UserId &&
+            recipient.ParticipantType == MessagingParticipantTypes.Client);
+
+        var opened = await service.StartConversationAsync(
             new StartMessagingConversationCommand(
-                new MessagingActor("agent-1", MessagingParticipantTypes.Agent),
-                "agent-1",
+                agent,
+                client.UserId,
                 MessagingParticipantTypes.Client,
-                InitialMessageBody: "This must not create a participant duplicate."));
+                InitialMessageBody: "This is the agent identity.",
+                ClientMessageId: "same-user-agent-message"));
 
-        Assert.False(result.Succeeded);
-        Assert.Equal("MESSAGING_CONVERSATION_INVALID", result.ErrorCode);
-        Assert.Empty(await db.MessageConversations.ToListAsync());
-        Assert.Empty(await db.MessageConversationParticipants.ToListAsync());
-        Assert.DoesNotContain(
-            db.ChangeTracker.Entries<MessageConversationParticipant>(),
-            entry => entry.State == EntityState.Added);
+        Assert.True(opened.Succeeded);
+        var conversation = Assert.IsType<MessagingConversationDetail>(opened.Conversation);
+        Assert.Equal("ClientAgent|5:Agent7:agent-1|6:Client7:agent-1", (await db.MessageConversations.SingleAsync()).DirectConversationKey);
+        Assert.Equal(2, await db.MessageConversationParticipants
+            .Where(participant => participant.ConversationId == conversation.Id)
+            .CountAsync());
+        Assert.Contains(conversation.Participants, participant =>
+            participant.UserId == agent.UserId && participant.ParticipantType == MessagingParticipantTypes.Agent);
+        Assert.Contains(conversation.Participants, participant =>
+            participant.UserId == client.UserId && participant.ParticipantType == MessagingParticipantTypes.Client);
+
+        var clientInbox = await service.ListConversationsAsync(client, new MessagingConversationListQuery());
+        var clientView = Assert.Single(clientInbox.Conversations);
+        Assert.Equal(MessagingParticipantTypes.Agent, clientView.Counterparty.ParticipantType);
+        Assert.Equal(1, clientView.UnreadCount);
+
+        Assert.True((await service.MarkConversationReadAsync(
+            new MessagingConversationActionCommand(client, conversation.Id))).Succeeded);
+        Assert.True((await service.SendMessageAsync(new SendMessagingMessageCommand(
+            client,
+            conversation.Id,
+            "This is the client identity.",
+            "same-user-client-message"))).Succeeded);
+
+        var agentInbox = await service.ListConversationsAsync(agent, new MessagingConversationListQuery());
+        var agentView = Assert.Single(agentInbox.Conversations);
+        Assert.Equal(MessagingParticipantTypes.Client, agentView.Counterparty.ParticipantType);
+        Assert.Equal(1, agentView.UnreadCount);
+
+        var reused = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            client,
+            agent.UserId,
+            MessagingParticipantTypes.Agent,
+            InitialMessageBody: "Reuse the same direct identity pair.",
+            ClientMessageId: "same-user-client-reuse"));
+        Assert.True(reused.Succeeded);
+        Assert.Equal(conversation.Id, reused.Conversation!.Id);
+
+        var crossRoleDuplicate = await service.SendMessageAsync(new SendMessagingMessageCommand(
+            client,
+            conversation.Id,
+            "This must not be mistaken for the agent retry.",
+            "same-user-agent-message"));
+
+        Assert.False(crossRoleDuplicate.Succeeded);
+        Assert.Equal("MESSAGING_CLIENT_MESSAGE_CONFLICT", crossRoleDuplicate.ErrorCode);
     }
 
     [Fact]
@@ -403,7 +492,7 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
-    public async Task RecipientLookup_ExcludesTheActorEvenWhenAnIdentityAppearsInAnotherParticipantType()
+    public async Task RecipientLookup_ExcludesOnlyTheExactActorIdentity()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
@@ -432,9 +521,10 @@ public sealed class MessagingServiceTests
             "client-1",
             MessagingParticipantTypes.Agent);
 
-        Assert.DoesNotContain(recipients.Recipients, recipient => recipient.UserId == "client-1");
-        Assert.False(self.Succeeded);
-        Assert.Equal("MESSAGING_RECIPIENT_NOT_FOUND", self.ErrorCode);
+        Assert.Contains(recipients.Recipients, recipient =>
+            recipient.UserId == "client-1" && recipient.ParticipantType == MessagingParticipantTypes.Agent);
+        Assert.True(self.Succeeded);
+        Assert.Equal(MessagingParticipantTypes.Agent, self.Recipient!.ParticipantType);
     }
 
     [Fact]

@@ -98,6 +98,7 @@ internal sealed class MessagingService : IMessagingService
                 x.Id,
                 x.ConversationId,
                 x.SenderUserId,
+                x.SenderType,
                 x.Body,
                 x.SentUtc,
                 x.IsDeleted))
@@ -116,7 +117,8 @@ internal sealed class MessagingService : IMessagingService
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var displayNames = await LoadDisplayNamesAsync(participants, cancellationToken);
-        var actorUserId = NormalizeRequired(actor.UserId);
+        var actorUserId = NormalizeUserId(actor.UserId);
+        var actorParticipantType = NormalizeRequired(actor.ParticipantType);
         var result = new List<MessagingConversationSummary>(conversations.Count);
         foreach (var conversation in conversations)
         {
@@ -124,12 +126,12 @@ internal sealed class MessagingService : IMessagingService
                 .Where(x => x.ConversationId == conversation.Id)
                 .ToList();
             var currentParticipant = conversationParticipants.FirstOrDefault(x =>
-                string.Equals(x.UserId, actorUserId, StringComparison.OrdinalIgnoreCase));
+                IsSameParticipant(x.UserId, x.ParticipantType, actorUserId, actorParticipantType));
             if (currentParticipant is null)
                 continue;
 
             var counterparty = conversationParticipants.FirstOrDefault(x =>
-                !string.Equals(x.UserId, actorUserId, StringComparison.OrdinalIgnoreCase));
+                !IsSameParticipant(x.UserId, x.ParticipantType, actorUserId, actorParticipantType));
             if (counterparty is null)
                 continue;
 
@@ -139,7 +141,7 @@ internal sealed class MessagingService : IMessagingService
                 .ToList();
             var unreadCount = conversationMessages.Count(x =>
                 !x.IsDeleted &&
-                !string.Equals(x.SenderUserId, actorUserId, StringComparison.OrdinalIgnoreCase) &&
+                !IsSameParticipant(x.SenderUserId, x.SenderType, actorUserId, actorParticipantType) &&
                 (!currentParticipant.LastReadUtc.HasValue || x.SentUtc > currentParticipant.LastReadUtc.Value));
             var latest = conversationMessages.FirstOrDefault(x => !x.IsDeleted);
             var isArchivedMembership =
@@ -217,7 +219,7 @@ internal sealed class MessagingService : IMessagingService
             .ToListAsync(cancellationToken);
         var displayNames = await LoadDisplayNamesAsync(participants, cancellationToken);
         var currentParticipant = participants.FirstOrDefault(x =>
-            string.Equals(x.UserId, NormalizeRequired(actor.UserId), StringComparison.OrdinalIgnoreCase));
+            IsSameParticipant(x.UserId, x.ParticipantType, actor.UserId, actor.ParticipantType));
         var isArchivedMembership =
             conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
             !await ConversationHasActiveClientMembershipAsync(conversation.Id, cancellationToken);
@@ -334,11 +336,11 @@ internal sealed class MessagingService : IMessagingService
         var directConversationKey = BuildDirectConversationKey(
             conversationType,
             actor.UserId,
-            targetUserId);
+            actor.ParticipantType,
+            targetUserId,
+            targetParticipantType);
 
         var existing = await FindDirectConversationAsync(
-            actor.UserId,
-            targetUserId,
             conversationType,
             directConversationKey,
             cancellationToken);
@@ -446,8 +448,6 @@ internal sealed class MessagingService : IMessagingService
             {
                 _db.ChangeTracker.Clear();
                 var concurrent = await FindDirectConversationAsync(
-                    actor.UserId,
-                    targetUserId,
                     conversationType,
                     directConversationKey,
                     cancellationToken);
@@ -520,7 +520,11 @@ internal sealed class MessagingService : IMessagingService
             if (duplicate is not null)
             {
                 if (duplicate.ConversationId == conversation.Id &&
-                    string.Equals(duplicate.SenderUserId, actor.UserId, StringComparison.OrdinalIgnoreCase))
+                    IsSameParticipant(
+                        duplicate.SenderUserId,
+                        duplicate.SenderType,
+                        actor.UserId,
+                        actor.ParticipantType))
                 {
                     return new MessagingMessageResult(
                         true,
@@ -892,18 +896,13 @@ internal sealed class MessagingService : IMessagingService
     }
 
     private async Task<MessageConversation?> FindDirectConversationAsync(
-        string actorUserId,
-        string targetUserId,
         string conversationType,
         string directConversationKey,
         CancellationToken cancellationToken)
     {
         return await _db.MessageConversations
             .Where(x => x.ConversationType == conversationType)
-            .Where(x => x.DirectConversationKey == directConversationKey ||
-                        (x.Participants.Count(participant => participant.IsActive) == 2 &&
-                         x.Participants.Any(participant => participant.IsActive && participant.UserId.ToLower() == actorUserId) &&
-                         x.Participants.Any(participant => participant.IsActive && participant.UserId.ToLower() == targetUserId)))
+            .Where(x => x.DirectConversationKey == directConversationKey)
             .OrderByDescending(x => x.LastMessageUtc ?? x.CreatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
     }
@@ -937,11 +936,14 @@ internal sealed class MessagingService : IMessagingService
             return false;
         }
 
-        var isAssistant = await _db.AgentAssistants
-            .AsNoTracking()
-            .AnyAsync(x => x.AssistantUserId != null && x.AssistantUserId.ToLower() == normalizedActor.UserId, cancellationToken);
-        if (isAssistant)
-            return false;
+        if (normalizedActor.ParticipantType == MessagingParticipantTypes.Agent)
+        {
+            var isAssistant = await _db.AgentAssistants
+                .AsNoTracking()
+                .AnyAsync(x => x.AssistantUserId != null && x.AssistantUserId.ToLower() == normalizedActor.UserId, cancellationToken);
+            if (isAssistant)
+                return false;
+        }
 
         return normalizedActor.ParticipantType switch
         {
@@ -999,24 +1001,6 @@ internal sealed class MessagingService : IMessagingService
             CollapseAuthorizedRecipients(actor, candidates),
             cancellationToken);
         return await AttachExistingConversationIdsAsync(actor, recipients, cancellationToken);
-    }
-
-    private async Task<MessagingRecipientSummary?> GetParticipantSummaryAsync(
-        string userId,
-        string participantType,
-        CancellationToken cancellationToken)
-    {
-        var normalizedUserId = NormalizeUserId(userId);
-        var identities = await _participantIdentities.ResolveIdentitiesAsync(
-            [new MessagingParticipantReference(normalizedUserId, participantType)],
-            cancellationToken);
-        return identities.TryGetValue((normalizedUserId, participantType), out var identity)
-            ? new MessagingRecipientSummary(
-                identity.UserId,
-                identity.ParticipantType,
-                identity.DisplayName,
-                identity.Email)
-            : null;
     }
 
     private static bool MatchesContactSearch(MessagingRecipientSummary recipient, string search)
@@ -1122,7 +1106,11 @@ internal sealed class MessagingService : IMessagingService
             .Where(recipient =>
                 !string.IsNullOrWhiteSpace(recipient.UserId) &&
                 IsParticipantType(recipient.ParticipantType) &&
-                !string.Equals(recipient.UserId, actor.UserId, StringComparison.OrdinalIgnoreCase))
+                !IsSameParticipant(
+                    recipient.UserId,
+                    recipient.ParticipantType,
+                    actor.UserId,
+                    actor.ParticipantType))
             .GroupBy(recipient => (recipient.UserId, recipient.ParticipantType))
             .Select(group => group
                 .OrderBy(recipient => recipient.DisplayName, StringComparer.OrdinalIgnoreCase)
@@ -1275,15 +1263,6 @@ internal sealed class MessagingService : IMessagingService
                    subscription.Status == ClientSubscriptionStatus.GracePeriod))
         select profile.ClientUserId.ToLower();
 
-    private Task<bool> IsClientMembershipActiveAsync(
-        string clientUserId,
-        CancellationToken cancellationToken)
-    {
-        var clientKey = NormalizeUserId(clientUserId);
-        return ActiveClientMembershipUserIdsQuery()
-            .AnyAsync(userId => userId == clientKey, cancellationToken);
-    }
-
     private async Task<bool> ConversationHasActiveClientMembershipAsync(
         Guid conversationId,
         CancellationToken cancellationToken)
@@ -1396,16 +1375,18 @@ internal sealed class MessagingService : IMessagingService
     private static string BuildDirectConversationKey(
         string conversationType,
         string firstUserId,
-        string secondUserId)
+        string firstParticipantType,
+        string secondUserId,
+        string secondParticipantType)
     {
-        var userIds = new[]
+        var participantKeys = new[]
         {
-            NormalizeUserId(firstUserId),
-            NormalizeUserId(secondUserId)
+            BuildDirectParticipantKey(firstUserId, firstParticipantType),
+            BuildDirectParticipantKey(secondUserId, secondParticipantType)
         };
 
-        Array.Sort(userIds, StringComparer.Ordinal);
-        return $"{conversationType}|{userIds[0]}|{userIds[1]}";
+        Array.Sort(participantKeys, StringComparer.Ordinal);
+        return $"{conversationType}|{participantKeys[0]}|{participantKeys[1]}";
     }
 
     private static bool TryBuildDirectParticipants(
@@ -1429,7 +1410,7 @@ internal sealed class MessagingService : IMessagingService
         }
 
         var distinctParticipants = requested
-            .GroupBy(participant => participant.UserId, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(participant => (participant.UserId, participant.ParticipantType))
             .Select(group => group.First())
             .ToArray();
 
@@ -1517,6 +1498,21 @@ internal sealed class MessagingService : IMessagingService
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim() ?? string.Empty;
 
+    private static bool IsSameParticipant(
+        string? leftUserId,
+        string? leftParticipantType,
+        string? rightUserId,
+        string? rightParticipantType) =>
+        string.Equals(NormalizeUserId(leftUserId), NormalizeUserId(rightUserId), StringComparison.Ordinal) &&
+        string.Equals(NormalizeRequired(leftParticipantType), NormalizeRequired(rightParticipantType), StringComparison.Ordinal);
+
+    private static string BuildDirectParticipantKey(string? userId, string? participantType)
+    {
+        var normalizedUserId = NormalizeUserId(userId);
+        var normalizedParticipantType = NormalizeRequired(participantType);
+        return $"{normalizedParticipantType.Length}:{normalizedParticipantType}{normalizedUserId.Length}:{normalizedUserId}";
+    }
+
     private static string? NormalizeOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
@@ -1569,6 +1565,7 @@ internal sealed class MessagingService : IMessagingService
         Guid Id,
         Guid ConversationId,
         string SenderUserId,
+        string SenderType,
         string Body,
         DateTime SentUtc,
         bool IsDeleted);

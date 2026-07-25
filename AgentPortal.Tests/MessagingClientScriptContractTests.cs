@@ -34,6 +34,18 @@ public sealed class MessagingClientScriptContractTests
         Assert.Contains("connection.onclose(startPolling);", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void SharedMessagingClient_UsesFullParticipantIdentityForConversationState()
+    {
+        var source = ReadRepositoryFile("SHARED", "wwwroot", "js", "messaging.js");
+
+        Assert.Contains("data-current-participant-type", ReadRepositoryFile("SHARED", "Views", "Messaging", "_CommandCenter.cshtml"), StringComparison.Ordinal);
+        Assert.Contains("function participantIdentityKey(userId, participantType)", source, StringComparison.Ordinal);
+        Assert.Contains("isCurrentParticipant(message.senderUserId, message.senderType)", source, StringComparison.Ordinal);
+        Assert.Contains("participantIdentityKey(conversation.counterparty?.userId, conversation.counterparty?.participantType)", source, StringComparison.Ordinal);
+        Assert.Contains("participantIdentityKey(state.draftTarget.userId, state.draftTarget.participantType)", source, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("AgentPortal", "Views", "Shared", "_Layout.cshtml")]
     [InlineData("AgentPortal", "Views", "Shared", "_ClientWorkspaceLayout.cshtml")]

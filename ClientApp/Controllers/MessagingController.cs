@@ -1,33 +1,21 @@
-using ClientApp.Services;
 using Domain.Messaging;
 using Infrastructure.Messaging;
 using Microsoft.AspNetCore.Authorization;
+using Shared.Messaging;
 
 namespace ClientApp.Controllers;
 
 [Authorize]
 public sealed class MessagingController : MessagingControllerBase
 {
-    private readonly EffectiveClientContextService _clientContextService;
-
     public MessagingController(
-        EffectiveClientContextService clientContextService,
         IMessagingService messagingService,
         IMessageAttachmentStorage attachmentStorage,
         IMessagingRealtimePublisher realtimePublisher,
         IMessagingProfileImageResolver profileImageResolver,
-        IMessagingContactKeyProtector contactKeys)
-        : base(messagingService, attachmentStorage, realtimePublisher, profileImageResolver, contactKeys)
+        IMessagingContactKeyProtector contactKeys,
+        IMessagingActorContextResolver actorContextResolver)
+        : base(messagingService, attachmentStorage, realtimePublisher, profileImageResolver, contactKeys, actorContextResolver)
     {
-        _clientContextService = clientContextService;
-    }
-
-    protected override async Task<MessagingActor?> ResolveMessagingActorAsync(CancellationToken cancellationToken)
-    {
-        var context = await _clientContextService.ResolveAsync(User, Request.Cookies, allowRelink: false);
-        if (context is null || context.IsAgentView || string.IsNullOrWhiteSpace(context.ClientUserId))
-            return null;
-
-        return new MessagingActor(context.ClientUserId, MessagingParticipantTypes.Client);
     }
 }

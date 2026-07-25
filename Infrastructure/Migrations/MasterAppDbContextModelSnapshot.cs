@@ -3507,7 +3507,7 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ConversationId", "UserId")
+                    b.HasIndex("ConversationId", "UserId", "ParticipantType")
                         .IsUnique();
 
                     b.HasIndex("UserId", "IsActive");

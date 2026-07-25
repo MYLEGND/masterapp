@@ -42,6 +42,7 @@ builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
 builder.Services.AddMasterAppMessaging(builder.Configuration);
 builder.Services.AddScoped<EffectiveClientContextService>();
+builder.Services.AddScoped<IMessagingActorContextResolver, ClientAppMessagingActorContextResolver>();
 builder.Services.AddSingleton<ClientAppReturnUrlNormalizer>();
 builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
 builder.Services.AddScoped<IClientSubscriptionIdentitySyncService, ClientSubscriptionIdentitySyncService>();

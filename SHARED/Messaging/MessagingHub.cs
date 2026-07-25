@@ -1,27 +1,41 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using Shared.Auth;
-
 namespace Shared.Messaging;
 
 [Authorize]
 public sealed class MessagingHub : Hub
 {
-    public static string GroupName(string userId) => $"messaging:{userId.Trim().ToLowerInvariant()}";
+    private readonly IMessagingActorContextResolver _actorContextResolver;
+
+    public MessagingHub(IMessagingActorContextResolver actorContextResolver)
+    {
+        _actorContextResolver = actorContextResolver;
+    }
+
+    public static string GroupName(string userId, string participantType) =>
+        $"messaging:{participantType.Trim().ToLowerInvariant()}:{userId.Trim().ToLowerInvariant()}";
 
     public override async Task OnConnectedAsync()
     {
-        var userId = Context.User?.GetStableUserId();
-        if (!string.IsNullOrWhiteSpace(userId))
-            await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(userId));
-
-        var effectiveAgentUserId = Context.GetHttpContext()?.Items["EffectiveAgentOid"] as string;
-        if (!string.IsNullOrWhiteSpace(effectiveAgentUserId) &&
-            !string.Equals(effectiveAgentUserId, userId, StringComparison.OrdinalIgnoreCase))
+        var httpContext = Context.GetHttpContext();
+        if (httpContext is null)
         {
-            await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(effectiveAgentUserId));
+            Context.Abort();
+            return;
         }
 
+        var actor = await _actorContextResolver.ResolveAsync(httpContext, Context.ConnectionAborted);
+        if (actor is null ||
+            string.IsNullOrWhiteSpace(actor.Value.UserId) ||
+            string.IsNullOrWhiteSpace(actor.Value.ParticipantType))
+        {
+            Context.Abort();
+            return;
+        }
+
+        await Groups.AddToGroupAsync(
+            Context.ConnectionId,
+            GroupName(actor.Value.UserId, actor.Value.ParticipantType));
         await base.OnConnectedAsync();
     }
 }

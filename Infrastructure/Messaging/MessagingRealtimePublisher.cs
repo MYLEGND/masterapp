@@ -17,9 +17,11 @@ internal sealed class MessagingRealtimePublisher : IMessagingRealtimePublisher
         MessagingRealtimeEvent notification,
         CancellationToken cancellationToken = default)
     {
-        var groups = notification.RecipientUserIds
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Select(MessagingHub.GroupName)
+        var groups = notification.Recipients
+            .Where(x =>
+                !string.IsNullOrWhiteSpace(x.UserId) &&
+                !string.IsNullOrWhiteSpace(x.ParticipantType))
+            .Select(x => MessagingHub.GroupName(x.UserId, x.ParticipantType))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         if (groups.Length == 0)
