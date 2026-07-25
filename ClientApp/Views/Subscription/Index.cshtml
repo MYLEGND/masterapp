@@ -10,41 +10,41 @@
 }
 
 <div class="dashboard-page-shell membership-billing-page">
-    <section class="membership-billing-hero">
-        <div class="membership-billing-hero-copy">
+    <section class="dashboard-surface-panel membership-billing-hero">
+        <div class="dashboard-hero-copy membership-billing-hero-copy">
             <div class="dashboard-eyebrow">Membership &amp; Billing</div>
-            <h1>@Model.ClientName</h1>
-            <p>Review your membership, billing schedule, payment method, and portal access.</p>
+            <h1 class="dashboard-hero-title">@Model.ClientName</h1>
+            <p class="dashboard-hero-lead">Review membership, billing, payment methods, and portal access.</p>
         </div>
 
         <div class="membership-billing-summary" aria-label="Membership summary">
-            <div class="membership-billing-summary-item is-primary">
-                <span>Monthly Amount</span>
-                <strong>@Model.MonthlyAmountDisplay</strong>
+            <div class="dashboard-stat-card dashboard-stat-card--compact is-primary membership-billing-summary-item">
+                <span class="dashboard-stat-label">Monthly Amount</span>
+                <strong class="dashboard-stat-value">@Model.MonthlyAmountDisplay</strong>
             </div>
 
-            <div class="membership-billing-summary-item">
-                <span>Subscription</span>
-                <strong>@Model.SubscriptionStatus</strong>
+            <div class="dashboard-stat-card dashboard-stat-card--compact membership-billing-summary-item">
+                <span class="dashboard-stat-label">Subscription</span>
+                <strong class="dashboard-stat-value">@Model.SubscriptionStatus</strong>
             </div>
 
-            <div class="membership-billing-summary-item">
-                <span>Next Billing</span>
-                <strong>@Model.NextBillingDateDisplay</strong>
+            <div class="dashboard-stat-card dashboard-stat-card--compact membership-billing-summary-item">
+                <span class="dashboard-stat-label">Next Billing</span>
+                <strong class="dashboard-stat-value">@Model.NextBillingDateDisplay</strong>
             </div>
         </div>
     </section>
 
     @if (!string.IsNullOrWhiteSpace(notice))
     {
-        <div class="membership-billing-notice" role="status">
+        <div class="dashboard-search-panel membership-billing-notice" role="status">
             @notice
         </div>
     }
 
     <div class="membership-billing-layout">
         <div class="membership-billing-main">
-            <section class="membership-billing-panel"
+            <section class="dashboard-surface-panel membership-billing-panel"
                      aria-labelledby="membership-overview-heading">
                 <div class="membership-billing-panel-head">
                     <div>
@@ -59,59 +59,59 @@
                 </div>
 
                 <dl class="membership-billing-details">
-                    <div>
+                    <div class="dashboard-stat-card dashboard-stat-card--compact">
                         <dt>Current Plan</dt>
                         <dd>@Model.CurrentPlanDisplay</dd>
                     </div>
 
-                    <div>
+                    <div class="dashboard-stat-card dashboard-stat-card--compact">
                         <dt>Billing Frequency</dt>
                         <dd>@Model.BillingFrequencyDisplay</dd>
                     </div>
 
-                    <div>
+                    <div class="dashboard-stat-card dashboard-stat-card--compact">
                         <dt>Monthly Amount</dt>
                         <dd>@Model.MonthlyAmountDisplay</dd>
                     </div>
 
-                    <div>
+                    <div class="dashboard-stat-card dashboard-stat-card--compact">
                         <dt>Payment Standing</dt>
                         <dd>@Model.PaymentStanding</dd>
                     </div>
 
-                    <div>
+                    <div class="dashboard-stat-card dashboard-stat-card--compact">
                         <dt>Portal Access</dt>
                         <dd>@Model.EntitlementStatus</dd>
                     </div>
 
-                    <div>
+                    <div class="dashboard-stat-card dashboard-stat-card--compact">
                         <dt>Member Since</dt>
                         <dd>@Model.MemberSinceDisplay</dd>
                     </div>
 
-                    <div>
+                    <div class="dashboard-stat-card dashboard-stat-card--compact">
                         <dt>Upcoming Renewal</dt>
                         <dd>@Model.NextBillingDateDisplay</dd>
                     </div>
 
-                    <div>
+                    <div class="dashboard-stat-card dashboard-stat-card--compact">
                         <dt>Last Successful Payment</dt>
                         <dd>@Model.LastSuccessfulPaymentDisplay</dd>
                     </div>
 
-                    <div>
+                    <div class="dashboard-stat-card dashboard-stat-card--compact">
                         <dt>Grace Period Ends</dt>
                         <dd>@Model.GracePeriodEndDisplay</dd>
                     </div>
 
-                    <div class="membership-billing-details-wide">
+                    <div class="dashboard-stat-card dashboard-stat-card--compact membership-billing-details-wide">
                         <dt>Current Billing Period</dt>
                         <dd>@Model.CurrentPeriodDisplay</dd>
                     </div>
                 </dl>
             </section>
 
-            <section class="membership-billing-panel"
+            <section class="dashboard-surface-panel membership-billing-panel"
                      aria-labelledby="payment-method-heading">
                 <div class="membership-billing-panel-head">
                     <div>
@@ -125,7 +125,7 @@
                     <div class="membership-payment-method-list">
                         @foreach (var method in Model.PaymentMethods)
                         {
-                            <article class="membership-payment-method">
+                            <article class="dashboard-stat-card dashboard-stat-card--compact membership-payment-method">
                                 <div class="membership-payment-card-icon" aria-hidden="true">••••</div>
 
                                 <div class="membership-payment-primary">
@@ -175,7 +175,7 @@
                 }
                 else
                 {
-                    <div class="membership-billing-empty">
+                    <div class="dashboard-stat-card dashboard-stat-card--compact membership-billing-empty">
                         <strong>No payment method available</strong>
                         <span>No saved payment-method metadata is currently on file.</span>
                     </div>
@@ -192,7 +192,7 @@
 
                         @if (!Model.BrowserPaymentReady)
                         {
-                            <div class="membership-billing-empty"><span>@Model.BrowserPaymentSetupMessage</span></div>
+                            <div class="dashboard-stat-card dashboard-stat-card--compact membership-billing-empty"><span>@Model.BrowserPaymentSetupMessage</span></div>
                         }
                         else
                         {
@@ -252,7 +252,7 @@
                                     Make this my default payment method
                                 </label>
                                 <div class="membership-payment-form-actions">
-                                    <div class="membership-billing-notice" role="alert" data-square-message hidden></div>
+                                    <div class="dashboard-search-panel membership-billing-notice" role="alert" data-square-message hidden></div>
                                     <button type="submit" class="membership-billing-button membership-billing-button-primary" data-square-submit>
                                         Save payment method
                                     </button>
@@ -263,7 +263,7 @@
                 }
             </section>
 
-            <section class="membership-billing-panel"
+            <section class="dashboard-surface-panel membership-billing-panel"
                      aria-labelledby="billing-history-heading">
                 <div class="membership-billing-panel-head">
                     <div>
@@ -272,7 +272,7 @@
                     </div>
                 </div>
 
-                <div class="membership-billing-table-wrap">
+                <div class="dashboard-search-panel membership-billing-table-wrap">
                     <table class="membership-billing-table">
                         <thead>
                             <tr>
@@ -319,12 +319,12 @@
         </div>
 
         <aside class="membership-billing-sidebar">
-            <section class="membership-billing-panel membership-billing-state"
+            <section class="dashboard-surface-panel membership-billing-panel membership-billing-state"
                      aria-labelledby="membership-state-heading">
                 <span class="membership-billing-kicker">Current State</span>
                 <h2 id="membership-state-heading">Membership Status</h2>
 
-                <div class="membership-billing-state-value">
+                <div class="dashboard-stat-card dashboard-stat-card--compact membership-billing-state-value">
                     <span class="membership-billing-dot" aria-hidden="true"></span>
                     <strong>@Model.CancellationState</strong>
                 </div>
@@ -332,7 +332,7 @@
                 <p>Your current membership lifecycle and portal-access standing.</p>
             </section>
 
-            <section class="membership-billing-panel membership-billing-actions">
+            <section class="dashboard-surface-panel membership-billing-panel membership-billing-actions">
                 <span class="membership-billing-kicker">Actions</span>
                 <h2>Manage Membership</h2>
                 <p>Return to your profile or manage the active membership.</p>

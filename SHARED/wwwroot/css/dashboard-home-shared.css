@@ -28,6 +28,12 @@
 .dashboard-page-shell .category-container {
     width: min(1480px, 100%);
     margin: 0 auto 1.4rem;
+}
+
+:is(.dashboard-command-center-panel,
+    .dashboard-analytics-panel,
+    .dashboard-page-shell .category-container,
+    .dashboard-surface-panel) {
     position: relative;
     overflow: hidden;
     border-radius: 28px;
@@ -40,9 +46,10 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-.dashboard-command-center-panel::before,
-.dashboard-analytics-panel::before,
-.dashboard-page-shell .category-container::before {
+:is(.dashboard-command-center-panel,
+    .dashboard-analytics-panel,
+    .dashboard-page-shell .category-container,
+    .dashboard-surface-panel)::before {
     content: "";
     position: absolute;
     inset: 0 auto auto 32px;
@@ -4949,10 +4956,10 @@ header .legend-global-nav .container-fluid {
     }
 }
 
-/* Membership & Billing compact layout */
+/* Membership & Billing composes the shared home dashboard surfaces. */
 .membership-billing-page {
     display: grid;
-    gap: 1rem;
+    gap: 0.85rem;
     width: min(1180px, 100%);
     margin: 0 auto;
 }
@@ -4960,18 +4967,9 @@ header .legend-global-nav .container-fluid {
 .membership-billing-hero {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(440px, 0.78fr);
-    gap: 1.4rem;
+    gap: 0.9rem;
     align-items: center;
-    padding: 1.25rem 1.35rem;
-    overflow: hidden;
-    border: 1px solid var(--dash-line-strong);
-    border-radius: 22px;
-    background:
-        radial-gradient(circle at top right, rgba(49, 89, 191, 0.22), transparent 42%),
-        linear-gradient(180deg, rgba(16, 37, 76, 0.99), rgba(10, 22, 46, 0.995));
-    box-shadow:
-        0 22px 48px rgba(4, 10, 28, 0.24),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    padding: 0.92rem 1.06rem;
 }
 
 .membership-billing-hero-copy {
@@ -4980,75 +4978,21 @@ header .legend-global-nav .container-fluid {
     min-width: 0;
 }
 
-.membership-billing-hero-copy h1 {
-    margin: 0;
-    color: #ffffff;
-    font-size: clamp(1.8rem, 3.4vw, 2.75rem);
-    font-weight: 980;
-    line-height: 1;
-    letter-spacing: -0.045em;
-}
-
-.membership-billing-hero-copy p {
-    max-width: 630px;
-    margin: 0;
-    color: var(--dash-text-soft);
-    font-size: 0.88rem;
-    font-weight: 620;
-    line-height: 1.45;
-}
-
 .membership-billing-summary {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    overflow: hidden;
-    border: 1px solid rgba(150, 182, 255, 0.18);
-    border-radius: 15px;
-    background: rgba(8, 18, 38, 0.5);
+    gap: 0.48rem;
 }
 
 .membership-billing-summary-item {
-    display: grid;
-    gap: 0.24rem;
-    align-content: center;
     min-width: 0;
-    min-height: 78px;
-    padding: 0.78rem 0.82rem;
-}
-
-.membership-billing-summary-item + .membership-billing-summary-item {
-    border-left: 1px solid rgba(150, 182, 255, 0.14);
-}
-
-.membership-billing-summary-item.is-primary {
-    background: rgba(212, 170, 71, 0.08);
-}
-
-.membership-billing-summary-item span {
-    color: #f0d991;
-    font-size: 0.65rem;
-    font-weight: 900;
-    letter-spacing: 0.075em;
-    line-height: 1.15;
-    text-transform: uppercase;
-}
-
-.membership-billing-summary-item strong {
-    overflow: hidden;
-    color: #ffffff;
-    font-size: 0.98rem;
-    font-weight: 900;
-    line-height: 1.2;
-    text-overflow: ellipsis;
+    min-height: 70px;
 }
 
 .membership-billing-notice {
-    padding: 0.8rem 0.95rem;
-    border: 1px solid rgba(49, 89, 191, 0.2);
-    border-radius: 12px;
-    background: rgba(49, 89, 191, 0.08);
-    color: #17356d;
-    font-size: 0.86rem;
+    padding: 0.68rem 0.78rem;
+    color: var(--dash-text);
+    font-size: 0.8rem;
     font-weight: 760;
 }
 
@@ -5066,16 +5010,7 @@ header .legend-global-nav .container-fluid {
 }
 
 .membership-billing-panel {
-    padding: 1.05rem;
-    border: 1px solid rgba(180, 137, 44, 0.22);
-    border-radius: 16px;
-    background:
-        radial-gradient(circle at top right, rgba(212, 170, 71, 0.07), transparent 38%),
-        linear-gradient(180deg, #fffdf8 0%, #faf7ef 100%);
-    color: #17213d;
-    box-shadow:
-        0 16px 34px rgba(9, 18, 38, 0.10),
-        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    padding: 0.92rem;
 }
 
 .membership-billing-panel-head {
@@ -5089,7 +5024,7 @@ header .legend-global-nav .container-fluid {
 .membership-billing-kicker {
     display: block;
     margin-bottom: 0.2rem;
-    color: #8f6a1d;
+    color: #f0d991;
     font-size: 0.66rem;
     font-weight: 900;
     letter-spacing: 0.09em;
@@ -5098,7 +5033,7 @@ header .legend-global-nav .container-fluid {
 
 .membership-billing-panel h2 {
     margin: 0;
-    color: #10254c;
+    color: var(--dash-text);
     font-size: 1.05rem;
     font-weight: 920;
     line-height: 1.2;
@@ -5112,10 +5047,10 @@ header .legend-global-nav .container-fluid {
     align-items: center;
     width: fit-content;
     padding: 0.34rem 0.6rem;
-    border: 1px solid rgba(28, 126, 75, 0.18);
+    border: 1px solid rgba(62, 211, 140, 0.28);
     border-radius: 999px;
-    background: rgba(28, 126, 75, 0.08);
-    color: #17623e;
+    background: rgba(14, 93, 67, 0.34);
+    color: #bdf4d6;
     font-size: 0.7rem;
     font-weight: 850;
     line-height: 1;
@@ -5126,41 +5061,29 @@ header .legend-global-nav .container-fluid {
     height: 7px;
     flex: 0 0 7px;
     border-radius: 50%;
-    background: #24975f;
-    box-shadow: 0 0 0 3px rgba(36, 151, 95, 0.12);
+    background: #1caa72;
+    box-shadow: 0 0 0 3px rgba(28, 170, 114, 0.14);
 }
 
 .membership-billing-details {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.48rem;
     margin: 0;
-    overflow: hidden;
-    border: 1px solid rgba(143, 106, 29, 0.16);
-    border-radius: 12px;
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(247, 243, 234, 0.92));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
 }
 
 .membership-billing-details > div {
     min-width: 0;
-    padding: 0.75rem 0.85rem;
-    border-bottom: 1px solid rgba(143, 106, 29, 0.11);
-}
-
-.membership-billing-details > div:nth-child(odd) {
-    border-right: 1px solid rgba(143, 106, 29, 0.11);
+    min-height: 67px;
 }
 
 .membership-billing-details-wide {
     grid-column: 1 / -1;
-    border-right: 0 !important;
-    border-bottom: 0 !important;
 }
 
 .membership-billing-details dt {
     margin: 0 0 0.18rem;
-    color: #718096;
+    color: var(--dash-text-soft);
     font-size: 0.65rem;
     font-weight: 850;
     letter-spacing: 0.06em;
@@ -5169,7 +5092,7 @@ header .legend-global-nav .container-fluid {
 
 .membership-billing-details dd {
     margin: 0;
-    color: #10254c;
+    color: var(--dash-text);
     font-size: 0.9rem;
     font-weight: 800;
     line-height: 1.3;
@@ -5180,14 +5103,6 @@ header .legend-global-nav .container-fluid {
     grid-template-columns: auto minmax(150px, 1.4fr) minmax(110px, 1fr) minmax(110px, 1fr);
     gap: 0.9rem;
     align-items: center;
-    padding: 0.78rem;
-    border: 1px solid rgba(143, 106, 29, 0.18);
-    border-radius: 12px;
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(246, 241, 229, 0.96));
-    box-shadow:
-        0 8px 18px rgba(9, 18, 38, 0.05),
-        inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .membership-payment-method-list {
@@ -5221,10 +5136,10 @@ header .legend-global-nav .container-fluid {
     width: 100%;
     min-height: 35px;
     padding: 0.42rem 0.54rem;
-    border: 1px solid rgba(143, 106, 29, 0.23);
+    border: 1px solid rgba(150, 182, 255, 0.3);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.88);
-    color: #17213d;
+    background: rgba(6, 17, 38, 0.78);
+    color: var(--dash-text);
     font: inherit;
     font-size: 0.75rem;
 }
@@ -5236,10 +5151,10 @@ header .legend-global-nav .container-fluid {
 .membership-billing-text-button {
     min-height: 30px;
     padding: 0.34rem 0.52rem;
-    border: 1px solid rgba(143, 106, 29, 0.32);
+    border: 1px solid rgba(212, 170, 71, 0.52);
     border-radius: 7px;
-    background: rgba(255, 255, 255, 0.76);
-    color: #17356d;
+    background: rgba(11, 27, 56, 0.86);
+    color: var(--dash-text);
     font: inherit;
     font-size: 0.66rem;
     font-weight: 850;
@@ -5248,8 +5163,8 @@ header .legend-global-nav .container-fluid {
 }
 
 .membership-billing-text-button.is-danger {
-    border-color: rgba(145, 45, 45, 0.24);
-    color: #962f2f;
+    border-color: rgba(251, 113, 133, 0.52);
+    color: #fecdd3;
 }
 
 .membership-payment-add {
@@ -5257,19 +5172,19 @@ header .legend-global-nav .container-fluid {
     gap: 0.78rem;
     margin-top: 0.78rem;
     padding-top: 0.88rem;
-    border-top: 1px solid rgba(143, 106, 29, 0.14);
+    border-top: 1px solid var(--dash-line);
 }
 
 .membership-payment-add h3 {
     margin: 0;
-    color: #10254c;
+    color: var(--dash-text);
     font-size: 0.94rem;
     font-weight: 900;
 }
 
 .membership-payment-add p {
     margin: 0.3rem 0 0;
-    color: #718096;
+    color: var(--dash-text-soft);
     font-size: 0.75rem;
     line-height: 1.4;
 }
@@ -5284,7 +5199,7 @@ header .legend-global-nav .container-fluid {
     display: grid;
     gap: 0.28rem;
     min-width: 0;
-    color: #31445d;
+    color: var(--dash-text-soft);
     font-size: 0.68rem;
     font-weight: 800;
 }
@@ -5297,16 +5212,16 @@ header .legend-global-nav .container-fluid {
     display: block;
     min-height: 54px;
     padding: 0.45rem;
-    border: 1px solid rgba(143, 106, 29, 0.22);
+    border: 1px solid rgba(150, 182, 255, 0.3);
     border-radius: 9px;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(6, 17, 38, 0.78);
 }
 
 .membership-payment-default-choice {
     display: inline-flex;
     gap: 0.45rem;
     align-items: center;
-    color: #31445d;
+    color: var(--dash-text-soft);
     font-size: 0.74rem;
     font-weight: 720;
 }
@@ -5327,12 +5242,12 @@ header .legend-global-nav .container-fluid {
     width: 44px;
     height: 31px;
     place-items: center;
-    border: 1px solid rgba(212, 170, 71, 0.34);
+    border: 1px solid rgba(212, 170, 71, 0.52);
     border-radius: 7px;
     background:
         radial-gradient(circle at top right, rgba(77, 111, 255, 0.18), transparent 48%),
-        linear-gradient(180deg, #17356d, #10254c);
-    color: #f5de91;
+        linear-gradient(145deg, rgba(24, 56, 111, 0.92), rgba(10, 27, 59, 0.98));
+    color: #f0d991;
     font-size: 0.68rem;
     font-weight: 950;
     letter-spacing: 0.08em;
@@ -5349,7 +5264,7 @@ header .legend-global-nav .container-fluid {
 .membership-payment-primary strong,
 .membership-payment-meta strong {
     overflow: hidden;
-    color: #10254c;
+    color: var(--dash-text);
     font-size: 0.82rem;
     font-weight: 850;
     text-overflow: ellipsis;
@@ -5357,7 +5272,7 @@ header .legend-global-nav .container-fluid {
 
 .membership-payment-primary span,
 .membership-payment-meta span {
-    color: #718096;
+    color: var(--dash-text-soft);
     font-size: 0.7rem;
     line-height: 1.25;
 }
@@ -5365,44 +5280,36 @@ header .legend-global-nav .container-fluid {
 .membership-billing-empty {
     display: grid;
     gap: 0.18rem;
-    padding: 0.85rem;
-    border: 1px dashed rgba(143, 106, 29, 0.28);
-    border-radius: 12px;
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(247, 243, 234, 0.9));
+    border-style: dashed;
+    border-color: rgba(150, 182, 255, 0.36);
 }
 
 .membership-billing-empty strong {
-    color: #10254c;
+    color: var(--dash-text);
     font-size: 0.84rem;
 }
 
 .membership-billing-empty span {
-    color: #718096;
+    color: var(--dash-text-soft);
     font-size: 0.76rem;
 }
 
 .membership-billing-table-wrap {
     overflow-x: auto;
-    border: 1px solid rgba(143, 106, 29, 0.18);
-    border-radius: 12px;
-    background: rgba(255, 253, 248, 0.82);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
 }
 
 .membership-billing-table {
     width: 100%;
     border-collapse: collapse;
-    color: #31445d;
+    color: var(--dash-text);
     font-size: 0.78rem;
 }
 
 .membership-billing-table th {
     padding: 0.62rem 0.7rem;
-    border-bottom: 1px solid rgba(143, 106, 29, 0.15);
-    background:
-        linear-gradient(180deg, #f8f4ea, #f1eadc);
-    color: #66758b;
+    border-bottom: 1px solid var(--dash-line);
+    background: rgba(8, 18, 38, 0.58);
+    color: #f0d991;
     font-size: 0.63rem;
     font-weight: 900;
     letter-spacing: 0.06em;
@@ -5413,8 +5320,8 @@ header .legend-global-nav .container-fluid {
 
 .membership-billing-table td {
     padding: 0.68rem 0.7rem;
-    border-bottom: 1px solid rgba(143, 106, 29, 0.09);
-    background: rgba(255, 253, 248, 0.56);
+    border-bottom: 1px solid rgba(150, 182, 255, 0.12);
+    background: transparent;
     vertical-align: middle;
 }
 
@@ -5423,13 +5330,13 @@ header .legend-global-nav .container-fluid {
 }
 
 .membership-billing-amount {
-    color: #10254c;
+    color: var(--dash-text);
     font-weight: 900;
 }
 
 .membership-billing-table-empty {
     padding: 1.3rem !important;
-    color: #718096;
+    color: var(--dash-text-soft);
     text-align: center;
 }
 
@@ -5443,13 +5350,12 @@ header .legend-global-nav .container-fluid {
     gap: 0.55rem;
     align-items: center;
     margin-top: 0.8rem;
-    padding: 0.75rem;
-    border: 1px solid rgba(28, 126, 75, 0.13);
-    border-radius: 11px;
+    margin-bottom: 0.1rem;
+    border-color: rgba(62, 211, 140, 0.3);
     background:
-        linear-gradient(180deg, rgba(238, 249, 242, 0.92), rgba(228, 243, 234, 0.92));
-    color: #17623e;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+        radial-gradient(circle at top right, rgba(62, 211, 140, 0.14), transparent 48%),
+        linear-gradient(180deg, rgba(11, 56, 53, 0.94), rgba(7, 38, 39, 0.98));
+    color: #bdf4d6;
 }
 
 .membership-billing-state-value strong {
@@ -5459,7 +5365,7 @@ header .legend-global-nav .container-fluid {
 .membership-billing-state p,
 .membership-billing-actions p {
     margin: 0.7rem 0 0;
-    color: #718096;
+    color: var(--dash-text-soft);
     font-size: 0.76rem;
     line-height: 1.45;
 }
@@ -5496,18 +5402,17 @@ header .legend-global-nav .container-fluid {
 }
 
 .membership-billing-button-primary {
-    border: 1px solid rgba(212, 170, 71, 0.8);
-    background: linear-gradient(180deg, #f5de91, #d4aa47);
-    color: #17213d;
-    box-shadow: 0 8px 18px rgba(143, 106, 29, 0.18);
+    border: 1px solid #875b16;
+    background: #b7832d;
+    color: #07142c;
+    box-shadow: 0 9px 20px rgba(112, 71, 14, 0.26), inset 0 1px 0 rgba(238, 204, 132, 0.18);
 }
 
 .membership-billing-button-danger {
-    border: 1px solid rgba(145, 45, 45, 0.24);
-    background:
-        linear-gradient(180deg, #fffdfb, #f8f2ef);
-    color: #962f2f;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(251, 113, 133, 0.5);
+    background: rgba(102, 25, 44, 0.42);
+    color: #fecdd3;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .membership-billing-button:hover {
@@ -5515,7 +5420,7 @@ header .legend-global-nav .container-fluid {
 }
 
 .membership-billing-button:focus-visible {
-    outline: 2px solid rgba(212, 170, 71, 0.64);
+    outline: 2px solid var(--dash-gold);
     outline-offset: 2px;
 }
 
@@ -5549,21 +5454,6 @@ header .legend-global-nav .container-fluid {
 
     .membership-billing-summary-item {
         min-height: 66px;
-    }
-
-    .membership-billing-summary-item + .membership-billing-summary-item {
-        border-top: 1px solid rgba(150, 182, 255, 0.14);
-        border-left: 0;
-    }
-
-    .membership-billing-details > div,
-    .membership-billing-details > div:nth-child(odd) {
-        border-right: 0;
-        border-bottom: 1px solid rgba(23, 53, 109, 0.08);
-    }
-
-    .membership-billing-details > div:last-child {
-        border-bottom: 0;
     }
 
     .membership-payment-method {
