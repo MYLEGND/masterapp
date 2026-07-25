@@ -66,9 +66,13 @@ public sealed class MessagingClientScriptContractTests
 
         Assert.Contains("data-messaging-recipient-scope=\"Clients\"", view, StringComparison.Ordinal);
         Assert.Contains("data-messaging-recipient-scope=\"Agents\"", view, StringComparison.Ordinal);
+        Assert.Contains("data-messaging-recipient-scope-unread=\"Clients\"", view, StringComparison.Ordinal);
+        Assert.Contains("data-messaging-recipient-scope-unread=\"Agents\"", view, StringComparison.Ordinal);
         Assert.Contains("function recipientRequestUrl(search = '')", source, StringComparison.Ordinal);
         Assert.Contains("query.set('recipientScope', state.recipientScope);", source, StringComparison.Ordinal);
         Assert.Contains("recipientScopeParticipantType", source, StringComparison.Ordinal);
+        Assert.Contains("recipientScopeUnreadBadges", source, StringComparison.Ordinal);
+        Assert.Contains("recipientScopeParticipantTypeFor(scope)", source, StringComparison.Ordinal);
     }
 
     [Fact]

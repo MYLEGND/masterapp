@@ -29,11 +29,39 @@
                             <button type="button"
                                     class="messaging-recipient-scope-button is-active"
                                     data-messaging-recipient-scope="Clients"
-                                    aria-pressed="true">Clients</button>
+                                    aria-pressed="true"
+                                    aria-label="Client conversations">
+                                <span class="messaging-recipient-scope-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24">
+                                        <circle cx="12" cy="7.5" r="3.5"></circle>
+                                        <path d="M4.5 21v-1.75a7.5 7.5 0 0 1 15 0V21"></path>
+                                    </svg>
+                                </span>
+                                <span class="messaging-recipient-scope-label">Clients</span>
+                                <span class="messaging-recipient-scope-unread"
+                                      data-messaging-recipient-scope-unread="Clients"
+                                      aria-label="0 unread client messages"
+                                      hidden>0</span>
+                            </button>
                             <button type="button"
                                     class="messaging-recipient-scope-button"
                                     data-messaging-recipient-scope="Agents"
-                                    aria-pressed="false">Agents</button>
+                                    aria-pressed="false"
+                                    aria-label="Agent conversations">
+                                <span class="messaging-recipient-scope-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24">
+                                        <circle cx="9" cy="8" r="3"></circle>
+                                        <circle cx="17" cy="9" r="2.5"></circle>
+                                        <path d="M3 21v-1.5a6 6 0 0 1 12 0V21"></path>
+                                        <path d="M15 15.5a5 5 0 0 1 6 4.5V21"></path>
+                                    </svg>
+                                </span>
+                                <span class="messaging-recipient-scope-label">Agents</span>
+                                <span class="messaging-recipient-scope-unread"
+                                      data-messaging-recipient-scope-unread="Agents"
+                                      aria-label="0 unread agent messages"
+                                      hidden>0</span>
+                            </button>
                         </div>
                     }
                 </div>

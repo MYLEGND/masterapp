@@ -12,6 +12,7 @@
     close: root.querySelector('#messagingCommandCenterClose'),
     error: root.querySelector('#messagingError'),
     recipientScopeButtons: Array.from(root.querySelectorAll('[data-messaging-recipient-scope]')),
+    recipientScopeUnreadBadges: Array.from(root.querySelectorAll('[data-messaging-recipient-scope-unread]')),
     grid: root.querySelector('#messagingCommandCenterGrid'),
     unread: root.querySelector('#messagingCommandCenterUnread'),
     search: root.querySelector('#messagingUniversalSearch'),
@@ -170,8 +171,12 @@
   }
 
   function recipientScopeParticipantType() {
-    if (state.recipientScope === 'Agents') return 'Agent';
-    if (state.recipientScope === 'Clients') return 'Client';
+    return recipientScopeParticipantTypeFor(state.recipientScope);
+  }
+
+  function recipientScopeParticipantTypeFor(scope) {
+    if (scope === 'Agents') return 'Agent';
+    if (scope === 'Clients') return 'Client';
     return '';
   }
 
@@ -749,6 +754,28 @@
       badge.textContent = count > 0 ? label : '';
       badge.hidden = count === 0;
       badge.setAttribute('aria-label', count > 0 ? `${count} unread messages` : '');
+    });
+    elements.recipientScopeButtons.forEach(button => {
+      const scope = button.dataset.messagingRecipientScope || '';
+      const scopeLabel = scope === 'Clients' ? 'client' : 'agent';
+      const scopedCount = state.conversations
+        .filter(conversation => conversation.counterparty?.participantType === recipientScopeParticipantTypeFor(scope))
+        .reduce((total, conversation) => total + (conversation.unreadCount || 0), 0);
+      const badge = elements.recipientScopeUnreadBadges.find(candidate =>
+        candidate.dataset.messagingRecipientScopeUnread === scope);
+      const countLabel = scopedCount > 99 ? '99+' : String(scopedCount);
+
+      button.setAttribute(
+        'aria-label',
+        `${scope} conversations${scopedCount > 0 ? `, ${scopedCount} unread message${scopedCount === 1 ? '' : 's'}` : ''}`);
+      if (!badge) return;
+      badge.textContent = countLabel;
+      badge.hidden = scopedCount === 0;
+      badge.setAttribute(
+        'aria-label',
+        scopedCount > 0
+          ? `${scopedCount} unread ${scopeLabel} message${scopedCount === 1 ? '' : 's'}`
+          : `0 unread ${scopeLabel} messages`);
     });
   }
 
