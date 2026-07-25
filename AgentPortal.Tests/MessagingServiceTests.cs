@@ -668,7 +668,7 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
-    public async Task LegacyAgentUpnLink_UsesTheSameAuthorizedRecipientScope()
+    public async Task AgentUpnDoesNotAuthorizeASeparateAgentIdentity()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: false, grantClientToAgent: false);
@@ -683,14 +683,16 @@ public sealed class MessagingServiceTests
 
         var agentRecipients = await service.ListRecipientsAsync(new MessagingActor("agent-1", MessagingParticipantTypes.Agent));
         var clientRecipients = await service.ListRecipientsAsync(new MessagingActor("client-1", MessagingParticipantTypes.Client));
-
-        Assert.Contains(agentRecipients.Recipients, x => x.UserId == "client-1");
-        Assert.Contains(clientRecipients.Recipients, x => x.UserId == "agent-1");
-        Assert.True((await service.StartConversationAsync(new StartMessagingConversationCommand(
+        var start = await service.StartConversationAsync(new StartMessagingConversationCommand(
             new MessagingActor("agent-1", MessagingParticipantTypes.Agent),
             "client-1",
             MessagingParticipantTypes.Client,
-            InitialMessageBody: "Authorized through the established client relationship."))).Succeeded);
+            InitialMessageBody: "An email alias must not authorize a different agent identity."));
+
+        Assert.Empty(agentRecipients.Recipients.Where(x => x.ParticipantType == MessagingParticipantTypes.Client));
+        Assert.Empty(clientRecipients.Recipients.Where(x => x.ParticipantType == MessagingParticipantTypes.Agent));
+        Assert.False(start.Succeeded);
+        Assert.Equal("MESSAGING_RECIPIENT_FORBIDDEN", start.ErrorCode);
     }
 
     [Fact]

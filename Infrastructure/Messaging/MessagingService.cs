@@ -1214,22 +1214,14 @@ internal sealed class MessagingService : IMessagingService
         var agentKey = NormalizeUserId(agentUserId);
         return _db.AgentClients.AsNoTracking().Where(link =>
             link.ClientUserId.ToLower() == clientKey &&
-            (link.AgentUserId.ToLower() == agentKey ||
-             (!string.IsNullOrWhiteSpace(link.AgentUpn) && _db.AgentProfiles.Any(profile =>
-                 profile.IsActive &&
-                 profile.AgentUserId.ToLower() == agentKey &&
-                 profile.AgentUpn.ToLower() == link.AgentUpn.ToLower()))));
+            link.AgentUserId.ToLower() == agentKey);
     }
 
     private IQueryable<AgentClient> PrimaryClientAgentLinksForAgent(string agentUserId)
     {
         var agentKey = NormalizeUserId(agentUserId);
         return _db.AgentClients.AsNoTracking().Where(link =>
-            link.AgentUserId.ToLower() == agentKey ||
-            (!string.IsNullOrWhiteSpace(link.AgentUpn) && _db.AgentProfiles.Any(profile =>
-                profile.IsActive &&
-                profile.AgentUserId.ToLower() == agentKey &&
-                profile.AgentUpn.ToLower() == link.AgentUpn.ToLower())));
+            link.AgentUserId.ToLower() == agentKey);
     }
 
     private IQueryable<ClientAgentMessagingGrant> ActiveMessagingGrants(string clientUserId, string agentUserId)
@@ -1285,17 +1277,13 @@ internal sealed class MessagingService : IMessagingService
         var linkedAgentKeys = _db.AgentClients.AsNoTracking()
             .Where(link => link.ClientUserId.ToLower() == clientKey)
             .Select(link => link.AgentUserId.ToLower())
-            .Union(_db.AgentClients.AsNoTracking()
-                .Where(link => link.ClientUserId.ToLower() == clientKey && !string.IsNullOrWhiteSpace(link.AgentUpn))
-                .Select(link => link.AgentUpn.ToLower()))
             .Union(_db.ClientAgentMessagingGrants.AsNoTracking()
                 .Where(grant => grant.IsActive && grant.ClientUserId.ToLower() == clientKey)
                 .Select(grant => grant.AgentUserId.ToLower()));
 
         return _db.AgentProfiles.AsNoTracking()
             .Where(profile => profile.IsActive &&
-                (linkedAgentKeys.Contains(profile.AgentUserId.ToLower()) ||
-                 linkedAgentKeys.Contains(profile.AgentUpn.ToLower())));
+                linkedAgentKeys.Contains(profile.AgentUserId.ToLower()));
     }
 
     private async Task<Dictionary<(string UserId, string ParticipantType), string>> LoadDisplayNamesAsync(
