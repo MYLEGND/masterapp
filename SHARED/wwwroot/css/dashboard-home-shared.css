@@ -4803,3 +4803,473 @@ header .legend-global-nav .container-fluid {
         text-align: center;
     }
 }
+
+/* Membership & Billing compact layout */
+.membership-billing-page {
+    display: grid;
+    gap: 1rem;
+    width: min(1180px, 100%);
+    margin: 0 auto;
+}
+
+.membership-billing-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(440px, 0.78fr);
+    gap: 1.4rem;
+    align-items: center;
+    padding: 1.25rem 1.35rem;
+    overflow: hidden;
+    border: 1px solid var(--dash-line-strong);
+    border-radius: 22px;
+    background:
+        radial-gradient(circle at top right, rgba(49, 89, 191, 0.22), transparent 42%),
+        linear-gradient(180deg, rgba(16, 37, 76, 0.99), rgba(10, 22, 46, 0.995));
+    box-shadow:
+        0 22px 48px rgba(4, 10, 28, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.membership-billing-hero-copy {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.membership-billing-hero-copy h1 {
+    margin: 0;
+    color: #ffffff;
+    font-size: clamp(1.8rem, 3.4vw, 2.75rem);
+    font-weight: 980;
+    line-height: 1;
+    letter-spacing: -0.045em;
+}
+
+.membership-billing-hero-copy p {
+    max-width: 630px;
+    margin: 0;
+    color: var(--dash-text-soft);
+    font-size: 0.88rem;
+    font-weight: 620;
+    line-height: 1.45;
+}
+
+.membership-billing-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid rgba(150, 182, 255, 0.18);
+    border-radius: 15px;
+    background: rgba(8, 18, 38, 0.5);
+}
+
+.membership-billing-summary-item {
+    display: grid;
+    gap: 0.24rem;
+    align-content: center;
+    min-width: 0;
+    min-height: 78px;
+    padding: 0.78rem 0.82rem;
+}
+
+.membership-billing-summary-item + .membership-billing-summary-item {
+    border-left: 1px solid rgba(150, 182, 255, 0.14);
+}
+
+.membership-billing-summary-item.is-primary {
+    background: rgba(212, 170, 71, 0.08);
+}
+
+.membership-billing-summary-item span {
+    color: #f0d991;
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.075em;
+    line-height: 1.15;
+    text-transform: uppercase;
+}
+
+.membership-billing-summary-item strong {
+    overflow: hidden;
+    color: #ffffff;
+    font-size: 0.98rem;
+    font-weight: 900;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+}
+
+.membership-billing-notice {
+    padding: 0.8rem 0.95rem;
+    border: 1px solid rgba(49, 89, 191, 0.2);
+    border-radius: 12px;
+    background: rgba(49, 89, 191, 0.08);
+    color: #17356d;
+    font-size: 0.86rem;
+    font-weight: 760;
+}
+
+.membership-billing-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 290px;
+    gap: 1rem;
+    align-items: start;
+}
+
+.membership-billing-main,
+.membership-billing-sidebar {
+    display: grid;
+    gap: 1rem;
+}
+
+.membership-billing-panel {
+    padding: 1.05rem;
+    border: 1px solid rgba(23, 53, 109, 0.12);
+    border-radius: 16px;
+    background: #ffffff;
+    color: #17213d;
+    box-shadow: 0 12px 28px rgba(4, 10, 28, 0.08);
+}
+
+.membership-billing-panel-head {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.85rem;
+}
+
+.membership-billing-kicker {
+    display: block;
+    margin-bottom: 0.2rem;
+    color: #8f6a1d;
+    font-size: 0.66rem;
+    font-weight: 900;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.membership-billing-panel h2 {
+    margin: 0;
+    color: #10254c;
+    font-size: 1.05rem;
+    font-weight: 920;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+
+.membership-billing-badge,
+.membership-billing-payment-status {
+    display: inline-flex;
+    gap: 0.42rem;
+    align-items: center;
+    width: fit-content;
+    padding: 0.34rem 0.6rem;
+    border: 1px solid rgba(28, 126, 75, 0.18);
+    border-radius: 999px;
+    background: rgba(28, 126, 75, 0.08);
+    color: #17623e;
+    font-size: 0.7rem;
+    font-weight: 850;
+    line-height: 1;
+}
+
+.membership-billing-dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 50%;
+    background: #24975f;
+    box-shadow: 0 0 0 3px rgba(36, 151, 95, 0.12);
+}
+
+.membership-billing-details {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid rgba(23, 53, 109, 0.1);
+    border-radius: 12px;
+    background: #f8fafc;
+}
+
+.membership-billing-details > div {
+    min-width: 0;
+    padding: 0.75rem 0.85rem;
+    border-bottom: 1px solid rgba(23, 53, 109, 0.08);
+}
+
+.membership-billing-details > div:nth-child(odd) {
+    border-right: 1px solid rgba(23, 53, 109, 0.08);
+}
+
+.membership-billing-details-wide {
+    grid-column: 1 / -1;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+}
+
+.membership-billing-details dt {
+    margin: 0 0 0.18rem;
+    color: #718096;
+    font-size: 0.65rem;
+    font-weight: 850;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.membership-billing-details dd {
+    margin: 0;
+    color: #10254c;
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1.3;
+}
+
+.membership-payment-method {
+    display: grid;
+    grid-template-columns: auto minmax(150px, 1.4fr) minmax(110px, 1fr) minmax(110px, 1fr);
+    gap: 0.9rem;
+    align-items: center;
+    padding: 0.78rem;
+    border: 1px solid rgba(23, 53, 109, 0.1);
+    border-radius: 12px;
+    background: #f8fafc;
+}
+
+.membership-payment-card-icon {
+    display: grid;
+    width: 44px;
+    height: 31px;
+    place-items: center;
+    border-radius: 7px;
+    background: #10254c;
+    color: #f0d991;
+    font-size: 0.68rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+}
+
+.membership-payment-primary,
+.membership-payment-meta {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+}
+
+.membership-payment-primary strong,
+.membership-payment-meta strong {
+    overflow: hidden;
+    color: #10254c;
+    font-size: 0.82rem;
+    font-weight: 850;
+    text-overflow: ellipsis;
+}
+
+.membership-payment-primary span,
+.membership-payment-meta span {
+    color: #718096;
+    font-size: 0.7rem;
+    line-height: 1.25;
+}
+
+.membership-billing-empty {
+    display: grid;
+    gap: 0.18rem;
+    padding: 0.85rem;
+    border: 1px dashed rgba(23, 53, 109, 0.18);
+    border-radius: 12px;
+    background: #f8fafc;
+}
+
+.membership-billing-empty strong {
+    color: #10254c;
+    font-size: 0.84rem;
+}
+
+.membership-billing-empty span {
+    color: #718096;
+    font-size: 0.76rem;
+}
+
+.membership-billing-table-wrap {
+    overflow-x: auto;
+    border: 1px solid rgba(23, 53, 109, 0.1);
+    border-radius: 12px;
+}
+
+.membership-billing-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #31445d;
+    font-size: 0.78rem;
+}
+
+.membership-billing-table th {
+    padding: 0.62rem 0.7rem;
+    border-bottom: 1px solid rgba(23, 53, 109, 0.1);
+    background: #f5f7fa;
+    color: #718096;
+    font-size: 0.63rem;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.membership-billing-table td {
+    padding: 0.68rem 0.7rem;
+    border-bottom: 1px solid rgba(23, 53, 109, 0.07);
+    vertical-align: middle;
+}
+
+.membership-billing-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.membership-billing-amount {
+    color: #10254c;
+    font-weight: 900;
+}
+
+.membership-billing-table-empty {
+    padding: 1.3rem !important;
+    color: #718096;
+    text-align: center;
+}
+
+.membership-billing-state,
+.membership-billing-actions {
+    padding: 1rem;
+}
+
+.membership-billing-state-value {
+    display: flex;
+    gap: 0.55rem;
+    align-items: center;
+    margin-top: 0.8rem;
+    padding: 0.75rem;
+    border-radius: 11px;
+    background: rgba(28, 126, 75, 0.07);
+    color: #17623e;
+}
+
+.membership-billing-state-value strong {
+    font-size: 0.86rem;
+}
+
+.membership-billing-state p,
+.membership-billing-actions p {
+    margin: 0.7rem 0 0;
+    color: #718096;
+    font-size: 0.76rem;
+    line-height: 1.45;
+}
+
+.membership-billing-action-list {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: 0.85rem;
+}
+
+.membership-billing-action-list form {
+    margin: 0;
+}
+
+.membership-billing-button {
+    display: inline-flex;
+    width: 100%;
+    min-height: 39px;
+    align-items: center;
+    justify-content: center;
+    padding: 0.55rem 0.8rem;
+    border-radius: 9px;
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 900;
+    line-height: 1.1;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+        transform 0.15s ease,
+        box-shadow 0.15s ease,
+        border-color 0.15s ease;
+}
+
+.membership-billing-button-primary {
+    border: 1px solid rgba(212, 170, 71, 0.8);
+    background: linear-gradient(180deg, #f5de91, #d4aa47);
+    color: #17213d;
+    box-shadow: 0 8px 18px rgba(143, 106, 29, 0.18);
+}
+
+.membership-billing-button-danger {
+    border: 1px solid rgba(145, 45, 45, 0.22);
+    background: #ffffff;
+    color: #962f2f;
+}
+
+.membership-billing-button:hover {
+    transform: translateY(-1px);
+}
+
+.membership-billing-button:focus-visible {
+    outline: 2px solid rgba(212, 170, 71, 0.64);
+    outline-offset: 2px;
+}
+
+@media (max-width: 991.98px) {
+    .membership-billing-hero,
+    .membership-billing-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .membership-billing-sidebar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 767.98px) {
+    .membership-billing-page {
+        gap: 0.75rem;
+    }
+
+    .membership-billing-hero,
+    .membership-billing-panel {
+        padding: 0.9rem;
+        border-radius: 14px;
+    }
+
+    .membership-billing-summary,
+    .membership-billing-details,
+    .membership-billing-sidebar {
+        grid-template-columns: 1fr;
+    }
+
+    .membership-billing-summary-item {
+        min-height: 66px;
+    }
+
+    .membership-billing-summary-item + .membership-billing-summary-item {
+        border-top: 1px solid rgba(150, 182, 255, 0.14);
+        border-left: 0;
+    }
+
+    .membership-billing-details > div,
+    .membership-billing-details > div:nth-child(odd) {
+        border-right: 0;
+        border-bottom: 1px solid rgba(23, 53, 109, 0.08);
+    }
+
+    .membership-billing-details > div:last-child {
+        border-bottom: 0;
+    }
+
+    .membership-payment-method {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .membership-payment-meta {
+        grid-column: 2;
+    }
+}

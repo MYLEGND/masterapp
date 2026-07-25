@@ -1,150 +1,227 @@
 @model ClientApp.Models.ClientSubscriptionManagementViewModel
 @{
     ViewData["Title"] = "Membership & Billing";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
     var notice = ViewData["SubscriptionNotice"] as string;
 }
 
-<div class="container py-4">
-    <div class="row justify-content-center">
-        <div class="col-12 col-xl-10">
-            <div class="card shadow-sm border-0">
-                <div class="card-body p-4">
-                    <p class="text-uppercase small text-muted mb-2">Membership & Billing</p>
-                    <h1 class="h3 mb-3">@Model.ClientName</h1>
+<div class="dashboard-page-shell membership-billing-page">
+    <section class="membership-billing-hero">
+        <div class="membership-billing-hero-copy">
+            <div class="dashboard-eyebrow">Membership &amp; Billing</div>
+            <h1>@Model.ClientName</h1>
+            <p>Review your membership, billing schedule, payment method, and portal access.</p>
+        </div>
 
-                    @if (!string.IsNullOrWhiteSpace(notice))
-                    {
-                        <div class="alert alert-info">@notice</div>
-                    }
+        <div class="membership-billing-summary" aria-label="Membership summary">
+            <div class="membership-billing-summary-item is-primary">
+                <span>Monthly Amount</span>
+                <strong>@Model.MonthlyAmountDisplay</strong>
+            </div>
 
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-6 col-xl-4">
-                            <div class="border rounded p-3 h-100">
-                                <div class="text-muted small mb-1">Monthly amount</div>
-                                <div class="fs-5 fw-semibold">@Model.MonthlyAmountDisplay</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6 col-xl-4">
-                            <div class="border rounded p-3 h-100">
-                                <div class="text-muted small mb-1">Subscription status</div>
-                                <div class="fs-5 fw-semibold">@Model.SubscriptionStatus</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6 col-xl-4">
-                            <div class="border rounded p-3 h-100">
-                                <div class="text-muted small mb-1">Payment standing</div>
-                                <div class="fs-5 fw-semibold">@Model.PaymentStanding</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6 col-xl-4">
-                            <div class="border rounded p-3 h-100">
-                                <div class="text-muted small mb-1">Portal entitlement</div>
-                                <div class="fw-semibold">@Model.EntitlementStatus</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6 col-xl-4">
-                            <div class="border rounded p-3 h-100">
-                                <div class="text-muted small mb-1">Next billing date</div>
-                                <div class="fw-semibold">@Model.NextBillingDateDisplay</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6 col-xl-4">
-                            <div class="border rounded p-3 h-100">
-                                <div class="text-muted small mb-1">Current period</div>
-                                <div class="fw-semibold">@Model.CurrentPeriodDisplay</div>
-                            </div>
-                        </div>
-                    </div>
+            <div class="membership-billing-summary-item">
+                <span>Subscription</span>
+                <strong>@Model.SubscriptionStatus</strong>
+            </div>
 
-                    <section class="border rounded p-3 mb-4" aria-labelledby="payment-method-heading">
-                        <h2 class="h5 mb-3" id="payment-method-heading">Payment Method</h2>
-
-                        @if (Model.HasPaymentMethod)
-                        {
-                            <div class="row g-3">
-                                <div class="col-md-6">
-                                    <div class="text-muted small mb-1">Saved card</div>
-                                    <div class="fw-semibold">@Model.PaymentMethodDisplay</div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="text-muted small mb-1">Expiration</div>
-                                    <div class="fw-semibold">@Model.PaymentMethodExpirationDisplay</div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="text-muted small mb-1">Cardholder</div>
-                                    <div class="fw-semibold">@Model.PaymentMethodCardholderName</div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="text-muted small mb-1">Last updated</div>
-                                    <div class="fw-semibold">@Model.PaymentMethodUpdatedDisplay</div>
-                                </div>
-                            </div>
-                        }
-                        else
-                        {
-                            <p class="text-muted mb-0">No saved payment method metadata is available.</p>
-                        }
-                    </section>
-
-                    <section class="border rounded p-3 mb-4" aria-labelledby="billing-history-heading">
-                        <h2 class="h5 mb-3" id="billing-history-heading">Billing History</h2>
-
-                        @if (Model.PaymentHistory.Count == 0)
-                        {
-                            <p class="text-muted mb-0">No subscription payments are on file yet.</p>
-                        }
-                        else
-                        {
-                            <div class="table-responsive">
-                                <table class="table align-middle mb-0">
-                                    <thead>
-                                        <tr>
-                                            <th scope="col">Date</th>
-                                            <th scope="col">Amount</th>
-                                            <th scope="col">Status</th>
-                                            <th scope="col">Type</th>
-                                            <th scope="col">Billing period</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var payment in Model.PaymentHistory)
-                                        {
-                                            <tr>
-                                                <td>@payment.DateDisplay</td>
-                                                <td>@payment.AmountDisplay</td>
-                                                <td>@payment.Status</td>
-                                                <td>@payment.Kind</td>
-                                                <td>@payment.BillingPeriodDisplay</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
-                        }
-                    </section>
-
-                    <section class="border rounded p-3 mb-4" aria-labelledby="membership-state-heading">
-                        <h2 class="h5 mb-2" id="membership-state-heading">Membership Status</h2>
-                        <div class="fw-semibold mb-2">@Model.CancellationState</div>
-                        <p class="text-muted mb-0">@Model.PaymentRepairInstructions</p>
-                    </section>
-
-                    <div class="d-flex flex-column flex-md-row gap-2">
-                        @if (Model.CanCancelSubscription)
-                        {
-                            <form action="/subscription/cancel"
-                                  method="post"
-                                  onsubmit="return confirm('Cancel your subscription? This immediately ends portal access.');">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
-                                <button type="submit" class="btn btn-outline-danger">Cancel Subscription</button>
-                            </form>
-                        }
-
-                        <a class="btn btn-outline-secondary" href="@Model.ReturnUrl">Back to Profile</a>
-                    </div>
-                </div>
+            <div class="membership-billing-summary-item">
+                <span>Next Billing</span>
+                <strong>@Model.NextBillingDateDisplay</strong>
             </div>
         </div>
+    </section>
+
+    @if (!string.IsNullOrWhiteSpace(notice))
+    {
+        <div class="membership-billing-notice" role="status">
+            @notice
+        </div>
+    }
+
+    <div class="membership-billing-layout">
+        <div class="membership-billing-main">
+            <section class="membership-billing-panel"
+                     aria-labelledby="membership-overview-heading">
+                <div class="membership-billing-panel-head">
+                    <div>
+                        <span class="membership-billing-kicker">Overview</span>
+                        <h2 id="membership-overview-heading">Membership Details</h2>
+                    </div>
+
+                    <span class="membership-billing-badge">
+                        <span class="membership-billing-dot" aria-hidden="true"></span>
+                        @Model.SubscriptionStatus
+                    </span>
+                </div>
+
+                <dl class="membership-billing-details">
+                    <div>
+                        <dt>Monthly Amount</dt>
+                        <dd>@Model.MonthlyAmountDisplay</dd>
+                    </div>
+
+                    <div>
+                        <dt>Payment Standing</dt>
+                        <dd>@Model.PaymentStanding</dd>
+                    </div>
+
+                    <div>
+                        <dt>Portal Access</dt>
+                        <dd>@Model.EntitlementStatus</dd>
+                    </div>
+
+                    <div>
+                        <dt>Next Billing Date</dt>
+                        <dd>@Model.NextBillingDateDisplay</dd>
+                    </div>
+
+                    <div class="membership-billing-details-wide">
+                        <dt>Current Billing Period</dt>
+                        <dd>@Model.CurrentPeriodDisplay</dd>
+                    </div>
+                </dl>
+            </section>
+
+            <section class="membership-billing-panel"
+                     aria-labelledby="payment-method-heading">
+                <div class="membership-billing-panel-head">
+                    <div>
+                        <span class="membership-billing-kicker">Payment</span>
+                        <h2 id="payment-method-heading">Payment Method</h2>
+                    </div>
+                </div>
+
+                @if (Model.HasPaymentMethod)
+                {
+                    <div class="membership-payment-method">
+                        <div class="membership-payment-card-icon" aria-hidden="true">
+                            ••••
+                        </div>
+
+                        <div class="membership-payment-primary">
+                            <strong>@Model.PaymentMethodDisplay</strong>
+                            <span>Expires @Model.PaymentMethodExpirationDisplay</span>
+                        </div>
+
+                        <div class="membership-payment-meta">
+                            <span>Cardholder</span>
+                            <strong>@Model.PaymentMethodCardholderName</strong>
+                        </div>
+
+                        <div class="membership-payment-meta">
+                            <span>Last Updated</span>
+                            <strong>@Model.PaymentMethodUpdatedDisplay</strong>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="membership-billing-empty">
+                        <strong>No payment method available</strong>
+                        <span>No saved payment-method metadata is currently on file.</span>
+                    </div>
+                }
+            </section>
+
+            <section class="membership-billing-panel"
+                     aria-labelledby="billing-history-heading">
+                <div class="membership-billing-panel-head">
+                    <div>
+                        <span class="membership-billing-kicker">Payments</span>
+                        <h2 id="billing-history-heading">Billing History</h2>
+                    </div>
+                </div>
+
+                <div class="membership-billing-table-wrap">
+                    <table class="membership-billing-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Date</th>
+                                <th scope="col">Amount</th>
+                                <th scope="col">Type</th>
+                                <th scope="col">Billing Period</th>
+                                <th scope="col">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (Model.PaymentHistory.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="5"
+                                        class="membership-billing-table-empty">
+                                        No subscription payments are on file.
+                                    </td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var payment in Model.PaymentHistory)
+                                {
+                                    <tr>
+                                        <td>@payment.DateDisplay</td>
+                                        <td class="membership-billing-amount">
+                                            @payment.AmountDisplay
+                                        </td>
+                                        <td>@payment.Kind</td>
+                                        <td>@payment.BillingPeriodDisplay</td>
+                                        <td>
+                                            <span class="membership-billing-payment-status">
+                                                @payment.Status
+                                            </span>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <aside class="membership-billing-sidebar">
+            <section class="membership-billing-panel membership-billing-state"
+                     aria-labelledby="membership-state-heading">
+                <span class="membership-billing-kicker">Current State</span>
+                <h2 id="membership-state-heading">Membership Status</h2>
+
+                <div class="membership-billing-state-value">
+                    <span class="membership-billing-dot" aria-hidden="true"></span>
+                    <strong>@Model.CancellationState</strong>
+                </div>
+
+                <p>Your current membership lifecycle and portal-access standing.</p>
+            </section>
+
+            <section class="membership-billing-panel membership-billing-actions">
+                <span class="membership-billing-kicker">Actions</span>
+                <h2>Manage Membership</h2>
+                <p>Return to your profile or manage the active membership.</p>
+
+                <div class="membership-billing-action-list">
+                    <a class="membership-billing-button membership-billing-button-primary"
+                       href="@Model.ReturnUrl">
+                        Back to Profile
+                    </a>
+
+                    @if (Model.CanCancelSubscription)
+                    {
+                        <form action="/subscription/cancel"
+                              method="post"
+                              onsubmit="return confirm('Cancel your subscription? This immediately ends portal access.');">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden"
+                                   name="returnUrl"
+                                   value="@Model.ReturnUrl" />
+
+                            <button type="submit"
+                                    class="membership-billing-button membership-billing-button-danger">
+                                Cancel Subscription
+                            </button>
+                        </form>
+                    }
+                </div>
+            </section>
+        </aside>
     </div>
 </div>
