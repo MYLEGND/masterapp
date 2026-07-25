@@ -51,9 +51,10 @@ public sealed class MessagingProfileImageResolverTests
             await db.SaveChangesAsync();
 
             var agentAvatar = Path.Combine(root, "agent-identity.png");
-            var clientAvatar = Path.Combine(root, $"{client.Id:D}.png");
+            client.ProfileImageContent = "client avatar"u8.ToArray();
+            client.ProfileImageContentType = "image/png";
             await File.WriteAllTextAsync(agentAvatar, "agent avatar");
-            await File.WriteAllTextAsync(clientAvatar, "client avatar");
+            await db.SaveChangesAsync();
 
             var resolver = CreateResolver(db);
             var identities = await resolver.ResolveIdentitiesAsync(
@@ -68,8 +69,13 @@ public sealed class MessagingProfileImageResolverTests
             Assert.Equal(client.Id, resolvedClient.ProfileId);
             Assert.Equal("Agent Owner", resolvedAgent.DisplayName);
             Assert.Equal("Client Owner", resolvedClient.DisplayName);
-            Assert.Equal(agentAvatar, (await resolver.ResolveAsync(resolvedAgent))!.PhysicalPath);
-            Assert.Equal(clientAvatar, (await resolver.ResolveAsync(resolvedClient))!.PhysicalPath);
+            var resolvedAgentImage = await resolver.ResolveAsync(resolvedAgent);
+            var resolvedClientImage = await resolver.ResolveAsync(resolvedClient);
+            Assert.Equal(agentAvatar, resolvedAgentImage!.PhysicalPath);
+            Assert.Null(resolvedAgentImage.Content);
+            Assert.Equal("image/png", resolvedClientImage!.ContentType);
+            Assert.Equal("client avatar"u8.ToArray(), resolvedClientImage.Content);
+            Assert.Null(resolvedClientImage.PhysicalPath);
         });
     }
 
@@ -171,6 +177,55 @@ public sealed class MessagingProfileImageResolverTests
             Assert.Equal("Pending Client", identity.DisplayName);
             Assert.Equal("PC", identity.Initials);
             Assert.Null(await resolver.ResolveAsync(identity));
+        });
+    }
+
+    [Fact]
+    public async Task ClientProfileImage_RemainsClientOwnedWhenAgentAndClientShareAUserId()
+    {
+        await UseAvatarRootAsync(async root =>
+        {
+            await using var db = ControllerTestHelpers.BuildDb();
+            const string userId = "dual-role-user";
+            var client = new ClientProfile
+            {
+                Id = Guid.NewGuid(),
+                ClientUserId = userId,
+                ExternalIdentityObjectId = userId,
+                FirstName = "Client",
+                LastName = "Owner",
+                Email = "client@example.test",
+                ProfileImageContent = "client profile image"u8.ToArray(),
+                ProfileImageContentType = "image/webp"
+            };
+            db.AgentProfiles.Add(new AgentProfile
+            {
+                AgentUserId = userId,
+                AgentUpn = "agent@example.test",
+                FullName = "Agent Owner",
+                IsActive = true
+            });
+            db.ClientProfiles.Add(client);
+            await db.SaveChangesAsync();
+            await File.WriteAllTextAsync(Path.Combine(root, $"{userId}.png"), "agent avatar");
+
+            var resolver = CreateResolver(db);
+            var identities = await resolver.ResolveIdentitiesAsync(
+            [
+                new MessagingParticipantReference(userId, MessagingParticipantTypes.Agent),
+                new MessagingParticipantReference(userId, MessagingParticipantTypes.Client)
+            ]);
+
+            var agent = identities[(userId, MessagingParticipantTypes.Agent)];
+            var clientIdentity = identities[(userId, MessagingParticipantTypes.Client)];
+            var agentImage = await resolver.ResolveAsync(agent);
+            var clientImage = await resolver.ResolveAsync(clientIdentity);
+
+            Assert.Equal(Path.Combine(root, $"{userId}.png"), agentImage!.PhysicalPath);
+            Assert.Null(agentImage.Content);
+            Assert.Null(clientImage!.PhysicalPath);
+            Assert.Equal("client profile image"u8.ToArray(), clientImage.Content);
+            Assert.Equal("image/webp", clientImage.ContentType);
         });
     }
 

@@ -510,6 +510,15 @@
                             </a>
                         </li>
 
+                        <li class="nav-item">
+                            <a class="nav-link @(string.Equals(currentController, "Finance", StringComparison.OrdinalIgnoreCase) && string.Equals(currentAction, "Intelligence", StringComparison.OrdinalIgnoreCase) ? "active" : "")"
+                               asp-controller="Finance"
+                               asp-action="Intelligence"
+                               asp-route-clientUserId="@clientUserId">
+                                Intelligence
+                            </a>
+                        </li>
+
                         <li class="nav-item dropdown">
                             <a class="nav-link @(ActiveWorkspace("Resources") == "active" || ActiveWorkspace("Training") == "active" ? "active" : "")">Explore More</a>
                             <div class="dropdown-menu-centered">
@@ -709,6 +718,14 @@
                asp-route-clientUserId="@clientUserId">
                 <span>Finance</span>
                 <small>Money</small>
+            </a>
+
+            <a class="explore-item" data-tone="finance"
+               asp-controller="Finance"
+               asp-action="Intelligence"
+               asp-route-clientUserId="@clientUserId">
+                <span>Intelligence</span>
+                <small>Financial</small>
             </a>
 
             <a class="explore-item" data-tone="library"

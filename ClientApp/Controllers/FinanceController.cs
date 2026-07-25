@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ClientApp.Services;
+using Domain.FinancialIntelligence;
 using System.Text.Json;
 
 namespace ClientApp.Controllers
@@ -9,10 +10,14 @@ namespace ClientApp.Controllers
     public class FinanceController : Controller
     {
         private readonly EffectiveClientContextService _clientContext;
+        private readonly IFinancialIntelligenceEvaluationService _financialIntelligence;
 
-        public FinanceController(EffectiveClientContextService clientContext)
+        public FinanceController(
+            EffectiveClientContextService clientContext,
+            IFinancialIntelligenceEvaluationService financialIntelligence)
         {
             _clientContext = clientContext;
+            _financialIntelligence = financialIntelligence;
         }
 
         private static bool IsMarriedOrPartnered(string? maritalStatus)
@@ -88,6 +93,66 @@ namespace ClientApp.Controllers
             ViewBag.SpouseFirstName = (context.Profile.SignificantOtherFirstName ?? "").Trim();
             ViewBag.HasSpouse = IsMarriedOrPartnered(context.Profile.MaritalStatus);
             return View("Index");
+        }
+
+        [HttpGet("/Finance/Intelligence")]
+        public async Task<IActionResult> Intelligence(CancellationToken cancellationToken)
+        {
+            var context = await _clientContext.ResolveAsync(User, Request.Cookies);
+            if (context == null || context.IsAgentView)
+                return Forbid();
+
+            var snapshot = await _financialIntelligence.GetSnapshotAsync(
+                new FinancialIntelligenceActor(
+                    context.ClientProfileId,
+                    context.ClientUserId,
+                    FinancialIntelligenceActorTypes.Client),
+                cancellationToken);
+            if (snapshot == null)
+                return Forbid();
+
+            return View(snapshot);
+        }
+
+        [HttpPost("/Finance/Intelligence/Evaluate")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> EvaluateIntelligence(CancellationToken cancellationToken)
+        {
+            var context = await _clientContext.ResolveAsync(User, Request.Cookies);
+            if (context == null || context.IsAgentView)
+                return Forbid();
+
+            var result = await _financialIntelligence.EvaluateAsync(
+                new FinancialIntelligenceActor(
+                    context.ClientProfileId,
+                    context.ClientUserId,
+                    FinancialIntelligenceActorTypes.Client),
+                cancellationToken);
+            TempData[result.Success ? "Success" : "Error"] = result.SanitizedSummary;
+            return RedirectToAction(nameof(Intelligence));
+        }
+
+        [HttpPost("/Finance/Intelligence/Feedback")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> IntelligenceFeedback(
+            Guid findingId,
+            string feedbackType,
+            string? reasonCode,
+            CancellationToken cancellationToken)
+        {
+            var context = await _clientContext.ResolveAsync(User, Request.Cookies);
+            if (context == null || context.IsAgentView)
+                return Forbid();
+
+            var result = await _financialIntelligence.RecordFeedbackAsync(
+                new FinancialIntelligenceActor(
+                    context.ClientProfileId,
+                    context.ClientUserId,
+                    FinancialIntelligenceActorTypes.Client),
+                new FinancialIntelligenceFeedbackCommand(findingId, feedbackType, reasonCode),
+                cancellationToken);
+            TempData[result.Success ? "Success" : "Error"] = result.SanitizedSummary;
+            return RedirectToAction(nameof(Intelligence));
         }
     }
 }

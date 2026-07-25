@@ -1,74 +1,39 @@
 using System;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ClientApp.Services;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace ClientApp.Controllers
 {
     [Authorize]
     public class AvatarController : Controller
     {
-        private readonly IWebHostEnvironment _env;
+        private readonly MasterAppDbContext _db;
         private readonly EffectiveClientContextService _clientContext;
 
-        public AvatarController(IWebHostEnvironment env, EffectiveClientContextService clientContext)
+        public AvatarController(MasterAppDbContext db, EffectiveClientContextService clientContext)
         {
-            _env = env;
+            _db = db;
             _clientContext = clientContext;
         }
 
-        private string GetAvatarRoot()
-        {
-            var configured = Environment.GetEnvironmentVariable("LEGEND_AVATAR_ROOT");
-            if (!string.IsNullOrWhiteSpace(configured))
-            {
-                var expanded = Environment.ExpandEnvironmentVariables(configured.Trim());
-                try
-                {
-                    var root = Path.GetFullPath(expanded);
-                    Directory.CreateDirectory(root);
-                    return root;
-                }
-                catch { }
-            }
-
-            // Azure App Service exposes HOME as a persistent writable root that survives redeployment.
-            var home = Environment.GetEnvironmentVariable("HOME");
-            if (!string.IsNullOrWhiteSpace(home))
-            {
-                try
-                {
-                    var appServiceRoot = Path.GetFullPath(Path.Combine(home.Trim(), "avatars"));
-                    Directory.CreateDirectory(appServiceRoot);
-                    return appServiceRoot;
-                }
-                catch { }
-            }
-
-            var fallback = Path.Combine(_env.ContentRootPath, "App_Data", "avatars");
-            Directory.CreateDirectory(fallback);
-            return fallback;
-        }
-
-        private async Task<string?> GetClientAvatarKeyAsync()
+        private async Task<Guid?> GetClientProfileIdAsync()
         {
             var context = await _clientContext.ResolveAsync(User, Request.Cookies);
-            // Avatar files are keyed to the stable client profile identity, never
-            // an Identity user, servicing agent, invitation sender, or email.
-            return context is null ? null : context.ClientProfileId.ToString("D");
+            return context?.ClientProfileId;
         }
 
         [HttpPost("/avatar/upload")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Upload(IFormFile photo)
         {
-            var avatarKey = await GetClientAvatarKeyAsync();
-            if (string.IsNullOrWhiteSpace(avatarKey))
+            var clientProfileId = await GetClientProfileIdAsync();
+            if (clientProfileId is null)
             {
                 return Forbid();
             }
@@ -89,29 +54,19 @@ namespace ClientApp.Controllers
                 return BadRequest(new { message = "Only PNG, JPG, or WEBP images are allowed." });
             }
 
-            var ext = Path.GetExtension(photo.FileName);
-            if (string.IsNullOrWhiteSpace(ext))
-            {
-                ext = photo.ContentType switch
-                {
-                    "image/png" => ".png",
-                    "image/webp" => ".webp",
-                    _ => ".jpg"
-                };
-            }
+            var profile = await _db.ClientProfiles
+                .SingleOrDefaultAsync(x => x.Id == clientProfileId.Value, HttpContext.RequestAborted);
+            if (profile is null)
+                return Forbid();
 
-            var root = GetAvatarRoot();
-            var filePath = Path.Combine(root, $"{avatarKey}{ext}");
-
-            foreach (var existing in Directory.EnumerateFiles(root, $"{avatarKey}.*"))
-            {
-                System.IO.File.Delete(existing);
-            }
-
-            await using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await photo.CopyToAsync(stream);
-            }
+            await using var stream = new MemoryStream();
+            await photo.CopyToAsync(stream, HttpContext.RequestAborted);
+            profile.ProfileImageContent = stream.ToArray();
+            profile.ProfileImageContentType = photo.ContentType == "image/jpg"
+                ? "image/jpeg"
+                : photo.ContentType;
+            profile.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
             return Ok(new { message = "Profile picture updated." });
         }
@@ -120,26 +75,18 @@ namespace ClientApp.Controllers
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public async Task<IActionResult> Current()
         {
-            var avatarKey = await GetClientAvatarKeyAsync();
-            if (string.IsNullOrWhiteSpace(avatarKey))
+            var clientProfileId = await GetClientProfileIdAsync();
+            if (clientProfileId is null)
                 return Unauthorized();
 
-            var root = GetAvatarRoot();
-            var candidates = new[] { ".png", ".jpg", ".jpeg", ".webp" };
-            foreach (var ext in candidates)
-            {
-                var path = Path.Combine(root, $"{avatarKey}{ext}");
-                if (System.IO.File.Exists(path))
-                {
-                    var mime = ext.ToLowerInvariant() switch
-                    {
-                        ".png" => "image/png",
-                        ".webp" => "image/webp",
-                        _ => "image/jpeg"
-                    };
-                    return PhysicalFile(path, mime);
-                }
-            }
+            var profile = await _db.ClientProfiles
+                .AsNoTracking()
+                .Where(x => x.Id == clientProfileId.Value)
+                .Select(x => new { x.ProfileImageContent, x.ProfileImageContentType })
+                .SingleOrDefaultAsync(HttpContext.RequestAborted);
+            if (profile?.ProfileImageContent is { Length: > 0 } &&
+                profile.ProfileImageContentType is "image/png" or "image/jpeg" or "image/webp")
+                return File(profile.ProfileImageContent, profile.ProfileImageContentType);
 
                         const string fallbackSvg = """
 <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'>

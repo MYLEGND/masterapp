@@ -22,7 +22,10 @@ public interface IMessagingProfileImageResolver
         CancellationToken cancellationToken = default);
 }
 
-public sealed record MessagingProfileImage(string PhysicalPath, string ContentType);
+public sealed record MessagingProfileImage(
+    string ContentType,
+    string? PhysicalPath = null,
+    byte[]? Content = null);
 
 internal sealed class MessagingProfileImageResolver : IMessagingProfileImageResolver
 {
@@ -46,12 +49,12 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
         MessagingParticipantIdentity participant,
         CancellationToken cancellationToken = default)
     {
-        var avatarKey = participant.ParticipantType switch
-        {
-            MessagingParticipantTypes.Agent => Normalize(participant.UserId),
-            MessagingParticipantTypes.Client => participant.ProfileId.ToString("D"),
-            _ => string.Empty
-        };
+        if (participant.ParticipantType == MessagingParticipantTypes.Client)
+            return await ResolveClientProfileImageAsync(participant.ProfileId, cancellationToken);
+
+        var avatarKey = participant.ParticipantType == MessagingParticipantTypes.Agent
+            ? Normalize(participant.UserId)
+            : string.Empty;
         if (string.IsNullOrWhiteSpace(avatarKey))
             return null;
 
@@ -75,7 +78,7 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                 participant.ParticipantType,
                 participant.ProfileId,
                 "ProfileAvatarStorage");
-            return new MessagingProfileImage(path, ContentTypeFor(extension));
+            return new MessagingProfileImage(ContentTypeFor(extension), PhysicalPath: path);
         }
 
         return null;
@@ -194,27 +197,20 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
         var profile = await _db.ClientProfiles
             .AsNoTracking()
             .Where(x => x.Id == clientProfileId)
-            .Select(x => new ClientIdentityRow(
-                x.Id,
-                x.ClientUserId,
-                x.ExternalIdentityObjectId,
-                x.FirstName,
-                x.LastName,
-                x.Email))
+            .Select(x => new ClientProfileImageRow(
+                x.ProfileImageContent,
+                x.ProfileImageContentType))
             .FirstOrDefaultAsync(cancellationToken);
-        if (profile is null)
+        if (profile is null ||
+            profile.Content is not { Length: > 0 } ||
+            !IsSupportedImageContentType(profile.ContentType))
             return null;
 
-        var displayName = FirstNonEmpty($"{profile.FirstName} {profile.LastName}".Trim(), profile.Email, "Client");
-        return await ResolveAsync(
-            new MessagingParticipantIdentity(
-                Normalize(profile.ClientUserId),
-                MessagingParticipantTypes.Client,
-                profile.Id,
-                displayName,
-                profile.Email,
-                Initials(displayName)),
-            cancellationToken);
+        _logger.LogDebug(
+            "Messaging client profile image resolved from ClientProfiles. ClientProfileId={ClientProfileId} ImageSourceType={ImageSourceType}",
+            clientProfileId,
+            "ClientProfile");
+        return new MessagingProfileImage(profile.ContentType!, Content: profile.Content);
     }
 
     private void LogIdentityResolutionFailure(string userId, string participantType, int matchCount)
@@ -265,6 +261,9 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
         _ => "image/jpeg"
     };
 
+    private static bool IsSupportedImageContentType(string? value) =>
+        value is "image/png" or "image/jpeg" or "image/webp";
+
     private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;
 
     private static string FirstNonEmpty(params string?[] values) =>
@@ -288,4 +287,6 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
         string? FirstName,
         string? LastName,
         string? Email);
+
+    private sealed record ClientProfileImageRow(byte[]? Content, string? ContentType);
 }

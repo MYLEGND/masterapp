@@ -22,6 +22,12 @@ public class ClientProfile
     public string? NormalizedEmail { get; set; }
     public string Phone     { get; set; } = "";
 
+    // The client-owned profile photo is shared by both portals. It deliberately
+    // belongs to this profile rather than to an Identity user or an app-local
+    // file path so a client and an agent identity can never resolve each other.
+    public byte[]? ProfileImageContent { get; set; }
+    public string? ProfileImageContentType { get; set; }
+
     public DateTime? DOB { get; set; }
     public string MaritalStatus { get; set; } = "";
 

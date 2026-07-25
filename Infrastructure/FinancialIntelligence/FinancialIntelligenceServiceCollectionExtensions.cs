@@ -1,4 +1,5 @@
 using Domain.FinancialIntelligence;
+using Infrastructure.FinancialIntelligence.Rules;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -17,6 +18,10 @@ public static class FinancialIntelligenceServiceCollectionExtensions
         services.AddScoped<IFinancialImportService, FinancialImportService>();
         services.AddScoped<IRecurringFinancialStreamService, RecurringFinancialStreamService>();
         services.AddScoped<IExpenseLensSynchronizationService, ExpenseLensSynchronizationService>();
+        services.AddScoped<IFinancialIntelligenceRule, RecurringChargeReviewRule>();
+        services.AddScoped<IFinancialIntelligenceRule, StaleFinancialDataRule>();
+        services.AddScoped<IFinancialIntelligenceRule, CashFlowShortfallRule>();
+        services.AddScoped<IFinancialIntelligenceEvaluationService, FinancialIntelligenceEvaluationService>();
 
         return services;
     }

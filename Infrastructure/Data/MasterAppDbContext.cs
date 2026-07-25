@@ -22,6 +22,11 @@ public class MasterAppDbContext : DbContext
     public DbSet<ImportedFinancialTransaction> ImportedFinancialTransactions => Set<ImportedFinancialTransaction>();
     public DbSet<RecurringFinancialStream> RecurringFinancialStreams => Set<RecurringFinancialStream>();
     public DbSet<ExpenseLensStreamLink> ExpenseLensStreamLinks => Set<ExpenseLensStreamLink>();
+    public DbSet<ClientFinancialIntelligenceProfile> ClientFinancialIntelligenceProfiles => Set<ClientFinancialIntelligenceProfile>();
+    public DbSet<FinancialObservation> FinancialObservations => Set<FinancialObservation>();
+    public DbSet<FinancialFinding> FinancialFindings => Set<FinancialFinding>();
+    public DbSet<FinancialFindingObservation> FinancialFindingObservations => Set<FinancialFindingObservation>();
+    public DbSet<FinancialFindingFeedback> FinancialFindingFeedback => Set<FinancialFindingFeedback>();
     public DbSet<AgentFinanceToolState> AgentFinanceToolStates => Set<AgentFinanceToolState>();
     public DbSet<BookkeepingEntry> BookkeepingEntries => Set<BookkeepingEntry>();
     public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();
@@ -641,6 +646,9 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Email).HasMaxLength(320);
             e.Property(x => x.NormalizedEmail).HasMaxLength(320);
             e.Property(x => x.ExternalIdentityObjectId).HasMaxLength(450);
+            e.Property(x => x.ProfileImageContentType).HasMaxLength(127);
+            if (isSqlServer)
+                e.Property(x => x.ProfileImageContent).HasColumnType("varbinary(max)");
 
             if (isSqlServer)
                 e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");
@@ -1567,6 +1575,120 @@ public class MasterAppDbContext : DbContext
             e.HasOne<RecurringFinancialStream>()
                 .WithMany()
                 .HasForeignKey(x => x.RecurringFinancialStreamId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ==========================================================
+        // FINANCIAL INTELLIGENCE EVALUATION
+        //
+        // These records are additive, normalized evaluation results. They do
+        // not replace FinanceToolState or imported provider facts.
+        // ==========================================================
+        modelBuilder.Entity<ClientFinancialIntelligenceProfile>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(40);
+            e.Property(x => x.DataCompletenessScore).HasPrecision(5, 4);
+            e.Property(x => x.BehavioralBaselineStatus).IsRequired().HasMaxLength(40);
+            e.Property(x => x.PersonalizationMaturity).IsRequired().HasMaxLength(40);
+            e.Property(x => x.RecommendationResponseSummary).IsRequired().HasMaxLength(1000);
+            e.Property(x => x.CurrentRiskSummary).IsRequired().HasMaxLength(600);
+            e.Property(x => x.CurrentOpportunitySummary).IsRequired().HasMaxLength(600);
+            e.Property(x => x.CurrentLeakageSummary).IsRequired().HasMaxLength(600);
+            e.HasIndex(x => x.ClientProfileId).IsUnique();
+            e.HasIndex(x => x.LastEvaluatedUtc);
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<FinancialObservation>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ObservationKey).IsRequired().HasMaxLength(240);
+            e.Property(x => x.RuleIdentifier).IsRequired().HasMaxLength(120);
+            e.Property(x => x.ObservationType).IsRequired().HasMaxLength(100);
+            e.Property(x => x.SourceType).IsRequired().HasMaxLength(100);
+            e.Property(x => x.SourceReference).HasMaxLength(500);
+            e.Property(x => x.NumericValue).HasPrecision(19, 4);
+            e.Property(x => x.PreviousValue).HasPrecision(19, 4);
+            e.Property(x => x.Unit).HasMaxLength(80);
+            e.Property(x => x.Confidence).HasPrecision(5, 4);
+            e.Property(x => x.EvidenceSummary).IsRequired().HasMaxLength(2000);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(40);
+            e.HasIndex(x => new { x.ClientProfileId, x.ObservationKey }).IsUnique();
+            e.HasIndex(x => new { x.ClientProfileId, x.ObservationType, x.Status });
+            e.HasIndex(x => new { x.ClientProfileId, x.PeriodEndUtc });
+            e.HasIndex(x => new { x.RuleIdentifier, x.RuleVersion });
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<FinancialFinding>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.FindingKey).IsRequired().HasMaxLength(240);
+            e.Property(x => x.RuleIdentifier).IsRequired().HasMaxLength(120);
+            e.Property(x => x.Category).IsRequired().HasMaxLength(40);
+            e.Property(x => x.FindingType).IsRequired().HasMaxLength(100);
+            e.Property(x => x.Title).IsRequired().HasMaxLength(240);
+            e.Property(x => x.Explanation).IsRequired().HasMaxLength(2000);
+            e.Property(x => x.EstimatedImpact).HasPrecision(19, 4);
+            e.Property(x => x.ImpactUnit).HasMaxLength(80);
+            e.Property(x => x.Confidence).HasPrecision(5, 4);
+            e.Property(x => x.PriorityScore).HasPrecision(6, 2);
+            e.Property(x => x.Urgency).IsRequired().HasMaxLength(40);
+            e.Property(x => x.Difficulty).IsRequired().HasMaxLength(40);
+            e.Property(x => x.EvidenceSummary).IsRequired().HasMaxLength(4000);
+            e.Property(x => x.ClientFacingSummary).IsRequired().HasMaxLength(2000);
+            e.Property(x => x.AgentFacingSummary).IsRequired().HasMaxLength(2000);
+            e.Property(x => x.Disclaimer).HasMaxLength(1000);
+            e.Property(x => x.AgentReviewedByUserId).HasMaxLength(450);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(40);
+            e.HasIndex(x => new { x.ClientProfileId, x.FindingKey }).IsUnique();
+            e.HasIndex(x => new { x.ClientProfileId, x.Status, x.PriorityScore });
+            e.HasIndex(x => new { x.ClientProfileId, x.FindingType });
+            e.HasIndex(x => new { x.RuleIdentifier, x.RuleVersion });
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<FinancialFindingObservation>(e =>
+        {
+            e.HasKey(x => new { x.FinancialFindingId, x.FinancialObservationId });
+            e.HasIndex(x => x.FinancialObservationId);
+            e.HasOne<FinancialFinding>()
+                .WithMany()
+                .HasForeignKey(x => x.FinancialFindingId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<FinancialObservation>()
+                .WithMany()
+                .HasForeignKey(x => x.FinancialObservationId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<FinancialFindingFeedback>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ActorType).IsRequired().HasMaxLength(40);
+            e.Property(x => x.ActorUserId).IsRequired().HasMaxLength(450);
+            e.Property(x => x.FeedbackType).IsRequired().HasMaxLength(80);
+            e.Property(x => x.ReasonCode).HasMaxLength(120);
+            e.Property(x => x.Note).HasMaxLength(1000);
+            e.HasIndex(x => new { x.FinancialFindingId, x.CreatedUtc });
+            e.HasIndex(x => new { x.ClientProfileId, x.FeedbackType, x.CreatedUtc });
+            e.HasOne<FinancialFinding>()
+                .WithMany()
+                .HasForeignKey(x => x.FinancialFindingId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
