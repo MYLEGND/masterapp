@@ -631,27 +631,7 @@ scheduleDpPreview();
 function norm(v){ return (v || "").toString().trim(); }
 function fullName(row){ return (norm(row.dataset.first) + " " + norm(row.dataset.last)).trim(); }
 
-const QUICK_VIEW_DIAG_PAGE = "clients";
-const quickViewDiagnostics = window.LegendCrmDiagnostics?.createPageDiagnostics({
-  pageKey: QUICK_VIEW_DIAG_PAGE,
-  pageTitle: "Clients CRM"
-}) || Object.freeze({
-  log(){
-    return null;
-  },
-  warn(){
-    return null;
-  },
-  error(message, detail, scope = "quickview"){
-    console.error(`[${QUICK_VIEW_DIAG_PAGE}] ${scope}: ${message}`, detail);
-    return null;
-  },
-  attachGlobalFetch(){
-    return null;
-  }
-});
-
-quickViewDiagnostics.attachGlobalFetch?.();
+const quickViewDiagnostics = window.LegendPageHealth.current;
 
 function describeQuickViewRow(row){
   return {
