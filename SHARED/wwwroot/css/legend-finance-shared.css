@@ -1,11 +1,11 @@
 
 .llbs-tool {
-    --llbs-obsidian: #060b16;
-    --llbs-navy: #0b1529;
-    --llbs-navy-2: #0f1d38;
-    --llbs-navy-3: #14294d;
-    --llbs-field: #111b2e;
-    --llbs-gold: #c79931;
+    --llbs-obsidian: var(--dash-royal-950, #091225);
+    --llbs-navy: var(--dash-royal-925, #0d1c38);
+    --llbs-navy-2: var(--dash-royal-900, #10254c);
+    --llbs-navy-3: var(--dash-royal-860, #17356d);
+    --llbs-field: var(--dash-royal-900, #10254c);
+    --llbs-gold: var(--dash-gold, #d4aa47);
     --llbs-gold-2: #ddb457;
     --llbs-gold-3: #f3d88b;
     --llbs-gold-deep: #7c5812;
@@ -13,11 +13,11 @@
     --llbs-ruby-2: #e15a64;
     --llbs-emerald: #146c43;
     --llbs-emerald-2: #35b779;
-    --llbs-text: #f8fafc;
-    --llbs-soft-text: rgba(248, 250, 252, .74);
-    --llbs-muted: rgba(248, 250, 252, .56);
-    --llbs-line: rgba(199, 153, 49, .28);
-    --llbs-line-strong: rgba(243, 216, 139, .48);
+    --llbs-text: var(--dash-text, #f8fbff);
+    --llbs-soft-text: var(--dash-text-soft, rgba(226, 232, 240, .78));
+    --llbs-muted: rgba(226, 232, 240, .62);
+    --llbs-line: var(--dash-line, rgba(150, 182, 255, .16));
+    --llbs-line-strong: var(--dash-line-strong, rgba(212, 170, 71, .34));
     --llbs-shell-radius: 24px;
     width: 100%;
     max-width: 100%;
@@ -44,13 +44,11 @@
     border: 2px solid var(--llbs-line-strong);
     border-radius: var(--llbs-shell-radius);
     background:
-        radial-gradient(820px 280px at 12% -8%, rgba(221, 180, 87, .24), transparent 60%),
-        radial-gradient(640px 240px at 92% 6%, rgba(20, 108, 67, .18), transparent 62%),
-        linear-gradient(180deg, #0a1224 0%, var(--llbs-navy) 45%, #07101f 100%);
+        radial-gradient(720px 260px at 50% 0%, rgba(49, 89, 191, .18), transparent 58%),
+        linear-gradient(180deg, var(--llbs-navy-2), var(--llbs-navy));
     box-shadow:
-        0 30px 76px rgba(0, 0, 0, .38),
-        inset 0 1px 0 rgba(243, 216, 139, .18),
-        inset 0 0 0 1px rgba(124, 88, 18, .18);
+        var(--dash-shadow-strong, 0 34px 80px rgba(3, 8, 22, .38)),
+        inset 0 1px 0 rgba(255, 255, 255, .05);
 }
 
 .llbs-shell::before {
@@ -60,7 +58,7 @@
     pointer-events: none;
     border-radius: inherit;
     background:
-        linear-gradient(90deg, transparent, rgba(243, 216, 139, .12), transparent) top / 100% 1px no-repeat,
+        linear-gradient(90deg, transparent, rgba(255, 235, 183, .42), transparent) top / 100% 1px no-repeat,
         linear-gradient(180deg, rgba(255, 255, 255, .035), transparent 30%);
 }
 
@@ -77,8 +75,8 @@
     border-top-left-radius: calc(var(--llbs-shell-radius) - 2px);
     border-top-right-radius: calc(var(--llbs-shell-radius) - 2px);
     background:
-        radial-gradient(620px 170px at 16% 0%, rgba(243, 216, 139, .18), transparent 66%),
-        linear-gradient(135deg, rgba(6, 11, 22, .76), rgba(15, 29, 56, .92));
+        radial-gradient(720px 260px at 50% 0%, rgba(49, 89, 191, .18), transparent 58%),
+        linear-gradient(180deg, rgba(16, 37, 76, .98), rgba(10, 22, 46, .995));
 }
 
 .llbs-kicker {
@@ -125,11 +123,11 @@
     display: inline-flex;
     align-items: center;
     min-height: 29px;
-    border: 1px solid rgba(243, 216, 139, .42);
+    border: 1px solid var(--llbs-line-strong);
     border-radius: 999px;
     padding: 4px 10px;
     color: #fff7dd;
-    background: rgba(255, 255, 255, .07);
+    background: rgba(13, 29, 60, .9);
     font-size: .72rem;
     font-weight: 900;
 }
@@ -137,11 +135,11 @@
 .llbs-clear,
 .llbs-tax-toggle {
     min-height: 32px;
-    border: 1px solid rgba(243, 216, 139, .38);
+    border: 1px solid var(--llbs-line-strong);
     border-radius: 8px;
     padding: 6px 11px;
     color: #fff7dd;
-    background: linear-gradient(180deg, rgba(199, 153, 49, .2), rgba(124, 88, 18, .12));
+    background: rgba(13, 29, 60, .9);
     font-size: .76rem;
     font-weight: 950;
     cursor: pointer;
@@ -177,7 +175,8 @@
     border: 1px solid var(--llbs-line);
     border-radius: 11px;
     background:
-        linear-gradient(180deg, rgba(20, 41, 77, .9), rgba(10, 18, 36, .96));
+        radial-gradient(circle at top right, rgba(77, 111, 255, .12), transparent 42%),
+        linear-gradient(180deg, rgba(11, 23, 49, .9), rgba(8, 16, 34, .96));
     box-shadow:
         0 14px 32px rgba(0, 0, 0, .26),
         inset 0 1px 0 rgba(255, 255, 255, .06);
@@ -212,66 +211,18 @@
 .llbs-philosophy {
     border-color: rgba(243, 216, 139, .34);
     background:
-        radial-gradient(460px 160px at 12% 0%, rgba(243, 216, 139, .16), transparent 72%),
-        linear-gradient(180deg, rgba(20, 41, 77, .94), rgba(7, 13, 24, .98));
-}
-
-.llbs-philosophy .llbs-section-head {
-    background:
-        linear-gradient(90deg, rgba(243, 216, 139, .22), rgba(243, 216, 139, .04)),
-        linear-gradient(180deg, #141d32, #0b1529);
-    border-bottom-color: rgba(243, 216, 139, .22);
+        radial-gradient(720px 260px at 50% 0%, rgba(49, 89, 191, .18), transparent 58%),
+        linear-gradient(180deg, rgba(16, 37, 76, .98), rgba(10, 22, 46, .995));
 }
 
 .llbs-philosophy-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 7px;
     padding: 8px;
 }
 
 .llbs-philosophy-card {
-    display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: 10px;
-    min-height: 60px;
-    padding: 10px 12px;
-    border: 1px solid rgba(243, 216, 139, .24);
-    border-radius: 12px;
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(0, 0, 0, .10)),
-        #0b1324;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, .05),
-        0 12px 24px rgba(0, 0, 0, .18);
-}
-
-.llbs-philosophy-step {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border: 1px solid rgba(243, 216, 139, .42);
-    border-radius: 999px;
-    color: #241700;
-    background: linear-gradient(180deg, var(--llbs-gold-3), var(--llbs-gold));
-    font-size: .8rem;
-    font-weight: 950;
-    line-height: 1;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, .34),
-        0 8px 18px rgba(0, 0, 0, .18);
-}
-
-.llbs-philosophy-title {
-    color: #fff7dd;
-    font-size: .78rem;
-    font-weight: 950;
-    letter-spacing: .08em;
-    line-height: 1.15;
-    text-transform: uppercase;
 }
 
 .llbs-protection .llbs-section-head {
@@ -309,7 +260,7 @@
     min-height: 24px;
     border: 1px solid rgba(243, 216, 139, .28);
     border-radius: 7px;
-    background: #0b1324;
+    background: var(--llbs-navy);
     color: var(--llbs-text);
     padding: 1px 6px;
     font-size: .72rem;
@@ -458,11 +409,11 @@
     gap: 8px;
     min-height: 34px;
     padding: 4px 10px;
-    background: rgba(9, 18, 35, .9);
+    background: rgba(13, 29, 60, .9);
 }
 
 .llbs-row:nth-child(even) {
-    background: rgba(14, 28, 53, .9);
+    background: rgba(16, 37, 76, .9);
 }
 
 .llbs-label {
@@ -696,8 +647,8 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     border-color: rgba(243, 216, 139, .42);
     padding: 12px 14px;
     background:
-        radial-gradient(500px 140px at 50% 0%, rgba(243, 216, 139, .18), transparent 68%),
-        linear-gradient(180deg, #111f3a, #070d18);
+        radial-gradient(720px 220px at 50% 0%, rgba(49, 89, 191, .18), transparent 62%),
+        linear-gradient(180deg, var(--llbs-navy-2), var(--llbs-navy));
 }
 
 .llbs-net-kicker {
@@ -1035,8 +986,8 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     gap: 8px;
     padding: 8px 11px;
     background:
-        radial-gradient(420px 120px at 0% 0%, rgba(53, 183, 121, .13), transparent 65%),
-        linear-gradient(180deg, rgba(20, 41, 77, .92), rgba(9, 18, 35, .96));
+        radial-gradient(720px 180px at 50% 0%, rgba(49, 89, 191, .14), transparent 60%),
+        linear-gradient(180deg, var(--llbs-navy-2), var(--llbs-navy));
 }
 
 .llbs-action-copy p {
@@ -1064,7 +1015,7 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     color: var(--llbs-text);
     background:
         linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(0, 0, 0, .08)),
-        #0b1324;
+        var(--llbs-navy);
     text-align: left;
     cursor: pointer;
 }
@@ -1106,7 +1057,7 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     border-radius: 999px;
     padding: 5px 12px;
     color: var(--llbs-soft-text);
-    background: #0b1324;
+    background: var(--llbs-navy);
     font-size: .76rem;
     font-weight: 900;
 }
@@ -1130,7 +1081,7 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     gap: 4px;
     min-height: 64px;
     padding: 7px 10px;
-    background: rgba(9, 18, 35, .94);
+    background: rgba(13, 29, 60, .94);
 }
 
 .llbs-advisor-grid span,
@@ -1737,18 +1688,18 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
 
 /* Finance shared layer */
 :root {
-    --gold: #d1a034;
-    --gold-soft: rgba(209, 160, 52, .16);
-    --line-dark: #8f6c1b;
-    --ink: #f8fafc;
-    --muted: #9fb0cd;
-    --border-soft: rgba(159, 176, 205, .22);
-    --navy-panel: #111827;
-    --navy-field: #121a2b;
+    --gold: var(--dash-gold, #d4aa47);
+    --gold-soft: var(--dash-gold-soft, rgba(212, 170, 71, .18));
+    --line-dark: var(--dash-line-strong, rgba(212, 170, 71, .34));
+    --ink: var(--dash-text, #f8fbff);
+    --muted: var(--dash-text-soft, rgba(226, 232, 240, .78));
+    --border-soft: var(--dash-line, rgba(150, 182, 255, .16));
+    --navy-panel: var(--dash-royal-925, #0d1c38);
+    --navy-field: var(--dash-royal-900, #10254c);
     --finance-shell-gutter: clamp(12px, 2vw, 28px);
     --finance-main-width: 1120px;
-    --shadow-a: 0 18px 55px rgba(0, 0, 0, .45);
-    --shadow-b: 0 22px 70px rgba(0, 0, 0, .52);
+    --shadow-a: var(--dash-shadow, 0 28px 60px rgba(4, 10, 28, .26));
+    --shadow-b: var(--dash-shadow-strong, 0 34px 80px rgba(3, 8, 22, .38));
     --radius: 20px;
     --finance-tone-income: #1e8c63;
     --finance-tone-expense: #c5455b;
@@ -1810,9 +1761,11 @@ body {
     margin-left: auto;
     margin-right: auto;
     padding: 24px 22px 22px;
-    border: 2px solid var(--line-dark);
+    border: 1px solid var(--line-dark);
     border-radius: 24px;
-    background: #0f172a;
+    background:
+        radial-gradient(720px 260px at 50% 0%, rgba(49, 89, 191, .18), transparent 58%),
+        linear-gradient(180deg, rgba(16, 37, 76, .98), rgba(10, 22, 46, .995));
     box-shadow: var(--shadow-a);
     overflow: hidden;
 }
@@ -1844,9 +1797,11 @@ body {
     margin-left: auto;
     margin-right: auto;
     padding: 14px;
-    border: 1px solid rgba(143, 108, 27, .88);
+    border: 1px solid var(--line-dark);
     border-radius: 20px;
-    background: linear-gradient(180deg, rgba(19, 29, 49, .96), rgba(12, 20, 36, .96));
+    background:
+        radial-gradient(560px 210px at 50% 0%, rgba(62, 108, 219, .18), transparent 56%),
+        linear-gradient(180deg, rgba(16, 37, 76, .98), rgba(10, 22, 46, .995));
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, .05),
         0 18px 34px rgba(0, 0, 0, .18);
@@ -1898,7 +1853,7 @@ body {
     padding: 12px 48px;
     border: 2px solid var(--line-dark);
     border-radius: 16px;
-    background: linear-gradient(180deg, rgba(20, 31, 53, .98), rgba(12, 20, 36, .98));
+    background: linear-gradient(180deg, rgba(16, 37, 76, .98), rgba(13, 29, 60, .98));
     background-color: var(--navy-field);
     color: #f5f7fb;
     -webkit-text-fill-color: #f5f7fb;
@@ -1932,7 +1887,7 @@ body {
 }
 
 .finance-select option {
-    background: #111827;
+    background: var(--navy-panel);
     color: #f5f7fb;
     text-align: center;
 }
@@ -1945,7 +1900,7 @@ body {
     padding: 12px 14px;
     border: 2px solid var(--line-dark);
     border-radius: 16px;
-    background: #131d31;
+    background: rgba(13, 29, 60, .9);
     color: #f8fafc;
     box-shadow: 0 12px 28px rgba(0, 0, 0, .18);
     font-weight: 900;
@@ -1972,7 +1927,7 @@ body {
 .finance-toolbar-btn:focus-visible {
     transform: translateY(-1px);
     border-color: rgba(240, 197, 91, .94);
-    background: linear-gradient(180deg, rgba(24, 40, 70, .98), rgba(13, 23, 42, .99));
+    background: linear-gradient(180deg, rgba(24, 50, 100, .98), rgba(14, 30, 61, .99));
     box-shadow: 0 14px 30px rgba(0, 0, 0, .20), 0 0 0 1px rgba(240, 197, 91, .10) inset;
     color: #fff2cc;
     filter: none;
@@ -2009,9 +1964,11 @@ body {
 }
 
 .finance-search-card {
-    border: 1px solid rgba(143, 108, 27, .88);
+    border: 1px solid var(--line-dark);
     border-radius: 18px;
-    background: linear-gradient(180deg, rgba(18, 26, 43, .96), rgba(12, 20, 36, .96));
+    background:
+        radial-gradient(circle at top left, rgba(77, 111, 255, .13), transparent 48%),
+        linear-gradient(180deg, rgba(13, 29, 60, .98), rgba(9, 18, 38, .995));
     color: var(--ink);
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, .05),
@@ -2058,7 +2015,7 @@ body {
 }
 
 .finance-search-card .btn-outline-dark:hover {
-    background: #131d31;
+    background: rgba(13, 29, 60, .9);
     color: var(--ink);
 }
 
@@ -2149,7 +2106,7 @@ body {
 .finance-support-close {
     border: 2px solid var(--line-dark);
     border-radius: 12px;
-    background: #131d31;
+    background: rgba(13, 29, 60, .9);
     color: var(--ink);
     font-weight: 800;
     cursor: pointer;
