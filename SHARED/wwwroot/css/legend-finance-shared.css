@@ -874,9 +874,6 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     align-items: center;
     gap: 10px;
     padding: 10px 11px;
-    background:
-        radial-gradient(280px 110px at 0% 0%, rgba(243, 216, 139, .14), transparent 72%),
-        rgba(9, 18, 35, .72);
 }
 
 .llbs-tax-copy {
@@ -884,53 +881,10 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     gap: 3px;
 }
 
-.llbs-tax-copy span {
-    color: var(--llbs-soft-text);
-    font-size: .77rem;
-    font-weight: 800;
-    line-height: 1.3;
-}
-
-.llbs-tax-summary-metrics {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 1px;
-    overflow: hidden;
-    border: 1px solid rgba(243, 216, 139, .2);
-    border-radius: 8px;
-    background: rgba(243, 216, 139, .16);
-}
-
-.llbs-tax-summary-metrics span {
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-    padding: 6px 8px;
-    background: #0b1324;
-}
-
-.llbs-tax-summary-metrics small {
-    color: var(--llbs-gold-2);
-    font-size: .62rem;
-    font-weight: 950;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-}
-
-.llbs-tax-summary-metrics strong {
-    overflow: hidden;
-    color: #fff7dd;
-    font-size: .78rem;
-    font-weight: 950;
-    font-variant-numeric: tabular-nums;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .llbs-tax-body {
-    border-top: 1px solid rgba(243, 216, 139, .18);
+    border-top: 1px solid var(--llbs-line);
     padding: 10px;
-    background: rgba(6, 11, 22, .46);
+    background: rgba(13, 29, 60, .54);
 }
 
 .llbs-tax-grid {
@@ -1481,7 +1435,7 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
 
 /* ── Section completion dot ─────────────────────────────────────────────────── */
 .llbs-section-head.is-complete .llbs-section-title::after,
-#llbsTaxProfile .llbs-tax-summary.is-complete .llbs-section-title::after {
+#llbsTaxProfile .llbs-tax-summary.is-complete .dashboard-section-kicker::after {
     content: "";
     display: inline-block;
     width: 7px;
@@ -1622,9 +1576,6 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .llbs-tax-summary-metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
 }
 
 @media (max-width: 620px) {
@@ -1655,8 +1606,7 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     .llbs-cash-grid,
     .llbs-action-buttons,
     .llbs-advisor-grid,
-    .llbs-tax-grid,
-    .llbs-tax-summary-metrics {
+    .llbs-tax-grid {
         grid-template-columns: 1fr;
     }
 

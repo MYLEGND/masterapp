@@ -931,19 +931,19 @@
                         <span class="dashboard-section-copy" data-llbs-text="summary.taxBurdenStatement">Your estimated tax burden is 0% ($0 annually).</span>
                     </div>
                     <div class="llbs-tax-summary-metrics dashboard-hero-stats">
-                        <span class="dashboard-stat-card">
+                        <span class="dashboard-stat-card dashboard-stat-card--compact">
                             <small class="dashboard-stat-label">Filing</small>
                             <strong class="dashboard-stat-value" data-llbs-text="taxProfile.filingStatus">Single</strong>
                         </span>
-                        <span class="dashboard-stat-card">
+                        <span class="dashboard-stat-card dashboard-stat-card--compact">
                             <small class="dashboard-stat-label">Effective</small>
                             <strong class="dashboard-stat-value" data-llbs-output="taxProfile.effectiveTaxRate" data-llbs-kind="percent">0%</strong>
                         </span>
-                        <span class="dashboard-stat-card">
+                        <span class="dashboard-stat-card dashboard-stat-card--compact">
                             <small class="dashboard-stat-label">Taxes</small>
                             <strong class="dashboard-stat-value" data-llbs-output="taxProfile.calculatedTaxAmount">$0</strong>
                         </span>
-                        <span class="dashboard-stat-card">
+                        <span class="dashboard-stat-card dashboard-stat-card--compact">
                             <small class="dashboard-stat-label">Override</small>
                             <strong class="dashboard-stat-value" data-llbs-tax-override>Off</strong>
                         </span>
@@ -1232,7 +1232,7 @@
                 </div>
                 <div class="llbs-philosophy-grid dashboard-hero-stats" role="list" aria-label="Foundational health steps">
                     ${LEGEND_PHILOSOPHY_STEPS.map((title, index) => `
-                        <article class="llbs-philosophy-card dashboard-stat-card" role="listitem">
+                        <article class="llbs-philosophy-card dashboard-stat-card dashboard-stat-card--compact" role="listitem">
                             <span class="dashboard-summary-count">${index + 1}</span>
                             <strong class="dashboard-stat-label">${title}</strong>
                         </article>
