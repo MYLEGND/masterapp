@@ -94,7 +94,15 @@ public sealed class JourneyCirclesController : Controller
         if (!visible) return Forbid();
         var target = await _db.ClientProfiles.FindAsync([targetClientProfileId], HttpContext.RequestAborted); if (target is null) return NotFound();
         var image = await _images.ResolveClientProfileImageAsync(target.Id, HttpContext.RequestAborted);
-        return image is null ? NotFound() : PhysicalFile(image.PhysicalPath, image.ContentType);
+        if (image is null)
+            return NotFound();
+
+        if (image.Content is { Length: > 0 })
+            return File(image.Content, image.ContentType);
+
+        return string.IsNullOrWhiteSpace(image.PhysicalPath)
+            ? NotFound()
+            : PhysicalFile(image.PhysicalPath, image.ContentType);
     }
 
     private async Task<EffectiveClientContext?> CurrentAsync()
