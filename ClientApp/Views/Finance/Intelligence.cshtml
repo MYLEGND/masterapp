@@ -3,23 +3,49 @@
     ViewData["Title"] = "Financial Intelligence";
 }
 
-<div class="container-fluid finance-shell mt-5">
-    <header class="finance-header text-center mb-4">
-        <div class="finance-subtitle">Financial Intelligence</div>
-        <p class="mb-2">Prioritized, explainable financial planning signals from your connected data and completed finance tools.</p>
-        @if (Model.LastEvaluatedUtc is DateTime evaluatedUtc)
-        {
-            <p class="small mb-2">Last evaluated <time datetime="@evaluatedUtc.ToString("O")">@evaluatedUtc.ToString("u")</time>.</p>
-        }
-        else
-        {
-            <p class="small mb-2">No evaluation has been run yet.</p>
-        }
-        <form asp-controller="Finance" asp-action="EvaluateIntelligence" method="post">
-            @Html.AntiForgeryToken()
-            <button class="btn finance-toolbar-btn" type="submit">Refresh intelligence</button>
-        </form>
-    </header>
+<main class="dashboard-page-shell" aria-labelledby="financial-intelligence-title">
+    <section class="dashboard-command-center-panel">
+        <div class="dashboard-command-center-top">
+            <div class="dashboard-hero-copy">
+                <span class="dashboard-eyebrow">Financial intelligence</span>
+                <h1 class="dashboard-hero-title" id="financial-intelligence-title">Financial clarity</h1>
+                <p class="dashboard-hero-lead">Prioritized financial planning signals from your connected data and completed finance tools.</p>
+                <div class="dashboard-hero-tags">
+                    @if (Model.LastEvaluatedUtc is DateTime evaluatedUtc)
+                    {
+                        <span>Last evaluated <time datetime="@evaluatedUtc.ToString("O")">@evaluatedUtc.ToString("u")</time></span>
+                    }
+                    else
+                    {
+                        <span>Ready to evaluate</span>
+                    }
+                    <form asp-controller="Finance" asp-action="EvaluateIntelligence" method="post">
+                        @Html.AntiForgeryToken()
+                        <button class="dashboard-command-action btn-carrier-settings" type="submit">Refresh intelligence</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="dashboard-hero-stats" aria-label="Financial intelligence summary">
+                <div class="dashboard-stat-card is-primary">
+                    <span class="dashboard-stat-label">Data completeness</span>
+                    <span class="dashboard-stat-value">@Model.DataCompletenessScore.ToString("P0")</span>
+                </div>
+                <div class="dashboard-stat-card">
+                    <span class="dashboard-stat-label">Personalization</span>
+                    <span class="dashboard-analytics-copy">@Model.PersonalizationMaturity</span>
+                </div>
+                <div class="dashboard-stat-card">
+                    <span class="dashboard-stat-label">Risk summary</span>
+                    <span class="dashboard-analytics-copy">@Model.CurrentRiskSummary</span>
+                </div>
+                <div class="dashboard-stat-card">
+                    <span class="dashboard-stat-label">Current findings</span>
+                    <span class="dashboard-stat-value">@Model.Findings.Count</span>
+                </div>
+            </div>
+        </div>
+    </section>
 
     @if (TempData["Success"] is string success)
     {
@@ -30,74 +56,56 @@
         <div class="alert alert-danger" role="alert">@error</div>
     }
 
-    <div class="row g-3 finance-tools-row mx-auto">
-        <div class="col-md-4 d-flex">
-            <section class="finance-side-card w-100 p-3">
-                <h2 class="h5">Data completeness</h2>
-                <p class="mb-0">@Model.DataCompletenessScore.ToString("P0") coverage from currently reliable inputs.</p>
-            </section>
+    <section class="dashboard-analytics-panel" aria-labelledby="financial-findings-title">
+        <div class="dashboard-section-head dashboard-section-head-tight">
+            <div>
+                <span class="dashboard-section-kicker">Prioritized findings</span>
+                <h2 class="dashboard-section-title" id="financial-findings-title">Your next financial signals</h2>
+                <p class="dashboard-section-copy">Educational signals are not financial, tax, legal, insurance, investment, or credit advice.</p>
+            </div>
         </div>
-        <div class="col-md-4 d-flex">
-            <section class="finance-side-card w-100 p-3">
-                <h2 class="h5">Personalization</h2>
-                <p class="mb-0">@Model.PersonalizationMaturity</p>
-            </section>
-        </div>
-        <div class="col-md-4 d-flex">
-            <section class="finance-side-card w-100 p-3">
-                <h2 class="h5">Current summary</h2>
-                <p class="mb-1">@Model.CurrentRiskSummary</p>
-                <p class="mb-0">@Model.CurrentOpportunitySummary</p>
-            </section>
-        </div>
-    </div>
 
-    <section class="finance-main mt-4 p-3">
-        <h1 class="h4">Prioritized findings</h1>
-        <p class="small">These educational signals are not financial, tax, legal, insurance, investment, or credit advice. Review decisions with the appropriate professional.</p>
         @if (Model.Findings.Count == 0)
         {
-            <p class="mb-0">No client-visible findings are available. Refresh after connecting data or completing a finance tool.</p>
+            <div class="dashboard-analytics-card">
+                <span class="dashboard-analytics-label">No evaluated findings</span>
+                <p class="dashboard-analytics-copy">Refresh after connecting data or completing a finance tool.</p>
+            </div>
         }
         else
         {
-            <div class="row g-3">
+            <div class="dashboard-analytics-grid">
                 @foreach (var finding in Model.Findings)
                 {
-                    <article class="col-12">
-                        <div class="finance-side-card w-100 p-3">
-                            <div class="d-flex flex-wrap justify-content-between gap-2">
-                                <div>
-                                    <h2 class="h5 mb-1">@finding.Title</h2>
-                                    <p class="mb-1">@finding.Explanation</p>
-                                    <p class="small mb-1"><strong>Why am I seeing this?</strong> @finding.EvidenceSummary</p>
-                                    <p class="small mb-1">Confidence: @finding.Confidence.ToString("P0") · @finding.Urgency urgency</p>
-                                    @if (!string.IsNullOrWhiteSpace(finding.Disclaimer))
-                                    {
-                                        <p class="small mb-0">@finding.Disclaimer</p>
-                                    }
-                                </div>
-                                <form asp-controller="Finance" asp-action="IntelligenceFeedback" method="post" class="align-self-start">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="findingId" value="@finding.Id" />
-                                    <label class="visually-hidden" for="feedback-@finding.Id">Update finding</label>
-                                    <select id="feedback-@finding.Id" name="feedbackType" class="form-select form-select-sm mb-2">
-                                        <option value="Viewed">Mark viewed</option>
-                                        <option value="Helpful">Helpful</option>
-                                        <option value="NotHelpful">Not helpful</option>
-                                        <option value="Accepted">Accepted</option>
-                                        <option value="Deferred">Defer</option>
-                                        <option value="Dismissed">Dismiss</option>
-                                        <option value="ActionStarted">Action started</option>
-                                        <option value="Completed">Completed</option>
-                                    </select>
-                                    <button class="btn finance-toolbar-btn" type="submit">Save</button>
-                                </form>
-                            </div>
-                        </div>
+                    <article class="dashboard-analytics-card">
+                        <span class="dashboard-analytics-label">@finding.Urgency urgency</span>
+                        <h3 class="dashboard-analytics-label">@finding.Title</h3>
+                        <p class="dashboard-analytics-copy">@finding.Explanation</p>
+                        <p class="dashboard-analytics-copy"><strong>Why am I seeing this?</strong> @finding.EvidenceSummary</p>
+                        <p class="dashboard-analytics-copy">Confidence: @finding.Confidence.ToString("P0")</p>
+                        @if (!string.IsNullOrWhiteSpace(finding.Disclaimer))
+                        {
+                            <p class="dashboard-analytics-copy">@finding.Disclaimer</p>
+                        }
+                        <form asp-controller="Finance" asp-action="IntelligenceFeedback" method="post" class="mt-2">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="findingId" value="@finding.Id" />
+                            <label class="visually-hidden" for="feedback-@finding.Id">Update finding</label>
+                            <select id="feedback-@finding.Id" name="feedbackType" class="form-select form-select-sm mb-2">
+                                <option value="Viewed">Mark viewed</option>
+                                <option value="Helpful">Helpful</option>
+                                <option value="NotHelpful">Not helpful</option>
+                                <option value="Accepted">Accepted</option>
+                                <option value="Deferred">Defer</option>
+                                <option value="Dismissed">Dismiss</option>
+                                <option value="ActionStarted">Action started</option>
+                                <option value="Completed">Completed</option>
+                            </select>
+                            <button class="dashboard-command-action btn-carrier-settings" type="submit">Save</button>
+                        </form>
                     </article>
                 }
             </div>
         }
     </section>
-</div>
+</main>

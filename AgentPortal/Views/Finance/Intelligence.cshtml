@@ -6,21 +6,46 @@
     var clientDisplayName = ((string?)ViewBag.ClientDisplayName ?? "Client").Trim();
 }
 
-<div class="container-fluid finance-shell mt-5">
-    <header class="finance-header text-center mb-4">
-        <div class="finance-subtitle">Client Financial Intelligence</div>
-        <h1 class="h3">@clientDisplayName</h1>
-        <p class="mb-2">Explainable, deterministic findings from authorized client financial data and planning tools.</p>
-        @if (Model.LastEvaluatedUtc is DateTime evaluatedUtc)
-        {
-            <p class="small mb-2">Last evaluated <time datetime="@evaluatedUtc.ToString("O")">@evaluatedUtc.ToString("u")</time>.</p>
-        }
-        <form asp-controller="Finance" asp-action="EvaluateIntelligence" method="post">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="clientUserId" value="@clientUserId" />
-            <button class="btn finance-toolbar-btn" type="submit">Refresh intelligence</button>
-        </form>
-    </header>
+<main class="dashboard-page-shell" aria-labelledby="financial-intelligence-title">
+    <section class="dashboard-command-center-panel">
+        <div class="dashboard-command-center-top">
+            <div class="dashboard-hero-copy">
+                <span class="dashboard-eyebrow">Client financial intelligence</span>
+                <h1 class="dashboard-hero-title" id="financial-intelligence-title">@clientDisplayName</h1>
+                <p class="dashboard-hero-lead">Explainable financial planning signals from authorized client data and completed finance tools.</p>
+                <div class="dashboard-hero-tags">
+                    @if (Model.LastEvaluatedUtc is DateTime evaluatedUtc)
+                    {
+                        <span>Last evaluated <time datetime="@evaluatedUtc.ToString("O")">@evaluatedUtc.ToString("u")</time></span>
+                    }
+                    <form asp-controller="Finance" asp-action="EvaluateIntelligence" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="clientUserId" value="@clientUserId" />
+                        <button class="dashboard-command-action btn-carrier-settings" type="submit">Refresh intelligence</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="dashboard-hero-stats" aria-label="Financial intelligence summary">
+                <div class="dashboard-stat-card is-primary">
+                    <span class="dashboard-stat-label">Data completeness</span>
+                    <span class="dashboard-stat-value">@Model.DataCompletenessScore.ToString("P0")</span>
+                </div>
+                <div class="dashboard-stat-card">
+                    <span class="dashboard-stat-label">Behavior baseline</span>
+                    <span class="dashboard-analytics-copy">@Model.BehavioralBaselineStatus</span>
+                </div>
+                <div class="dashboard-stat-card">
+                    <span class="dashboard-stat-label">Response pattern</span>
+                    <span class="dashboard-analytics-copy">@Model.RecommendationResponseSummary</span>
+                </div>
+                <div class="dashboard-stat-card">
+                    <span class="dashboard-stat-label">Current findings</span>
+                    <span class="dashboard-stat-value">@Model.Findings.Count</span>
+                </div>
+            </div>
+        </div>
+    </section>
 
     @if (TempData["Success"] is string success)
     {
@@ -31,77 +56,60 @@
         <div class="alert alert-danger" role="alert">@error</div>
     }
 
-    <div class="row g-3 finance-tools-row mx-auto">
-        <div class="col-md-4 d-flex">
-            <section class="finance-side-card w-100 p-3">
-                <h2 class="h5">Data completeness</h2>
-                <p class="mb-0">@Model.DataCompletenessScore.ToString("P0") coverage from reliable inputs.</p>
-            </section>
+    <section class="dashboard-analytics-panel" aria-labelledby="financial-findings-title">
+        <div class="dashboard-section-head dashboard-section-head-tight">
+            <div>
+                <span class="dashboard-section-kicker">Prioritized findings</span>
+                <h2 class="dashboard-section-title" id="financial-findings-title">Current findings</h2>
+            </div>
         </div>
-        <div class="col-md-4 d-flex">
-            <section class="finance-side-card w-100 p-3">
-                <h2 class="h5">Behavior baseline</h2>
-                <p class="mb-0">@Model.BehavioralBaselineStatus</p>
-            </section>
-        </div>
-        <div class="col-md-4 d-flex">
-            <section class="finance-side-card w-100 p-3">
-                <h2 class="h5">Response pattern</h2>
-                <p class="mb-0">@Model.RecommendationResponseSummary</p>
-            </section>
-        </div>
-    </div>
 
-    <section class="finance-main mt-4 p-3">
-        <h2 class="h4">Current findings</h2>
         @if (Model.Findings.Count == 0)
         {
-            <p class="mb-0">No evaluated findings are available for this authorized client.</p>
+            <div class="dashboard-analytics-card">
+                <span class="dashboard-analytics-label">No evaluated findings</span>
+                <p class="dashboard-analytics-copy">No evaluated findings are available for this authorized client.</p>
+            </div>
         }
         else
         {
-            <div class="row g-3">
+            <div class="dashboard-analytics-grid">
                 @foreach (var finding in Model.Findings)
                 {
-                    <article class="col-12">
-                        <div class="finance-side-card w-100 p-3">
-                            <div class="d-flex flex-wrap justify-content-between gap-2">
-                                <div>
-                                    <h3 class="h5 mb-1">@finding.Title</h3>
-                                    <p class="mb-1">@finding.Explanation</p>
-                                    <p class="small mb-1"><strong>Evidence:</strong> @finding.EvidenceSummary</p>
-                                    <p class="small mb-1">Confidence: @finding.Confidence.ToString("P0") · Priority: @finding.PriorityScore.ToString("F0") · @finding.Urgency urgency</p>
-                                    @if (finding.RequiresAgentReview)
-                                    {
-                                        <p class="small mb-1">@(finding.IsAgentReviewed ? "Agent reviewed." : "Agent review required before client display.")</p>
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(finding.Disclaimer))
-                                    {
-                                        <p class="small mb-0">@finding.Disclaimer</p>
-                                    }
-                                </div>
-                                <form asp-controller="Finance" asp-action="IntelligenceFeedback" method="post" class="align-self-start">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="clientUserId" value="@clientUserId" />
-                                    <input type="hidden" name="findingId" value="@finding.Id" />
-                                    <label class="visually-hidden" for="feedback-@finding.Id">Update finding</label>
-                                    <select id="feedback-@finding.Id" name="feedbackType" class="form-select form-select-sm mb-2">
-                                        @if (finding.RequiresAgentReview && !finding.IsAgentReviewed)
-                                        {
-                                            <option value="AgentReviewed">Mark reviewed</option>
-                                        }
-                                        <option value="AgentContactedClient">Client contacted</option>
-                                        <option value="Deferred">Defer</option>
-                                        <option value="Dismissed">Dismiss</option>
-                                        <option value="Completed">Completed</option>
-                                    </select>
-                                    <button class="btn finance-toolbar-btn" type="submit">Save</button>
-                                </form>
-                            </div>
-                        </div>
+                    <article class="dashboard-analytics-card">
+                        <span class="dashboard-analytics-label">@finding.Urgency urgency</span>
+                        <h3 class="dashboard-analytics-label">@finding.Title</h3>
+                        <p class="dashboard-analytics-copy">@finding.Explanation</p>
+                        <p class="dashboard-analytics-copy"><strong>Evidence:</strong> @finding.EvidenceSummary</p>
+                        <p class="dashboard-analytics-copy">Confidence: @finding.Confidence.ToString("P0") · Priority: @finding.PriorityScore.ToString("F0")</p>
+                        @if (finding.RequiresAgentReview)
+                        {
+                            <p class="dashboard-analytics-copy">@(finding.IsAgentReviewed ? "Agent reviewed." : "Agent review required before client display.")</p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(finding.Disclaimer))
+                        {
+                            <p class="dashboard-analytics-copy">@finding.Disclaimer</p>
+                        }
+                        <form asp-controller="Finance" asp-action="IntelligenceFeedback" method="post" class="mt-2">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="clientUserId" value="@clientUserId" />
+                            <input type="hidden" name="findingId" value="@finding.Id" />
+                            <label class="visually-hidden" for="feedback-@finding.Id">Update finding</label>
+                            <select id="feedback-@finding.Id" name="feedbackType" class="form-select form-select-sm mb-2">
+                                @if (finding.RequiresAgentReview && !finding.IsAgentReviewed)
+                                {
+                                    <option value="AgentReviewed">Mark reviewed</option>
+                                }
+                                <option value="AgentContactedClient">Client contacted</option>
+                                <option value="Deferred">Defer</option>
+                                <option value="Dismissed">Dismiss</option>
+                                <option value="Completed">Completed</option>
+                            </select>
+                            <button class="dashboard-command-action btn-carrier-settings" type="submit">Save</button>
+                        </form>
                     </article>
                 }
             </div>
         }
     </section>
-</div>
+</main>
