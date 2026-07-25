@@ -16,37 +16,39 @@ namespace Infrastructure.Migrations
             migrationBuilder.AddColumn<Guid>(
                 name: "DefaultPaymentMethodId",
                 table: "ClientSubscriptions",
+                type: isSqlServer ? "uniqueidentifier" : "TEXT",
                 nullable: true);
 
             migrationBuilder.AddColumn<Guid>(
                 name: "ClientPaymentMethodId",
                 table: "SubscriptionPayments",
+                type: isSqlServer ? "uniqueidentifier" : "TEXT",
                 nullable: true);
 
             migrationBuilder.CreateTable(
                 name: "ClientPaymentMethods",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(nullable: false),
-                    ClientProfileId = table.Column<Guid>(nullable: false),
-                    Provider = table.Column<string>(maxLength: 40, nullable: false),
-                    ProviderEnvironment = table.Column<string>(maxLength: 40, nullable: false),
-                    ProviderPaymentMethodId = table.Column<string>(maxLength: 160, nullable: false),
-                    DisplayName = table.Column<string>(maxLength: 80, nullable: true),
-                    CardBrand = table.Column<string>(maxLength: 40, nullable: true),
-                    Last4 = table.Column<string>(maxLength: 4, nullable: true),
-                    ExpirationMonth = table.Column<int>(nullable: true),
-                    ExpirationYear = table.Column<int>(nullable: true),
-                    CardholderName = table.Column<string>(maxLength: 200, nullable: true),
-                    BillingAddressLine1 = table.Column<string>(maxLength: 200, nullable: true),
-                    BillingAddressLine2 = table.Column<string>(maxLength: 200, nullable: true),
-                    BillingCity = table.Column<string>(maxLength: 120, nullable: true),
-                    BillingState = table.Column<string>(maxLength: 120, nullable: true),
-                    BillingPostalCode = table.Column<string>(maxLength: 32, nullable: true),
-                    BillingCountryCode = table.Column<string>(maxLength: 8, nullable: true),
-                    CreatedUtc = table.Column<DateTime>(nullable: false),
-                    UpdatedUtc = table.Column<DateTime>(nullable: false),
-                    RetiredUtc = table.Column<DateTime>(nullable: true),
+                    Id = table.Column<Guid>(type: isSqlServer ? "uniqueidentifier" : "TEXT", nullable: false),
+                    ClientProfileId = table.Column<Guid>(type: isSqlServer ? "uniqueidentifier" : "TEXT", nullable: false),
+                    Provider = table.Column<string>(type: isSqlServer ? "nvarchar(40)" : "TEXT", maxLength: 40, nullable: false),
+                    ProviderEnvironment = table.Column<string>(type: isSqlServer ? "nvarchar(40)" : "TEXT", maxLength: 40, nullable: false),
+                    ProviderPaymentMethodId = table.Column<string>(type: isSqlServer ? "nvarchar(160)" : "TEXT", maxLength: 160, nullable: false),
+                    DisplayName = table.Column<string>(type: isSqlServer ? "nvarchar(80)" : "TEXT", maxLength: 80, nullable: true),
+                    CardBrand = table.Column<string>(type: isSqlServer ? "nvarchar(40)" : "TEXT", maxLength: 40, nullable: true),
+                    Last4 = table.Column<string>(type: isSqlServer ? "nvarchar(4)" : "TEXT", maxLength: 4, nullable: true),
+                    ExpirationMonth = table.Column<int>(type: isSqlServer ? "int" : "INTEGER", nullable: true),
+                    ExpirationYear = table.Column<int>(type: isSqlServer ? "int" : "INTEGER", nullable: true),
+                    CardholderName = table.Column<string>(type: isSqlServer ? "nvarchar(200)" : "TEXT", maxLength: 200, nullable: true),
+                    BillingAddressLine1 = table.Column<string>(type: isSqlServer ? "nvarchar(200)" : "TEXT", maxLength: 200, nullable: true),
+                    BillingAddressLine2 = table.Column<string>(type: isSqlServer ? "nvarchar(200)" : "TEXT", maxLength: 200, nullable: true),
+                    BillingCity = table.Column<string>(type: isSqlServer ? "nvarchar(120)" : "TEXT", maxLength: 120, nullable: true),
+                    BillingState = table.Column<string>(type: isSqlServer ? "nvarchar(120)" : "TEXT", maxLength: 120, nullable: true),
+                    BillingPostalCode = table.Column<string>(type: isSqlServer ? "nvarchar(32)" : "TEXT", maxLength: 32, nullable: true),
+                    BillingCountryCode = table.Column<string>(type: isSqlServer ? "nvarchar(8)" : "TEXT", maxLength: 8, nullable: true),
+                    CreatedUtc = table.Column<DateTime>(type: isSqlServer ? "datetime2" : "TEXT", nullable: false),
+                    UpdatedUtc = table.Column<DateTime>(type: isSqlServer ? "datetime2" : "TEXT", nullable: false),
+                    RetiredUtc = table.Column<DateTime>(type: isSqlServer ? "datetime2" : "TEXT", nullable: true),
                     RowVersion = table.Column<byte[]>(
                         type: isSqlServer ? "rowversion" : "BLOB",
                         rowVersion: isSqlServer,
@@ -224,6 +226,8 @@ namespace Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            var isSqlServer = ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase);
+
             migrationBuilder.DropForeignKey(
                 name: "FK_ClientSubscriptions_ClientPaymentMethods_DefaultPaymentMethodId",
                 table: "ClientSubscriptions");
@@ -243,40 +247,47 @@ namespace Infrastructure.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "PaymentMethodBrand",
                 table: "ClientSubscriptions",
+                type: isSqlServer ? "nvarchar(40)" : "TEXT",
                 maxLength: 40,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "PaymentMethodCardholderName",
                 table: "ClientSubscriptions",
+                type: isSqlServer ? "nvarchar(200)" : "TEXT",
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "PaymentMethodExpirationMonth",
                 table: "ClientSubscriptions",
+                type: isSqlServer ? "int" : "INTEGER",
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "PaymentMethodExpirationYear",
                 table: "ClientSubscriptions",
+                type: isSqlServer ? "int" : "INTEGER",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "PaymentMethodLast4",
                 table: "ClientSubscriptions",
+                type: isSqlServer ? "nvarchar(4)" : "TEXT",
                 maxLength: 4,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "ProviderPaymentMethodId",
                 table: "ClientSubscriptions",
+                type: isSqlServer ? "nvarchar(160)" : "TEXT",
                 maxLength: 160,
                 nullable: true);
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "PaymentMethodUpdatedUtc",
                 table: "ClientSubscriptions",
+                type: isSqlServer ? "datetime2" : "TEXT",
                 nullable: true);
 
             if (ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
