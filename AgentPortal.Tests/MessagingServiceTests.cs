@@ -132,8 +132,8 @@ public sealed class MessagingServiceTests
         var second = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "journey-client-two", FirstName = "Journey", LastName = "Two", Email = "two@example.test" };
         db.ClientProfiles.AddRange(first, second);
         db.JourneyCircleProfiles.AddRange(
-            new JourneyCircleProfile { Id = Guid.NewGuid(), ClientProfileId = first.Id, IsOptedIn = true, IsDiscoverable = true, AllowSuggestions = true, AllowConnectionRequests = true, DisplayName = "Journey One", CommunityAccessState = "Active" },
-            new JourneyCircleProfile { Id = Guid.NewGuid(), ClientProfileId = second.Id, IsOptedIn = true, IsDiscoverable = true, AllowSuggestions = true, AllowConnectionRequests = true, DisplayName = "Journey Two", CommunityAccessState = "Active" });
+            new JourneyCircleProfile { Id = Guid.NewGuid(), ClientProfileId = first.Id, ConsentAffirmedUtc = DateTime.UtcNow, IsOptedIn = true, IsDiscoverable = true, AllowSuggestions = true, AllowConnectionRequests = true, DisplayName = "Journey One", CommunityAccessState = "Active" },
+            new JourneyCircleProfile { Id = Guid.NewGuid(), ClientProfileId = second.Id, ConsentAffirmedUtc = DateTime.UtcNow, IsOptedIn = true, IsDiscoverable = true, AllowSuggestions = true, AllowConnectionRequests = true, DisplayName = "Journey Two", CommunityAccessState = "Active" });
         await db.SaveChangesAsync();
         var service = CreateService(db);
         var journey = new JourneyCirclesService(db, new CommunityTextModerationService(new ConfigurationBuilder().Build()), NullLogger<JourneyCirclesService>.Instance);
@@ -222,6 +222,7 @@ public sealed class MessagingServiceTests
             {
                 Id = Guid.NewGuid(),
                 ClientProfileId = first.Id,
+                ConsentAffirmedUtc = DateTime.UtcNow,
                 IsOptedIn = true,
                 IsDiscoverable = true,
                 AllowSuggestions = true,
@@ -233,6 +234,7 @@ public sealed class MessagingServiceTests
             {
                 Id = Guid.NewGuid(),
                 ClientProfileId = second.Id,
+                ConsentAffirmedUtc = DateTime.UtcNow,
                 IsOptedIn = true,
                 IsDiscoverable = true,
                 AllowSuggestions = true,
