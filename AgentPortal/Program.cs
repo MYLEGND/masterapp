@@ -91,6 +91,7 @@ builder.Services.AddMasterAppMessaging(builder.Configuration);
 var mobileAuthConfiguration = MobileAuthConfiguration.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(mobileAuthConfiguration);
 builder.Services.AddScoped<IMobileActorResolver, MobileActorResolver>();
+builder.Services.AddScoped<IMobileHomeService, MobileHomeService>();
 builder.Services.AddSingleton<IAuthorizationHandler, MobileApiScopeAuthorizationHandler>();
 builder.Services.AddScoped<AgentProfileImageLegacyBackfillService>();
 builder.Services.AddScoped<ClientBillingWorkspaceService>();

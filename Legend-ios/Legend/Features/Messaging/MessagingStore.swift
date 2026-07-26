@@ -31,12 +31,16 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var sendFailure: UserFacingFailure?
 
     private let api: any MessagingAPI
-    private let accessToken: String
+    private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
 
-    init(api: any MessagingAPI, accessToken: String, diagnostics: LegendDiagnostics) {
+    init(
+        api: any MessagingAPI,
+        accessTokenProvider: @escaping () async throws -> String,
+        diagnostics: LegendDiagnostics
+    ) {
         self.api = api
-        self.accessToken = accessToken
+        self.accessTokenProvider = accessTokenProvider
         self.diagnostics = diagnostics
     }
 
@@ -44,7 +48,7 @@ final class MessagingStore: ObservableObject {
         state = .loading
         Task {
             do {
-                let conversations = try await api.conversations(accessToken: accessToken)
+                let conversations = try await api.conversations(accessToken: try await accessTokenProvider())
                 state = .loaded(conversations)
             } catch {
                 state = listFailureState(for: error)
@@ -58,6 +62,7 @@ final class MessagingStore: ObservableObject {
         sendFailure = nil
         Task {
             do {
+                let accessToken = try await accessTokenProvider()
                 let conversation = try await api.conversation(id: conversationID, accessToken: accessToken)
                 detailState = .loaded(conversation)
                 try await api.markRead(conversationID: conversationID, accessToken: accessToken)
@@ -84,7 +89,7 @@ final class MessagingStore: ObservableObject {
                 let message = try await api.send(
                     conversationID: conversationID,
                     body: normalizedBody,
-                    accessToken: accessToken)
+                    accessToken: try await accessTokenProvider())
                 append(message: message, to: conversationID)
             } catch {
                 sendFailure = failure(for: error, title: "Message not sent")

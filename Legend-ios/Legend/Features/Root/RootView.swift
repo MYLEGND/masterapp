@@ -84,41 +84,44 @@ private struct ConfigurationStateView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: LegendSpacing.lg) {
-                    LegendBrandHeader()
+                    VStack(spacing: LegendSpacing.xs) {
+                        LegendBrandLogo(maximumWidth: 96)
+                            .accessibilityHidden(true)
+                        Text("Legend")
+                            .font(.system(.title2, design: .rounded).weight(.bold))
+                            .foregroundStyle(LegendPalette.label)
+                    }
 
-                    LegendHero(
-                        eyebrow: "Secure access",
-                        title: "Native Mobile Configuration Required",
-                        detail: "Administrator configuration is required before secure sign-in can begin.",
-                        symbolName: "lock.shield")
-
-                    LegendStatusBanner(
-                        title: "Configuration required",
-                        detail: "This build is waiting for its approved mobile settings.",
-                        tone: .warning)
+                    VStack(spacing: LegendSpacing.sm) {
+                        Text("Native Mobile Configuration Required")
+                            .font(.system(.title, design: .rounded).weight(.bold))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(LegendPalette.label)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("This build is waiting for administrator configuration before secure sign-in can begin.")
+                            .font(LegendTypography.body)
+                            .foregroundStyle(LegendPalette.secondaryLabel)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     LegendCard {
-                        DisclosureGroup {
-                            VStack(alignment: .leading, spacing: LegendSpacing.sm) {
-                                Text(validation.summary)
-                                    .font(LegendTypography.metadata)
-                                    .foregroundStyle(LegendPalette.secondaryLabel)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Divider()
-                                ForEach(validation.missingKeys) { key in
-                                    Label(key.buildSetting, systemImage: "minus.circle.fill")
-                                        .font(.footnote.monospaced())
-                                        .foregroundStyle(LegendPalette.label)
-                                        .accessibilityLabel("Missing build setting \(key.buildSetting)")
-                                }
-                            }
-                            .padding(.top, LegendSpacing.sm)
-                        } label: {
-                            Label("Configuration diagnostics", systemImage: "wrench.and.screwdriver")
+                        VStack(alignment: .leading, spacing: LegendSpacing.sm) {
+                            Label("Required configuration", systemImage: "checklist")
                                 .font(LegendTypography.section)
                                 .foregroundStyle(LegendPalette.label)
+                            Text(validation.summary)
+                                .font(LegendTypography.metadata)
+                                .foregroundStyle(LegendPalette.secondaryLabel)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Divider()
+                            ForEach(validation.missingKeys) { key in
+                                Label(key.buildSetting, systemImage: "exclamationmark.circle")
+                                    .font(.footnote.monospaced().weight(.medium))
+                                    .foregroundStyle(LegendPalette.label)
+                                    .accessibilityLabel("Missing administrator configuration: \(key.buildSetting)")
+                            }
                         }
-                        .tint(LegendPalette.gold)
                     }
 
                     Button("Check configuration") {

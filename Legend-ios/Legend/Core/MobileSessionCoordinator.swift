@@ -37,27 +37,7 @@ final class MobileSessionCoordinator: ObservableObject {
     private let authorizer: any OAuthAuthorizing
     private let tokenExchanger: any OAuthTokenExchanging
     private let diagnostics: LegendDiagnostics
-
-#if DEBUG
-    private static let debugPreviewSession: MobileSession = {
-        let identity = try! LogicalParticipantIdentity(
-            userID: "legend-debug-client",
-            participantType: .client
-        )
-
-        let actor = try! MobileActor(
-            identity: identity,
-            profileID: "legend-debug-profile",
-            displayName: "Debug User",
-            avatar: nil
-        )
-
-        return MobileSession(
-            actor: actor,
-            capabilities: []
-        )
-    }()
-#endif
+    private var activeTokens: OAuthTokenSet?
 
     init(
         configuration: MobileConfiguration = .current,
@@ -74,13 +54,6 @@ final class MobileSessionCoordinator: ObservableObject {
     }
 
     func restore() {
-#if DEBUG
-        if !configuration.validation.isReady {
-            state = .authenticated(Self.debugPreviewSession)
-            return
-        }
-#endif
-
         guard configuration.validation.isReady else {
             state = .contractUnavailable(configuration.validation)
             diagnostics.record(category: .configuration, summary: "Native mobile contract configuration is incomplete.")
@@ -89,13 +62,15 @@ final class MobileSessionCoordinator: ObservableObject {
 
         Task {
             do {
-                guard let tokens = try tokenStore.read(), tokens.expiresAt > Date() else {
+                guard let storedTokens = try tokenStore.read() else {
                     state = .signedOut
                     return
                 }
+                let tokens = try await usableTokens(from: storedTokens)
                 try await establishSession(using: tokens)
             } catch {
                 try? tokenStore.clear()
+                activeTokens = nil
                 state = .signedOut
                 diagnostics.record(category: .authentication, summary: "Stored native session could not be restored.")
             }
@@ -122,6 +97,7 @@ final class MobileSessionCoordinator: ObservableObject {
                     configuration: configuration
                 )
                 try tokenStore.save(tokens)
+                activeTokens = tokens
                 try await establishSession(using: tokens)
             } catch {
                 if let authorizationError = error as? ASWebAuthenticationSessionError,
@@ -141,6 +117,7 @@ final class MobileSessionCoordinator: ObservableObject {
 
     func signOut() {
         try? tokenStore.clear()
+        activeTokens = nil
         state = configuration.validation.isReady ? .signedOut : .contractUnavailable(configuration.validation)
     }
 
@@ -154,11 +131,13 @@ final class MobileSessionCoordinator: ObservableObject {
         Task {
             state = .authenticating
             do {
-                guard let tokens = try tokenStore.read(), tokens.expiresAt > Date() else {
+                guard let storedTokens = try tokenStore.read() else {
                     try? tokenStore.clear()
+                    activeTokens = nil
                     state = .signedOut
                     return
                 }
+                let tokens = try await usableTokens(from: storedTokens)
                 let response = try await MobileSessionAPI(client: MobileHTTPClient(baseURL: apiBaseURL))
                     .selectRole(participantType, accessToken: tokens.accessToken)
                 state = .authenticated(MobileSession(
@@ -181,33 +160,61 @@ final class MobileSessionCoordinator: ObservableObject {
               case .authenticated(let currentSession) = state else {
             return MessagingStore(
                 api: MobileContractUnavailableMessagingAPI(),
-                accessToken: "",
+                accessTokenProvider: { throw MobileMessagingContractError.unavailable },
                 diagnostics: diagnostics
             )
         }
 
-        do {
-            guard let tokens = try tokenStore.read() else {
-                return MessagingStore(
-                    api: MobileContractUnavailableMessagingAPI(),
-                    accessToken: "",
-                    diagnostics: diagnostics
-                )
-            }
-            return MessagingStore(
-                api: URLSessionMessagingAPI(
-                    client: MobileHTTPClient(baseURL: apiBaseURL),
-                    participantType: currentSession.actor.identity.participantType),
-                accessToken: tokens.accessToken,
-                diagnostics: diagnostics
-            )
-        } catch {
-            return MessagingStore(
-                api: MobileContractUnavailableMessagingAPI(),
-                accessToken: "",
-                diagnostics: diagnostics
-            )
+        return MessagingStore(
+            api: URLSessionMessagingAPI(
+                client: MobileHTTPClient(baseURL: apiBaseURL),
+                participantType: currentSession.actor.identity.participantType),
+            accessTokenProvider: { [weak self] in
+                guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
+                return try await self.accessTokenForRequest()
+            },
+            diagnostics: diagnostics
+        )
+    }
+
+    func makeHomeStore() -> MobileHomeStore {
+        guard let apiBaseURL = configuration.apiBaseURL,
+              case .authenticated(let currentSession) = state else {
+            return MobileHomeStore(
+                api: MobileUnavailableHomeAPI(),
+                accessTokenProvider: { throw MobileAPIError.unauthorized(correlationID: nil) },
+                diagnostics: diagnostics)
         }
+
+        return MobileHomeStore(
+            api: URLSessionMobileHomeAPI(
+                client: MobileHTTPClient(baseURL: apiBaseURL),
+                participantType: currentSession.actor.identity.participantType),
+            accessTokenProvider: { [weak self] in
+                guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
+                return try await self.accessTokenForRequest()
+            },
+            diagnostics: diagnostics)
+    }
+
+    func makeJourneyCirclesStore() -> MobileJourneyCirclesStore {
+        guard let apiBaseURL = configuration.apiBaseURL,
+              case .authenticated(let currentSession) = state else {
+            return MobileJourneyCirclesStore(
+                api: MobileUnavailableJourneyCirclesAPI(),
+                accessTokenProvider: { throw MobileAPIError.unauthorized(correlationID: nil) },
+                diagnostics: diagnostics)
+        }
+
+        return MobileJourneyCirclesStore(
+            api: URLSessionMobileJourneyCirclesAPI(
+                client: MobileHTTPClient(baseURL: apiBaseURL),
+                participantType: currentSession.actor.identity.participantType),
+            accessTokenProvider: { [weak self] in
+                guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
+                return try await self.accessTokenForRequest()
+            },
+            diagnostics: diagnostics)
     }
 
     private func establishSession(using tokens: OAuthTokenSet) async throws {
@@ -233,6 +240,37 @@ final class MobileSessionCoordinator: ObservableObject {
             actor: actor,
             capabilities: response.capabilities.messaging ? ["messaging"] : []
         ))
+    }
+
+    private func accessTokenForRequest() async throws -> String {
+        guard configuration.validation.isReady else { throw MobileAPIError.invalidBaseURL }
+        if let activeTokens {
+            let tokens = try await usableTokens(from: activeTokens)
+            return tokens.accessToken
+        }
+        guard let storedTokens = try tokenStore.read() else {
+            throw MobileAPIError.unauthorized(correlationID: nil)
+        }
+        let tokens = try await usableTokens(from: storedTokens)
+        return tokens.accessToken
+    }
+
+    private func usableTokens(from tokens: OAuthTokenSet) async throws -> OAuthTokenSet {
+        let refreshThreshold = Date().addingTimeInterval(60)
+        guard tokens.expiresAt <= refreshThreshold else {
+            activeTokens = tokens
+            return tokens
+        }
+        guard let refreshToken = tokens.refreshToken,
+              !refreshToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw MobileAPIError.unauthorized(correlationID: nil)
+        }
+        let refreshed = try await tokenExchanger.refresh(
+            refreshToken: refreshToken,
+            configuration: configuration)
+        try tokenStore.save(refreshed)
+        activeTokens = refreshed
+        return refreshed
     }
 
     private func authorizationRequest(state: String, pkce: PKCEChallenge) throws -> OAuthAuthorizationRequest {
@@ -290,6 +328,7 @@ enum OAuthCallbackError: LocalizedError, Equatable {
 
 protocol OAuthTokenExchanging: Sendable {
     func exchange(code: String, pkceVerifier: String, configuration: MobileConfiguration) async throws -> OAuthTokenSet
+    func refresh(refreshToken: String, configuration: MobileConfiguration) async throws -> OAuthTokenSet
 }
 
 struct URLSessionOAuthTokenExchanger: OAuthTokenExchanging {
@@ -301,11 +340,7 @@ struct URLSessionOAuthTokenExchanger: OAuthTokenExchanging {
             throw MobileAPIError.invalidBaseURL
         }
 
-        var request = URLRequest(url: tokenEndpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = FormURLEncoder.encode([
+        return try await requestTokens(tokenEndpoint, parameters: [
             "grant_type": "authorization_code",
             "code": code,
             "client_id": clientID,
@@ -313,6 +348,33 @@ struct URLSessionOAuthTokenExchanger: OAuthTokenExchanging {
             "scope": scope,
             "code_verifier": pkceVerifier
         ])
+    }
+
+    func refresh(refreshToken: String, configuration: MobileConfiguration) async throws -> OAuthTokenSet {
+        guard let tokenEndpoint = configuration.tokenEndpoint,
+              let clientID = configuration.clientID,
+              let scope = configuration.scope else {
+            throw MobileAPIError.invalidBaseURL
+        }
+
+        let response = try await requestTokens(tokenEndpoint, parameters: [
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken,
+            "client_id": clientID,
+            "scope": scope
+        ])
+        return OAuthTokenSet(
+            accessToken: response.accessToken,
+            refreshToken: response.refreshToken ?? refreshToken,
+            expiresAt: response.expiresAt)
+    }
+
+    private func requestTokens(_ tokenEndpoint: URL, parameters: [String: String]) async throws -> OAuthTokenSet {
+        var request = URLRequest(url: tokenEndpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = FormURLEncoder.encode(parameters)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw MobileAPIError.invalidServerResponse }

@@ -144,7 +144,7 @@ final class MobileNativeContractTests: XCTestCase {
     func testMessagingStoreTransitionsFromLoadingToLoaded() async {
         let store = MessagingStore(
             api: StubMessagingAPI(),
-            accessToken: "token",
+            accessTokenProvider: { "token" },
             diagnostics: LegendDiagnostics())
 
         store.load()
@@ -159,7 +159,7 @@ final class MobileNativeContractTests: XCTestCase {
     func testMessagingStoreShowsOfflineStateForNetworkFailure() async {
         let store = MessagingStore(
             api: OfflineMessagingAPI(),
-            accessToken: "token",
+            accessTokenProvider: { "token" },
             diagnostics: LegendDiagnostics())
 
         store.load()
@@ -226,6 +226,10 @@ private final class TestAuthorizer: OAuthAuthorizing {
 private struct TestTokenExchanger: OAuthTokenExchanging {
     func exchange(code: String, pkceVerifier: String, configuration: MobileConfiguration) async throws -> OAuthTokenSet {
         OAuthTokenSet(accessToken: "token", refreshToken: nil, expiresAt: .distantFuture)
+    }
+
+    func refresh(refreshToken: String, configuration: MobileConfiguration) async throws -> OAuthTokenSet {
+        OAuthTokenSet(accessToken: "token", refreshToken: refreshToken, expiresAt: .distantFuture)
     }
 }
 

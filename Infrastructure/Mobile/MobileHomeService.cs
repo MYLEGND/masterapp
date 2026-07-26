@@ -1,0 +1,353 @@
+using Domain.Billing;
+using Domain.Entities;
+using Domain.Enums;
+using Domain.FinancialIntelligence;
+using Domain.JourneyCircles;
+using Domain.Messaging;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Shared.Finance;
+
+namespace Infrastructure.Mobile;
+
+public interface IMobileHomeService
+{
+    Task<MobileHomeResult> GetHomeAsync(MobileResolvedActor actor, CancellationToken cancellationToken = default);
+
+    Task<MobileFinancialResult> GetFinancialAsync(MobileResolvedActor actor, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Read-only composition layer for the native application. It never owns
+/// profile, subscription, financial, messaging, or Journey Circles state;
+/// every value is projected from an existing authoritative service or table.
+/// </summary>
+public sealed class MobileHomeService : IMobileHomeService
+{
+    private readonly MasterAppDbContext _db;
+    private readonly IMessagingService _messaging;
+    private readonly IJourneyCirclesService _journeyCircles;
+    private readonly IFinancialIntelligenceEvaluationService _financialIntelligence;
+    private readonly IBillingEntitlementService _entitlements;
+
+    public MobileHomeService(
+        MasterAppDbContext db,
+        IMessagingService messaging,
+        IJourneyCirclesService journeyCircles,
+        IFinancialIntelligenceEvaluationService financialIntelligence,
+        IBillingEntitlementService entitlements)
+    {
+        _db = db;
+        _messaging = messaging;
+        _journeyCircles = journeyCircles;
+        _financialIntelligence = financialIntelligence;
+        _entitlements = entitlements;
+    }
+
+    public async Task<MobileHomeResult> GetHomeAsync(
+        MobileResolvedActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        var messaging = await _messaging.ListConversationsAsync(
+            actor.Actor,
+            new MessagingConversationListQuery(),
+            cancellationToken);
+        if (!messaging.Succeeded)
+        {
+            return MobileHomeResult.Failure(
+                messaging.ErrorCode ?? "MOBILE_MESSAGING_UNAVAILABLE",
+                messaging.ErrorMessage ?? "Your mobile home could not load securely.");
+        }
+
+        var messagingSummary = new MobileMessagingSummary(
+            messaging.Conversations.Sum(conversation => Math.Max(0, conversation.UnreadCount)),
+            messaging.Conversations.Count);
+
+        return string.Equals(actor.Actor.ParticipantType, MessagingParticipantTypes.Client, StringComparison.Ordinal)
+            ? MobileHomeResult.Success(await BuildClientHomeAsync(actor, messagingSummary, cancellationToken))
+            : MobileHomeResult.Success(await BuildAgentHomeAsync(actor, messagingSummary, cancellationToken));
+    }
+
+    public async Task<MobileFinancialResult> GetFinancialAsync(
+        MobileResolvedActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.Equals(actor.Actor.ParticipantType, MessagingParticipantTypes.Client, StringComparison.Ordinal))
+        {
+            return MobileFinancialResult.Unavailable(
+                "MOBILE_FINANCIAL_UNAVAILABLE",
+                "Financial intelligence is available from a client mobile identity.");
+        }
+
+        var persistedState = await _db.FinanceToolStates
+            .AsNoTracking()
+            .Where(state =>
+                state.ClientProfileId == actor.ProfileId &&
+                state.ToolId == LegendLivingBalanceSheetConstants.ToolId)
+            .OrderByDescending(state => state.UpdatedUtc)
+            .Select(state => new MobilePersistedFinanceState(state.JsonState, state.UpdatedUtc))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        MobileFinancialPosition? position = null;
+        if (persistedState is not null)
+        {
+            var normalizedJson = LegendLivingBalanceSheetCalculator.NormalizeJson(persistedState.JsonState, actor.ProfileId);
+            var state = System.Text.Json.JsonSerializer.Deserialize<LegendLivingBalanceSheetState>(
+                normalizedJson,
+                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            state = LegendLivingBalanceSheetCalculator.Calculate(state);
+            position = new MobileFinancialPosition(
+                state.Summary.HealthScore,
+                state.Summary.AssetsTotal,
+                state.Summary.LiabilitiesTotal,
+                state.Summary.NetWorth,
+                state.CashFlow.Earnings,
+                state.CashFlow.LifestyleRemaining,
+                state.Summary.Taxes,
+                state.Summary.ProtectionGapTotal,
+                state.Summary.PositionStatus,
+                state.Summary.PositionSummary,
+                state.Summary.EstatePlanningStatus,
+                state.Summary.EstatePlanningRiskLevel,
+                persistedState.UpdatedUtc);
+        }
+
+        var intelligence = await _financialIntelligence.GetSnapshotAsync(
+            new FinancialIntelligenceActor(
+                actor.ProfileId,
+                actor.Actor.UserId,
+                FinancialIntelligenceActorTypes.Client),
+            cancellationToken);
+
+        var upcomingBills = await _db.RecurringFinancialStreams
+            .AsNoTracking()
+            .Where(stream =>
+                stream.ClientProfileId == actor.ProfileId &&
+                stream.NextExpectedDateUtc != null &&
+                stream.Status != "Inactive")
+            .OrderBy(stream => stream.NextExpectedDateUtc)
+            .Take(8)
+            .Select(stream => new MobileUpcomingBill(
+                stream.Id,
+                stream.DisplayName,
+                stream.AverageAmountCents,
+                stream.Cadence,
+                stream.NextExpectedDateUtc!.Value,
+                stream.Status))
+            .ToListAsync(cancellationToken);
+
+        return MobileFinancialResult.Success(new MobileFinancialSnapshot(
+            position,
+            intelligence is null
+                ? null
+                : new MobileFinancialIntelligenceSummary(
+                    intelligence.Status,
+                    intelligence.DataCompletenessScore,
+                    intelligence.CurrentRiskSummary,
+                    intelligence.CurrentOpportunitySummary,
+                    intelligence.CurrentLeakageSummary,
+                    intelligence.LastEvaluatedUtc,
+                    intelligence.Findings.Select(finding => new MobileFinancialFinding(
+                        finding.Id,
+                        finding.Category,
+                        finding.Title,
+                        finding.Explanation,
+                        finding.EstimatedImpact,
+                        finding.ImpactUnit,
+                        finding.Urgency,
+                        finding.Status,
+                        finding.LastDetectedUtc)).ToArray()),
+            upcomingBills));
+    }
+
+    private async Task<MobileHome> BuildClientHomeAsync(
+        MobileResolvedActor actor,
+        MobileMessagingSummary messaging,
+        CancellationToken cancellationToken)
+    {
+        var subscription = await _db.ClientSubscriptions
+            .AsNoTracking()
+            .Where(item => item.ClientProfileId == actor.ProfileId)
+            .OrderByDescending(item => item.UpdatedUtc)
+            .Select(item => new MobileSubscription(
+                item.Id,
+                item.Status.ToString(),
+                item.PaymentStanding.ToString(),
+                item.MonthlyAmountCents,
+                item.Currency,
+                item.NextBillingDateUtc,
+                item.CurrentPeriodStartUtc,
+                item.CurrentPeriodEndUtc,
+                item.CancelAtPeriodEnd))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var entitlement = await _entitlements.EvaluateAsync(
+            new BillingEntitlementEvaluationRequest(
+                actor.ProfileId,
+                BillingEntitlementKeys.ClientAppFullAccess,
+                DateTime.UtcNow),
+            cancellationToken);
+
+        var journey = await _journeyCircles.GetDashboardAsync(actor.Actor.UserId, cancellationToken);
+        var financial = await GetFinancialAsync(actor, cancellationToken);
+        var appointments = await QueryAppointmentsForClientAsync(actor.ProfileId, cancellationToken);
+        var notifications = await _db.ClientBillingNotifications
+            .AsNoTracking()
+            .Where(notification => notification.ClientProfileId == actor.ProfileId)
+            .OrderByDescending(notification => notification.SentUtc ?? notification.NotBeforeUtc)
+            .Take(8)
+            .Select(notification => new MobileBillingNotification(
+                notification.Id,
+                notification.Kind.ToString(),
+                notification.Subject,
+                notification.SentUtc ?? notification.NotBeforeUtc))
+            .ToListAsync(cancellationToken);
+
+        return new MobileHome(
+            MobileHomeIdentity.From(actor),
+            messaging,
+            subscription,
+            new MobileEntitlement(
+                entitlement.Status.ToString(),
+                entitlement.EffectiveUtc,
+                entitlement.ExpirationUtc,
+                entitlement.GraceOrSuspensionUtc,
+                entitlement.ReasonCode,
+                entitlement.Summary),
+            new MobileJourneySummary(
+                journey.Profile is not null,
+                journey.Recommendations.Count,
+                journey.Connections.Count(connection => string.Equals(connection.Status, JourneyCircleConnectionStatuses.Accepted, StringComparison.Ordinal)),
+                journey.Requests.Count),
+            financial.Snapshot,
+            appointments,
+            Array.Empty<MobileActionItem>(),
+            notifications,
+            0);
+    }
+
+    private async Task<MobileHome> BuildAgentHomeAsync(
+        MobileResolvedActor actor,
+        MobileMessagingSummary messaging,
+        CancellationToken cancellationToken)
+    {
+        var normalizedAgentUserId = actor.Actor.UserId.ToLower();
+        var activeClientCount = await _db.AgentClients
+            .AsNoTracking()
+            .CountAsync(link => link.AgentUserId.ToLower() == normalizedAgentUserId, cancellationToken);
+        var actions = await _db.ActionItems
+            .AsNoTracking()
+            .Where(item =>
+                item.EffectiveAgentOid.ToLower() == normalizedAgentUserId &&
+                item.Status != ActionStatus.Completed &&
+                item.Status != ActionStatus.Dismissed)
+            .OrderBy(item => item.DueDateUtc == null)
+            .ThenBy(item => item.DueDateUtc)
+            .Take(8)
+            .Select(item => new MobileActionItem(
+                item.Id,
+                item.Title,
+                item.Status.ToString(),
+                item.Priority.ToString(),
+                item.DueDateUtc))
+            .ToListAsync(cancellationToken);
+        var appointments = await _db.LeadAppointments
+            .AsNoTracking()
+            .Where(appointment =>
+                appointment.OwnerAgentUserId.ToLower() == normalizedAgentUserId &&
+                appointment.ScheduledStartUtc != null &&
+                appointment.ScheduledStartUtc >= DateTime.UtcNow &&
+                appointment.Status != LeadAppointmentStatus.Cancelled)
+            .OrderBy(appointment => appointment.ScheduledStartUtc)
+            .Take(8)
+            .Select(appointment => new MobileUpcomingAppointment(
+                appointment.Id,
+                appointment.ScheduledStartUtc!.Value,
+                appointment.ScheduledEndUtc,
+                appointment.Status.ToString()))
+            .ToListAsync(cancellationToken);
+
+        return new MobileHome(
+            MobileHomeIdentity.From(actor),
+            messaging,
+            null,
+            null,
+            null,
+            null,
+            appointments,
+            actions,
+            Array.Empty<MobileBillingNotification>(),
+            activeClientCount);
+    }
+
+    private Task<List<MobileUpcomingAppointment>> QueryAppointmentsForClientAsync(
+        Guid clientProfileId,
+        CancellationToken cancellationToken)
+    {
+        var compactId = clientProfileId.ToString("N");
+        var canonicalId = clientProfileId.ToString("D");
+        return _db.LeadAppointments
+            .AsNoTracking()
+            .Where(appointment =>
+                (appointment.ClientProfileId == compactId || appointment.ClientProfileId == canonicalId) &&
+                appointment.ScheduledStartUtc != null &&
+                appointment.ScheduledStartUtc >= DateTime.UtcNow &&
+                appointment.Status != LeadAppointmentStatus.Cancelled)
+            .OrderBy(appointment => appointment.ScheduledStartUtc)
+            .Take(8)
+            .Select(appointment => new MobileUpcomingAppointment(
+                appointment.Id,
+                appointment.ScheduledStartUtc!.Value,
+                appointment.ScheduledEndUtc,
+                appointment.Status.ToString()))
+            .ToListAsync(cancellationToken);
+    }
+
+    private sealed record MobilePersistedFinanceState(string JsonState, DateTime UpdatedUtc);
+}
+
+public sealed record MobileHomeResult(bool Succeeded, string? ErrorCode, string? ErrorMessage, MobileHome? Home)
+{
+    public static MobileHomeResult Success(MobileHome home) => new(true, null, null, home);
+    public static MobileHomeResult Failure(string errorCode, string errorMessage) => new(false, errorCode, errorMessage, null);
+}
+
+public sealed record MobileFinancialResult(bool Succeeded, string? ErrorCode, string? ErrorMessage, MobileFinancialSnapshot? Snapshot)
+{
+    public static MobileFinancialResult Success(MobileFinancialSnapshot snapshot) => new(true, null, null, snapshot);
+    public static MobileFinancialResult Unavailable(string errorCode, string errorMessage) => new(false, errorCode, errorMessage, null);
+}
+
+public sealed record MobileHome(
+    MobileHomeIdentity Identity,
+    MobileMessagingSummary Messaging,
+    MobileSubscription? Subscription,
+    MobileEntitlement? Entitlement,
+    MobileJourneySummary? Journey,
+    MobileFinancialSnapshot? Financial,
+    IReadOnlyList<MobileUpcomingAppointment> UpcomingAppointments,
+    IReadOnlyList<MobileActionItem> Actions,
+    IReadOnlyList<MobileBillingNotification> Notifications,
+    int ActiveClientCount);
+
+public sealed record MobileHomeIdentity(string UserId, string ParticipantType, Guid ProfileId, string DisplayName)
+{
+    public static MobileHomeIdentity From(MobileResolvedActor actor) => new(
+        actor.Actor.UserId,
+        actor.Actor.ParticipantType,
+        actor.ProfileId,
+        actor.DisplayName);
+}
+
+public sealed record MobileMessagingSummary(int UnreadCount, int ConversationCount);
+public sealed record MobileSubscription(Guid Id, string Status, string PaymentStanding, int MonthlyAmountCents, string Currency, DateTime? NextBillingDateUtc, DateTime? CurrentPeriodStartUtc, DateTime? CurrentPeriodEndUtc, bool CancelAtPeriodEnd);
+public sealed record MobileEntitlement(string Status, DateTime? EffectiveUtc, DateTime? ExpirationUtc, DateTime? GraceOrSuspensionUtc, string? ReasonCode, string Summary);
+public sealed record MobileJourneySummary(bool HasProfile, int RecommendationCount, int ConnectedPeerCount, int PendingRequestCount);
+public sealed record MobileUpcomingAppointment(Guid Id, DateTime StartUtc, DateTime? EndUtc, string Status);
+public sealed record MobileActionItem(Guid Id, string Title, string Status, string Priority, DateTime? DueDateUtc);
+public sealed record MobileBillingNotification(Guid Id, string Kind, string Subject, DateTime OccurredUtc);
+public sealed record MobileFinancialSnapshot(MobileFinancialPosition? Position, MobileFinancialIntelligenceSummary? Intelligence, IReadOnlyList<MobileUpcomingBill> UpcomingBills);
+public sealed record MobileFinancialPosition(int HealthScore, decimal AssetsTotal, decimal LiabilitiesTotal, decimal NetWorth, decimal AnnualEarnings, decimal AnnualLifestyleRemaining, decimal AnnualTaxes, decimal ProtectionGapTotal, string PositionStatus, string PositionSummary, string EstatePlanningStatus, string EstatePlanningRiskLevel, DateTime UpdatedUtc);
+public sealed record MobileFinancialIntelligenceSummary(string Status, decimal DataCompletenessScore, string CurrentRiskSummary, string CurrentOpportunitySummary, string CurrentLeakageSummary, DateTime? LastEvaluatedUtc, IReadOnlyList<MobileFinancialFinding> Findings);
+public sealed record MobileFinancialFinding(Guid Id, string Category, string Title, string Explanation, decimal? EstimatedImpact, string? ImpactUnit, string Urgency, string Status, DateTime LastDetectedUtc);
+public sealed record MobileUpcomingBill(Guid Id, string DisplayName, long AverageAmountCents, string Cadence, DateTime NextExpectedDateUtc, string Status);

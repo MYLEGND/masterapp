@@ -11,9 +11,8 @@ namespace AgentPortal.Mobile;
 [Authorize(Policy = MobileApiAuthorization.PolicyName)]
 [IgnoreAntiforgeryToken]
 [TypeFilter(typeof(MobileApiExceptionFilter))]
-public sealed class MobileMessagingController : ControllerBase
+public sealed class MobileMessagingController : MobileApiControllerBase
 {
-    private readonly IMobileActorResolver _actorResolver;
     private readonly IMessagingService _messaging;
     private readonly IMessagingProfileImageResolver _profiles;
 
@@ -21,8 +20,8 @@ public sealed class MobileMessagingController : ControllerBase
         IMobileActorResolver actorResolver,
         IMessagingService messaging,
         IMessagingProfileImageResolver profiles)
+        : base(actorResolver)
     {
-        _actorResolver = actorResolver;
         _messaging = messaging;
         _profiles = profiles;
     }
@@ -48,7 +47,7 @@ public sealed class MobileMessagingController : ControllerBase
         [FromBody] MobileSelectRoleRequest? request,
         CancellationToken cancellationToken)
     {
-        var resolution = await _actorResolver.ResolveAsync(
+        var resolution = await ActorResolver.ResolveAsync(
             User,
             request?.ParticipantType,
             cancellationToken);
@@ -165,37 +164,6 @@ public sealed class MobileMessagingController : ControllerBase
             : MessagingFailure(result.ErrorCode, result.ErrorMessage);
     }
 
-    private async Task<MobileActorRequestResolution> ResolveActorAsync(
-        CancellationToken cancellationToken,
-        bool allowSelectionRequired = false)
-    {
-        var requestedParticipantType = Request.Headers[MobileApiAuthorization.ParticipantTypeHeader].FirstOrDefault();
-        var resolution = await _actorResolver.ResolveAsync(User, requestedParticipantType, cancellationToken);
-        if (!resolution.Succeeded)
-        {
-            return new MobileActorRequestResolution(
-                null,
-                Array.Empty<MobileResolvedActor>(),
-                false,
-                Error(StatusCodes.Status403Forbidden, resolution.ErrorCode ?? "mobile_actor_unresolved", resolution.ErrorMessage ?? "Your account could not be resolved for mobile access."));
-        }
-
-        if (resolution.RequiresParticipantSelection && !allowSelectionRequired)
-        {
-            return new MobileActorRequestResolution(
-                null,
-                resolution.PermittedActors,
-                true,
-                Error(StatusCodes.Status409Conflict, "mobile_role_selection_required", "Choose one of your authorized mobile roles before continuing."));
-        }
-
-        return new MobileActorRequestResolution(
-            resolution.SelectedActor,
-            resolution.PermittedActors,
-            resolution.RequiresParticipantSelection,
-            null);
-    }
-
     private async Task<MobileConversationDetailDto> ToConversationDtoAsync(
         MessagingConversationDetail conversation,
         MessagingActor actor,
@@ -275,13 +243,8 @@ public sealed class MobileMessagingController : ControllerBase
 
     private async Task<MobileAvatarDto?> ToAvatarDtoAsync(
         MessagingParticipantIdentity identity,
-        CancellationToken cancellationToken)
-    {
-        var image = await _profiles.ResolveAsync(identity, cancellationToken);
-        return image is null
-            ? null
-            : new MobileAvatarDto("inline", image.ContentType, Convert.ToBase64String(image.Content));
-    }
+        CancellationToken cancellationToken) =>
+        await MobileAvatarProjection.ResolveAsync(_profiles, identity, cancellationToken);
 
     private IActionResult MessagingFailure(string? errorCode, string? errorMessage)
     {
@@ -291,20 +254,6 @@ public sealed class MobileMessagingController : ControllerBase
         return Error(statusCode, "mobile_messaging_rejected", errorMessage ?? "This messaging action is not available.");
     }
 
-    private IActionResult Error(int statusCode, string code, string message)
-    {
-        var correlationId = CorrelationId();
-        Response.Headers["X-Correlation-ID"] = correlationId;
-        return StatusCode(statusCode, new MobileApiErrorResponse(code, message, correlationId, new Dictionary<string, string[]>()));
-    }
-
-    private string CorrelationId() => HttpContext.TraceIdentifier;
-
-    private sealed record MobileActorRequestResolution(
-        MobileResolvedActor? Actor,
-        IReadOnlyList<MobileResolvedActor> PermittedActors,
-        bool RequiresParticipantSelection,
-        IActionResult? Error);
 }
 
 public sealed record MobileLogicalIdentityDto(string UserId, string ParticipantType);
