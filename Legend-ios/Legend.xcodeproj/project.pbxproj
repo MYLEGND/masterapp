@@ -16,6 +16,7 @@
 		4EB558694357C25511FC1A79 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8FF13A9483243B521F7DFC68 /* LaunchScreen.storyboard */; };
 		5482D1AE8D1570BC5C686090 /* LegendApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 474F0CA43E80A96D179DD53F /* LegendApp.swift */; };
 		5EF643842D57B1E5FCAF8499 /* LegendDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34F2412F40E7DCDF9AEC4644 /* LegendDesignSystem.swift */; };
+		6100CBE0CC8B7BC652CDC1D8 /* HomeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41B2621F816A74D6CFAD0A6C /* HomeModels.swift */; };
 		6AB8FDFB34A8057871BE8441 /* LogicalParticipantIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E81305123969A7AFFB8384 /* LogicalParticipantIdentityTests.swift */; };
 		6C796FDFDDEE2E9061948116 /* LegendBrandLogo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C77437142863C4D1039F225 /* LegendBrandLogo.swift */; };
 		844E717BB59A21BFDC60BB35 /* LegendComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DBFA05778BCF03C185381BE /* LegendComponents.swift */; };
@@ -59,6 +60,7 @@
 		2DBFA05778BCF03C185381BE /* LegendComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendComponents.swift; sourceTree = "<group>"; };
 		2ECC81CB776EC7D6D0AF3F25 /* LegendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendTests.swift; sourceTree = "<group>"; };
 		34F2412F40E7DCDF9AEC4644 /* LegendDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDesignSystem.swift; sourceTree = "<group>"; };
+		41B2621F816A74D6CFAD0A6C /* HomeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeModels.swift; sourceTree = "<group>"; };
 		474F0CA43E80A96D179DD53F /* LegendApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApp.swift; sourceTree = "<group>"; };
 		4A52D7BC1E8F6D8222D84B96 /* LegendUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendUITests.swift; sourceTree = "<group>"; };
 		4AC04B2C6B3C22460870E399 /* MobileSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSessionCoordinator.swift; sourceTree = "<group>"; };
@@ -179,6 +181,7 @@
 		A755B3EB80D2CE3BCC2FAF9B /* Home */ = {
 			isa = PBXGroup;
 			children = (
+				41B2621F816A74D6CFAD0A6C /* HomeModels.swift */,
 				E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */,
 			);
 			path = Home;
@@ -374,6 +377,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6100CBE0CC8B7BC652CDC1D8 /* HomeModels.swift in Sources */,
 				5482D1AE8D1570BC5C686090 /* LegendApp.swift in Sources */,
 				CC7F46FF75ECDC0EAD02A423 /* LegendApplicationShell.swift in Sources */,
 				6C796FDFDDEE2E9061948116 /* LegendBrandLogo.swift in Sources */,
