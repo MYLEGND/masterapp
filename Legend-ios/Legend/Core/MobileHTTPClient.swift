@@ -236,7 +236,38 @@ extension JSONEncoder {
 extension JSONDecoder {
     static let mobile: JSONDecoder = {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        // ASP.NET Core serializes UTC DateTime values with up to seven
+        // fractional-second digits. JSONDecoder.iso8601 only accepts the
+        // whole-second form, which made otherwise valid mobile responses fail
+        // as soon as any dated field was present.
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            if let date = MobileAPIDateParser.parse(value) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "The mobile API returned an invalid UTC timestamp.")
+        }
         return decoder
     }()
+}
+
+private enum MobileAPIDateParser {
+    private static let fractionalSeconds: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let wholeSeconds: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    static func parse(_ value: String) -> Date? {
+        fractionalSeconds.date(from: value) ?? wholeSeconds.date(from: value)
+    }
 }

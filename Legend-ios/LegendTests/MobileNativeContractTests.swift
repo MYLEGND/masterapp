@@ -99,6 +99,28 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertFalse(conversation.messages.first?.isMine ?? true)
     }
 
+    func testJSONDecoderAcceptsAspNetCoreFractionalSecondUtcTimestamps() throws {
+        let data = Data("""
+        {
+          "id": "00000000-0000-0000-0000-000000000011",
+          "conversationId": "00000000-0000-0000-0000-000000000010",
+          "sender": {
+            "identity": { "userId": "agent-oid", "participantType": "Agent" },
+            "profileId": "00000000-0000-0000-0000-000000000001",
+            "displayName": "Agent One",
+            "avatar": null
+          },
+          "body": "Hello",
+          "sentUtc": "2026-07-26T11:27:01.1234567Z",
+          "isMine": true
+        }
+        """.utf8)
+
+        let message = try JSONDecoder.mobile.decode(ConversationMessage.self, from: data)
+
+        XCTAssertEqual(message.sentUTC.timeIntervalSince1970, 1_785_065_221.1234567, accuracy: 0.001)
+    }
+
     func testSendRequestEncodingDoesNotContainSenderOrParticipantIdentity() throws {
         let data = try JSONEncoder.mobile.encode(SendMessageRequest(body: "Secure hello"))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
