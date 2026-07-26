@@ -463,6 +463,76 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileAgentClients_UsesTheServerResolvedAgentAndProjectsOnlyClientOwnedImageData()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "agent-oid",
+            AgentUpn = "agent@example.test",
+            FullName = "Agent Identity",
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var clientProfileId = Guid.NewGuid();
+        var home = new Mock<IMobileHomeService>(MockBehavior.Strict);
+        home.Setup(service => service.GetAgentClientsAsync(
+                It.Is<MobileResolvedActor>(actor =>
+                    actor.Actor.UserId == "agent-oid" &&
+                    actor.Actor.ParticipantType == MessagingParticipantTypes.Agent),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MobileAgentClientsResult.Success(
+            [
+                new MobileAgentClient(
+                    clientProfileId,
+                    "Client Identity",
+                    "client@example.test",
+                    "Active",
+                    [1, 2, 3],
+                    "image/png")
+            ]));
+        var controller = CreateHomeController(db, home.Object, Principal("agent-oid"));
+
+        var result = await controller.AgentClients(CancellationToken.None);
+
+        var response = Assert.IsType<OkObjectResult>(result);
+        var client = Assert.Single(Assert.IsAssignableFrom<IEnumerable<MobileAgentClientDto>>(response.Value));
+        Assert.Equal(clientProfileId, client.ProfileId);
+        Assert.Equal("Client Identity", client.DisplayName);
+        Assert.NotNull(client.Avatar);
+        Assert.Equal("image/png", client.Avatar!.ContentType);
+        Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2, 3 }), client.Avatar.Base64Content);
+        home.VerifyAll();
+    }
+
+    [Fact]
+    public async Task MobileAgentWorkspace_RejectsAClientIdentityBeforeCallingAgentEndpoints()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "client-oid",
+            FirstName = "Client",
+            LastName = "Identity",
+            Email = "client@example.test"
+        });
+        await db.SaveChangesAsync();
+
+        var home = new Mock<IMobileHomeService>(MockBehavior.Strict);
+        var controller = CreateHomeController(db, home.Object, Principal("client-oid"));
+
+        var clients = await controller.AgentClients(CancellationToken.None);
+        var leads = await controller.AgentLeads(CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(clients).StatusCode);
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(leads).StatusCode);
+        home.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public void MobileApiRoute_IsNarrowAndDoesNotMatchNormalPortalRoutes()
     {
         var mobile = new DefaultHttpContext();
@@ -517,6 +587,20 @@ public sealed class MobileIntegrationTests
             }
         };
         return controller;
+    }
+
+    private static MobileHomeController CreateHomeController(
+        Infrastructure.Data.MasterAppDbContext db,
+        IMobileHomeService home,
+        ClaimsPrincipal principal)
+    {
+        return new MobileHomeController(CreateResolver(db), home)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = principal }
+            }
+        };
     }
 
     private static MobileJourneyCirclesController CreateJourneyController(

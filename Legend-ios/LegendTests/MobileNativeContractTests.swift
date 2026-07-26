@@ -121,6 +121,28 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(message.sentUTC.timeIntervalSince1970, 1_785_065_221.1234567, accuracy: 0.001)
     }
 
+    func testJSONDecoderTreatsAZoneLessAspNetCoreUtcFieldAsUtc() throws {
+        let data = Data("""
+        {
+          "id": "00000000-0000-0000-0000-000000000011",
+          "conversationId": "00000000-0000-0000-0000-000000000010",
+          "sender": {
+            "identity": { "userId": "agent-oid", "participantType": "Agent" },
+            "profileId": "00000000-0000-0000-0000-000000000001",
+            "displayName": "Agent One",
+            "avatar": null
+          },
+          "body": "Hello",
+          "sentUtc": "2026-07-26T11:27:01.1234567",
+          "isMine": true
+        }
+        """.utf8)
+
+        let message = try JSONDecoder.mobile.decode(ConversationMessage.self, from: data)
+
+        XCTAssertEqual(message.sentUTC.timeIntervalSince1970, 1_785_065_221.1234567, accuracy: 0.001)
+    }
+
     func testSendRequestEncodingDoesNotContainSenderOrParticipantIdentity() throws {
         let data = try JSONEncoder.mobile.encode(SendMessageRequest(body: "Secure hello"))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -190,6 +212,21 @@ final class MobileNativeContractTests: XCTestCase {
         guard case .offline = store.state else {
             return XCTFail("Expected an offline messaging state")
         }
+    }
+
+    func testMessagingStoreShowsUnauthorizedStateForTheBearerApiContract() async {
+        let store = MessagingStore(
+            api: UnauthorizedMessagingAPI(),
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics())
+
+        store.load()
+        try? await Task.sleep(for: .milliseconds(50))
+
+        guard case .unauthorized(let failure) = store.state else {
+            return XCTFail("Expected an unauthorized messaging state")
+        }
+        XCTAssertEqual(failure.message, "Your session has ended. Please sign in again.")
     }
 
     private func completeConfiguration() -> MobileConfiguration {
@@ -291,5 +328,27 @@ private struct OfflineMessagingAPI: MessagingAPI {
 
     func markRead(conversationID: UUID, accessToken: String) async throws {
         throw MobileAPIError.networkUnavailable
+    }
+}
+
+private struct UnauthorizedMessagingAPI: MessagingAPI {
+    func conversations(accessToken: String) async throws -> [ConversationSummary] {
+        throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
+    }
+
+    func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail {
+        throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
+    }
+
+    func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] {
+        throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
+    }
+
+    func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage {
+        throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
+    }
+
+    func markRead(conversationID: UUID, accessToken: String) async throws {
+        throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
     }
 }

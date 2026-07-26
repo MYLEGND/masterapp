@@ -136,9 +136,9 @@ final class MessagingStore: ObservableObject {
         }
         let failure = failure(for: error, title: "Messages unavailable")
         switch error as? MobileAPIError {
-        case .unauthorized:
+        case .unauthorized, .apiUnauthorized:
             return .unauthorized(failure)
-        case .forbidden, .conflict:
+        case .forbidden, .conflict, .apiForbidden, .apiConflict:
             return .forbidden(failure)
         case .invalidServerResponse, .networkUnavailable:
             return .offline(failure)
@@ -153,9 +153,9 @@ final class MessagingStore: ObservableObject {
         }
         let failure = failure(for: error, title: "Conversation unavailable")
         switch error as? MobileAPIError {
-        case .unauthorized:
+        case .unauthorized, .apiUnauthorized:
             return .unauthorized(failure)
-        case .forbidden, .conflict:
+        case .forbidden, .conflict, .apiForbidden, .apiConflict:
             return .forbidden(failure)
         case .invalidServerResponse, .networkUnavailable:
             return .offline(failure)

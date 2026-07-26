@@ -268,6 +268,12 @@ private enum MobileAPIDateParser {
     }()
 
     static func parse(_ value: String) -> Date? {
-        fractionalSeconds.date(from: value) ?? wholeSeconds.date(from: value)
+        let normalized = isTimezoneQualified(value) ? value : "\(value)Z"
+        return fractionalSeconds.date(from: normalized) ?? wholeSeconds.date(from: normalized)
+    }
+
+    private static func isTimezoneQualified(_ value: String) -> Bool {
+        value.hasSuffix("Z") ||
+        value.range(of: #"[+-]\d{2}:?\d{2}$"#, options: .regularExpression) != nil
     }
 }
