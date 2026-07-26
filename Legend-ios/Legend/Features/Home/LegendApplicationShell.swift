@@ -132,7 +132,7 @@ struct LegendApplicationShell: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .legendNextPageBackground()
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .overlay(alignment: .bottom) {
             LegendNextTabBar(
                 selection: $selectedTab,
                 tabs: LegendAppTab.available(
@@ -182,55 +182,20 @@ private struct LegendNextTabBar: View {
     let accountDisplayName: String
     let unreadMessageCount: Int
 
-    @Namespace private var selectedBackground
-
     var body: some View {
-        HStack(spacing: LegendNextSpacing.micro) {
+        HStack(spacing: 0) {
             ForEach(tabs) { tab in
                 tabButton(tab)
             }
         }
-        .padding(LegendNextSpacing.tiny)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
         .background {
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.prominentCard,
-                style: .continuous
-            )
-            .fill(.ultraThinMaterial)
-            .overlay {
-                RoundedRectangle(
-                    cornerRadius: LegendNextRadius.prominentCard,
-                    style: .continuous
-                )
-                .fill(
-                    LegendNextColor.glassTint(
-                        for: colorScheme
-                    )
-                )
-            }
+            Capsule()
+                .fill(LegendNextGradient.hero)
         }
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.prominentCard,
-                style: .continuous
-            )
-            .strokeBorder(
-                LegendNextColor.premiumBorder(
-                    for: colorScheme
-                ),
-                lineWidth: 1
-            )
-        }
-        .shadow(
-            color: LegendNextColor.elevatedShadow(
-                for: colorScheme
-            ),
-            radius: LegendNextElevation.cardRadius,
-            y: LegendNextElevation.cardY
-        )
-        .padding(.horizontal, LegendNextSpacing.sm)
-        .padding(.top, LegendNextSpacing.tiny)
-        .padding(.bottom, LegendNextSpacing.xs)
+        .padding(.horizontal, LegendNextSpacing.md)
+        .padding(.bottom, 4)
     }
 
     private func tabButton(
@@ -252,47 +217,17 @@ private struct LegendNextTabBar: View {
                 }
             }
         } label: {
-            VStack(spacing: LegendNextSpacing.micro) {
-                tabIcon(tab)
-
-                Text(tab.title)
-                    .font(LegendNextTypography.eyebrow)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-            }
-            .foregroundStyle(
-                selection == tab
-                    ? LegendNextColor.midnight
-                    : LegendNextColor.textSecondary
-            )
-            .frame(
-                maxWidth: .infinity,
-                minHeight: LegendNextSize.prominentControlHeight
-            )
-            .background {
-                if selection == tab {
-                    RoundedRectangle(
-                        cornerRadius: LegendNextRadius.control,
-                        style: .continuous
-                    )
-                    .fill(LegendNextGradient.gold)
-                    .matchedGeometryEffect(
-                        id: "LegendNextSelectedTab",
-                        in: selectedBackground
-                    )
-                    .shadow(
-                        color: LegendNextColor.gold.opacity(0.20),
-                        radius: 9,
-                        y: 4
-                    )
-                }
-            }
-            .contentShape(
-                RoundedRectangle(
-                    cornerRadius: LegendNextRadius.control,
-                    style: .continuous
+            tabIcon(tab)
+                .foregroundStyle(
+                    selection == tab
+                        ? LegendNextColor.goldBright
+                        : Color.white.opacity(0.88)
                 )
-            )
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: 44
+                )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tab.title)
@@ -312,17 +247,16 @@ private struct LegendNextTabBar: View {
             LegendProfileAvatar(
                 avatar: accountAvatar,
                 displayName: accountDisplayName,
-                size: 25
+                size: 23
             )
             .overlay {
-                if selection == tab {
-                    Circle()
-                        .strokeBorder(
-                            LegendNextColor.midnight
-                                .opacity(0.18),
-                            lineWidth: 1
-                        )
-                }
+                Circle()
+                    .strokeBorder(
+                        selection == tab
+                            ? LegendNextColor.goldBright
+                            : Color.white.opacity(0.38),
+                        lineWidth: selection == tab ? 2 : 1
+                    )
             }
         } else {
             ZStack(alignment: .topTrailing) {
@@ -333,8 +267,8 @@ private struct LegendNextTabBar: View {
                 )
                 .font(
                     .system(
-                        size: 18,
-                        weight: .semibold
+                        size: 19,
+                        weight: .medium
                     )
                 )
                 .symbolRenderingMode(.monochrome)

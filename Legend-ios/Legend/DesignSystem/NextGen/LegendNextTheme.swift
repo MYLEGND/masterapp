@@ -9,22 +9,26 @@ import UIKit
 
 enum LegendNextColor {
     // Brand foundation
+    // ClientApp Home premium-blue authority
+    // #0A162E — exact deep stop from rgba(10, 22, 46, 0.995)
     static let midnight = Color(
-        red: 7.0 / 255.0,
-        green: 15.0 / 255.0,
-        blue: 35.0 / 255.0
+        red: 10.0 / 255.0,
+        green: 22.0 / 255.0,
+        blue: 46.0 / 255.0
     )
 
+    // #10254C — exact top stop from rgba(16, 37, 76, 0.98)
     static let navy = Color(
-        red: 12.0 / 255.0,
-        green: 27.0 / 255.0,
-        blue: 62.0 / 255.0
+        red: 16.0 / 255.0,
+        green: 37.0 / 255.0,
+        blue: 76.0 / 255.0
     )
 
+    // #3159BF — exact ClientApp blue illumination source
     static let navyElevated = Color(
-        red: 19.0 / 255.0,
-        green: 39.0 / 255.0,
-        blue: 82.0 / 255.0
+        red: 49.0 / 255.0,
+        green: 89.0 / 255.0,
+        blue: 191.0 / 255.0
     )
 
     static let royal = Color(
@@ -53,11 +57,11 @@ enum LegendNextColor {
 
     // Branded adaptive application surfaces
     static let canvas = adaptiveColor(
-        light: UIColor(red: 246 / 255, green: 244 / 255, blue: 238 / 255, alpha: 1),
+        light: .white,
         dark: UIColor(red: 5 / 255, green: 10 / 255, blue: 23 / 255, alpha: 1)
     )
     static let canvasSecondary = adaptiveColor(
-        light: UIColor(red: 239 / 255, green: 237 / 255, blue: 230 / 255, alpha: 1),
+        light: .white,
         dark: UIColor(red: 8 / 255, green: 16 / 255, blue: 34 / 255, alpha: 1)
     )
     static let surface = adaptiveColor(
@@ -146,9 +150,8 @@ enum LegendNextColor {
 enum LegendNextGradient {
     static let hero = LinearGradient(
         colors: [
-            LegendNextColor.midnight,
             LegendNextColor.navy,
-            LegendNextColor.navyElevated
+            LegendNextColor.midnight
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
@@ -156,11 +159,11 @@ enum LegendNextGradient {
 
     static let heroGlow = RadialGradient(
         colors: [
-            LegendNextColor.goldBright.opacity(0.30),
-            LegendNextColor.gold.opacity(0.08),
+            LegendNextColor.navyElevated.opacity(0.18),
+            LegendNextColor.navyElevated.opacity(0.06),
             .clear
         ],
-        center: .topTrailing,
+        center: .top,
         startRadius: 0,
         endRadius: 300
     )
@@ -277,31 +280,31 @@ enum LegendNextTypography {
     static let display = Font.system(
         size: 36,
         weight: .bold,
-        design: .rounded
+        design: .default
     )
 
     static let hero = Font.system(
         size: 29,
         weight: .bold,
-        design: .rounded
+        design: .default
     )
 
     static let title = Font.system(
         size: 24,
         weight: .bold,
-        design: .rounded
+        design: .default
     )
 
     static let section = Font.system(
         size: 19,
         weight: .semibold,
-        design: .rounded
+        design: .default
     )
 
     static let cardTitle = Font.system(
         size: 17,
         weight: .semibold,
-        design: .rounded
+        design: .default
     )
 
     static let body = Font.system(
@@ -325,31 +328,31 @@ enum LegendNextTypography {
     static let label = Font.system(
         size: 13,
         weight: .semibold,
-        design: .rounded
+        design: .default
     )
 
     static let caption = Font.system(
         size: 12,
         weight: .medium,
-        design: .rounded
+        design: .default
     )
 
     static let eyebrow = Font.system(
         size: 11,
         weight: .bold,
-        design: .rounded
+        design: .default
     )
 
     static let metricLarge = Font.system(
         size: 28,
         weight: .bold,
-        design: .rounded
+        design: .default
     )
 
     static let metric = Font.system(
         size: 22,
         weight: .bold,
-        design: .rounded
+        design: .default
     )
 }
 

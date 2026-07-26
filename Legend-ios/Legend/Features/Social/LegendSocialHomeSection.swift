@@ -103,9 +103,15 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
             Spacer(minLength: LegendNextSpacing.sm)
 
             Text("LEGEND")
-                .font(.system(size: 25, weight: .black, design: .rounded))
-                .tracking(1.7)
-                .foregroundStyle(LegendNextColor.textPrimary)
+                .font(
+                    .system(
+                        size: 22,
+                        weight: .semibold,
+                        design: .default
+                    )
+                )
+                .tracking(5.2)
+                .foregroundStyle(LegendNextColor.navy)
                 .accessibilityAddTraits(.isHeader)
 
             Spacer(minLength: LegendNextSpacing.sm)
