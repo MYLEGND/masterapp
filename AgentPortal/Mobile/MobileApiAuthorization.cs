@@ -134,6 +134,26 @@ public sealed record MobileApiErrorResponse(
 
 public static class MobileApiErrorWriter
 {
+    public static Task WriteStatusCodeAsync(HttpContext context)
+    {
+        var statusCode = context.Response.StatusCode;
+        var code = statusCode == StatusCodes.Status404NotFound
+            ? "mobile_route_not_found"
+            : "mobile_request_failed";
+        var message = statusCode == StatusCodes.Status404NotFound
+            ? "The requested mobile API endpoint was not found."
+            : "The mobile API request could not be completed.";
+
+        return WriteAsync(context, statusCode, code, message);
+    }
+
+    public static Task WriteUnhandledExceptionAsync(HttpContext context) =>
+        WriteAsync(
+            context,
+            StatusCodes.Status500InternalServerError,
+            "mobile_request_failed",
+            "The mobile API request could not be completed.");
+
     public static Task WriteAsync(HttpContext context, int statusCode, string code, string message)
     {
         var correlationId = context.TraceIdentifier;

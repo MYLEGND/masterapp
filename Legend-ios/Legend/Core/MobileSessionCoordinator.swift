@@ -39,14 +39,14 @@ final class MobileSessionCoordinator: ObservableObject {
     private let diagnostics: LegendDiagnostics
 
     init(
-        configuration: MobileConfiguration = .fromBundle(),
+        configuration: MobileConfiguration = .current,
         tokenStore: (any SecureTokenStoring)? = nil,
         authorizer: (any OAuthAuthorizing)? = nil,
         tokenExchanger: (any OAuthTokenExchanging)? = nil,
         diagnostics: LegendDiagnostics? = nil
     ) {
         self.configuration = configuration
-        self.tokenStore = tokenStore ?? KeychainTokenStore(service: configuration.bundleIdentifier ?? "legend.mobile.session")
+        self.tokenStore = tokenStore ?? KeychainTokenStore(service: configuration.bundleIdentifier)
         self.authorizer = authorizer ?? SystemBrowserAuthorizer()
         self.tokenExchanger = tokenExchanger ?? URLSessionOAuthTokenExchanger()
         self.diagnostics = diagnostics ?? LegendDiagnostics()

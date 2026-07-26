@@ -46,6 +46,18 @@ targets:
 
     info:
       path: Legend/Resources/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLSchemes:
+              - "$(LEGEND_AUTH_REDIRECT_SCHEME)"
+        LegendAPIBaseURL: "$(LEGEND_API_BASE_URL)"
+        LegendAuthorizationEndpoint: "$(LEGEND_AUTHORIZATION_ENDPOINT)"
+        LegendTokenEndpoint: "$(LEGEND_TOKEN_ENDPOINT)"
+        LegendAuthClientID: "$(LEGEND_AUTH_CLIENT_ID)"
+        LegendAuthRedirectScheme: "$(LEGEND_AUTH_REDIRECT_SCHEME)"
+        LegendAuthScope: "$(LEGEND_AUTH_SCOPE)"
+        LegendAuthAudience: "$(LEGEND_AUTH_AUDIENCE)"
 
     settings:
       base:

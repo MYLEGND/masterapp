@@ -635,6 +635,16 @@ builder.Services.Configure<OpenIdConnectOptions>(OpenIdConnectDefaults.Authentic
     oidcOptions.Events ??= new Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectEvents();
     oidcOptions.Events.OnRedirectToIdentityProvider = async ctx =>
     {
+        if (MobileApiRoute.IsMobileApi(ctx.Request))
+        {
+            await MobileApiErrorWriter.WriteAsync(
+                ctx.HttpContext,
+                StatusCodes.Status401Unauthorized,
+                "mobile_authentication_required",
+                "A valid mobile session is required.");
+            ctx.HandleResponse();
+            return;
+        }
         if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
         {
             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -672,6 +682,14 @@ builder.Services.ConfigureApplicationCookie(options =>
     // Without this, fetch() follows the 302 cross-origin → CORS blocks it.
     options.Events.OnRedirectToLogin = ctx =>
     {
+        if (MobileApiRoute.IsMobileApi(ctx.Request))
+        {
+            return MobileApiErrorWriter.WriteAsync(
+                ctx.Request.HttpContext,
+                StatusCodes.Status401Unauthorized,
+                "mobile_authentication_required",
+                "A valid mobile session is required.");
+        }
         if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
         {
             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -682,6 +700,14 @@ builder.Services.ConfigureApplicationCookie(options =>
     };
     options.Events.OnRedirectToAccessDenied = ctx =>
     {
+        if (MobileApiRoute.IsMobileApi(ctx.Request))
+        {
+            return MobileApiErrorWriter.WriteAsync(
+                ctx.Request.HttpContext,
+                StatusCodes.Status403Forbidden,
+                "mobile_access_forbidden",
+                "You do not have access to this mobile action.");
+        }
         if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
         {
             ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -772,16 +798,32 @@ if (strictMigrations && !builder.Environment.IsDevelopment())
 // ------------------------------------------------------------
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler("/Home/Error");
+    app.UseWhen(
+        context => MobileApiRoute.IsMobileApi(context.Request),
+        mobile => mobile.UseExceptionHandler(errorApp => errorApp.Run(MobileApiErrorWriter.WriteUnhandledExceptionAsync)));
+    app.UseWhen(
+        context => !MobileApiRoute.IsMobileApi(context.Request),
+        browser => browser.UseExceptionHandler("/Home/Error"));
     app.UseHsts();
 }
 else
 {
-    app.UseDeveloperExceptionPage();
+    app.UseWhen(
+        context => MobileApiRoute.IsMobileApi(context.Request),
+        mobile => mobile.UseExceptionHandler(errorApp => errorApp.Run(MobileApiErrorWriter.WriteUnhandledExceptionAsync)));
+    app.UseWhen(
+        context => !MobileApiRoute.IsMobileApi(context.Request),
+        browser => browser.UseDeveloperExceptionPage());
 }
 
 app.UseLegendFailureDiagnostics("AgentPortal");
-app.UseStatusCodePagesWithReExecute("/Home/ErrorStatus", "?statusCode={0}");
+app.UseWhen(
+    context => MobileApiRoute.IsMobileApi(context.Request),
+    mobile => mobile.UseStatusCodePages(statusContext =>
+        MobileApiErrorWriter.WriteStatusCodeAsync(statusContext.HttpContext)));
+app.UseWhen(
+    context => !MobileApiRoute.IsMobileApi(context.Request),
+    browser => browser.UseStatusCodePagesWithReExecute("/Home/ErrorStatus", "?statusCode={0}"));
 
 app.Use(async (context, next) =>
 {

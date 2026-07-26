@@ -171,6 +171,39 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileStatusCodeErrorsStayInTheJsonContract()
+    {
+        var context = new DefaultHttpContext();
+        context.TraceIdentifier = "mobile-not-found";
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        context.Response.Body = new MemoryStream();
+
+        await MobileApiErrorWriter.WriteStatusCodeAsync(context);
+
+        context.Response.Body.Position = 0;
+        using var response = await System.Text.Json.JsonDocument.ParseAsync(context.Response.Body);
+        Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+        Assert.Equal("mobile_route_not_found", response.RootElement.GetProperty("code").GetString());
+        Assert.Equal("mobile-not-found", response.RootElement.GetProperty("correlationId").GetString());
+    }
+
+    [Fact]
+    public async Task MobileUnhandledExceptionsStayInTheJsonContract()
+    {
+        var context = new DefaultHttpContext();
+        context.TraceIdentifier = "mobile-failure";
+        context.Response.Body = new MemoryStream();
+
+        await MobileApiErrorWriter.WriteUnhandledExceptionAsync(context);
+
+        context.Response.Body.Position = 0;
+        using var response = await System.Text.Json.JsonDocument.ParseAsync(context.Response.Body);
+        Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
+        Assert.Equal("mobile_request_failed", response.RootElement.GetProperty("code").GetString());
+        Assert.Equal("mobile-failure", response.RootElement.GetProperty("correlationId").GetString());
+    }
+
+    [Fact]
     public async Task MobileController_ResolvesTheServerActorAndRejectsForgedParticipantType()
     {
         await using var db = ControllerTestHelpers.BuildDb();

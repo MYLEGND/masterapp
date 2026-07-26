@@ -77,43 +77,76 @@ private struct MobileContractUnavailableView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                Image(systemName: "lock.shield")
-                    .font(.system(size: 54, weight: .semibold))
-                    .foregroundStyle(.tint)
+            ScrollView {
+                VStack(spacing: 24) {
+                    Spacer(minLength: 12)
 
-                VStack(spacing: 10) {
-                    Text("Mobile access requires server configuration")
-                        .font(.title2.bold())
-                        .multilineTextAlignment(.center)
-                    Text("This native build will stay disconnected until the approved PKCE and bearer API contract is supplied.")
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
+                    LegendBrandLogo(maximumWidth: 136)
+                        .accessibilityLabel("Legend logo")
 
-                if !validation.missingKeys.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Missing build settings")
-                            .font(.headline)
-                        ForEach(validation.missingKeys, id: \.self) { key in
-                            Label(key, systemImage: "exclamationmark.circle")
-                                .font(.footnote.monospaced())
+                    VStack(spacing: 10) {
+                        Text("Legend")
+                            .font(.title2.weight(.bold))
+                        Text("Native Mobile Configuration Required")
+                            .font(.headline.weight(.semibold))
+                            .multilineTextAlignment(.center)
+                        Text("This build is waiting for administrator configuration before secure sign-in can begin.")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityElement(children: .combine)
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "checklist.checked")
+                                .foregroundStyle(.tint)
+                                .accessibilityHidden(true)
+                            Text("Required administrator settings")
+                                .font(.headline)
+                        }
+
+                        Text(validation.summary)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(validation.missingKeys) { key in
+                                Label(key.buildSetting, systemImage: "minus.circle.fill")
+                                    .font(.footnote.monospaced())
+                                    .foregroundStyle(.primary)
+                                    .accessibilityLabel("Missing build setting \(key.buildSetting)")
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                }
+                    .padding(20)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    }
+                    .accessibilityElement(children: .contain)
 
-                Button("Check configuration") {
-                    session.restore()
+                    Button("Check configuration") {
+                        session.restore()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .accessibilityHint("Checks whether the required administrator configuration is now available.")
                 }
-                .buttonStyle(.borderedProminent)
-
-                Spacer()
+                .frame(maxWidth: 520)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 32)
+                .frame(maxWidth: .infinity)
             }
-            .padding(24)
+            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Legend")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }

@@ -2,15 +2,18 @@
 
 ## Repository-safe configuration
 
-The checked-in `Configuration/*.xcconfig` files are value-free templates. They
-contain no backend URLs, tenant IDs, client IDs, bundle IDs, signing team IDs,
-or secrets. Do not replace their template values in source control.
+The checked-in `Configuration/*.xcconfig` files are value-free templates for
+backend and identity configuration. They contain no backend URLs, tenant IDs,
+client IDs, signing team IDs, or secrets. The product bundle identifier is a
+non-secret build identity; the runtime always reads its final value from
+`Bundle.main.bundleIdentifier`.
 
-For local development, copy the appropriate template to an ignored local
-configuration file and provide values through Xcode build settings or CI secret
-injection. Keep the same setting names:
+For local development, create the ignored
+`Configuration/Legend.local.xcconfig` file and provide values there (or inject
+them through CI build settings). Each checked-in environment configuration
+optionally includes that file after its safe defaults, so local values take
+effect without changing tracked source. Keep the same setting names:
 
-- `LEGEND_BUNDLE_IDENTIFIER`
 - `LEGEND_API_BASE_URL`
 - `LEGEND_AUTHORIZATION_ENDPOINT`
 - `LEGEND_TOKEN_ENDPOINT`
@@ -21,6 +24,17 @@ injection. Keep the same setting names:
 
 An app with any missing identity/API setting remains intentionally
 contract-unavailable. That behavior is a security feature.
+
+## App icon
+
+The AppIcon is generated only from the approved transparent AgentPortal artwork. Regenerate it after that source artwork changes:
+
+```bash
+cd Legend-ios
+swift Scripts/generate-app-icon.swift
+```
+
+The generator removes transparent padding, centers the original shield at 73.5% visible coverage, and uses the dashboard navy background. It does not redraw or substitute the Legend artwork.
 
 ## Local build
 
