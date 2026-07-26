@@ -379,6 +379,70 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileAccount_UpdatesOnlyTheSelectedTypedProfileForOnePhysicalUser()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        const string sharedUserId = "dual-mobile-oid";
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = sharedUserId,
+            AgentUpn = "agent@example.test",
+            FullName = "Agent Original",
+            Phone = "111-111-1111",
+            IsActive = true
+        };
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = sharedUserId,
+            FirstName = "Client",
+            LastName = "Original",
+            Email = "client@example.test",
+            Phone = "222-222-2222"
+        };
+        db.AddRange(agent, client);
+        await db.SaveChangesAsync();
+
+        var controller = CreateAccountController(db, Principal(sharedUserId));
+
+        controller.HttpContext.Request.Headers[MobileApiAuthorization.ParticipantTypeHeader] = MessagingParticipantTypes.Agent;
+        var agentResult = await controller.Update(
+            new MobileAccountUpdateRequest("Agent Updated", "333-333-3333", "Advisor", "Profile-owned bio"),
+            CancellationToken.None);
+        var agentProfile = Assert.IsType<OkObjectResult>(agentResult).Value as MobileAccountProfile;
+        Assert.NotNull(agentProfile);
+        Assert.Equal(MessagingParticipantTypes.Agent, agentProfile!.ParticipantType);
+        Assert.Equal(agent.Id, agentProfile.ProfileId);
+
+        await db.Entry(agent).ReloadAsync();
+        await db.Entry(client).ReloadAsync();
+        Assert.Equal("Agent Updated", agent.FullName);
+        Assert.Equal("333-333-3333", agent.Phone);
+        Assert.Equal("Client", client.FirstName);
+        Assert.Equal("Original", client.LastName);
+        Assert.Equal("222-222-2222", client.Phone);
+
+        controller.HttpContext.Request.Headers[MobileApiAuthorization.ParticipantTypeHeader] = MessagingParticipantTypes.Client;
+        var clientResult = await controller.Update(
+            new MobileAccountUpdateRequest("Client Updated", "444-444-4444", "Forged title", "Forged bio"),
+            CancellationToken.None);
+        var clientProfile = Assert.IsType<OkObjectResult>(clientResult).Value as MobileAccountProfile;
+        Assert.NotNull(clientProfile);
+        Assert.Equal(MessagingParticipantTypes.Client, clientProfile!.ParticipantType);
+        Assert.Equal(client.Id, clientProfile.ProfileId);
+
+        await db.Entry(agent).ReloadAsync();
+        await db.Entry(client).ReloadAsync();
+        Assert.Equal("Agent Updated", agent.FullName);
+        Assert.Equal("Advisor", agent.Title);
+        Assert.Equal("Profile-owned bio", agent.ShortBio);
+        Assert.Equal("Client", client.FirstName);
+        Assert.Equal("Updated", client.LastName);
+        Assert.Equal("444-444-4444", client.Phone);
+    }
+
+    [Fact]
     public async Task MobileJourneyCircles_ProjectsAClientAvatarOnlyFromTheTypedClientProfile()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -621,6 +685,19 @@ public sealed class MobileIntegrationTests
             }
         };
         return controller;
+    }
+
+    private static MobileAccountController CreateAccountController(
+        Infrastructure.Data.MasterAppDbContext db,
+        ClaimsPrincipal principal)
+    {
+        return new MobileAccountController(CreateResolver(db), db, CreateEmptyProfileResolver())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = principal }
+            }
+        };
     }
 
     private static IMessagingProfileImageResolver CreateEmptyProfileResolver()

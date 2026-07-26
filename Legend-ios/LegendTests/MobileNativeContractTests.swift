@@ -151,6 +151,45 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(Set(object.keys), Set(["body"]))
     }
 
+    func testAccountAndJourneyContractsKeepProfileFieldsAndSelectionsTyped() throws {
+        let accountData = Data("""
+        {
+          "participantType": "Client",
+          "profileId": "00000000-0000-0000-0000-000000000123",
+          "displayName": "Client Identity",
+          "email": "client@example.test",
+          "phone": "555-0100",
+          "title": null,
+          "shortBio": null,
+          "avatar": { "kind": "inline", "contentType": "image/png", "base64Content": "Y2xpZW50" }
+        }
+        """.utf8)
+        let account = try JSONDecoder.mobile.decode(MobileAccountProfile.self, from: accountData)
+        XCTAssertEqual(account.participantType, .client)
+        XCTAssertEqual(account.avatar?.imageData, Data("client".utf8))
+
+        let input = MobileJourneyProfileInput(
+            consentAffirmed: true,
+            isOptedIn: true,
+            isDiscoverable: true,
+            allowSuggestions: true,
+            allowConnectionRequests: true,
+            introduction: "Building a legacy.",
+            lifeStages: ["Business ownership"],
+            locations: ["Southwest"],
+            goals: ["Growing a business"],
+            interests: ["Leadership"],
+            circleCodes: ["Entrepreneurs Circle"],
+            connectionTypes: ["Business peer"],
+            communicationStyles: ["Detailed planning"],
+            accountabilityFrequencies: ["Weekly"])
+        let encoded = try JSONEncoder.mobile.encode(input)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(object["introduction"] as? String, "Building a legacy.")
+        XCTAssertEqual(object["goals"] as? [String], ["Growing a business"])
+        XCTAssertNil(object["email"])
+    }
+
     func testMobileHTTPClientMapsUnauthorizedAndForbiddenResponses() async throws {
         StubURLProtocol.responseStatus = 401
         let unauthorizedClient = MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession())
@@ -303,6 +342,8 @@ private struct TestTokenExchanger: OAuthTokenExchanging {
 
 private struct StubMessagingAPI: MessagingAPI {
     func conversations(accessToken: String) async throws -> [ConversationSummary] { [] }
+    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] { [] }
+    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] { throw MobileMessagingContractError.unavailable }
     func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
@@ -311,6 +352,14 @@ private struct StubMessagingAPI: MessagingAPI {
 
 private struct OfflineMessagingAPI: MessagingAPI {
     func conversations(accessToken: String) async throws -> [ConversationSummary] {
+        throw MobileAPIError.networkUnavailable
+    }
+
+    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] {
+        throw MobileAPIError.networkUnavailable
+    }
+
+    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
         throw MobileAPIError.networkUnavailable
     }
 
@@ -333,6 +382,14 @@ private struct OfflineMessagingAPI: MessagingAPI {
 
 private struct UnauthorizedMessagingAPI: MessagingAPI {
     func conversations(accessToken: String) async throws -> [ConversationSummary] {
+        throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
+    }
+
+    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] {
+        throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
+    }
+
+    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
         throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
     }
 

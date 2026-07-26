@@ -519,6 +519,7 @@ private struct LegendAgentLeadsView: View {
 private struct LegendCirclesView: View {
     let currentSession: MobileSession
     @StateObject private var store: MobileJourneyCirclesStore
+    @State private var isEditingProfile = false
 
     init(currentSession: MobileSession, coordinator: MobileSessionCoordinator) {
         self.currentSession = currentSession
@@ -547,7 +548,28 @@ private struct LegendCirclesView: View {
         .background(LegendPalette.canvas.ignoresSafeArea())
         .navigationTitle("Journey Circles")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if case .loaded(let dashboard) = store.state {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isEditingProfile = true
+                    } label: {
+                        Label("Manage Journey Circles profile", systemImage: "slider.horizontal.3")
+                    }
+                    .accessibilityLabel(
+                        dashboard.profile == nil
+                            ? "Set up Journey Circles profile"
+                            : "Manage Journey Circles profile"
+                    )
+                }
+            }
+        }
         .task { if case .idle = store.state { store.load() } }
+        .sheet(isPresented: $isEditingProfile) {
+            if case .loaded(let dashboard) = store.state {
+                LegendJourneyProfileEditor(dashboard: dashboard, store: store)
+            }
+        }
         .alert(
             store.actionFailure?.title ?? "Journey Circles unavailable",
             isPresented: Binding(
@@ -672,6 +694,156 @@ private struct LegendCirclesView: View {
     }
 }
 
+private struct LegendJourneyProfileEditor: View {
+    let dashboard: MobileJourneyDashboardResponse
+    @ObservedObject var store: MobileJourneyCirclesStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var consentAffirmed: Bool
+    @State private var isOptedIn: Bool
+    @State private var isDiscoverable: Bool
+    @State private var allowSuggestions: Bool
+    @State private var allowConnectionRequests: Bool
+    @State private var introduction: String
+    @State private var lifeStages: Set<String>
+    @State private var locations: Set<String>
+    @State private var goals: Set<String>
+    @State private var interests: Set<String>
+    @State private var circleCodes: Set<String>
+    @State private var connectionTypes: Set<String>
+    @State private var communicationStyles: Set<String>
+    @State private var accountabilityFrequencies: Set<String>
+
+    init(dashboard: MobileJourneyDashboardResponse, store: MobileJourneyCirclesStore) {
+        self.dashboard = dashboard
+        _store = ObservedObject(wrappedValue: store)
+        let preferences = dashboard.preferences
+        let profile = dashboard.profile
+        _consentAffirmed = State(initialValue: preferences?.consentAffirmed ?? false)
+        _isOptedIn = State(initialValue: preferences?.isOptedIn ?? false)
+        _isDiscoverable = State(initialValue: preferences?.isDiscoverable ?? true)
+        _allowSuggestions = State(initialValue: preferences?.allowSuggestions ?? true)
+        _allowConnectionRequests = State(initialValue: preferences?.allowConnectionRequests ?? true)
+        _introduction = State(initialValue: profile?.introduction ?? "")
+        _lifeStages = State(initialValue: Set(profile?.lifeStages ?? []))
+        _locations = State(initialValue: Set(profile?.locations ?? []))
+        _goals = State(initialValue: Set(profile?.goals ?? []))
+        _interests = State(initialValue: Set(profile?.interests ?? []))
+        _circleCodes = State(initialValue: Set(profile?.circleCodes ?? []))
+        _connectionTypes = State(initialValue: Set(profile?.connectionTypes ?? []))
+        _communicationStyles = State(initialValue: Set(profile?.communicationStyles ?? []))
+        _accountabilityFrequencies = State(initialValue: Set(profile?.accountabilityFrequencies ?? []))
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: LegendSpacing.md) {
+                    LegendCard(style: .navy) {
+                        VStack(alignment: .leading, spacing: LegendSpacing.xs) {
+                            Text("YOUR SELECTIONS").font(.caption.weight(.bold)).foregroundStyle(LegendPalette.gold)
+                            Text("Journey Circles profile").font(LegendTypography.section).foregroundStyle(.white)
+                            Text("Choose the connections and recommendations you want to receive.")
+                                .font(LegendTypography.metadata)
+                                .foregroundStyle(.white.opacity(0.78))
+                        }
+                    }
+
+                    LegendCard {
+                        VStack(alignment: .leading, spacing: LegendSpacing.sm) {
+                            LegendSectionHeader("Participation")
+                            Toggle("Confirm community participation", isOn: $consentAffirmed)
+                            Toggle("Join Journey Circles", isOn: $isOptedIn)
+                            Toggle("Allow recommendations", isOn: $allowSuggestions)
+                            Toggle("Allow connection requests", isOn: $allowConnectionRequests)
+                            Toggle("Appear to matching members", isOn: $isDiscoverable)
+                        }
+                        .tint(LegendPalette.gold)
+                    }
+
+                    LegendCard {
+                        VStack(alignment: .leading, spacing: LegendSpacing.xs) {
+                            LegendSectionHeader("Introduction")
+                            TextField("Share what you are building", text: $introduction, axis: .vertical)
+                                .lineLimit(3...6)
+                                .textInputAutocapitalization(.sentences)
+                                .padding(LegendSpacing.sm)
+                                .background(LegendPalette.insetSurface, in: RoundedRectangle(cornerRadius: LegendRadius.control, style: .continuous))
+                        }
+                    }
+
+                    JourneyMultiSelectSection(title: "Goals", options: dashboard.taxonomy.goals, selections: $goals)
+                    JourneyMultiSelectSection(title: "Circles", options: dashboard.taxonomy.circles, selections: $circleCodes)
+                    JourneyMultiSelectSection(title: "Life stage", options: dashboard.taxonomy.lifeStages, selections: $lifeStages)
+                    JourneyMultiSelectSection(title: "Location", options: dashboard.taxonomy.locations, selections: $locations)
+                    JourneyMultiSelectSection(title: "Interests", options: dashboard.taxonomy.interests, selections: $interests)
+                    JourneyMultiSelectSection(title: "Connection types", options: dashboard.taxonomy.connectionTypes, selections: $connectionTypes)
+                    JourneyMultiSelectSection(title: "Communication style", options: dashboard.taxonomy.communicationStyles, selections: $communicationStyles)
+                    JourneyMultiSelectSection(title: "Accountability", options: dashboard.taxonomy.accountabilityFrequencies, selections: $accountabilityFrequencies)
+                }
+                .padding(.horizontal, LegendSpacing.md)
+                .padding(.vertical, LegendSpacing.sm)
+            }
+            .background(LegendPalette.canvas.ignoresSafeArea())
+            .navigationTitle("Journey Circles")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(store.isPerformingAction ? "Saving…" : "Save") {
+                        store.saveProfile(MobileJourneyProfileInput(
+                            consentAffirmed: consentAffirmed,
+                            isOptedIn: isOptedIn,
+                            isDiscoverable: isDiscoverable,
+                            allowSuggestions: allowSuggestions,
+                            allowConnectionRequests: allowConnectionRequests,
+                            introduction: introduction.trimmingCharacters(in: .whitespacesAndNewlines),
+                            lifeStages: lifeStages.sorted(),
+                            locations: locations.sorted(),
+                            goals: goals.sorted(),
+                            interests: interests.sorted(),
+                            circleCodes: circleCodes.sorted(),
+                            connectionTypes: connectionTypes.sorted(),
+                            communicationStyles: communicationStyles.sorted(),
+                            accountabilityFrequencies: accountabilityFrequencies.sorted()))
+                    }
+                    .disabled(store.isPerformingAction || !consentAffirmed)
+                }
+            }
+        }
+    }
+}
+
+private struct JourneyMultiSelectSection: View {
+    let title: String
+    let options: [String]
+    @Binding var selections: Set<String>
+
+    var body: some View {
+        LegendCard {
+            VStack(alignment: .leading, spacing: LegendSpacing.sm) {
+                LegendSectionHeader(title, detail: selections.isEmpty ? "Select all that apply" : "\(selections.count) selected")
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: LegendSpacing.xs)], alignment: .leading, spacing: LegendSpacing.xs) {
+                    ForEach(options, id: \.self) { option in
+                        Button {
+                            if selections.contains(option) {
+                                selections.remove(option)
+                            } else {
+                                selections.insert(option)
+                            }
+                        } label: {
+                            Label(option, systemImage: selections.contains(option) ? "checkmark.circle.fill" : "circle")
+                        }
+                        .buttonStyle(LegendInlineButtonStyle(kind: selections.contains(option) ? .gold : .secondary))
+                        .accessibilityValue(selections.contains(option) ? "Selected" : "Not selected")
+                    }
+                }
+            }
+        }
+    }
+}
+
 private struct LegendFinanceView: View {
     let currentSession: MobileSession
     @StateObject private var store: MobileHomeStore
@@ -767,25 +939,75 @@ private struct LegendFinanceView: View {
 private struct LegendAccountView: View {
     let currentSession: MobileSession
     @ObservedObject private var coordinator: MobileSessionCoordinator
+    @StateObject private var account: MobileAccountStore
+    @State private var isEditing = false
 
     init(currentSession: MobileSession, coordinator: MobileSessionCoordinator) {
         self.currentSession = currentSession
         _coordinator = ObservedObject(wrappedValue: coordinator)
+        _account = StateObject(wrappedValue: coordinator.makeAccountStore())
     }
 
     var body: some View {
+        Group {
+            switch account.state {
+            case .idle, .loading:
+                LegendLoadingView("Loading your account…")
+            case .loaded(let profile):
+                accountContent(profile)
+            case .unavailable(let failure):
+                LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: account.load)
+                    .padding(LegendSpacing.md)
+            }
+        }
+        .background(LegendPalette.canvas.ignoresSafeArea())
+        .navigationTitle("Account")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { if case .idle = account.state { account.load() } }
+        .sheet(isPresented: $isEditing) {
+            if case .loaded(let profile) = account.state {
+                LegendAccountEditor(profile: profile, store: account)
+            }
+        }
+        .alert(
+            account.actionFailure?.title ?? "Account update unavailable",
+            isPresented: Binding(
+                get: { account.actionFailure != nil },
+                set: { if !$0 { account.dismissActionFailure() } }),
+            actions: { Button("OK", role: .cancel) { account.dismissActionFailure() } },
+            message: { Text(account.actionFailure?.message ?? "The account update could not be completed.") })
+    }
+
+    private func accountContent(_ profile: MobileAccountProfile) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: LegendSpacing.lg) {
                 LegendCard(style: .navy) {
                     HStack(spacing: LegendSpacing.md) {
-                        LegendProfileAvatar(avatar: currentSession.actor.avatar, displayName: currentSession.actor.displayName, size: 64)
+                        LegendProfileAvatar(avatar: profile.avatar, displayName: profile.displayName, size: 64)
                         VStack(alignment: .leading, spacing: LegendSpacing.xxs) {
-                            Text(currentSession.actor.displayName).font(LegendTypography.hero).foregroundStyle(.white).lineLimit(2)
-                            Text(currentSession.actor.identity.participantType.rawValue).font(.subheadline.weight(.semibold)).foregroundStyle(LegendPalette.gold)
+                            Text(profile.displayName).font(LegendTypography.hero).foregroundStyle(.white).lineLimit(2)
+                            Text(profile.participantType.rawValue).font(.subheadline.weight(.semibold)).foregroundStyle(LegendPalette.gold)
                             Text("Secure mobile session").font(LegendTypography.metadata).foregroundStyle(.white.opacity(0.78))
                         }
                     }
                 }
+
+                LegendCard {
+                    VStack(alignment: .leading, spacing: LegendSpacing.sm) {
+                        LegendSectionHeader("Profile")
+                        accountDetail(title: "Email", value: profile.email ?? "Not available")
+                        accountDetail(title: "Phone", value: profile.phone ?? "Not set")
+                        if profile.participantType == .agent {
+                            accountDetail(title: "Title", value: profile.title ?? "Not set")
+                            if let shortBio = profile.shortBio, !shortBio.isEmpty {
+                                accountDetail(title: "Introduction", value: shortBio)
+                            }
+                        }
+                    }
+                }
+
+                Button("Edit account") { isEditing = true }
+                    .buttonStyle(LegendButtonStyle(kind: .primary))
 
                 LegendCard {
                     VStack(alignment: .leading, spacing: LegendSpacing.sm) {
@@ -803,9 +1025,79 @@ private struct LegendAccountView: View {
             .padding(.horizontal, LegendSpacing.md)
             .padding(.vertical, LegendSpacing.sm)
         }
-        .background(LegendPalette.canvas.ignoresSafeArea())
-        .navigationTitle("Account")
-        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func accountDetail(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: LegendSpacing.xxs) {
+            Text(title.uppercased()).font(.caption.weight(.bold)).foregroundStyle(LegendPalette.secondaryLabel)
+            Text(value).font(LegendTypography.body).foregroundStyle(LegendPalette.label).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct LegendAccountEditor: View {
+    let profile: MobileAccountProfile
+    @ObservedObject var store: MobileAccountStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var displayName: String
+    @State private var phone: String
+    @State private var title: String
+    @State private var shortBio: String
+
+    init(profile: MobileAccountProfile, store: MobileAccountStore) {
+        self.profile = profile
+        _store = ObservedObject(wrappedValue: store)
+        _displayName = State(initialValue: profile.displayName)
+        _phone = State(initialValue: profile.phone ?? "")
+        _title = State(initialValue: profile.title ?? "")
+        _shortBio = State(initialValue: profile.shortBio ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Your profile") {
+                    TextField("Name", text: $displayName)
+                        .textContentType(.name)
+                    TextField("Phone", text: $phone)
+                        .textContentType(.telephoneNumber)
+                        .keyboardType(.phonePad)
+                    if profile.participantType == .agent {
+                        TextField("Title", text: $title)
+                            .textContentType(.jobTitle)
+                        TextField("Introduction", text: $shortBio, axis: .vertical)
+                            .lineLimit(3...6)
+                    }
+                }
+
+                Section {
+                    Text(profile.email ?? "Not available")
+                        .foregroundStyle(LegendPalette.secondaryLabel)
+                } header: {
+                    Text("Directory email")
+                } footer: {
+                    Text("Email remains managed by the secure directory.")
+                }
+            }
+            .navigationTitle("Edit account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(store.isSaving ? "Saving…" : "Save") {
+                        store.save(MobileAccountUpdate(
+                            displayName: displayName,
+                            phone: phone,
+                            title: profile.participantType == .agent ? title : nil,
+                            shortBio: profile.participantType == .agent ? shortBio : nil))
+                        dismiss()
+                    }
+                    .disabled(store.isSaving || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
     }
 }
 

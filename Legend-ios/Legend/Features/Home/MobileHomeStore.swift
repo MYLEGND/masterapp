@@ -14,6 +14,7 @@ protocol MobileHomeAPI: Sendable {
 
 protocol MobileJourneyCirclesAPI: Sendable {
     func dashboard(accessToken: String) async throws -> MobileJourneyDashboardResponse
+    func saveProfile(_ profile: MobileJourneyProfileInput, accessToken: String) async throws
     func requestConnection(_ request: MobileJourneyConnectionRequestBody, accessToken: String) async throws
     func respondToConnection(id: UUID, accept: Bool, accessToken: String) async throws
     func disconnect(id: UUID, accessToken: String) async throws
@@ -36,6 +37,10 @@ struct MobileUnavailableHomeAPI: MobileHomeAPI {
 
 struct MobileUnavailableJourneyCirclesAPI: MobileJourneyCirclesAPI {
     func dashboard(accessToken: String) async throws -> MobileJourneyDashboardResponse {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func saveProfile(_ profile: MobileJourneyProfileInput, accessToken: String) async throws {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
 
@@ -97,6 +102,14 @@ struct URLSessionMobileJourneyCirclesAPI: MobileJourneyCirclesAPI {
             accessToken: accessToken,
             headers: ["X-Legend-Participant-Type": participantType.rawValue],
             response: MobileJourneyDashboardResponse.self)
+    }
+
+    func saveProfile(_ profile: MobileJourneyProfileInput, accessToken: String) async throws {
+        try await client.put(
+            "/api/v1/mobile/journey-circles/profile",
+            body: profile,
+            accessToken: accessToken,
+            headers: participantHeader)
     }
 
     func requestConnection(_ request: MobileJourneyConnectionRequestBody, accessToken: String) async throws {
@@ -237,6 +250,14 @@ final class MobileJourneyCirclesStore: ObservableObject {
                     targetClientProfileID: profileID,
                     connectionReason: nil,
                     introduction: nil),
+                accessToken: try await self.accessTokenProvider())
+        }
+    }
+
+    func saveProfile(_ profile: MobileJourneyProfileInput) {
+        performAction {
+            try await self.api.saveProfile(
+                profile,
                 accessToken: try await self.accessTokenProvider())
         }
     }

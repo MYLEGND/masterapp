@@ -270,6 +270,23 @@ struct MobileJourneyConnectionRequestBody: Encodable, Sendable {
     }
 }
 
+struct MobileJourneyProfileInput: Encodable, Sendable {
+    let consentAffirmed: Bool
+    let isOptedIn: Bool
+    let isDiscoverable: Bool
+    let allowSuggestions: Bool
+    let allowConnectionRequests: Bool
+    let introduction: String?
+    let lifeStages: [String]
+    let locations: [String]
+    let goals: [String]
+    let interests: [String]
+    let circleCodes: [String]
+    let connectionTypes: [String]
+    let communicationStyles: [String]
+    let accountabilityFrequencies: [String]
+}
+
 struct MobileJourneyConnectionResponseBody: Encodable, Sendable {
     let accept: Bool
 }
