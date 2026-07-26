@@ -147,25 +147,43 @@ private struct SignInView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: LegendSpacing.lg) {
-                    LegendHero(
-                        eyebrow: "Secure access",
-                        title: "Sign in securely.",
-                        detail: "Legend opens sign-in in the system browser and never collects or retains your password.",
-                        symbolName: "person.badge.key")
-                    Button("Continue securely") {
+                VStack(spacing: LegendSpacing.xl) {
+                    Spacer(minLength: LegendSpacing.xl)
+
+                    Image("LegendLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 220)
+                        .accessibilityLabel("Legend")
+
+                    VStack(spacing: LegendSpacing.sm) {
+                        Text("Welcome to Legend")
+                            .font(LegendTypography.hero)
+                            .foregroundStyle(LegendPalette.label)
+                            .multilineTextAlignment(.center)
+
+                        Text("Life, finances, protection, and community—connected in one place.")
+                            .font(LegendTypography.body)
+                            .foregroundStyle(LegendPalette.secondaryLabel)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Button("Continue") {
                         session.signIn()
                     }
                     .buttonStyle(LegendButtonStyle(kind: .primary))
+                    .accessibilityHint("Opens sign-in.")
+
+                    Spacer(minLength: LegendSpacing.xl)
                 }
                 .frame(maxWidth: 520)
                 .padding(.horizontal, LegendSpacing.md)
-                .padding(.vertical, LegendSpacing.xl)
-                .frame(maxWidth: .infinity)
+                .padding(.vertical, LegendSpacing.lg)
+                .frame(maxWidth: .infinity, minHeight: 640)
             }
             .background(LegendPalette.canvas.ignoresSafeArea())
-            .navigationTitle("Secure sign-in")
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 }

@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using AgentPortal.Mobile;
 using AgentPortal.Services.Tracking;
 using Domain.Entities;
+using Domain.JourneyCircles;
 using Domain.Messaging;
 using Infrastructure.Messaging;
 using Infrastructure.Mobile;
@@ -343,6 +344,113 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileJourneyCircles_RejectsAnAgentIdentityBeforeCallingTheClientService()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "agent-oid",
+            AgentUpn = "agent@example.test",
+            FullName = "Agent",
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var journeyCircles = new Mock<IJourneyCirclesService>(MockBehavior.Strict);
+        var controller = CreateJourneyController(db, journeyCircles.Object, Principal("agent-oid"));
+
+        var result = await controller.Dashboard(CancellationToken.None);
+
+        var response = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, response.StatusCode);
+        journeyCircles.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task MobileJourneyCircles_ProjectsAClientAvatarOnlyFromTheTypedClientProfile()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profileId = Guid.NewGuid();
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = profileId,
+            ClientUserId = "client-oid",
+            FirstName = "Client",
+            LastName = "Identity",
+            Email = "client@example.test"
+        });
+        await db.SaveChangesAsync();
+
+        var profile = new JourneyCirclePublicProfile(
+            profileId,
+            "Client Identity",
+            null,
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            "not-an-avatar-authority");
+        var dashboard = new JourneyCircleDashboard(
+            profile,
+            null,
+            Array.Empty<JourneyCircleRecommendation>(),
+            Array.Empty<JourneyCircleConnectionSummary>(),
+            Array.Empty<JourneyCircleConnectionSummary>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>());
+        var journeyCircles = new Mock<IJourneyCirclesService>(MockBehavior.Strict);
+        journeyCircles
+            .Setup(service => service.GetDashboardAsync("client-oid", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(dashboard);
+        var identities = new Dictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity>
+        {
+            [("client-oid", MessagingParticipantTypes.Client)] = new MessagingParticipantIdentity(
+                "client-oid",
+                MessagingParticipantTypes.Client,
+                profileId,
+                "Client Identity",
+                "client@example.test",
+                "CI")
+        };
+        var images = new Mock<IMessagingProfileImageResolver>(MockBehavior.Strict);
+        images
+            .Setup(service => service.ResolveIdentitiesAsync(
+                It.Is<IEnumerable<MessagingParticipantReference>>(references =>
+                    references.Single().UserId == "client-oid" &&
+                    references.Single().ParticipantType == MessagingParticipantTypes.Client),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(identities);
+        images
+            .Setup(service => service.ResolveAsync(
+                It.Is<MessagingParticipantIdentity>(identity =>
+                    identity.UserId == "client-oid" &&
+                    identity.ParticipantType == MessagingParticipantTypes.Client &&
+                    identity.ProfileId == profileId),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MessagingProfileImage([1, 2, 3], "image/png"));
+        var controller = CreateJourneyController(db, journeyCircles.Object, Principal("client-oid"), images.Object);
+
+        var result = await controller.Dashboard(CancellationToken.None);
+
+        var response = Assert.IsType<OkObjectResult>(result).Value as MobileJourneyDashboard;
+        Assert.NotNull(response?.Profile?.Avatar);
+        Assert.Equal("image/png", response!.Profile!.Avatar!.ContentType);
+        Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2, 3 }), response.Profile.Avatar.Base64Content);
+        journeyCircles.VerifyAll();
+        images.VerifyAll();
+    }
+
+    [Fact]
     public void MobileApiRoute_IsNarrowAndDoesNotMatchNormalPortalRoutes()
     {
         var mobile = new DefaultHttpContext();
@@ -390,6 +498,26 @@ public sealed class MobileIntegrationTests
     {
         var profiles = providedProfiles ?? CreateEmptyProfileResolver();
         var controller = new MobileMessagingController(CreateResolver(db), messaging, profiles)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = principal }
+            }
+        };
+        return controller;
+    }
+
+    private static MobileJourneyCirclesController CreateJourneyController(
+        Infrastructure.Data.MasterAppDbContext db,
+        IJourneyCirclesService journeyCircles,
+        ClaimsPrincipal principal,
+        IMessagingProfileImageResolver? providedProfiles = null)
+    {
+        var controller = new MobileJourneyCirclesController(
+            CreateResolver(db),
+            journeyCircles,
+            db,
+            providedProfiles ?? CreateEmptyProfileResolver())
         {
             ControllerContext = new ControllerContext
             {

@@ -290,7 +290,7 @@ private struct LegendHomeView: View {
                         .font(LegendTypography.metadata)
                         .foregroundStyle(LegendPalette.secondaryLabel)
                 }
-                if let intelligence, !intelligence.findings.isEmpty {
+                if let intelligence = financial.intelligence, !intelligence.findings.isEmpty {
                     Divider()
                     ForEach(intelligence.findings.prefix(3)) { finding in
                         VStack(alignment: .leading, spacing: LegendSpacing.xxs) {

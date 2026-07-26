@@ -10,14 +10,13 @@
 		18601E8AFBE103484F6576EC /* LegendUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A52D7BC1E8F6D8222D84B96 /* LegendUITests.swift */; };
 		1A4140542D44E015F343B8AC /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94AC5A93D36DCED40D9482DC /* RootView.swift */; };
 		213CEBBD913B95CF1D8B5DAA /* LegendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ECC81CB776EC7D6D0AF3F25 /* LegendTests.swift */; };
+		2477AEB96C0233C061948794 /* MobileHomeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 429B3A8DF2A854EC227E0EED /* MobileHomeStore.swift */; };
 		2692416782F3407695B9CDEA /* OAuthPKCE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EFE5E54C7A8CB19C6B48309 /* OAuthPKCE.swift */; };
 		2C6A5B6C2F91A13C1C1C4BCD /* LegendDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3449DC74CA91AA0CDAAC840 /* LegendDiagnosticsTests.swift */; };
-		429378679D73B29C5683379D /* JourneyMomentsRail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8459E4F32596C9529FDD608 /* JourneyMomentsRail.swift */; };
 		49E97E820E110E4302D64836 /* SecureTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8B6BA00648FA7CC1476B86B /* SecureTokenStore.swift */; };
 		4EB558694357C25511FC1A79 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8FF13A9483243B521F7DFC68 /* LaunchScreen.storyboard */; };
 		5482D1AE8D1570BC5C686090 /* LegendApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 474F0CA43E80A96D179DD53F /* LegendApp.swift */; };
 		5EF643842D57B1E5FCAF8499 /* LegendDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34F2412F40E7DCDF9AEC4644 /* LegendDesignSystem.swift */; };
-		6100CBE0CC8B7BC652CDC1D8 /* HomeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41B2621F816A74D6CFAD0A6C /* HomeModels.swift */; };
 		6AB8FDFB34A8057871BE8441 /* LogicalParticipantIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E81305123969A7AFFB8384 /* LogicalParticipantIdentityTests.swift */; };
 		6C796FDFDDEE2E9061948116 /* LegendBrandLogo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C77437142863C4D1039F225 /* LegendBrandLogo.swift */; };
 		844E717BB59A21BFDC60BB35 /* LegendComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DBFA05778BCF03C185381BE /* LegendComponents.swift */; };
@@ -25,6 +24,7 @@
 		890AF69681C5B2FC1D1BB100 /* MobileNativeContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB710453BF121B567C8AEBD /* MobileNativeContractTests.swift */; };
 		9143163FFD11DECB7F307A06 /* LogicalParticipantIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB26E12CD661DE7C441F7218 /* LogicalParticipantIdentity.swift */; };
 		956B671334A52CF106C5B414 /* LegendDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78E9CB9087E03621529FA288 /* LegendDiagnostics.swift */; };
+		A4FDCC5F72519E1626BC0D1F /* MobileHomeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9467A7141E660E53B92CCE3C /* MobileHomeModels.swift */; };
 		A6D192A9E5A5D1D51224F3F5 /* MobileSessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AC04B2C6B3C22460870E399 /* MobileSessionCoordinator.swift */; };
 		AB65D31B53580AC6C46A9AFB /* MobileConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55FB2460CFBD95299E4F7590 /* MobileConfiguration.swift */; };
 		B08DF9F51CABC3BC27A79143 /* MessagingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D35703BC894AC8E986DFF8 /* MessagingModels.swift */; };
@@ -34,8 +34,6 @@
 		D26F0D3763F4892CDB762AA3 /* MessagingHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AAA5690855BD6C5B4132AB3 /* MessagingHomeView.swift */; };
 		DCACEEF2475F1D024A4DA93F /* LegendLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9919D8992FC7EBC28F5DF1B1 /* LegendLaunchView.swift */; };
 		DF44B6B8A2DC0CABCA2850B7 /* MobileConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */; };
-		E51B013CF4B834D9A152DE96 /* JourneyFeedCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8462CE6D95D3391E504A8140 /* JourneyFeedCard.swift */; };
-		E935820C458BBBBEC156F704 /* HomeSampleData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C2243A6412FEE5F5649DC8D /* HomeSampleData.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,24 +61,22 @@
 		2DBFA05778BCF03C185381BE /* LegendComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendComponents.swift; sourceTree = "<group>"; };
 		2ECC81CB776EC7D6D0AF3F25 /* LegendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendTests.swift; sourceTree = "<group>"; };
 		34F2412F40E7DCDF9AEC4644 /* LegendDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDesignSystem.swift; sourceTree = "<group>"; };
-		41B2621F816A74D6CFAD0A6C /* HomeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeModels.swift; sourceTree = "<group>"; };
+		429B3A8DF2A854EC227E0EED /* MobileHomeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileHomeStore.swift; sourceTree = "<group>"; };
 		474F0CA43E80A96D179DD53F /* LegendApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApp.swift; sourceTree = "<group>"; };
 		4A52D7BC1E8F6D8222D84B96 /* LegendUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendUITests.swift; sourceTree = "<group>"; };
 		4AC04B2C6B3C22460870E399 /* MobileSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSessionCoordinator.swift; sourceTree = "<group>"; };
-		4C2243A6412FEE5F5649DC8D /* HomeSampleData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeSampleData.swift; sourceTree = "<group>"; };
 		4EB710453BF121B567C8AEBD /* MobileNativeContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileNativeContractTests.swift; sourceTree = "<group>"; };
 		4EFE5E54C7A8CB19C6B48309 /* OAuthPKCE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthPKCE.swift; sourceTree = "<group>"; };
 		5528EEB1AE65FCB262CDEB12 /* MessagingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingStore.swift; sourceTree = "<group>"; };
 		55FB2460CFBD95299E4F7590 /* MobileConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileConfiguration.swift; sourceTree = "<group>"; };
 		62C14045B2834CC0689DBE37 /* LegendUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LegendUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		78E9CB9087E03621529FA288 /* LegendDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiagnostics.swift; sourceTree = "<group>"; };
-		8462CE6D95D3391E504A8140 /* JourneyFeedCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyFeedCard.swift; sourceTree = "<group>"; };
 		8C77437142863C4D1039F225 /* LegendBrandLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendBrandLogo.swift; sourceTree = "<group>"; };
 		8FF13A9483243B521F7DFC68 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		94450DD87FBF09A656942126 /* MobileHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileHTTPClient.swift; sourceTree = "<group>"; };
+		9467A7141E660E53B92CCE3C /* MobileHomeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileHomeModels.swift; sourceTree = "<group>"; };
 		94AC5A93D36DCED40D9482DC /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		9919D8992FC7EBC28F5DF1B1 /* LegendLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendLaunchView.swift; sourceTree = "<group>"; };
-		A8459E4F32596C9529FDD608 /* JourneyMomentsRail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyMomentsRail.swift; sourceTree = "<group>"; };
 		AE1E940C18A479901232F224 /* Legend-Production.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Legend-Production.xcconfig"; sourceTree = "<group>"; };
 		B3449DC74CA91AA0CDAAC840 /* LegendDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiagnosticsTests.swift; sourceTree = "<group>"; };
 		CB26E12CD661DE7C441F7218 /* LogicalParticipantIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicalParticipantIdentity.swift; sourceTree = "<group>"; };
@@ -187,11 +183,9 @@
 		A755B3EB80D2CE3BCC2FAF9B /* Home */ = {
 			isa = PBXGroup;
 			children = (
-				41B2621F816A74D6CFAD0A6C /* HomeModels.swift */,
-				4C2243A6412FEE5F5649DC8D /* HomeSampleData.swift */,
-				8462CE6D95D3391E504A8140 /* JourneyFeedCard.swift */,
-				A8459E4F32596C9529FDD608 /* JourneyMomentsRail.swift */,
 				E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */,
+				9467A7141E660E53B92CCE3C /* MobileHomeModels.swift */,
+				429B3A8DF2A854EC227E0EED /* MobileHomeStore.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -386,10 +380,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6100CBE0CC8B7BC652CDC1D8 /* HomeModels.swift in Sources */,
-				E935820C458BBBBEC156F704 /* HomeSampleData.swift in Sources */,
-				E51B013CF4B834D9A152DE96 /* JourneyFeedCard.swift in Sources */,
-				429378679D73B29C5683379D /* JourneyMomentsRail.swift in Sources */,
 				5482D1AE8D1570BC5C686090 /* LegendApp.swift in Sources */,
 				CC7F46FF75ECDC0EAD02A423 /* LegendApplicationShell.swift in Sources */,
 				6C796FDFDDEE2E9061948116 /* LegendBrandLogo.swift in Sources */,
@@ -403,6 +393,8 @@
 				D16AC0B59523AF8ABC1611C3 /* MessagingStore.swift in Sources */,
 				AB65D31B53580AC6C46A9AFB /* MobileConfiguration.swift in Sources */,
 				CC7037E0C4432DCBB101F4EA /* MobileHTTPClient.swift in Sources */,
+				A4FDCC5F72519E1626BC0D1F /* MobileHomeModels.swift in Sources */,
+				2477AEB96C0233C061948794 /* MobileHomeStore.swift in Sources */,
 				A6D192A9E5A5D1D51224F3F5 /* MobileSessionCoordinator.swift in Sources */,
 				2692416782F3407695B9CDEA /* OAuthPKCE.swift in Sources */,
 				1A4140542D44E015F343B8AC /* RootView.swift in Sources */,
