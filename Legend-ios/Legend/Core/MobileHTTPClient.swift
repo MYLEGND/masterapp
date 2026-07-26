@@ -78,7 +78,8 @@ struct MobileHTTPClient: Sendable {
     }
 
     private func perform<Response: Decodable>(_ request: URLRequest, response: Response.Type) async throws -> Response {
-        MobileDebugDiagnostics.record("Mobile API request started. Authorization header present: \(request.value(forHTTPHeaderField: \"Authorization\") != nil).")
+        let hasAuthorizationHeader = request.value(forHTTPHeaderField: "Authorization") != nil
+        MobileDebugDiagnostics.record("Mobile API request started. Authorization header present: \(hasAuthorizationHeader).")
         let (data, urlResponse) = try await requestData(for: request)
         guard let http = urlResponse as? HTTPURLResponse else {
             throw MobileAPIError.invalidServerResponse
