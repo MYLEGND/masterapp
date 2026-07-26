@@ -37,13 +37,13 @@ final class MobileSessionCoordinator: ObservableObject {
         tokenStore: (any SecureTokenStoring)? = nil,
         authorizer: (any OAuthAuthorizing)? = nil,
         tokenExchanger: (any OAuthTokenExchanging)? = nil,
-        diagnostics: LegendDiagnostics = LegendDiagnostics()
+        diagnostics: LegendDiagnostics? = nil
     ) {
         self.configuration = configuration
         self.tokenStore = tokenStore ?? KeychainTokenStore(service: configuration.bundleIdentifier ?? "legend.mobile.session")
         self.authorizer = authorizer ?? SystemBrowserAuthorizer()
         self.tokenExchanger = tokenExchanger ?? URLSessionOAuthTokenExchanger()
-        self.diagnostics = diagnostics
+        self.diagnostics = diagnostics ?? LegendDiagnostics()
     }
 
     func restore() {

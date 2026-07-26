@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "1600"
-   version = "1.3">
+   LastUpgradeVersion = "1430"
+   version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
-      buildImplicitDependencies = "YES">
+      buildImplicitDependencies = "YES"
+      runPostActionsOnFailure = "NO">
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -14,7 +15,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "A50000000000000000000001"
+               BlueprintIdentifier = "A3724AD4D043CDC38EFCD940"
                BuildableName = "Legend.app"
                BlueprintName = "Legend"
                ReferencedContainer = "container:Legend.xcodeproj">
@@ -26,29 +27,44 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES">
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      codeCoverageEnabled = "YES"
+      onlyGenerateCoverageForSpecifiedTargets = "NO">
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "A3724AD4D043CDC38EFCD940"
+            BuildableName = "Legend.app"
+            BlueprintName = "Legend"
+            ReferencedContainer = "container:Legend.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
       <Testables>
          <TestableReference
-            skipped = "NO">
+            skipped = "NO"
+            parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "A50000000000000000000002"
+               BlueprintIdentifier = "EA4A0637A0F2AB3926966269"
                BuildableName = "LegendTests.xctest"
                BlueprintName = "LegendTests"
                ReferencedContainer = "container:Legend.xcodeproj">
             </BuildableReference>
          </TestableReference>
          <TestableReference
-            skipped = "NO">
+            skipped = "NO"
+            parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "A50000000000000000000003"
+               BlueprintIdentifier = "1E19E163CFAA8580A24E53FA"
                BuildableName = "LegendUITests.xctest"
                BlueprintName = "LegendUITests"
                ReferencedContainer = "container:Legend.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -64,12 +80,14 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A50000000000000000000001"
+            BlueprintIdentifier = "A3724AD4D043CDC38EFCD940"
             BuildableName = "Legend.app"
             BlueprintName = "Legend"
             ReferencedContainer = "container:Legend.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -81,12 +99,14 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A50000000000000000000001"
+            BlueprintIdentifier = "A3724AD4D043CDC38EFCD940"
             BuildableName = "Legend.app"
             BlueprintName = "Legend"
             ReferencedContainer = "container:Legend.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">
