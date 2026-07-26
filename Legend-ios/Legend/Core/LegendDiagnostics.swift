@@ -1,5 +1,8 @@
 import Combine
 import Foundation
+#if DEBUG
+import os
+#endif
 
 enum DiagnosticCategory: String, Sendable {
     case configuration
@@ -38,9 +41,21 @@ final class LegendDiagnostics: ObservableObject {
     private let maximumEvents = 50
 
     func record(category: DiagnosticCategory, summary: String, correlationID: String? = nil) {
-        events.insert(DiagnosticEvent(category: category, summary: summary, correlationID: correlationID), at: 0)
+        let event = DiagnosticEvent(category: category, summary: summary, correlationID: correlationID)
+        events.insert(event, at: 0)
         if events.count > maximumEvents {
             events.removeLast(events.count - maximumEvents)
         }
+        MobileDebugDiagnostics.record(event.summary, correlationID: event.correlationID)
+    }
+}
+
+enum MobileDebugDiagnostics {
+    static func record(_ summary: String, correlationID: String? = nil) {
+        #if DEBUG
+        let suffix = correlationID.map { " correlation=\($0)" } ?? ""
+        Logger(subsystem: "com.mylegnd.legend", category: "mobile-auth")
+            .debug("\(DiagnosticRedactor.redact(summary + suffix), privacy: .public)")
+        #endif
     }
 }

@@ -55,7 +55,7 @@ final class MobileSessionCoordinator: ObservableObject {
 
     func restore() {
         guard configuration.validation.isReady else {
-            state = .contractUnavailable(configuration.validation)
+            transition(to: .contractUnavailable(configuration.validation), reason: "Configuration unavailable during restore")
             diagnostics.record(category: .configuration, summary: "Native mobile contract configuration is incomplete.")
             return
         }
@@ -63,54 +63,62 @@ final class MobileSessionCoordinator: ObservableObject {
         Task {
             do {
                 guard let storedTokens = try tokenStore.read() else {
-                    state = .signedOut
+                    transition(to: .signedOut, reason: "No stored mobile credential")
                     return
                 }
+                diagnostics.record(category: .authentication, summary: "Stored mobile credential found; session bootstrap started.")
                 let tokens = try await usableTokens(from: storedTokens)
                 try await establishSession(using: tokens)
             } catch {
-                try? tokenStore.clear()
-                activeTokens = nil
-                state = .signedOut
-                diagnostics.record(category: .authentication, summary: "Stored native session could not be restored.")
+                if (error as? MobileAPIError)?.provesInvalidBearerCredential == true {
+                    try? tokenStore.clear()
+                    activeTokens = nil
+                    transition(to: .signedOut, reason: "Stored bearer credential rejected by mobile API")
+                    diagnostics.record(category: .authentication, summary: "Stored mobile bearer credential was rejected by the mobile API.", correlationID: (error as? MobileAPIError)?.correlationID)
+                } else {
+                    transition(to: .failed(failure(for: error)), reason: "Stored session bootstrap did not complete")
+                    diagnostics.record(category: .authentication, summary: "Stored native session could not be restored.", correlationID: (error as? MobileAPIError)?.correlationID)
+                }
             }
         }
     }
 
     func signIn() {
         guard configuration.validation.isReady else {
-            state = .contractUnavailable(configuration.validation)
+            transition(to: .contractUnavailable(configuration.validation), reason: "Configuration unavailable during sign-in")
             return
         }
 
         Task {
-            state = .authenticating
+            transition(to: .authenticating, reason: "Authorization session started")
+            diagnostics.record(category: .authentication, summary: "Native authorization session started.")
             do {
                 let pkce = try PKCEChallenge.create()
                 let stateValue = UUID().uuidString
                 let request = try authorizationRequest(state: stateValue, pkce: pkce)
                 let callbackURL = try await authorizer.authorize(request)
+                diagnostics.record(category: .authentication, summary: "Native authorization callback received.")
                 let authorizationCode = try validate(callbackURL: callbackURL, expectedState: stateValue)
+                diagnostics.record(category: .authentication, summary: "Native authorization callback state matched.")
+                diagnostics.record(category: .authentication, summary: "OAuth token exchange started.")
                 let tokens = try await tokenExchanger.exchange(
                     code: authorizationCode,
                     pkceVerifier: pkce.verifier,
                     configuration: configuration
                 )
+                diagnostics.record(category: .authentication, summary: "OAuth token response decoded successfully.")
                 try tokenStore.save(tokens)
                 activeTokens = tokens
+                diagnostics.record(category: .authentication, summary: "OAuth access token stored successfully.")
                 try await establishSession(using: tokens)
             } catch {
                 if let authorizationError = error as? ASWebAuthenticationSessionError,
                    authorizationError.code == .canceledLogin {
-                    state = .signedOut
+                    transition(to: .signedOut, reason: "Authorization session cancelled")
                     return
                 }
-                state = .failed(UserFacingFailure(
-                    title: "Sign-in unavailable",
-                    message: error.localizedDescription,
-                    correlationID: (error as? MobileAPIError)?.correlationID
-                ))
-                diagnostics.record(category: .authentication, summary: "Native sign-in did not complete.")
+                transition(to: .failed(failure(for: error)), reason: "Native sign-in did not complete")
+                diagnostics.record(category: .authentication, summary: "Native sign-in did not complete. Failure category: \(failureCategory(for: error)).", correlationID: (error as? MobileAPIError)?.correlationID)
             }
         }
     }
@@ -118,39 +126,35 @@ final class MobileSessionCoordinator: ObservableObject {
     func signOut() {
         try? tokenStore.clear()
         activeTokens = nil
-        state = configuration.validation.isReady ? .signedOut : .contractUnavailable(configuration.validation)
+        transition(to: configuration.validation.isReady ? .signedOut : .contractUnavailable(configuration.validation), reason: "User signed out")
     }
 
     func selectRole(_ participantType: ParticipantType) {
         guard configuration.validation.isReady,
               let apiBaseURL = configuration.apiBaseURL else {
-            state = .contractUnavailable(configuration.validation)
+            transition(to: .contractUnavailable(configuration.validation), reason: "Configuration unavailable during role selection")
             return
         }
 
         Task {
-            state = .authenticating
+            transition(to: .authenticating, reason: "Mobile role selection started")
             do {
                 guard let storedTokens = try tokenStore.read() else {
                     try? tokenStore.clear()
                     activeTokens = nil
-                    state = .signedOut
+                    transition(to: .signedOut, reason: "No stored credential for role selection")
                     return
                 }
                 let tokens = try await usableTokens(from: storedTokens)
                 let response = try await MobileSessionAPI(client: MobileHTTPClient(baseURL: apiBaseURL))
                     .selectRole(participantType, accessToken: tokens.accessToken)
-                state = .authenticated(MobileSession(
+                transition(to: .authenticated(MobileSession(
                     actor: response.actor,
                     capabilities: ["messaging"]
-                ))
+                )), reason: "Mobile role selection completed")
             } catch {
-                state = .failed(UserFacingFailure(
-                    title: "Role selection unavailable",
-                    message: error.localizedDescription,
-                    correlationID: (error as? MobileAPIError)?.correlationID
-                ))
-                diagnostics.record(category: .authentication, summary: "Native mobile role selection did not complete.")
+                transition(to: .failed(failure(for: error, defaultTitle: "Role selection unavailable")), reason: "Mobile role selection did not complete")
+                diagnostics.record(category: .authentication, summary: "Native mobile role selection did not complete. Failure category: \(failureCategory(for: error)).", correlationID: (error as? MobileAPIError)?.correlationID)
             }
         }
     }
@@ -219,8 +223,10 @@ final class MobileSessionCoordinator: ObservableObject {
 
     private func establishSession(using tokens: OAuthTokenSet) async throws {
         guard let apiBaseURL = configuration.apiBaseURL else { throw MobileAPIError.invalidBaseURL }
+        diagnostics.record(category: .authentication, summary: "Mobile session request started. Authorization header present: true.")
         let response = try await MobileSessionAPI(client: MobileHTTPClient(baseURL: apiBaseURL))
             .bootstrap(accessToken: tokens.accessToken)
+        diagnostics.record(category: .authentication, summary: "Mobile session response decoded successfully.", correlationID: response.correlationID)
         guard response.authenticated else {
             throw MobileAPIError.unauthorized(correlationID: response.correlationID)
         }
@@ -228,18 +234,19 @@ final class MobileSessionCoordinator: ObservableObject {
             guard !response.permittedParticipantTypes.isEmpty else {
                 throw MobileAPIError.forbidden(correlationID: response.correlationID)
             }
-            state = .roleSelection(MobileRoleSelection(
+            transition(to: .roleSelection(MobileRoleSelection(
                 permittedParticipantTypes: response.permittedParticipantTypes,
                 correlationID: response.correlationID))
+                , reason: "Mobile role selection required")
             return
         }
         guard let actor = response.actor else {
             throw MobileAPIError.forbidden(correlationID: response.correlationID)
         }
-        state = .authenticated(MobileSession(
+        transition(to: .authenticated(MobileSession(
             actor: actor,
             capabilities: response.capabilities.messaging ? ["messaging"] : []
-        ))
+        )), reason: "Authenticated mobile session decoded")
     }
 
     private func accessTokenForRequest() async throws -> String {
@@ -295,6 +302,70 @@ final class MobileSessionCoordinator: ObservableObject {
             from: callbackURL,
             redirectScheme: configuration.redirectScheme,
             expectedState: expectedState)
+    }
+
+    private func transition(to newState: MobileSessionState, reason: String) {
+        #if DEBUG
+        diagnostics.record(
+            category: .authentication,
+            summary: "Coordinator state transition \(state.diagnosticName) -> \(newState.diagnosticName). Reason: \(reason).")
+        #endif
+        state = newState
+    }
+
+    private func failure(for error: Error, defaultTitle: String = "Sign-in unavailable") -> UserFacingFailure {
+        guard let apiError = error as? MobileAPIError else {
+            return UserFacingFailure(title: defaultTitle, message: error.localizedDescription, correlationID: nil)
+        }
+
+        switch apiError {
+        case .apiUnauthorized:
+            return UserFacingFailure(
+                title: "Secure sign-in required",
+                message: "The mobile API rejected the current bearer credential. Please sign in again.",
+                correlationID: apiError.correlationID)
+        case .apiForbidden:
+            return UserFacingFailure(
+                title: "Mobile access unavailable",
+                message: "Your Entra sign-in succeeded, but the server could not resolve an authorized mobile role.",
+                correlationID: apiError.correlationID)
+        case .networkUnavailable:
+            return UserFacingFailure(
+                title: "Connection unavailable",
+                message: "Your secure session is still stored. Check your connection and try again.",
+                correlationID: nil)
+        case .apiConflict(let code, _):
+            return UserFacingFailure(
+                title: "Role selection required",
+                message: code == "mobile_role_selection_required"
+                    ? "Choose an authorized mobile role before continuing."
+                    : apiError.localizedDescription,
+                correlationID: apiError.correlationID)
+        default:
+            return UserFacingFailure(title: defaultTitle, message: apiError.localizedDescription, correlationID: apiError.correlationID)
+        }
+    }
+
+    private func failureCategory(for error: Error) -> String {
+        if let apiError = error as? MobileAPIError {
+            return apiError.safeCode ?? String(describing: apiError)
+        }
+        if error is OAuthCallbackError { return "oauth_callback" }
+        return String(describing: type(of: error))
+    }
+}
+
+private extension MobileSessionState {
+    var diagnosticName: String {
+        switch self {
+        case .loading: "loading"
+        case .contractUnavailable: "contractUnavailable"
+        case .signedOut: "signedOut"
+        case .authenticating: "authenticating"
+        case .roleSelection: "roleSelection"
+        case .authenticated: "authenticated"
+        case .failed: "failed"
+        }
     }
 }
 
