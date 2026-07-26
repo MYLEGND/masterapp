@@ -51,8 +51,7 @@ Supply the following non-secret build settings from an ignored local `.xcconfig`
 
 | Build setting | Required value |
 | --- | --- |
-| `LEGEND_BUNDLE_IDENTIFIER` | `com.mylegnd.legend` |
-| `LEGEND_API_BASE_URL` | AgentPortal origin, e.g. `https://portal.mylegnd.com` |
+| `LEGEND_API_BASE_URL` | Approved HTTPS AgentPortal origin for the target environment |
 | `LEGEND_AUTHORIZATION_ENDPOINT` | `https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/authorize` |
 | `LEGEND_TOKEN_ENDPOINT` | `https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token` |
 | `LEGEND_AUTH_CLIENT_ID` | iOS public-client application ID |
@@ -60,7 +59,7 @@ Supply the following non-secret build settings from an ignored local `.xcconfig`
 | `LEGEND_AUTH_SCOPE` | `openid profile offline_access api://<mobile-api-client-id>/mobile_access` |
 | `LEGEND_AUTH_AUDIENCE` | API Application ID URI, e.g. `api://<mobile-api-client-id>` |
 
-The production native bundle identifier is sourced from `Bundle.main.bundleIdentifier`; no custom Info.plist bundle-ID key is used.
+The native bundle identifier is supplied by the target product build setting. Runtime identity is sourced only from `Bundle.main.bundleIdentifier`; no custom Info.plist bundle-ID key is used.
 
 ## 5. What the server permits
 

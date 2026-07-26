@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="24132" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="LegendLaunchViewController">
+    <device id="retina6_12" orientation="portrait" appearance="light"/>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="24122"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="System colors in document resources" minToolsVersion="11.0"/>
+    </dependencies>
+    <scenes>
+        <!--Legend Launch-->
+        <scene sceneID="LegendLaunchScene">
+            <objects>
+                <viewController id="LegendLaunchViewController" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="LegendLaunchView">
+                        <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="LegendLogo" translatesAutoresizingMaskIntoConstraints="NO" id="LegendLaunchShield">
+                                <rect key="frame" x="130.5" y="333" width="132" height="132"/>
+                                <accessibility key="accessibilityConfiguration" label="Legend"/>
+                            </imageView>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="Legend" textAlignment="natural" lineBreakMode="tailTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="LegendLaunchWordmark">
+                                <rect key="frame" x="141.5" y="481" width="110" height="32"/>
+                                <fontDescription key="fontDescription" type="system" weight="bold" pointSize="27"/>
+                                <color key="textColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+                        </subviews>
+                        <viewLayoutGuide key="safeArea" id="LegendLaunchSafeArea"/>
+                        <color key="backgroundColor" red="0.05490196078" green="0.1058823529" blue="0.2392156863" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <constraints>
+                            <constraint firstItem="LegendLaunchShield" firstAttribute="centerX" secondItem="LegendLaunchView" secondAttribute="centerX" id="LegendLaunchShieldCenterX"/>
+                            <constraint firstItem="LegendLaunchShield" firstAttribute="centerY" secondItem="LegendLaunchView" secondAttribute="centerY" constant="-28" id="LegendLaunchShieldCenterY"/>
+                            <constraint firstItem="LegendLaunchShield" firstAttribute="width" constant="132" id="LegendLaunchShieldWidth"/>
+                            <constraint firstItem="LegendLaunchShield" firstAttribute="height" secondItem="LegendLaunchShield" secondAttribute="width" multiplier="1:1" id="LegendLaunchShieldAspect"/>
+                            <constraint firstItem="LegendLaunchWordmark" firstAttribute="top" secondItem="LegendLaunchShield" secondAttribute="bottom" constant="16" id="LegendLaunchWordmarkTop"/>
+                            <constraint firstItem="LegendLaunchWordmark" firstAttribute="centerX" secondItem="LegendLaunchView" secondAttribute="centerX" id="LegendLaunchWordmarkCenterX"/>
+                        </constraints>
+                    </view>
+                    <nil key="simulatedTopBarMetrics"/>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="LegendLaunchFirstResponder" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="53" y="375"/>
+        </scene>
+    </scenes>
+    <resources>
+        <image name="LegendLogo" width="1024" height="1024"/>
+    </resources>
+</document>

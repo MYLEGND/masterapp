@@ -13,5 +13,4 @@ xcodebuild \
   -sdk iphonesimulator \
   -derivedDataPath "$derived_data_path" \
   CODE_SIGNING_ALLOWED=NO \
-  LEGEND_BUNDLE_IDENTIFIER=com.example.legend.local \
   build-for-testing

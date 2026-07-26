@@ -1,5 +1,4 @@
 // Checked-in template only. Production values and signing identity must never be committed.
-LEGEND_BUNDLE_IDENTIFIER = com.mylegnd.legend
 LEGEND_API_BASE_URL =
 LEGEND_AUTHORIZATION_ENDPOINT =
 LEGEND_TOKEN_ENDPOINT =

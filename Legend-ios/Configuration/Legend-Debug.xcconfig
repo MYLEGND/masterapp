@@ -1,5 +1,4 @@
 // Checked-in template only. Set non-placeholder values in an ignored local file or CI secret store.
-LEGEND_BUNDLE_IDENTIFIER = com.mylegnd.legend
 LEGEND_API_BASE_URL =
 LEGEND_AUTHORIZATION_ENDPOINT =
 LEGEND_TOKEN_ENDPOINT =

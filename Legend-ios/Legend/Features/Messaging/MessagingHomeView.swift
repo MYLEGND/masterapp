@@ -3,13 +3,12 @@ import UIKit
 
 struct MessagingHomeView: View {
     @ObservedObject var store: MessagingStore
-    let currentSession: MobileSession
 
     var body: some View {
         Group {
             switch store.state {
             case .idle, .loading:
-                ProgressView("Loading conversations…")
+                LegendLoadingView("Loading conversations…")
             case .loaded(let conversations):
                 conversationsView(conversations)
             case .unavailable(let message):
@@ -19,6 +18,8 @@ struct MessagingHomeView: View {
             }
         }
         .navigationTitle("Messages")
+        .navigationBarTitleDisplayMode(.inline)
+        .background(LegendPalette.canvas.ignoresSafeArea())
         .task {
             if case .idle = store.state {
                 store.load()
@@ -29,7 +30,10 @@ struct MessagingHomeView: View {
     @ViewBuilder
     private func conversationsView(_ conversations: [ConversationSummary]) -> some View {
         if conversations.isEmpty {
-            ContentUnavailableView("No conversations", systemImage: "message", description: Text("Your authorized conversations will appear here."))
+            LegendEmptyState(
+                title: "No conversations",
+                message: "Your authorized conversations will appear here.",
+                symbolName: "message")
         } else {
             List(conversations) { conversation in
                 NavigationLink {
@@ -42,28 +46,24 @@ struct MessagingHomeView: View {
                 })
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
     }
 
     private func unavailableView(_ message: String) -> some View {
-        ContentUnavailableView {
-            Label("Messages unavailable", systemImage: "lock.message")
-        } description: {
-            Text(message)
-        }
+        LegendEmptyState(
+            title: "Messages unavailable",
+            message: message,
+            symbolName: "lock.message")
     }
 
     private func failureView(_ failure: UserFacingFailure) -> some View {
-        ContentUnavailableView {
-            Label(failure.title, systemImage: "exclamationmark.triangle")
-        } description: {
-            Text(failure.message)
-        } actions: {
-            Button("Retry") {
-                store.load()
-            }
-            .buttonStyle(.borderedProminent)
-        }
+        LegendErrorCard(
+            title: failure.title,
+            message: failure.message,
+            retryTitle: "Retry",
+            retry: store.load)
+        .padding(LegendSpacing.md)
     }
 }
 
@@ -76,22 +76,21 @@ private struct ConversationThreadView: View {
         Group {
             switch store.detailState {
             case .idle, .loading:
-                ProgressView("Loading conversation…")
+                LegendLoadingView("Loading conversation…")
             case .loaded(let conversation):
                 threadView(conversation)
             case .unavailable(let message):
-                ContentUnavailableView("Conversation unavailable", systemImage: "lock.message", description: Text(message))
+                LegendEmptyState(
+                    title: "Conversation unavailable",
+                    message: message,
+                    symbolName: "lock.message")
             case .unauthorized(let failure), .forbidden(let failure), .offline(let failure), .failed(let failure):
-                ContentUnavailableView {
-                    Label(failure.title, systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(failure.message)
-                } actions: {
-                    Button("Retry") {
-                        store.openConversation(conversationID)
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
+                LegendErrorCard(
+                    title: failure.title,
+                    message: failure.message,
+                    retryTitle: "Retry",
+                    retry: { store.openConversation(conversationID) })
+                    .padding(LegendSpacing.md)
             }
         }
         .task {
@@ -104,36 +103,44 @@ private struct ConversationThreadView: View {
     private func threadView(_ conversation: ConversationDetail) -> some View {
         VStack(spacing: 0) {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
+                LazyVStack(alignment: .leading, spacing: LegendSpacing.sm) {
                     ForEach(conversation.messages) { message in
                         MessageBubble(message: message)
                     }
                 }
-                .padding()
+                .padding(LegendSpacing.md)
             }
 
             Divider()
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: LegendSpacing.sm) {
                 if let sendFailure = store.sendFailure {
-                    Text(sendFailure.message)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+                    LegendStatusBanner(
+                        title: "Message not sent",
+                        detail: sendFailure.message,
+                        tone: .critical)
                 }
-                HStack(alignment: .bottom, spacing: 10) {
+                HStack(alignment: .bottom, spacing: LegendSpacing.sm) {
                     TextField("Write a message", text: $draft, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
                         .lineLimit(1 ... 6)
+                        .padding(LegendSpacing.sm)
+                        .background(LegendPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: LegendRadius.control, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: LegendRadius.control, style: .continuous)
+                                .stroke(LegendPalette.separator.opacity(0.45), lineWidth: 1)
+                        }
                     Button("Send") {
                         let outgoing = draft
                         draft = ""
                         store.send(body: outgoing)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(LegendButtonStyle(kind: .gold))
                     .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isSending || conversation.isClosed)
                 }
             }
-            .padding()
+            .padding(LegendSpacing.md)
+            .background(LegendPalette.canvas)
         }
+        .background(LegendPalette.canvas.ignoresSafeArea())
         .navigationTitle(conversation.title)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -143,35 +150,28 @@ private struct ConversationRow: View {
     let conversation: ConversationSummary
 
     var body: some View {
-        HStack(spacing: 12) {
+        LegendListCell {
             ParticipantAvatar(participant: conversation.counterparty)
-
-            VStack(alignment: .leading, spacing: 4) {
+        } content: {
+            VStack(alignment: .leading, spacing: LegendSpacing.xxs) {
                 Text(conversation.counterparty.displayName)
                     .font(.headline)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(LegendPalette.label)
                     .lineLimit(1)
                 Text(conversation.lastMessagePreview ?? "No message preview")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LegendPalette.secondaryLabel)
                     .lineLimit(1)
             }
-
-            Spacer(minLength: 8)
-
-            VStack(alignment: .trailing, spacing: 6) {
+        } trailing: {
+            VStack(alignment: .trailing, spacing: LegendSpacing.xs) {
                 if let lastMessageUTC = conversation.lastMessageUTC {
                     Text(lastMessageUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(LegendPalette.secondaryLabel)
                 }
                 if conversation.unreadCount > 0 {
-                    Text("\(conversation.unreadCount)")
-                        .font(.caption.bold())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(.red, in: Capsule())
+                    LegendBadge(title: "\(conversation.unreadCount)", tone: .critical)
                         .accessibilityLabel("\(conversation.unreadCount) unread messages")
                 }
             }
@@ -187,7 +187,7 @@ private struct MessageBubble: View {
     var body: some View {
         HStack {
             if message.isMine { Spacer(minLength: 48) }
-            VStack(alignment: message.isMine ? .trailing : .leading, spacing: 5) {
+            VStack(alignment: message.isMine ? .trailing : .leading, spacing: LegendSpacing.xxs) {
                 Text(message.sender.displayName)
                     .font(.caption.bold())
                 Text(message.body)
@@ -196,9 +196,9 @@ private struct MessageBubble: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            .padding(10)
+            .padding(LegendSpacing.sm)
             .foregroundStyle(message.isMine ? .white : .primary)
-            .background(message.isMine ? Color.accentColor : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+            .background(message.isMine ? LegendPalette.primaryNavy : LegendPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: LegendRadius.control, style: .continuous))
             if !message.isMine { Spacer(minLength: 48) }
         }
     }

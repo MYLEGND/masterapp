@@ -43,5 +43,7 @@
 	<string>$(LEGEND_AUTHORIZATION_ENDPOINT)</string>
 	<key>LegendTokenEndpoint</key>
 	<string>$(LEGEND_TOKEN_ENDPOINT)</string>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
 </dict>
 </plist>

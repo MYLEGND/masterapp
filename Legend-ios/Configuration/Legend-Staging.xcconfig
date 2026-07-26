@@ -1,5 +1,4 @@
 // Checked-in template only. Staging configuration must be supplied outside source control.
-LEGEND_BUNDLE_IDENTIFIER = com.mylegnd.legend
 LEGEND_API_BASE_URL =
 LEGEND_AUTHORIZATION_ENDPOINT =
 LEGEND_TOKEN_ENDPOINT =

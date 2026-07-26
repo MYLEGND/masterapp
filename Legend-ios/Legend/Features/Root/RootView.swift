@@ -7,13 +7,13 @@ struct RootView: View {
         Group {
             switch session.state {
             case .loading:
-                ProgressView("Preparing secure access…")
+                LegendLoadingView("Preparing secure access…")
             case .contractUnavailable(let validation):
-                MobileContractUnavailableView(validation: validation)
+                ConfigurationStateView(validation: validation)
             case .signedOut:
                 SignInView()
             case .authenticating:
-                ProgressView("Opening secure sign-in…")
+                LegendLoadingView("Opening secure sign-in…")
             case .roleSelection(let selection):
                 RoleSelectionView(selection: selection)
             case .authenticated(let currentSession):
@@ -34,119 +34,106 @@ private struct RoleSelectionView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-
-            LegendBrandLogo()
-                .padding(.bottom, 8)
-
-                Image(systemName: "person.2.badge.gearshape")
-                    .font(.system(size: 46, weight: .semibold))
-                    .foregroundStyle(.tint)
-                VStack(spacing: 8) {
-                    Text("Choose your Legend role")
-                        .font(.title2.bold())
-                    Text("Your account has more than one authorized participant role. Choose the role for this secure mobile session.")
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                VStack(spacing: 10) {
-                    ForEach(selection.permittedParticipantTypes, id: \.self) { role in
-                        Button {
-                            session.selectRole(role)
-                        } label: {
-                            Label(role == .agent ? "Continue as Agent" : "Continue as Client", systemImage: role == .agent ? "briefcase.fill" : "person.fill")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
+            ScrollView {
+                VStack(spacing: LegendSpacing.lg) {
+                    Image(systemName: "person.2.badge.gearshape")
+                        .font(.system(size: 38, weight: .semibold))
+                        .foregroundStyle(LegendPalette.gold)
+                        .accessibilityHidden(true)
+                    VStack(spacing: LegendSpacing.xs) {
+                        Text("Choose your Legend role")
+                            .font(LegendTypography.hero)
+                        Text("Your account has more than one authorized participant role. Choose the role for this secure mobile session.")
+                            .font(LegendTypography.body)
+                            .foregroundStyle(LegendPalette.secondaryLabel)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    VStack(spacing: LegendSpacing.sm) {
+                        ForEach(selection.permittedParticipantTypes, id: \.self) { role in
+                            Button {
+                                session.selectRole(role)
+                            } label: {
+                                Label(role == .agent ? "Continue as Agent" : "Continue as Client", systemImage: role == .agent ? "briefcase.fill" : "person.fill")
+                            }
+                            .buttonStyle(LegendButtonStyle(kind: .primary))
+                        }
+                    }
+                    Button("Sign out", role: .destructive) {
+                        session.signOut()
+                    }
+                    .buttonStyle(LegendButtonStyle(kind: .destructive))
                 }
-                Button("Sign out", role: .destructive) {
-                    session.signOut()
-                }
-                Spacer()
+                .frame(maxWidth: 520)
+                .padding(.horizontal, LegendSpacing.md)
+                .padding(.vertical, LegendSpacing.xl)
+                .frame(maxWidth: .infinity)
             }
-            .padding(24)
-            .navigationTitle("Legend")
+            .background(LegendPalette.canvas.ignoresSafeArea())
+            .navigationTitle("Secure role")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
 
-private struct MobileContractUnavailableView: View {
+private struct ConfigurationStateView: View {
     let validation: MobileConfigurationValidation
     @EnvironmentObject private var session: MobileSessionCoordinator
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
-                    Spacer(minLength: 12)
+                VStack(spacing: LegendSpacing.lg) {
+                    LegendBrandHeader()
 
-                    LegendBrandLogo(maximumWidth: 136)
-                        .accessibilityLabel("Legend logo")
+                    LegendHero(
+                        eyebrow: "Secure access",
+                        title: "Native Mobile Configuration Required",
+                        detail: "Administrator configuration is required before secure sign-in can begin.",
+                        symbolName: "lock.shield")
 
-                    VStack(spacing: 10) {
-                        Text("Legend")
-                            .font(.title2.weight(.bold))
-                        Text("Native Mobile Configuration Required")
-                            .font(.headline.weight(.semibold))
-                            .multilineTextAlignment(.center)
-                        Text("This build is waiting for administrator configuration before secure sign-in can begin.")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .accessibilityElement(children: .combine)
+                    LegendStatusBanner(
+                        title: "Configuration required",
+                        detail: "This build is waiting for its approved mobile settings.",
+                        tone: .warning)
 
-                    VStack(alignment: .leading, spacing: 16) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "checklist.checked")
-                                .foregroundStyle(.tint)
-                                .accessibilityHidden(true)
-                            Text("Required administrator settings")
-                                .font(.headline)
-                        }
-
-                        Text(validation.summary)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Divider()
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(validation.missingKeys) { key in
-                                Label(key.buildSetting, systemImage: "minus.circle.fill")
-                                    .font(.footnote.monospaced())
-                                    .foregroundStyle(.primary)
-                                    .accessibilityLabel("Missing build setting \(key.buildSetting)")
+                    LegendCard {
+                        DisclosureGroup {
+                            VStack(alignment: .leading, spacing: LegendSpacing.sm) {
+                                Text(validation.summary)
+                                    .font(LegendTypography.metadata)
+                                    .foregroundStyle(LegendPalette.secondaryLabel)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Divider()
+                                ForEach(validation.missingKeys) { key in
+                                    Label(key.buildSetting, systemImage: "minus.circle.fill")
+                                        .font(.footnote.monospaced())
+                                        .foregroundStyle(LegendPalette.label)
+                                        .accessibilityLabel("Missing build setting \(key.buildSetting)")
+                                }
                             }
+                            .padding(.top, LegendSpacing.sm)
+                        } label: {
+                            Label("Configuration diagnostics", systemImage: "wrench.and.screwdriver")
+                                .font(LegendTypography.section)
+                                .foregroundStyle(LegendPalette.label)
                         }
+                        .tint(LegendPalette.gold)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(20)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                    }
-                    .accessibilityElement(children: .contain)
 
                     Button("Check configuration") {
                         session.restore()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                    .buttonStyle(LegendButtonStyle(kind: .primary))
                     .accessibilityHint("Checks whether the required administrator configuration is now available.")
                 }
                 .frame(maxWidth: 520)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 32)
+                .padding(.horizontal, LegendSpacing.md)
+                .padding(.vertical, LegendSpacing.xl)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
-            .navigationTitle("Legend")
-            .navigationBarTitleDisplayMode(.inline)
+            .background(LegendPalette.canvas.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 }
@@ -156,23 +143,26 @@ private struct SignInView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                Image(systemName: "person.badge.key")
-                    .font(.system(size: 54, weight: .semibold))
-                    .foregroundStyle(.tint)
-                Text("Secure Legend access")
-                    .font(.title2.bold())
-                Text("Sign in in the system browser. Legend does not collect or retain your password.")
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                Button("Continue securely") {
-                    session.signIn()
+            ScrollView {
+                VStack(spacing: LegendSpacing.lg) {
+                    LegendHero(
+                        eyebrow: "Secure access",
+                        title: "Sign in securely.",
+                        detail: "Legend opens sign-in in the system browser and never collects or retains your password.",
+                        symbolName: "person.badge.key")
+                    Button("Continue securely") {
+                        session.signIn()
+                    }
+                    .buttonStyle(LegendButtonStyle(kind: .primary))
                 }
-                .buttonStyle(.borderedProminent)
-                Spacer()
+                .frame(maxWidth: 520)
+                .padding(.horizontal, LegendSpacing.md)
+                .padding(.vertical, LegendSpacing.xl)
+                .frame(maxWidth: .infinity)
             }
-            .padding(24)
-            .navigationTitle("Legend")
+            .background(LegendPalette.canvas.ignoresSafeArea())
+            .navigationTitle("Secure sign-in")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -183,17 +173,18 @@ private struct SessionFailureView: View {
 
     var body: some View {
         NavigationStack {
-            ContentUnavailableView {
-                Label(failure.title, systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(failure.message)
-            } actions: {
-                Button("Try again") {
-                    session.signIn()
-                }
-                .buttonStyle(.borderedProminent)
+            VStack {
+                LegendErrorCard(
+                    title: failure.title,
+                    message: failure.message,
+                    retryTitle: "Try again",
+                    retry: session.signIn)
             }
-            .navigationTitle("Legend")
+            .padding(LegendSpacing.md)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(LegendPalette.canvas.ignoresSafeArea())
+            .navigationTitle("Secure access")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -201,28 +192,13 @@ private struct SessionFailureView: View {
 private struct AuthenticatedHomeView: View {
     let currentSession: MobileSession
     @ObservedObject private var coordinator: MobileSessionCoordinator
-    @StateObject private var messages: MessagingStore
 
     init(currentSession: MobileSession, coordinator: MobileSessionCoordinator) {
         self.currentSession = currentSession
         _coordinator = ObservedObject(wrappedValue: coordinator)
-        _messages = StateObject(wrappedValue: coordinator.makeMessagingStore())
     }
 
     var body: some View {
-        NavigationStack {
-            MessagingHomeView(store: messages, currentSession: currentSession)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button("Sign out", role: .destructive) {
-                                coordinator.signOut()
-                            }
-                        } label: {
-                            Label("Account", systemImage: "person.crop.circle")
-                        }
-                    }
-                }
-        }
+        LegendApplicationShell(currentSession: currentSession, coordinator: coordinator)
     }
 }

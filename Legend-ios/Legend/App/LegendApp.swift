@@ -4,6 +4,7 @@ import SwiftUI
 struct LegendApp: App {
     @StateObject private var diagnostics: LegendDiagnostics
     @StateObject private var session: MobileSessionCoordinator
+    @State private var isPresentingLaunch = true
 
     init() {
         let diagnostics = LegendDiagnostics()
@@ -13,9 +14,23 @@ struct LegendApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(session)
-                .environmentObject(diagnostics)
+            ZStack {
+                RootView()
+                    .environmentObject(session)
+                    .environmentObject(diagnostics)
+
+                if isPresentingLaunch {
+                    LegendLaunchView()
+                        .transition(.opacity)
+                        .zIndex(1)
+                }
+            }
+            .task {
+                try? await Task.sleep(for: .milliseconds(550))
+                withAnimation(LegendMotion.entrance) {
+                    isPresentingLaunch = false
+                }
+            }
         }
     }
 }

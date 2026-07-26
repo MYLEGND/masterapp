@@ -16,7 +16,6 @@ final class MobileConfigurationTests: XCTestCase {
 
         XCTAssertFalse(configuration.validation.isReady)
         XCTAssertEqual(configuration.validation.missingKeys.count, MobileConfigurationKey.allCases.count)
-        XCTAssertFalse(configuration.validation.missingBuildSettings.contains("LEGEND_BUNDLE_IDENTIFIER"))
     }
 
     func testCompleteConfigurationIsReadyForAuthorization() {
