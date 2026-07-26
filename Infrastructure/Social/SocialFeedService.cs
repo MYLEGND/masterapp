@@ -38,14 +38,25 @@ public sealed class SocialFeedService : ISocialFeedService
 
         var visibleAuthors = await GetVisibleAuthorsAsync(actor, cancellationToken);
         var now = DateTime.UtcNow;
-        var posts = (await _db.SocialPosts
-                .AsNoTracking()
-                .Where(post => post.DeletedUtc == null && (post.ExpiresUtc == null || post.ExpiresUtc > now))
-                .OrderByDescending(post => post.PostedUtc)
-                .Take(MaximumFeedPosts + MaximumStoryPosts)
-                .ToListAsync(cancellationToken))
-            .Where(post => visibleAuthors.Contains(AuthorKey.From(post.AuthorUserId, post.AuthorParticipantType)))
+        var visibleAgentUserIds = visibleAuthors
+            .Where(key => key.ParticipantType == MessagingParticipantTypes.Agent)
+            .Select(key => key.UserId)
             .ToArray();
+        var visibleClientUserIds = visibleAuthors
+            .Where(key => key.ParticipantType == MessagingParticipantTypes.Client)
+            .Select(key => key.UserId)
+            .ToArray();
+        var posts = await _db.SocialPosts
+            .AsNoTracking()
+            .Where(post => post.DeletedUtc == null && (post.ExpiresUtc == null || post.ExpiresUtc > now))
+            .Where(post =>
+                (post.AuthorParticipantType == MessagingParticipantTypes.Agent &&
+                 visibleAgentUserIds.Contains(post.AuthorUserId.ToLower())) ||
+                (post.AuthorParticipantType == MessagingParticipantTypes.Client &&
+                 visibleClientUserIds.Contains(post.AuthorUserId.ToLower())))
+            .OrderByDescending(post => post.PostedUtc)
+            .Take(MaximumFeedPosts + MaximumStoryPosts)
+            .ToArrayAsync(cancellationToken);
 
         var stories = await BuildPostViewsAsync(
             posts.Where(post => string.Equals(post.ContentType, SocialPostContentTypes.Story, StringComparison.Ordinal)).Take(MaximumStoryPosts),
