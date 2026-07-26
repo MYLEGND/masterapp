@@ -85,9 +85,9 @@ public static class MobileBearerOptions
         if (configuration.IsConfigured)
         {
             options.Authority = configuration.Authority;
-            options.Audience = configuration.Audience;
+            options.Audience = configuration.TokenAudience;
             options.TokenValidationParameters.ValidIssuer = configuration.Authority;
-            options.TokenValidationParameters.ValidAudience = configuration.Audience;
+            options.TokenValidationParameters.ValidAudience = configuration.TokenAudience;
         }
         else
         {

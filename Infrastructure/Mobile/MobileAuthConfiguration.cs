@@ -23,8 +23,17 @@ public sealed record MobileAuthConfiguration(
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(TenantId) &&
         IsHttpsUrl(Authority) &&
-        IsAudienceUri(Audience) &&
-        IsRequiredScopeForAudience(RequiredScope, Audience);
+        !string.IsNullOrWhiteSpace(TokenAudience) &&
+        IsRequiredScopeForApplication(RequiredScope, TokenAudience);
+
+    /// <summary>
+    /// The exact <c>aud</c> claim expected from a Microsoft Entra v2 access
+    /// token. Entra v2 emits the resource application's client ID, not its
+    /// Application ID URI. Deployment configuration can retain the existing
+    /// <c>api://&lt;application-id&gt;</c> value, but it is normalized here before
+    /// the bearer handler evaluates a token.
+    /// </summary>
+    public string? TokenAudience => TryGetApplicationId(Audience);
 
     /// <summary>
     /// Entra access tokens carry the final scope segment in <c>scp</c>, while
@@ -40,16 +49,40 @@ public sealed record MobileAuthConfiguration(
         string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
         !string.IsNullOrWhiteSpace(uri.Host);
 
-    private static bool IsAudienceUri(string? value) =>
-        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
-        !string.IsNullOrWhiteSpace(uri.Host) &&
-        (string.Equals(uri.Scheme, "api", StringComparison.OrdinalIgnoreCase) ||
-         string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
+    private static string? TryGetApplicationId(string? value)
+    {
+        var normalized = Normalize(value);
+        if (normalized is null)
+            return null;
 
-    private static bool IsRequiredScopeForAudience(string? scope, string? audience) =>
-        !string.IsNullOrWhiteSpace(scope) &&
-        !string.IsNullOrWhiteSpace(audience) &&
-        scope.StartsWith($"{audience.TrimEnd('/')}/", StringComparison.Ordinal);
+        if (Guid.TryParse(normalized, out var applicationId))
+            return applicationId.ToString("D");
+
+        if (!Uri.TryCreate(normalized, UriKind.Absolute, out var uri) ||
+            !string.Equals(uri.Scheme, "api", StringComparison.OrdinalIgnoreCase) ||
+            !string.IsNullOrEmpty(uri.AbsolutePath.Trim('/')) ||
+            !Guid.TryParse(uri.Host, out applicationId))
+        {
+            return null;
+        }
+
+        return applicationId.ToString("D");
+    }
+
+    private static bool IsRequiredScopeForApplication(string? scope, string? applicationId)
+    {
+        if (string.IsNullOrWhiteSpace(scope) ||
+            string.IsNullOrWhiteSpace(applicationId) ||
+            !Uri.TryCreate(scope, UriKind.Absolute, out var scopeUri) ||
+            !string.Equals(scopeUri.Scheme, "api", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(scopeUri.AbsolutePath.Trim('/')) ||
+            !Guid.TryParse(scopeUri.Host, out var scopeApplicationId))
+        {
+            return false;
+        }
+
+        return string.Equals(scopeApplicationId.ToString("D"), applicationId, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string? Normalize(string? value)
     {

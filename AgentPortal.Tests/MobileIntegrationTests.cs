@@ -141,16 +141,16 @@ public sealed class MobileIntegrationTests
         options.TokenValidationParameters.IssuerSigningKey = signingKey;
 
         var handler = new JwtSecurityTokenHandler();
-        var valid = CreateToken(configuration.Authority!, configuration.Audience!, signingKey, DateTime.UtcNow.AddMinutes(10));
+        var valid = CreateToken(configuration.Authority!, configuration.TokenAudience!, signingKey, DateTime.UtcNow.AddMinutes(10));
         Assert.NotNull(handler.ValidateToken(valid, options.TokenValidationParameters, out _));
 
-        var wrongIssuer = CreateToken("https://issuer.example.test/other", configuration.Audience!, signingKey, DateTime.UtcNow.AddMinutes(10));
+        var wrongIssuer = CreateToken("https://issuer.example.test/other", configuration.TokenAudience!, signingKey, DateTime.UtcNow.AddMinutes(10));
         Assert.Throws<SecurityTokenInvalidIssuerException>(() => handler.ValidateToken(wrongIssuer, options.TokenValidationParameters, out _));
 
         var wrongAudience = CreateToken(configuration.Authority!, "api://other-api", signingKey, DateTime.UtcNow.AddMinutes(10));
         Assert.Throws<SecurityTokenInvalidAudienceException>(() => handler.ValidateToken(wrongAudience, options.TokenValidationParameters, out _));
 
-        var expired = CreateToken(configuration.Authority!, configuration.Audience!, signingKey, DateTime.UtcNow.AddMinutes(-5));
+        var expired = CreateToken(configuration.Authority!, configuration.TokenAudience!, signingKey, DateTime.UtcNow.AddMinutes(-5));
         Assert.Throws<SecurityTokenExpiredException>(() => handler.ValidateToken(expired, options.TokenValidationParameters, out _));
     }
 
@@ -543,8 +543,8 @@ public sealed class MobileIntegrationTests
             {
                 ["MobileAuth:TenantId"] = "test-tenant",
                 ["MobileAuth:Authority"] = "https://issuer.example.test/test-tenant/v2.0",
-                ["MobileAuth:Audience"] = "api://legend-mobile-api",
-                ["MobileAuth:RequiredScope"] = "api://legend-mobile-api/mobile_access"
+                ["MobileAuth:Audience"] = "api://00000000-0000-0000-0000-000000000001",
+                ["MobileAuth:RequiredScope"] = "api://00000000-0000-0000-0000-000000000001/mobile_access"
             })
             .Build());
 
