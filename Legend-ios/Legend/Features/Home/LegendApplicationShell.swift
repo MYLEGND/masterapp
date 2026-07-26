@@ -1,8 +1,10 @@
 import SwiftUI
 import UIKit
 
-private enum LegendAppTab: String, CaseIterable, Identifiable {
+private enum LegendAppTab: String, Identifiable {
     case home
+    case clients
+    case leads
     case circles
     case finance
     case messages
@@ -10,9 +12,17 @@ private enum LegendAppTab: String, CaseIterable, Identifiable {
 
     var id: Self { self }
 
+    static func available(for participantType: ParticipantType) -> [Self] {
+        participantType == .agent
+            ? [.home, .clients, .leads, .messages, .account]
+            : [.home, .circles, .finance, .messages, .account]
+    }
+
     var title: String {
         switch self {
         case .home: return "Home"
+        case .clients: return "Clients"
+        case .leads: return "Leads"
         case .circles: return "Circles"
         case .finance: return "Finance"
         case .messages: return "Messages"
@@ -23,6 +33,8 @@ private enum LegendAppTab: String, CaseIterable, Identifiable {
     var symbolName: String {
         switch self {
         case .home: return "house"
+        case .clients: return "person.2"
+        case .leads: return "person.crop.circle.badge.plus"
         case .circles: return "person.3"
         case .finance: return "chart.line.uptrend.xyaxis"
         case .messages: return "message"
@@ -33,6 +45,8 @@ private enum LegendAppTab: String, CaseIterable, Identifiable {
     var selectedSymbolName: String {
         switch self {
         case .home: return "house.fill"
+        case .clients: return "person.2.fill"
+        case .leads: return "person.crop.circle.badge.plus"
         case .circles: return "person.3.fill"
         case .finance: return "chart.line.uptrend.xyaxis"
         case .messages: return "message.fill"
@@ -61,19 +75,31 @@ struct LegendApplicationShell: View {
             }
             .tag(LegendAppTab.home)
 
-            NavigationStack {
-                LegendCirclesView(
-                    currentSession: currentSession,
-                    coordinator: coordinator)
-            }
-            .tag(LegendAppTab.circles)
+            if currentSession.actor.identity.participantType == .agent {
+                NavigationStack {
+                    LegendAgentClientsView(coordinator: coordinator)
+                }
+                .tag(LegendAppTab.clients)
 
-            NavigationStack {
-                LegendFinanceView(
-                    currentSession: currentSession,
-                    coordinator: coordinator)
+                NavigationStack {
+                    LegendAgentLeadsView(coordinator: coordinator)
+                }
+                .tag(LegendAppTab.leads)
+            } else {
+                NavigationStack {
+                    LegendCirclesView(
+                        currentSession: currentSession,
+                        coordinator: coordinator)
+                }
+                .tag(LegendAppTab.circles)
+
+                NavigationStack {
+                    LegendFinanceView(
+                        currentSession: currentSession,
+                        coordinator: coordinator)
+                }
+                .tag(LegendAppTab.finance)
             }
-            .tag(LegendAppTab.finance)
 
             LegendMessagesTab(coordinator: coordinator)
                 .tag(LegendAppTab.messages)
@@ -88,7 +114,9 @@ struct LegendApplicationShell: View {
         .toolbar(.hidden, for: .tabBar)
         .background(LegendPalette.canvas.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            LegendTabBar(selection: $selectedTab)
+            LegendTabBar(
+                selection: $selectedTab,
+                tabs: LegendAppTab.available(for: currentSession.actor.identity.participantType))
         }
         .tint(LegendPalette.gold)
     }
@@ -96,10 +124,11 @@ struct LegendApplicationShell: View {
 
 private struct LegendTabBar: View {
     @Binding var selection: LegendAppTab
+    let tabs: [LegendAppTab]
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 0) {
-            ForEach(LegendAppTab.allCases) { tab in
+            ForEach(tabs) { tab in
                 Button {
                     guard selection != tab else { return }
                     UISelectionFeedbackGenerator().selectionChanged()
@@ -418,6 +447,110 @@ private struct LegendHomeHeader: View {
             .accessibilityLabel("Open messages, \(unreadCount) unread")
         }
         .padding(.top, LegendSpacing.xs)
+    }
+}
+
+private struct LegendAgentClientsView: View {
+    @StateObject private var store: MobileAgentWorkspaceStore
+
+    init(coordinator: MobileSessionCoordinator) {
+        _store = StateObject(wrappedValue: coordinator.makeAgentWorkspaceStore())
+    }
+
+    var body: some View {
+        Group {
+            switch store.clientsState {
+            case .idle, .loading:
+                LegendLoadingView("Loading your client CRM…")
+            case .loaded(let clients):
+                clientContent(clients)
+            case .unavailable(let failure):
+                LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: store.loadClients)
+                    .padding(LegendSpacing.md)
+            }
+        }
+        .background(LegendPalette.canvas.ignoresSafeArea())
+        .navigationTitle("Clients")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { if case .idle = store.clientsState { store.loadClients() } }
+    }
+
+    @ViewBuilder
+    private func clientContent(_ clients: [MobileAgentClientSummary]) -> some View {
+        if clients.isEmpty {
+            LegendEmptyState(
+                title: "No active clients",
+                message: "Your active Client and Business Client CRM records will appear here.",
+                symbolName: "person.2")
+        } else {
+            List(clients) { client in
+                HStack(spacing: LegendSpacing.sm) {
+                    LegendProfileAvatar(avatar: client.avatar, displayName: client.displayName, size: 42)
+                    VStack(alignment: .leading, spacing: LegendSpacing.xxs) {
+                        Text(client.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Text(client.email).font(LegendTypography.metadata).foregroundStyle(LegendPalette.secondaryLabel).lineLimit(1)
+                    }
+                    Spacer(minLength: LegendSpacing.sm)
+                    LegendBadge(title: client.crmStatus, tone: .neutral)
+                }
+                .padding(.vertical, LegendSpacing.xxs)
+            }
+            .listStyle(.plain)
+        }
+    }
+}
+
+private struct LegendAgentLeadsView: View {
+    @StateObject private var store: MobileAgentWorkspaceStore
+
+    init(coordinator: MobileSessionCoordinator) {
+        _store = StateObject(wrappedValue: coordinator.makeAgentWorkspaceStore())
+    }
+
+    var body: some View {
+        Group {
+            switch store.leadsState {
+            case .idle, .loading:
+                LegendLoadingView("Loading your lead CRM…")
+            case .loaded(let leads):
+                leadContent(leads)
+            case .unavailable(let failure):
+                LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: store.loadLeads)
+                    .padding(LegendSpacing.md)
+            }
+        }
+        .background(LegendPalette.canvas.ignoresSafeArea())
+        .navigationTitle("Leads")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { if case .idle = store.leadsState { store.loadLeads() } }
+    }
+
+    @ViewBuilder
+    private func leadContent(_ leads: [MobileAgentLeadSummary]) -> some View {
+        if leads.isEmpty {
+            LegendEmptyState(
+                title: "No active leads",
+                message: "Your active workstation lead records will appear here.",
+                symbolName: "person.crop.circle.badge.plus")
+        } else {
+            List(leads) { lead in
+                HStack(spacing: LegendSpacing.sm) {
+                    Image(systemName: "person.crop.circle")
+                        .font(.title2)
+                        .foregroundStyle(LegendPalette.gold)
+                    VStack(alignment: .leading, spacing: LegendSpacing.xxs) {
+                        Text(lead.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Text("Updated \(lead.updatedUTC, format: .dateTime.month(.abbreviated).day().hour().minute())")
+                            .font(LegendTypography.metadata)
+                            .foregroundStyle(LegendPalette.secondaryLabel)
+                    }
+                    Spacer(minLength: LegendSpacing.sm)
+                    LegendBadge(title: lead.crmStage, tone: .neutral)
+                }
+                .padding(.vertical, LegendSpacing.xxs)
+            }
+            .listStyle(.plain)
+        }
     }
 }
 

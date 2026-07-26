@@ -136,7 +136,7 @@ final class MobileNativeContractTests: XCTestCase {
             let _: MobileBootstrapResponse = try await unauthorizedClient.get("/api/v1/mobile/session", accessToken: "token", response: MobileBootstrapResponse.self)
             XCTFail("Expected an unauthorized error")
         } catch let error as MobileAPIError {
-            XCTAssertEqual(error, .unauthorized(correlationID: "test-correlation"))
+            XCTAssertEqual(error, .apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation"))
         }
 
         StubURLProtocol.responseStatus = 403
@@ -145,7 +145,7 @@ final class MobileNativeContractTests: XCTestCase {
             let _: MobileBootstrapResponse = try await forbiddenClient.get("/api/v1/mobile/session", accessToken: "token", response: MobileBootstrapResponse.self)
             XCTFail("Expected a forbidden error")
         } catch let error as MobileAPIError {
-            XCTAssertEqual(error, .forbidden(correlationID: "test-correlation"))
+            XCTAssertEqual(error, .apiForbidden(code: "mobile_access_forbidden", correlationID: "test-correlation"))
         }
     }
 
@@ -224,7 +224,16 @@ private final class StubURLProtocol: URLProtocol {
             httpVersion: nil,
             headerFields: ["X-Correlation-ID": "test-correlation"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data())
+        let body: Data
+        switch Self.responseStatus {
+        case 401:
+            body = Data(#"{"code":"mobile_authentication_required","correlationId":"test-correlation"}"#.utf8)
+        case 403:
+            body = Data(#"{"code":"mobile_access_forbidden","correlationId":"test-correlation"}"#.utf8)
+        default:
+            body = Data()
+        }
+        client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
     }
 

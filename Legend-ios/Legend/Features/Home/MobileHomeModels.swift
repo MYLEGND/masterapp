@@ -190,6 +190,36 @@ struct MobileUpcomingBill: Codable, Equatable, Identifiable, Sendable {
     var amount: Decimal { Decimal(averageAmountCents) / 100 }
 }
 
+struct MobileAgentClientSummary: Codable, Equatable, Identifiable, Sendable {
+    let profileID: UUID
+    let displayName: String
+    let email: String
+    let crmStatus: String
+    let avatar: ProfileAvatar?
+
+    var id: UUID { profileID }
+
+    private enum CodingKeys: String, CodingKey {
+        case profileID = "profileId"
+        case displayName, email, crmStatus, avatar
+    }
+}
+
+struct MobileAgentLeadSummary: Codable, Equatable, Identifiable, Sendable {
+    let leadID: String
+    let displayName: String
+    let crmStage: String
+    let updatedUTC: Date
+
+    var id: String { leadID }
+
+    private enum CodingKeys: String, CodingKey {
+        case leadID = "leadId"
+        case displayName, crmStage
+        case updatedUTC = "updatedUtc"
+    }
+}
+
 struct MobileJourneyDashboardResponse: Codable, Equatable, Sendable {
     let profile: MobileJourneyProfile?
     let preferences: MobileJourneyPreferences?

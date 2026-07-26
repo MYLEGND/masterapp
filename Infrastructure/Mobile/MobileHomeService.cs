@@ -15,6 +15,10 @@ public interface IMobileHomeService
     Task<MobileHomeResult> GetHomeAsync(MobileResolvedActor actor, CancellationToken cancellationToken = default);
 
     Task<MobileFinancialResult> GetFinancialAsync(MobileResolvedActor actor, CancellationToken cancellationToken = default);
+
+    Task<MobileAgentClientsResult> GetAgentClientsAsync(MobileResolvedActor actor, CancellationToken cancellationToken = default);
+
+    Task<MobileAgentLeadsResult> GetAgentLeadsAsync(MobileResolvedActor actor, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -158,6 +162,91 @@ public sealed class MobileHomeService : IMobileHomeService
                         finding.Status,
                         finding.LastDetectedUtc)).ToArray()),
             upcomingBills));
+    }
+
+    public async Task<MobileAgentClientsResult> GetAgentClientsAsync(
+        MobileResolvedActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.Equals(actor.Actor.ParticipantType, MessagingParticipantTypes.Agent, StringComparison.Ordinal))
+        {
+            return MobileAgentClientsResult.Unavailable(
+                "MOBILE_AGENT_ROLE_REQUIRED",
+                "Client CRM is available from an agent mobile identity.");
+        }
+
+        var agentUserId = actor.Actor.UserId.ToLowerInvariant();
+        var assignedClientUserIds = await _db.AgentClients
+            .AsNoTracking()
+            .Where(link => link.AgentUserId.ToLower() == agentUserId)
+            .Select(link => link.ClientUserId.ToLower())
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var profileRows = await _db.ClientProfiles
+            .AsNoTracking()
+            .Where(profile => assignedClientUserIds.Contains(profile.ClientUserId.ToLower()))
+            .Select(profile => new MobileAgentClientProfileRow(
+                profile.Id,
+                profile.ClientUserId,
+                profile.FirstName,
+                profile.LastName,
+                profile.Email,
+                profile.CrmStatus,
+                profile.CrmNotes,
+                profile.ProfileImageContent,
+                profile.ProfileImageContentType))
+            .ToListAsync(cancellationToken);
+
+        var clients = profileRows
+            .Where(profile => ClientRecordClassification.IsClientOrBusinessClient(profile.ClientUserId, profile.CrmNotes))
+            .Select(profile => new MobileAgentClient(
+                profile.Id,
+                string.Join(" ", new[] { profile.FirstName, profile.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim(),
+                profile.Email,
+                profile.CrmStatus ?? "Active",
+                profile.ProfileImageContent,
+                profile.ProfileImageContentType))
+            .OrderBy(profile => profile.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return MobileAgentClientsResult.Success(clients);
+    }
+
+    public async Task<MobileAgentLeadsResult> GetAgentLeadsAsync(
+        MobileResolvedActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.Equals(actor.Actor.ParticipantType, MessagingParticipantTypes.Agent, StringComparison.Ordinal))
+        {
+            return MobileAgentLeadsResult.Unavailable(
+                "MOBILE_AGENT_ROLE_REQUIRED",
+                "Lead CRM is available from an agent mobile identity.");
+        }
+
+        var agentUserId = actor.Actor.UserId.ToLowerInvariant();
+        var leadRows = await _db.WorkstationLeadProfiles
+            .AsNoTracking()
+            .Where(lead =>
+                lead.AgentUserId.ToLower() == agentUserId &&
+                (lead.CrmStage == null || lead.CrmStage.ToLower() != "notinterested"))
+            .OrderByDescending(lead => lead.UpdatedUtc)
+            .Take(50)
+            .Select(lead => new MobileAgentLeadProfileRow(
+                lead.LeadId,
+                lead.FirstName,
+                lead.LastName,
+                lead.CrmStage ?? "New",
+                lead.UpdatedUtc))
+            .ToListAsync(cancellationToken);
+
+        return MobileAgentLeadsResult.Success(leadRows
+            .Select(lead => new MobileAgentLead(
+                lead.LeadId,
+                string.Join(" ", new[] { lead.FirstName, lead.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim(),
+                lead.CrmStage,
+                lead.UpdatedUtc))
+            .ToArray());
     }
 
     private async Task<MobileHome> BuildClientHomeAsync(
@@ -304,6 +393,24 @@ public sealed class MobileHomeService : IMobileHomeService
     }
 
     private sealed record MobilePersistedFinanceState(string JsonState, DateTime UpdatedUtc);
+
+    private sealed record MobileAgentClientProfileRow(
+        Guid Id,
+        string ClientUserId,
+        string FirstName,
+        string LastName,
+        string Email,
+        string? CrmStatus,
+        string? CrmNotes,
+        byte[]? ProfileImageContent,
+        string? ProfileImageContentType);
+
+    private sealed record MobileAgentLeadProfileRow(
+        string LeadId,
+        string FirstName,
+        string LastName,
+        string CrmStage,
+        DateTime UpdatedUtc);
 }
 
 public sealed record MobileHomeResult(bool Succeeded, string? ErrorCode, string? ErrorMessage, MobileHome? Home)
@@ -316,6 +423,18 @@ public sealed record MobileFinancialResult(bool Succeeded, string? ErrorCode, st
 {
     public static MobileFinancialResult Success(MobileFinancialSnapshot snapshot) => new(true, null, null, snapshot);
     public static MobileFinancialResult Unavailable(string errorCode, string errorMessage) => new(false, errorCode, errorMessage, null);
+}
+
+public sealed record MobileAgentClientsResult(bool Succeeded, string? ErrorCode, string? ErrorMessage, IReadOnlyList<MobileAgentClient> Clients)
+{
+    public static MobileAgentClientsResult Success(IReadOnlyList<MobileAgentClient> clients) => new(true, null, null, clients);
+    public static MobileAgentClientsResult Unavailable(string errorCode, string errorMessage) => new(false, errorCode, errorMessage, Array.Empty<MobileAgentClient>());
+}
+
+public sealed record MobileAgentLeadsResult(bool Succeeded, string? ErrorCode, string? ErrorMessage, IReadOnlyList<MobileAgentLead> Leads)
+{
+    public static MobileAgentLeadsResult Success(IReadOnlyList<MobileAgentLead> leads) => new(true, null, null, leads);
+    public static MobileAgentLeadsResult Unavailable(string errorCode, string errorMessage) => new(false, errorCode, errorMessage, Array.Empty<MobileAgentLead>());
 }
 
 public sealed record MobileHome(
@@ -351,3 +470,5 @@ public sealed record MobileFinancialPosition(int HealthScore, decimal AssetsTota
 public sealed record MobileFinancialIntelligenceSummary(string Status, decimal DataCompletenessScore, string CurrentRiskSummary, string CurrentOpportunitySummary, string CurrentLeakageSummary, DateTime? LastEvaluatedUtc, IReadOnlyList<MobileFinancialFinding> Findings);
 public sealed record MobileFinancialFinding(Guid Id, string Category, string Title, string Explanation, decimal? EstimatedImpact, string? ImpactUnit, string Urgency, string Status, DateTime LastDetectedUtc);
 public sealed record MobileUpcomingBill(Guid Id, string DisplayName, long AverageAmountCents, string Cadence, DateTime NextExpectedDateUtc, string Status);
+public sealed record MobileAgentClient(Guid ProfileId, string DisplayName, string Email, string CrmStatus, byte[]? ProfileImageContent, string? ProfileImageContentType);
+public sealed record MobileAgentLead(string LeadId, string DisplayName, string CrmStage, DateTime UpdatedUtc);

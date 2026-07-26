@@ -305,6 +305,25 @@ final class MobileSessionCoordinator: ObservableObject {
         )
     }
 
+    func makeAgentWorkspaceStore() -> MobileAgentWorkspaceStore {
+        guard let apiBaseURL = configuration.apiBaseURL,
+              case .authenticated(let currentSession) = state,
+              currentSession.actor.identity.participantType == .agent else {
+            return MobileAgentWorkspaceStore(
+                api: MobileUnavailableAgentWorkspaceAPI(),
+                accessTokenProvider: { throw MobileAPIError.forbidden(correlationID: nil) },
+                diagnostics: diagnostics)
+        }
+
+        return MobileAgentWorkspaceStore(
+            api: URLSessionMobileAgentWorkspaceAPI(client: MobileHTTPClient(baseURL: apiBaseURL)),
+            accessTokenProvider: { [weak self] in
+                guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
+                return try await self.accessTokenForRequest()
+            },
+            diagnostics: diagnostics)
+    }
+
     private func validate(callbackURL: URL, expectedState: String) throws -> String {
         try OAuthCallbackValidator.authorizationCode(
             from: callbackURL,
