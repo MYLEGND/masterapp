@@ -250,6 +250,26 @@ final class MobileSessionCoordinator: ObservableObject {
             diagnostics: diagnostics)
     }
 
+    func makeAccountStore() -> MobileAccountStore {
+        guard let apiBaseURL = configuration.apiBaseURL,
+              case .authenticated(let currentSession) = state else {
+            return MobileAccountStore(
+                api: MobileUnavailableAccountAPI(),
+                accessTokenProvider: { throw MobileAPIError.unauthorized(correlationID: nil) },
+                diagnostics: diagnostics)
+        }
+
+        return MobileAccountStore(
+            api: URLSessionMobileAccountAPI(
+                client: MobileHTTPClient(baseURL: apiBaseURL),
+                participantType: currentSession.actor.identity.participantType),
+            accessTokenProvider: { [weak self] in
+                guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
+                return try await self.accessTokenForRequest()
+            },
+            diagnostics: diagnostics)
+    }
+
     private func establishSession(using tokens: OAuthTokenSet) async throws {
         guard let apiBaseURL = configuration.apiBaseURL else { throw MobileAPIError.invalidBaseURL }
         diagnostics.record(category: .authentication, summary: "Mobile session request started. Authorization header present: true.")
