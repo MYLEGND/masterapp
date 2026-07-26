@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct MessagingHomeView: View {
     @ObservedObject var store: MessagingStore
@@ -12,27 +13,16 @@ struct MessagingHomeView: View {
             case .loaded(let conversations):
                 conversationsView(conversations)
             case .unavailable(let message):
-                ContentUnavailableView {
-                    Label("Messages need a server contract", systemImage: "lock.message")
-                } description: {
-                    Text(message)
-                }
-            case .failed(let failure):
-                ContentUnavailableView {
-                    Label(failure.title, systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(failure.message)
-                } actions: {
-                    Button("Retry") {
-                        store.load()
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
+                unavailableView(message)
+            case .unauthorized(let failure), .forbidden(let failure), .offline(let failure), .failed(let failure):
+                failureView(failure)
             }
         }
         .navigationTitle("Messages")
         .task {
-            store.load()
+            if case .idle = store.state {
+                store.load()
+            }
         }
     }
 
@@ -42,15 +32,110 @@ struct MessagingHomeView: View {
             ContentUnavailableView("No conversations", systemImage: "message", description: Text("Your authorized conversations will appear here."))
         } else {
             List(conversations) { conversation in
-                Button {
-                    store.selectConversation(conversation.id)
+                NavigationLink {
+                    ConversationThreadView(store: store, conversationID: conversation.id)
                 } label: {
                     ConversationRow(conversation: conversation)
                 }
-                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded {
+                    store.openConversation(conversation.id)
+                })
             }
             .listStyle(.plain)
         }
+    }
+
+    private func unavailableView(_ message: String) -> some View {
+        ContentUnavailableView {
+            Label("Messages unavailable", systemImage: "lock.message")
+        } description: {
+            Text(message)
+        }
+    }
+
+    private func failureView(_ failure: UserFacingFailure) -> some View {
+        ContentUnavailableView {
+            Label(failure.title, systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(failure.message)
+        } actions: {
+            Button("Retry") {
+                store.load()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+}
+
+private struct ConversationThreadView: View {
+    @ObservedObject var store: MessagingStore
+    let conversationID: UUID
+    @State private var draft = ""
+
+    var body: some View {
+        Group {
+            switch store.detailState {
+            case .idle, .loading:
+                ProgressView("Loading conversation…")
+            case .loaded(let conversation):
+                threadView(conversation)
+            case .unavailable(let message):
+                ContentUnavailableView("Conversation unavailable", systemImage: "lock.message", description: Text(message))
+            case .unauthorized(let failure), .forbidden(let failure), .offline(let failure), .failed(let failure):
+                ContentUnavailableView {
+                    Label(failure.title, systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(failure.message)
+                } actions: {
+                    Button("Retry") {
+                        store.openConversation(conversationID)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+        }
+        .task {
+            if store.selectedConversationID != conversationID {
+                store.openConversation(conversationID)
+            }
+        }
+    }
+
+    private func threadView(_ conversation: ConversationDetail) -> some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach(conversation.messages) { message in
+                        MessageBubble(message: message)
+                    }
+                }
+                .padding()
+            }
+
+            Divider()
+            VStack(alignment: .leading, spacing: 8) {
+                if let sendFailure = store.sendFailure {
+                    Text(sendFailure.message)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+                HStack(alignment: .bottom, spacing: 10) {
+                    TextField("Write a message", text: $draft, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(1 ... 6)
+                    Button("Send") {
+                        let outgoing = draft
+                        draft = ""
+                        store.send(body: outgoing)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isSending || conversation.isClosed)
+                }
+            }
+            .padding()
+        }
+        .navigationTitle(conversation.title)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -66,7 +151,7 @@ private struct ConversationRow: View {
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                Text(conversation.preview ?? "No message preview")
+                Text(conversation.lastMessagePreview ?? "No message preview")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -75,9 +160,11 @@ private struct ConversationRow: View {
             Spacer(minLength: 8)
 
             VStack(alignment: .trailing, spacing: 6) {
-                Text(conversation.lastActivityUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let lastMessageUTC = conversation.lastMessageUTC {
+                    Text(lastMessageUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if conversation.unreadCount > 0 {
                     Text("\(conversation.unreadCount)")
                         .font(.caption.bold())
@@ -94,24 +181,39 @@ private struct ConversationRow: View {
     }
 }
 
+private struct MessageBubble: View {
+    let message: ConversationMessage
+
+    var body: some View {
+        HStack {
+            if message.isMine { Spacer(minLength: 48) }
+            VStack(alignment: message.isMine ? .trailing : .leading, spacing: 5) {
+                Text(message.sender.displayName)
+                    .font(.caption.bold())
+                Text(message.body)
+                    .textSelection(.enabled)
+                Text(message.sentUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .foregroundStyle(message.isMine ? .white : .primary)
+            .background(message.isMine ? Color.accentColor : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+            if !message.isMine { Spacer(minLength: 48) }
+        }
+    }
+}
+
 private struct ParticipantAvatar: View {
     let participant: MessagingParticipant
 
     var body: some View {
         Group {
-            if let avatarURL = participant.avatarURL {
-                AsyncImage(url: avatarURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    case .empty:
-                        ProgressView()
-                    case .failure:
-                        initialsView
-                    @unknown default:
-                        initialsView
-                    }
-                }
+            if let data = participant.avatar?.imageData,
+               let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
             } else {
                 initialsView
             }

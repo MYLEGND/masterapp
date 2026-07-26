@@ -13,12 +13,14 @@ struct MobileHTTPClient: Sendable {
         _ path: String,
         accessToken: String,
         queryItems: [URLQueryItem] = [],
+        headers: [String: String] = [:],
         response: Response.Type
     ) async throws -> Response {
         var request = URLRequest(url: try endpointURL(path, queryItems: queryItems))
         request.httpMethod = "GET"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         return try await perform(request, response: response)
     }
 
@@ -27,6 +29,7 @@ struct MobileHTTPClient: Sendable {
         body: Body,
         accessToken: String,
         idempotencyKey: UUID? = nil,
+        headers: [String: String] = [:],
         response: Response.Type
     ) async throws -> Response {
         var request = URLRequest(url: try endpointURL(path, queryItems: []))
@@ -34,6 +37,7 @@ struct MobileHTTPClient: Sendable {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         if let idempotencyKey {
             request.setValue(idempotencyKey.uuidString, forHTTPHeaderField: "Idempotency-Key")
         }
@@ -45,12 +49,14 @@ struct MobileHTTPClient: Sendable {
         _ path: String,
         body: Body,
         accessToken: String,
-        idempotencyKey: UUID? = nil
+        idempotencyKey: UUID? = nil,
+        headers: [String: String] = [:]
     ) async throws {
         var request = URLRequest(url: try endpointURL(path, queryItems: []))
         request.httpMethod = "POST"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         if let idempotencyKey {
             request.setValue(idempotencyKey.uuidString, forHTTPHeaderField: "Idempotency-Key")
         }
@@ -72,7 +78,7 @@ struct MobileHTTPClient: Sendable {
     }
 
     private func perform<Response: Decodable>(_ request: URLRequest, response: Response.Type) async throws -> Response {
-        let (data, urlResponse) = try await session.data(for: request)
+        let (data, urlResponse) = try await requestData(for: request)
         guard let http = urlResponse as? HTTPURLResponse else {
             throw MobileAPIError.invalidServerResponse
         }
@@ -89,13 +95,15 @@ struct MobileHTTPClient: Sendable {
             throw MobileAPIError.unauthorized(correlationID: correlationID)
         case 403:
             throw MobileAPIError.forbidden(correlationID: correlationID)
+        case 409:
+            throw MobileAPIError.conflict(correlationID: correlationID)
         default:
             throw MobileAPIError.server(statusCode: http.statusCode, correlationID: correlationID)
         }
     }
 
     private func performEmpty(_ request: URLRequest) async throws {
-        let (_, urlResponse) = try await session.data(for: request)
+        let (_, urlResponse) = try await requestData(for: request)
         guard let http = urlResponse as? HTTPURLResponse else {
             throw MobileAPIError.invalidServerResponse
         }
@@ -107,8 +115,28 @@ struct MobileHTTPClient: Sendable {
             throw MobileAPIError.unauthorized(correlationID: correlationID)
         case 403:
             throw MobileAPIError.forbidden(correlationID: correlationID)
+        case 409:
+            throw MobileAPIError.conflict(correlationID: correlationID)
         default:
             throw MobileAPIError.server(statusCode: http.statusCode, correlationID: correlationID)
+        }
+    }
+
+    private func requestData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        do {
+            return try await session.data(for: request)
+        } catch let error as URLError {
+            switch error.code {
+            case .notConnectedToInternet,
+                 .networkConnectionLost,
+                 .cannotConnectToHost,
+                 .cannotFindHost,
+                 .dnsLookupFailed,
+                 .timedOut:
+                throw MobileAPIError.networkUnavailable
+            default:
+                throw error
+            }
         }
     }
 }
@@ -117,16 +145,18 @@ enum MobileAPIError: LocalizedError, Equatable {
     case invalidBaseURL
     case invalidPath
     case invalidServerResponse
+    case networkUnavailable
     case decodingFailed(correlationID: String?)
     case unauthorized(correlationID: String?)
     case forbidden(correlationID: String?)
+    case conflict(correlationID: String?)
     case server(statusCode: Int, correlationID: String?)
 
     var correlationID: String? {
         switch self {
-        case .decodingFailed(let correlationID), .unauthorized(let correlationID), .forbidden(let correlationID), .server(_, let correlationID):
+        case .decodingFailed(let correlationID), .unauthorized(let correlationID), .forbidden(let correlationID), .conflict(let correlationID), .server(_, let correlationID):
             return correlationID
-        case .invalidBaseURL, .invalidPath, .invalidServerResponse:
+        case .invalidBaseURL, .invalidPath, .invalidServerResponse, .networkUnavailable:
             return nil
         }
     }
@@ -137,10 +167,14 @@ enum MobileAPIError: LocalizedError, Equatable {
             return "The mobile service configuration is invalid."
         case .invalidServerResponse, .decodingFailed:
             return "The service returned an unexpected response."
+        case .networkUnavailable:
+            return "The network connection is unavailable."
         case .unauthorized:
             return "Your session has ended. Please sign in again."
         case .forbidden:
             return "You do not have access to this action."
+        case .conflict:
+            return "Choose an authorized role before continuing."
         case .server:
             return "The service could not complete this request."
         }

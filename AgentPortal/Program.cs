@@ -1,8 +1,10 @@
 using AgentPortal.Hubs;
 using AgentPortal.Middleware;
 using AgentPortal.Services;
+using AgentPortal.Mobile;
 using Azure.Identity;
 using Infrastructure.Billing;
+using Infrastructure.Mobile;
 using Infrastructure.FinancialIntelligence;
 using Infrastructure.Messaging;
 using Infrastructure.Data;
@@ -76,12 +78,20 @@ builder.Services.AddAuthorization(options =>
     {
         policy.RequireAssertion(ctx => FounderGuard.IsFounder(ctx.User));
     });
+    options.AddPolicy(MobileApiAuthorization.PolicyName, policy =>
+    {
+        MobileApiAuthorization.ConfigurePolicy(policy);
+    });
 });
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
 builder.Services.AddMasterAppMessaging(builder.Configuration);
+var mobileAuthConfiguration = MobileAuthConfiguration.FromConfiguration(builder.Configuration);
+builder.Services.AddSingleton(mobileAuthConfiguration);
+builder.Services.AddScoped<IMobileActorResolver, MobileActorResolver>();
+builder.Services.AddSingleton<IAuthorizationHandler, MobileApiScopeAuthorizationHandler>();
 builder.Services.AddScoped<AgentProfileImageLegacyBackfillService>();
 builder.Services.AddScoped<ClientBillingWorkspaceService>();
 builder.Services.AddScoped<ClientProvisioningService>();
@@ -571,6 +581,11 @@ builder.Services
     // Delegated Graph client (uses signed-in user tokens)
     .AddMicrosoftGraph(builder.Configuration.GetSection("Graph"))
     .AddInMemoryTokenCaches();
+
+builder.Services
+    .AddAuthentication()
+    .AddJwtBearer(MobileApiAuthorization.BearerScheme, options =>
+        MobileBearerOptions.Configure(options, mobileAuthConfiguration));
 
 // ------------------------------------------------------------
 // APP-ONLY GRAPH CLIENT (ClientSecretCredential) FOR PROVISIONING

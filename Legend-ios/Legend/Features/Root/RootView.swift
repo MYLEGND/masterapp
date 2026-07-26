@@ -14,6 +14,8 @@ struct RootView: View {
                 SignInView()
             case .authenticating:
                 ProgressView("Opening secure sign-in…")
+            case .roleSelection(let selection):
+                RoleSelectionView(selection: selection)
             case .authenticated(let currentSession):
                 AuthenticatedHomeView(currentSession: currentSession, coordinator: session)
             case .failed(let failure):
@@ -22,6 +24,49 @@ struct RootView: View {
         }
         .task {
             session.restore()
+        }
+    }
+}
+
+private struct RoleSelectionView: View {
+    let selection: MobileRoleSelection
+    @EnvironmentObject private var session: MobileSessionCoordinator
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+
+            LegendBrandLogo()
+                .padding(.bottom, 8)
+
+                Image(systemName: "person.2.badge.gearshape")
+                    .font(.system(size: 46, weight: .semibold))
+                    .foregroundStyle(.tint)
+                VStack(spacing: 8) {
+                    Text("Choose your Legend role")
+                        .font(.title2.bold())
+                    Text("Your account has more than one authorized participant role. Choose the role for this secure mobile session.")
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                VStack(spacing: 10) {
+                    ForEach(selection.permittedParticipantTypes, id: \.self) { role in
+                        Button {
+                            session.selectRole(role)
+                        } label: {
+                            Label(role == .agent ? "Continue as Agent" : "Continue as Client", systemImage: role == .agent ? "briefcase.fill" : "person.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+                Button("Sign out", role: .destructive) {
+                    session.signOut()
+                }
+                Spacer()
+            }
+            .padding(24)
+            .navigationTitle("Legend")
         }
     }
 }

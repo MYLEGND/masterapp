@@ -13,7 +13,7 @@ final class LogicalParticipantIdentityTests: XCTestCase {
 
     func testDecodeNormalizesUserIDButPreservesParticipantType() throws {
         let data = """
-        { "userID": "  SAME-USER ", "participantType": "Client" }
+        { "userId": "  SAME-USER ", "participantType": "Client" }
         """.data(using: .utf8)!
 
         let identity = try JSONDecoder.mobile.decode(LogicalParticipantIdentity.self, from: data)

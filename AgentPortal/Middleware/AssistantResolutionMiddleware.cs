@@ -1,4 +1,5 @@
 using AgentPortal.Services;
+using AgentPortal.Mobile;
 using Microsoft.Extensions.Configuration;
 
 namespace AgentPortal.Middleware;
@@ -96,6 +97,12 @@ public class AssistantResolutionMiddleware
         AssistantContextService assistantContext,
         AgentRegistryService agentRegistry)
     {
+        if (MobileApiRoute.IsMobileApi(context.Request))
+        {
+            await _next(context);
+            return;
+        }
+
         // Public onboarding links must bypass assistant/guest restrictions so clients can complete forms without login.
         var path = context.Request.Path.Value ?? "";
         var pathLower = path.ToLowerInvariant();

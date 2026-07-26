@@ -27,7 +27,6 @@ struct OAuthAuthorizationRequest: Sendable {
     let clientID: String
     let redirectScheme: String
     let scope: String
-    let audience: String
     let state: String
     let pkce: PKCEChallenge
 
@@ -42,7 +41,6 @@ struct OAuthAuthorizationRequest: Sendable {
             URLQueryItem(name: "client_id", value: clientID),
             URLQueryItem(name: "redirect_uri", value: "\(redirectScheme)://oauth/callback"),
             URLQueryItem(name: "scope", value: scope),
-            URLQueryItem(name: "audience", value: audience),
             URLQueryItem(name: "state", value: state),
             URLQueryItem(name: "code_challenge", value: pkce.challenge),
             URLQueryItem(name: "code_challenge_method", value: "S256")

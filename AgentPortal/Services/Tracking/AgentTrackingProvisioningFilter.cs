@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using AgentPortal.Mobile;
 using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace AgentPortal.Services.Tracking;
@@ -20,6 +21,12 @@ public class AgentTrackingProvisioningFilter : IAsyncActionFilter
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
+        if (MobileApiRoute.IsMobileApi(context.HttpContext.Request))
+        {
+            await next();
+            return;
+        }
+
         if (context.HttpContext.User?.Identity?.IsAuthenticated == true)
         {
             var user = context.HttpContext.User;

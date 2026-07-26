@@ -1,10 +1,15 @@
+import AuthenticationServices
 import Combine
 import Foundation
 
 struct MobileSession: Equatable, Sendable {
     let actor: MobileActor
     let capabilities: Set<String>
-    let entitlementState: String
+}
+
+struct MobileRoleSelection: Equatable, Sendable {
+    let permittedParticipantTypes: [ParticipantType]
+    let correlationID: String?
 }
 
 enum MobileSessionState: Equatable {
@@ -12,6 +17,7 @@ enum MobileSessionState: Equatable {
     case contractUnavailable(MobileConfigurationValidation)
     case signedOut
     case authenticating
+    case roleSelection(MobileRoleSelection)
     case authenticated(MobileSession)
     case failed(UserFacingFailure)
 }
@@ -90,6 +96,11 @@ final class MobileSessionCoordinator: ObservableObject {
                 try tokenStore.save(tokens)
                 try await establishSession(using: tokens)
             } catch {
+                if let authorizationError = error as? ASWebAuthenticationSessionError,
+                   authorizationError.code == .canceledLogin {
+                    state = .signedOut
+                    return
+                }
                 state = .failed(UserFacingFailure(
                     title: "Sign-in unavailable",
                     message: error.localizedDescription,
@@ -105,8 +116,41 @@ final class MobileSessionCoordinator: ObservableObject {
         state = configuration.validation.isReady ? .signedOut : .contractUnavailable(configuration.validation)
     }
 
+    func selectRole(_ participantType: ParticipantType) {
+        guard configuration.validation.isReady,
+              let apiBaseURL = configuration.apiBaseURL else {
+            state = .contractUnavailable(configuration.validation)
+            return
+        }
+
+        Task {
+            state = .authenticating
+            do {
+                guard let tokens = try tokenStore.read(), tokens.expiresAt > Date() else {
+                    try? tokenStore.clear()
+                    state = .signedOut
+                    return
+                }
+                let response = try await MobileSessionAPI(client: MobileHTTPClient(baseURL: apiBaseURL))
+                    .selectRole(participantType, accessToken: tokens.accessToken)
+                state = .authenticated(MobileSession(
+                    actor: response.actor,
+                    capabilities: ["messaging"]
+                ))
+            } catch {
+                state = .failed(UserFacingFailure(
+                    title: "Role selection unavailable",
+                    message: error.localizedDescription,
+                    correlationID: (error as? MobileAPIError)?.correlationID
+                ))
+                diagnostics.record(category: .authentication, summary: "Native mobile role selection did not complete.")
+            }
+        }
+    }
+
     func makeMessagingStore() -> MessagingStore {
-        guard let apiBaseURL = configuration.apiBaseURL else {
+        guard let apiBaseURL = configuration.apiBaseURL,
+              case .authenticated(let currentSession) = state else {
             return MessagingStore(
                 api: MobileContractUnavailableMessagingAPI(),
                 accessToken: "",
@@ -123,7 +167,9 @@ final class MobileSessionCoordinator: ObservableObject {
                 )
             }
             return MessagingStore(
-                api: URLSessionMessagingAPI(client: MobileHTTPClient(baseURL: apiBaseURL)),
+                api: URLSessionMessagingAPI(
+                    client: MobileHTTPClient(baseURL: apiBaseURL),
+                    participantType: currentSession.actor.identity.participantType),
                 accessToken: tokens.accessToken,
                 diagnostics: diagnostics
             )
@@ -140,10 +186,24 @@ final class MobileSessionCoordinator: ObservableObject {
         guard let apiBaseURL = configuration.apiBaseURL else { throw MobileAPIError.invalidBaseURL }
         let response = try await MobileSessionAPI(client: MobileHTTPClient(baseURL: apiBaseURL))
             .bootstrap(accessToken: tokens.accessToken)
+        guard response.authenticated else {
+            throw MobileAPIError.unauthorized(correlationID: response.correlationID)
+        }
+        if response.requiresParticipantSelection {
+            guard !response.permittedParticipantTypes.isEmpty else {
+                throw MobileAPIError.forbidden(correlationID: response.correlationID)
+            }
+            state = .roleSelection(MobileRoleSelection(
+                permittedParticipantTypes: response.permittedParticipantTypes,
+                correlationID: response.correlationID))
+            return
+        }
+        guard let actor = response.actor else {
+            throw MobileAPIError.forbidden(correlationID: response.correlationID)
+        }
         state = .authenticated(MobileSession(
-            actor: response.actor,
-            capabilities: Set(response.capabilities),
-            entitlementState: response.entitlement.state
+            actor: actor,
+            capabilities: response.capabilities.messaging ? ["messaging"] : []
         ))
     }
 
@@ -151,8 +211,7 @@ final class MobileSessionCoordinator: ObservableObject {
         guard let authorizationEndpoint = configuration.authorizationEndpoint,
               let clientID = configuration.clientID,
               let redirectScheme = configuration.redirectScheme,
-              let scope = configuration.scope,
-              let audience = configuration.audience else {
+              let scope = configuration.scope else {
             throw MobileAPIError.invalidBaseURL
         }
         return OAuthAuthorizationRequest(
@@ -160,14 +219,29 @@ final class MobileSessionCoordinator: ObservableObject {
             clientID: clientID,
             redirectScheme: redirectScheme,
             scope: scope,
-            audience: audience,
             state: state,
             pkce: pkce
         )
     }
 
     private func validate(callbackURL: URL, expectedState: String) throws -> String {
-        guard let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
+        try OAuthCallbackValidator.authorizationCode(
+            from: callbackURL,
+            redirectScheme: configuration.redirectScheme,
+            expectedState: expectedState)
+    }
+}
+
+enum OAuthCallbackValidator {
+    static func authorizationCode(
+        from callbackURL: URL,
+        redirectScheme: String?,
+        expectedState: String) throws -> String
+    {
+        guard callbackURL.scheme?.caseInsensitiveCompare(redirectScheme ?? "") == .orderedSame,
+              callbackURL.host?.caseInsensitiveCompare("oauth") == .orderedSame,
+              callbackURL.path == "/callback",
+              let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
               let returnedState = components.queryItems?.first(where: { $0.name == "state" })?.value,
               returnedState == expectedState,
               let code = components.queryItems?.first(where: { $0.name == "code" })?.value,
@@ -178,7 +252,7 @@ final class MobileSessionCoordinator: ObservableObject {
     }
 }
 
-private enum OAuthCallbackError: LocalizedError {
+enum OAuthCallbackError: LocalizedError, Equatable {
     case invalidCallback
 
     var errorDescription: String? {
@@ -194,7 +268,8 @@ struct URLSessionOAuthTokenExchanger: OAuthTokenExchanging {
     func exchange(code: String, pkceVerifier: String, configuration: MobileConfiguration) async throws -> OAuthTokenSet {
         guard let tokenEndpoint = configuration.tokenEndpoint,
               let clientID = configuration.clientID,
-              let redirectScheme = configuration.redirectScheme else {
+              let redirectScheme = configuration.redirectScheme,
+              let scope = configuration.scope else {
             throw MobileAPIError.invalidBaseURL
         }
 
@@ -207,6 +282,7 @@ struct URLSessionOAuthTokenExchanger: OAuthTokenExchanging {
             "code": code,
             "client_id": clientID,
             "redirect_uri": "\(redirectScheme)://oauth/callback",
+            "scope": scope,
             "code_verifier": pkceVerifier
         ])
 
@@ -264,16 +340,52 @@ private struct MobileSessionAPI: Sendable {
     let client: MobileHTTPClient
 
     func bootstrap(accessToken: String) async throws -> MobileBootstrapResponse {
-        try await client.get("/api/mobile/v1/session", accessToken: accessToken, response: MobileBootstrapResponse.self)
+        try await client.get("/api/v1/mobile/session", accessToken: accessToken, response: MobileBootstrapResponse.self)
+    }
+
+    func selectRole(_ participantType: ParticipantType, accessToken: String) async throws -> MobileRoleSelectionResponse {
+        try await client.post(
+            "/api/v1/mobile/session/select-role",
+            body: MobileRoleSelectionRequest(participantType: participantType.rawValue),
+            accessToken: accessToken,
+            response: MobileRoleSelectionResponse.self)
     }
 }
 
-private struct MobileBootstrapResponse: Decodable {
-    let actor: MobileActor
-    let capabilities: [String]
-    let entitlement: MobileEntitlement
+struct MobileBootstrapResponse: Decodable {
+    let authenticated: Bool
+    let actor: MobileActor?
+    let permittedParticipantTypes: [ParticipantType]
+    let requiresParticipantSelection: Bool
+    let capabilities: MobileCapabilities
+    let correlationID: String
+
+    private enum CodingKeys: String, CodingKey {
+        case authenticated
+        case actor
+        case permittedParticipantTypes
+        case requiresParticipantSelection
+        case capabilities
+        case correlationID = "correlationId"
+    }
 }
 
-private struct MobileEntitlement: Decodable {
-    let state: String
+struct MobileCapabilities: Decodable {
+    let messaging: Bool
+}
+
+struct MobileRoleSelectionRequest: Encodable {
+    let participantType: String
+}
+
+struct MobileRoleSelectionResponse: Decodable {
+    let actor: MobileActor
+    let permittedParticipantTypes: [ParticipantType]
+    let correlationID: String
+
+    private enum CodingKeys: String, CodingKey {
+        case actor
+        case permittedParticipantTypes
+        case correlationID = "correlationId"
+    }
 }

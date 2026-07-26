@@ -12,7 +12,7 @@ struct MobileConfiguration: Equatable, Sendable {
 
     static func fromBundle(_ bundle: Bundle = .main) -> MobileConfiguration {
         MobileConfiguration(
-            bundleIdentifier: bundle.stringValue(forInfoKey: "LegendBundleIdentifier"),
+            bundleIdentifier: bundle.bundleIdentifier,
             apiBaseURL: bundle.urlValue(forInfoKey: "LegendAPIBaseURL"),
             authorizationEndpoint: bundle.urlValue(forInfoKey: "LegendAuthorizationEndpoint"),
             tokenEndpoint: bundle.urlValue(forInfoKey: "LegendTokenEndpoint"),

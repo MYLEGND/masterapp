@@ -26,7 +26,7 @@ struct LogicalParticipantIdentity: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case userID
+        case userID = "userId"
         case participantType
     }
 
@@ -80,10 +80,18 @@ struct MobileActor: Codable, Equatable, Sendable {
         self.avatar = avatar
     }
 
-    var avatarURL: URL? { avatar?.url }
+    private enum CodingKeys: String, CodingKey {
+        case identity
+        case profileID = "profileId"
+        case displayName
+        case avatar
+    }
 }
 
 struct ProfileAvatar: Codable, Equatable, Sendable {
     let kind: String
-    let url: URL?
+    let contentType: String
+    let base64Content: String
+
+    var imageData: Data? { Data(base64Encoded: base64Content) }
 }

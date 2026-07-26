@@ -27,9 +27,27 @@ final class MobileConfigurationTests: XCTestCase {
             clientID: "example-client-id",
             redirectScheme: "com-example-legend",
             scope: "openid profile",
-            audience: "example-audience"
+            audience: "api://example-audience"
         )
 
         XCTAssertTrue(configuration.validation.isReady)
+    }
+
+    func testBundleIdentifierComesFromTheBundleRatherThanACustomPlistKey() {
+        let configuration = MobileConfiguration.fromBundle(.main)
+
+        XCTAssertEqual(configuration.bundleIdentifier, Bundle.main.bundleIdentifier)
+    }
+
+    func testProductionConfigurationIncludesTheRequiredDelegatedScopeSetting() throws {
+        let configurationDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Configuration")
+        let productionConfiguration = try String(
+            contentsOf: configurationDirectory.appendingPathComponent("Legend-Production.xcconfig"),
+            encoding: .utf8)
+
+        XCTAssertTrue(productionConfiguration.contains("LEGEND_AUTH_SCOPE ="))
     }
 }
