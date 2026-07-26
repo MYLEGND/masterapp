@@ -26,6 +26,7 @@ struct LegendApp: App {
                 }
             }
             .task {
+                NativeUnreadBadge.prepare()
                 try? await Task.sleep(for: .milliseconds(550))
                 withAnimation(LegendMotion.entrance) {
                     isPresentingLaunch = false

@@ -29,6 +29,7 @@
 		A6D192A9E5A5D1D51224F3F5 /* MobileSessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AC04B2C6B3C22460870E399 /* MobileSessionCoordinator.swift */; };
 		AB65D31B53580AC6C46A9AFB /* MobileConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55FB2460CFBD95299E4F7590 /* MobileConfiguration.swift */; };
 		B08DF9F51CABC3BC27A79143 /* MessagingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D35703BC894AC8E986DFF8 /* MessagingModels.swift */; };
+		CC6840D2860AC65AFA33B712 /* NativeUnreadBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8FF22E3544EE230279C2B3E /* NativeUnreadBadge.swift */; };
 		CC7037E0C4432DCBB101F4EA /* MobileHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94450DD87FBF09A656942126 /* MobileHTTPClient.swift */; };
 		CC7F46FF75ECDC0EAD02A423 /* LegendApplicationShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */; };
 		D16AC0B59523AF8ABC1611C3 /* MessagingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5528EEB1AE65FCB262CDEB12 /* MessagingStore.swift */; };
@@ -93,6 +94,7 @@
 		D7D88FC1403F3F593CF31A82 /* Legend.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Legend.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApplicationShell.swift; sourceTree = "<group>"; };
 		E7E81305123969A7AFFB8384 /* LogicalParticipantIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicalParticipantIdentityTests.swift; sourceTree = "<group>"; };
+		E8FF22E3544EE230279C2B3E /* NativeUnreadBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUnreadBadge.swift; sourceTree = "<group>"; };
 		E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileConfigurationTests.swift; sourceTree = "<group>"; };
 		F8B6BA00648FA7CC1476B86B /* SecureTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureTokenStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -154,6 +156,7 @@
 				CB26E12CD661DE7C441F7218 /* LogicalParticipantIdentity.swift */,
 				94450DD87FBF09A656942126 /* MobileHTTPClient.swift */,
 				4AC04B2C6B3C22460870E399 /* MobileSessionCoordinator.swift */,
+				E8FF22E3544EE230279C2B3E /* NativeUnreadBadge.swift */,
 				4EFE5E54C7A8CB19C6B48309 /* OAuthPKCE.swift */,
 				F8B6BA00648FA7CC1476B86B /* SecureTokenStore.swift */,
 			);
@@ -420,6 +423,7 @@
 				A6D192A9E5A5D1D51224F3F5 /* MobileSessionCoordinator.swift in Sources */,
 				ED6F8CA9B2F56B434459B527 /* MobileSocialModels.swift in Sources */,
 				DD0CC6EE761E59591FAE8ACA /* MobileSocialStore.swift in Sources */,
+				CC6840D2860AC65AFA33B712 /* NativeUnreadBadge.swift in Sources */,
 				2692416782F3407695B9CDEA /* OAuthPKCE.swift in Sources */,
 				1A4140542D44E015F343B8AC /* RootView.swift in Sources */,
 				49E97E820E110E4302D64836 /* SecureTokenStore.swift in Sources */,
