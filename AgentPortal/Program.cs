@@ -93,6 +93,7 @@ builder.Services.AddMasterAppMessaging(builder.Configuration);
 var mobileAuthConfiguration = MobileAuthConfiguration.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(mobileAuthConfiguration);
 builder.Services.AddScoped<IMobileActorResolver, MobileActorResolver>();
+builder.Services.AddScoped<IMobileAccountService, MobileAccountService>();
 builder.Services.AddScoped<IMobileHomeService, MobileHomeService>();
 builder.Services.AddScoped<ISocialFeedService, SocialFeedService>();
 builder.Services.AddSingleton<IAuthorizationHandler, MobileApiScopeAuthorizationHandler>();

@@ -488,9 +488,9 @@ public sealed class MobileIntegrationTests
         journeyCircles
             .Setup(service => service.GetDashboardAsync("client-oid", It.IsAny<CancellationToken>()))
             .ReturnsAsync(dashboard);
-        var identities = new Dictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity>
+        var identities = new Dictionary<Guid, MessagingParticipantIdentity>
         {
-            [("client-oid", MessagingParticipantTypes.Client)] = new MessagingParticipantIdentity(
+            [profileId] = new MessagingParticipantIdentity(
                 "client-oid",
                 MessagingParticipantTypes.Client,
                 profileId,
@@ -500,10 +500,9 @@ public sealed class MobileIntegrationTests
         };
         var images = new Mock<IMessagingProfileImageResolver>(MockBehavior.Strict);
         images
-            .Setup(service => service.ResolveIdentitiesAsync(
-                It.Is<IEnumerable<MessagingParticipantReference>>(references =>
-                    references.Single().UserId == "client-oid" &&
-                    references.Single().ParticipantType == MessagingParticipantTypes.Client),
+            .Setup(service => service.ResolveClientIdentitiesByProfileIdAsync(
+                It.Is<IEnumerable<Guid>>(ids =>
+                    ids.Single() == profileId),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(identities);
         images
@@ -676,7 +675,6 @@ public sealed class MobileIntegrationTests
         var controller = new MobileJourneyCirclesController(
             CreateResolver(db),
             journeyCircles,
-            db,
             providedProfiles ?? CreateEmptyProfileResolver())
         {
             ControllerContext = new ControllerContext
@@ -691,11 +689,19 @@ public sealed class MobileIntegrationTests
         Infrastructure.Data.MasterAppDbContext db,
         ClaimsPrincipal principal)
     {
-        return new MobileAccountController(CreateResolver(db), db, CreateEmptyProfileResolver())
+        var accounts = new MobileAccountService(db);
+
+        return new MobileAccountController(
+            CreateResolver(db),
+            accounts,
+            CreateEmptyProfileResolver())
         {
             ControllerContext = new ControllerContext
             {
-                HttpContext = new DefaultHttpContext { User = principal }
+                HttpContext = new DefaultHttpContext
+                {
+                    User = principal
+                }
             }
         };
     }
@@ -707,6 +713,11 @@ public sealed class MobileIntegrationTests
                 It.IsAny<IEnumerable<MessagingParticipantReference>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity>());
+
+        profiles.Setup(x => x.ResolveClientIdentitiesByProfileIdAsync(
+                It.IsAny<IEnumerable<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, MessagingParticipantIdentity>());
         return profiles.Object;
     }
 

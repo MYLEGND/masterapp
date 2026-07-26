@@ -1,12 +1,10 @@
 using Domain.Entities;
 using Domain.JourneyCircles;
 using Domain.Messaging;
-using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Mobile;
 
@@ -18,18 +16,15 @@ namespace AgentPortal.Mobile;
 public sealed class MobileJourneyCirclesController : MobileApiControllerBase
 {
     private readonly IJourneyCirclesService _journeyCircles;
-    private readonly MasterAppDbContext _db;
     private readonly IMessagingProfileImageResolver _profiles;
 
     public MobileJourneyCirclesController(
         IMobileActorResolver actorResolver,
         IJourneyCirclesService journeyCircles,
-        MasterAppDbContext db,
         IMessagingProfileImageResolver profiles)
         : base(actorResolver)
     {
         _journeyCircles = journeyCircles;
-        _db = db;
         _profiles = profiles;
     }
 
@@ -158,18 +153,17 @@ public sealed class MobileJourneyCirclesController : MobileApiControllerBase
         CancellationToken cancellationToken)
     {
         var sourceProfiles = EnumerateProfiles(dashboard).ToArray();
-        var sourceIds = sourceProfiles.Select(profile => profile.ClientProfileId).Distinct().ToArray();
-        var userIdsByProfileId = await _db.ClientProfiles
-            .AsNoTracking()
-            .Where(profile => sourceIds.Contains(profile.Id))
-            .Select(profile => new { profile.Id, profile.ClientUserId })
-            .ToDictionaryAsync(profile => profile.Id, profile => profile.ClientUserId, cancellationToken);
-        var avatarIdentities = userIdsByProfileId
-            .Select(pair => new MessagingParticipantReference(pair.Value, MessagingParticipantTypes.Client));
-        var identities = await _profiles.ResolveIdentitiesAsync(avatarIdentities, cancellationToken);
+        var sourceIds = sourceProfiles
+            .Select(profile => profile.ClientProfileId)
+            .Distinct()
+            .ToArray();
+        var identitiesByProfileId =
+            await _profiles.ResolveClientIdentitiesByProfileIdAsync(
+                sourceIds,
+                cancellationToken);
 
         return new MobileJourneyDashboard(
-            dashboard.Profile is null ? null : await ToProfileAsync(dashboard.Profile, userIdsByProfileId, identities, cancellationToken),
+            dashboard.Profile is null ? null : await ToProfileAsync(dashboard.Profile, identitiesByProfileId, cancellationToken),
             dashboard.Preferences is null ? null : new MobileJourneyPreferences(
                 dashboard.Preferences.ConsentAffirmed,
                 dashboard.Preferences.IsOptedIn,
@@ -177,18 +171,18 @@ public sealed class MobileJourneyCirclesController : MobileApiControllerBase
                 dashboard.Preferences.AllowSuggestions,
                 dashboard.Preferences.AllowConnectionRequests),
             await Task.WhenAll(dashboard.Recommendations.Select(async recommendation => new MobileJourneyRecommendation(
-                await ToProfileAsync(recommendation.Profile, userIdsByProfileId, identities, cancellationToken),
+                await ToProfileAsync(recommendation.Profile, identitiesByProfileId, cancellationToken),
                 recommendation.Explanation))),
             await Task.WhenAll(dashboard.Connections.Select(async connection => new MobileJourneyConnection(
                 connection.Id,
-                await ToProfileAsync(connection.Profile, userIdsByProfileId, identities, cancellationToken),
+                await ToProfileAsync(connection.Profile, identitiesByProfileId, cancellationToken),
                 connection.Status,
                 connection.ConnectionReason,
                 connection.Introduction,
                 connection.CreatedUtc))),
             await Task.WhenAll(dashboard.Requests.Select(async request => new MobileJourneyConnection(
                 request.Id,
-                await ToProfileAsync(request.Profile, userIdsByProfileId, identities, cancellationToken),
+                await ToProfileAsync(request.Profile, identitiesByProfileId, cancellationToken),
                 request.Status,
                 request.ConnectionReason,
                 request.Introduction,
@@ -206,15 +200,18 @@ public sealed class MobileJourneyCirclesController : MobileApiControllerBase
 
     private async Task<MobileJourneyProfile> ToProfileAsync(
         JourneyCirclePublicProfile profile,
-        IReadOnlyDictionary<Guid, string> userIdsByProfileId,
-        IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity> identities,
+        IReadOnlyDictionary<Guid, MessagingParticipantIdentity> identitiesByProfileId,
         CancellationToken cancellationToken)
     {
         MobileAvatarDto? avatar = null;
-        if (userIdsByProfileId.TryGetValue(profile.ClientProfileId, out var userId) &&
-            identities.TryGetValue((userId, MessagingParticipantTypes.Client), out var identity))
+        if (identitiesByProfileId.TryGetValue(
+                profile.ClientProfileId,
+                out var identity))
         {
-            avatar = await MobileAvatarProjection.ResolveAsync(_profiles, identity, cancellationToken);
+            avatar = await MobileAvatarProjection.ResolveAsync(
+                _profiles,
+                identity,
+                cancellationToken);
         }
 
         return new MobileJourneyProfile(

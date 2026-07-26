@@ -16,6 +16,10 @@ public interface IMessagingProfileImageResolver
         IEnumerable<MessagingParticipantReference> participants,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyDictionary<Guid, MessagingParticipantIdentity>> ResolveClientIdentitiesByProfileIdAsync(
+        IEnumerable<Guid> clientProfileIds,
+        CancellationToken cancellationToken = default);
+
     Task<MessagingProfileImage?> ResolveClientProfileImageAsync(
         Guid clientProfileId,
         CancellationToken cancellationToken = default);
@@ -149,6 +153,79 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                     profile.Email,
                     Initials(displayName));
             }
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, MessagingParticipantIdentity>> ResolveClientIdentitiesByProfileIdAsync(
+        IEnumerable<Guid> clientProfileIds,
+        CancellationToken cancellationToken = default)
+    {
+        var profileIds = clientProfileIds
+            .Where(profileId => profileId != Guid.Empty)
+            .Distinct()
+            .ToArray();
+
+        if (profileIds.Length == 0)
+            return new Dictionary<Guid, MessagingParticipantIdentity>();
+
+        var profiles = await _db.ClientProfiles
+            .AsNoTracking()
+            .Where(profile => profileIds.Contains(profile.Id))
+            .Select(profile => new ClientIdentityRow(
+                profile.Id,
+                profile.ClientUserId,
+                profile.ExternalIdentityObjectId,
+                profile.FirstName,
+                profile.LastName,
+                profile.Email))
+            .ToListAsync(cancellationToken);
+
+        var result = new Dictionary<Guid, MessagingParticipantIdentity>();
+
+        foreach (var profileId in profileIds)
+        {
+            var matches = profiles
+                .Where(profile => profile.Id == profileId)
+                .ToArray();
+
+            if (matches.Length != 1)
+            {
+                _logger.LogWarning(
+                    "Messaging client identity resolution by profile ID failed closed. ClientProfileId={ClientProfileId} MatchCount={MatchCount} AmbiguityDetected={AmbiguityDetected}",
+                    profileId,
+                    matches.Length,
+                    matches.Length > 1);
+                continue;
+            }
+
+            var profile = matches[0];
+            var userId = FirstNonEmpty(
+                profile.ExternalIdentityObjectId,
+                profile.ClientUserId);
+
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                _logger.LogWarning(
+                    "Messaging client identity resolution by profile ID found no stored user identity. ClientProfileId={ClientProfileId}",
+                    profileId);
+                continue;
+            }
+
+            userId = Normalize(userId);
+            var displayName = FirstNonEmpty(
+                $"{profile.FirstName} {profile.LastName}".Trim(),
+                profile.Email,
+                "Client");
+
+            result[profile.Id] = new MessagingParticipantIdentity(
+                userId,
+                MessagingParticipantTypes.Client,
+                profile.Id,
+                displayName,
+                profile.Email,
+                Initials(displayName));
         }
 
         return result;
