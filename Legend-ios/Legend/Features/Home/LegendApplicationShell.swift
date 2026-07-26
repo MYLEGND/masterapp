@@ -251,6 +251,34 @@ private struct LegendHomeView: View {
                 journeyCard
 
                 LegendSectionHeader(
+                    "Journey moments",
+                    detail: "People moving through life with purpose"
+                )
+
+                JourneyMomentsRail(
+                    moments: LegendHomeSampleData.moments
+                ) { moment in
+                    selectedTab = moment.isCurrentUser
+                        ? .create
+                        : .circles
+                }
+
+                LegendSectionHeader(
+                    "Your journey feed",
+                    detail: "Progress, guidance, and community"
+                )
+
+                JourneyFeedView(
+                    posts: LegendHomeSampleData.posts,
+                    onCreate: {
+                        selectedTab = .create
+                    },
+                    onOpenDiscussion: { _ in
+                        selectedTab = .messages
+                    }
+                )
+
+                LegendSectionHeader(
                     "Continue building",
                     detail: "Your connected Legend journey"
                 )

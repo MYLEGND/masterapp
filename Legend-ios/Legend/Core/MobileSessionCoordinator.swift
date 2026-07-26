@@ -38,6 +38,27 @@ final class MobileSessionCoordinator: ObservableObject {
     private let tokenExchanger: any OAuthTokenExchanging
     private let diagnostics: LegendDiagnostics
 
+#if DEBUG
+    private static let debugPreviewSession: MobileSession = {
+        let identity = try! LogicalParticipantIdentity(
+            userID: "legend-debug-client",
+            participantType: .client
+        )
+
+        let actor = try! MobileActor(
+            identity: identity,
+            profileID: "legend-debug-profile",
+            displayName: "Debug User",
+            avatar: nil
+        )
+
+        return MobileSession(
+            actor: actor,
+            capabilities: []
+        )
+    }()
+#endif
+
     init(
         configuration: MobileConfiguration = .current,
         tokenStore: (any SecureTokenStoring)? = nil,
@@ -53,6 +74,13 @@ final class MobileSessionCoordinator: ObservableObject {
     }
 
     func restore() {
+#if DEBUG
+        if !configuration.validation.isReady {
+            state = .authenticated(Self.debugPreviewSession)
+            return
+        }
+#endif
+
         guard configuration.validation.isReady else {
             state = .contractUnavailable(configuration.validation)
             diagnostics.record(category: .configuration, summary: "Native mobile contract configuration is incomplete.")
