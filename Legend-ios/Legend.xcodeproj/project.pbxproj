@@ -11,6 +11,7 @@
 		1A4140542D44E015F343B8AC /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94AC5A93D36DCED40D9482DC /* RootView.swift */; };
 		213CEBBD913B95CF1D8B5DAA /* LegendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ECC81CB776EC7D6D0AF3F25 /* LegendTests.swift */; };
 		2477AEB96C0233C061948794 /* MobileHomeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 429B3A8DF2A854EC227E0EED /* MobileHomeStore.swift */; };
+		25C3E0CF55EA37F492B4450F /* LegendSocialHomeSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7934CB78A5F42B17F1842D23 /* LegendSocialHomeSection.swift */; };
 		2692416782F3407695B9CDEA /* OAuthPKCE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EFE5E54C7A8CB19C6B48309 /* OAuthPKCE.swift */; };
 		2C6A5B6C2F91A13C1C1C4BCD /* LegendDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3449DC74CA91AA0CDAAC840 /* LegendDiagnosticsTests.swift */; };
 		49E97E820E110E4302D64836 /* SecureTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8B6BA00648FA7CC1476B86B /* SecureTokenStore.swift */; };
@@ -32,8 +33,11 @@
 		CC7F46FF75ECDC0EAD02A423 /* LegendApplicationShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */; };
 		D16AC0B59523AF8ABC1611C3 /* MessagingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5528EEB1AE65FCB262CDEB12 /* MessagingStore.swift */; };
 		D26F0D3763F4892CDB762AA3 /* MessagingHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AAA5690855BD6C5B4132AB3 /* MessagingHomeView.swift */; };
+		DBBEB1BAE8F2ADBDF7A37DE1 /* MobileSocialContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */; };
 		DCACEEF2475F1D024A4DA93F /* LegendLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9919D8992FC7EBC28F5DF1B1 /* LegendLaunchView.swift */; };
+		DD0CC6EE761E59591FAE8ACA /* MobileSocialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28C1D977C634FEC8B8B83B87 /* MobileSocialStore.swift */; };
 		DF44B6B8A2DC0CABCA2850B7 /* MobileConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */; };
+		ED6F8CA9B2F56B434459B527 /* MobileSocialModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +61,7 @@
 		02A0C45349D257A61D736948 /* Legend-Staging.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Legend-Staging.xcconfig"; sourceTree = "<group>"; };
 		1AAA5690855BD6C5B4132AB3 /* MessagingHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingHomeView.swift; sourceTree = "<group>"; };
 		20D35703BC894AC8E986DFF8 /* MessagingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingModels.swift; sourceTree = "<group>"; };
+		28C1D977C634FEC8B8B83B87 /* MobileSocialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialStore.swift; sourceTree = "<group>"; };
 		2B58FFC163E4FC3D9A4C4EA3 /* Legend-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Legend-Debug.xcconfig"; sourceTree = "<group>"; };
 		2DBFA05778BCF03C185381BE /* LegendComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendComponents.swift; sourceTree = "<group>"; };
 		2ECC81CB776EC7D6D0AF3F25 /* LegendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendTests.swift; sourceTree = "<group>"; };
@@ -69,8 +74,11 @@
 		4EFE5E54C7A8CB19C6B48309 /* OAuthPKCE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthPKCE.swift; sourceTree = "<group>"; };
 		5528EEB1AE65FCB262CDEB12 /* MessagingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingStore.swift; sourceTree = "<group>"; };
 		55FB2460CFBD95299E4F7590 /* MobileConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileConfiguration.swift; sourceTree = "<group>"; };
+		5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialModels.swift; sourceTree = "<group>"; };
 		62C14045B2834CC0689DBE37 /* LegendUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LegendUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialContractTests.swift; sourceTree = "<group>"; };
 		78E9CB9087E03621529FA288 /* LegendDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiagnostics.swift; sourceTree = "<group>"; };
+		7934CB78A5F42B17F1842D23 /* LegendSocialHomeSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendSocialHomeSection.swift; sourceTree = "<group>"; };
 		8C77437142863C4D1039F225 /* LegendBrandLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendBrandLogo.swift; sourceTree = "<group>"; };
 		8FF13A9483243B521F7DFC68 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		94450DD87FBF09A656942126 /* MobileHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileHTTPClient.swift; sourceTree = "<group>"; };
@@ -127,6 +135,7 @@
 				128626838CEBC7A7A5F44724 /* Messaging */,
 				9787A23BF1358EAA054012DD /* Root */,
 				7DA31C48C755041A1D83D7AB /* Settings */,
+				E628A2A6B5C97C3B84186B36 /* Social */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -219,6 +228,7 @@
 				E7E81305123969A7AFFB8384 /* LogicalParticipantIdentityTests.swift */,
 				E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */,
 				4EB710453BF121B567C8AEBD /* MobileNativeContractTests.swift */,
+				6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */,
 			);
 			path = LegendTests;
 			sourceTree = "<group>";
@@ -239,6 +249,16 @@
 				4A52D7BC1E8F6D8222D84B96 /* LegendUITests.swift */,
 			);
 			path = LegendUITests;
+			sourceTree = "<group>";
+		};
+		E628A2A6B5C97C3B84186B36 /* Social */ = {
+			isa = PBXGroup;
+			children = (
+				7934CB78A5F42B17F1842D23 /* LegendSocialHomeSection.swift */,
+				5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */,
+				28C1D977C634FEC8B8B83B87 /* MobileSocialStore.swift */,
+			);
+			path = Social;
 			sourceTree = "<group>";
 		};
 		FBCAF1A7DF857FC4089EC4C8 /* App */ = {
@@ -373,6 +393,7 @@
 				6AB8FDFB34A8057871BE8441 /* LogicalParticipantIdentityTests.swift in Sources */,
 				DF44B6B8A2DC0CABCA2850B7 /* MobileConfigurationTests.swift in Sources */,
 				890AF69681C5B2FC1D1BB100 /* MobileNativeContractTests.swift in Sources */,
+				DBBEB1BAE8F2ADBDF7A37DE1 /* MobileSocialContractTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -387,6 +408,7 @@
 				5EF643842D57B1E5FCAF8499 /* LegendDesignSystem.swift in Sources */,
 				956B671334A52CF106C5B414 /* LegendDiagnostics.swift in Sources */,
 				DCACEEF2475F1D024A4DA93F /* LegendLaunchView.swift in Sources */,
+				25C3E0CF55EA37F492B4450F /* LegendSocialHomeSection.swift in Sources */,
 				9143163FFD11DECB7F307A06 /* LogicalParticipantIdentity.swift in Sources */,
 				D26F0D3763F4892CDB762AA3 /* MessagingHomeView.swift in Sources */,
 				B08DF9F51CABC3BC27A79143 /* MessagingModels.swift in Sources */,
@@ -396,6 +418,8 @@
 				A4FDCC5F72519E1626BC0D1F /* MobileHomeModels.swift in Sources */,
 				2477AEB96C0233C061948794 /* MobileHomeStore.swift in Sources */,
 				A6D192A9E5A5D1D51224F3F5 /* MobileSessionCoordinator.swift in Sources */,
+				ED6F8CA9B2F56B434459B527 /* MobileSocialModels.swift in Sources */,
+				DD0CC6EE761E59591FAE8ACA /* MobileSocialStore.swift in Sources */,
 				2692416782F3407695B9CDEA /* OAuthPKCE.swift in Sources */,
 				1A4140542D44E015F343B8AC /* RootView.swift in Sources */,
 				49E97E820E110E4302D64836 /* SecureTokenStore.swift in Sources */,

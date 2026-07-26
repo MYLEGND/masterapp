@@ -175,6 +175,7 @@ private struct LegendHomeView: View {
     let currentSession: MobileSession
     @Binding var selectedTab: LegendAppTab
     @StateObject private var store: MobileHomeStore
+    @StateObject private var social: MobileSocialStore
 
     init(
         currentSession: MobileSession,
@@ -184,6 +185,7 @@ private struct LegendHomeView: View {
         self.currentSession = currentSession
         _selectedTab = selectedTab
         _store = StateObject(wrappedValue: coordinator.makeHomeStore())
+        _social = StateObject(wrappedValue: coordinator.makeSocialStore())
     }
 
     var body: some View {
@@ -205,26 +207,12 @@ private struct LegendHomeView: View {
     private func homeContent(_ home: MobileHomeResponse) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: LegendSpacing.md) {
-                LegendHomeHeader(session: currentSession, unreadCount: home.messaging.unreadCount) {
-                    selectedTab = .messages
-                }
-
-                LegendCard(style: .navy) {
-                    VStack(alignment: .leading, spacing: LegendSpacing.sm) {
-                        Text(home.identity.participantType == .agent ? "AGENT WORKSPACE" : "YOUR LEGEND")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(LegendPalette.gold)
-                        Text(home.identity.participantType == .agent ? "Your active work" : "Your connected foundation")
-                            .font(LegendTypography.hero)
-                            .foregroundStyle(.white)
-                        Text(home.identity.participantType == .agent
-                             ? "Live client relationships, upcoming appointments, and assigned work."
-                             : "Membership, relationships, financial intelligence, and next steps from your existing Legend records.")
-                            .font(LegendTypography.body)
-                            .foregroundStyle(.white.opacity(0.78))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                LegendSocialHomeSection(
+                    session: currentSession,
+                    home: home,
+                    social: social,
+                    openMessages: { selectedTab = .messages },
+                    openCircles: { selectedTab = .circles })
 
                 metrics(home)
 
@@ -256,6 +244,7 @@ private struct LegendHomeView: View {
             .padding(.vertical, LegendSpacing.sm)
         }
         .navigationBarHidden(true)
+        .task { if case .idle = social.state { social.load() } }
     }
 
     @ViewBuilder
@@ -409,44 +398,6 @@ private struct LegendHomeView: View {
                 }
             }
         }
-    }
-}
-
-private struct LegendHomeHeader: View {
-    let session: MobileSession
-    let unreadCount: Int
-    let openMessages: () -> Void
-
-    var body: some View {
-        HStack(spacing: LegendSpacing.sm) {
-            LegendProfileAvatar(avatar: session.actor.avatar, displayName: session.actor.displayName, size: 44)
-            VStack(alignment: .leading, spacing: LegendSpacing.xxs) {
-                Text("LEGEND").font(.caption.weight(.bold)).foregroundStyle(LegendPalette.gold)
-                Text(session.actor.displayName).font(LegendTypography.hero).foregroundStyle(LegendPalette.label).lineLimit(1)
-                Text(session.actor.identity.participantType.rawValue).font(LegendTypography.metadata).foregroundStyle(LegendPalette.secondaryLabel)
-            }
-            Spacer()
-            Button(action: openMessages) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "message.fill")
-                        .font(.headline)
-                        .foregroundStyle(LegendPalette.primaryNavy)
-                        .frame(width: 42, height: 42)
-                        .background(LegendPalette.elevatedSurface, in: Circle())
-                    if unreadCount > 0 {
-                        Text("\(unreadCount)")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(5)
-                            .background(LegendPalette.critical, in: Circle())
-                            .offset(x: 4, y: -4)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open messages, \(unreadCount) unread")
-        }
-        .padding(.top, LegendSpacing.xs)
     }
 }
 
@@ -817,7 +768,7 @@ private struct LegendAccountView: View {
     }
 }
 
-private struct LegendProfileAvatar: View {
+struct LegendProfileAvatar: View {
     let avatar: ProfileAvatar?
     let displayName: String
     let size: CGFloat

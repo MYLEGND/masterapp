@@ -88,6 +88,10 @@ public class MasterAppDbContext : DbContext
     public DbSet<JourneyCircleBlock> JourneyCircleBlocks => Set<JourneyCircleBlock>();
     public DbSet<JourneyCircleReport> JourneyCircleReports => Set<JourneyCircleReport>();
     public DbSet<JourneyCircleModerationEvent> JourneyCircleModerationEvents => Set<JourneyCircleModerationEvent>();
+    public DbSet<SocialPost> SocialPosts => Set<SocialPost>();
+    public DbSet<SocialPostComment> SocialPostComments => Set<SocialPostComment>();
+    public DbSet<SocialPostReaction> SocialPostReactions => Set<SocialPostReaction>();
+    public DbSet<SocialFollow> SocialFollows => Set<SocialFollow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -95,6 +99,7 @@ public class MasterAppDbContext : DbContext
 
         MessagingModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         JourneyCirclesModelConfiguration.Configure(modelBuilder, Database.ProviderName);
+        SocialFeedModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         var isSqlServer = Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
 
         modelBuilder.Entity<CommerceBusiness>(e =>
