@@ -59,10 +59,12 @@ struct LegendApplicationShell: View {
     let currentSession: MobileSession
     @ObservedObject private var coordinator: MobileSessionCoordinator
     @State private var selectedTab: LegendAppTab = .home
+    @StateObject private var messages: MessagingStore
 
     init(currentSession: MobileSession, coordinator: MobileSessionCoordinator) {
         self.currentSession = currentSession
         _coordinator = ObservedObject(wrappedValue: coordinator)
+        _messages = StateObject(wrappedValue: coordinator.makeMessagingStore())
     }
 
     var body: some View {
@@ -77,7 +79,10 @@ struct LegendApplicationShell: View {
 
             if currentSession.actor.identity.participantType == .agent {
                 NavigationStack {
-                    LegendAgentClientsView(coordinator: coordinator)
+                    LegendAgentClientsView(
+                        coordinator: coordinator,
+                        messages: messages,
+                        openMessages: { selectedTab = .messages })
                 }
                 .tag(LegendAppTab.clients)
 
@@ -101,7 +106,7 @@ struct LegendApplicationShell: View {
                 .tag(LegendAppTab.finance)
             }
 
-            LegendMessagesTab(coordinator: coordinator)
+            LegendMessagesTab(messages: messages)
                 .tag(LegendAppTab.messages)
 
             NavigationStack {
@@ -118,9 +123,20 @@ struct LegendApplicationShell: View {
                 selection: $selectedTab,
                 tabs: LegendAppTab.available(for: currentSession.actor.identity.participantType),
                 accountAvatar: currentSession.actor.avatar,
-                accountDisplayName: currentSession.actor.displayName)
+                accountDisplayName: currentSession.actor.displayName,
+                unreadMessageCount: unreadMessageCount)
         }
         .tint(LegendPalette.gold)
+        .task {
+            if case .idle = messages.state {
+                messages.load()
+            }
+        }
+    }
+
+    private var unreadMessageCount: Int {
+        guard case .loaded(let conversations) = messages.state else { return 0 }
+        return conversations.reduce(0) { $0 + max(0, $1.unreadCount) }
     }
 }
 
@@ -129,6 +145,7 @@ private struct LegendTabBar: View {
     let tabs: [LegendAppTab]
     let accountAvatar: ProfileAvatar?
     let accountDisplayName: String
+    let unreadMessageCount: Int
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 0) {
@@ -145,8 +162,19 @@ private struct LegendTabBar: View {
                                 displayName: accountDisplayName,
                                 size: 24)
                         } else {
-                            Image(systemName: selection == tab ? tab.selectedSymbolName : tab.symbolName)
-                                .font(.system(size: 19, weight: .semibold))
+                            ZStack(alignment: .topTrailing) {
+                                Image(systemName: selection == tab ? tab.selectedSymbolName : tab.symbolName)
+                                    .font(.system(size: 19, weight: .semibold))
+                                if tab == .messages, unreadMessageCount > 0 {
+                                    Text("\(min(unreadMessageCount, 99))")
+                                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                                        .foregroundStyle(.white)
+                                        .frame(minWidth: 16, minHeight: 16)
+                                        .background(LegendPalette.critical, in: Circle())
+                                        .offset(x: 8, y: -7)
+                                        .accessibilityLabel("\(unreadMessageCount) unread messages")
+                                }
+                            }
                         }
                         Text(tab.title)
                             .font(.caption2.weight(.semibold))
@@ -171,14 +199,20 @@ private struct LegendTabBar: View {
 }
 
 private struct LegendMessagesTab: View {
-    @StateObject private var messages: MessagingStore
-
-    init(coordinator: MobileSessionCoordinator) {
-        _messages = StateObject(wrappedValue: coordinator.makeMessagingStore())
-    }
+    @ObservedObject var messages: MessagingStore
+    @State private var navigationPath: [UUID] = []
 
     var body: some View {
-        NavigationStack { MessagingHomeView(store: messages) }
+        NavigationStack(path: $navigationPath) {
+            MessagingHomeView(
+                store: messages,
+                openConversation: { conversationID in
+                    navigationPath = [conversationID]
+                })
+                .navigationDestination(for: UUID.self) { conversationID in
+                    ConversationThreadView(store: messages, conversationID: conversationID)
+                }
+        }
     }
 }
 
@@ -414,9 +448,17 @@ private struct LegendHomeView: View {
 
 private struct LegendAgentClientsView: View {
     @StateObject private var store: MobileAgentWorkspaceStore
+    @ObservedObject private var messages: MessagingStore
+    let openMessages: () -> Void
 
-    init(coordinator: MobileSessionCoordinator) {
+    init(
+        coordinator: MobileSessionCoordinator,
+        messages: MessagingStore,
+        openMessages: @escaping () -> Void
+    ) {
         _store = StateObject(wrappedValue: coordinator.makeAgentWorkspaceStore())
+        _messages = ObservedObject(wrappedValue: messages)
+        self.openMessages = openMessages
     }
 
     var body: some View {
@@ -446,14 +488,25 @@ private struct LegendAgentClientsView: View {
                 symbolName: "person.2")
         } else {
             List(clients) { client in
-                HStack(spacing: LegendSpacing.sm) {
-                    LegendProfileAvatar(avatar: client.avatar, displayName: client.displayName, size: 42)
-                    VStack(alignment: .leading, spacing: LegendSpacing.xxs) {
-                        Text(client.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
-                        Text(client.email).font(LegendTypography.metadata).foregroundStyle(LegendPalette.secondaryLabel).lineLimit(1)
+                VStack(alignment: .leading, spacing: LegendSpacing.sm) {
+                    HStack(spacing: LegendSpacing.sm) {
+                        LegendProfileAvatar(avatar: client.avatar, displayName: client.displayName, size: 42)
+                        VStack(alignment: .leading, spacing: LegendSpacing.xxs) {
+                            Text(client.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            Text(client.email).font(LegendTypography.metadata).foregroundStyle(LegendPalette.secondaryLabel).lineLimit(1)
+                        }
+                        Spacer(minLength: LegendSpacing.sm)
+                        LegendBadge(title: client.crmStatus, tone: .success)
                     }
-                    Spacer(minLength: LegendSpacing.sm)
-                    LegendBadge(title: client.crmStatus, tone: .neutral)
+                    Button {
+                        messages.startConversation(forClientProfileID: client.profileID) { _ in
+                            openMessages()
+                        }
+                    } label: {
+                        Label("Message", systemImage: "message.fill")
+                    }
+                    .buttonStyle(LegendInlineButtonStyle(kind: .primary))
+                    .disabled(messages.isStartingConversation)
                 }
                 .padding(.vertical, LegendSpacing.xxs)
             }

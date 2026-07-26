@@ -97,10 +97,25 @@ struct MobileHTTPClient: Sendable {
     private func perform<Response: Decodable>(_ request: URLRequest, response: Response.Type) async throws -> Response {
         let hasAuthorizationHeader = request.value(forHTTPHeaderField: "Authorization") != nil
         MobileDebugDiagnostics.record("Mobile API request started. Authorization header present: \(hasAuthorizationHeader).")
-        let (data, urlResponse) = try await requestData(for: request)
-        guard let http = urlResponse as? HTTPURLResponse else {
-            throw MobileAPIError.invalidServerResponse
-        }
+let (data, urlResponse) = try await requestData(for: request)
+
+#if DEBUG
+if let http = urlResponse as? HTTPURLResponse {
+    print("========== MOBILE API ==========")
+    print("\(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "")")
+    print("HTTP \(http.statusCode)")
+
+    if let body = String(data: data, encoding: .utf8), !body.isEmpty {
+        print(body)
+    }
+
+    print("================================")
+}
+#endif
+
+guard let http = urlResponse as? HTTPURLResponse else {
+    throw MobileAPIError.invalidServerResponse
+}
 
         let correlationID = http.value(forHTTPHeaderField: "X-Correlation-ID")
         let problem = MobileAPIProblem.decode(from: data, fallbackCorrelationID: correlationID)

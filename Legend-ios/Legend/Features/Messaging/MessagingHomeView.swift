@@ -3,6 +3,7 @@ import UIKit
 
 struct MessagingHomeView: View {
     @ObservedObject var store: MessagingStore
+    let openConversation: (UUID) -> Void
     @State private var isPresentingNewConversation = false
 
     var body: some View {
@@ -32,6 +33,10 @@ struct MessagingHomeView: View {
         .sheet(isPresented: $isPresentingNewConversation) {
             LegendRecipientPicker(
                 store: store,
+                selectConversation: { conversationID in
+                    isPresentingNewConversation = false
+                    openConversation(conversationID)
+                },
                 dismiss: { isPresentingNewConversation = false })
         }
         .background(LegendPalette.canvas.ignoresSafeArea())
@@ -51,14 +56,9 @@ struct MessagingHomeView: View {
                 symbolName: "message")
         } else {
             List(conversations) { conversation in
-                NavigationLink {
-                    ConversationThreadView(store: store, conversationID: conversation.id)
-                } label: {
+                NavigationLink(value: conversation.id) {
                     ConversationRow(conversation: conversation)
                 }
-                .simultaneousGesture(TapGesture().onEnded {
-                    store.openConversation(conversation.id)
-                })
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -84,6 +84,7 @@ struct MessagingHomeView: View {
 
 private struct LegendRecipientPicker: View {
     @ObservedObject var store: MessagingStore
+    let selectConversation: (UUID) -> Void
     let dismiss: () -> Void
     @State private var search = ""
 
@@ -109,7 +110,7 @@ private struct LegendRecipientPicker: View {
                     } else {
                         List(recipients) { recipient in
                             Button {
-                                store.startConversation(with: recipient, completion: dismiss)
+                                store.startConversation(with: recipient, completion: selectConversation)
                             } label: {
                                 LegendListCell {
                                     ParticipantAvatar(participant: MessagingParticipant(
@@ -155,7 +156,7 @@ private struct LegendRecipientPicker: View {
     }
 }
 
-private struct ConversationThreadView: View {
+struct ConversationThreadView: View {
     @ObservedObject var store: MessagingStore
     let conversationID: UUID
     @State private var draft = ""

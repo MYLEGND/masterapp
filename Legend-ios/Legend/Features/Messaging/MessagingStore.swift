@@ -90,13 +90,39 @@ final class MessagingStore: ObservableObject {
         }
     }
 
-    func startConversation(with recipient: MessagingRecipient, completion: @escaping () -> Void) {
+    func startConversation(with recipient: MessagingRecipient, completion: @escaping (UUID) -> Void) {
+        beginConversation(resolveRecipient: { recipient }, completion: completion)
+    }
+
+    /// The agent CRM is allowed to open a conversation only through the same
+    /// recipient authority used by the Messages screen. A CRM profile is never
+    /// treated as a messaging recipient on the device by itself.
+    func startConversation(forClientProfileID clientProfileID: UUID, completion: @escaping (UUID) -> Void) {
+        beginConversation(resolveRecipient: {
+            let recipients = try await self.api.recipients(
+                search: nil,
+                accessToken: try await self.accessTokenProvider())
+            guard let recipient = recipients.first(where: {
+                $0.identity.participantType == .client &&
+                    UUID(uuidString: $0.profileID) == clientProfileID
+            }) else {
+                throw MobileMessagingRecipientError.clientNoLongerAuthorized
+            }
+            return recipient
+        }, completion: completion)
+    }
+
+    private func beginConversation(
+        resolveRecipient: @escaping () async throws -> MessagingRecipient,
+        completion: @escaping (UUID) -> Void
+    ) {
         guard !isStartingConversation else { return }
         isStartingConversation = true
         sendFailure = nil
         Task {
             defer { isStartingConversation = false }
             do {
+                let recipient = try await resolveRecipient()
                 let conversation = try await api.start(
                     recipient: recipient,
                     accessToken: try await accessTokenProvider())
@@ -105,7 +131,7 @@ final class MessagingStore: ObservableObject {
                 let conversations = try await api.conversations(accessToken: try await accessTokenProvider())
                 state = .loaded(conversations)
                 NativeUnreadBadge.update(with: conversations.reduce(0) { $0 + max(0, $1.unreadCount) })
-                completion()
+                completion(conversation.id)
             } catch {
                 sendFailure = failure(for: error, title: "Conversation not started")
             }
@@ -216,5 +242,13 @@ final class MessagingStore: ObservableObject {
             title: title,
             message: error.localizedDescription,
             correlationID: apiError?.correlationID)
+    }
+}
+
+private enum MobileMessagingRecipientError: LocalizedError {
+    case clientNoLongerAuthorized
+
+    var errorDescription: String? {
+        "This CRM record is no longer an authorized active client for messaging."
     }
 }

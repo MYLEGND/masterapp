@@ -268,6 +268,24 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(failure.message, "Your session has ended. Please sign in again.")
     }
 
+    func testAgentClientMessageActionUsesTheExactAuthorizedClientProfile() async {
+        let clientProfileID = UUID(uuidString: "00000000-0000-0000-0000-000000000222")!
+        let api = TypedClientRecipientMessagingAPI(clientProfileID: clientProfileID)
+        let store = MessagingStore(
+            api: api,
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics())
+        let started = expectation(description: "Starts the exact client conversation")
+
+        store.startConversation(forClientProfileID: clientProfileID) { _ in
+            started.fulfill()
+        }
+
+        await fulfillment(of: [started], timeout: 1)
+        XCTAssertEqual(api.startedRecipient?.identity.participantType, .client)
+        XCTAssertEqual(UUID(uuidString: api.startedRecipient?.profileID ?? ""), clientProfileID)
+    }
+
     private func completeConfiguration() -> MobileConfiguration {
         MobileConfiguration(
             bundleIdentifier: "com.mylegnd.legend",
@@ -408,4 +426,52 @@ private struct UnauthorizedMessagingAPI: MessagingAPI {
     func markRead(conversationID: UUID, accessToken: String) async throws {
         throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
     }
+}
+
+private final class TypedClientRecipientMessagingAPI: MessagingAPI, @unchecked Sendable {
+    let clientProfileID: UUID
+    private(set) var startedRecipient: MessagingRecipient?
+
+    init(clientProfileID: UUID) {
+        self.clientProfileID = clientProfileID
+    }
+
+    func conversations(accessToken: String) async throws -> [ConversationSummary] { [] }
+
+    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] {
+        [
+            MessagingRecipient(
+                identity: try LogicalParticipantIdentity(userID: "same-person", participantType: .agent),
+                profileID: "00000000-0000-0000-0000-000000000111",
+                displayName: "Agent identity",
+                email: "agent@example.test",
+                relationshipLabel: "Company agent",
+                existingConversationID: nil,
+                avatar: nil),
+            MessagingRecipient(
+                identity: try LogicalParticipantIdentity(userID: "same-person", participantType: .client),
+                profileID: clientProfileID.uuidString,
+                displayName: "Client identity",
+                email: "client@example.test",
+                relationshipLabel: "Active client",
+                existingConversationID: nil,
+                avatar: nil)
+        ]
+    }
+
+    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+        startedRecipient = recipient
+        return ConversationDetail(
+            id: UUID(),
+            title: recipient.displayName,
+            participants: [],
+            messages: [],
+            isMuted: false,
+            isClosed: false)
+    }
+
+    func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
+    func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] { [] }
+    func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
+    func markRead(conversationID: UUID, accessToken: String) async throws {}
 }
