@@ -116,7 +116,9 @@ struct LegendApplicationShell: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             LegendTabBar(
                 selection: $selectedTab,
-                tabs: LegendAppTab.available(for: currentSession.actor.identity.participantType))
+                tabs: LegendAppTab.available(for: currentSession.actor.identity.participantType),
+                accountAvatar: currentSession.actor.avatar,
+                accountDisplayName: currentSession.actor.displayName)
         }
         .tint(LegendPalette.gold)
     }
@@ -125,6 +127,8 @@ struct LegendApplicationShell: View {
 private struct LegendTabBar: View {
     @Binding var selection: LegendAppTab
     let tabs: [LegendAppTab]
+    let accountAvatar: ProfileAvatar?
+    let accountDisplayName: String
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 0) {
@@ -135,8 +139,15 @@ private struct LegendTabBar: View {
                     withAnimation(.easeOut(duration: 0.18)) { selection = tab }
                 } label: {
                     VStack(spacing: LegendSpacing.xxs) {
-                        Image(systemName: selection == tab ? tab.selectedSymbolName : tab.symbolName)
-                            .font(.system(size: 19, weight: .semibold))
+                        if tab == .account {
+                            LegendProfileAvatar(
+                                avatar: accountAvatar,
+                                displayName: accountDisplayName,
+                                size: 24)
+                        } else {
+                            Image(systemName: selection == tab ? tab.selectedSymbolName : tab.symbolName)
+                                .font(.system(size: 19, weight: .semibold))
+                        }
                         Text(tab.title)
                             .font(.caption2.weight(.semibold))
                             .lineLimit(1)
@@ -537,6 +548,13 @@ private struct LegendCirclesView: View {
         .navigationTitle("Journey Circles")
         .navigationBarTitleDisplayMode(.inline)
         .task { if case .idle = store.state { store.load() } }
+        .alert(
+            store.actionFailure?.title ?? "Journey Circles unavailable",
+            isPresented: Binding(
+                get: { store.actionFailure != nil },
+                set: { if !$0 { store.dismissActionFailure() } }),
+            actions: { Button("OK", role: .cancel) { store.dismissActionFailure() } },
+            message: { Text(store.actionFailure?.message ?? "The request could not be completed.") })
     }
 
     private func dashboardContent(_ dashboard: MobileJourneyDashboardResponse) -> some View {
@@ -555,11 +573,11 @@ private struct LegendCirclesView: View {
                 }
 
                 if !dashboard.requests.isEmpty {
-                    connectionSection("Requests", connections: dashboard.requests)
+                    connectionSection("Requests", connections: dashboard.requests, kind: .request)
                 }
 
                 if !dashboard.connections.isEmpty {
-                    connectionSection("Your connections", connections: dashboard.connections)
+                    connectionSection("Your connections", connections: dashboard.connections, kind: .connection)
                 }
 
                 if !dashboard.recommendations.isEmpty {
@@ -600,7 +618,11 @@ private struct LegendCirclesView: View {
         }
     }
 
-    private func connectionSection(_ title: String, connections: [MobileJourneyConnection]) -> some View {
+    private func connectionSection(
+        _ title: String,
+        connections: [MobileJourneyConnection],
+        kind: JourneyConnectionSectionKind
+    ) -> some View {
         VStack(alignment: .leading, spacing: LegendSpacing.sm) {
             LegendSectionHeader(title)
             ForEach(connections) { connection in
@@ -612,6 +634,17 @@ private struct LegendCirclesView: View {
                             Text(connection.status).font(LegendTypography.metadata).foregroundStyle(LegendPalette.secondaryLabel)
                         }
                         Spacer()
+                        if kind == .request {
+                            HStack(spacing: LegendSpacing.xs) {
+                                Button("Decline") { store.respondToConnection(id: connection.id, accept: false) }
+                                    .buttonStyle(LegendInlineButtonStyle(kind: .secondary))
+                                Button("Accept") { store.respondToConnection(id: connection.id, accept: true) }
+                                    .buttonStyle(LegendInlineButtonStyle(kind: .primary))
+                            }
+                        } else {
+                            Button("Disconnect") { store.disconnect(id: connection.id) }
+                                .buttonStyle(LegendInlineButtonStyle(kind: .destructive))
+                        }
                     }
                 }
             }
@@ -626,8 +659,16 @@ private struct LegendCirclesView: View {
                     Text(recommendation.profile.displayName).font(.subheadline.weight(.semibold))
                     Text(recommendation.explanation).font(LegendTypography.metadata).foregroundStyle(LegendPalette.secondaryLabel).fixedSize(horizontal: false, vertical: true)
                 }
+                Spacer(minLength: LegendSpacing.xs)
+                Button("Connect") { store.requestConnection(to: recommendation.profile.id) }
+                    .buttonStyle(LegendInlineButtonStyle(kind: .primary))
             }
         }
+    }
+
+    private enum JourneyConnectionSectionKind {
+        case request
+        case connection
     }
 }
 

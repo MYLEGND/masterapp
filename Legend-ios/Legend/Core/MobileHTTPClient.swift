@@ -1,5 +1,7 @@
 import Foundation
 
+struct MobileEmptyRequest: Encodable, Sendable {}
+
 struct MobileHTTPClient: Sendable {
     let baseURL: URL
     let session: URLSession
@@ -60,6 +62,21 @@ struct MobileHTTPClient: Sendable {
         if let idempotencyKey {
             request.setValue(idempotencyKey.uuidString, forHTTPHeaderField: "Idempotency-Key")
         }
+        request.httpBody = try JSONEncoder.mobile.encode(body)
+        try await performEmpty(request)
+    }
+
+    func put<Body: Encodable>(
+        _ path: String,
+        body: Body,
+        accessToken: String,
+        headers: [String: String] = [:]
+    ) async throws {
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         request.httpBody = try JSONEncoder.mobile.encode(body)
         try await performEmpty(request)
     }

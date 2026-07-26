@@ -134,6 +134,7 @@ final class MobileSessionCoordinator: ObservableObject {
     func signOut() {
         try? tokenStore.clear()
         activeTokens = nil
+        NativeUnreadBadge.clear()
         transition(to: configuration.validation.isReady ? .signedOut : .contractUnavailable(configuration.validation), reason: "User signed out")
     }
 

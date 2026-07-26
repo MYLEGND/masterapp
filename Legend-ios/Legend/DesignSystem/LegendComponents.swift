@@ -13,6 +13,7 @@ struct LegendCard<Content: View>: View {
 
     var body: some View {
         content
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(LegendSpacing.md)
             .background(background, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay {
@@ -56,6 +57,48 @@ struct LegendButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.88 : 1)
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
             .animation(LegendMotion.standard, value: configuration.isPressed)
+    }
+
+    private var background: Color {
+        switch kind {
+        case .primary: LegendPalette.primaryNavy
+        case .secondary: LegendPalette.insetSurface
+        case .gold: LegendPalette.gold
+        case .destructive: LegendPalette.critical.opacity(0.12)
+        }
+    }
+
+    private var foreground: Color {
+        switch kind {
+        case .primary, .gold: .white
+        case .secondary: LegendPalette.label
+        case .destructive: LegendPalette.critical
+        }
+    }
+
+    private var border: Color {
+        switch kind {
+        case .primary: LegendPalette.primaryNavy
+        case .secondary: LegendPalette.separator.opacity(0.5)
+        case .gold: LegendPalette.gold
+        case .destructive: LegendPalette.critical.opacity(0.35)
+        }
+    }
+}
+
+struct LegendInlineButtonStyle: ButtonStyle {
+    let kind: LegendButtonKind
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(foreground)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(background, in: Capsule())
+            .overlay { Capsule().stroke(border, lineWidth: 1) }
+            .opacity(configuration.isPressed ? 0.82 : 1)
     }
 
     private var background: Color {
@@ -164,6 +207,10 @@ struct LegendMetric: View {
             Text(value)
                 .font(LegendTypography.metric)
                 .foregroundStyle(LegendPalette.label)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.58)
+                .allowsTightening(true)
             if let detail {
                 Text(detail)
                     .font(LegendTypography.metadata)

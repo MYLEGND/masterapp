@@ -14,6 +14,9 @@ protocol MobileHomeAPI: Sendable {
 
 protocol MobileJourneyCirclesAPI: Sendable {
     func dashboard(accessToken: String) async throws -> MobileJourneyDashboardResponse
+    func requestConnection(_ request: MobileJourneyConnectionRequestBody, accessToken: String) async throws
+    func respondToConnection(id: UUID, accept: Bool, accessToken: String) async throws
+    func disconnect(id: UUID, accessToken: String) async throws
 }
 
 protocol MobileAgentWorkspaceAPI: Sendable {
@@ -33,6 +36,18 @@ struct MobileUnavailableHomeAPI: MobileHomeAPI {
 
 struct MobileUnavailableJourneyCirclesAPI: MobileJourneyCirclesAPI {
     func dashboard(accessToken: String) async throws -> MobileJourneyDashboardResponse {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func requestConnection(_ request: MobileJourneyConnectionRequestBody, accessToken: String) async throws {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func respondToConnection(id: UUID, accept: Bool, accessToken: String) async throws {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func disconnect(id: UUID, accessToken: String) async throws {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
 }
@@ -83,6 +98,37 @@ struct URLSessionMobileJourneyCirclesAPI: MobileJourneyCirclesAPI {
             headers: ["X-Legend-Participant-Type": participantType.rawValue],
             response: MobileJourneyDashboardResponse.self)
     }
+
+    func requestConnection(_ request: MobileJourneyConnectionRequestBody, accessToken: String) async throws {
+        try await client.post(
+            "/api/v1/mobile/journey-circles/connections",
+            body: request,
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader)
+    }
+
+    func respondToConnection(id: UUID, accept: Bool, accessToken: String) async throws {
+        try await client.post(
+            "/api/v1/mobile/journey-circles/connections/\(id.uuidString)/response",
+            body: MobileJourneyConnectionResponseBody(accept: accept),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader)
+    }
+
+    func disconnect(id: UUID, accessToken: String) async throws {
+        try await client.post(
+            "/api/v1/mobile/journey-circles/connections/\(id.uuidString)/disconnect",
+            body: MobileEmptyRequest(),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader)
+    }
+
+    private var participantHeader: [String: String] {
+        ["X-Legend-Participant-Type": participantType.rawValue]
+    }
 }
 
 struct URLSessionMobileAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
@@ -130,7 +176,9 @@ final class MobileHomeStore: ObservableObject {
         Task {
             do {
                 let accessToken = try await accessTokenProvider()
-                state = .loaded(try await api.home(accessToken: accessToken))
+                let home = try await api.home(accessToken: accessToken)
+                state = .loaded(home)
+                NativeUnreadBadge.update(with: home.messaging.unreadCount)
             } catch {
                 state = .unavailable(failure(for: error, title: "Home unavailable"))
             }
@@ -153,6 +201,8 @@ final class MobileHomeStore: ObservableObject {
 @MainActor
 final class MobileJourneyCirclesStore: ObservableObject {
     @Published private(set) var state: MobileDataLoadState<MobileJourneyDashboardResponse> = .idle
+    @Published private(set) var actionFailure: UserFacingFailure?
+    @Published private(set) var isPerformingAction = false
 
     private let api: any MobileJourneyCirclesAPI
     private let accessTokenProvider: () async throws -> String
@@ -180,14 +230,61 @@ final class MobileJourneyCirclesStore: ObservableObject {
         }
     }
 
-    private func failure(for error: Error) -> UserFacingFailure {
+    func requestConnection(to profileID: UUID) {
+        performAction {
+            try await self.api.requestConnection(
+                MobileJourneyConnectionRequestBody(
+                    targetClientProfileID: profileID,
+                    connectionReason: nil,
+                    introduction: nil),
+                accessToken: try await self.accessTokenProvider())
+        }
+    }
+
+    func respondToConnection(id: UUID, accept: Bool) {
+        performAction {
+            try await self.api.respondToConnection(
+                id: id,
+                accept: accept,
+                accessToken: try await self.accessTokenProvider())
+        }
+    }
+
+    func disconnect(id: UUID) {
+        performAction {
+            try await self.api.disconnect(
+                id: id,
+                accessToken: try await self.accessTokenProvider())
+        }
+    }
+
+    func dismissActionFailure() {
+        actionFailure = nil
+    }
+
+    private func performAction(_ operation: @escaping () async throws -> Void) {
+        guard !isPerformingAction else { return }
+        isPerformingAction = true
+        actionFailure = nil
+        Task {
+            defer { isPerformingAction = false }
+            do {
+                try await operation()
+                load()
+            } catch {
+                actionFailure = failure(for: error, title: "Journey Circles unavailable")
+            }
+        }
+    }
+
+    private func failure(for error: Error, title: String = "Journey Circles unavailable") -> UserFacingFailure {
         let apiError = error as? MobileAPIError
         diagnostics.record(
             category: .networking,
             summary: "A native Journey Circles request could not be completed.",
             correlationID: apiError?.correlationID)
         return UserFacingFailure(
-            title: "Journey Circles unavailable",
+            title: title,
             message: error.localizedDescription,
             correlationID: apiError?.correlationID)
     }

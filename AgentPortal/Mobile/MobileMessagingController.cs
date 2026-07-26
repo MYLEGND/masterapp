@@ -92,6 +92,69 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         return Ok(response);
     }
 
+    [HttpGet("messaging/recipients")]
+    public async Task<IActionResult> Recipients(
+        [FromQuery] string? search,
+        [FromQuery] string? scope,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.ListRecipientsAsync(
+            resolved.Actor!.Actor,
+            search,
+            scope,
+            cancellationToken);
+        if (!result.Succeeded)
+            return MessagingFailure(result.ErrorCode, result.ErrorMessage);
+
+        var identities = await ResolveParticipantIdentitiesAsync(
+            result.Recipients.Select(recipient => new MessagingParticipantSummary(
+                recipient.UserId,
+                recipient.ParticipantType,
+                recipient.DisplayName)),
+            cancellationToken);
+        var response = new List<MobileMessagingRecipientDto>();
+        foreach (var recipient in result.Recipients)
+        {
+            identities.TryGetValue((recipient.UserId, recipient.ParticipantType), out var identity);
+            response.Add(new MobileMessagingRecipientDto(
+                new MobileLogicalIdentityDto(recipient.UserId, recipient.ParticipantType),
+                identity?.ProfileId.ToString("D") ?? string.Empty,
+                identity?.DisplayName ?? recipient.DisplayName,
+                recipient.Email,
+                recipient.RelationshipLabel,
+                recipient.ExistingConversationId,
+                identity is null ? null : await ToAvatarDtoAsync(identity, cancellationToken)));
+        }
+
+        return Ok(response);
+    }
+
+    [HttpPost("messaging/conversations")]
+    public async Task<IActionResult> StartConversation(
+        [FromBody] MobileStartConversationRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                resolved.Actor!.Actor,
+                request?.TargetUserId ?? string.Empty,
+                request?.TargetParticipantType ?? string.Empty,
+                InitialMessageBody: request?.InitialMessageBody),
+            cancellationToken);
+        if (!result.Succeeded || result.Conversation is null)
+            return MessagingFailure(result.ErrorCode, result.ErrorMessage);
+
+        return Ok(await ToConversationDtoAsync(result.Conversation, resolved.Actor.Actor, cancellationToken));
+    }
+
     [HttpGet("messaging/conversations/{conversationId:guid}")]
     public async Task<IActionResult> Conversation(Guid conversationId, CancellationToken cancellationToken)
     {
@@ -315,6 +378,19 @@ public sealed record MobileMessageDto(
     bool IsMine);
 
 public sealed record MobileSendMessageRequest(string? Body);
+public sealed record MobileStartConversationRequest(
+    string? TargetUserId,
+    string? TargetParticipantType,
+    string? InitialMessageBody);
+
+public sealed record MobileMessagingRecipientDto(
+    MobileLogicalIdentityDto Identity,
+    string ProfileId,
+    string DisplayName,
+    string? Email,
+    string? RelationshipLabel,
+    Guid? ExistingConversationId,
+    MobileAvatarDto? Avatar);
 
 internal static class MobileParticipantIdentityDictionaryExtensions
 {

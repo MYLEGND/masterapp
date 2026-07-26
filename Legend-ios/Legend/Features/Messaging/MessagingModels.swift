@@ -67,8 +67,39 @@ struct SendMessageRequest: Encodable, Sendable {
     let body: String
 }
 
+struct MessagingRecipient: Codable, Equatable, Identifiable, Sendable {
+    let identity: LogicalParticipantIdentity
+    let profileID: String
+    let displayName: String
+    let email: String?
+    let relationshipLabel: String?
+    let existingConversationID: UUID?
+    let avatar: ProfileAvatar?
+
+    var id: LogicalParticipantIdentity { identity }
+
+    private enum CodingKeys: String, CodingKey {
+        case identity, profileID = "profileId", displayName, email, relationshipLabel, avatar
+        case existingConversationID = "existingConversationId"
+    }
+}
+
+struct StartConversationRequest: Encodable, Sendable {
+    let targetUserID: String
+    let targetParticipantType: ParticipantType
+    let initialMessageBody: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case targetUserID = "targetUserId"
+        case targetParticipantType = "targetParticipantType"
+        case initialMessageBody
+    }
+}
+
 protocol MessagingAPI: Sendable {
     func conversations(accessToken: String) async throws -> [ConversationSummary]
+    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient]
+    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage]
     func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage
@@ -77,6 +108,14 @@ protocol MessagingAPI: Sendable {
 
 struct MobileContractUnavailableMessagingAPI: MessagingAPI {
     func conversations(accessToken: String) async throws -> [ConversationSummary] {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -120,6 +159,31 @@ struct URLSessionMessagingAPI: MessagingAPI {
             headers: participantHeader,
             response: [ConversationSummary].self
         )
+    }
+
+    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] {
+        let queryItems = search?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? [URLQueryItem(name: "search", value: search)]
+            : []
+        return try await client.get(
+            "/api/v1/mobile/messaging/recipients",
+            accessToken: accessToken,
+            queryItems: queryItems,
+            headers: participantHeader,
+            response: [MessagingRecipient].self)
+    }
+
+    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+        try await client.post(
+            "/api/v1/mobile/messaging/conversations",
+            body: StartConversationRequest(
+                targetUserID: recipient.identity.userID,
+                targetParticipantType: recipient.identity.participantType,
+                initialMessageBody: nil),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader,
+            response: ConversationDetail.self)
     }
 
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail {

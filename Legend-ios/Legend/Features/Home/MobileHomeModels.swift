@@ -259,6 +259,21 @@ struct MobileJourneyPreferences: Codable, Equatable, Sendable {
     let allowConnectionRequests: Bool
 }
 
+struct MobileJourneyConnectionRequestBody: Encodable, Sendable {
+    let targetClientProfileID: UUID
+    let connectionReason: String?
+    let introduction: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case targetClientProfileID = "targetClientProfileId"
+        case connectionReason, introduction
+    }
+}
+
+struct MobileJourneyConnectionResponseBody: Encodable, Sendable {
+    let accept: Bool
+}
+
 struct MobileJourneyRecommendation: Codable, Equatable, Identifiable, Sendable {
     let profile: MobileJourneyProfile
     let explanation: String

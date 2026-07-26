@@ -29,6 +29,8 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var selectedConversationID: UUID?
     @Published private(set) var isSending = false
     @Published private(set) var sendFailure: UserFacingFailure?
+    @Published private(set) var recipientState: MobileDataLoadState<[MessagingRecipient]> = .idle
+    @Published private(set) var isStartingConversation = false
 
     private let api: any MessagingAPI
     private let accessTokenProvider: () async throws -> String
@@ -50,6 +52,7 @@ final class MessagingStore: ObservableObject {
             do {
                 let conversations = try await api.conversations(accessToken: try await accessTokenProvider())
                 state = .loaded(conversations)
+                NativeUnreadBadge.update(with: conversations.reduce(0) { $0 + max(0, $1.unreadCount) })
             } catch {
                 state = listFailureState(for: error)
             }
@@ -69,6 +72,42 @@ final class MessagingStore: ObservableObject {
                 updateUnreadCount(for: conversationID)
             } catch {
                 detailState = detailFailureState(for: error)
+            }
+        }
+    }
+
+    func loadRecipients(search: String? = nil) {
+        recipientState = .loading
+        Task {
+            do {
+                let recipients = try await api.recipients(
+                    search: search,
+                    accessToken: try await accessTokenProvider())
+                recipientState = .loaded(recipients)
+            } catch {
+                recipientState = .unavailable(failure(for: error, title: "Recipients unavailable"))
+            }
+        }
+    }
+
+    func startConversation(with recipient: MessagingRecipient, completion: @escaping () -> Void) {
+        guard !isStartingConversation else { return }
+        isStartingConversation = true
+        sendFailure = nil
+        Task {
+            defer { isStartingConversation = false }
+            do {
+                let conversation = try await api.start(
+                    recipient: recipient,
+                    accessToken: try await accessTokenProvider())
+                detailState = .loaded(conversation)
+                selectedConversationID = conversation.id
+                let conversations = try await api.conversations(accessToken: try await accessTokenProvider())
+                state = .loaded(conversations)
+                NativeUnreadBadge.update(with: conversations.reduce(0) { $0 + max(0, $1.unreadCount) })
+                completion()
+            } catch {
+                sendFailure = failure(for: error, title: "Conversation not started")
             }
         }
     }
@@ -128,6 +167,9 @@ final class MessagingStore: ObservableObject {
                 unreadCount: 0,
                 isClosed: conversation.isClosed)
         })
+        if case .loaded(let updatedConversations) = state {
+            NativeUnreadBadge.update(with: updatedConversations.reduce(0) { $0 + max(0, $1.unreadCount) })
+        }
     }
 
     private func listFailureState(for error: Error) -> MessagingLoadState {

@@ -3,6 +3,7 @@ import UIKit
 
 struct MessagingHomeView: View {
     @ObservedObject var store: MessagingStore
+    @State private var isPresentingNewConversation = false
 
     var body: some View {
         Group {
@@ -19,6 +20,20 @@ struct MessagingHomeView: View {
         }
         .navigationTitle("Messages")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            Button {
+                isPresentingNewConversation = true
+                store.loadRecipients()
+            } label: {
+                Image(systemName: "square.and.pencil")
+            }
+            .accessibilityLabel("Start a new authorized conversation")
+        }
+        .sheet(isPresented: $isPresentingNewConversation) {
+            LegendRecipientPicker(
+                store: store,
+                dismiss: { isPresentingNewConversation = false })
+        }
         .background(LegendPalette.canvas.ignoresSafeArea())
         .task {
             if case .idle = store.state {
@@ -64,6 +79,79 @@ struct MessagingHomeView: View {
             retryTitle: "Retry",
             retry: store.load)
         .padding(LegendSpacing.md)
+    }
+}
+
+private struct LegendRecipientPicker: View {
+    @ObservedObject var store: MessagingStore
+    let dismiss: () -> Void
+    @State private var search = ""
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                switch store.recipientState {
+                case .idle, .loading:
+                    LegendLoadingView("Loading authorized contacts…")
+                case .unavailable(let failure):
+                    LegendErrorCard(
+                        title: failure.title,
+                        message: failure.message,
+                        retryTitle: "Retry",
+                        retry: { store.loadRecipients(search: search) })
+                    .padding(LegendSpacing.md)
+                case .loaded(let recipients):
+                    if recipients.isEmpty {
+                        LegendEmptyState(
+                            title: "No authorized contacts",
+                            message: "Only contacts approved by your existing secure relationship can be messaged.",
+                            symbolName: "lock.message")
+                    } else {
+                        List(recipients) { recipient in
+                            Button {
+                                store.startConversation(with: recipient, completion: dismiss)
+                            } label: {
+                                LegendListCell {
+                                    ParticipantAvatar(participant: MessagingParticipant(
+                                        identity: recipient.identity,
+                                        profileID: recipient.profileID,
+                                        displayName: recipient.displayName,
+                                        avatar: recipient.avatar))
+                                } content: {
+                                    VStack(alignment: .leading, spacing: LegendSpacing.xxs) {
+                                        Text(recipient.displayName).font(.headline)
+                                        Text(recipient.relationshipLabel ?? recipient.identity.participantType.rawValue)
+                                            .font(LegendTypography.metadata)
+                                            .foregroundStyle(LegendPalette.secondaryLabel)
+                                    }
+                                } trailing: {
+                                    if recipient.existingConversationID != nil {
+                                        LegendBadge(title: "Open", tone: .neutral)
+                                    } else {
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.bold))
+                                            .foregroundStyle(LegendPalette.secondaryLabel)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(store.isStartingConversation)
+                        }
+                        .listStyle(.plain)
+                    }
+                }
+            }
+            .background(LegendPalette.canvas.ignoresSafeArea())
+            .navigationTitle("New message")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $search, prompt: "Search authorized contacts")
+            .onChange(of: search) { _, value in store.loadRecipients(search: value) }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: dismiss)
+                }
+            }
+        }
     }
 }
 
