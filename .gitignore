@@ -29,6 +29,9 @@ secrets.json
 usersecrets.json
 .env
 .env.*
+Legend-ios/Configuration/*.local.xcconfig
+Legend-ios/Legend.xcodeproj/project.xcworkspace/
+Legend-ios/Legend.xcodeproj/xcuserdata/
 
 # =========================
 # Local SQLite databases
