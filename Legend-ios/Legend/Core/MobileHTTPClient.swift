@@ -109,23 +109,24 @@ struct MobileHTTPClient: Sendable {
     }
 
     private func performEmpty(_ request: URLRequest) async throws {
-        let (_, urlResponse) = try await requestData(for: request)
+        let (data, urlResponse) = try await requestData(for: request)
         guard let http = urlResponse as? HTTPURLResponse else {
             throw MobileAPIError.invalidServerResponse
         }
         let correlationID = http.value(forHTTPHeaderField: "X-Correlation-ID")
-        MobileDebugDiagnostics.record("Mobile API response status \(http.statusCode).", correlationID: correlationID)
+        let problem = MobileAPIProblem.decode(from: data, fallbackCorrelationID: correlationID)
+        MobileDebugDiagnostics.record("Mobile API response status \(http.statusCode).", correlationID: problem.correlationID)
         switch http.statusCode {
         case 200 ... 299:
             return
         case 401:
-            throw MobileAPIError.unauthorized(correlationID: correlationID)
+            throw MobileAPIError.apiUnauthorized(code: problem.code, correlationID: problem.correlationID)
         case 403:
-            throw MobileAPIError.forbidden(correlationID: correlationID)
+            throw MobileAPIError.apiForbidden(code: problem.code, correlationID: problem.correlationID)
         case 409:
-            throw MobileAPIError.conflict(correlationID: correlationID)
+            throw MobileAPIError.apiConflict(code: problem.code, correlationID: problem.correlationID)
         default:
-            throw MobileAPIError.server(statusCode: http.statusCode, correlationID: correlationID)
+            throw MobileAPIError.server(statusCode: http.statusCode, correlationID: problem.correlationID)
         }
     }
 

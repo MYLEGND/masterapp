@@ -150,8 +150,20 @@ public sealed class MobileIntegrationTests
         var wrongAudience = CreateToken(configuration.Authority!, "api://other-api", signingKey, DateTime.UtcNow.AddMinutes(10));
         Assert.Throws<SecurityTokenInvalidAudienceException>(() => handler.ValidateToken(wrongAudience, options.TokenValidationParameters, out _));
 
+        var applicationIdUriAudience = CreateToken(configuration.Authority!, configuration.Audience!, signingKey, DateTime.UtcNow.AddMinutes(10));
+        Assert.Throws<SecurityTokenInvalidAudienceException>(() => handler.ValidateToken(applicationIdUriAudience, options.TokenValidationParameters, out _));
+
         var expired = CreateToken(configuration.Authority!, configuration.TokenAudience!, signingKey, DateTime.UtcNow.AddMinutes(-5));
         Assert.Throws<SecurityTokenExpiredException>(() => handler.ValidateToken(expired, options.TokenValidationParameters, out _));
+    }
+
+    [Fact]
+    public void MobileAuthConfiguration_NormalizesAnApplicationIdUriToTheEntraV2TokenAudience()
+    {
+        var configuration = ConfiguredMobileAuth();
+
+        Assert.True(configuration.IsConfigured);
+        Assert.Equal("00000000-0000-0000-0000-000000000001", configuration.TokenAudience);
     }
 
     [Fact]

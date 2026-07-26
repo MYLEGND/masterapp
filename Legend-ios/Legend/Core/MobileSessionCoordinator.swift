@@ -12,6 +12,11 @@ struct MobileRoleSelection: Equatable, Sendable {
     let correlationID: String?
 }
 
+protocol MobileSessionServicing: Sendable {
+    func bootstrap(accessToken: String) async throws -> MobileBootstrapResponse
+    func selectRole(_ participantType: ParticipantType, accessToken: String) async throws -> MobileRoleSelectionResponse
+}
+
 enum MobileSessionState: Equatable {
     case loading
     case contractUnavailable(MobileConfigurationValidation)
@@ -37,6 +42,7 @@ final class MobileSessionCoordinator: ObservableObject {
     private let authorizer: any OAuthAuthorizing
     private let tokenExchanger: any OAuthTokenExchanging
     private let diagnostics: LegendDiagnostics
+    private let sessionService: (any MobileSessionServicing)?
     private var activeTokens: OAuthTokenSet?
 
     init(
@@ -44,12 +50,14 @@ final class MobileSessionCoordinator: ObservableObject {
         tokenStore: (any SecureTokenStoring)? = nil,
         authorizer: (any OAuthAuthorizing)? = nil,
         tokenExchanger: (any OAuthTokenExchanging)? = nil,
+        sessionService: (any MobileSessionServicing)? = nil,
         diagnostics: LegendDiagnostics? = nil
     ) {
         self.configuration = configuration
         self.tokenStore = tokenStore ?? KeychainTokenStore(service: configuration.bundleIdentifier)
         self.authorizer = authorizer ?? SystemBrowserAuthorizer()
         self.tokenExchanger = tokenExchanger ?? URLSessionOAuthTokenExchanger()
+        self.sessionService = sessionService
         self.diagnostics = diagnostics ?? LegendDiagnostics()
     }
 
@@ -146,7 +154,7 @@ final class MobileSessionCoordinator: ObservableObject {
                     return
                 }
                 let tokens = try await usableTokens(from: storedTokens)
-                let response = try await MobileSessionAPI(client: MobileHTTPClient(baseURL: apiBaseURL))
+                let response = try await mobileSessionService(apiBaseURL: apiBaseURL)
                     .selectRole(participantType, accessToken: tokens.accessToken)
                 transition(to: .authenticated(MobileSession(
                     actor: response.actor,
@@ -224,7 +232,7 @@ final class MobileSessionCoordinator: ObservableObject {
     private func establishSession(using tokens: OAuthTokenSet) async throws {
         guard let apiBaseURL = configuration.apiBaseURL else { throw MobileAPIError.invalidBaseURL }
         diagnostics.record(category: .authentication, summary: "Mobile session request started. Authorization header present: true.")
-        let response = try await MobileSessionAPI(client: MobileHTTPClient(baseURL: apiBaseURL))
+        let response = try await mobileSessionService(apiBaseURL: apiBaseURL)
             .bootstrap(accessToken: tokens.accessToken)
         diagnostics.record(category: .authentication, summary: "Mobile session response decoded successfully.", correlationID: response.correlationID)
         guard response.authenticated else {
@@ -304,6 +312,10 @@ final class MobileSessionCoordinator: ObservableObject {
             expectedState: expectedState)
     }
 
+    private func mobileSessionService(apiBaseURL: URL) -> any MobileSessionServicing {
+        sessionService ?? MobileSessionAPI(client: MobileHTTPClient(baseURL: apiBaseURL))
+    }
+
     private func transition(to newState: MobileSessionState, reason: String) {
         #if DEBUG
         diagnostics.record(
@@ -355,7 +367,7 @@ final class MobileSessionCoordinator: ObservableObject {
     }
 }
 
-private extension MobileSessionState {
+extension MobileSessionState {
     var diagnosticName: String {
         switch self {
         case .loading: "loading"
@@ -447,9 +459,11 @@ struct URLSessionOAuthTokenExchanger: OAuthTokenExchanging {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = FormURLEncoder.encode(parameters)
 
+        MobileDebugDiagnostics.record("OAuth token endpoint request started.")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw MobileAPIError.invalidServerResponse }
         let correlationID = http.value(forHTTPHeaderField: "X-Correlation-ID")
+        MobileDebugDiagnostics.record("OAuth token endpoint response status \(http.statusCode).", correlationID: correlationID)
         guard (200 ... 299).contains(http.statusCode) else {
             throw MobileAPIError.server(statusCode: http.statusCode, correlationID: correlationID)
         }
@@ -460,6 +474,7 @@ struct URLSessionOAuthTokenExchanger: OAuthTokenExchanging {
         } catch {
             throw MobileAPIError.decodingFailed(correlationID: correlationID)
         }
+        MobileDebugDiagnostics.record("OAuth token endpoint response decoded successfully.", correlationID: correlationID)
 
         return OAuthTokenSet(
             accessToken: tokenResponse.accessToken,
@@ -497,7 +512,7 @@ private extension String {
     }
 }
 
-private struct MobileSessionAPI: Sendable {
+private struct MobileSessionAPI: MobileSessionServicing {
     let client: MobileHTTPClient
 
     func bootstrap(accessToken: String) async throws -> MobileBootstrapResponse {

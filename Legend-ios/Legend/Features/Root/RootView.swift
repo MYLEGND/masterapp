@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var session: MobileSessionCoordinator
+    @EnvironmentObject private var diagnostics: LegendDiagnostics
 
     var body: some View {
         Group {
@@ -25,6 +26,18 @@ struct RootView: View {
         .task {
             session.restore()
         }
+        .onAppear(perform: recordSelectedBranch)
+        .onChange(of: session.state.diagnosticName) { _, _ in
+            recordSelectedBranch()
+        }
+    }
+
+    private func recordSelectedBranch() {
+        #if DEBUG
+        diagnostics.record(
+            category: .authentication,
+            summary: "Root view branch selected: \(session.state.diagnosticName).")
+        #endif
     }
 }
 

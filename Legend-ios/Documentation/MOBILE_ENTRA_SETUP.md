@@ -40,7 +40,7 @@ Set these non-secret configuration settings on the AgentPortal host. Do not put 
 | --- | --- |
 | `MobileAuth__TenantId` | Entra Directory (tenant) ID |
 | `MobileAuth__Authority` | Exact issuer: `https://login.microsoftonline.com/<tenant-id>/v2.0` |
-| `MobileAuth__Audience` | API Application ID URI, e.g. `api://<mobile-api-client-id>` |
+| `MobileAuth__Audience` | Mobile API application client ID, or its canonical Application ID URI `api://<mobile-api-client-id>`. The bearer validator normalizes this to the Entra v2 token audience (the API client ID GUID). |
 | `MobileAuth__RequiredScope` | Full exposed delegated scope, e.g. `api://<mobile-api-client-id>/mobile_access` |
 
 `MobileAuth__Authority` must be the exact issuer of tokens issued for the registration. The mobile API is intentionally fail-closed when any value is absent or invalid. It does not use browser cookies, e-mail addresses, UPNs, display names, or client-provided user IDs as identity authority.
