@@ -146,7 +146,7 @@ public sealed class MobileFinancialOperatingSystemProjectionService
                     IntelligenceEvaluatedUtc: null,
                     GeneratedUtc: generatedUtc),
                 WeekAtGlance: week,
-                MonthAtGlance: null,
+                MonthAtGlance: MapMobileMonthProjection(document.RootElement),
                 Tools: new[]
                 {
                     new MobileFinancialToolSummary(
@@ -404,5 +404,350 @@ public sealed class MobileFinancialOperatingSystemProjectionService
             : base(message)
         {
         }
+    }
+
+    private static MobileFinancialMonthAtGlance?
+        MapMobileMonthProjection(
+            JsonElement financeStateRoot)
+    {
+        if (!financeStateRoot.TryGetProperty(
+                "mobileMonthProjection",
+                out var monthElement) ||
+            monthElement.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (!TryReadPhase3Int32(
+                monthElement,
+                "schemaVersion",
+                out var schemaVersion) ||
+            schemaVersion != 1)
+        {
+            return null;
+        }
+
+        if (!TryReadPhase3String(
+                monthElement,
+                "monthKey",
+                out var monthKey) ||
+            !TryReadPhase3Date(
+                monthElement,
+                "startDate",
+                out var startDate) ||
+            !TryReadPhase3Date(
+                monthElement,
+                "endDate",
+                out var endDate) ||
+            !TryReadPhase3Int64(
+                monthElement,
+                "openingCashCents",
+                out var openingCashCents) ||
+            !TryReadPhase3Int64(
+                monthElement,
+                "incomeCents",
+                out var incomeCents) ||
+            !TryReadPhase3Int64(
+                monthElement,
+                "debitBillsCents",
+                out var debitExpenseCents) ||
+            !TryReadPhase3Int64(
+                monthElement,
+                "creditBillsCents",
+                out var creditExpenseCents) ||
+            !TryReadPhase3Int64(
+                monthElement,
+                "requiredDebtMinimumCents",
+                out var requiredDebtPaymentCents) ||
+            !TryReadPhase3Int64(
+                monthElement,
+                "extraDebtPaymentCents",
+                out var extraDebtPaymentCents) ||
+            !TryReadPhase3Int64(
+                monthElement,
+                "endingCashCents",
+                out var endingCashCents) ||
+            !TryReadPhase3Int64(
+                monthElement,
+                "openingDebtCents",
+                out var openingDebtCents) ||
+            !TryReadPhase3Int64(
+                monthElement,
+                "endingDebtCents",
+                out var endingDebtCents) ||
+            !TryReadPhase3String(
+                monthElement,
+                "status",
+                out var pressureStatus))
+        {
+            return null;
+        }
+
+        var pressureSummary =
+            TryReadPhase3NullableString(
+                monthElement,
+                "pressureSummary");
+
+        var savingsContributionCents =
+            TryReadPhase3NullableInt64(
+                monthElement,
+                "savingsContributionCents") ?? 0L;
+
+        var largestObligation =
+            MapMobileLargestObligation(monthElement);
+
+        if (!TryMapMobileMonthWeeks(
+                monthElement,
+                out var weeks))
+        {
+            return null;
+        }
+
+        return new MobileFinancialMonthAtGlance(
+            MonthKey: monthKey,
+            StartDate: startDate,
+            EndDate: endDate,
+            OpeningCashCents: openingCashCents,
+            IncomeCents: incomeCents,
+            DebitExpenseCents: debitExpenseCents,
+            CreditExpenseCents: creditExpenseCents,
+            RequiredDebtPaymentCents:
+                requiredDebtPaymentCents,
+            ExtraDebtPaymentCents:
+                extraDebtPaymentCents,
+            EndingCashCents: endingCashCents,
+            OpeningDebtCents: openingDebtCents,
+            EndingDebtCents: endingDebtCents,
+            SavingsContributionCents:
+                savingsContributionCents,
+            PressureStatus: pressureStatus,
+            PressureSummary: pressureSummary,
+            LargestObligation: largestObligation,
+            Weeks: weeks);
+    }
+
+    private static MobileFinancialLargestObligation?
+        MapMobileLargestObligation(
+            JsonElement monthElement)
+    {
+        if (!monthElement.TryGetProperty(
+                "largestObligation",
+                out var obligationElement) ||
+            obligationElement.ValueKind ==
+                JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (obligationElement.ValueKind !=
+            JsonValueKind.Object ||
+            !TryReadPhase3String(
+                obligationElement,
+                "title",
+                out var title) ||
+            !TryReadPhase3Date(
+                obligationElement,
+                "dateKey",
+                out var occursOn) ||
+            !TryReadPhase3Int64(
+                obligationElement,
+                "amountCents",
+                out var amountCents) ||
+            !TryReadPhase3String(
+                obligationElement,
+                "kind",
+                out var kind))
+        {
+            return null;
+        }
+
+        return new MobileFinancialLargestObligation(
+            Title: title,
+            OccursOn: occursOn,
+            AmountCents: amountCents,
+            Kind: kind);
+    }
+
+    private static bool TryMapMobileMonthWeeks(
+        JsonElement monthElement,
+        out IReadOnlyList<MobileFinancialWeekSummary> weeks)
+    {
+        weeks = Array.Empty<MobileFinancialWeekSummary>();
+
+        if (!monthElement.TryGetProperty(
+                "weeks",
+                out var weeksElement) ||
+            weeksElement.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        var mappedWeeks =
+            new List<MobileFinancialWeekSummary>();
+
+        foreach (var weekElement in
+                 weeksElement.EnumerateArray())
+        {
+            if (weekElement.ValueKind !=
+                    JsonValueKind.Object ||
+                !TryReadPhase3String(
+                    weekElement,
+                    "weekId",
+                    out var weekKey) ||
+                !TryReadPhase3Date(
+                    weekElement,
+                    "startDate",
+                    out var startDate) ||
+                !TryReadPhase3Date(
+                    weekElement,
+                    "endDate",
+                    out var endDate) ||
+                !TryReadPhase3Int64(
+                    weekElement,
+                    "incomeCents",
+                    out var incomeCents) ||
+                !TryReadPhase3Int64(
+                    weekElement,
+                    "outflowCents",
+                    out var outflowCents) ||
+                !TryReadPhase3Int64(
+                    weekElement,
+                    "closingCashCents",
+                    out var endingCashCents) ||
+                !TryReadPhase3Int64(
+                    weekElement,
+                    "closingDebtCents",
+                    out var endingDebtCents) ||
+                !TryReadPhase3String(
+                    weekElement,
+                    "status",
+                    out var pressureStatus))
+            {
+                return false;
+            }
+
+            mappedWeeks.Add(
+                new MobileFinancialWeekSummary(
+                    WeekKey: weekKey,
+                    StartDate: startDate,
+                    EndDate: endDate,
+                    IncomeCents: incomeCents,
+                    OutflowCents: outflowCents,
+                    EndingCashCents: endingCashCents,
+                    EndingDebtCents: endingDebtCents,
+                    PressureStatus: pressureStatus));
+        }
+
+        weeks = mappedWeeks;
+        return true;
+    }
+
+    private static bool TryReadPhase3String(
+        JsonElement element,
+        string propertyName,
+        out string value)
+    {
+        value = string.Empty;
+
+        if (!element.TryGetProperty(
+                propertyName,
+                out var property) ||
+            property.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        value = property.GetString()?.Trim() ?? string.Empty;
+
+        return value.Length > 0;
+    }
+
+    private static string? TryReadPhase3NullableString(
+        JsonElement element,
+        string propertyName)
+    {
+        if (!element.TryGetProperty(
+                propertyName,
+                out var property) ||
+            property.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (property.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var value = property.GetString()?.Trim();
+
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value;
+    }
+
+    private static bool TryReadPhase3Date(
+        JsonElement element,
+        string propertyName,
+        out DateOnly value)
+    {
+        value = default;
+
+        return element.TryGetProperty(
+                   propertyName,
+                   out var property) &&
+               property.ValueKind == JsonValueKind.String &&
+               DateOnly.TryParseExact(
+                   property.GetString(),
+                   "yyyy-MM-dd",
+                   System.Globalization.CultureInfo.InvariantCulture,
+                   System.Globalization.DateTimeStyles.None,
+                   out value);
+    }
+
+    private static bool TryReadPhase3Int32(
+        JsonElement element,
+        string propertyName,
+        out int value)
+    {
+        value = default;
+
+        return element.TryGetProperty(
+                   propertyName,
+                   out var property) &&
+               property.ValueKind == JsonValueKind.Number &&
+               property.TryGetInt32(out value);
+    }
+
+    private static bool TryReadPhase3Int64(
+        JsonElement element,
+        string propertyName,
+        out long value)
+    {
+        value = default;
+
+        return element.TryGetProperty(
+                   propertyName,
+                   out var property) &&
+               property.ValueKind == JsonValueKind.Number &&
+               property.TryGetInt64(out value);
+    }
+
+    private static long? TryReadPhase3NullableInt64(
+        JsonElement element,
+        string propertyName)
+    {
+        if (!element.TryGetProperty(
+                propertyName,
+                out var property) ||
+            property.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        return property.ValueKind == JsonValueKind.Number &&
+               property.TryGetInt64(out var value)
+            ? value
+            : null;
     }
 }

@@ -16,4 +16,7 @@ public sealed class SocialPost
     public DateTime PostedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiresUtc { get; set; }
     public DateTime? DeletedUtc { get; set; }
+
+    public ICollection<SocialPostMediaAsset> MediaAssets { get; set; } =
+        new List<SocialPostMediaAsset>();
 }

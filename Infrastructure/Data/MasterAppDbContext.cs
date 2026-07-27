@@ -89,6 +89,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<JourneyCircleReport> JourneyCircleReports => Set<JourneyCircleReport>();
     public DbSet<JourneyCircleModerationEvent> JourneyCircleModerationEvents => Set<JourneyCircleModerationEvent>();
     public DbSet<SocialPost> SocialPosts => Set<SocialPost>();
+    public DbSet<SocialPostMediaAsset> SocialPostMediaAssets => Set<SocialPostMediaAsset>();
     public DbSet<SocialPostComment> SocialPostComments => Set<SocialPostComment>();
     public DbSet<SocialPostReaction> SocialPostReactions => Set<SocialPostReaction>();
     public DbSet<SocialFollow> SocialFollows => Set<SocialFollow>();
