@@ -37,10 +37,11 @@ enum LegendNextColor {
         blue: 132.0 / 255.0
     )
 
+    // Primary Legend brand gold — #A68023
     static let gold = Color(
-        red: 187.0 / 255.0,
-        green: 145.0 / 255.0,
-        blue: 48.0 / 255.0
+        red: 166.0 / 255.0,
+        green: 128.0 / 255.0,
+        blue: 35.0 / 255.0
     )
 
     static let goldBright = Color(
@@ -65,42 +66,42 @@ enum LegendNextColor {
         dark: UIColor(red: 8 / 255, green: 16 / 255, blue: 34 / 255, alpha: 1)
     )
     static let surface = adaptiveColor(
-        light: UIColor(red: 253 / 255, green: 252 / 255, blue: 248 / 255, alpha: 1),
-        dark: UIColor(red: 12 / 255, green: 22 / 255, blue: 43 / 255, alpha: 1)
+        light: .white,
+        dark: UIColor(red: 10 / 255, green: 22 / 255, blue: 46 / 255, alpha: 1)
     )
     static let surfaceElevated = adaptiveColor(
-        light: UIColor(red: 1, green: 254 / 255, blue: 250 / 255, alpha: 1),
-        dark: UIColor(red: 17 / 255, green: 31 / 255, blue: 59 / 255, alpha: 1)
+        light: UIColor(red: 248 / 255, green: 250 / 255, blue: 253 / 255, alpha: 1),
+        dark: UIColor(red: 16 / 255, green: 37 / 255, blue: 76 / 255, alpha: 1)
     )
     static let surfaceInset = adaptiveColor(
-        light: UIColor(red: 241 / 255, green: 239 / 255, blue: 232 / 255, alpha: 1),
-        dark: UIColor(red: 8 / 255, green: 17 / 255, blue: 35 / 255, alpha: 1)
+        light: UIColor(red: 241 / 255, green: 245 / 255, blue: 249 / 255, alpha: 1),
+        dark: UIColor(red: 7 / 255, green: 18 / 255, blue: 40 / 255, alpha: 1)
     )
 
     // Branded adaptive content
     static let textPrimary = adaptiveColor(
-        light: UIColor(red: 13 / 255, green: 25 / 255, blue: 49 / 255, alpha: 1),
-        dark: UIColor(red: 244 / 255, green: 241 / 255, blue: 232 / 255, alpha: 1)
+        light: UIColor(red: 10 / 255, green: 22 / 255, blue: 46 / 255, alpha: 1),
+        dark: UIColor(red: 248 / 255, green: 250 / 255, blue: 252 / 255, alpha: 1)
     )
     static let textSecondary = adaptiveColor(
-        light: UIColor(red: 83 / 255, green: 91 / 255, blue: 108 / 255, alpha: 1),
-        dark: UIColor(red: 176 / 255, green: 184 / 255, blue: 199 / 255, alpha: 1)
+        light: UIColor(red: 71 / 255, green: 85 / 255, blue: 105 / 255, alpha: 1),
+        dark: UIColor(red: 203 / 255, green: 213 / 255, blue: 225 / 255, alpha: 1)
     )
     static let textTertiary = adaptiveColor(
-        light: UIColor(red: 126 / 255, green: 132 / 255, blue: 145 / 255, alpha: 1),
-        dark: UIColor(red: 127 / 255, green: 139 / 255, blue: 160 / 255, alpha: 1)
+        light: UIColor(red: 100 / 255, green: 116 / 255, blue: 139 / 255, alpha: 1),
+        dark: UIColor(red: 148 / 255, green: 163 / 255, blue: 184 / 255, alpha: 1)
     )
     static let separator = adaptiveColor(
-        light: UIColor(red: 20 / 255, green: 39 / 255, blue: 74 / 255, alpha: 0.12),
-        dark: UIColor(white: 1, alpha: 0.11)
+        light: UIColor(red: 16 / 255, green: 37 / 255, blue: 76 / 255, alpha: 0.09),
+        dark: UIColor(white: 1, alpha: 0.10)
     )
     static let fill = adaptiveColor(
-        light: UIColor(red: 20 / 255, green: 39 / 255, blue: 74 / 255, alpha: 0.08),
-        dark: UIColor(white: 1, alpha: 0.08)
+        light: UIColor(red: 16 / 255, green: 37 / 255, blue: 76 / 255, alpha: 0.055),
+        dark: UIColor(white: 1, alpha: 0.07)
     )
     static let fillSecondary = adaptiveColor(
-        light: UIColor(red: 20 / 255, green: 39 / 255, blue: 74 / 255, alpha: 0.055),
-        dark: UIColor(white: 1, alpha: 0.055)
+        light: UIColor(red: 16 / 255, green: 37 / 255, blue: 76 / 255, alpha: 0.035),
+        dark: UIColor(white: 1, alpha: 0.045)
     )
 
     // Semantic state
@@ -112,8 +113,8 @@ enum LegendNextColor {
 
     static func premiumBorder(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark
-            ? Color.white.opacity(0.12)
-            : navy.opacity(0.09)
+            ? Color.white.opacity(0.10)
+            : navy.opacity(0.075)
     }
 
     static func subtleBorder(for colorScheme: ColorScheme) -> Color {
@@ -130,14 +131,14 @@ enum LegendNextColor {
 
     static func elevatedShadow(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark
-            ? Color.black.opacity(0.34)
-            : navy.opacity(0.11)
+            ? Color.black.opacity(0.22)
+            : navy.opacity(0.065)
     }
 
     static func ambientShadow(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark
-            ? Color.black.opacity(0.22)
-            : navy.opacity(0.055)
+            ? Color.black.opacity(0.15)
+            : navy.opacity(0.035)
     }
 
     private static func adaptiveColor(light: UIColor, dark: UIColor) -> Color {
@@ -220,89 +221,89 @@ enum LegendNextGradient {
         return LinearGradient(
             colors: [
                 LegendNextColor.canvas,
-                LegendNextColor.canvasSecondary.opacity(0.72),
-                LegendNextColor.surface
+                LegendNextColor.surfaceElevated.opacity(0.22),
+                LegendNextColor.canvas
             ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
+            startPoint: .top,
+            endPoint: .bottom
         )
     }
 }
 
 enum LegendNextSpacing {
-    static let hairline: CGFloat = 2
-    static let micro: CGFloat = 4
-    static let tiny: CGFloat = 6
-    static let xs: CGFloat = 8
-    static let sm: CGFloat = 12
-    static let md: CGFloat = 16
-    static let intermediate: CGFloat = 20
-    static let lg: CGFloat = 24
-    static let xl: CGFloat = 32
-    static let xxl: CGFloat = 40
-    static let display: CGFloat = 48
-    static let section: CGFloat = 56
-    static let scene: CGFloat = 64
+    static let hairline: CGFloat = 1
+    static let micro: CGFloat = 3
+    static let tiny: CGFloat = 5
+    static let xs: CGFloat = 7
+    static let sm: CGFloat = 10
+    static let md: CGFloat = 14
+    static let intermediate: CGFloat = 18
+    static let lg: CGFloat = 20
+    static let xl: CGFloat = 26
+    static let xxl: CGFloat = 32
+    static let display: CGFloat = 40
+    static let section: CGFloat = 44
+    static let scene: CGFloat = 52
 
-    static let pageHorizontal: CGFloat = 20
-    static let pageTop: CGFloat = 16
-    static let pageBottom: CGFloat = 32
-    static let cardContent: CGFloat = 18
+    static let pageHorizontal: CGFloat = 16
+    static let pageTop: CGFloat = 12
+    static let pageBottom: CGFloat = 24
+    static let cardContent: CGFloat = 14
 }
 
 enum LegendNextRadius {
-    static let compact: CGFloat = 10
-    static let control: CGFloat = 14
-    static let card: CGFloat = 20
-    static let prominentCard: CGFloat = 24
-    static let hero: CGFloat = 28
-    static let sheet: CGFloat = 32
+    static let compact: CGFloat = 8
+    static let control: CGFloat = 11
+    static let card: CGFloat = 16
+    static let prominentCard: CGFloat = 20
+    static let hero: CGFloat = 22
+    static let sheet: CGFloat = 24
     static let capsule: CGFloat = 999
 }
 
 enum LegendNextSize {
     static let minimumTapTarget: CGFloat = 44
-    static let compactControlHeight: CGFloat = 38
-    static let controlHeight: CGFloat = 50
-    static let prominentControlHeight: CGFloat = 56
+    static let compactControlHeight: CGFloat = 36
+    static let controlHeight: CGFloat = 46
+    static let prominentControlHeight: CGFloat = 50
 
-    static let avatarSmall: CGFloat = 32
-    static let avatarMedium: CGFloat = 44
-    static let avatarLarge: CGFloat = 64
-    static let avatarHero: CGFloat = 88
+    static let avatarSmall: CGFloat = 30
+    static let avatarMedium: CGFloat = 40
+    static let avatarLarge: CGFloat = 56
+    static let avatarHero: CGFloat = 76
 
-    static let iconSmall: CGFloat = 16
-    static let iconMedium: CGFloat = 20
-    static let iconLarge: CGFloat = 26
+    static let iconSmall: CGFloat = 15
+    static let iconMedium: CGFloat = 19
+    static let iconLarge: CGFloat = 23
 }
 
 enum LegendNextTypography {
     static let display = Font.system(
-        size: 36,
+        size: 32,
         weight: .bold,
         design: .default
     )
 
     static let hero = Font.system(
-        size: 29,
+        size: 27,
         weight: .bold,
         design: .default
     )
 
     static let title = Font.system(
-        size: 24,
+        size: 22,
         weight: .bold,
         design: .default
     )
 
     static let section = Font.system(
-        size: 19,
+        size: 18,
         weight: .semibold,
         design: .default
     )
 
     static let cardTitle = Font.system(
-        size: 17,
+        size: 16,
         weight: .semibold,
         design: .default
     )

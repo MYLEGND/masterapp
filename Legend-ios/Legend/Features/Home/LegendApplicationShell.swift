@@ -430,102 +430,35 @@ private struct LegendHomeView: View {
     }
 
     private func homeHero(
-        _ home: MobileHomeResponse
+        _ _: MobileHomeResponse
     ) -> some View {
-        LegendNextHero(
-            eyebrow: greetingEyebrow,
-            title: firstName,
-            detail: heroDetail(for: home)
+        LegendNextSurface(
+            style: .navy,
+            cornerRadius: LegendNextRadius.prominentCard,
+            padding: LegendNextSpacing.md
         ) {
-            VStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.md
+            HStack(
+                alignment: .firstTextBaseline,
+                spacing: LegendNextSpacing.xs
             ) {
-                HStack(
-                    alignment: .center,
-                    spacing: LegendNextSpacing.sm
-                ) {
-                    LegendProfileAvatar(
-                        avatar: currentSession.actor.avatar,
-                        displayName: currentSession.actor.displayName,
-                        size: 54
-                    )
+                Text(greetingEyebrow.capitalized)
+                    .font(LegendNextTypography.title)
+                    .foregroundStyle(LegendNextColor.goldBright)
+                    .lineLimit(1)
 
-                    VStack(
-                        alignment: .leading,
-                        spacing: LegendNextSpacing.micro
-                    ) {
-                        Text(currentSession.actor.displayName)
-                            .font(LegendNextTypography.cardTitle)
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
+                Text(firstName)
+                    .font(LegendNextTypography.title)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
 
-                        Text(
-                            home.identity.participantType == .agent
-                                ? "Legend advisor workspace"
-                                : "Your financial operating system"
-                        )
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(.white.opacity(0.70))
-                        .lineLimit(2)
-                    }
-
-                    Spacer(minLength: LegendNextSpacing.sm)
-
-                    if home.messaging.unreadCount > 0 {
-                        Button {
-                            open(.messages)
-                        } label: {
-                            ZStack(alignment: .topTrailing) {
-                                Image(systemName: "message.fill")
-                                    .font(
-                                        .system(
-                                            size: 17,
-                                            weight: .semibold
-                                        )
-                                    )
-                                    .foregroundStyle(
-                                        LegendNextColor.midnight
-                                    )
-                                    .frame(
-                                        width: LegendNextSize.minimumTapTarget,
-                                        height: LegendNextSize.minimumTapTarget
-                                    )
-                                    .background(
-                                        LegendNextGradient.gold,
-                                        in: Circle()
-                                    )
-
-                                Text(
-                                    home.messaging.unreadCount > 99
-                                        ? "99+"
-                                        : "\(home.messaging.unreadCount)"
-                                )
-                                .font(
-                                    .system(
-                                        size: 9,
-                                        weight: .bold,
-                                        design: .rounded
-                                    )
-                                )
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .frame(minHeight: 17)
-                                .background(
-                                    LegendNextColor.danger,
-                                    in: Capsule()
-                                )
-                                .offset(x: 6, y: -5)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(
-                            "\(home.messaging.unreadCount) unread messages"
-                        )
-                    }
-                }
-
+                Spacer(minLength: 0)
             }
+            .minimumScaleFactor(0.78)
+            .allowsTightening(true)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                "\(greetingEyebrow.capitalized) \(firstName)"
+            )
         }
     }
 
@@ -2064,7 +1997,7 @@ private struct LegendCirclesView: View {
                     title: "Journey Circles",
                     detail: dashboard.profile == nil
                         ? "Complete your approved selections in the client portal to participate."
-                        : "Your connections and recommendations are based on your saved preferences.",
+                        : "",
                     symbolName: "person.3.fill")
 
                 if let profile = dashboard.profile {

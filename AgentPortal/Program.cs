@@ -59,7 +59,7 @@ builder.Services
         var policy = new AuthorizationPolicyBuilder()
             .RequireAuthenticatedUser()
             .Build();
-        
+
         options.Filters.Add(new AuthorizeFilter(policy));
         options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
         options.Filters.Add<AgentTrackingProvisioningFilter>();
@@ -94,6 +94,9 @@ var mobileAuthConfiguration = MobileAuthConfiguration.FromConfiguration(builder.
 builder.Services.AddSingleton(mobileAuthConfiguration);
 builder.Services.AddScoped<IMobileActorResolver, MobileActorResolver>();
 builder.Services.AddScoped<IMobileAccountService, MobileAccountService>();
+builder.Services.AddScoped<
+    IMobileFinancialOperatingSystemProjectionService,
+    MobileFinancialOperatingSystemProjectionService>();
 builder.Services.AddScoped<IMobileHomeService, MobileHomeService>();
 builder.Services.AddScoped<ISocialFeedService, SocialFeedService>();
 builder.Services.AddSingleton<IAuthorizationHandler, MobileApiScopeAuthorizationHandler>();
@@ -243,7 +246,7 @@ builder.Services.AddCors(options =>
 //   - Storage Blob Data Contributor on the storage account (or the container)
 //   - Key Vault Crypto User on the Key Vault key
 // ------------------------------------------------------------
-var dpBlobUri    = builder.Configuration["DataProtection:BlobUri"];
+var dpBlobUri = builder.Configuration["DataProtection:BlobUri"];
 var dpKeyVaultId = builder.Configuration["DataProtection:KeyVaultKeyId"];
 
 var dataProtectionBuilder = builder.Services.AddDataProtection()
@@ -858,28 +861,30 @@ app.UseForwardedHeaders();
 // by allowing HTTP on localhost. HTTPS redirection remains enforced outside Development.
 if (!app.Environment.IsDevelopment())
 {
-app.Use(async (context, next) => {
-    if (context.Request.Path.StartsWithSegments("/api/graph/calendar-webhook")) {
-        await next(); return;
-    }
-    await next();
-});
-    
-app.Use(async (context, next) =>
-{
-    if (context.Request.Path.StartsWithSegments("/api/graph/calendar-webhook") &&
-        context.Request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
-        context.Request.Query.TryGetValue("validationToken", out var validationToken) &&
-        !string.IsNullOrWhiteSpace(validationToken.ToString()))
+    app.Use(async (context, next) =>
     {
-        context.Response.StatusCode = StatusCodes.Status200OK;
-        context.Response.ContentType = "text/plain";
-        await context.Response.WriteAsync(validationToken.ToString());
-        return;
-    }
-    await next();
-});
-app.UseHttpsRedirection();
+        if (context.Request.Path.StartsWithSegments("/api/graph/calendar-webhook"))
+        {
+            await next(); return;
+        }
+        await next();
+    });
+
+    app.Use(async (context, next) =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api/graph/calendar-webhook") &&
+            context.Request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+            context.Request.Query.TryGetValue("validationToken", out var validationToken) &&
+            !string.IsNullOrWhiteSpace(validationToken.ToString()))
+        {
+            context.Response.StatusCode = StatusCodes.Status200OK;
+            context.Response.ContentType = "text/plain";
+            await context.Response.WriteAsync(validationToken.ToString());
+            return;
+        }
+        await next();
+    });
+    app.UseHttpsRedirection();
 }
 app.UseStaticFiles();
 

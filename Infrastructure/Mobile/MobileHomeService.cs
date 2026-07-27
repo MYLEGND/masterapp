@@ -33,19 +33,22 @@ public sealed class MobileHomeService : IMobileHomeService
     private readonly IJourneyCirclesService _journeyCircles;
     private readonly IFinancialIntelligenceEvaluationService _financialIntelligence;
     private readonly IBillingEntitlementService _entitlements;
+    private readonly IMobileFinancialOperatingSystemProjectionService _financialOperatingSystem;
 
     public MobileHomeService(
         MasterAppDbContext db,
         IMessagingService messaging,
         IJourneyCirclesService journeyCircles,
         IFinancialIntelligenceEvaluationService financialIntelligence,
-        IBillingEntitlementService entitlements)
+        IBillingEntitlementService entitlements,
+        IMobileFinancialOperatingSystemProjectionService financialOperatingSystem)
     {
         _db = db;
         _messaging = messaging;
         _journeyCircles = journeyCircles;
         _financialIntelligence = financialIntelligence;
         _entitlements = entitlements;
+        _financialOperatingSystem = financialOperatingSystem;
     }
 
     public async Task<MobileHomeResult> GetHomeAsync(
@@ -140,6 +143,10 @@ public sealed class MobileHomeService : IMobileHomeService
                 stream.Status))
             .ToListAsync(cancellationToken);
 
+        var operatingSystem = await _financialOperatingSystem.ProjectAsync(
+            actor.ProfileId,
+            cancellationToken);
+
         return MobileFinancialResult.Success(new MobileFinancialSnapshot(
             position,
             intelligence is null
@@ -161,7 +168,8 @@ public sealed class MobileHomeService : IMobileHomeService
                         finding.Urgency,
                         finding.Status,
                         finding.LastDetectedUtc)).ToArray()),
-            upcomingBills));
+            upcomingBills,
+            operatingSystem));
     }
 
     public async Task<MobileAgentClientsResult> GetAgentClientsAsync(
@@ -465,7 +473,11 @@ public sealed record MobileJourneySummary(bool HasProfile, int RecommendationCou
 public sealed record MobileUpcomingAppointment(Guid Id, DateTime StartUtc, DateTime? EndUtc, string Status);
 public sealed record MobileActionItem(Guid Id, string Title, string Status, string Priority, DateTime? DueDateUtc);
 public sealed record MobileBillingNotification(Guid Id, string Kind, string Subject, DateTime OccurredUtc);
-public sealed record MobileFinancialSnapshot(MobileFinancialPosition? Position, MobileFinancialIntelligenceSummary? Intelligence, IReadOnlyList<MobileUpcomingBill> UpcomingBills);
+public sealed record MobileFinancialSnapshot(
+    MobileFinancialPosition? Position,
+    MobileFinancialIntelligenceSummary? Intelligence,
+    IReadOnlyList<MobileUpcomingBill> UpcomingBills,
+    MobileFinancialOperatingSystemSnapshot? OperatingSystem = null);
 public sealed record MobileFinancialPosition(int HealthScore, decimal AssetsTotal, decimal LiabilitiesTotal, decimal NetWorth, decimal AnnualEarnings, decimal AnnualLifestyleRemaining, decimal AnnualTaxes, decimal ProtectionGapTotal, string PositionStatus, string PositionSummary, string EstatePlanningStatus, string EstatePlanningRiskLevel, DateTime UpdatedUtc);
 public sealed record MobileFinancialIntelligenceSummary(string Status, decimal DataCompletenessScore, string CurrentRiskSummary, string CurrentOpportunitySummary, string CurrentLeakageSummary, DateTime? LastEvaluatedUtc, IReadOnlyList<MobileFinancialFinding> Findings);
 public sealed record MobileFinancialFinding(Guid Id, string Category, string Title, string Explanation, decimal? EstimatedImpact, string? ImpactUnit, string Urgency, string Status, DateTime LastDetectedUtc);

@@ -105,13 +105,13 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
             Text("LEGEND")
                 .font(
                     .system(
-                        size: 22,
-                        weight: .semibold,
+                        size: 23,
+                        weight: .bold,
                         design: .default
                     )
                 )
-                .tracking(5.2)
-                .foregroundStyle(LegendNextColor.navy)
+                .tracking(4.6)
+                .foregroundStyle(LegendNextColor.gold)
                 .accessibilityAddTraits(.isHeader)
 
             Spacer(minLength: LegendNextSpacing.sm)

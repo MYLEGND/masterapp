@@ -401,10 +401,12 @@ struct LegendHero: View {
                     Text(title)
                         .font(LegendTypography.hero)
                         .foregroundStyle(.white)
-                    Text(detail)
-                        .font(LegendTypography.body)
-                        .foregroundStyle(.white.opacity(0.76))
-                        .fixedSize(horizontal: false, vertical: true)
+                    if !detail.isEmpty {
+                        Text(detail)
+                            .font(LegendTypography.body)
+                            .foregroundStyle(.white.opacity(0.76))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer(minLength: 0)
                 if let symbolName {
