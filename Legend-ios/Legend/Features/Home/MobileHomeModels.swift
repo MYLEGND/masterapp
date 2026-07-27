@@ -118,6 +118,151 @@ struct MobileFinancialSnapshotResponse: Codable, Equatable, Sendable {
     let position: MobileFinancialPosition?
     let intelligence: MobileFinancialIntelligenceSummary?
     let upcomingBills: [MobileUpcomingBill]
+    let operatingSystem: MobileFinancialOperatingSystemSnapshotResponse?
+}
+
+struct MobileFinancialOperatingSystemSnapshotResponse: Codable, Equatable, Sendable {
+    let projection: MobileFinancialProjectionStatusResponse
+    let freshness: MobileFinancialDataFreshnessResponse
+    let weekAtGlance: MobileFinancialWeekAtGlanceResponse?
+    let monthAtGlance: MobileFinancialMonthAtGlanceResponse?
+    let tools: [MobileFinancialToolSummaryResponse]
+}
+
+struct MobileFinancialProjectionStatusResponse: Codable, Equatable, Sendable {
+    let status: String
+    let reasonCode: String?
+    let summary: String?
+}
+
+struct MobileFinancialDataFreshnessResponse: Codable, Equatable, Sendable {
+    let financeStateUpdatedUTC: Date?
+    let intelligenceEvaluatedUTC: Date?
+    let generatedUTC: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case financeStateUpdatedUTC = "financeStateUpdatedUtc"
+        case intelligenceEvaluatedUTC = "intelligenceEvaluatedUtc"
+        case generatedUTC = "generatedUtc"
+    }
+}
+
+struct MobileFinancialWeekAtGlanceResponse: Codable, Equatable, Sendable {
+    let weekKey: String
+    let startDate: String
+    let endDate: String
+    let openingCashCents: Int64
+    let incomeCents: Int64
+    let debitExpenseCents: Int64
+    let creditExpenseCents: Int64
+    let requiredDebtPaymentCents: Int64
+    let extraDebtPaymentCents: Int64
+    let endingCashCents: Int64
+    let openingDebtCents: Int64
+    let endingDebtCents: Int64
+    let pressureStatus: String
+    let pressureSummary: String?
+    let events: [MobileFinancialCashFlowEventResponse]
+}
+
+struct MobileFinancialMonthAtGlanceResponse: Codable, Equatable, Sendable {
+    let monthKey: String
+    let startDate: String
+    let endDate: String
+    let openingCashCents: Int64
+    let incomeCents: Int64
+    let debitExpenseCents: Int64
+    let creditExpenseCents: Int64
+    let requiredDebtPaymentCents: Int64
+    let extraDebtPaymentCents: Int64
+    let endingCashCents: Int64
+    let openingDebtCents: Int64
+    let endingDebtCents: Int64
+    let savingsContributionCents: Int64
+    let pressureStatus: String
+    let pressureSummary: String?
+    let largestObligation: MobileFinancialLargestObligationResponse?
+    let weeks: [MobileFinancialWeekSummaryResponse]
+}
+
+struct MobileFinancialCashFlowEventResponse:
+    Codable,
+    Equatable,
+    Identifiable,
+    Sendable
+{
+    let eventKey: String
+    let occursOn: String
+    let kind: String
+    let title: String
+    let amountCents: Int64
+    let sourceToolId: String?
+    let sourceItemId: String?
+    let status: String
+
+    var id: String { eventKey }
+}
+
+struct MobileFinancialWeekSummaryResponse:
+    Codable,
+    Equatable,
+    Identifiable,
+    Sendable
+{
+    let weekKey: String
+    let startDate: String
+    let endDate: String
+    let incomeCents: Int64
+    let outflowCents: Int64
+    let endingCashCents: Int64
+    let endingDebtCents: Int64
+    let pressureStatus: String
+
+    var id: String { weekKey }
+}
+
+struct MobileFinancialLargestObligationResponse:
+    Codable,
+    Equatable,
+    Sendable
+{
+    let title: String
+    let occursOn: String
+    let amountCents: Int64
+    let kind: String
+}
+
+struct MobileFinancialToolSummaryResponse:
+    Codable,
+    Equatable,
+    Identifiable,
+    Sendable
+{
+    let toolId: String
+    let title: String
+    let category: String
+    let priority: Int
+    let availabilityStatus: String
+    let updatedUTC: Date?
+    let summary: String?
+    let metrics: [MobileFinancialMetricResponse]
+
+    var id: String { toolId }
+
+    private enum CodingKeys: String, CodingKey {
+        case toolId, title, category, priority, availabilityStatus, summary, metrics
+        case updatedUTC = "updatedUtc"
+    }
+}
+
+struct MobileFinancialMetricResponse: Codable, Equatable, Sendable {
+    let key: String
+    let label: String
+    let valueType: String
+    let amountCents: Int64?
+    let numericValue: Decimal?
+    let textValue: String?
+    let status: String?
 }
 
 struct MobileFinancialPosition: Codable, Equatable, Sendable {

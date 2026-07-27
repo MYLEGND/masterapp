@@ -98,7 +98,7 @@ builder.Services.AddScoped<
     IMobileFinancialOperatingSystemProjectionService,
     MobileFinancialOperatingSystemProjectionService>();
 builder.Services.AddScoped<IMobileHomeService, MobileHomeService>();
-builder.Services.AddScoped<ISocialFeedService, SocialFeedService>();
+builder.Services.AddMasterAppSocial(builder.Configuration);
 builder.Services.AddSingleton<IAuthorizationHandler, MobileApiScopeAuthorizationHandler>();
 builder.Services.AddScoped<AgentProfileImageLegacyBackfillService>();
 builder.Services.AddScoped<ClientBillingWorkspaceService>();

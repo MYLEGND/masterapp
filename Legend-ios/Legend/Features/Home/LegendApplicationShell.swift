@@ -2258,9 +2258,14 @@ private struct LegendFinanceView: View {
     let currentSession: MobileSession
     @StateObject private var store: MobileHomeStore
 
-    init(currentSession: MobileSession, coordinator: MobileSessionCoordinator) {
+    init(
+        currentSession: MobileSession,
+        coordinator: MobileSessionCoordinator
+    ) {
         self.currentSession = currentSession
-        _store = StateObject(wrappedValue: coordinator.makeHomeStore())
+        _store = StateObject(
+            wrappedValue: coordinator.makeHomeStore()
+        )
     }
 
     var body: some View {
@@ -2268,81 +2273,791 @@ private struct LegendFinanceView: View {
             if currentSession.actor.identity.participantType != .client {
                 LegendEmptyState(
                     title: "Financial intelligence",
-                    message: "Client financial intelligence is available from an authorized client mobile identity.",
-                    symbolName: "chart.line.uptrend.xyaxis")
+                    message:
+                        "Client financial intelligence is available from an authorized client mobile identity.",
+                    symbolName: "chart.line.uptrend.xyaxis"
+                )
             } else {
                 switch store.state {
                 case .idle, .loading:
-                    LegendLoadingView("Loading financial intelligence…")
+                    LegendLoadingView(
+                        "Loading financial intelligence…"
+                    )
+
                 case .loaded(let home):
                     financialContent(home.financial)
+
                 case .unavailable(let failure):
-                    LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: store.load)
-                        .padding(LegendNextSpacing.md)
+                    LegendErrorCard(
+                        title: failure.title,
+                        message: failure.message,
+                        retryTitle: "Retry",
+                        retry: store.load
+                    )
+                    .padding(LegendNextSpacing.md)
                 }
             }
         }
-        .background(LegendNextColor.canvas.ignoresSafeArea())
+        .background(
+            LegendNextColor.canvas.ignoresSafeArea()
+        )
         .navigationTitle("Financial intelligence")
         .navigationBarTitleDisplayMode(.inline)
-        .task { if case .idle = store.state { store.load() } }
+        .task {
+            if case .idle = store.state {
+                store.load()
+            }
+        }
     }
 
     @ViewBuilder
-    private func financialContent(_ financial: MobileFinancialSnapshotResponse?) -> some View {
+    private func financialContent(
+        _ financial: MobileFinancialSnapshotResponse?
+    ) -> some View {
         if let financial {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                LazyVStack(
+                    alignment: .leading,
+                    spacing: LegendNextSpacing.md
+                ) {
                     if let position = financial.position {
-                        LegendNextSurface(style: .navy) {
-                            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                                Text("FINANCIAL HEALTH").font(.caption.weight(.bold)).foregroundStyle(LegendNextColor.gold)
-                                Text("\(position.healthScore) health score").font(LegendNextTypography.hero).foregroundStyle(.white)
-                                Text(position.positionSummary).font(LegendNextTypography.body).foregroundStyle(.white.opacity(0.78)).fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        HStack(spacing: LegendNextSpacing.sm) {
-                            LegendMetric(title: "Assets", value: position.assetsTotal.formatted(.currency(code: "USD")))
-                            LegendMetric(title: "Liabilities", value: position.liabilitiesTotal.formatted(.currency(code: "USD")))
-                            LegendMetric(title: "Net worth", value: position.netWorth.formatted(.currency(code: "USD")))
-                        }
-                        .padding(LegendNextSpacing.md)
-                        .background(LegendNextColor.surfaceElevated, in: RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous))
+                        financialHealth(position)
+                        positionMetrics(position)
                     } else {
                         LegendEmptyState(
                             title: "No financial snapshot",
-                            message: "Your saved financial health data will appear here after it is completed in the client portal.",
-                            symbolName: "chart.line.uptrend.xyaxis")
+                            message:
+                                "Your saved financial health data will appear here after it is completed in the client portal.",
+                            symbolName:
+                                "chart.line.uptrend.xyaxis"
+                        )
+                    }
+
+                    if let operatingSystem = financial.operatingSystem {
+                        operatingSystemContent(operatingSystem)
+                    } else {
+                        operatingSystemUnavailable(
+                            summary:
+                                "Week and month projections have not been returned by the mobile service yet."
+                        )
                     }
 
                     if !financial.upcomingBills.isEmpty {
-                        LegendNextSurface {
-                            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                                LegendNextSectionHeader(title: "Upcoming recurring bills")
-                                ForEach(financial.upcomingBills) { bill in
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                                            Text(bill.displayName).font(.subheadline.weight(.semibold))
-                                            Text(bill.nextExpectedDateUTC, format: .dateTime.month(.abbreviated).day())
-                                                .font(LegendNextTypography.supporting).foregroundStyle(LegendNextColor.textSecondary)
-                                        }
-                                        Spacer()
-                                        Text(bill.amount.formatted(.currency(code: "USD"))).font(.subheadline.weight(.semibold))
-                                    }
-                                }
-                            }
-                        }
+                        upcomingBills(financial.upcomingBills)
                     }
                 }
-                .padding(.horizontal, LegendNextSpacing.md)
-                .padding(.vertical, LegendNextSpacing.sm)
+                .padding(
+                    .horizontal,
+                    LegendNextSpacing.md
+                )
+                .padding(
+                    .top,
+                    LegendNextSpacing.sm
+                )
+                .padding(
+                    .bottom,
+                    LegendNextSpacing.xl
+                )
+            }
+            .refreshable {
+                store.load()
             }
         } else {
             LegendEmptyState(
                 title: "Financial intelligence unavailable",
-                message: "No client financial data is available for this mobile identity.",
-                symbolName: "lock.chart")
+                message:
+                    "No client financial data is available for this mobile identity.",
+                symbolName: "lock.chart"
+            )
         }
+    }
+
+    private func financialHealth(
+        _ position: MobileFinancialPosition
+    ) -> some View {
+        LegendNextSurface(style: .navy) {
+            VStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.sm
+            ) {
+                HStack {
+                    Text("FINANCIAL HEALTH")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(
+                            LegendNextColor.gold
+                        )
+
+                    Spacer()
+
+                    Text(position.positionStatus.uppercased())
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            .white.opacity(0.10),
+                            in: Capsule()
+                        )
+                }
+
+                HStack(
+                    alignment: .firstTextBaseline,
+                    spacing: LegendNextSpacing.micro
+                ) {
+                    Text("\(position.healthScore)")
+                        .font(
+                            .system(
+                                size: 48,
+                                weight: .bold,
+                                design: .rounded
+                            )
+                        )
+                        .foregroundStyle(.white)
+
+                    Text("/ 100")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.62))
+                }
+
+                Text(position.positionSummary)
+                    .font(LegendNextTypography.body)
+                    .foregroundStyle(.white.opacity(0.80))
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+            }
+        }
+    }
+
+    private func positionMetrics(
+        _ position: MobileFinancialPosition
+    ) -> some View {
+        LazyVGrid(
+            columns: metricColumns,
+            spacing: LegendNextSpacing.sm
+        ) {
+            financialMetric(
+                title: "Assets",
+                value: position.assetsTotal.formatted(
+                    .currency(code: "USD")
+                )
+            )
+
+            financialMetric(
+                title: "Liabilities",
+                value: position.liabilitiesTotal.formatted(
+                    .currency(code: "USD")
+                )
+            )
+
+            financialMetric(
+                title: "Net worth",
+                value: position.netWorth.formatted(
+                    .currency(code: "USD")
+                )
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func operatingSystemContent(
+        _ operatingSystem:
+            MobileFinancialOperatingSystemSnapshotResponse
+    ) -> some View {
+        if let week = operatingSystem.weekAtGlance {
+            weekAtGlance(week)
+        }
+
+        if let month = operatingSystem.monthAtGlance {
+            monthAtGlance(month)
+
+            if let obligation = month.largestObligation {
+                largestObligation(obligation)
+            }
+        }
+
+        if operatingSystem.weekAtGlance == nil &&
+            operatingSystem.monthAtGlance == nil {
+            operatingSystemUnavailable(
+                summary:
+                    operatingSystem.projection.summary ??
+                    "Your Expense Lens projection is not available yet."
+            )
+        }
+    }
+
+    private func weekAtGlance(
+        _ week: MobileFinancialWeekAtGlanceResponse
+    ) -> some View {
+        LegendNextSurface {
+            VStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.md
+            ) {
+                sectionHeading(
+                    eyebrow: "CURRENT OUTLOOK",
+                    title: "Week at a Glance",
+                    detail:
+                        "\(displayDate(week.startDate)) – \(displayDate(week.endDate))",
+                    status: week.pressureStatus
+                )
+
+                LazyVGrid(
+                    columns: metricColumns,
+                    spacing: LegendNextSpacing.sm
+                ) {
+                    financialMetric(
+                        title: "Opening cash",
+                        value: money(week.openingCashCents)
+                    )
+
+                    financialMetric(
+                        title: "Income",
+                        value: money(week.incomeCents)
+                    )
+
+                    financialMetric(
+                        title: "Bills",
+                        value: money(
+                            week.debitExpenseCents +
+                            week.creditExpenseCents
+                        )
+                    )
+
+                    financialMetric(
+                        title: "Debt",
+                        value: money(
+                            week.requiredDebtPaymentCents +
+                            week.extraDebtPaymentCents
+                        )
+                    )
+
+                    financialMetric(
+                        title: "Ending cash",
+                        value: money(week.endingCashCents)
+                    )
+
+                    financialMetric(
+                        title: "Ending debt",
+                        value: money(week.endingDebtCents)
+                    )
+                }
+
+                if let summary = week.pressureSummary,
+                   !summary.isEmpty {
+                    Text(summary)
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(
+                            LegendNextColor.textSecondary
+                        )
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
+                        )
+                }
+
+                if !week.events.isEmpty {
+                    Divider()
+
+                    VStack(
+                        alignment: .leading,
+                        spacing: LegendNextSpacing.sm
+                    ) {
+                        Text("THIS WEEK'S ACTIVITY")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(
+                                LegendNextColor.textSecondary
+                            )
+
+                        ForEach(week.events.prefix(6)) { event in
+                            HStack(
+                                alignment: .firstTextBaseline,
+                                spacing: LegendNextSpacing.sm
+                            ) {
+                                VStack(
+                                    alignment: .leading,
+                                    spacing:
+                                        LegendNextSpacing.micro
+                                ) {
+                                    Text(event.title)
+                                        .font(
+                                            .subheadline.weight(
+                                                .semibold
+                                            )
+                                        )
+
+                                    Text(
+                                        "\(displayDate(event.occursOn)) · \(event.kind)"
+                                    )
+                                    .font(
+                                        LegendNextTypography
+                                            .supporting
+                                    )
+                                    .foregroundStyle(
+                                        LegendNextColor
+                                            .textSecondary
+                                    )
+                                }
+
+                                Spacer(minLength: 8)
+
+                                Text(money(event.amountCents))
+                                    .font(
+                                        .subheadline.weight(
+                                            .semibold
+                                        )
+                                    )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func monthAtGlance(
+        _ month: MobileFinancialMonthAtGlanceResponse
+    ) -> some View {
+        LegendNextSurface {
+            VStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.md
+            ) {
+                sectionHeading(
+                    eyebrow: "FORWARD VIEW",
+                    title: "Month at a Glance",
+                    detail:
+                        monthLabel(month.monthKey),
+                    status: month.pressureStatus
+                )
+
+                LazyVGrid(
+                    columns: metricColumns,
+                    spacing: LegendNextSpacing.sm
+                ) {
+                    financialMetric(
+                        title: "Opening cash",
+                        value: money(month.openingCashCents)
+                    )
+
+                    financialMetric(
+                        title: "Income",
+                        value: money(month.incomeCents)
+                    )
+
+                    financialMetric(
+                        title: "Bills",
+                        value: money(
+                            month.debitExpenseCents +
+                            month.creditExpenseCents
+                        )
+                    )
+
+                    financialMetric(
+                        title: "Debt",
+                        value: money(
+                            month.requiredDebtPaymentCents +
+                            month.extraDebtPaymentCents
+                        )
+                    )
+
+                    financialMetric(
+                        title: "Ending cash",
+                        value: money(month.endingCashCents)
+                    )
+
+                    financialMetric(
+                        title: "Ending debt",
+                        value: money(month.endingDebtCents)
+                    )
+                }
+
+                if month.savingsContributionCents != 0 {
+                    HStack {
+                        Label(
+                            "Savings contribution",
+                            systemImage: "banknote.fill"
+                        )
+                        .font(.subheadline.weight(.semibold))
+
+                        Spacer()
+
+                        Text(
+                            money(
+                                month.savingsContributionCents
+                            )
+                        )
+                        .font(.subheadline.weight(.bold))
+                    }
+                    .padding(LegendNextSpacing.sm)
+                    .background(
+                        LegendNextColor.gold.opacity(0.10),
+                        in: RoundedRectangle(
+                            cornerRadius:
+                                LegendNextRadius.control,
+                            style: .continuous
+                        )
+                    )
+                }
+
+                if !month.weeks.isEmpty {
+                    Divider()
+
+                    VStack(
+                        alignment: .leading,
+                        spacing: LegendNextSpacing.sm
+                    ) {
+                        Text("MONTHLY ROADMAP")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(
+                                LegendNextColor.textSecondary
+                            )
+
+                        ForEach(month.weeks) { week in
+                            HStack(
+                                spacing: LegendNextSpacing.sm
+                            ) {
+                                VStack(
+                                    alignment: .leading,
+                                    spacing:
+                                        LegendNextSpacing.micro
+                                ) {
+                                    Text(
+                                        "\(displayDate(week.startDate)) – \(displayDate(week.endDate))"
+                                    )
+                                    .font(
+                                        .subheadline.weight(
+                                            .semibold
+                                        )
+                                    )
+
+                                    Text(
+                                        "\(week.pressureStatus) · Outflow \(money(week.outflowCents))"
+                                    )
+                                    .font(
+                                        LegendNextTypography
+                                            .supporting
+                                    )
+                                    .foregroundStyle(
+                                        LegendNextColor
+                                            .textSecondary
+                                    )
+                                }
+
+                                Spacer()
+
+                                VStack(
+                                    alignment: .trailing,
+                                    spacing:
+                                        LegendNextSpacing.micro
+                                ) {
+                                    Text(
+                                        money(
+                                            week.endingCashCents
+                                        )
+                                    )
+                                    .font(
+                                        .subheadline.weight(
+                                            .bold
+                                        )
+                                    )
+
+                                    Text("ending cash")
+                                        .font(.caption2)
+                                        .foregroundStyle(
+                                            LegendNextColor
+                                                .textSecondary
+                                        )
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+
+                if let summary = month.pressureSummary,
+                   !summary.isEmpty {
+                    Text(summary)
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(
+                            LegendNextColor.textSecondary
+                        )
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
+                        )
+                }
+            }
+        }
+    }
+
+    private func largestObligation(
+        _ obligation:
+            MobileFinancialLargestObligationResponse
+    ) -> some View {
+        LegendNextSurface(style: .navy) {
+            HStack(
+                alignment: .center,
+                spacing: LegendNextSpacing.md
+            ) {
+                Image(systemName: "calendar.badge.exclamationmark")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.gold)
+                    .frame(width: 46, height: 46)
+                    .background(
+                        LegendNextColor.gold.opacity(0.14),
+                        in: Circle()
+                    )
+
+                VStack(
+                    alignment: .leading,
+                    spacing: LegendNextSpacing.micro
+                ) {
+                    Text("LARGEST OBLIGATION")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(
+                            LegendNextColor.gold
+                        )
+
+                    Text(obligation.title)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+
+                    Text(
+                        "\(displayDate(obligation.occursOn)) · \(obligation.kind)"
+                    )
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(.white.opacity(0.70))
+                }
+
+                Spacer(minLength: 8)
+
+                Text(money(obligation.amountCents))
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+
+    private func operatingSystemUnavailable(
+        summary: String
+    ) -> some View {
+        LegendNextSurface {
+            VStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.sm
+            ) {
+                Label(
+                    "Cash-flow projection unavailable",
+                    systemImage: "chart.xyaxis.line"
+                )
+                .font(.headline.weight(.semibold))
+
+                Text(summary)
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(
+                        LegendNextColor.textSecondary
+                    )
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+
+                Text(
+                    "Complete or update Expense Lens in the client portal to refresh this view."
+                )
+                .font(.caption)
+                .foregroundStyle(
+                    LegendNextColor.textSecondary
+                )
+            }
+        }
+    }
+
+    private func upcomingBills(
+        _ bills: [MobileUpcomingBill]
+    ) -> some View {
+        LegendNextSurface {
+            VStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.sm
+            ) {
+                LegendNextSectionHeader(
+                    title: "Upcoming recurring bills"
+                )
+
+                ForEach(bills.prefix(6)) { bill in
+                    HStack {
+                        VStack(
+                            alignment: .leading,
+                            spacing: LegendNextSpacing.micro
+                        ) {
+                            Text(bill.displayName)
+                                .font(
+                                    .subheadline.weight(
+                                        .semibold
+                                    )
+                                )
+
+                            Text(
+                                bill.nextExpectedDateUTC,
+                                format:
+                                    .dateTime
+                                    .month(.abbreviated)
+                                    .day()
+                            )
+                            .font(
+                                LegendNextTypography.supporting
+                            )
+                            .foregroundStyle(
+                                LegendNextColor.textSecondary
+                            )
+                        }
+
+                        Spacer()
+
+                        Text(
+                            bill.amount.formatted(
+                                .currency(code: "USD")
+                            )
+                        )
+                        .font(.subheadline.weight(.semibold))
+                    }
+                }
+            }
+        }
+    }
+
+    private func sectionHeading(
+        eyebrow: String,
+        title: String,
+        detail: String,
+        status: String
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.micro
+        ) {
+            HStack {
+                Text(eyebrow)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(
+                        LegendNextColor.gold
+                    )
+
+                Spacer()
+
+                Text(status.uppercased())
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(
+                        LegendNextColor.textSecondary
+                    )
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                        LegendNextColor.surfaceElevated,
+                        in: Capsule()
+                    )
+            }
+
+            Text(title)
+                .font(.title3.weight(.bold))
+
+            Text(detail)
+                .font(LegendNextTypography.supporting)
+                .foregroundStyle(
+                    LegendNextColor.textSecondary
+                )
+        }
+    }
+
+    private func financialMetric(
+        title: String,
+        value: String
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.micro
+        ) {
+            Text(title.uppercased())
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(
+                    LegendNextColor.textSecondary
+                )
+                .lineLimit(1)
+
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .minimumScaleFactor(0.72)
+                .lineLimit(1)
+        }
+        .frame(
+            maxWidth: .infinity,
+            alignment: .leading
+        )
+        .padding(LegendNextSpacing.sm)
+        .background(
+            LegendNextColor.surfaceElevated,
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+        )
+    }
+
+    private var metricColumns: [GridItem] {
+        [
+            GridItem(
+                .flexible(),
+                spacing: LegendNextSpacing.sm
+            ),
+            GridItem(
+                .flexible(),
+                spacing: LegendNextSpacing.sm
+            )
+        ]
+    }
+
+    private func money(_ cents: Int64) -> String {
+        (Decimal(cents) / Decimal(100))
+            .formatted(.currency(code: "USD"))
+    }
+
+    private func displayDate(_ value: String) -> String {
+        let parts = value.split(separator: "-")
+
+        guard parts.count == 3,
+              let month = Int(parts[1]),
+              let day = Int(parts[2]) else {
+            return value
+        }
+
+        let symbols = Calendar.current.shortMonthSymbols
+
+        guard month >= 1, month <= symbols.count else {
+            return value
+        }
+
+        return "\(symbols[month - 1]) \(day)"
+    }
+
+    private func monthLabel(_ value: String) -> String {
+        let parts = value.split(separator: "-")
+
+        guard parts.count >= 2,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]) else {
+            return value
+        }
+
+        let symbols = Calendar.current.monthSymbols
+
+        guard month >= 1, month <= symbols.count else {
+            return value
+        }
+
+        return "\(symbols[month - 1]) \(year)"
     }
 }
 
