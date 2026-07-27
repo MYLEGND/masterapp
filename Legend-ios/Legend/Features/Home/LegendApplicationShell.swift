@@ -2380,186 +2380,110 @@ private struct LegendFinanceView: View {
         }
     }
 
+
     private func financialHealth(
         _ position: MobileFinancialPosition
     ) -> some View {
-        LegendNextSurface(
-            style: .navy,
-            cornerRadius: LegendNextRadius.hero,
-            padding: LegendNextSpacing.sm
+        LegendNextHero(
+            eyebrow: "Financial Health",
+            title: healthHeadline(position.healthScore),
+            detail: position.positionSummary
         ) {
             VStack(
                 alignment: .leading,
-                spacing: LegendNextSpacing.xs
+                spacing: LegendNextSpacing.sm
             ) {
                 HStack(
-                    alignment: .center,
-                    spacing: LegendNextSpacing.xs
+                    alignment: .firstTextBaseline,
+                    spacing: LegendNextSpacing.sm
                 ) {
-                    Label(
-                        "FINANCIAL HEALTH",
-                        systemImage: "waveform.path.ecg"
-                    )
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(LegendNextColor.goldBright)
+                    Text("\(position.healthScore)")
+                        .font(LegendNextTypography.display)
+                        .foregroundStyle(.white)
+                        .monospacedDigit()
 
-                    Spacer()
+                    Text("OF 100")
+                        .font(LegendNextTypography.eyebrow)
+                        .foregroundStyle(.white.opacity(0.62))
 
-                    statusBadge(position.positionStatus)
-                }
+                    Spacer(minLength: LegendNextSpacing.sm)
 
-                HStack(
-                    alignment: .bottom,
-                    spacing: LegendNextSpacing.xs
-                ) {
-                    ZStack {
-                        Circle()
-                            .stroke(
-                                Color.white.opacity(0.12),
-                                lineWidth: 8
-                            )
-
-                        Circle()
-                            .trim(
-                                from: 0,
-                                to: healthProgress(
-                                    position.healthScore
-                                )
-                            )
-                            .stroke(
-                                healthGradient(
-                                    position.healthScore
-                                ),
-                                style: StrokeStyle(
-                                    lineWidth: 8,
-                                    lineCap: .round
-                                )
-                            )
-                            .rotationEffect(.degrees(-90))
-
-                        VStack(spacing: 0) {
-                            Text("\(position.healthScore)")
-                                .font(
-                                    .system(
-                                        size: 26,
-                                        weight: .bold,
-                                        design: .rounded
-                                    )
-                                )
-                                .foregroundStyle(.white)
-
-                            Text("OF 100")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(
-                                    .white.opacity(0.58)
-                                )
-                        }
-                    }
-                    .frame(width: 84, height: 84)
-                    .accessibilityElement(
-                        children: .ignore
-                    )
-                    .accessibilityLabel(
-                        "Financial health score"
-                    )
-                    .accessibilityValue(
-                        "\(position.healthScore) out of 100"
-                    )
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: LegendNextSpacing.xs
-                    ) {
-                        Text(healthHeadline(position.healthScore))
-                            .font(
-                                .title3.weight(.bold)
-                            )
-                            .foregroundStyle(.white)
-
-                        Text(position.positionSummary)
-                            .font(LegendNextTypography.body)
-                            .foregroundStyle(
-                                .white.opacity(0.82)
-                            )
-                            .fixedSize(
-                                horizontal: false,
-                                vertical: true
-                            )
-                    }
-                    .frame(
-                        maxWidth: .infinity,
-                        alignment: .leading
-                    )
-                }
-
-                HStack(spacing: LegendNextSpacing.xs) {
-                    healthSignal(
-                        title: "Position",
-                        value: position.positionStatus,
-                        symbol: "scope"
-                    )
-
-                    healthSignal(
-                        title: "Net worth",
-                        value: compactCurrency(
-                            position.netWorth
+                    LegendNextBadge(
+                        position.positionStatus,
+                        tone: statusTone(
+                            position.positionStatus
                         ),
-                        symbol: "chart.line.uptrend.xyaxis"
+                        systemImage: "circle.fill"
                     )
+                }
+
+                HStack(spacing: LegendNextSpacing.sm) {
+                    LegendNextBadge(
+                        "Net Worth \(compactCurrency(position.netWorth))",
+                        tone:
+                            position.netWorth >= 0
+                                ? .success
+                                : .danger,
+                        systemImage:
+                            position.netWorth >= 0
+                                ? "arrow.up.right"
+                                : "arrow.down.right"
+                    )
+
+                    Spacer(minLength: 0)
                 }
             }
         }
     }
+
 
     private func positionMetrics(
         _ position: MobileFinancialPosition
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: LegendNextSpacing.xs
+            spacing: LegendNextSpacing.sm
         ) {
-            financeSectionLabel(
-                eyebrow: "FINANCIAL POSITION",
-                title: "Your Balance Sheet",
-                detail: "A clear view of what you own, what you owe, and the position you are building."
+            LegendNextSectionHeader(
+                eyebrow: "Financial Position",
+                title: "Balance Sheet"
             )
 
             LazyVGrid(
                 columns: metricColumns,
-                spacing: LegendNextSpacing.xs
+                spacing: LegendNextSpacing.sm
             ) {
-                financialMetric(
+                LegendNextMetricTile(
                     title: "Assets",
                     value: position.assetsTotal.formatted(
                         .currency(code: "USD")
                     ),
-                    symbol: "building.columns.fill",
-                    tone: .positive
+                    systemImage: "building.columns.fill",
+                    tone: .success
                 )
 
-                financialMetric(
+                LegendNextMetricTile(
                     title: "Liabilities",
                     value: position.liabilitiesTotal.formatted(
                         .currency(code: "USD")
                     ),
-                    symbol: "creditcard.fill",
+                    systemImage: "creditcard.fill",
                     tone: .warning
                 )
 
-                financialMetric(
-                    title: "Net worth",
+                LegendNextMetricTile(
+                    title: "Net Worth",
                     value: position.netWorth.formatted(
                         .currency(code: "USD")
                     ),
-                    symbol:
+                    systemImage:
                         position.netWorth >= 0
-                            ? "arrow.up.right.circle.fill"
-                            : "arrow.down.right.circle.fill",
+                            ? "arrow.up.right"
+                            : "arrow.down.right",
                     tone:
                         position.netWorth >= 0
-                            ? .positive
-                            : .danger,
-                    emphasized: true
+                            ? .success
+                            : .danger
                 )
             }
         }
@@ -2623,7 +2547,7 @@ private struct LegendFinanceView: View {
                         title: "Income",
                         value: money(week.incomeCents),
                         symbol: "arrow.down.left.circle.fill",
-                        tone: .positive
+                        tone: .success
                     )
 
                     financialMetric(
@@ -2652,7 +2576,7 @@ private struct LegendFinanceView: View {
                         symbol: "banknote.fill",
                         tone:
                             week.endingCashCents >= 0
-                                ? .positive
+                                ? .success
                                 : .danger,
                         emphasized: true
                     )
@@ -2664,7 +2588,7 @@ private struct LegendFinanceView: View {
                         tone:
                             week.endingDebtCents > 0
                                 ? .warning
-                                : .positive
+                                : .success
                     )
                 }
 
@@ -2771,7 +2695,7 @@ private struct LegendFinanceView: View {
                         title: "Income",
                         value: money(month.incomeCents),
                         symbol: "arrow.down.left.circle.fill",
-                        tone: .positive
+                        tone: .success
                     )
 
                     financialMetric(
@@ -2800,7 +2724,7 @@ private struct LegendFinanceView: View {
                         symbol: "banknote.fill",
                         tone:
                             month.endingCashCents >= 0
-                                ? .positive
+                                ? .success
                                 : .danger,
                         emphasized: true
                     )
@@ -2812,7 +2736,7 @@ private struct LegendFinanceView: View {
                         tone:
                             month.endingDebtCents > 0
                                 ? .warning
-                                : .positive
+                                : .success
                     )
                 }
 
@@ -2983,108 +2907,38 @@ private struct LegendFinanceView: View {
         }
     }
 
+
     private func operatingSystemUnavailable(
         summary: String
     ) -> some View {
-        LegendNextSurface(
-            cornerRadius: LegendNextRadius.prominentCard,
-            padding: LegendNextSpacing.sm
-        ) {
-            VStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.xs
+        LegendNextSurface(style: .elevated) {
+            HStack(
+                alignment: .top,
+                spacing: LegendNextSpacing.sm
             ) {
-                HStack(
-                    alignment: .top,
-                    spacing: LegendNextSpacing.xs
+                Image(systemName: "chart.xyaxis.line")
+                    .font(LegendNextTypography.section)
+                    .foregroundStyle(LegendNextColor.gold)
+                    .accessibilityHidden(true)
+
+                VStack(
+                    alignment: .leading,
+                    spacing: LegendNextSpacing.tiny
                 ) {
-                    Image(systemName: "chart.xyaxis.line")
-                        .font(.title3.weight(.semibold))
+                    LegendNextSectionHeader(
+                        eyebrow: "Cash-Flow Intelligence",
+                        title: "Projection not ready"
+                    )
+
+                    Text(summary)
+                        .font(LegendNextTypography.supporting)
                         .foregroundStyle(
-                            LegendNextColor.gold
+                            LegendNextColor.textSecondary
                         )
-                        .frame(width: 34, height: 34)
-                        .background(
-                            LegendNextColor.gold.opacity(0.12),
-                            in: RoundedRectangle(
-                                cornerRadius:
-                                    LegendNextRadius.control,
-                                style: .continuous
-                            )
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
                         )
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: LegendNextSpacing.tiny
-                    ) {
-                        Text("CASH-FLOW INTELLIGENCE")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(
-                                LegendNextColor.gold
-                            )
-
-                        Text("Projection not ready")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(
-                                LegendNextColor.textPrimary
-                            )
-
-                        Text(summary)
-                            .font(
-                                LegendNextTypography.supporting
-                            )
-                            .foregroundStyle(
-                                LegendNextColor.textSecondary
-                            )
-                            .fixedSize(
-                                horizontal: false,
-                                vertical: true
-                            )
-                    }
-                }
-
-                HStack(
-                    alignment: .top,
-                    spacing: LegendNextSpacing.xs
-                ) {
-                    Image(systemName: "sparkles")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(
-                            LegendNextColor.gold
-                        )
-                        .padding(.top, 2)
-
-                    Text(
-                        "Complete Expense Lens to unlock mobile projections."
-                    )
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(
-                        LegendNextColor.textSecondary
-                    )
-                    .fixedSize(
-                        horizontal: false,
-                        vertical: true
-                    )
-                }
-                .padding(LegendNextSpacing.sm)
-                .background(
-                    LegendNextColor.gold.opacity(0.075),
-                    in: RoundedRectangle(
-                        cornerRadius:
-                            LegendNextRadius.control,
-                        style: .continuous
-                    )
-                )
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius:
-                            LegendNextRadius.control,
-                        style: .continuous
-                    )
-                    .strokeBorder(
-                        LegendNextColor.gold.opacity(0.16),
-                        lineWidth: 1
-                    )
                 }
             }
         }
@@ -3199,286 +3053,61 @@ private struct LegendFinanceView: View {
         }
     }
 
+
     private func sectionHeading(
         eyebrow: String,
         title: String,
         detail: String,
         status: String
     ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.xs
+        LegendNextSectionHeader(
+            eyebrow: eyebrow,
+            title: title,
+            detail: detail
         ) {
-            HStack(
-                alignment: .center,
-                spacing: LegendNextSpacing.xs
-            ) {
-                Text(eyebrow)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(
-                        LegendNextColor.gold
-                    )
-
-                Spacer()
-
-                statusBadge(status)
-            }
-
-            Text(title)
-                .font(LegendNextTypography.title)
-                .foregroundStyle(
-                    LegendNextColor.textPrimary
-                )
-
-            Text(detail)
-                .font(LegendNextTypography.supporting)
-                .foregroundStyle(
-                    LegendNextColor.textSecondary
-                )
+            LegendNextBadge(
+                status,
+                tone: statusTone(status)
+            )
         }
     }
+
 
     private func financeSectionLabel(
         eyebrow: String,
         title: String,
         detail: String
     ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.tiny
-        ) {
-            Text(eyebrow)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(
-                    LegendNextColor.gold
-                )
-
-            Text(title)
-                .font(LegendNextTypography.section)
-                .foregroundStyle(
-                    LegendNextColor.textPrimary
-                )
-
-            Text(detail)
-                .font(LegendNextTypography.supporting)
-                .foregroundStyle(
-                    LegendNextColor.textSecondary
-                )
-                .fixedSize(
-                    horizontal: false,
-                    vertical: true
-                )
-        }
+        LegendNextSectionHeader(
+            eyebrow: eyebrow,
+            title: title,
+            detail: detail.isEmpty ? nil : detail
+        )
     }
+
 
     private func financialMetric(
         title: String,
         value: String,
         symbol: String = "circle.fill",
-        tone: FinancialMetricTone = .neutral,
+        tone: LegendNextTone = .neutral,
         emphasized: Bool = false
     ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.xs
-        ) {
-            HStack(
-                alignment: .center,
-                spacing: LegendNextSpacing.xs
-            ) {
-                Image(systemName: symbol)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(tone.color)
-                    .frame(width: 26, height: 26)
-                    .background(
-                        tone.color.opacity(0.11),
-                        in: RoundedRectangle(
-                            cornerRadius:
-                                LegendNextRadius.compact,
-                            style: .continuous
-                        )
-                    )
-
-                Text(title.uppercased())
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(
-                        LegendNextColor.textSecondary
-                    )
-                    .lineLimit(1)
-            }
-
-            Text(value)
-                .font(
-                    emphasized
-                        ? .headline.weight(.bold)
-                        : .subheadline.weight(.bold)
-                )
-                .foregroundStyle(
-                    LegendNextColor.textPrimary
-                )
-                .minimumScaleFactor(0.68)
-                .lineLimit(1)
-
-            Capsule()
-                .fill(tone.color.opacity(0.72))
-                .frame(
-                    width: emphasized ? 42 : 28,
-                    height: 3
-                )
-        }
-        .frame(
-            maxWidth: .infinity,
-            minHeight: emphasized ? 82 : 76,
-            alignment: .topLeading
-        )
-        .padding(LegendNextSpacing.sm)
-        .background(
-            emphasized
-                ? tone.color.opacity(0.075)
-                : LegendNextColor.surfaceElevated,
-            in: RoundedRectangle(
-                cornerRadius:
-                    LegendNextRadius.card,
-                style: .continuous
-            )
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius:
-                    LegendNextRadius.card,
-                style: .continuous
-            )
-            .strokeBorder(
-                emphasized
-                    ? tone.color.opacity(0.20)
-                    : LegendNextColor.subtleBorder(
-                        for: colorScheme
-                    ),
-                lineWidth: 1
-            )
-        }
-        .shadow(
-            color:
-                LegendNextColor.ambientShadow(
-                    for: colorScheme
-                ),
-            radius: 8,
-            y: 3
+        LegendNextMetricTile(
+            title: title,
+            value: value,
+            systemImage: symbol,
+            tone: tone
         )
     }
+
 
     private func statusBadge(
         _ status: String
     ) -> some View {
-        let tone = statusTone(status)
-
-        return HStack(spacing: LegendNextSpacing.tiny) {
-            Circle()
-                .fill(tone.color)
-                .frame(width: 6, height: 6)
-
-            Text(status.uppercased())
-                .font(.caption2.weight(.bold))
-                .lineLimit(1)
-        }
-        .foregroundStyle(tone.color)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            tone.color.opacity(0.12),
-            in: Capsule()
-        )
-        .overlay {
-            Capsule()
-                .strokeBorder(
-                    tone.color.opacity(0.22),
-                    lineWidth: 1
-                )
-        }
-    }
-
-    private func healthSignal(
-        title: String,
-        value: String,
-        symbol: String
-    ) -> some View {
-        HStack(
-            spacing: LegendNextSpacing.xs
-        ) {
-            Image(systemName: symbol)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(
-                    LegendNextColor.goldBright
-                )
-
-            VStack(
-                alignment: .leading,
-                spacing: 1
-            ) {
-                Text(title.uppercased())
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(
-                        .white.opacity(0.52)
-                    )
-
-                Text(value)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
-        }
-        .frame(
-            maxWidth: .infinity,
-            alignment: .leading
-        )
-        .padding(
-            .horizontal,
-            LegendNextSpacing.sm
-        )
-        .padding(
-            .vertical,
-            LegendNextSpacing.xs
-        )
-        .background(
-            Color.white.opacity(0.075),
-            in: RoundedRectangle(
-                cornerRadius:
-                    LegendNextRadius.control,
-                style: .continuous
-            )
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius:
-                    LegendNextRadius.control,
-                style: .continuous
-            )
-            .strokeBorder(
-                Color.white.opacity(0.09),
-                lineWidth: 1
-            )
-        }
-    }
-
-    private func healthProgress(
-        _ score: Int
-    ) -> CGFloat {
-        CGFloat(max(0, min(score, 100))) / 100
-    }
-
-    private func healthGradient(
-        _ score: Int
-    ) -> LinearGradient {
-        let tone = healthTone(score)
-
-        return LinearGradient(
-            colors: [
-                tone.color.opacity(0.76),
-                tone.color
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
+        LegendNextBadge(
+            status,
+            tone: statusTone(status)
         )
     }
 
@@ -3499,10 +3128,10 @@ private struct LegendFinanceView: View {
 
     private func healthTone(
         _ score: Int
-    ) -> FinancialMetricTone {
+    ) -> LegendNextTone {
         switch score {
         case 80...:
-            return .positive
+            return .success
         case 60..<80:
             return .information
         case 40..<60:
@@ -3512,9 +3141,10 @@ private struct LegendFinanceView: View {
         }
     }
 
+
     private func statusTone(
         _ status: String
-    ) -> FinancialMetricTone {
+    ) -> LegendNextTone {
         let normalized = status
             .trimmingCharacters(
                 in: .whitespacesAndNewlines
@@ -3529,7 +3159,7 @@ private struct LegendFinanceView: View {
             normalized.contains("improving") ||
             normalized.contains("clear") ||
             normalized.contains("low") {
-            return .positive
+            return .success
         }
 
         if normalized.contains("critical") ||
@@ -3606,29 +3236,6 @@ private struct LegendFinanceView: View {
             ?? "$0"
 
         return formattedValue + suffix
-    }
-
-    private enum FinancialMetricTone {
-        case positive
-        case warning
-        case danger
-        case information
-        case neutral
-
-        var color: Color {
-            switch self {
-            case .positive:
-                return LegendNextColor.success
-            case .warning:
-                return LegendNextColor.warning
-            case .danger:
-                return LegendNextColor.danger
-            case .information:
-                return LegendNextColor.information
-            case .neutral:
-                return LegendNextColor.gold
-            }
-        }
     }
 
     private var metricColumns: [GridItem] {
