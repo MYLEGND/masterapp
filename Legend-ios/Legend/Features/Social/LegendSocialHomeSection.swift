@@ -207,6 +207,11 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 )
             }
 
+            if session.actor.identity.participantType == .client,
+               !snapshot.activity.isEmpty {
+                circleActivity(snapshot.activity)
+            }
+
             LegendNextSectionHeader(
                 eyebrow: "Network",
                 title: "Latest from Legend"
@@ -232,6 +237,65 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                             social.toggleFollow(author: post.author)
                         }
                     )
+                }
+            }
+        }
+    }
+
+    private func circleActivity(
+        _ activity: [MobileSocialActivity]
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.xs
+        ) {
+            LegendNextSectionHeader(
+                eyebrow: "Your network",
+                title: "Circle activity"
+            )
+
+            LegendNextSurface(style: .elevated) {
+                VStack(spacing: LegendNextSpacing.xs) {
+                    ForEach(Array(activity.prefix(3))) { item in
+                        HStack(spacing: LegendNextSpacing.xs) {
+                            LegendProfileAvatar(
+                                avatar: item.actor.avatar,
+                                displayName: item.actor.displayName,
+                                size: 34
+                            )
+
+                            VStack(
+                                alignment: .leading,
+                                spacing: LegendNextSpacing.micro
+                            ) {
+                                Text(item.actor.displayName)
+                                    .font(LegendNextTypography.bodyEmphasis)
+                                    .foregroundStyle(LegendNextColor.textPrimary)
+                                    .lineLimit(1)
+
+                                Text(item.summary)
+                                    .font(LegendNextTypography.supporting)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer(minLength: LegendNextSpacing.xs)
+
+                            VStack(
+                                alignment: .trailing,
+                                spacing: LegendNextSpacing.micro
+                            ) {
+                                Image(systemName: item.systemImage)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(LegendNextColor.information)
+
+                                Text(item.occurredUTC, style: .relative)
+                                    .font(LegendNextTypography.caption)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -439,7 +503,7 @@ private struct LegendSocialEmptyFeed: View {
     }
 }
 
-private struct LegendSocialComposer: View {
+struct LegendSocialComposer: View {
     @Binding var type: MobileSocialContentType
     @Binding var messageBody: String
     let submit: () -> Void
@@ -537,7 +601,7 @@ private struct LegendActivitySheet: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.actor.displayName)
                                     .font(.subheadline.weight(.semibold))
-                                Text(detail(for: item.kind))
+                                Text(item.summary)
                                     .font(LegendNextTypography.supporting)
                                     .foregroundStyle(LegendNextColor.textSecondary)
                             }
@@ -556,12 +620,4 @@ private struct LegendActivitySheet: View {
         }
     }
 
-    private func detail(for kind: String) -> String {
-        switch kind {
-        case "reaction": "appreciated your update"
-        case "comment": "commented on your update"
-        case "follow": "followed your Legend profile"
-        default: "interacted with your update"
-        }
-    }
 }

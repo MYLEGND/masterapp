@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0729AED3FD936A3DCECA669A /* LegendNextTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72C9D00CE99AA225824D8CEC /* LegendNextTheme.swift */; };
 		18601E8AFBE103484F6576EC /* LegendUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A52D7BC1E8F6D8222D84B96 /* LegendUITests.swift */; };
 		1A4140542D44E015F343B8AC /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94AC5A93D36DCED40D9482DC /* RootView.swift */; };
 		213CEBBD913B95CF1D8B5DAA /* LegendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ECC81CB776EC7D6D0AF3F25 /* LegendTests.swift */; };
@@ -17,28 +18,28 @@
 		2C6A5B6C2F91A13C1C1C4BCD /* LegendDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3449DC74CA91AA0CDAAC840 /* LegendDiagnosticsTests.swift */; };
 		49E97E820E110E4302D64836 /* SecureTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8B6BA00648FA7CC1476B86B /* SecureTokenStore.swift */; };
 		4EB558694357C25511FC1A79 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8FF13A9483243B521F7DFC68 /* LaunchScreen.storyboard */; };
-		5448E8DD2BE7D326EA46E80B /* LegendNextSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9257BBB6F18FCFCB389AE366 /* LegendNextSurface.swift */; };
+		51DEF961F78E09E4EFCADBFB /* LegendNextButtons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78035FC866AB942A4F9F45F0 /* LegendNextButtons.swift */; };
 		5482D1AE8D1570BC5C686090 /* LegendApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 474F0CA43E80A96D179DD53F /* LegendApp.swift */; };
 		5EF643842D57B1E5FCAF8499 /* LegendDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34F2412F40E7DCDF9AEC4644 /* LegendDesignSystem.swift */; };
 		6AB8FDFB34A8057871BE8441 /* LogicalParticipantIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E81305123969A7AFFB8384 /* LogicalParticipantIdentityTests.swift */; };
 		6C796FDFDDEE2E9061948116 /* LegendBrandLogo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C77437142863C4D1039F225 /* LegendBrandLogo.swift */; };
-		6E03C099A5E5D8CDECF6F616 /* LegendNextTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F5A5D182FF4D28A41042C6 /* LegendNextTheme.swift */; };
+		6C93E636A6066A8936AE152B /* LegendNextAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89D2FEC7414AEFB70386B8EB /* LegendNextAvatar.swift */; };
 		844E717BB59A21BFDC60BB35 /* LegendComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DBFA05778BCF03C185381BE /* LegendComponents.swift */; };
 		84506FE2A46FD85E1E250858 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D4B6F16BA0A01123E7CABB7F /* Assets.xcassets */; };
+		865EB2EDB9506081191CEB2C /* LegendNextContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A2CD95CC34A2A381274575 /* LegendNextContent.swift */; };
 		890AF69681C5B2FC1D1BB100 /* MobileNativeContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB710453BF121B567C8AEBD /* MobileNativeContractTests.swift */; };
-		8E3BC061A0CA80F0A278B59B /* LegendNextContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B14A4034EA7F9B118C56595 /* LegendNextContent.swift */; };
 		9143163FFD11DECB7F307A06 /* LogicalParticipantIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB26E12CD661DE7C441F7218 /* LogicalParticipantIdentity.swift */; };
 		956B671334A52CF106C5B414 /* LegendDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78E9CB9087E03621529FA288 /* LegendDiagnostics.swift */; };
 		A4FDCC5F72519E1626BC0D1F /* MobileHomeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9467A7141E660E53B92CCE3C /* MobileHomeModels.swift */; };
 		A6D192A9E5A5D1D51224F3F5 /* MobileSessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AC04B2C6B3C22460870E399 /* MobileSessionCoordinator.swift */; };
-		AA913E1E268DCA1383131C3A /* LegendNextShimmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53CC62C759E6686640B351EC /* LegendNextShimmer.swift */; };
 		AB65D31B53580AC6C46A9AFB /* MobileConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55FB2460CFBD95299E4F7590 /* MobileConfiguration.swift */; };
-		AE16FDFB89C8DFB8FA21CD94 /* LegendNextStates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E5C4B7B0F596007355BCBE /* LegendNextStates.swift */; };
 		B08DF9F51CABC3BC27A79143 /* MessagingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D35703BC894AC8E986DFF8 /* MessagingModels.swift */; };
-		B59DD12CEB840596AFE7D501 /* LegendNextButtons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BBA5079998CA4994B8B7FDA /* LegendNextButtons.swift */; };
+		B389C8E0455AC63F91D431A2 /* LegendNextStates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 538A9E85B3309A6AEE9BC228 /* LegendNextStates.swift */; };
+		C140F773F7626275C30793A1 /* LegendNextShimmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C1FCF0F3A5692DF6467B0B6 /* LegendNextShimmer.swift */; };
 		CC6840D2860AC65AFA33B712 /* NativeUnreadBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8FF22E3544EE230279C2B3E /* NativeUnreadBadge.swift */; };
 		CC7037E0C4432DCBB101F4EA /* MobileHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94450DD87FBF09A656942126 /* MobileHTTPClient.swift */; };
 		CC7F46FF75ECDC0EAD02A423 /* LegendApplicationShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */; };
+		CEA324C22EB521222C0E457B /* README-NEXTGEN.md in Resources */ = {isa = PBXBuildFile; fileRef = 1B1EEE02B5210AA94A3A78FA /* README-NEXTGEN.md */; };
 		D16AC0B59523AF8ABC1611C3 /* MessagingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5528EEB1AE65FCB262CDEB12 /* MessagingStore.swift */; };
 		D26F0D3763F4892CDB762AA3 /* MessagingHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AAA5690855BD6C5B4132AB3 /* MessagingHomeView.swift */; };
 		DBBEB1BAE8F2ADBDF7A37DE1 /* MobileSocialContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */; };
@@ -46,7 +47,7 @@
 		DD0CC6EE761E59591FAE8ACA /* MobileSocialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28C1D977C634FEC8B8B83B87 /* MobileSocialStore.swift */; };
 		DF44B6B8A2DC0CABCA2850B7 /* MobileConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */; };
 		ED6F8CA9B2F56B434459B527 /* MobileSocialModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */; };
-		F1FC6D24CE1D689269B5F400 /* LegendNextAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FF1D806709A5ACE141C008F /* LegendNextAvatar.swift */; };
+		FF2556A053AA9A5F2644E7A3 /* LegendNextSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C1BFF90DD76D5A09D0E3C1 /* LegendNextSurface.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -68,8 +69,9 @@
 
 /* Begin PBXFileReference section */
 		02A0C45349D257A61D736948 /* Legend-Staging.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Legend-Staging.xcconfig"; sourceTree = "<group>"; };
-		0FF1D806709A5ACE141C008F /* LegendNextAvatar.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendNextAvatar.swift; sourceTree = "<group>"; };
+		06A2CD95CC34A2A381274575 /* LegendNextContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextContent.swift; sourceTree = "<group>"; };
 		1AAA5690855BD6C5B4132AB3 /* MessagingHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingHomeView.swift; sourceTree = "<group>"; };
+		1B1EEE02B5210AA94A3A78FA /* README-NEXTGEN.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "README-NEXTGEN.md"; sourceTree = "<group>"; };
 		20D35703BC894AC8E986DFF8 /* MessagingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingModels.swift; sourceTree = "<group>"; };
 		28C1D977C634FEC8B8B83B87 /* MobileSocialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialStore.swift; sourceTree = "<group>"; };
 		2B58FFC163E4FC3D9A4C4EA3 /* Legend-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Legend-Debug.xcconfig"; sourceTree = "<group>"; };
@@ -83,31 +85,31 @@
 		4AC04B2C6B3C22460870E399 /* MobileSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSessionCoordinator.swift; sourceTree = "<group>"; };
 		4EB710453BF121B567C8AEBD /* MobileNativeContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileNativeContractTests.swift; sourceTree = "<group>"; };
 		4EFE5E54C7A8CB19C6B48309 /* OAuthPKCE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthPKCE.swift; sourceTree = "<group>"; };
-		53CC62C759E6686640B351EC /* LegendNextShimmer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendNextShimmer.swift; sourceTree = "<group>"; };
+		538A9E85B3309A6AEE9BC228 /* LegendNextStates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextStates.swift; sourceTree = "<group>"; };
 		5528EEB1AE65FCB262CDEB12 /* MessagingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingStore.swift; sourceTree = "<group>"; };
 		55FB2460CFBD95299E4F7590 /* MobileConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileConfiguration.swift; sourceTree = "<group>"; };
 		5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialModels.swift; sourceTree = "<group>"; };
-		62C14045B2834CC0689DBE37 /* LegendUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LegendUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		62C14045B2834CC0689DBE37 /* LegendUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LegendUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialContractTests.swift; sourceTree = "<group>"; };
-		6BBA5079998CA4994B8B7FDA /* LegendNextButtons.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendNextButtons.swift; sourceTree = "<group>"; };
+		72C9D00CE99AA225824D8CEC /* LegendNextTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextTheme.swift; sourceTree = "<group>"; };
+		78035FC866AB942A4F9F45F0 /* LegendNextButtons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextButtons.swift; sourceTree = "<group>"; };
 		78E9CB9087E03621529FA288 /* LegendDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiagnostics.swift; sourceTree = "<group>"; };
 		7934CB78A5F42B17F1842D23 /* LegendSocialHomeSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendSocialHomeSection.swift; sourceTree = "<group>"; };
-		82E5C4B7B0F596007355BCBE /* LegendNextStates.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendNextStates.swift; sourceTree = "<group>"; };
+		89D2FEC7414AEFB70386B8EB /* LegendNextAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextAvatar.swift; sourceTree = "<group>"; };
+		8C1FCF0F3A5692DF6467B0B6 /* LegendNextShimmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextShimmer.swift; sourceTree = "<group>"; };
 		8C77437142863C4D1039F225 /* LegendBrandLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendBrandLogo.swift; sourceTree = "<group>"; };
 		8FF13A9483243B521F7DFC68 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
-		9257BBB6F18FCFCB389AE366 /* LegendNextSurface.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendNextSurface.swift; sourceTree = "<group>"; };
 		94450DD87FBF09A656942126 /* MobileHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileHTTPClient.swift; sourceTree = "<group>"; };
 		9467A7141E660E53B92CCE3C /* MobileHomeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileHomeModels.swift; sourceTree = "<group>"; };
 		94AC5A93D36DCED40D9482DC /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		9919D8992FC7EBC28F5DF1B1 /* LegendLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendLaunchView.swift; sourceTree = "<group>"; };
-		9B14A4034EA7F9B118C56595 /* LegendNextContent.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendNextContent.swift; sourceTree = "<group>"; };
-		A1F5A5D182FF4D28A41042C6 /* LegendNextTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegendNextTheme.swift; sourceTree = "<group>"; };
 		AE1E940C18A479901232F224 /* Legend-Production.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Legend-Production.xcconfig"; sourceTree = "<group>"; };
 		B3449DC74CA91AA0CDAAC840 /* LegendDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiagnosticsTests.swift; sourceTree = "<group>"; };
 		CB26E12CD661DE7C441F7218 /* LogicalParticipantIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicalParticipantIdentity.swift; sourceTree = "<group>"; };
 		D4B6F16BA0A01123E7CABB7F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		D62E96A9291858D31BE2BE3A /* LegendTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LegendTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		D7D88FC1403F3F593CF31A82 /* Legend.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Legend.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D62E96A9291858D31BE2BE3A /* LegendTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LegendTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D7D88FC1403F3F593CF31A82 /* Legend.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Legend.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5C1BFF90DD76D5A09D0E3C1 /* LegendNextSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextSurface.swift; sourceTree = "<group>"; };
 		E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApplicationShell.swift; sourceTree = "<group>"; };
 		E7E81305123969A7AFFB8384 /* LogicalParticipantIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicalParticipantIdentityTests.swift; sourceTree = "<group>"; };
 		E8FF22E3544EE230279C2B3E /* NativeUnreadBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUnreadBadge.swift; sourceTree = "<group>"; };
@@ -116,17 +118,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
-		126EC2F950ED56D15E3FF4F2 /* NextGen */ = {
-			isa = PBXGroup;
-			children = (
-				53F19B0B29A08A99BDCB7760 /* Components */,
-				7EF87B3A1328FD2F8C962D5D /* Modifiers */,
-				A1F5A5D182FF4D28A41042C6 /* LegendNextTheme.swift */,
-			);
-			name = NextGen;
-			path = NextGen;
-			sourceTree = "<group>";
-		};
 		128626838CEBC7A7A5F44724 /* Messaging */ = {
 			isa = PBXGroup;
 			children = (
@@ -149,26 +140,13 @@
 		4CDFFE8924360BB91546AA91 /* DesignSystem */ = {
 			isa = PBXGroup;
 			children = (
+				67AEDF127C8F404CB0C6A71B /* NextGen */,
 				8C77437142863C4D1039F225 /* LegendBrandLogo.swift */,
 				2DBFA05778BCF03C185381BE /* LegendComponents.swift */,
 				34F2412F40E7DCDF9AEC4644 /* LegendDesignSystem.swift */,
 				9919D8992FC7EBC28F5DF1B1 /* LegendLaunchView.swift */,
-				126EC2F950ED56D15E3FF4F2 /* NextGen */,
 			);
 			path = DesignSystem;
-			sourceTree = "<group>";
-		};
-		53F19B0B29A08A99BDCB7760 /* Components */ = {
-			isa = PBXGroup;
-			children = (
-				0FF1D806709A5ACE141C008F /* LegendNextAvatar.swift */,
-				6BBA5079998CA4994B8B7FDA /* LegendNextButtons.swift */,
-				9B14A4034EA7F9B118C56595 /* LegendNextContent.swift */,
-				82E5C4B7B0F596007355BCBE /* LegendNextStates.swift */,
-				9257BBB6F18FCFCB389AE366 /* LegendNextSurface.swift */,
-			);
-			name = Components;
-			path = Components;
 			sourceTree = "<group>";
 		};
 		5CBF4189AD13FBB18D244823 /* Features */ = {
@@ -192,20 +170,22 @@
 			path = Account;
 			sourceTree = "<group>";
 		};
+		67AEDF127C8F404CB0C6A71B /* NextGen */ = {
+			isa = PBXGroup;
+			children = (
+				98C55F51FF281BE36824511B /* Components */,
+				B2D4852048D38309805229F3 /* Modifiers */,
+				72C9D00CE99AA225824D8CEC /* LegendNextTheme.swift */,
+				1B1EEE02B5210AA94A3A78FA /* README-NEXTGEN.md */,
+			);
+			path = NextGen;
+			sourceTree = "<group>";
+		};
 		7DA31C48C755041A1D83D7AB /* Settings */ = {
 			isa = PBXGroup;
 			children = (
 			);
 			path = Settings;
-			sourceTree = "<group>";
-		};
-		7EF87B3A1328FD2F8C962D5D /* Modifiers */ = {
-			isa = PBXGroup;
-			children = (
-				53CC62C759E6686640B351EC /* LegendNextShimmer.swift */,
-			);
-			name = Modifiers;
-			path = Modifiers;
 			sourceTree = "<group>";
 		};
 		8444D106B6FE61EDFAA245FE /* Core */ = {
@@ -251,6 +231,18 @@
 			path = Root;
 			sourceTree = "<group>";
 		};
+		98C55F51FF281BE36824511B /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				89D2FEC7414AEFB70386B8EB /* LegendNextAvatar.swift */,
+				78035FC866AB942A4F9F45F0 /* LegendNextButtons.swift */,
+				06A2CD95CC34A2A381274575 /* LegendNextContent.swift */,
+				538A9E85B3309A6AEE9BC228 /* LegendNextStates.swift */,
+				E5C1BFF90DD76D5A09D0E3C1 /* LegendNextSurface.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
 		A755B3EB80D2CE3BCC2FAF9B /* Home */ = {
 			isa = PBXGroup;
 			children = (
@@ -267,6 +259,14 @@
 				55FB2460CFBD95299E4F7590 /* MobileConfiguration.swift */,
 			);
 			path = Configuration;
+			sourceTree = "<group>";
+		};
+		B2D4852048D38309805229F3 /* Modifiers */ = {
+			isa = PBXGroup;
+			children = (
+				8C1FCF0F3A5692DF6467B0B6 /* LegendNextShimmer.swift */,
+			);
+			path = Modifiers;
 			sourceTree = "<group>";
 		};
 		C8BCE9A957D881CC5889EC30 /* Legend */ = {
@@ -346,6 +346,8 @@
 				AE626F1183DF2A4341B5A313 /* PBXTargetDependency */,
 			);
 			name = LegendUITests;
+			packageProductDependencies = (
+			);
 			productName = LegendUITests;
 			productReference = 62C14045B2834CC0689DBE37 /* LegendUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -362,6 +364,8 @@
 			dependencies = (
 			);
 			name = Legend;
+			packageProductDependencies = (
+			);
 			productName = Legend;
 			productReference = D7D88FC1403F3F593CF31A82 /* Legend.app */;
 			productType = "com.apple.product-type.application";
@@ -378,6 +382,8 @@
 				8B95334A26C030F285565915 /* PBXTargetDependency */,
 			);
 			name = LegendTests;
+			packageProductDependencies = (
+			);
 			productName = LegendTests;
 			productReference = D62E96A9291858D31BE2BE3A /* LegendTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -434,6 +440,7 @@
 			files = (
 				84506FE2A46FD85E1E250858 /* Assets.xcassets in Resources */,
 				4EB558694357C25511FC1A79 /* LaunchScreen.storyboard in Resources */,
+				CEA324C22EB521222C0E457B /* README-NEXTGEN.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -464,6 +471,13 @@
 				5EF643842D57B1E5FCAF8499 /* LegendDesignSystem.swift in Sources */,
 				956B671334A52CF106C5B414 /* LegendDiagnostics.swift in Sources */,
 				DCACEEF2475F1D024A4DA93F /* LegendLaunchView.swift in Sources */,
+				6C93E636A6066A8936AE152B /* LegendNextAvatar.swift in Sources */,
+				51DEF961F78E09E4EFCADBFB /* LegendNextButtons.swift in Sources */,
+				865EB2EDB9506081191CEB2C /* LegendNextContent.swift in Sources */,
+				C140F773F7626275C30793A1 /* LegendNextShimmer.swift in Sources */,
+				B389C8E0455AC63F91D431A2 /* LegendNextStates.swift in Sources */,
+				FF2556A053AA9A5F2644E7A3 /* LegendNextSurface.swift in Sources */,
+				0729AED3FD936A3DCECA669A /* LegendNextTheme.swift in Sources */,
 				25C3E0CF55EA37F492B4450F /* LegendSocialHomeSection.swift in Sources */,
 				9143163FFD11DECB7F307A06 /* LogicalParticipantIdentity.swift in Sources */,
 				D26F0D3763F4892CDB762AA3 /* MessagingHomeView.swift in Sources */,
@@ -481,13 +495,6 @@
 				2692416782F3407695B9CDEA /* OAuthPKCE.swift in Sources */,
 				1A4140542D44E015F343B8AC /* RootView.swift in Sources */,
 				49E97E820E110E4302D64836 /* SecureTokenStore.swift in Sources */,
-				F1FC6D24CE1D689269B5F400 /* LegendNextAvatar.swift in Sources */,
-				B59DD12CEB840596AFE7D501 /* LegendNextButtons.swift in Sources */,
-				8E3BC061A0CA80F0A278B59B /* LegendNextContent.swift in Sources */,
-				AE16FDFB89C8DFB8FA21CD94 /* LegendNextStates.swift in Sources */,
-				5448E8DD2BE7D326EA46E80B /* LegendNextSurface.swift in Sources */,
-				6E03C099A5E5D8CDECF6F616 /* LegendNextTheme.swift in Sources */,
-				AA913E1E268DCA1383131C3A /* LegendNextShimmer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -593,7 +600,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = Z8XL9RU485;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -695,7 +702,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = Z8XL9RU485;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -766,7 +773,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = Z8XL9RU485;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;

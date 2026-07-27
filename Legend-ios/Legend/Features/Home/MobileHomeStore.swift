@@ -9,6 +9,9 @@ enum MobileDataLoadState<Value: Equatable>: Equatable {
 
 protocol MobileHomeAPI: Sendable {
     func home(accessToken: String) async throws -> MobileHomeResponse
+}
+
+protocol MobileFinancialAPI: Sendable {
     func financial(accessToken: String) async throws -> MobileFinancialSnapshotResponse
 }
 
@@ -29,7 +32,9 @@ struct MobileUnavailableHomeAPI: MobileHomeAPI {
     func home(accessToken: String) async throws -> MobileHomeResponse {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
+}
 
+struct MobileUnavailableFinancialAPI: MobileFinancialAPI {
     func financial(accessToken: String) async throws -> MobileFinancialSnapshotResponse {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
@@ -67,7 +72,7 @@ struct MobileUnavailableAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
     }
 }
 
-struct URLSessionMobileHomeAPI: MobileHomeAPI {
+struct URLSessionMobileHomeAPI: MobileHomeAPI, MobileFinancialAPI {
     let client: MobileHTTPClient
     let participantType: ParticipantType
 
@@ -90,6 +95,17 @@ struct URLSessionMobileHomeAPI: MobileHomeAPI {
     private var participantHeader: [String: String] {
         ["X-Legend-Participant-Type": participantType.rawValue]
     }
+}
+
+enum MobileFinancialLoadState: Equatable {
+    case idle
+    case loading
+    case available(MobileFinancialSnapshotResponse)
+    case incomplete(MobileFinancialSnapshotResponse, detail: String)
+    case neverSaved(MobileFinancialSnapshotResponse, detail: String)
+    case projectionUnavailable(MobileFinancialSnapshotResponse, detail: String)
+    case authenticationRequired(UserFacingFailure)
+    case retryableFailure(UserFacingFailure)
 }
 
 struct URLSessionMobileJourneyCirclesAPI: MobileJourneyCirclesAPI {
@@ -208,6 +224,139 @@ final class MobileHomeStore: ObservableObject {
             title: title,
             message: error.localizedDescription,
             correlationID: apiError?.correlationID)
+    }
+}
+
+/// Owns the dedicated financial projection request. Home intentionally keeps
+/// its independent `/home` state so an older aggregate response can never
+/// replace a newer financial projection.
+@MainActor
+final class MobileFinancialStore: ObservableObject {
+    @Published private(set) var state: MobileFinancialLoadState = .idle
+
+    private let api: any MobileFinancialAPI
+    private let accessTokenProvider: () async throws -> String
+    private let diagnostics: LegendDiagnostics
+    private var loadTask: Task<Void, Never>?
+    private var requestSequence = 0
+
+    init(
+        api: any MobileFinancialAPI,
+        accessTokenProvider: @escaping () async throws -> String,
+        diagnostics: LegendDiagnostics
+    ) {
+        self.api = api
+        self.accessTokenProvider = accessTokenProvider
+        self.diagnostics = diagnostics
+    }
+
+    deinit {
+        loadTask?.cancel()
+    }
+
+    func load() {
+        requestSequence += 1
+        let sequence = requestSequence
+
+        loadTask?.cancel()
+        state = .loading
+
+        loadTask = Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let accessToken = try await self.accessTokenProvider()
+                guard !Task.isCancelled else { return }
+
+                let snapshot = try await self.api.financial(
+                    accessToken: accessToken
+                )
+                guard !Task.isCancelled,
+                      self.requestSequence == sequence else {
+                    return
+                }
+
+                self.state = self.classify(snapshot)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled,
+                      self.requestSequence == sequence else {
+                    return
+                }
+
+                let failure = self.failure(for: error)
+                self.state = self.isAuthenticationFailure(error)
+                    ? .authenticationRequired(failure)
+                    : .retryableFailure(failure)
+            }
+        }
+    }
+
+    private func classify(
+        _ snapshot: MobileFinancialSnapshotResponse
+    ) -> MobileFinancialLoadState {
+        guard let operatingSystem = snapshot.operatingSystem else {
+            return .projectionUnavailable(
+                snapshot,
+                detail:
+                    "The financial service did not return the saved Expense Lens projection."
+            )
+        }
+
+        let projection = operatingSystem.projection
+        let detail = projection.summary
+            ?? "Your saved Expense Lens projection is not available yet."
+
+        if snapshot.position == nil,
+           projection.reasonCode == "EXPENSE_LENS_STATE_NOT_FOUND" {
+            return .neverSaved(snapshot, detail: detail)
+        }
+
+        if projection.status.caseInsensitiveCompare("Available") != .orderedSame {
+            return .projectionUnavailable(snapshot, detail: detail)
+        }
+
+        if snapshot.position == nil {
+            return .incomplete(
+                snapshot,
+                detail:
+                    "Your saved cash-flow projection is available, but Financial Health Snapshot has not been saved."
+            )
+        }
+
+        return .available(snapshot)
+    }
+
+    private func isAuthenticationFailure(_ error: Error) -> Bool {
+        guard let apiError = error as? MobileAPIError else {
+            return false
+        }
+
+        switch apiError {
+        case .unauthorized, .apiUnauthorized:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func failure(for error: Error) -> UserFacingFailure {
+        let apiError = error as? MobileAPIError
+        diagnostics.record(
+            category: .networking,
+            summary:
+                "A native financial intelligence request could not be completed.",
+            correlationID: apiError?.correlationID
+        )
+
+        return UserFacingFailure(
+            title: isAuthenticationFailure(error)
+                ? "Sign-in required"
+                : "Financial intelligence unavailable",
+            message: error.localizedDescription,
+            correlationID: apiError?.correlationID
+        )
     }
 }
 

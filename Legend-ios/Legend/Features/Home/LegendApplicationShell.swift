@@ -646,6 +646,18 @@ private struct LegendHomeView: View {
                         }
                     }
 
+                    if home.identity.participantType == .client {
+                        let move = financialMove(for: home.financial)
+                        priorityRow(
+                            title: move.title,
+                            detail: move.detail,
+                            systemImage: move.systemImage,
+                            tone: move.tone
+                        ) {
+                            open(.finance)
+                        }
+                    }
+
                     if let action = home.actions.first {
                         priorityRow(
                             title: action.title,
@@ -1661,10 +1673,70 @@ private struct LegendHomeView: View {
     private func hasPriorityContent(
         _ home: MobileHomeResponse
     ) -> Bool {
-        home.messaging.unreadCount > 0
+        if home.identity.participantType == .client {
+            return true
+        }
+
+        return home.messaging.unreadCount > 0
             || !home.actions.isEmpty
             || !home.upcomingAppointments.isEmpty
             || !home.notifications.isEmpty
+    }
+
+    private struct FinancialMove {
+        let title: String
+        let detail: String
+        let systemImage: String
+        let tone: LegendNextTone
+    }
+
+    private func financialMove(
+        for financial: MobileFinancialSnapshotResponse?
+    ) -> FinancialMove {
+        guard let financial else {
+            return FinancialMove(
+                title: "Open Financial Intelligence",
+                detail: "Your financial snapshot is not available in this home projection.",
+                systemImage: "chart.line.uptrend.xyaxis",
+                tone: .information
+            )
+        }
+
+        if financial.position == nil,
+           financial.operatingSystem?.projection.reasonCode == "EXPENSE_LENS_STATE_NOT_FOUND" {
+            return FinancialMove(
+                title: "Save your financial picture",
+                detail: "Complete and save your Financial Health Snapshot to begin tracking your position.",
+                systemImage: "square.and.pencil",
+                tone: .information
+            )
+        }
+
+        if let projection = financial.operatingSystem?.projection,
+           projection.status.caseInsensitiveCompare("Available") != .orderedSame {
+            return FinancialMove(
+                title: "Review Expense Lens",
+                detail: projection.summary ?? "Your saved weekly cash-flow projection needs attention.",
+                systemImage: "calendar.badge.exclamationmark",
+                tone: .warning
+            )
+        }
+
+        if let position = financial.position {
+            return FinancialMove(
+                title: "Review your financial position",
+                detail: position.positionSummary,
+                systemImage: "heart.text.square.fill",
+                tone: healthTone(position.healthScore)
+            )
+        }
+
+        return FinancialMove(
+            title: "Finish your financial setup",
+            detail: "Add your financial picture to make your weekly plan available.",
+            systemImage: "chart.line.uptrend.xyaxis",
+            tone: .information
+        )
     }
 
     private func actionDueDetail(
@@ -2258,7 +2330,7 @@ private struct LegendFinanceView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let currentSession: MobileSession
-    @StateObject private var store: MobileHomeStore
+    @StateObject private var store: MobileFinancialStore
 
     init(
         currentSession: MobileSession,
@@ -2266,7 +2338,7 @@ private struct LegendFinanceView: View {
     ) {
         self.currentSession = currentSession
         _store = StateObject(
-            wrappedValue: coordinator.makeHomeStore()
+            wrappedValue: coordinator.makeFinancialStore()
         )
     }
 
@@ -2286,10 +2358,37 @@ private struct LegendFinanceView: View {
                         "Loading financial intelligence…"
                     )
 
-                case .loaded(let home):
-                    financialContent(home.financial)
+                case .available(let financial):
+                    financialContent(financial)
 
-                case .unavailable(let failure):
+                case .incomplete(let financial, let detail):
+                    financialContent(
+                        financial,
+                        availability: .incomplete(detail)
+                    )
+
+                case .neverSaved(let financial, let detail):
+                    financialContent(
+                        financial,
+                        availability: .neverSaved(detail)
+                    )
+
+                case .projectionUnavailable(let financial, let detail):
+                    financialContent(
+                        financial,
+                        availability: .projectionUnavailable(detail)
+                    )
+
+                case .authenticationRequired(let failure):
+                    LegendErrorCard(
+                        title: failure.title,
+                        message: failure.message,
+                        retryTitle: "Sign in again",
+                        retry: store.load
+                    )
+                    .padding(LegendNextSpacing.sm)
+
+                case .retryableFailure(let failure):
                     LegendErrorCard(
                         title: failure.title,
                         message: failure.message,
@@ -2314,69 +2413,185 @@ private struct LegendFinanceView: View {
 
     @ViewBuilder
     private func financialContent(
-        _ financial: MobileFinancialSnapshotResponse?
+        _ financial: MobileFinancialSnapshotResponse,
+        availability: FinancialAvailability? = nil
     ) -> some View {
-        if let financial {
-            ScrollView {
-                LazyVStack(
-                    alignment: .leading,
-                    spacing: LegendNextSpacing.xs
-                ) {
-                    if let position = financial.position {
-                        financialHealth(position)
-                        positionMetrics(position)
-                    } else {
-                        LegendEmptyState(
-                            title: "No financial snapshot",
-                            message:
-                                "Your saved financial health data will appear here after it is completed in the client portal.",
-                            symbolName:
-                                "chart.line.uptrend.xyaxis"
-                        )
-                    }
-
-                    if let operatingSystem = financial.operatingSystem {
-                        operatingSystemContent(operatingSystem)
-                    } else {
-                        operatingSystemUnavailable(
-                            summary:
-                                "Week and month projections have not been returned by the mobile service yet."
-                        )
-                    }
-
-                    if !financial.upcomingBills.isEmpty {
-                        upcomingBills(financial.upcomingBills)
-                    }
+        ScrollView {
+            LazyVStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.xs
+            ) {
+                if let availability {
+                    availabilityNotice(availability)
                 }
-                .padding(
-                    .horizontal,
-                    LegendNextSpacing.pageHorizontal
-                )
-                .padding(
-                    .top,
-                    LegendNextSpacing.sm
-                )
-                .padding(
-                    .bottom,
-                    LegendNextSpacing.xl
+
+                if let position = financial.position {
+                    financialHealth(position)
+                    positionMetrics(position)
+                } else {
+                    LegendEmptyState(
+                        title: "Financial snapshot incomplete",
+                        message:
+                            "Your saved financial health data will appear here after it is completed in the client portal.",
+                        symbolName:
+                            "chart.line.uptrend.xyaxis"
+                    )
+                }
+
+                lastUpdated(financial)
+
+                if let operatingSystem = financial.operatingSystem {
+                    operatingSystemContent(operatingSystem)
+                } else {
+                    operatingSystemUnavailable(
+                        summary:
+                            "Week and month projections have not been returned by the mobile service yet."
+                    )
+                }
+
+                if !financial.upcomingBills.isEmpty {
+                    upcomingBills(financial.upcomingBills)
+                }
+            }
+            .padding(
+                .horizontal,
+                LegendNextSpacing.pageHorizontal
+            )
+            .padding(
+                .top,
+                LegendNextSpacing.sm
+            )
+            .padding(
+                .bottom,
+                LegendNextSpacing.xl
+            )
+        }
+        .background(
+            LegendNextGradient.pageWash(
+                for: colorScheme
+            )
+            .ignoresSafeArea()
+        )
+        .refreshable {
+            store.load()
+        }
+    }
+
+    private enum FinancialAvailability {
+        case incomplete(String)
+        case neverSaved(String)
+        case projectionUnavailable(String)
+
+        var title: String {
+            switch self {
+            case .incomplete:
+                return "Financial setup incomplete"
+            case .neverSaved:
+                return "Financial picture not saved"
+            case .projectionUnavailable:
+                return "Expense Lens needs attention"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .incomplete:
+                return "chart.line.uptrend.xyaxis"
+            case .neverSaved:
+                return "square.and.pencil"
+            case .projectionUnavailable:
+                return "exclamationmark.triangle"
+            }
+        }
+
+        var tone: LegendNextTone {
+            switch self {
+            case .incomplete, .neverSaved:
+                return .information
+            case .projectionUnavailable:
+                return .warning
+            }
+        }
+
+        var color: Color {
+            switch tone {
+            case .information:
+                return LegendNextColor.information
+            case .warning:
+                return LegendNextColor.warning
+            default:
+                return LegendNextColor.textSecondary
+            }
+        }
+
+        var detail: String {
+            switch self {
+            case .incomplete(let detail),
+                    .neverSaved(let detail),
+                    .projectionUnavailable(let detail):
+                return detail
+            }
+        }
+    }
+
+    private func availabilityNotice(
+        _ availability: FinancialAvailability
+    ) -> some View {
+        LegendNextSurface(style: .elevated) {
+            HStack(
+                alignment: .top,
+                spacing: LegendNextSpacing.sm
+            ) {
+                Image(systemName: availability.systemImage)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(availability.color)
+                    .frame(width: 38, height: 38)
+                    .background(
+                        availability.color.opacity(0.12),
+                        in: Circle()
+                    )
+
+                VStack(
+                    alignment: .leading,
+                    spacing: LegendNextSpacing.micro
+                ) {
+                    Text(availability.title)
+                        .font(LegendNextTypography.bodyEmphasis)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+
+                    Text(availability.detail)
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func lastUpdated(
+        _ financial: MobileFinancialSnapshotResponse
+    ) -> some View {
+        if let updatedUTC = financial.operatingSystem?.freshness.financeStateUpdatedUTC
+            ?? financial.position?.updatedUTC
+            ?? financial.intelligence?.lastEvaluatedUTC {
+            HStack(spacing: LegendNextSpacing.micro) {
+                Image(systemName: "clock")
+                    .accessibilityHidden(true)
+
+                Text("Last updated")
+                Text(
+                    updatedUTC,
+                    format: .dateTime
+                        .month(.abbreviated)
+                        .day()
+                        .hour()
+                        .minute()
                 )
             }
-            .background(
-                LegendNextGradient.pageWash(
-                    for: colorScheme
-                )
-                .ignoresSafeArea()
-            )
-            .refreshable {
-                store.load()
-            }
-        } else {
-            LegendEmptyState(
-                title: "Financial intelligence unavailable",
-                message:
-                    "No client financial data is available for this mobile identity.",
-                symbolName: "lock.chart"
-            )
+            .font(LegendNextTypography.supporting)
+            .foregroundStyle(LegendNextColor.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -3314,11 +3529,11 @@ private enum LegendProfileContentFilter: String, CaseIterable, Identifiable {
     var accessibilityTitle: String {
         switch self {
         case .posts:
-            return "Posts"
+            return "Moves"
         case .reels:
-            return "Reels"
+            return "Milestones"
         case .stories:
-            return "Stories"
+            return "Journey"
         }
     }
 
@@ -3345,6 +3560,9 @@ private struct LegendAccountView: View {
     @State private var isEditing = false
     @State private var isShowingSettings = false
     @State private var isConfirmingSignOut = false
+    @State private var composerType: MobileSocialContentType = .post
+    @State private var composerBody = ""
+    @State private var isPresentingComposer = false
 
     private let profileColumns = [
         GridItem(.flexible(), spacing: 2),
@@ -3431,6 +3649,14 @@ private struct LegendAccountView: View {
         .sheet(isPresented: $isShowingSettings) {
             profileSettingsSheet
         }
+        .sheet(isPresented: $isPresentingComposer, onDismiss: clearComposer) {
+            LegendSocialComposer(
+                type: $composerType,
+                messageBody: $composerBody,
+                submit: shareMove,
+                cancel: { isPresentingComposer = false }
+            )
+        }
         .confirmationDialog(
             "Sign out of Legend?",
             isPresented: $isConfirmingSignOut,
@@ -3463,6 +3689,28 @@ private struct LegendAccountView: View {
                 Text(
                     account.actionFailure?.message
                     ?? "The account update could not be completed."
+                )
+            }
+        )
+        .alert(
+            social.actionFailure?.title ?? "Move unavailable",
+            isPresented: Binding(
+                get: { social.actionFailure != nil },
+                set: {
+                    if !$0 {
+                        social.dismissActionFailure()
+                    }
+                }
+            ),
+            actions: {
+                Button("OK", role: .cancel) {
+                    social.dismissActionFailure()
+                }
+            },
+            message: {
+                Text(
+                    social.actionFailure?.message
+                    ?? "The move could not be shared."
                 )
             }
         )
@@ -3528,17 +3776,17 @@ private struct LegendAccountView: View {
             HStack(spacing: LegendNextSpacing.xs) {
                 profileMetric(
                     value: profilePosts.count,
-                    title: "Posts"
+                    title: "Moves"
                 )
 
                 profileMetric(
                     value: profileReels.count,
-                    title: "Reels"
+                    title: "Milestones"
                 )
 
                 profileMetric(
                     value: profileStories.count,
-                    title: "Stories"
+                    title: "Journey"
                 )
             }
             .frame(maxWidth: .infinity)
@@ -3684,7 +3932,7 @@ private struct LegendAccountView: View {
             let items = selectedProfileItems
 
             if items.isEmpty {
-                profileEmptyState(profile)
+                profileEmptyState()
             } else {
                 LazyVGrid(
                     columns: profileColumns,
@@ -3698,9 +3946,7 @@ private struct LegendAccountView: View {
         }
     }
 
-    private func profileEmptyState(
-        _ profile: MobileAccountProfile
-    ) -> some View {
+    private func profileEmptyState() -> some View {
         VStack(spacing: LegendNextSpacing.xs) {
             Image(systemName: selectedContent.symbolName)
                 .font(.system(size: 26, weight: .light))
@@ -3718,11 +3964,17 @@ private struct LegendAccountView: View {
                 .font(.title3.weight(.bold))
                 .foregroundStyle(LegendNextColor.textPrimary)
 
-            Text(emptyMessage(profile))
+            Text(emptyMessage)
                 .font(LegendNextTypography.supporting)
                 .foregroundStyle(LegendNextColor.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 290)
+
+            Button("Make Your First Move.") {
+                composerType = .post
+                isPresentingComposer = true
+            }
+            .buttonStyle(LegendButtonStyle(kind: .primary))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 54)
@@ -3883,27 +4135,29 @@ private struct LegendAccountView: View {
     }
 
     private var emptyTitle: String {
-        switch selectedContent {
-        case .posts:
-            return "No posts yet"
-        case .reels:
-            return "No reels yet"
-        case .stories:
-            return "No active stories"
-        }
+        "Your Legacy starts here"
     }
 
-    private func emptyMessage(
-        _ profile: MobileAccountProfile
-    ) -> String {
-        switch selectedContent {
-        case .posts:
-            return "\(profile.displayName)’s shared posts will appear here."
-        case .reels:
-            return "\(profile.displayName)’s published reels will appear here."
-        case .stories:
-            return "Active stories remain visible here until they expire."
+    private var emptyMessage: String {
+        "Every Move you share becomes part of your journey."
+    }
+
+    private func shareMove() {
+        let body = composerBody.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !body.isEmpty else {
+            return
         }
+
+        social.createPost(type: composerType, body: body)
+        isPresentingComposer = false
+        clearComposer()
+    }
+
+    private func clearComposer() {
+        composerType = .post
+        composerBody = ""
     }
 
     private func normalized(

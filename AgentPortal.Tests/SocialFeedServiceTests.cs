@@ -1,5 +1,7 @@
 using System;
+using System.IO;
 using System.Linq;
+using System.Threading;
 using Domain.Entities;
 using System.Threading.Tasks;
 using Domain.Messaging;
@@ -154,7 +156,34 @@ public sealed class SocialFeedServiceTests
         var journeys = new JourneyCirclesService(db, moderation, NullLogger<JourneyCirclesService>.Instance);
         var images = new MessagingProfileImageResolver(db, NullLogger<MessagingProfileImageResolver>.Instance);
         var messaging = new MessagingService(db, NullLogger<MessagingService>.Instance, moderation, journeys, images);
-        return new SocialFeedService(db, messaging);
+        return new SocialFeedService(
+            db,
+            messaging,
+            new UnavailableTestSocialMediaStorage());
+    }
+
+    private sealed class UnavailableTestSocialMediaStorage
+        : ISocialMediaStorage
+    {
+        public Task<SocialMediaStorageResult> StoreAsync(
+            Guid mediaAssetId,
+            string originalFileName,
+            long declaredSizeBytes,
+            Stream content,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(SocialMediaStorageResult.Failure(
+                "test_media_storage_unused",
+                "This text-only test fixture does not store media."));
+
+        public Task<Stream?> OpenReadAsync(
+            string storageKey,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream?>(null);
+
+        public Task DeleteAsync(
+            string storageKey,
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 
     private static ClientProfile Client(string userId, string firstName, string lastName) => new()

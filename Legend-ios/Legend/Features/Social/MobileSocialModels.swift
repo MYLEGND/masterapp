@@ -64,6 +64,32 @@ struct MobileSocialActivity: Codable, Equatable, Identifiable, Sendable {
         case postID = "postId"
         case occurredUTC = "occurredUtc"
     }
+
+    var summary: String {
+        switch kind {
+        case "reaction":
+            return "appreciated your update"
+        case "comment":
+            return "commented on your update"
+        case "follow":
+            return "followed your Legend profile"
+        default:
+            return "interacted with your update"
+        }
+    }
+
+    var systemImage: String {
+        switch kind {
+        case "reaction":
+            return "heart.fill"
+        case "comment":
+            return "bubble.right.fill"
+        case "follow":
+            return "person.badge.plus"
+        default:
+            return "bell.fill"
+        }
+    }
 }
 
 struct MobileCreateSocialPost: Codable, Sendable {
