@@ -194,7 +194,7 @@ private struct LegendNextTabBar: View {
             Capsule()
                 .fill(LegendNextGradient.hero)
         }
-        .padding(.horizontal, LegendNextSpacing.md)
+        .padding(.horizontal, LegendNextSpacing.sm)
         .padding(.bottom, 4)
     }
 
@@ -376,7 +376,7 @@ private struct LegendHomeView: View {
                     retryTitle: "Retry",
                     retry: store.load
                 )
-                .padding(LegendNextSpacing.md)
+                .padding(LegendNextSpacing.sm)
             }
         }
         .legendNextPageBackground()
@@ -393,7 +393,7 @@ private struct LegendHomeView: View {
         ScrollView {
             LazyVStack(
                 alignment: .leading,
-                spacing: LegendNextSpacing.lg
+                spacing: LegendNextSpacing.xs
             ) {
                 LegendSocialHomeSection(
                     session: currentSession,
@@ -413,7 +413,7 @@ private struct LegendHomeView: View {
                     }
                 }
             }
-            .padding(.horizontal, LegendNextSpacing.md)
+            .padding(.horizontal, LegendNextSpacing.sm)
             .padding(.top, LegendNextSpacing.sm)
             .padding(.bottom, LegendNextSpacing.xl)
         }
@@ -435,7 +435,7 @@ private struct LegendHomeView: View {
         LegendNextSurface(
             style: .navy,
             cornerRadius: LegendNextRadius.prominentCard,
-            padding: LegendNextSpacing.md
+            padding: LegendNextSpacing.sm
         ) {
             HStack(
                 alignment: .firstTextBaseline,
@@ -467,7 +467,7 @@ private struct LegendHomeView: View {
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: LegendNextSpacing.sm
+            spacing: LegendNextSpacing.xs
         ) {
             LegendNextSectionHeader(
                 eyebrow: "Live overview",
@@ -479,14 +479,14 @@ private struct LegendHomeView: View {
                 columns: [
                     GridItem(
                         .flexible(),
-                        spacing: LegendNextSpacing.sm
+                        spacing: LegendNextSpacing.xs
                     ),
                     GridItem(
                         .flexible(),
-                        spacing: LegendNextSpacing.sm
+                        spacing: LegendNextSpacing.xs
                     )
                 ],
-                spacing: LegendNextSpacing.sm
+                spacing: LegendNextSpacing.xs
             ) {
                 Button {
                     open(.messages)
@@ -619,7 +619,7 @@ private struct LegendHomeView: View {
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: LegendNextSpacing.sm
+            spacing: LegendNextSpacing.xs
         ) {
             LegendNextSectionHeader(
                 eyebrow: "Focus",
@@ -633,7 +633,7 @@ private struct LegendHomeView: View {
             ) {
                 VStack(
                     alignment: .leading,
-                    spacing: LegendNextSpacing.md
+                    spacing: LegendNextSpacing.xs
                 ) {
                     if home.messaging.unreadCount > 0 {
                         priorityRow(
@@ -729,7 +729,7 @@ private struct LegendHomeView: View {
     ) -> some View {
         HStack(
             alignment: .center,
-            spacing: LegendNextSpacing.sm
+            spacing: LegendNextSpacing.xs
         ) {
             Image(systemName: systemImage)
                 .font(
@@ -783,15 +783,15 @@ private struct LegendHomeView: View {
         LegendNextSurface(
             style: .gold,
             cornerRadius: LegendNextRadius.prominentCard,
-            padding: LegendNextSpacing.lg
+            padding: LegendNextSpacing.sm
         ) {
             VStack(
                 alignment: .leading,
-                spacing: LegendNextSpacing.lg
+                spacing: LegendNextSpacing.xs
             ) {
                 HStack(
                     alignment: .top,
-                    spacing: LegendNextSpacing.md
+                    spacing: LegendNextSpacing.xs
                 ) {
                     VStack(
                         alignment: .leading,
@@ -828,7 +828,7 @@ private struct LegendHomeView: View {
 
                 HStack(
                     alignment: .top,
-                    spacing: LegendNextSpacing.lg
+                    spacing: LegendNextSpacing.xs
                 ) {
                     membershipValue(
                         title: "Monthly",
@@ -912,7 +912,7 @@ private struct LegendHomeView: View {
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: LegendNextSpacing.sm
+            spacing: LegendNextSpacing.xs
         ) {
             LegendNextSectionHeader(
                 eyebrow: "Intelligence",
@@ -923,16 +923,16 @@ private struct LegendHomeView: View {
             LegendNextSurface(
                 style: .navy,
                 cornerRadius: LegendNextRadius.prominentCard,
-                padding: LegendNextSpacing.lg
+                padding: LegendNextSpacing.sm
             ) {
                 VStack(
                     alignment: .leading,
-                    spacing: LegendNextSpacing.lg
+                    spacing: LegendNextSpacing.xs
                 ) {
                     if let position = financial.position {
                         HStack(
                             alignment: .top,
-                            spacing: LegendNextSpacing.md
+                            spacing: LegendNextSpacing.xs
                         ) {
                             VStack(
                                 alignment: .leading,
@@ -970,7 +970,7 @@ private struct LegendHomeView: View {
 
                         HStack(
                             alignment: .top,
-                            spacing: LegendNextSpacing.md
+                            spacing: LegendNextSpacing.xs
                         ) {
                             financialValue(
                                 title: "Net worth",
@@ -989,7 +989,7 @@ private struct LegendHomeView: View {
                     } else {
                         VStack(
                             alignment: .leading,
-                            spacing: LegendNextSpacing.sm
+                            spacing: LegendNextSpacing.xs
                         ) {
                             Image(systemName: "chart.line.uptrend.xyaxis")
                                 .font(
@@ -1025,7 +1025,7 @@ private struct LegendHomeView: View {
                 LegendNextSurface(style: .elevated) {
                     VStack(
                         alignment: .leading,
-                        spacing: LegendNextSpacing.md
+                        spacing: LegendNextSpacing.xs
                     ) {
                         ForEach(
                             Array(intelligence.findings.prefix(3).enumerated()),
@@ -1037,7 +1037,7 @@ private struct LegendHomeView: View {
 
                             HStack(
                                 alignment: .top,
-                                spacing: LegendNextSpacing.sm
+                                spacing: LegendNextSpacing.xs
                             ) {
                                 Image(systemName: "sparkles")
                                     .font(
@@ -1134,7 +1134,7 @@ private struct LegendHomeView: View {
             ) {
                 HStack(
                     alignment: .center,
-                    spacing: LegendNextSpacing.md
+                    spacing: LegendNextSpacing.xs
                 ) {
                     Image(systemName: "person.3.fill")
                         .font(
@@ -1199,7 +1199,7 @@ private struct LegendHomeView: View {
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: LegendNextSpacing.sm
+            spacing: LegendNextSpacing.xs
         ) {
             LegendNextSectionHeader(
                 eyebrow: "Calendar",
@@ -1210,7 +1210,7 @@ private struct LegendHomeView: View {
             LegendNextSurface(style: .elevated) {
                 VStack(
                     alignment: .leading,
-                    spacing: LegendNextSpacing.md
+                    spacing: LegendNextSpacing.xs
                 ) {
                     ForEach(
                         Array(appointments.prefix(4).enumerated()),
@@ -1222,7 +1222,7 @@ private struct LegendHomeView: View {
 
                         HStack(
                             alignment: .center,
-                            spacing: LegendNextSpacing.sm
+                            spacing: LegendNextSpacing.xs
                         ) {
                             VStack(
                                 alignment: .center,
@@ -1305,7 +1305,7 @@ private struct LegendHomeView: View {
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: LegendNextSpacing.sm
+            spacing: LegendNextSpacing.xs
         ) {
             LegendNextSectionHeader(
                 eyebrow: "Execution",
@@ -1316,7 +1316,7 @@ private struct LegendHomeView: View {
             LegendNextSurface(style: .elevated) {
                 VStack(
                     alignment: .leading,
-                    spacing: LegendNextSpacing.md
+                    spacing: LegendNextSpacing.xs
                 ) {
                     ForEach(
                         Array(actions.prefix(5).enumerated()),
@@ -1328,7 +1328,7 @@ private struct LegendHomeView: View {
 
                         HStack(
                             alignment: .top,
-                            spacing: LegendNextSpacing.sm
+                            spacing: LegendNextSpacing.xs
                         ) {
                             Image(systemName: "checkmark.circle")
                                 .font(
@@ -1401,7 +1401,7 @@ private struct LegendHomeView: View {
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: LegendNextSpacing.sm
+            spacing: LegendNextSpacing.xs
         ) {
             LegendNextSectionHeader(
                 eyebrow: "Membership",
@@ -1412,7 +1412,7 @@ private struct LegendHomeView: View {
             LegendNextSurface(style: .elevated) {
                 VStack(
                     alignment: .leading,
-                    spacing: LegendNextSpacing.md
+                    spacing: LegendNextSpacing.xs
                 ) {
                     ForEach(
                         Array(notifications.prefix(4).enumerated()),
@@ -1424,7 +1424,7 @@ private struct LegendHomeView: View {
 
                         HStack(
                             alignment: .top,
-                            spacing: LegendNextSpacing.sm
+                            spacing: LegendNextSpacing.xs
                         ) {
                             Image(systemName: "bell.fill")
                                 .font(
@@ -1483,7 +1483,7 @@ private struct LegendHomeView: View {
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: LegendNextSpacing.sm
+            spacing: LegendNextSpacing.xs
         ) {
             LegendNextSectionHeader(
                 eyebrow: "Navigate",
@@ -1495,14 +1495,14 @@ private struct LegendHomeView: View {
                 columns: [
                     GridItem(
                         .flexible(),
-                        spacing: LegendNextSpacing.sm
+                        spacing: LegendNextSpacing.xs
                     ),
                     GridItem(
                         .flexible(),
-                        spacing: LegendNextSpacing.sm
+                        spacing: LegendNextSpacing.xs
                     )
                 ],
-                spacing: LegendNextSpacing.sm
+                spacing: LegendNextSpacing.xs
             ) {
                 quickActionButton(
                     title: "Messages",
@@ -1565,7 +1565,7 @@ private struct LegendHomeView: View {
     ) -> some View {
         Button(action: action) {
             HStack(
-                spacing: LegendNextSpacing.sm
+                spacing: LegendNextSpacing.xs
             ) {
                 Image(systemName: systemImage)
                     .font(
@@ -1827,7 +1827,7 @@ private struct LegendAgentClientsView: View {
                 clientContent(clients)
             case .unavailable(let failure):
                 LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: store.loadClients)
-                    .padding(LegendNextSpacing.md)
+                    .padding(LegendNextSpacing.sm)
             }
         }
         .background(LegendNextColor.canvas.ignoresSafeArea())
@@ -1845,8 +1845,8 @@ private struct LegendAgentClientsView: View {
                 symbolName: "person.2")
         } else {
             List(clients) { client in
-                VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                    HStack(spacing: LegendNextSpacing.sm) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                    HStack(spacing: LegendNextSpacing.xs) {
                         LegendProfileAvatar(avatar: client.avatar, displayName: client.displayName, size: 42)
                         VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
                             Text(client.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
@@ -1888,7 +1888,7 @@ private struct LegendAgentLeadsView: View {
                 leadContent(leads)
             case .unavailable(let failure):
                 LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: store.loadLeads)
-                    .padding(LegendNextSpacing.md)
+                    .padding(LegendNextSpacing.sm)
             }
         }
         .background(LegendNextColor.canvas.ignoresSafeArea())
@@ -1906,7 +1906,7 @@ private struct LegendAgentLeadsView: View {
                 symbolName: "person.crop.circle.badge.plus")
         } else {
             List(leads) { lead in
-                HStack(spacing: LegendNextSpacing.sm) {
+                HStack(spacing: LegendNextSpacing.xs) {
                     Image(systemName: "person.crop.circle")
                         .font(.title2)
                         .foregroundStyle(LegendNextColor.gold)
@@ -1951,7 +1951,7 @@ private struct LegendCirclesView: View {
                     dashboardContent(dashboard)
                 case .unavailable(let failure):
                     LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: store.load)
-                        .padding(LegendNextSpacing.md)
+                        .padding(LegendNextSpacing.sm)
                 }
             }
         }
@@ -1991,7 +1991,7 @@ private struct LegendCirclesView: View {
 
     private func dashboardContent(_ dashboard: MobileJourneyDashboardResponse) -> some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+            LazyVStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                 LegendHero(
                     eyebrow: "COMMUNITY",
                     title: "Journey Circles",
@@ -2013,7 +2013,7 @@ private struct LegendCirclesView: View {
                 }
 
                 if !dashboard.recommendations.isEmpty {
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                         LegendNextSectionHeader(title: "Recommendations")
                         ForEach(dashboard.recommendations) { recommendation in
                             recommendationCard(recommendation)
@@ -2028,14 +2028,14 @@ private struct LegendCirclesView: View {
                         symbolName: "person.3")
                 }
             }
-            .padding(.horizontal, LegendNextSpacing.md)
+            .padding(.horizontal, LegendNextSpacing.sm)
             .padding(.vertical, LegendNextSpacing.sm)
         }
     }
 
     private func profileCard(_ profile: MobileJourneyProfile) -> some View {
         LegendNextSurface(style: .navy) {
-            HStack(alignment: .top, spacing: LegendNextSpacing.md) {
+            HStack(alignment: .top, spacing: LegendNextSpacing.xs) {
                 LegendProfileAvatar(avatar: profile.avatar, displayName: profile.displayName, size: 52)
                 VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
                     Text(profile.displayName).font(LegendNextTypography.section).foregroundStyle(.white)
@@ -2055,11 +2055,11 @@ private struct LegendCirclesView: View {
         connections: [MobileJourneyConnection],
         kind: JourneyConnectionSectionKind
     ) -> some View {
-        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
             LegendNextSectionHeader(title: title)
             ForEach(connections) { connection in
                 LegendNextSurface {
-                    HStack(spacing: LegendNextSpacing.sm) {
+                    HStack(spacing: LegendNextSpacing.xs) {
                         LegendProfileAvatar(avatar: connection.profile.avatar, displayName: connection.profile.displayName, size: 42)
                         VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
                             Text(connection.profile.displayName).font(.subheadline.weight(.semibold))
@@ -2085,7 +2085,7 @@ private struct LegendCirclesView: View {
 
     private func recommendationCard(_ recommendation: MobileJourneyRecommendation) -> some View {
         LegendNextSurface {
-            HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+            HStack(alignment: .top, spacing: LegendNextSpacing.xs) {
                 LegendProfileAvatar(avatar: recommendation.profile.avatar, displayName: recommendation.profile.displayName, size: 44)
                 VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
                     Text(recommendation.profile.displayName).font(.subheadline.weight(.semibold))
@@ -2147,7 +2147,7 @@ private struct LegendJourneyProfileEditor: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                LazyVStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                     LegendNextSurface(style: .navy) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                             Text("YOUR SELECTIONS").font(.caption.weight(.bold)).foregroundStyle(LegendNextColor.gold)
@@ -2159,7 +2159,7 @@ private struct LegendJourneyProfileEditor: View {
                     }
 
                     LegendNextSurface {
-                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                             LegendNextSectionHeader(title: "Participation")
                             Toggle("Confirm community participation", isOn: $consentAffirmed)
                             Toggle("Join Journey Circles", isOn: $isOptedIn)
@@ -2190,7 +2190,7 @@ private struct LegendJourneyProfileEditor: View {
                     JourneyMultiSelectSection(title: "Communication style", options: dashboard.taxonomy.communicationStyles, selections: $communicationStyles)
                     JourneyMultiSelectSection(title: "Accountability", options: dashboard.taxonomy.accountabilityFrequencies, selections: $accountabilityFrequencies)
                 }
-                .padding(.horizontal, LegendNextSpacing.md)
+                .padding(.horizontal, LegendNextSpacing.sm)
                 .padding(.vertical, LegendNextSpacing.sm)
             }
             .background(LegendNextColor.canvas.ignoresSafeArea())
@@ -2232,7 +2232,7 @@ private struct JourneyMultiSelectSection: View {
 
     var body: some View {
         LegendNextSurface {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                 LegendNextSectionHeader(title: title, detail: selections.isEmpty ? "Select all that apply" : "\(selections.count) selected")
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: LegendNextSpacing.xs)], alignment: .leading, spacing: LegendNextSpacing.xs) {
                     ForEach(options, id: \.self) { option in
@@ -2255,6 +2255,8 @@ private struct JourneyMultiSelectSection: View {
 }
 
 private struct LegendFinanceView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let currentSession: MobileSession
     @StateObject private var store: MobileHomeStore
 
@@ -2294,7 +2296,7 @@ private struct LegendFinanceView: View {
                         retryTitle: "Retry",
                         retry: store.load
                     )
-                    .padding(LegendNextSpacing.md)
+                    .padding(LegendNextSpacing.sm)
                 }
             }
         }
@@ -2318,7 +2320,7 @@ private struct LegendFinanceView: View {
             ScrollView {
                 LazyVStack(
                     alignment: .leading,
-                    spacing: LegendNextSpacing.md
+                    spacing: LegendNextSpacing.xs
                 ) {
                     if let position = financial.position {
                         financialHealth(position)
@@ -2348,7 +2350,7 @@ private struct LegendFinanceView: View {
                 }
                 .padding(
                     .horizontal,
-                    LegendNextSpacing.md
+                    LegendNextSpacing.pageHorizontal
                 )
                 .padding(
                     .top,
@@ -2359,6 +2361,12 @@ private struct LegendFinanceView: View {
                     LegendNextSpacing.xl
                 )
             }
+            .background(
+                LegendNextGradient.pageWash(
+                    for: colorScheme
+                )
+                .ignoresSafeArea()
+            )
             .refreshable {
                 store.load()
             }
@@ -2375,57 +2383,130 @@ private struct LegendFinanceView: View {
     private func financialHealth(
         _ position: MobileFinancialPosition
     ) -> some View {
-        LegendNextSurface(style: .navy) {
+        LegendNextSurface(
+            style: .navy,
+            cornerRadius: LegendNextRadius.hero,
+            padding: LegendNextSpacing.sm
+        ) {
             VStack(
                 alignment: .leading,
-                spacing: LegendNextSpacing.sm
+                spacing: LegendNextSpacing.xs
             ) {
-                HStack {
-                    Text("FINANCIAL HEALTH")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(
-                            LegendNextColor.gold
-                        )
+                HStack(
+                    alignment: .center,
+                    spacing: LegendNextSpacing.xs
+                ) {
+                    Label(
+                        "FINANCIAL HEALTH",
+                        systemImage: "waveform.path.ecg"
+                    )
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(LegendNextColor.goldBright)
 
                     Spacer()
 
-                    Text(position.positionStatus.uppercased())
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.82))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            .white.opacity(0.10),
-                            in: Capsule()
-                        )
+                    statusBadge(position.positionStatus)
                 }
 
                 HStack(
-                    alignment: .firstTextBaseline,
-                    spacing: LegendNextSpacing.micro
+                    alignment: .bottom,
+                    spacing: LegendNextSpacing.xs
                 ) {
-                    Text("\(position.healthScore)")
-                        .font(
-                            .system(
-                                size: 48,
-                                weight: .bold,
-                                design: .rounded
+                    ZStack {
+                        Circle()
+                            .stroke(
+                                Color.white.opacity(0.12),
+                                lineWidth: 8
                             )
-                        )
-                        .foregroundStyle(.white)
 
-                    Text("/ 100")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.62))
+                        Circle()
+                            .trim(
+                                from: 0,
+                                to: healthProgress(
+                                    position.healthScore
+                                )
+                            )
+                            .stroke(
+                                healthGradient(
+                                    position.healthScore
+                                ),
+                                style: StrokeStyle(
+                                    lineWidth: 8,
+                                    lineCap: .round
+                                )
+                            )
+                            .rotationEffect(.degrees(-90))
+
+                        VStack(spacing: 0) {
+                            Text("\(position.healthScore)")
+                                .font(
+                                    .system(
+                                        size: 26,
+                                        weight: .bold,
+                                        design: .rounded
+                                    )
+                                )
+                                .foregroundStyle(.white)
+
+                            Text("OF 100")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(
+                                    .white.opacity(0.58)
+                                )
+                        }
+                    }
+                    .frame(width: 84, height: 84)
+                    .accessibilityElement(
+                        children: .ignore
+                    )
+                    .accessibilityLabel(
+                        "Financial health score"
+                    )
+                    .accessibilityValue(
+                        "\(position.healthScore) out of 100"
+                    )
+
+                    VStack(
+                        alignment: .leading,
+                        spacing: LegendNextSpacing.xs
+                    ) {
+                        Text(healthHeadline(position.healthScore))
+                            .font(
+                                .title3.weight(.bold)
+                            )
+                            .foregroundStyle(.white)
+
+                        Text(position.positionSummary)
+                            .font(LegendNextTypography.body)
+                            .foregroundStyle(
+                                .white.opacity(0.82)
+                            )
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+                    }
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: .leading
+                    )
                 }
 
-                Text(position.positionSummary)
-                    .font(LegendNextTypography.body)
-                    .foregroundStyle(.white.opacity(0.80))
-                    .fixedSize(
-                        horizontal: false,
-                        vertical: true
+                HStack(spacing: LegendNextSpacing.xs) {
+                    healthSignal(
+                        title: "Position",
+                        value: position.positionStatus,
+                        symbol: "scope"
                     )
+
+                    healthSignal(
+                        title: "Net worth",
+                        value: compactCurrency(
+                            position.netWorth
+                        ),
+                        symbol: "chart.line.uptrend.xyaxis"
+                    )
+                }
             }
         }
     }
@@ -2433,30 +2514,54 @@ private struct LegendFinanceView: View {
     private func positionMetrics(
         _ position: MobileFinancialPosition
     ) -> some View {
-        LazyVGrid(
-            columns: metricColumns,
-            spacing: LegendNextSpacing.sm
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.xs
         ) {
-            financialMetric(
-                title: "Assets",
-                value: position.assetsTotal.formatted(
-                    .currency(code: "USD")
-                )
+            financeSectionLabel(
+                eyebrow: "FINANCIAL POSITION",
+                title: "Your Balance Sheet",
+                detail: "A clear view of what you own, what you owe, and the position you are building."
             )
 
-            financialMetric(
-                title: "Liabilities",
-                value: position.liabilitiesTotal.formatted(
-                    .currency(code: "USD")
+            LazyVGrid(
+                columns: metricColumns,
+                spacing: LegendNextSpacing.xs
+            ) {
+                financialMetric(
+                    title: "Assets",
+                    value: position.assetsTotal.formatted(
+                        .currency(code: "USD")
+                    ),
+                    symbol: "building.columns.fill",
+                    tone: .positive
                 )
-            )
 
-            financialMetric(
-                title: "Net worth",
-                value: position.netWorth.formatted(
-                    .currency(code: "USD")
+                financialMetric(
+                    title: "Liabilities",
+                    value: position.liabilitiesTotal.formatted(
+                        .currency(code: "USD")
+                    ),
+                    symbol: "creditcard.fill",
+                    tone: .warning
                 )
-            )
+
+                financialMetric(
+                    title: "Net worth",
+                    value: position.netWorth.formatted(
+                        .currency(code: "USD")
+                    ),
+                    symbol:
+                        position.netWorth >= 0
+                            ? "arrow.up.right.circle.fill"
+                            : "arrow.down.right.circle.fill",
+                    tone:
+                        position.netWorth >= 0
+                            ? .positive
+                            : .danger,
+                    emphasized: true
+                )
+            }
         }
     }
 
@@ -2493,7 +2598,7 @@ private struct LegendFinanceView: View {
         LegendNextSurface {
             VStack(
                 alignment: .leading,
-                spacing: LegendNextSpacing.md
+                spacing: LegendNextSpacing.xs
             ) {
                 sectionHeading(
                     eyebrow: "CURRENT OUTLOOK",
@@ -2505,16 +2610,20 @@ private struct LegendFinanceView: View {
 
                 LazyVGrid(
                     columns: metricColumns,
-                    spacing: LegendNextSpacing.sm
+                    spacing: LegendNextSpacing.xs
                 ) {
                     financialMetric(
                         title: "Opening cash",
-                        value: money(week.openingCashCents)
+                        value: money(week.openingCashCents),
+                        symbol: "wallet.bifold.fill",
+                        tone: .neutral
                     )
 
                     financialMetric(
                         title: "Income",
-                        value: money(week.incomeCents)
+                        value: money(week.incomeCents),
+                        symbol: "arrow.down.left.circle.fill",
+                        tone: .positive
                     )
 
                     financialMetric(
@@ -2522,7 +2631,9 @@ private struct LegendFinanceView: View {
                         value: money(
                             week.debitExpenseCents +
                             week.creditExpenseCents
-                        )
+                        ),
+                        symbol: "doc.text.fill",
+                        tone: .warning
                     )
 
                     financialMetric(
@@ -2530,17 +2641,30 @@ private struct LegendFinanceView: View {
                         value: money(
                             week.requiredDebtPaymentCents +
                             week.extraDebtPaymentCents
-                        )
+                        ),
+                        symbol: "creditcard.fill",
+                        tone: .danger
                     )
 
                     financialMetric(
                         title: "Ending cash",
-                        value: money(week.endingCashCents)
+                        value: money(week.endingCashCents),
+                        symbol: "banknote.fill",
+                        tone:
+                            week.endingCashCents >= 0
+                                ? .positive
+                                : .danger,
+                        emphasized: true
                     )
 
                     financialMetric(
                         title: "Ending debt",
-                        value: money(week.endingDebtCents)
+                        value: money(week.endingDebtCents),
+                        symbol: "chart.line.downtrend.xyaxis",
+                        tone:
+                            week.endingDebtCents > 0
+                                ? .warning
+                                : .positive
                     )
                 }
 
@@ -2562,7 +2686,7 @@ private struct LegendFinanceView: View {
 
                     VStack(
                         alignment: .leading,
-                        spacing: LegendNextSpacing.sm
+                        spacing: LegendNextSpacing.xs
                     ) {
                         Text("THIS WEEK'S ACTIVITY")
                             .font(.caption.weight(.bold))
@@ -2573,7 +2697,7 @@ private struct LegendFinanceView: View {
                         ForEach(week.events.prefix(6)) { event in
                             HStack(
                                 alignment: .firstTextBaseline,
-                                spacing: LegendNextSpacing.sm
+                                spacing: LegendNextSpacing.xs
                             ) {
                                 VStack(
                                     alignment: .leading,
@@ -2622,7 +2746,7 @@ private struct LegendFinanceView: View {
         LegendNextSurface {
             VStack(
                 alignment: .leading,
-                spacing: LegendNextSpacing.md
+                spacing: LegendNextSpacing.xs
             ) {
                 sectionHeading(
                     eyebrow: "FORWARD VIEW",
@@ -2634,16 +2758,20 @@ private struct LegendFinanceView: View {
 
                 LazyVGrid(
                     columns: metricColumns,
-                    spacing: LegendNextSpacing.sm
+                    spacing: LegendNextSpacing.xs
                 ) {
                     financialMetric(
                         title: "Opening cash",
-                        value: money(month.openingCashCents)
+                        value: money(month.openingCashCents),
+                        symbol: "wallet.bifold.fill",
+                        tone: .neutral
                     )
 
                     financialMetric(
                         title: "Income",
-                        value: money(month.incomeCents)
+                        value: money(month.incomeCents),
+                        symbol: "arrow.down.left.circle.fill",
+                        tone: .positive
                     )
 
                     financialMetric(
@@ -2651,7 +2779,9 @@ private struct LegendFinanceView: View {
                         value: money(
                             month.debitExpenseCents +
                             month.creditExpenseCents
-                        )
+                        ),
+                        symbol: "doc.text.fill",
+                        tone: .warning
                     )
 
                     financialMetric(
@@ -2659,17 +2789,30 @@ private struct LegendFinanceView: View {
                         value: money(
                             month.requiredDebtPaymentCents +
                             month.extraDebtPaymentCents
-                        )
+                        ),
+                        symbol: "creditcard.fill",
+                        tone: .danger
                     )
 
                     financialMetric(
                         title: "Ending cash",
-                        value: money(month.endingCashCents)
+                        value: money(month.endingCashCents),
+                        symbol: "banknote.fill",
+                        tone:
+                            month.endingCashCents >= 0
+                                ? .positive
+                                : .danger,
+                        emphasized: true
                     )
 
                     financialMetric(
                         title: "Ending debt",
-                        value: money(month.endingDebtCents)
+                        value: money(month.endingDebtCents),
+                        symbol: "chart.line.downtrend.xyaxis",
+                        tone:
+                            month.endingDebtCents > 0
+                                ? .warning
+                                : .positive
                     )
                 }
 
@@ -2706,7 +2849,7 @@ private struct LegendFinanceView: View {
 
                     VStack(
                         alignment: .leading,
-                        spacing: LegendNextSpacing.sm
+                        spacing: LegendNextSpacing.xs
                     ) {
                         Text("MONTHLY ROADMAP")
                             .font(.caption.weight(.bold))
@@ -2716,7 +2859,7 @@ private struct LegendFinanceView: View {
 
                         ForEach(month.weeks) { week in
                             HStack(
-                                spacing: LegendNextSpacing.sm
+                                spacing: LegendNextSpacing.xs
                             ) {
                                 VStack(
                                     alignment: .leading,
@@ -2799,12 +2942,12 @@ private struct LegendFinanceView: View {
         LegendNextSurface(style: .navy) {
             HStack(
                 alignment: .center,
-                spacing: LegendNextSpacing.md
+                spacing: LegendNextSpacing.xs
             ) {
                 Image(systemName: "calendar.badge.exclamationmark")
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(LegendNextColor.gold)
-                    .frame(width: 46, height: 46)
+                    .frame(width: 34, height: 34)
                     .background(
                         LegendNextColor.gold.opacity(0.14),
                         in: Circle()
@@ -2843,18 +2986,77 @@ private struct LegendFinanceView: View {
     private func operatingSystemUnavailable(
         summary: String
     ) -> some View {
-        LegendNextSurface {
+        LegendNextSurface(
+            cornerRadius: LegendNextRadius.prominentCard,
+            padding: LegendNextSpacing.sm
+        ) {
             VStack(
                 alignment: .leading,
-                spacing: LegendNextSpacing.sm
+                spacing: LegendNextSpacing.xs
             ) {
-                Label(
-                    "Cash-flow projection unavailable",
-                    systemImage: "chart.xyaxis.line"
-                )
-                .font(.headline.weight(.semibold))
+                HStack(
+                    alignment: .top,
+                    spacing: LegendNextSpacing.xs
+                ) {
+                    Image(systemName: "chart.xyaxis.line")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(
+                            LegendNextColor.gold
+                        )
+                        .frame(width: 34, height: 34)
+                        .background(
+                            LegendNextColor.gold.opacity(0.12),
+                            in: RoundedRectangle(
+                                cornerRadius:
+                                    LegendNextRadius.control,
+                                style: .continuous
+                            )
+                        )
 
-                Text(summary)
+                    VStack(
+                        alignment: .leading,
+                        spacing: LegendNextSpacing.tiny
+                    ) {
+                        Text("CASH-FLOW INTELLIGENCE")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(
+                                LegendNextColor.gold
+                            )
+
+                        Text("Projection not ready")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(
+                                LegendNextColor.textPrimary
+                            )
+
+                        Text(summary)
+                            .font(
+                                LegendNextTypography.supporting
+                            )
+                            .foregroundStyle(
+                                LegendNextColor.textSecondary
+                            )
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+                    }
+                }
+
+                HStack(
+                    alignment: .top,
+                    spacing: LegendNextSpacing.xs
+                ) {
+                    Image(systemName: "sparkles")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(
+                            LegendNextColor.gold
+                        )
+                        .padding(.top, 2)
+
+                    Text(
+                        "Complete Expense Lens to unlock mobile projections."
+                    )
                     .font(LegendNextTypography.supporting)
                     .foregroundStyle(
                         LegendNextColor.textSecondary
@@ -2863,14 +3065,27 @@ private struct LegendFinanceView: View {
                         horizontal: false,
                         vertical: true
                     )
-
-                Text(
-                    "Complete or update Expense Lens in the client portal to refresh this view."
+                }
+                .padding(LegendNextSpacing.sm)
+                .background(
+                    LegendNextColor.gold.opacity(0.075),
+                    in: RoundedRectangle(
+                        cornerRadius:
+                            LegendNextRadius.control,
+                        style: .continuous
+                    )
                 )
-                .font(.caption)
-                .foregroundStyle(
-                    LegendNextColor.textSecondary
-                )
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius:
+                            LegendNextRadius.control,
+                        style: .continuous
+                    )
+                    .strokeBorder(
+                        LegendNextColor.gold.opacity(0.16),
+                        lineWidth: 1
+                    )
+                }
             }
         }
     }
@@ -2878,51 +3093,106 @@ private struct LegendFinanceView: View {
     private func upcomingBills(
         _ bills: [MobileUpcomingBill]
     ) -> some View {
-        LegendNextSurface {
-            VStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.sm
-            ) {
-                LegendNextSectionHeader(
-                    title: "Upcoming recurring bills"
-                )
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.xs
+        ) {
+            financeSectionLabel(
+                eyebrow: "UPCOMING",
+                title: "Recurring Bills",
+                detail:
+                    "Your next scheduled obligations, ordered for quick awareness."
+            )
 
-                ForEach(bills.prefix(6)) { bill in
-                    HStack {
-                        VStack(
-                            alignment: .leading,
-                            spacing: LegendNextSpacing.micro
+            LegendNextSurface(
+                cornerRadius: LegendNextRadius.prominentCard,
+                padding: 0
+            ) {
+                VStack(spacing: 0) {
+                    ForEach(
+                        Array(bills.prefix(6).enumerated()),
+                        id: \.element.id
+                    ) { index, bill in
+                        HStack(
+                            spacing: LegendNextSpacing.xs
                         ) {
-                            Text(bill.displayName)
-                                .font(
-                                    .subheadline.weight(
-                                        .semibold
-                                    )
+                            Image(
+                                systemName:
+                                    "calendar.badge.clock"
+                            )
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(
+                                LegendNextColor.gold
+                            )
+                            .frame(width: 38, height: 38)
+                            .background(
+                                LegendNextColor.gold.opacity(
+                                    0.10
+                                ),
+                                in: RoundedRectangle(
+                                    cornerRadius:
+                                        LegendNextRadius.compact,
+                                    style: .continuous
                                 )
+                            )
+
+                            VStack(
+                                alignment: .leading,
+                                spacing: LegendNextSpacing.micro
+                            ) {
+                                Text(bill.displayName)
+                                    .font(
+                                        .subheadline.weight(
+                                            .semibold
+                                        )
+                                    )
+                                    .foregroundStyle(
+                                        LegendNextColor.textPrimary
+                                    )
+
+                                Text(
+                                    bill.nextExpectedDateUTC,
+                                    format:
+                                        .dateTime
+                                        .month(.abbreviated)
+                                        .day()
+                                )
+                                .font(
+                                    LegendNextTypography.supporting
+                                )
+                                .foregroundStyle(
+                                    LegendNextColor.textSecondary
+                                )
+                            }
+
+                            Spacer(minLength: 8)
 
                             Text(
-                                bill.nextExpectedDateUTC,
-                                format:
-                                    .dateTime
-                                    .month(.abbreviated)
-                                    .day()
+                                bill.amount.formatted(
+                                    .currency(code: "USD")
+                                )
                             )
-                            .font(
-                                LegendNextTypography.supporting
-                            )
+                            .font(.subheadline.weight(.bold))
                             .foregroundStyle(
-                                LegendNextColor.textSecondary
+                                LegendNextColor.textPrimary
                             )
                         }
-
-                        Spacer()
-
-                        Text(
-                            bill.amount.formatted(
-                                .currency(code: "USD")
-                            )
+                        .padding(
+                            .horizontal,
+                            LegendNextSpacing.sm
                         )
-                        .font(.subheadline.weight(.semibold))
+                        .padding(
+                            .vertical,
+                            LegendNextSpacing.sm
+                        )
+
+                        if index < min(bills.count, 6) - 1 {
+                            LegendNextDivider()
+                                .padding(
+                                    .leading,
+                                    38 + LegendNextSpacing.sm * 2
+                                )
+                        }
                     }
                 }
             }
@@ -2937,9 +3207,12 @@ private struct LegendFinanceView: View {
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: LegendNextSpacing.micro
+            spacing: LegendNextSpacing.xs
         ) {
-            HStack {
+            HStack(
+                alignment: .center,
+                spacing: LegendNextSpacing.xs
+            ) {
                 Text(eyebrow)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(
@@ -2948,21 +3221,14 @@ private struct LegendFinanceView: View {
 
                 Spacer()
 
-                Text(status.uppercased())
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(
-                        LegendNextColor.textSecondary
-                    )
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(
-                        LegendNextColor.surfaceElevated,
-                        in: Capsule()
-                    )
+                statusBadge(status)
             }
 
             Text(title)
-                .font(.title3.weight(.bold))
+                .font(LegendNextTypography.title)
+                .foregroundStyle(
+                    LegendNextColor.textPrimary
+                )
 
             Text(detail)
                 .font(LegendNextTypography.supporting)
@@ -2972,49 +3238,408 @@ private struct LegendFinanceView: View {
         }
     }
 
-    private func financialMetric(
+    private func financeSectionLabel(
+        eyebrow: String,
         title: String,
-        value: String
+        detail: String
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: LegendNextSpacing.micro
+            spacing: LegendNextSpacing.tiny
         ) {
-            Text(title.uppercased())
-                .font(.caption2.weight(.bold))
+            Text(eyebrow)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(
+                    LegendNextColor.gold
+                )
+
+            Text(title)
+                .font(LegendNextTypography.section)
+                .foregroundStyle(
+                    LegendNextColor.textPrimary
+                )
+
+            Text(detail)
+                .font(LegendNextTypography.supporting)
                 .foregroundStyle(
                     LegendNextColor.textSecondary
                 )
-                .lineLimit(1)
+                .fixedSize(
+                    horizontal: false,
+                    vertical: true
+                )
+        }
+    }
+
+    private func financialMetric(
+        title: String,
+        value: String,
+        symbol: String = "circle.fill",
+        tone: FinancialMetricTone = .neutral,
+        emphasized: Bool = false
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.xs
+        ) {
+            HStack(
+                alignment: .center,
+                spacing: LegendNextSpacing.xs
+            ) {
+                Image(systemName: symbol)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tone.color)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        tone.color.opacity(0.11),
+                        in: RoundedRectangle(
+                            cornerRadius:
+                                LegendNextRadius.compact,
+                            style: .continuous
+                        )
+                    )
+
+                Text(title.uppercased())
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(
+                        LegendNextColor.textSecondary
+                    )
+                    .lineLimit(1)
+            }
 
             Text(value)
-                .font(.subheadline.weight(.bold))
-                .minimumScaleFactor(0.72)
+                .font(
+                    emphasized
+                        ? .headline.weight(.bold)
+                        : .subheadline.weight(.bold)
+                )
+                .foregroundStyle(
+                    LegendNextColor.textPrimary
+                )
+                .minimumScaleFactor(0.68)
                 .lineLimit(1)
+
+            Capsule()
+                .fill(tone.color.opacity(0.72))
+                .frame(
+                    width: emphasized ? 42 : 28,
+                    height: 3
+                )
+        }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: emphasized ? 82 : 76,
+            alignment: .topLeading
+        )
+        .padding(LegendNextSpacing.sm)
+        .background(
+            emphasized
+                ? tone.color.opacity(0.075)
+                : LegendNextColor.surfaceElevated,
+            in: RoundedRectangle(
+                cornerRadius:
+                    LegendNextRadius.card,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius:
+                    LegendNextRadius.card,
+                style: .continuous
+            )
+            .strokeBorder(
+                emphasized
+                    ? tone.color.opacity(0.20)
+                    : LegendNextColor.subtleBorder(
+                        for: colorScheme
+                    ),
+                lineWidth: 1
+            )
+        }
+        .shadow(
+            color:
+                LegendNextColor.ambientShadow(
+                    for: colorScheme
+                ),
+            radius: 8,
+            y: 3
+        )
+    }
+
+    private func statusBadge(
+        _ status: String
+    ) -> some View {
+        let tone = statusTone(status)
+
+        return HStack(spacing: LegendNextSpacing.tiny) {
+            Circle()
+                .fill(tone.color)
+                .frame(width: 6, height: 6)
+
+            Text(status.uppercased())
+                .font(.caption2.weight(.bold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(tone.color)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            tone.color.opacity(0.12),
+            in: Capsule()
+        )
+        .overlay {
+            Capsule()
+                .strokeBorder(
+                    tone.color.opacity(0.22),
+                    lineWidth: 1
+                )
+        }
+    }
+
+    private func healthSignal(
+        title: String,
+        value: String,
+        symbol: String
+    ) -> some View {
+        HStack(
+            spacing: LegendNextSpacing.xs
+        ) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(
+                    LegendNextColor.goldBright
+                )
+
+            VStack(
+                alignment: .leading,
+                spacing: 1
+            ) {
+                Text(title.uppercased())
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(
+                        .white.opacity(0.52)
+                    )
+
+                Text(value)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
         }
         .frame(
             maxWidth: .infinity,
             alignment: .leading
         )
-        .padding(LegendNextSpacing.sm)
+        .padding(
+            .horizontal,
+            LegendNextSpacing.sm
+        )
+        .padding(
+            .vertical,
+            LegendNextSpacing.xs
+        )
         .background(
-            LegendNextColor.surfaceElevated,
+            Color.white.opacity(0.075),
             in: RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
+                cornerRadius:
+                    LegendNextRadius.control,
                 style: .continuous
             )
         )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius:
+                    LegendNextRadius.control,
+                style: .continuous
+            )
+            .strokeBorder(
+                Color.white.opacity(0.09),
+                lineWidth: 1
+            )
+        }
+    }
+
+    private func healthProgress(
+        _ score: Int
+    ) -> CGFloat {
+        CGFloat(max(0, min(score, 100))) / 100
+    }
+
+    private func healthGradient(
+        _ score: Int
+    ) -> LinearGradient {
+        let tone = healthTone(score)
+
+        return LinearGradient(
+            colors: [
+                tone.color.opacity(0.76),
+                tone.color
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private func healthHeadline(
+        _ score: Int
+    ) -> String {
+        switch score {
+        case 80...:
+            return "Your foundation is strong."
+        case 65..<80:
+            return "You are building momentum."
+        case 45..<65:
+            return "Your plan needs attention."
+        default:
+            return "Your position needs protection."
+        }
+    }
+
+    private func healthTone(
+        _ score: Int
+    ) -> FinancialMetricTone {
+        switch score {
+        case 80...:
+            return .positive
+        case 60..<80:
+            return .information
+        case 40..<60:
+            return .warning
+        default:
+            return .danger
+        }
+    }
+
+    private func statusTone(
+        _ status: String
+    ) -> FinancialMetricTone {
+        let normalized = status
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            .lowercased()
+
+        if normalized.contains("healthy") ||
+            normalized.contains("strong") ||
+            normalized.contains("excellent") ||
+            normalized.contains("stable") ||
+            normalized.contains("positive") ||
+            normalized.contains("improving") ||
+            normalized.contains("clear") ||
+            normalized.contains("low") {
+            return .positive
+        }
+
+        if normalized.contains("critical") ||
+            normalized.contains("danger") ||
+            normalized.contains("severe") ||
+            normalized.contains("exposed") ||
+            normalized.contains("negative") ||
+            normalized.contains("high") {
+            return .danger
+        }
+
+        if normalized.contains("warning") ||
+            normalized.contains("watch") ||
+            normalized.contains("tight") ||
+            normalized.contains("pressure") ||
+            normalized.contains("moderate") {
+            return .warning
+        }
+
+        if normalized.contains("progress") ||
+            normalized.contains("building") ||
+            normalized.contains("active") {
+            return .information
+        }
+
+        return .neutral
+    }
+
+    private func compactCurrency(
+        _ value: Decimal
+    ) -> String {
+        let number = NSDecimalNumber(
+            decimal: value
+        ).doubleValue
+
+        let magnitude = abs(number)
+        let scaledValue: Double
+        let suffix: String
+
+        switch magnitude {
+        case 1_000_000_000...:
+            scaledValue = number / 1_000_000_000
+            suffix = "B"
+
+        case 1_000_000...:
+            scaledValue = number / 1_000_000
+            suffix = "M"
+
+        case 1_000...:
+            scaledValue = number / 1_000
+            suffix = "K"
+
+        default:
+            scaledValue = number
+            suffix = ""
+        }
+
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits =
+            abs(scaledValue) >= 100
+                ? 0
+                : abs(scaledValue) >= 10
+                    ? 1
+                    : 2
+
+        let formattedValue =
+            formatter.string(
+                from: NSNumber(value: scaledValue)
+            )
+            ?? "$0"
+
+        return formattedValue + suffix
+    }
+
+    private enum FinancialMetricTone {
+        case positive
+        case warning
+        case danger
+        case information
+        case neutral
+
+        var color: Color {
+            switch self {
+            case .positive:
+                return LegendNextColor.success
+            case .warning:
+                return LegendNextColor.warning
+            case .danger:
+                return LegendNextColor.danger
+            case .information:
+                return LegendNextColor.information
+            case .neutral:
+                return LegendNextColor.gold
+            }
+        }
     }
 
     private var metricColumns: [GridItem] {
         [
             GridItem(
                 .flexible(),
-                spacing: LegendNextSpacing.sm
+                spacing: LegendNextSpacing.xs
             ),
             GridItem(
                 .flexible(),
-                spacing: LegendNextSpacing.sm
+                spacing: LegendNextSpacing.xs
             )
         ]
     }
@@ -3150,7 +3775,7 @@ private struct LegendAccountView: View {
                     retryTitle: "Retry",
                     retry: account.load
                 )
-                .padding(LegendNextSpacing.md)
+                .padding(LegendNextSpacing.sm)
             }
         }
         .background(LegendNextColor.canvas.ignoresSafeArea())
@@ -3242,19 +3867,19 @@ private struct LegendAccountView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 profileIdentityHeader(profile)
-                    .padding(.horizontal, LegendNextSpacing.md)
+                    .padding(.horizontal, LegendNextSpacing.sm)
                     .padding(.top, LegendNextSpacing.sm)
 
                 profileBiography(profile)
-                    .padding(.horizontal, LegendNextSpacing.md)
+                    .padding(.horizontal, LegendNextSpacing.sm)
                     .padding(.top, LegendNextSpacing.sm)
 
                 profileActions
-                    .padding(.horizontal, LegendNextSpacing.md)
-                    .padding(.top, LegendNextSpacing.md)
+                    .padding(.horizontal, LegendNextSpacing.sm)
+                    .padding(.top, LegendNextSpacing.sm)
 
                 profileContentSelector
-                    .padding(.top, LegendNextSpacing.md)
+                    .padding(.top, LegendNextSpacing.sm)
 
                 profileGrid(profile)
             }
@@ -3266,7 +3891,7 @@ private struct LegendAccountView: View {
     private func profileIdentityHeader(
         _ profile: MobileAccountProfile
     ) -> some View {
-        HStack(alignment: .center, spacing: LegendNextSpacing.lg) {
+        HStack(alignment: .center, spacing: LegendNextSpacing.xs) {
             LegendProfileAvatar(
                 avatar: profile.avatar,
                 displayName: profile.displayName,
@@ -3293,7 +3918,7 @@ private struct LegendAccountView: View {
                 .accessibilityLabel("Edit profile")
             }
 
-            HStack(spacing: LegendNextSpacing.lg) {
+            HStack(spacing: LegendNextSpacing.xs) {
                 profileMetric(
                     value: profilePosts.count,
                     title: "Posts"
@@ -3358,7 +3983,7 @@ private struct LegendAccountView: View {
     }
 
     private var profileActions: some View {
-        HStack(spacing: LegendNextSpacing.sm) {
+        HStack(spacing: LegendNextSpacing.xs) {
             Button {
                 isEditing = true
             } label: {
@@ -3446,7 +4071,7 @@ private struct LegendAccountView: View {
                 retryTitle: "Retry",
                 retry: social.load
             )
-            .padding(LegendNextSpacing.md)
+            .padding(LegendNextSpacing.sm)
 
         case .loaded:
             let items = selectedProfileItems
@@ -3469,9 +4094,9 @@ private struct LegendAccountView: View {
     private func profileEmptyState(
         _ profile: MobileAccountProfile
     ) -> some View {
-        VStack(spacing: LegendNextSpacing.sm) {
+        VStack(spacing: LegendNextSpacing.xs) {
             Image(systemName: selectedContent.symbolName)
-                .font(.system(size: 34, weight: .light))
+                .font(.system(size: 26, weight: .light))
                 .foregroundStyle(LegendNextColor.navy)
                 .frame(width: 72, height: 72)
                 .overlay {
@@ -3494,7 +4119,7 @@ private struct LegendAccountView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 54)
-        .padding(.horizontal, LegendNextSpacing.lg)
+        .padding(.horizontal, LegendNextSpacing.sm)
     }
 
     private var profileSettingsSheet: some View {

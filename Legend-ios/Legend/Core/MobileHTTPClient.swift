@@ -2,6 +2,20 @@ import Foundation
 
 struct MobileEmptyRequest: Encodable, Sendable {}
 
+
+struct MultipartFormFile: Sendable {
+    let fieldName: String
+    let fileName: String
+    let mimeType: String
+    let data: Data
+}
+
+private extension Data {
+    mutating func append(_ string: String) {
+        append(Data(string.utf8))
+    }
+}
+
 struct MobileHTTPClient: Sendable {
     let baseURL: URL
     let session: URLSession
@@ -64,6 +78,54 @@ struct MobileHTTPClient: Sendable {
         }
         request.httpBody = try JSONEncoder.mobile.encode(body)
         try await performEmpty(request)
+    }
+
+
+    func postMultipart<Response: Decodable>(
+        _ path: String,
+        accessToken: String,
+        fields: [String: String],
+        files: [MultipartFormFile],
+        headers: [String: String] = [:],
+        response: Response.Type
+    ) async throws -> Response {
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
+
+        headers.forEach {
+            request.setValue($0.value, forHTTPHeaderField: $0.key)
+        }
+
+        var body = Data()
+
+        for (name, value) in fields {
+            body.append("--\(boundary)\r\n")
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+            body.append(value)
+            body.append("\r\n")
+        }
+
+        for file in files {
+            body.append("--\(boundary)\r\n")
+            body.append("Content-Disposition: form-data; name=\"\(file.fieldName)\"; filename=\"\(file.fileName)\"\r\n")
+            body.append("Content-Type: \(file.mimeType)\r\n\r\n")
+            body.append(file.data)
+            body.append("\r\n")
+        }
+
+        body.append("--\(boundary)--\r\n")
+        request.httpBody = body
+
+        return try await perform(request, response: response)
     }
 
     func put<Body: Encodable>(

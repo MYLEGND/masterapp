@@ -3,6 +3,12 @@ import Foundation
 protocol MobileSocialAPI: Sendable {
     func feed(accessToken: String) async throws -> MobileSocialSnapshot
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost
+
+    func createMediaPost(
+        body: String,
+        files: [MultipartFormFile],
+        accessToken: String
+    ) async throws -> MobileSocialPost
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult
@@ -11,6 +17,14 @@ protocol MobileSocialAPI: Sendable {
 struct MobileUnavailableSocialAPI: MobileSocialAPI {
     func feed(accessToken: String) async throws -> MobileSocialSnapshot { throw MobileAPIError.unauthorized(correlationID: nil) }
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func createMediaPost(
+        body: String,
+        files: [MultipartFormFile],
+        accessToken: String
+    ) async throws -> MobileSocialPost {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost { throw MobileAPIError.unauthorized(correlationID: nil) }
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment { throw MobileAPIError.unauthorized(correlationID: nil) }
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult { throw MobileAPIError.unauthorized(correlationID: nil) }
@@ -31,6 +45,25 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost {
         try await client.post("/api/v1/mobile/social/posts", body: request, accessToken: accessToken, headers: participantHeader, response: MobileSocialPost.self)
     }
+
+    func createMediaPost(
+        body: String,
+        files: [MultipartFormFile],
+        accessToken: String
+    ) async throws -> MobileSocialPost {
+
+        try await client.postMultipart(
+            "/api/v1/mobile/social/posts/media",
+            accessToken: accessToken,
+            fields: [
+                "body": body
+            ],
+            files: files,
+            headers: participantHeader,
+            response: MobileSocialPost.self
+        )
+    }
+
 
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost {
         try await client.post("/api/v1/mobile/social/posts/\(postID.uuidString)/reaction", body: EmptyMobileRequest(), accessToken: accessToken, headers: participantHeader, response: MobileSocialPost.self)
@@ -84,6 +117,21 @@ final class MobileSocialStore: ObservableObject {
             self.insert(post)
         }
     }
+
+    func createMediaPost(
+        body: String,
+        files: [MultipartFormFile]
+    ) {
+        perform(title: "Could not share your update") { token in
+            let post = try await self.api.createMediaPost(
+                body: body,
+                files: files,
+                accessToken: token
+            )
+            self.insert(post)
+        }
+    }
+
 
     func toggleReaction(postID: UUID) {
         perform(title: "Could not update appreciation") { token in

@@ -57,6 +57,94 @@ public sealed class MobileSocialController : MobileApiControllerBase
             : SocialFailure(result.ErrorCode, result.ErrorMessage);
     }
 
+    [HttpPost("posts/media")]
+    [Consumes("multipart/form-data")]
+    [RequestFormLimits(
+        MultipartBodyLengthLimit = 1_048_576_000,
+        ValueLengthLimit = 2_000)]
+    public async Task<IActionResult> CreateMediaPost(
+        [FromForm] MobileCreateSocialMediaPostRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var files = request?.Files?
+            .Where(file => file is not null && file.Length > 0)
+            .ToArray() ?? Array.Empty<IFormFile>();
+
+        if (files.Length == 0)
+        {
+            return SocialFailure(
+                "social_media_post_invalid",
+                "Attach at least one supported image or video.");
+        }
+
+        var openedStreams = new List<Stream>(files.Length);
+
+        try
+        {
+            var uploads = new List<SocialMediaUpload>(files.Length);
+
+            foreach (var file in files)
+            {
+                var stream = file.OpenReadStream();
+                openedStreams.Add(stream);
+
+                uploads.Add(new SocialMediaUpload(
+                    file.FileName,
+                    file.Length,
+                    stream,
+                    request?.AccessibilityText));
+            }
+
+            var result = await _social.CreateMediaPostAsync(
+                new CreateSocialMediaPostCommand(
+                    resolved.Actor!,
+                    request?.ContentType ?? string.Empty,
+                    request?.Body ?? string.Empty,
+                    uploads),
+                cancellationToken);
+
+            return result.Succeeded && result.Value is not null
+                ? Ok(await ToPostDtoAsync(result.Value, cancellationToken))
+                : SocialFailure(result.ErrorCode, result.ErrorMessage);
+        }
+        finally
+        {
+            foreach (var stream in openedStreams)
+                await stream.DisposeAsync();
+        }
+    }
+
+    [HttpGet("media/{mediaAssetId:guid}")]
+    public async Task<IActionResult> GetMedia(
+        Guid mediaAssetId,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.GetMediaAsync(
+            resolved.Actor!,
+            mediaAssetId,
+            cancellationToken);
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            return result.ErrorCode == "social_actor_invalid"
+                ? SocialFailure(result.ErrorCode, result.ErrorMessage)
+                : NotFound();
+        }
+
+        return File(
+            result.Value.Content,
+            result.Value.MimeType,
+            enableRangeProcessing: true);
+    }
+
     [HttpPost("posts/{postId:guid}/reaction")]
     public async Task<IActionResult> ToggleReaction(Guid postId, CancellationToken cancellationToken)
     {
@@ -134,6 +222,18 @@ public sealed class MobileSocialController : MobileApiControllerBase
         post.CommentCount,
         post.ReactedByCurrentActor,
         post.FollowedByCurrentActor,
+        post.Media.Select(media => new MobileSocialMediaDto(
+            media.Id,
+            media.DisplayOrder,
+            media.MediaKind,
+            media.MimeType,
+            media.FileSizeBytes,
+            media.Width,
+            media.Height,
+            media.AspectRatio,
+            media.DurationSeconds,
+            media.ProcessingState,
+            media.AccessibilityText)).ToArray(),
         await Task.WhenAll(post.Comments.Select(comment => ToCommentDtoAsync(comment, cancellationToken))));
 
     private async Task<MobileSocialCommentDto> ToCommentDtoAsync(SocialCommentView comment, CancellationToken cancellationToken) => new(
@@ -167,19 +267,56 @@ public sealed class MobileSocialController : MobileApiControllerBase
 
     private IActionResult SocialFailure(string? errorCode, string? errorMessage)
     {
-        var status = errorCode is "social_post_invalid" or "social_comment_invalid" or "social_follow_invalid"
-            ? StatusCodes.Status400BadRequest
-            : StatusCodes.Status403Forbidden;
+        var status = errorCode is
+            "social_post_invalid" or
+            "social_media_post_invalid" or
+            "social_comment_invalid" or
+            "social_follow_invalid" or
+            "SOCIAL_MEDIA_ID_INVALID" or
+            "SOCIAL_MEDIA_CONTENT_INVALID" or
+            "SOCIAL_MEDIA_SIZE_INVALID" or
+            "SOCIAL_MEDIA_SIZE_MISMATCH" or
+            "SOCIAL_MEDIA_NAME_INVALID" or
+            "SOCIAL_MEDIA_TYPE_INVALID"
+                ? StatusCodes.Status400BadRequest
+                : errorCode is
+                    "SOCIAL_MEDIA_STORAGE_FAILED" or
+                    "social_media_persistence_failed"
+                        ? StatusCodes.Status500InternalServerError
+                        : StatusCodes.Status403Forbidden;
         return Error(status, errorCode ?? "mobile_social_rejected", errorMessage ?? "This social action is not available.");
     }
 }
 
 public sealed record MobileCreateSocialPostRequest(string? ContentType, string? Body);
+
+public sealed class MobileCreateSocialMediaPostRequest
+{
+    public string? ContentType { get; init; }
+    public string? Body { get; init; }
+    public string? AccessibilityText { get; init; }
+    public List<IFormFile> Files { get; init; } = [];
+}
+
 public sealed record MobileCreateSocialCommentRequest(string? Body);
 public sealed record MobileToggleSocialFollowRequest(string? FollowedUserId, string? FollowedParticipantType);
 public sealed record MobileSocialFollowResultDto(bool IsFollowing);
 public sealed record MobileSocialAuthorDto(MobileLogicalIdentityDto Identity, string ProfileId, string DisplayName, MobileAvatarDto? Avatar);
 public sealed record MobileSocialCommentDto(Guid Id, MobileSocialAuthorDto Author, string Body, DateTime CreatedUtc);
+
+public sealed record MobileSocialMediaDto(
+    Guid Id,
+    int DisplayOrder,
+    string MediaKind,
+    string MimeType,
+    long FileSizeBytes,
+    int? Width,
+    int? Height,
+    decimal? AspectRatio,
+    decimal? DurationSeconds,
+    string ProcessingState,
+    string? AccessibilityText);
+
 public sealed record MobileSocialPostDto(
     Guid Id,
     MobileSocialAuthorDto Author,
@@ -191,6 +328,7 @@ public sealed record MobileSocialPostDto(
     int CommentCount,
     bool ReactedByCurrentActor,
     bool FollowedByCurrentActor,
+    IReadOnlyList<MobileSocialMediaDto> Media,
     IReadOnlyList<MobileSocialCommentDto> Comments);
 public sealed record MobileSocialActivityDto(Guid Id, string Kind, MobileSocialAuthorDto Actor, Guid? PostId, DateTime OccurredUtc);
 public sealed record MobileSocialSnapshotDto(

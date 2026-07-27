@@ -19,14 +19,21 @@ public sealed class SocialFeedService : ISocialFeedService
     private const int MaximumStoryPosts = 30;
     private const int MaximumCommentsPerPost = 4;
     private const int MaximumActivityItems = 30;
+    private const int MaximumMediaItemsPerPost = 10;
+    private const int MaximumAccessibilityTextLength = 500;
 
     private readonly MasterAppDbContext _db;
     private readonly IMessagingService _messaging;
+    private readonly ISocialMediaStorage _mediaStorage;
 
-    public SocialFeedService(MasterAppDbContext db, IMessagingService messaging)
+    public SocialFeedService(
+        MasterAppDbContext db,
+        IMessagingService messaging,
+        ISocialMediaStorage mediaStorage)
     {
         _db = db;
         _messaging = messaging;
+        _mediaStorage = mediaStorage;
     }
 
     public async Task<SocialOperationResult<SocialFeedSnapshot>> GetFeedAsync(
@@ -100,6 +107,187 @@ public sealed class SocialFeedService : ISocialFeedService
         _db.SocialPosts.Add(post);
         await _db.SaveChangesAsync(cancellationToken);
         return SocialOperationResult<SocialPostView>.Success(await BuildPostViewAsync(post, command.Actor, cancellationToken));
+    }
+
+    public async Task<SocialOperationResult<SocialPostView>> CreateMediaPostAsync(
+        CreateSocialMediaPostCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(command.Actor, cancellationToken))
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_actor_invalid",
+                "Your mobile identity is not available for Legend updates.");
+        }
+
+        var contentType = NormalizePostType(command.ContentType);
+        var body = NormalizeBody(command.Body, MaximumPostLength);
+        var uploads = command.Media?.ToArray() ?? Array.Empty<SocialMediaUpload>();
+
+        if (contentType is null ||
+            uploads.Length == 0 ||
+            uploads.Length > MaximumMediaItemsPerPost ||
+            ((command.Body ?? string.Empty).Trim().Length > 0 &&
+             string.IsNullOrWhiteSpace(body)))
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_media_post_invalid",
+                $"Choose a post type and attach between 1 and {MaximumMediaItemsPerPost} supported media files.");
+        }
+
+        var postId = Guid.NewGuid();
+        var storedKeys = new List<string>(uploads.Length);
+        var mediaAssets = new List<SocialPostMediaAsset>(uploads.Length);
+
+        try
+        {
+            for (var displayOrder = 0; displayOrder < uploads.Length; displayOrder++)
+            {
+                var upload = uploads[displayOrder];
+                var mediaAssetId = Guid.NewGuid();
+
+                var storageResult = await _mediaStorage.StoreAsync(
+                    mediaAssetId,
+                    upload.OriginalFileName,
+                    upload.DeclaredSizeBytes,
+                    upload.Content,
+                    cancellationToken);
+
+                if (!storageResult.Succeeded || storageResult.Media is null)
+                {
+                    await DeleteStoredMediaAsync(storedKeys, CancellationToken.None);
+
+                    return SocialOperationResult<SocialPostView>.Failure(
+                        storageResult.ErrorCode ?? "social_media_storage_failed",
+                        storageResult.ErrorMessage ?? "The social media file could not be stored.");
+                }
+
+                var stored = storageResult.Media;
+                storedKeys.Add(stored.StorageKey);
+
+                mediaAssets.Add(new SocialPostMediaAsset
+                {
+                    Id = mediaAssetId,
+                    SocialPostId = postId,
+                    DisplayOrder = displayOrder,
+                    MediaKind = stored.MediaKind,
+                    StorageKey = stored.StorageKey,
+                    MimeType = stored.MimeType,
+                    FileSizeBytes = stored.FileSizeBytes,
+                    ProcessingState = "Ready",
+                    AccessibilityText = NormalizeOptionalText(
+                        upload.AccessibilityText,
+                        MaximumAccessibilityTextLength),
+                    CreatedUtc = DateTime.UtcNow,
+                    UpdatedUtc = DateTime.UtcNow
+                });
+            }
+
+            var now = DateTime.UtcNow;
+            var post = new SocialPost
+            {
+                Id = postId,
+                AuthorUserId = Normalize(command.Actor.Identity.UserId),
+                AuthorParticipantType = command.Actor.Identity.ParticipantType,
+                AuthorProfileId = command.Actor.ProfileId,
+                ContentType = contentType,
+                Audience = SocialPostAudiences.AuthorizedNetwork,
+                Body = body,
+                PostedUtc = now,
+                ExpiresUtc = contentType == SocialPostContentTypes.Story
+                    ? now.AddHours(24)
+                    : null,
+                MediaAssets = mediaAssets
+            };
+
+            _db.SocialPosts.Add(post);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            return SocialOperationResult<SocialPostView>.Success(
+                await BuildPostViewAsync(
+                    post,
+                    command.Actor,
+                    cancellationToken));
+        }
+        catch (OperationCanceledException)
+        {
+            await DeleteStoredMediaAsync(storedKeys, CancellationToken.None);
+            throw;
+        }
+        catch (DbUpdateException)
+        {
+            _db.ChangeTracker.Clear();
+            await DeleteStoredMediaAsync(storedKeys, CancellationToken.None);
+
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_media_persistence_failed",
+                "The media was uploaded, but the social post could not be saved.");
+        }
+    }
+
+    public async Task<SocialOperationResult<SocialMediaStream>> GetMediaAsync(
+        SocialFeedActor actor,
+        Guid mediaAssetId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(actor, cancellationToken))
+        {
+            return SocialOperationResult<SocialMediaStream>.Failure(
+                "social_actor_invalid",
+                "Your mobile identity is not available for Legend updates.");
+        }
+
+        if (mediaAssetId == Guid.Empty)
+        {
+            return SocialOperationResult<SocialMediaStream>.Failure(
+                "social_media_unavailable",
+                "This media is not available to your mobile identity.");
+        }
+
+        var media = await _db.SocialPostMediaAssets
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                item => item.Id == mediaAssetId,
+                cancellationToken);
+
+        if (media is null)
+        {
+            return SocialOperationResult<SocialMediaStream>.Failure(
+                "social_media_unavailable",
+                "This media is not available to your mobile identity.");
+        }
+
+        var visiblePost = await GetVisiblePostAsync(
+            actor,
+            media.SocialPostId,
+            cancellationToken);
+
+        if (visiblePost is null ||
+            !string.Equals(
+                media.ProcessingState,
+                "Ready",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return SocialOperationResult<SocialMediaStream>.Failure(
+                "social_media_unavailable",
+                "This media is not available to your mobile identity.");
+        }
+
+        var content = await _mediaStorage.OpenReadAsync(
+            media.StorageKey,
+            cancellationToken);
+
+        if (content is null)
+        {
+            return SocialOperationResult<SocialMediaStream>.Failure(
+                "social_media_unavailable",
+                "This media is not available to your mobile identity.");
+        }
+
+        return SocialOperationResult<SocialMediaStream>.Success(
+            new SocialMediaStream(
+                content,
+                media.MimeType));
     }
 
     public async Task<SocialOperationResult<SocialPostView>> ToggleReactionAsync(
@@ -280,6 +468,11 @@ public sealed class SocialFeedService : ISocialFeedService
             .AsNoTracking()
             .Where(reaction => postIds.Contains(reaction.SocialPostId))
             .ToListAsync(cancellationToken);
+        var mediaAssets = await _db.SocialPostMediaAssets
+            .AsNoTracking()
+            .Where(media => postIds.Contains(media.SocialPostId))
+            .OrderBy(media => media.DisplayOrder)
+            .ToListAsync(cancellationToken);
         var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
         var follows = await _db.SocialFollows
             .AsNoTracking()
@@ -318,6 +511,22 @@ public sealed class SocialFeedService : ISocialFeedService
                 follows.Any(follow =>
                     AuthorKey.From(follow.FollowedUserId, follow.FollowedParticipantType) ==
                     AuthorKey.From(post.AuthorUserId, post.AuthorParticipantType)),
+                mediaAssets
+                    .Where(media => media.SocialPostId == post.Id)
+                    .OrderBy(media => media.DisplayOrder)
+                    .Select(media => new SocialMediaAssetView(
+                        media.Id,
+                        media.DisplayOrder,
+                        media.MediaKind,
+                        media.MimeType,
+                        media.FileSizeBytes,
+                        media.Width,
+                        media.Height,
+                        media.AspectRatio,
+                        media.DurationSeconds,
+                        media.ProcessingState,
+                        media.AccessibilityText))
+                    .ToArray(),
                 postComments);
         }).ToArray();
     }
@@ -480,10 +689,34 @@ public sealed class SocialFeedService : ISocialFeedService
 
     private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;
 
+    private async Task DeleteStoredMediaAsync(
+        IEnumerable<string> storageKeys,
+        CancellationToken cancellationToken)
+    {
+        foreach (var storageKey in storageKeys.Distinct(StringComparer.Ordinal))
+        {
+            await _mediaStorage.DeleteAsync(storageKey, cancellationToken);
+        }
+    }
+
     private static string NormalizeBody(string? value, int maximumLength)
     {
         var normalized = (value ?? string.Empty).Trim();
         return normalized.Length > maximumLength ? string.Empty : normalized;
+    }
+
+    private static string? NormalizeOptionalText(
+        string? value,
+        int maximumLength)
+    {
+        var normalized = value?.Trim();
+
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        return normalized.Length <= maximumLength
+            ? normalized
+            : normalized[..maximumLength];
     }
 
     private static string FirstNonEmpty(params string?[] values) =>
