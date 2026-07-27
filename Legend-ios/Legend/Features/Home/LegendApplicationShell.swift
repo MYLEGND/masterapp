@@ -2346,102 +2346,706 @@ private struct LegendFinanceView: View {
     }
 }
 
+private enum LegendProfileContentFilter: String, CaseIterable, Identifiable {
+    case posts
+    case reels
+    case stories
+
+    var id: Self { self }
+
+    var symbolName: String {
+        switch self {
+        case .posts:
+            return "square.grid.3x3"
+        case .reels:
+            return "play.rectangle"
+        case .stories:
+            return "circle.dashed"
+        }
+    }
+
+    var accessibilityTitle: String {
+        switch self {
+        case .posts:
+            return "Posts"
+        case .reels:
+            return "Reels"
+        case .stories:
+            return "Stories"
+        }
+    }
+
+    var socialContentType: MobileSocialContentType {
+        switch self {
+        case .posts:
+            return .post
+        case .reels:
+            return .reel
+        case .stories:
+            return .story
+        }
+    }
+}
+
 private struct LegendAccountView: View {
     let currentSession: MobileSession
+
     @ObservedObject private var coordinator: MobileSessionCoordinator
     @StateObject private var account: MobileAccountStore
-    @State private var isEditing = false
+    @StateObject private var social: MobileSocialStore
 
-    init(currentSession: MobileSession, coordinator: MobileSessionCoordinator) {
+    @State private var selectedContent: LegendProfileContentFilter = .posts
+    @State private var isEditing = false
+    @State private var isShowingSettings = false
+    @State private var isConfirmingSignOut = false
+
+    private let profileColumns = [
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2),
+        GridItem(.flexible(), spacing: 2)
+    ]
+
+    init(
+        currentSession: MobileSession,
+        coordinator: MobileSessionCoordinator
+    ) {
         self.currentSession = currentSession
         _coordinator = ObservedObject(wrappedValue: coordinator)
-        _account = StateObject(wrappedValue: coordinator.makeAccountStore())
+        _account = StateObject(
+            wrappedValue: coordinator.makeAccountStore()
+        )
+        _social = StateObject(
+            wrappedValue: coordinator.makeSocialStore()
+        )
     }
 
     var body: some View {
         Group {
             switch account.state {
             case .idle, .loading:
-                LegendLoadingView("Loading your account…")
+                LegendLoadingView("Loading your profile…")
+
             case .loaded(let profile):
-                accountContent(profile)
+                profileContent(profile)
+
             case .unavailable(let failure):
-                LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: account.load)
-                    .padding(LegendNextSpacing.md)
+                LegendErrorCard(
+                    title: failure.title,
+                    message: failure.message,
+                    retryTitle: "Retry",
+                    retry: account.load
+                )
+                .padding(LegendNextSpacing.md)
             }
         }
         .background(LegendNextColor.canvas.ignoresSafeArea())
-        .navigationTitle("Account")
         .navigationBarTitleDisplayMode(.inline)
-        .task { if case .idle = account.state { account.load() } }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Profile")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isShowingSettings = true
+                } label: {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Open profile settings")
+            }
+        }
+        .task {
+            if case .idle = account.state {
+                account.load()
+            }
+
+            if case .idle = social.state {
+                social.load()
+            }
+        }
+        .refreshable {
+            account.load()
+            social.load()
+        }
         .sheet(isPresented: $isEditing) {
             if case .loaded(let profile) = account.state {
-                LegendAccountEditor(profile: profile, store: account)
+                LegendAccountEditor(
+                    profile: profile,
+                    store: account
+                )
             }
+        }
+        .sheet(isPresented: $isShowingSettings) {
+            profileSettingsSheet
+        }
+        .confirmationDialog(
+            "Sign out of Legend?",
+            isPresented: $isConfirmingSignOut,
+            titleVisibility: .visible
+        ) {
+            Button("Sign out", role: .destructive) {
+                coordinator.signOut()
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You will need to securely sign in again to access your account.")
         }
         .alert(
             account.actionFailure?.title ?? "Account update unavailable",
             isPresented: Binding(
                 get: { account.actionFailure != nil },
-                set: { if !$0 { account.dismissActionFailure() } }),
-            actions: { Button("OK", role: .cancel) { account.dismissActionFailure() } },
-            message: { Text(account.actionFailure?.message ?? "The account update could not be completed.") })
-    }
-
-    private func accountContent(_ profile: MobileAccountProfile) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
-                LegendNextSurface(style: .navy) {
-                    HStack(spacing: LegendNextSpacing.md) {
-                        LegendProfileAvatar(avatar: profile.avatar, displayName: profile.displayName, size: 64)
-                        VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                            Text(profile.displayName).font(LegendNextTypography.hero).foregroundStyle(.white).lineLimit(2)
-                            Text(profile.participantType.rawValue).font(.subheadline.weight(.semibold)).foregroundStyle(LegendNextColor.gold)
-                            Text("Secure mobile session").font(LegendNextTypography.supporting).foregroundStyle(.white.opacity(0.78))
-                        }
+                set: {
+                    if !$0 {
+                        account.dismissActionFailure()
                     }
                 }
-
-                LegendNextSurface {
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                        LegendNextSectionHeader(title: "Profile")
-                        accountDetail(title: "Email", value: profile.email ?? "Not available")
-                        accountDetail(title: "Phone", value: profile.phone ?? "Not set")
-                        if profile.participantType == .agent {
-                            accountDetail(title: "Title", value: profile.title ?? "Not set")
-                            if let shortBio = profile.shortBio, !shortBio.isEmpty {
-                                accountDetail(title: "Introduction", value: shortBio)
-                            }
-                        }
-                    }
+            ),
+            actions: {
+                Button("OK", role: .cancel) {
+                    account.dismissActionFailure()
                 }
-
-                Button("Edit account") { isEditing = true }
-                    .buttonStyle(LegendButtonStyle(kind: .primary))
-
-                LegendNextSurface {
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                        LegendNextSectionHeader(title: "Mobile security")
-                        Text("This app uses the configured secure sign-in provider and stores session tokens only in the iOS Keychain.")
-                            .font(LegendNextTypography.body)
-                            .foregroundStyle(LegendNextColor.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                Button("Sign out") { coordinator.signOut() }
-                    .buttonStyle(LegendButtonStyle(kind: .destructive))
+            },
+            message: {
+                Text(
+                    account.actionFailure?.message
+                    ?? "The account update could not be completed."
+                )
             }
-            .padding(.horizontal, LegendNextSpacing.md)
-            .padding(.vertical, LegendNextSpacing.sm)
+        )
+    }
+
+    private func profileContent(
+        _ profile: MobileAccountProfile
+    ) -> some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                profileIdentityHeader(profile)
+                    .padding(.horizontal, LegendNextSpacing.md)
+                    .padding(.top, LegendNextSpacing.sm)
+
+                profileBiography(profile)
+                    .padding(.horizontal, LegendNextSpacing.md)
+                    .padding(.top, LegendNextSpacing.sm)
+
+                profileActions
+                    .padding(.horizontal, LegendNextSpacing.md)
+                    .padding(.top, LegendNextSpacing.md)
+
+                profileContentSelector
+                    .padding(.top, LegendNextSpacing.md)
+
+                profileGrid(profile)
+            }
+            .padding(.bottom, 116)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func profileIdentityHeader(
+        _ profile: MobileAccountProfile
+    ) -> some View {
+        HStack(alignment: .center, spacing: LegendNextSpacing.lg) {
+            LegendProfileAvatar(
+                avatar: profile.avatar,
+                displayName: profile.displayName,
+                size: 92
+            )
+            .overlay(alignment: .bottomTrailing) {
+                Button {
+                    isEditing = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.caption.weight(.black))
+                        .foregroundStyle(LegendNextColor.navy)
+                        .frame(width: 26, height: 26)
+                        .background(LegendNextColor.gold, in: Circle())
+                        .overlay {
+                            Circle()
+                                .stroke(
+                                    LegendNextColor.canvas,
+                                    lineWidth: 3
+                                )
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit profile")
+            }
+
+            HStack(spacing: LegendNextSpacing.lg) {
+                profileMetric(
+                    value: profilePosts.count,
+                    title: "Posts"
+                )
+
+                profileMetric(
+                    value: profileReels.count,
+                    title: "Reels"
+                )
+
+                profileMetric(
+                    value: profileStories.count,
+                    title: "Stories"
+                )
+            }
+            .frame(maxWidth: .infinity)
         }
     }
 
-    private func accountDetail(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-            Text(title.uppercased()).font(.caption.weight(.bold)).foregroundStyle(LegendNextColor.textSecondary)
-            Text(value).font(LegendNextTypography.body).foregroundStyle(LegendNextColor.textPrimary).fixedSize(horizontal: false, vertical: true)
+    private func profileBiography(
+        _ profile: MobileAccountProfile
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: LegendNextSpacing.xs) {
+                Text(profile.displayName)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+
+                Text(profile.participantType.rawValue)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(LegendNextColor.navy)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        LegendNextColor.gold.opacity(0.22),
+                        in: Capsule()
+                    )
+            }
+
+            if let title = normalized(profile.title),
+               profile.participantType == .agent {
+                Text(title)
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            }
+
+            if let shortBio = normalized(profile.shortBio) {
+                Text(shortBio)
+                    .font(.subheadline)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let email = normalized(profile.email) {
+                Text(email)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.navy)
+                    .textSelection(.enabled)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var profileActions: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            Button {
+                isEditing = true
+            } label: {
+                Text("Edit profile")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(LegendProfileActionButtonStyle())
+
+            Button {
+                isShowingSettings = true
+            } label: {
+                Text("Profile settings")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(LegendProfileActionButtonStyle())
+        }
+    }
+
+    private var profileContentSelector: some View {
+        HStack(spacing: 0) {
+            ForEach(LegendProfileContentFilter.allCases) { filter in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        selectedContent = filter
+                    }
+                } label: {
+                    VStack(spacing: 10) {
+                        Image(systemName: filter.symbolName)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(
+                                selectedContent == filter
+                                ? LegendNextColor.textPrimary
+                                : LegendNextColor.textSecondary
+                            )
+
+                        Rectangle()
+                            .fill(
+                                selectedContent == filter
+                                ? LegendNextColor.navy
+                                : Color.clear
+                            )
+                            .frame(height: 1.5)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(filter.accessibilityTitle)
+                .accessibilityAddTraits(
+                    selectedContent == filter
+                    ? .isSelected
+                    : []
+                )
+            }
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(LegendNextColor.separator)
+                .frame(height: 0.5)
+        }
+    }
+
+    @ViewBuilder
+    private func profileGrid(
+        _ profile: MobileAccountProfile
+    ) -> some View {
+        switch social.state {
+        case .idle, .loading:
+            LazyVGrid(
+                columns: profileColumns,
+                spacing: 2
+            ) {
+                ForEach(0..<9, id: \.self) { _ in
+                    Rectangle()
+                        .fill(LegendNextColor.surfaceElevated)
+                        .aspectRatio(1, contentMode: .fit)
+                        .legendNextShimmer()
+                }
+            }
+
+        case .unavailable(let failure):
+            LegendErrorCard(
+                title: failure.title,
+                message: failure.message,
+                retryTitle: "Retry",
+                retry: social.load
+            )
+            .padding(LegendNextSpacing.md)
+
+        case .loaded:
+            let items = selectedProfileItems
+
+            if items.isEmpty {
+                profileEmptyState(profile)
+            } else {
+                LazyVGrid(
+                    columns: profileColumns,
+                    spacing: 2
+                ) {
+                    ForEach(items) { post in
+                        LegendProfileGridTile(post: post)
+                    }
+                }
+            }
+        }
+    }
+
+    private func profileEmptyState(
+        _ profile: MobileAccountProfile
+    ) -> some View {
+        VStack(spacing: LegendNextSpacing.sm) {
+            Image(systemName: selectedContent.symbolName)
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(LegendNextColor.navy)
+                .frame(width: 72, height: 72)
+                .overlay {
+                    Circle()
+                        .stroke(
+                            LegendNextColor.navy,
+                            lineWidth: 1.5
+                        )
+                }
+
+            Text(emptyTitle)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(LegendNextColor.textPrimary)
+
+            Text(emptyMessage(profile))
+                .font(LegendNextTypography.supporting)
+                .foregroundStyle(LegendNextColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 290)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 54)
+        .padding(.horizontal, LegendNextSpacing.lg)
+    }
+
+    private var profileSettingsSheet: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button {
+                        isShowingSettings = false
+                        isEditing = true
+                    } label: {
+                        Label(
+                            "Edit profile",
+                            systemImage: "person.crop.circle"
+                        )
+                    }
+
+                    Button {
+                        account.load()
+                        social.load()
+                        isShowingSettings = false
+                    } label: {
+                        Label(
+                            "Refresh profile",
+                            systemImage: "arrow.clockwise"
+                        )
+                    }
+                } header: {
+                    Text("Profile")
+                }
+
+                Section {
+                    HStack {
+                        Label(
+                            "Secure session",
+                            systemImage: "lock.shield"
+                        )
+
+                        Spacer()
+
+                        Text("Protected")
+                            .foregroundStyle(
+                                LegendNextColor.textSecondary
+                            )
+                    }
+
+                    HStack {
+                        Label(
+                            "Token storage",
+                            systemImage: "key"
+                        )
+
+                        Spacer()
+
+                        Text("iOS Keychain")
+                            .foregroundStyle(
+                                LegendNextColor.textSecondary
+                            )
+                    }
+                } header: {
+                    Text("Security")
+                }
+
+                Section {
+                    Button(role: .destructive) {
+                        isShowingSettings = false
+                        isConfirmingSignOut = true
+                    } label: {
+                        Label(
+                            "Sign out",
+                            systemImage: "rectangle.portrait.and.arrow.right"
+                        )
+                    }
+                }
+            }
+            .navigationTitle("Profile settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        isShowingSettings = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var selectedProfileItems: [MobileSocialPost] {
+        switch selectedContent {
+        case .posts:
+            return profilePosts
+        case .reels:
+            return profileReels
+        case .stories:
+            return profileStories
+        }
+    }
+
+    private var allProfileSocialItems: [MobileSocialPost] {
+        guard case .loaded(let snapshot) = social.state else {
+            return []
+        }
+
+        let identity = currentSession.actor.identity
+
+        return (snapshot.posts + snapshot.stories)
+            .filter { $0.author.identity == identity }
+            .reduce(into: [UUID: MobileSocialPost]()) {
+                result,
+                post in
+
+                result[post.id] = post
+            }
+            .values
+            .sorted { $0.postedUTC > $1.postedUTC }
+    }
+
+    private var profilePosts: [MobileSocialPost] {
+        profileItems(for: .post)
+    }
+
+    private var profileReels: [MobileSocialPost] {
+        profileItems(for: .reel)
+    }
+
+    private var profileStories: [MobileSocialPost] {
+        profileItems(for: .story)
+    }
+
+    private func profileItems(
+        for type: MobileSocialContentType
+    ) -> [MobileSocialPost] {
+        allProfileSocialItems.filter {
+            $0.contentType == type.rawValue
+        }
+    }
+
+    private func profileMetric(
+        value: Int,
+        title: String
+    ) -> some View {
+        VStack(spacing: 2) {
+            Text(value.formatted())
+                .font(.headline.weight(.bold))
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .contentTransition(.numericText())
+
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(LegendNextColor.textPrimary)
+        }
+        .frame(minWidth: 54)
+    }
+
+    private var emptyTitle: String {
+        switch selectedContent {
+        case .posts:
+            return "No posts yet"
+        case .reels:
+            return "No reels yet"
+        case .stories:
+            return "No active stories"
+        }
+    }
+
+    private func emptyMessage(
+        _ profile: MobileAccountProfile
+    ) -> String {
+        switch selectedContent {
+        case .posts:
+            return "\(profile.displayName)’s shared posts will appear here."
+        case .reels:
+            return "\(profile.displayName)’s published reels will appear here."
+        case .stories:
+            return "Active stories remain visible here until they expire."
+        }
+    }
+
+    private func normalized(
+        _ value: String?
+    ) -> String? {
+        guard let normalized = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalized.isEmpty else {
+            return nil
+        }
+
+        return normalized
+    }
+}
+
+private struct LegendProfileActionButtonStyle: ButtonStyle {
+    func makeBody(
+        configuration: Configuration
+    ) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(LegendNextColor.textPrimary)
+            .padding(.horizontal, LegendNextSpacing.sm)
+            .frame(height: 36)
+            .background(
+                LegendNextColor.surfaceElevated.opacity(
+                    configuration.isPressed ? 0.65 : 1
+                ),
+                in: RoundedRectangle(
+                    cornerRadius: 8,
+                    style: .continuous
+                )
+            )
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: 8,
+                    style: .continuous
+                )
+                .stroke(
+                    LegendNextColor.separator,
+                    lineWidth: 0.75
+                )
+            }
+    }
+}
+
+private struct LegendProfileGridTile: View {
+    let post: MobileSocialPost
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    LegendNextColor.navy,
+                    LegendNextColor.navy.opacity(0.78)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Text(post.body)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .lineLimit(5)
+                .padding(10)
+
+            if post.contentType == MobileSocialContentType.reel.rawValue {
+                Image(systemName: "play.rectangle.fill")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+
+            if post.contentType == MobileSocialContentType.story.rawValue {
+                Image(systemName: "circle.dashed")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.gold)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .clipped()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(post.contentType) by \(post.author.displayName): \(post.body)"
+        )
     }
 }
 

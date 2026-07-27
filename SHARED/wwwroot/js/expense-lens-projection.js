@@ -873,6 +873,240 @@
         return compareMonthKeys(monthContext.monthKey, currentMonthKey) < 0 ? "historical" : "future";
     };
 
+    const buildMobileWeekSnapshot = (projection, asOfValue = new Date()) => {
+        if (!projection || typeof projection !== "object") return null;
+
+        const asOfDate = todayDate(asOfValue);
+        const currentMonthKey = formatMonthKey(asOfDate);
+        const month = Array.isArray(projection.months)
+            ? projection.months.find((candidate) => candidate?.monthKey === currentMonthKey)
+            : null;
+
+        if (!month || !Array.isArray(month.weeks)) return null;
+
+        const week = month.weeks.find((candidate) => {
+            const startDate = candidate?.startDate instanceof Date
+                ? candidate.startDate
+                : parseDate(candidate?.startDate || candidate?.startDateKey);
+            const endDate = candidate?.endDate instanceof Date
+                ? candidate.endDate
+                : parseDate(candidate?.endDate || candidate?.endDateKey);
+
+            if (!startDate || !endDate) return false;
+
+            startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(23, 59, 59, 999);
+
+            return asOfDate >= startDate && asOfDate <= endDate;
+        }) || null;
+
+        if (!week) return null;
+
+        const normalizeEvent = (eventItem) => ({
+            key: String(eventItem?.key || ""),
+            kind: String(eventItem?.kind || ""),
+            label: String(eventItem?.label || ""),
+            dateKey: String(
+                eventItem?.dateKey ||
+                formatDateKey(eventItem?.date) ||
+                ""
+            ),
+            status: String(eventItem?.status || "projected"),
+            amountCents: Math.round(Number(eventItem?.amountCents) || 0),
+            impactCashCents: Math.round(Number(eventItem?.impactCashCents) || 0),
+            cashAfterCents: Math.round(Number(eventItem?.cashAfterCents) || 0),
+            debtAfterCents: Math.round(Number(eventItem?.debtAfterCents) || 0),
+            paymentMethod: String(eventItem?.paymentMethod || ""),
+            debtCategory: String(eventItem?.debtCategory || "")
+        });
+
+        return {
+            schemaVersion: 1,
+            generatedUtc: new Date().toISOString(),
+            sourceStateVersion: Math.round(
+                Number(projection.stateVersion) || CURRENT_VERSION
+            ),
+            monthKey: String(month.monthKey || currentMonthKey),
+            monthLabel: String(month.label || ""),
+            weekId: String(week.id || ""),
+            weekLabel: String(week.label || ""),
+            startDate: formatDateKey(week.startDate),
+            endDate: formatDateKey(week.endDate),
+            status: String(week.status || "current"),
+            openingCashCents: Math.round(Number(week.openingCashCents) || 0),
+            incomeCents: Math.round(Number(week.incomeCents) || 0),
+            debitBillsCents: Math.round(Number(week.debitBillsCents) || 0),
+            creditBillsCents: Math.round(Number(week.creditBillsCents) || 0),
+            requiredExpensesCents: Math.round(
+                Number(week.requiredExpensesCents) || 0
+            ),
+            requiredDebtMinimumCents: Math.round(
+                Number(week.requiredDebtMinimumCents) || 0
+            ),
+            extraDebtPaymentCents: Math.round(
+                Number(week.extraDebtPaymentCents) || 0
+            ),
+            closingCashCents: Math.round(Number(week.closingCashCents) || 0),
+            openingDebtCents: Math.round(Number(week.openingDebtCents) || 0),
+            closingDebtCents: Math.round(Number(week.closingDebtCents) || 0),
+            events: Array.isArray(week.events)
+                ? week.events.map(normalizeEvent)
+                : []
+        };
+    };
+
+    const buildMobileMonthSnapshot = (projection, asOfValue = new Date()) => {
+        if (!projection || typeof projection !== "object") return null;
+
+        const asOfDate = todayDate(asOfValue);
+        const currentMonthKey = formatMonthKey(asOfDate);
+        const month = Array.isArray(projection.months)
+            ? projection.months.find(
+                (candidate) => candidate?.monthKey === currentMonthKey
+            )
+            : null;
+
+        if (!month || !Array.isArray(month.weeks)) return null;
+
+        const monthContext = getMonthContext(
+            String(month.monthKey || currentMonthKey)
+        );
+
+        const normalizeWeek = (week) => {
+            const debitBillsCents = Math.round(
+                Number(week?.debitBillsCents) || 0
+            );
+            const creditBillsCents = Math.round(
+                Number(week?.creditBillsCents) || 0
+            );
+            const extraDebtPaymentCents = Math.round(
+                Number(week?.extraDebtPaymentCents) || 0
+            );
+
+            return {
+                weekId: String(week?.id || ""),
+                weekLabel: String(week?.label || ""),
+                startDate: formatDateKey(week?.startDate),
+                endDate: formatDateKey(week?.endDate),
+                status: String(week?.status || "current"),
+                incomeCents: Math.round(
+                    Number(week?.incomeCents) || 0
+                ),
+                debitBillsCents,
+                creditBillsCents,
+                requiredDebtMinimumCents: Math.round(
+                    Number(week?.requiredDebtMinimumCents) || 0
+                ),
+                extraDebtPaymentCents,
+                outflowCents:
+                    debitBillsCents +
+                    creditBillsCents +
+                    extraDebtPaymentCents,
+                closingCashCents: Math.round(
+                    Number(week?.closingCashCents) || 0
+                ),
+                closingDebtCents: Math.round(
+                    Number(week?.closingDebtCents) || 0
+                )
+            };
+        };
+
+        const normalizedWeeks = month.weeks.map(normalizeWeek);
+
+        const allEvents = month.weeks.flatMap((week) =>
+            Array.isArray(week?.events) ? week.events : []
+        );
+
+        const obligationEvents = allEvents
+            .filter((eventItem) =>
+                Math.round(Number(eventItem?.amountCents) || 0) > 0 &&
+                Math.round(Number(eventItem?.impactCashCents) || 0) < 0
+            )
+            .sort((left, right) =>
+                Math.round(Number(right?.amountCents) || 0) -
+                Math.round(Number(left?.amountCents) || 0)
+            );
+
+        const largestEvent = obligationEvents[0] || null;
+
+        const warnings = Array.isArray(month.warnings)
+            ? month.warnings
+                .map((warning) => String(warning || "").trim())
+                .filter(Boolean)
+            : [];
+
+        return {
+            schemaVersion: 1,
+            generatedUtc: new Date().toISOString(),
+            sourceStateVersion: Math.round(
+                Number(projection.stateVersion) || CURRENT_VERSION
+            ),
+            monthKey: String(month.monthKey || currentMonthKey),
+            monthLabel: String(month.label || ""),
+            startDate: formatDateKey(monthContext.startDate),
+            endDate: formatDateKey(monthContext.endDate),
+            temporalStatus: String(
+                month.temporalStatus ||
+                getMonthTemporalStatus(monthContext, asOfDate)
+            ),
+            status: String(month.status || "current"),
+            pressureSummary:
+                warnings.length > 0
+                    ? warnings.join(" ")
+                    : null,
+            openingCashCents: Math.round(
+                Number(month.openingCashCents) || 0
+            ),
+            incomeCents: Math.round(
+                Number(month.scheduledIncomeCents) || 0
+            ),
+            debitBillsCents: normalizedWeeks.reduce(
+                (total, week) => total + week.debitBillsCents,
+                0
+            ),
+            creditBillsCents: normalizedWeeks.reduce(
+                (total, week) => total + week.creditBillsCents,
+                0
+            ),
+            requiredExpensesCents: Math.round(
+                Number(month.requiredExpensesCents) || 0
+            ),
+            requiredDebtMinimumCents: Math.round(
+                Number(month.requiredDebtMinimumCents) || 0
+            ),
+            extraDebtPaymentCents: Math.round(
+                Number(month.extraDebtPaymentsCents) || 0
+            ),
+            endingCashCents: Math.round(
+                Number(month.endingCashCents) || 0
+            ),
+            openingDebtCents: Math.round(
+                Number(month.openingDebtCents) || 0
+            ),
+            endingDebtCents: Math.round(
+                Number(month.endingDebtCents) || 0
+            ),
+            savingsContributionCents: null,
+            savingsProjectionStatus: "not-projected-by-expense-lens",
+            largestObligation: largestEvent
+                ? {
+                    key: String(largestEvent.key || ""),
+                    title: String(largestEvent.label || ""),
+                    dateKey: String(
+                        largestEvent.dateKey ||
+                        formatDateKey(largestEvent.date) ||
+                        ""
+                    ),
+                    amountCents: Math.round(
+                        Number(largestEvent.amountCents) || 0
+                    ),
+                    kind: String(largestEvent.kind || "")
+                }
+                : null,
+            weeks: normalizedWeeks
+        };
+    };
+
     const projectExpenseLensTimeline = (input = {}) => {
         const state = normalizeState(input.state || {});
         const today = todayDate(input.asOfDate || new Date());
@@ -1230,6 +1464,8 @@
         normalizeState,
         summarizeIncomeGroups,
         summarizeExpenseCategories,
+        buildMobileWeekSnapshot,
+        buildMobileMonthSnapshot,
         projectExpenseLensTimeline
     };
 });

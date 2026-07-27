@@ -8265,6 +8265,22 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 projectionSettings: cloneProjectionSettings(projectionSettingsState),
                 monthlyStartingBalanceOverrides: { ...monthBalanceOverrides },
                 occurrenceHistory: cloneOccurrenceHistory(occurrenceHistoryState),
+                mobileWeekProjection:
+                    !isBusinessExpenseLens &&
+                    expenseLensProjectionApi?.buildMobileWeekSnapshot
+                        ? expenseLensProjectionApi.buildMobileWeekSnapshot(
+                            latestExpenseLensProjection,
+                            new Date()
+                        )
+                        : undefined,
+                mobileMonthProjection:
+                    !isBusinessExpenseLens &&
+                    expenseLensProjectionApi?.buildMobileMonthSnapshot
+                        ? expenseLensProjectionApi.buildMobileMonthSnapshot(
+                            latestExpenseLensProjection,
+                            new Date()
+                        )
+                        : undefined,
                 ...extraState
             };
         };
