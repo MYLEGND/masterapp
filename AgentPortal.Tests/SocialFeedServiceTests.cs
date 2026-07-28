@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -150,7 +151,81 @@ public sealed class SocialFeedServiceTests
         Assert.Empty(result.Value!.Stories);
     }
 
-    private static SocialFeedService CreateService(Infrastructure.Data.MasterAppDbContext db)
+    [Fact]
+    public async Task ImagePost_IsStoredAndReadThroughTheAuthorizedMediaPath()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("media-client", "Media", "Client");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var storage = new InMemoryTestSocialMediaStorage();
+        var service = CreateService(db, storage);
+        var content = new byte[] { 1, 2, 3, 4 };
+
+        await using var uploadStream = new MemoryStream(content);
+        var created = await service.CreateMediaPostAsync(
+            new CreateSocialMediaPostCommand(
+                ClientActor(client),
+                SocialPostContentTypes.Post,
+                "A secure image update",
+                [new SocialMediaUpload(
+                    "legend-photo.jpg",
+                    content.Length,
+                    uploadStream,
+                    "A Legend client profile image")]));
+
+        Assert.True(created.Succeeded);
+        var media = Assert.Single(created.Value!.Media);
+        Assert.Equal("Image", media.MediaKind);
+        Assert.Equal("image/jpeg", media.MimeType);
+        Assert.Equal("A Legend client profile image", media.AccessibilityText);
+
+        var retrieved = await service.GetMediaAsync(
+            ClientActor(client),
+            media.Id);
+
+        Assert.True(retrieved.Succeeded);
+        await using var received = retrieved.Value!.Content;
+        using var buffer = new MemoryStream();
+        await received.CopyToAsync(buffer);
+        Assert.Equal(content, buffer.ToArray());
+        Assert.Equal("image/jpeg", retrieved.Value.MimeType);
+    }
+
+    [Fact]
+    public async Task MediaRead_RejectsAClientWhoCannotSeeThePost()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var author = Client("media-author", "Media", "Author");
+        var unrelatedClient = Client("media-unrelated", "Unrelated", "Client");
+        db.ClientProfiles.AddRange(author, unrelatedClient);
+        await db.SaveChangesAsync();
+
+        var storage = new InMemoryTestSocialMediaStorage();
+        var service = CreateService(db, storage);
+        await using var uploadStream = new MemoryStream([5, 6, 7, 8]);
+        var created = await service.CreateMediaPostAsync(
+            new CreateSocialMediaPostCommand(
+                ClientActor(author),
+                SocialPostContentTypes.Post,
+                "A private image update",
+                [new SocialMediaUpload("private.jpg", 4, uploadStream, null)]));
+
+        Assert.True(created.Succeeded);
+        var mediaId = Assert.Single(created.Value!.Media).Id;
+
+        var retrieved = await service.GetMediaAsync(
+            ClientActor(unrelatedClient),
+            mediaId);
+
+        Assert.False(retrieved.Succeeded);
+        Assert.Equal("social_media_unavailable", retrieved.ErrorCode);
+    }
+
+    private static SocialFeedService CreateService(
+        Infrastructure.Data.MasterAppDbContext db,
+        ISocialMediaStorage? mediaStorage = null)
     {
         var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
         var journeys = new JourneyCirclesService(db, moderation, NullLogger<JourneyCirclesService>.Instance);
@@ -159,7 +234,7 @@ public sealed class SocialFeedServiceTests
         return new SocialFeedService(
             db,
             messaging,
-            new UnavailableTestSocialMediaStorage());
+            mediaStorage ?? new UnavailableTestSocialMediaStorage());
     }
 
     private sealed class UnavailableTestSocialMediaStorage
@@ -184,6 +259,51 @@ public sealed class SocialFeedServiceTests
             string storageKey,
             CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+    }
+
+    private sealed class InMemoryTestSocialMediaStorage
+        : ISocialMediaStorage
+    {
+        private readonly Dictionary<string, byte[]> _content = [];
+
+        public async Task<SocialMediaStorageResult> StoreAsync(
+            Guid mediaAssetId,
+            string originalFileName,
+            long declaredSizeBytes,
+            Stream content,
+            CancellationToken cancellationToken = default)
+        {
+            using var buffer = new MemoryStream();
+            await content.CopyToAsync(buffer, cancellationToken);
+            var bytes = buffer.ToArray();
+            var storageKey = $"test/{mediaAssetId:N}.jpg";
+            _content[storageKey] = bytes;
+
+            return SocialMediaStorageResult.Success(
+                new SocialStoredMedia(
+                    originalFileName,
+                    $"{mediaAssetId:N}.jpg",
+                    "Image",
+                    "image/jpeg",
+                    bytes.Length,
+                    storageKey));
+        }
+
+        public Task<Stream?> OpenReadAsync(
+            string storageKey,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<Stream?>(
+                _content.TryGetValue(storageKey, out var bytes)
+                    ? new MemoryStream(bytes, writable: false)
+                    : null);
+
+        public Task DeleteAsync(
+            string storageKey,
+            CancellationToken cancellationToken = default)
+        {
+            _content.Remove(storageKey);
+            return Task.CompletedTask;
+        }
     }
 
     private static ClientProfile Client(string userId, string firstName, string lastName) => new()

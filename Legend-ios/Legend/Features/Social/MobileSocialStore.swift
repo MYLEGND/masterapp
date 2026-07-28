@@ -7,8 +7,10 @@ protocol MobileSocialAPI: Sendable {
     func createMediaPost(
         body: String,
         files: [MultipartFormFile],
+        accessibilityText: String?,
         accessToken: String
     ) async throws -> MobileSocialPost
+    func mediaData(assetID: UUID, accessToken: String) async throws -> Data
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult
@@ -20,8 +22,12 @@ struct MobileUnavailableSocialAPI: MobileSocialAPI {
     func createMediaPost(
         body: String,
         files: [MultipartFormFile],
+        accessibilityText: String?,
         accessToken: String
     ) async throws -> MobileSocialPost {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+    func mediaData(assetID: UUID, accessToken: String) async throws -> Data {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
 
@@ -49,6 +55,7 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
     func createMediaPost(
         body: String,
         files: [MultipartFormFile],
+        accessibilityText: String?,
         accessToken: String
     ) async throws -> MobileSocialPost {
 
@@ -56,11 +63,20 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
             "/api/v1/mobile/social/posts/media",
             accessToken: accessToken,
             fields: [
-                "body": body
+                "body": body,
+                "accessibilityText": accessibilityText ?? ""
             ],
             files: files,
             headers: participantHeader,
             response: MobileSocialPost.self
+        )
+    }
+
+    func mediaData(assetID: UUID, accessToken: String) async throws -> Data {
+        try await client.getData(
+            "/api/v1/mobile/social/media/\(assetID.uuidString)",
+            accessToken: accessToken,
+            headers: participantHeader
         )
     }
 
@@ -88,6 +104,7 @@ final class MobileSocialStore: ObservableObject {
     private let api: any MobileSocialAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
+    private var mediaCache: [UUID: Data] = [:]
 
     init(
         api: any MobileSocialAPI,
@@ -120,15 +137,41 @@ final class MobileSocialStore: ObservableObject {
 
     func createMediaPost(
         body: String,
-        files: [MultipartFormFile]
+        files: [MultipartFormFile],
+        accessibilityText: String?
     ) {
         perform(title: "Could not share your update") { token in
             let post = try await self.api.createMediaPost(
                 body: body,
                 files: files,
+                accessibilityText: accessibilityText,
                 accessToken: token
             )
             self.insert(post)
+        }
+    }
+
+    func mediaData(for assetID: UUID) async -> Data? {
+        if let cached = mediaCache[assetID] {
+            return cached
+        }
+
+        do {
+            let token = try await accessTokenProvider()
+            let data = try await api.mediaData(
+                assetID: assetID,
+                accessToken: token
+            )
+            mediaCache[assetID] = data
+            return data
+        } catch {
+            let apiError = error as? MobileAPIError
+            diagnostics.record(
+                category: .networking,
+                summary: "A protected social image could not be loaded.",
+                correlationID: apiError?.correlationID
+            )
+            return nil
         }
     }
 
@@ -209,6 +252,7 @@ final class MobileSocialStore: ObservableObject {
                 commentCount: post.commentCount + 1,
                 reactedByCurrentActor: post.reactedByCurrentActor,
                 followedByCurrentActor: post.followedByCurrentActor,
+                media: post.media,
                 comments: Array((post.comments + [comment]).suffix(4)))
         }
         state = .loaded(MobileSocialSnapshot(
@@ -233,6 +277,7 @@ final class MobileSocialStore: ObservableObject {
                 commentCount: post.commentCount,
                 reactedByCurrentActor: post.reactedByCurrentActor,
                 followedByCurrentActor: isFollowing,
+                media: post.media,
                 comments: post.comments)
         }
         state = .loaded(MobileSocialSnapshot(

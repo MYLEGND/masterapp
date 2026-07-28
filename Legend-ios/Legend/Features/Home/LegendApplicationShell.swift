@@ -4142,15 +4142,25 @@ private struct LegendAccountView: View {
         "Every Move you share becomes part of your journey."
     }
 
-    private func shareMove() {
+    private func shareMove(
+        attachment: LegendSocialImageAttachment?
+    ) {
         let body = composerBody.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
-        guard !body.isEmpty else {
+        guard !body.isEmpty || attachment != nil else {
             return
         }
 
-        social.createPost(type: composerType, body: body)
+        if let attachment {
+            social.createMediaPost(
+                body: body,
+                files: [attachment.file],
+                accessibilityText: attachment.accessibilityText
+            )
+        } else {
+            social.createPost(type: composerType, body: body)
+        }
         isPresentingComposer = false
         clearComposer()
     }

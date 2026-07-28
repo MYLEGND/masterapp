@@ -43,12 +43,31 @@ struct MobileSocialPost: Codable, Equatable, Identifiable, Sendable {
     let commentCount: Int
     let reactedByCurrentActor: Bool
     let followedByCurrentActor: Bool
+    let media: [MobileSocialMedia]
     let comments: [MobileSocialComment]
 
     private enum CodingKeys: String, CodingKey {
-        case id, author, contentType, body, reactionCount, commentCount, reactedByCurrentActor, followedByCurrentActor, comments
+        case id, author, contentType, body, reactionCount, commentCount, reactedByCurrentActor, followedByCurrentActor, media, comments
         case postedUTC = "postedUtc"
         case expiresUTC = "expiresUtc"
+    }
+}
+
+struct MobileSocialMedia: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let displayOrder: Int
+    let mediaKind: String
+    let mimeType: String
+    let fileSizeBytes: Int64
+    let width: Int?
+    let height: Int?
+    let aspectRatio: Decimal?
+    let durationSeconds: Decimal?
+    let processingState: String
+    let accessibilityText: String?
+
+    var isImage: Bool {
+        mediaKind.caseInsensitiveCompare("Image") == .orderedSame
     }
 }
 
@@ -99,6 +118,11 @@ struct MobileCreateSocialPost: Codable, Sendable {
 
 struct MobileCreateSocialComment: Codable, Sendable {
     let body: String
+}
+
+struct LegendSocialImageAttachment: Sendable {
+    let file: MultipartFormFile
+    let accessibilityText: String?
 }
 
 struct MobileToggleSocialFollow: Codable, Sendable {

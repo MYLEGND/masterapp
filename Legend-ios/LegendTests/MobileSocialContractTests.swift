@@ -24,6 +24,19 @@ final class MobileSocialContractTests: XCTestCase {
               "commentCount": 0,
               "reactedByCurrentActor": false,
               "followedByCurrentActor": false,
+              "media": [{
+                "id": "00000000-0000-0000-0000-000000000111",
+                "displayOrder": 0,
+                "mediaKind": "Image",
+                "mimeType": "image/png",
+                "fileSizeBytes": 12,
+                "width": 1,
+                "height": 1,
+                "aspectRatio": 1.0,
+                "durationSeconds": null,
+                "processingState": "Ready",
+                "accessibilityText": "A secure Legend image"
+              }],
               "comments": []
             },
             {
@@ -42,6 +55,7 @@ final class MobileSocialContractTests: XCTestCase {
               "commentCount": 0,
               "reactedByCurrentActor": true,
               "followedByCurrentActor": true,
+              "media": [],
               "comments": []
             }
           ],
@@ -62,6 +76,8 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertEqual(client.author.profileID, "00000000-0000-0000-0000-000000000002")
         XCTAssertEqual(agent.author.avatar?.imageData, Data("agent".utf8))
         XCTAssertEqual(client.author.avatar?.imageData, Data("client".utf8))
+        XCTAssertTrue(agent.media.first?.isImage ?? false)
+        XCTAssertEqual(agent.media.first?.accessibilityText, "A secure Legend image")
         XCTAssertTrue(client.followedByCurrentActor)
     }
 
@@ -82,6 +98,7 @@ final class MobileSocialContractTests: XCTestCase {
             commentCount: 0,
             reactedByCurrentActor: false,
             followedByCurrentActor: false,
+            media: [],
             comments: [])
         let store = MobileSocialStore(
             api: StubSocialAPI(post: post),
@@ -108,6 +125,8 @@ private struct StubSocialAPI: MobileSocialAPI {
     }
 
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost { post }
+    func createMediaPost(body: String, files: [MultipartFormFile], accessibilityText: String?, accessToken: String) async throws -> MobileSocialPost { post }
+    func mediaData(assetID: UUID, accessToken: String) async throws -> Data { Data() }
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost { post }
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment {
         MobileSocialComment(id: UUID(), author: post.author, body: request.body, createdUTC: .now)

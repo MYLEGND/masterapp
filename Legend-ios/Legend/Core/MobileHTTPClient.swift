@@ -40,6 +40,20 @@ struct MobileHTTPClient: Sendable {
         return try await perform(request, response: response)
     }
 
+    func getData(
+        _ path: String,
+        accessToken: String,
+        headers: [String: String] = [:]
+    ) async throws -> Data {
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("image/*", forHTTPHeaderField: "Accept")
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        let (data, _) = try await successfulData(for: request)
+        return data
+    }
+
     func post<Body: Encodable, Response: Decodable>(
         _ path: String,
         body: Body,
@@ -157,27 +171,38 @@ struct MobileHTTPClient: Sendable {
     }
 
     private func perform<Response: Decodable>(_ request: URLRequest, response: Response.Type) async throws -> Response {
-        let hasAuthorizationHeader = request.value(forHTTPHeaderField: "Authorization") != nil
-        MobileDebugDiagnostics.record("Mobile API request started. Authorization header present: \(hasAuthorizationHeader).")
-let (data, urlResponse) = try await requestData(for: request)
-
-#if DEBUG
-if let http = urlResponse as? HTTPURLResponse {
-    print("========== MOBILE API ==========")
-    print("\(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "")")
-    print("HTTP \(http.statusCode)")
-
-    if let body = String(data: data, encoding: .utf8), !body.isEmpty {
-        print(body)
+        let (data, correlationID) = try await successfulData(for: request)
+        do {
+            return try JSONDecoder.mobile.decode(Response.self, from: data)
+        } catch {
+            throw MobileAPIError.decodingFailed(correlationID: correlationID)
+        }
     }
 
-    print("================================")
-}
+    private func successfulData(
+        for request: URLRequest
+    ) async throws -> (Data, String?) {
+        let hasAuthorizationHeader = request.value(forHTTPHeaderField: "Authorization") != nil
+        MobileDebugDiagnostics.record("Mobile API request started. Authorization header present: \(hasAuthorizationHeader).")
+        let (data, urlResponse) = try await requestData(for: request)
+
+#if DEBUG
+        if let http = urlResponse as? HTTPURLResponse {
+            print("========== MOBILE API ==========")
+            print("\(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "")")
+            print("HTTP \(http.statusCode)")
+
+            if let body = String(data: data, encoding: .utf8), !body.isEmpty {
+                print(body)
+            }
+
+            print("================================")
+        }
 #endif
 
-guard let http = urlResponse as? HTTPURLResponse else {
-    throw MobileAPIError.invalidServerResponse
-}
+        guard let http = urlResponse as? HTTPURLResponse else {
+            throw MobileAPIError.invalidServerResponse
+        }
 
         let correlationID = http.value(forHTTPHeaderField: "X-Correlation-ID")
         let problem = MobileAPIProblem.decode(from: data, fallbackCorrelationID: correlationID)
@@ -186,11 +211,7 @@ guard let http = urlResponse as? HTTPURLResponse else {
             correlationID: problem.correlationID)
         switch http.statusCode {
         case 200 ... 299:
-            do {
-                return try JSONDecoder.mobile.decode(Response.self, from: data)
-            } catch {
-                throw MobileAPIError.decodingFailed(correlationID: correlationID)
-            }
+            return (data, correlationID)
         case 401:
             throw MobileAPIError.apiUnauthorized(code: problem.code, correlationID: problem.correlationID)
         case 403:
@@ -203,25 +224,7 @@ guard let http = urlResponse as? HTTPURLResponse else {
     }
 
     private func performEmpty(_ request: URLRequest) async throws {
-        let (data, urlResponse) = try await requestData(for: request)
-        guard let http = urlResponse as? HTTPURLResponse else {
-            throw MobileAPIError.invalidServerResponse
-        }
-        let correlationID = http.value(forHTTPHeaderField: "X-Correlation-ID")
-        let problem = MobileAPIProblem.decode(from: data, fallbackCorrelationID: correlationID)
-        MobileDebugDiagnostics.record("Mobile API response status \(http.statusCode).", correlationID: problem.correlationID)
-        switch http.statusCode {
-        case 200 ... 299:
-            return
-        case 401:
-            throw MobileAPIError.apiUnauthorized(code: problem.code, correlationID: problem.correlationID)
-        case 403:
-            throw MobileAPIError.apiForbidden(code: problem.code, correlationID: problem.correlationID)
-        case 409:
-            throw MobileAPIError.apiConflict(code: problem.code, correlationID: problem.correlationID)
-        default:
-            throw MobileAPIError.server(statusCode: http.statusCode, correlationID: problem.correlationID)
-        }
+        _ = try await successfulData(for: request)
     }
 
     private func requestData(for request: URLRequest) async throws -> (Data, URLResponse) {

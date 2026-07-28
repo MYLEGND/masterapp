@@ -1,4 +1,3 @@
-import UIKit
 import UserNotifications
 
 /// The app-icon badge is always derived from the protected mobile messaging
@@ -11,7 +10,6 @@ enum NativeUnreadBadge {
 
     static func update(with unreadCount: Int) {
         let count = max(0, unreadCount)
-        UIApplication.shared.applicationIconBadgeNumber = count
         Task {
             try? await UNUserNotificationCenter.current().setBadgeCount(count)
         }

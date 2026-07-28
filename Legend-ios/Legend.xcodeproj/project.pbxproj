@@ -89,7 +89,7 @@
 		5528EEB1AE65FCB262CDEB12 /* MessagingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingStore.swift; sourceTree = "<group>"; };
 		55FB2460CFBD95299E4F7590 /* MobileConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileConfiguration.swift; sourceTree = "<group>"; };
 		5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialModels.swift; sourceTree = "<group>"; };
-		62C14045B2834CC0689DBE37 /* LegendUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LegendUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		62C14045B2834CC0689DBE37 /* LegendUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LegendUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialContractTests.swift; sourceTree = "<group>"; };
 		72C9D00CE99AA225824D8CEC /* LegendNextTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextTheme.swift; sourceTree = "<group>"; };
 		78035FC866AB942A4F9F45F0 /* LegendNextButtons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextButtons.swift; sourceTree = "<group>"; };
@@ -107,8 +107,8 @@
 		B3449DC74CA91AA0CDAAC840 /* LegendDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiagnosticsTests.swift; sourceTree = "<group>"; };
 		CB26E12CD661DE7C441F7218 /* LogicalParticipantIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicalParticipantIdentity.swift; sourceTree = "<group>"; };
 		D4B6F16BA0A01123E7CABB7F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		D62E96A9291858D31BE2BE3A /* LegendTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LegendTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		D7D88FC1403F3F593CF31A82 /* Legend.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Legend.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D62E96A9291858D31BE2BE3A /* LegendTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LegendTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D7D88FC1403F3F593CF31A82 /* Legend.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Legend.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5C1BFF90DD76D5A09D0E3C1 /* LegendNextSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextSurface.swift; sourceTree = "<group>"; };
 		E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApplicationShell.swift; sourceTree = "<group>"; };
 		E7E81305123969A7AFFB8384 /* LogicalParticipantIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicalParticipantIdentityTests.swift; sourceTree = "<group>"; };
@@ -398,16 +398,16 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					1E19E163CFAA8580A24E53FA = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = Z8XL9RU485;
 						ProvisioningStyle = Automatic;
 						TestTargetID = A3724AD4D043CDC38EFCD940;
 					};
 					A3724AD4D043CDC38EFCD940 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = Z8XL9RU485;
 						ProvisioningStyle = Automatic;
 					};
 					EA4A0637A0F2AB3926966269 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = Z8XL9RU485;
 						ProvisioningStyle = Automatic;
 					};
 				};

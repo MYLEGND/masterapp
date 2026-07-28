@@ -286,6 +286,99 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(UUID(uuidString: api.startedRecipient?.profileID ?? ""), clientProfileID)
     }
 
+    func testFinancialStoreUsesDedicatedFinancialProjection() async throws {
+        let snapshot = MobileFinancialSnapshotResponse(
+            position: MobileFinancialPosition(
+                healthScore: 72,
+                assetsTotal: 125_000,
+                liabilitiesTotal: 45_000,
+                netWorth: 80_000,
+                annualEarnings: 100_000,
+                annualLifestyleRemaining: 55_000,
+                annualTaxes: 12_000,
+                protectionGapTotal: 0,
+                positionStatus: "Stable",
+                positionSummary: "Your saved financial position is available.",
+                estatePlanningStatus: "In progress",
+                estatePlanningRiskLevel: "Moderate",
+                updatedUTC: .now
+            ),
+            intelligence: nil,
+            upcomingBills: [],
+            operatingSystem: availableOperatingSystem
+        )
+        let store = MobileFinancialStore(
+            api: StubMobileFinancialAPI(snapshot: snapshot),
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics()
+        )
+
+        store.load()
+        try await Task.sleep(for: .milliseconds(50))
+
+        guard case .available(let loaded) = store.state else {
+            return XCTFail("Expected the dedicated financial projection")
+        }
+
+        XCTAssertEqual(loaded.position?.netWorth, 80_000)
+        XCTAssertEqual(loaded.operatingSystem?.projection.status, "Available")
+    }
+
+    func testFinancialStoreDistinguishesNeverSavedExpenseLensState() async throws {
+        let neverSaved = MobileFinancialSnapshotResponse(
+            position: nil,
+            intelligence: nil,
+            upcomingBills: [],
+            operatingSystem: MobileFinancialOperatingSystemSnapshotResponse(
+                projection: MobileFinancialProjectionStatusResponse(
+                    status: "Unavailable",
+                    reasonCode: "EXPENSE_LENS_STATE_NOT_FOUND",
+                    summary: "Save Expense Lens to begin."
+                ),
+                freshness: MobileFinancialDataFreshnessResponse(
+                    financeStateUpdatedUTC: nil,
+                    intelligenceEvaluatedUTC: nil,
+                    generatedUTC: .now
+                ),
+                weekAtGlance: nil,
+                monthAtGlance: nil,
+                tools: []
+            )
+        )
+        let store = MobileFinancialStore(
+            api: StubMobileFinancialAPI(snapshot: neverSaved),
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics()
+        )
+
+        store.load()
+        try await Task.sleep(for: .milliseconds(50))
+
+        guard case .neverSaved(_, let detail) = store.state else {
+            return XCTFail("Expected the unsaved Expense Lens state")
+        }
+
+        XCTAssertEqual(detail, "Save Expense Lens to begin.")
+    }
+
+    private var availableOperatingSystem: MobileFinancialOperatingSystemSnapshotResponse {
+        MobileFinancialOperatingSystemSnapshotResponse(
+            projection: MobileFinancialProjectionStatusResponse(
+                status: "Available",
+                reasonCode: nil,
+                summary: "Your saved weekly plan is available."
+            ),
+            freshness: MobileFinancialDataFreshnessResponse(
+                financeStateUpdatedUTC: .now,
+                intelligenceEvaluatedUTC: nil,
+                generatedUTC: .now
+            ),
+            weekAtGlance: nil,
+            monthAtGlance: nil,
+            tools: []
+        )
+    }
+
     private func completeConfiguration() -> MobileConfiguration {
         MobileConfiguration(
             bundleIdentifier: "com.mylegnd.legend",
@@ -302,6 +395,16 @@ final class MobileNativeContractTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
         return URLSession(configuration: configuration)
+    }
+}
+
+private struct StubMobileFinancialAPI: MobileFinancialAPI {
+    let snapshot: MobileFinancialSnapshotResponse
+
+    func financial(
+        accessToken: String
+    ) async throws -> MobileFinancialSnapshotResponse {
+        snapshot
     }
 }
 

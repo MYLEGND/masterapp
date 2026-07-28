@@ -1,4 +1,6 @@
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The native home is intentionally a composition over the protected mobile
 /// projections. It never derives a role, feed audience, finance state, or
@@ -227,6 +229,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                     LegendSocialPostCard(
                         post: post,
                         currentIdentity: session.actor.identity,
+                        social: social,
                         react: {
                             social.toggleReaction(postID: post.id)
                         },
@@ -301,10 +304,21 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         }
     }
 
-    private func shareUpdate() {
+    private func shareUpdate(
+        attachment: LegendSocialImageAttachment?
+    ) {
         let body = composerBody.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else { return }
-        social.createPost(type: composerType, body: body)
+        guard !body.isEmpty || attachment != nil else { return }
+
+        if let attachment {
+            social.createMediaPost(
+                body: body,
+                files: [attachment.file],
+                accessibilityText: attachment.accessibilityText
+            )
+        } else {
+            social.createPost(type: composerType, body: body)
+        }
         isPresentingComposer = false
         clearComposer()
     }
@@ -383,6 +397,7 @@ private struct LegendStoryRail: View {
 private struct LegendSocialPostCard: View {
     let post: MobileSocialPost
     let currentIdentity: LogicalParticipantIdentity
+    @ObservedObject var social: MobileSocialStore
     let react: () -> Void
     let comment: () -> Void
     let follow: () -> Void
@@ -418,6 +433,13 @@ private struct LegendSocialPostCard: View {
                     .font(LegendNextTypography.body)
                     .foregroundStyle(LegendNextColor.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                ForEach(post.media.filter(\.isImage)) { media in
+                    LegendSocialMediaImage(
+                        media: media,
+                        social: social
+                    )
+                }
 
                 HStack(spacing: LegendNextSpacing.md) {
                     Button(action: react) {
@@ -506,8 +528,16 @@ private struct LegendSocialEmptyFeed: View {
 struct LegendSocialComposer: View {
     @Binding var type: MobileSocialContentType
     @Binding var messageBody: String
-    let submit: () -> Void
+    let submit: (LegendSocialImageAttachment?) -> Void
     let cancel: () -> Void
+
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var selectedImageData: Data?
+    @State private var selectedImageMimeType = "image/jpeg"
+    @State private var selectedImageFileName = "legend-image.jpg"
+    @State private var imageDescription = ""
+    @State private var imageSelectionError: String?
+    @State private var isLoadingImage = false
 
     var body: some View {
         NavigationStack {
@@ -526,7 +556,60 @@ struct LegendSocialComposer: View {
                     .background(LegendNextColor.surfaceInset, in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
                     .accessibilityLabel("Legend update")
 
-                Text("Shared only with your server-authorized Legend network.")
+                PhotosPicker(
+                    selection: $selectedPhoto,
+                    matching: .images,
+                    photoLibrary: .shared()
+                ) {
+                    Label(
+                        selectedImageData == nil
+                            ? "Add image"
+                            : "Replace image",
+                        systemImage: "photo.on.rectangle"
+                    )
+                }
+                .buttonStyle(LegendButtonStyle(kind: .secondary))
+                .accessibilityLabel("Add an image to your Legend update")
+
+                if let selectedImageData,
+                   let image = UIImage(data: selectedImageData) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 180)
+                        .clipShape(
+                            RoundedRectangle(
+                                cornerRadius: LegendNextRadius.control,
+                                style: .continuous
+                            )
+                        )
+                        .accessibilityLabel("Selected image preview")
+
+                    TextField(
+                        "Image description (optional)",
+                        text: $imageDescription,
+                        axis: .vertical
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Image description")
+                }
+
+                if isLoadingImage {
+                    HStack(spacing: LegendNextSpacing.xs) {
+                        ProgressView()
+                        Text("Preparing image…")
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                }
+
+                if let imageSelectionError {
+                    Text(imageSelectionError)
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(LegendNextColor.danger)
+                }
+
+                Text("Images and updates are shared only with your server-authorized Legend network.")
                     .font(LegendNextTypography.supporting)
                     .foregroundStyle(LegendNextColor.textSecondary)
 
@@ -541,11 +624,144 @@ struct LegendSocialComposer: View {
                     Button("Cancel", action: cancel)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Share", action: submit)
-                        .disabled(messageBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button("Share") {
+                        submit(selectedAttachment)
+                    }
+                    .disabled(!canShare)
                 }
             }
         }
+        .onChange(of: selectedPhoto) { _, photo in
+            Task {
+                await loadSelectedPhoto(photo)
+            }
+        }
+    }
+
+    private var canShare: Bool {
+        !messageBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || selectedImageData != nil
+    }
+
+    private var selectedAttachment: LegendSocialImageAttachment? {
+        guard let selectedImageData else {
+            return nil
+        }
+
+        let accessibilityText = imageDescription
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return LegendSocialImageAttachment(
+            file: MultipartFormFile(
+                fieldName: "files",
+                fileName: selectedImageFileName,
+                mimeType: selectedImageMimeType,
+                data: selectedImageData
+            ),
+            accessibilityText: accessibilityText.isEmpty
+                ? nil
+                : accessibilityText
+        )
+    }
+
+    @MainActor
+    private func loadSelectedPhoto(
+        _ photo: PhotosPickerItem?
+    ) async {
+        imageSelectionError = nil
+        selectedImageData = nil
+
+        guard let photo else {
+            return
+        }
+
+        isLoadingImage = true
+        defer { isLoadingImage = false }
+
+        do {
+            guard let data = try await photo.loadTransferable(type: Data.self) else {
+                imageSelectionError = "The selected image could not be read."
+                return
+            }
+
+            let maximumImageBytes = 15 * 1024 * 1024
+            guard data.count <= maximumImageBytes else {
+                imageSelectionError = "Choose an image smaller than 15 MB."
+                return
+            }
+
+            let imageType = photo.supportedContentTypes.first {
+                $0.conforms(to: .image)
+            }
+            let representation = imageRepresentation(for: imageType)
+            selectedImageMimeType = representation.mimeType
+            selectedImageFileName = representation.fileName
+            selectedImageData = data
+        } catch {
+            imageSelectionError = "The selected image could not be prepared."
+        }
+    }
+
+    private func imageRepresentation(
+        for type: UTType?
+    ) -> (mimeType: String, fileName: String) {
+        if type?.conforms(to: .png) == true {
+            return ("image/png", "legend-image.png")
+        }
+
+        if type?.conforms(to: .heic) == true {
+            return ("image/heic", "legend-image.heic")
+        }
+
+        if type?.conforms(to: .heif) == true {
+            return ("image/heif", "legend-image.heif")
+        }
+
+        if type?.conforms(to: .webP) == true {
+            return ("image/webp", "legend-image.webp")
+        }
+
+        return ("image/jpeg", "legend-image.jpg")
+    }
+}
+
+private struct LegendSocialMediaImage: View {
+    let media: MobileSocialMedia
+    @ObservedObject var social: MobileSocialStore
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                RoundedRectangle(
+                    cornerRadius: LegendNextRadius.control,
+                    style: .continuous
+                )
+                .fill(LegendNextColor.surfaceInset)
+                .frame(height: 180)
+                .overlay {
+                    ProgressView()
+                }
+            }
+        }
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+        )
+        .task(id: media.id) {
+            guard let data = await social.mediaData(for: media.id) else {
+                return
+            }
+
+            image = UIImage(data: data)
+        }
+        .accessibilityLabel(media.accessibilityText ?? "Shared image")
     }
 }
 
