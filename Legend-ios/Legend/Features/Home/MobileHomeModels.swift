@@ -119,7 +119,7 @@ struct MobileFinancialSnapshotResponse: Codable, Equatable, Sendable {
     let intelligence: MobileFinancialIntelligenceSummary?
     let upcomingBills: [MobileUpcomingBill]
     let operatingSystem: MobileFinancialOperatingSystemSnapshotResponse?
-    let presentation: MobileFinancialPresentationResponse?
+    let presentation: MobileFinancialPresentationResponse? = nil
 }
 
 struct MobileFinancialPresentationResponse: Codable, Equatable, Sendable {
