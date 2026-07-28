@@ -5,6 +5,7 @@ protocol MobileSocialAPI: Sendable {
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost
 
     func createMediaPost(
+        type: MobileSocialContentType,
         body: String,
         files: [MultipartFormFile],
         accessibilityText: String?,
@@ -20,6 +21,7 @@ struct MobileUnavailableSocialAPI: MobileSocialAPI {
     func feed(accessToken: String) async throws -> MobileSocialSnapshot { throw MobileAPIError.unauthorized(correlationID: nil) }
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost { throw MobileAPIError.unauthorized(correlationID: nil) }
     func createMediaPost(
+        type: MobileSocialContentType,
         body: String,
         files: [MultipartFormFile],
         accessibilityText: String?,
@@ -53,6 +55,7 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
     }
 
     func createMediaPost(
+        type: MobileSocialContentType,
         body: String,
         files: [MultipartFormFile],
         accessibilityText: String?,
@@ -63,6 +66,7 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
             "/api/v1/mobile/social/posts/media",
             accessToken: accessToken,
             fields: [
+                "contentType": type.rawValue,
                 "body": body,
                 "accessibilityText": accessibilityText ?? ""
             ],
@@ -128,26 +132,44 @@ final class MobileSocialStore: ObservableObject {
         }
     }
 
-    func createPost(type: MobileSocialContentType, body: String) {
-        perform(title: "Could not share your update") { token in
-            let post = try await self.api.createPost(MobileCreateSocialPost(contentType: type.rawValue, body: body), accessToken: token)
-            self.insert(post)
+    @discardableResult
+    func publish(_ request: MobileSocialPublishRequest) async -> Bool {
+        let body = request.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty || !request.files.isEmpty else {
+            actionFailure = UserFacingFailure(
+                title: "Could not share your update",
+                message: "Add an update or attach supported media before publishing.",
+                correlationID: nil)
+            return false
         }
-    }
 
-    func createMediaPost(
-        body: String,
-        files: [MultipartFormFile],
-        accessibilityText: String?
-    ) {
-        perform(title: "Could not share your update") { token in
-            let post = try await self.api.createMediaPost(
-                body: body,
-                files: files,
-                accessibilityText: accessibilityText,
-                accessToken: token
-            )
-            self.insert(post)
+        actionFailure = nil
+        do {
+            let token = try await accessTokenProvider()
+            let post: MobileSocialPost
+
+            if request.files.isEmpty {
+                post = try await api.createPost(
+                    MobileCreateSocialPost(
+                        contentType: request.contentType.rawValue,
+                        body: body),
+                    accessToken: token)
+            } else {
+                post = try await api.createMediaPost(
+                    type: request.contentType,
+                    body: body,
+                    files: request.files,
+                    accessibilityText: request.accessibilityText,
+                    accessToken: token)
+            }
+
+            insert(post)
+            return true
+        } catch {
+            actionFailure = failure(
+                for: error,
+                title: "Could not share your update")
+            return false
         }
     }
 

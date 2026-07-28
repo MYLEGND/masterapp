@@ -257,7 +257,7 @@ enum MobileFinancialAmountSemantic {
         case .assets, .income, .payoffProgress:
             return amount > 0 ? .success : .neutral
         case .liabilities, .bills, .endingDebt:
-            return amount > 0 ? .warning : .neutral
+            return amount > 0 ? .danger : .neutral
         case .debt:
             return amount > 0 ? .danger : .neutral
         case .netWorth, .endingCash:

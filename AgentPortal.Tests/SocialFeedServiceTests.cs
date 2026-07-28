@@ -194,6 +194,47 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task VideoReel_IsStoredAndReadThroughTheAuthorizedMediaPath()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("video-client", "Video", "Client");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var storage = new InMemoryTestSocialMediaStorage();
+        var service = CreateService(db, storage);
+        var content = new byte[] { 9, 8, 7, 6 };
+
+        await using var uploadStream = new MemoryStream(content);
+        var created = await service.CreateMediaPostAsync(
+            new CreateSocialMediaPostCommand(
+                ClientActor(client),
+                SocialPostContentTypes.Reel,
+                "A secure video reel",
+                [new SocialMediaUpload(
+                    "legend-reel.mp4",
+                    content.Length,
+                    uploadStream,
+                    "A Legend video reel")]));
+
+        Assert.True(created.Succeeded);
+        Assert.Equal(SocialPostContentTypes.Reel, created.Value!.ContentType);
+        var media = Assert.Single(created.Value.Media);
+        Assert.Equal("Video", media.MediaKind);
+        Assert.Equal("video/mp4", media.MimeType);
+        Assert.Equal("A Legend video reel", media.AccessibilityText);
+
+        var retrieved = await service.GetMediaAsync(ClientActor(client), media.Id);
+
+        Assert.True(retrieved.Succeeded);
+        await using var received = retrieved.Value!.Content;
+        using var buffer = new MemoryStream();
+        await received.CopyToAsync(buffer);
+        Assert.Equal(content, buffer.ToArray());
+        Assert.Equal("video/mp4", retrieved.Value.MimeType);
+    }
+
+    [Fact]
     public async Task MediaRead_RejectsAClientWhoCannotSeeThePost()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -234,7 +275,8 @@ public sealed class SocialFeedServiceTests
         return new SocialFeedService(
             db,
             messaging,
-            mediaStorage ?? new UnavailableTestSocialMediaStorage());
+            mediaStorage ?? new UnavailableTestSocialMediaStorage(),
+            new UnavailableSocialMusicCatalog());
     }
 
     private sealed class UnavailableTestSocialMediaStorage
@@ -276,15 +318,18 @@ public sealed class SocialFeedServiceTests
             using var buffer = new MemoryStream();
             await content.CopyToAsync(buffer, cancellationToken);
             var bytes = buffer.ToArray();
-            var storageKey = $"test/{mediaAssetId:N}.jpg";
+            var extension = Path.GetExtension(originalFileName).ToLowerInvariant();
+            var mediaKind = extension == ".mp4" ? "Video" : "Image";
+            var mimeType = extension == ".mp4" ? "video/mp4" : "image/jpeg";
+            var storageKey = $"test/{mediaAssetId:N}{extension}";
             _content[storageKey] = bytes;
 
             return SocialMediaStorageResult.Success(
                 new SocialStoredMedia(
                     originalFileName,
-                    $"{mediaAssetId:N}.jpg",
-                    "Image",
-                    "image/jpeg",
+                    $"{mediaAssetId:N}{extension}",
+                    mediaKind,
+                    mimeType,
                     bytes.Length,
                     storageKey));
         }

@@ -3,11 +3,40 @@ import Foundation
 struct MobileEmptyRequest: Encodable, Sendable {}
 
 
+enum MultipartFormFileSource: Sendable {
+    case data(Data)
+    case file(URL)
+}
+
 struct MultipartFormFile: Sendable {
     let fieldName: String
     let fileName: String
     let mimeType: String
-    let data: Data
+    let source: MultipartFormFileSource
+
+    init(
+        fieldName: String,
+        fileName: String,
+        mimeType: String,
+        data: Data
+    ) {
+        self.fieldName = fieldName
+        self.fileName = fileName
+        self.mimeType = mimeType
+        source = .data(data)
+    }
+
+    init(
+        fieldName: String,
+        fileName: String,
+        mimeType: String,
+        fileURL: URL
+    ) {
+        self.fieldName = fieldName
+        self.fileName = fileName
+        self.mimeType = mimeType
+        source = .file(fileURL)
+    }
 }
 
 private extension Data {
@@ -48,7 +77,7 @@ struct MobileHTTPClient: Sendable {
         var request = URLRequest(url: try endpointURL(path, queryItems: []))
         request.httpMethod = "GET"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("image/*", forHTTPHeaderField: "Accept")
+        request.setValue("image/*, video/*", forHTTPHeaderField: "Accept")
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         let (data, _) = try await successfulData(for: request)
         return data
@@ -119,27 +148,16 @@ struct MobileHTTPClient: Sendable {
             request.setValue($0.value, forHTTPHeaderField: $0.key)
         }
 
-        var body = Data()
+        let bodyFile = try multipartBodyFile(
+            boundary: boundary,
+            fields: fields,
+            files: files)
+        defer { try? FileManager.default.removeItem(at: bodyFile) }
 
-        for (name, value) in fields {
-            body.append("--\(boundary)\r\n")
-            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
-            body.append(value)
-            body.append("\r\n")
-        }
-
-        for file in files {
-            body.append("--\(boundary)\r\n")
-            body.append("Content-Disposition: form-data; name=\"\(file.fieldName)\"; filename=\"\(file.fileName)\"\r\n")
-            body.append("Content-Type: \(file.mimeType)\r\n\r\n")
-            body.append(file.data)
-            body.append("\r\n")
-        }
-
-        body.append("--\(boundary)--\r\n")
-        request.httpBody = body
-
-        return try await perform(request, response: response)
+        return try await perform(
+            request,
+            response: response,
+            uploadBodyFile: bodyFile)
     }
 
     func put<Body: Encodable>(
@@ -170,8 +188,14 @@ struct MobileHTTPClient: Sendable {
         return url
     }
 
-    private func perform<Response: Decodable>(_ request: URLRequest, response: Response.Type) async throws -> Response {
-        let (data, correlationID) = try await successfulData(for: request)
+    private func perform<Response: Decodable>(
+        _ request: URLRequest,
+        response: Response.Type,
+        uploadBodyFile: URL? = nil
+    ) async throws -> Response {
+        let (data, correlationID) = try await successfulData(
+            for: request,
+            uploadBodyFile: uploadBodyFile)
         do {
             return try JSONDecoder.mobile.decode(Response.self, from: data)
         } catch {
@@ -180,11 +204,14 @@ struct MobileHTTPClient: Sendable {
     }
 
     private func successfulData(
-        for request: URLRequest
+        for request: URLRequest,
+        uploadBodyFile: URL? = nil
     ) async throws -> (Data, String?) {
         let hasAuthorizationHeader = request.value(forHTTPHeaderField: "Authorization") != nil
         MobileDebugDiagnostics.record("Mobile API request started. Authorization header present: \(hasAuthorizationHeader).")
-        let (data, urlResponse) = try await requestData(for: request)
+        let (data, urlResponse) = try await requestData(
+            for: request,
+            uploadBodyFile: uploadBodyFile)
 
 #if DEBUG
         if let http = urlResponse as? HTTPURLResponse {
@@ -227,8 +254,17 @@ struct MobileHTTPClient: Sendable {
         _ = try await successfulData(for: request)
     }
 
-    private func requestData(for request: URLRequest) async throws -> (Data, URLResponse) {
+    private func requestData(
+        for request: URLRequest,
+        uploadBodyFile: URL? = nil
+    ) async throws -> (Data, URLResponse) {
         do {
+            if let uploadBodyFile {
+                return try await session.upload(
+                    for: request,
+                    fromFile: uploadBodyFile)
+            }
+
             return try await session.data(for: request)
         } catch let error as URLError {
             switch error.code {
@@ -241,6 +277,74 @@ struct MobileHTTPClient: Sendable {
                 throw MobileAPIError.networkUnavailable
             default:
                 throw error
+            }
+        }
+    }
+
+    private func multipartBodyFile(
+        boundary: String,
+        fields: [String: String],
+        files: [MultipartFormFile]
+    ) throws -> URL {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("legend-upload-\(UUID().uuidString)")
+        FileManager.default.createFile(
+            atPath: fileURL.path,
+            contents: nil)
+
+        let handle = try FileHandle(forWritingTo: fileURL)
+        do {
+            for (name, value) in fields {
+                try append("--\(boundary)\r\n", to: handle)
+                try append(
+                    "Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n",
+                    to: handle)
+                try append(value, to: handle)
+                try append("\r\n", to: handle)
+            }
+
+            for file in files {
+                try append("--\(boundary)\r\n", to: handle)
+                try append(
+                    "Content-Disposition: form-data; name=\"\(file.fieldName)\"; filename=\"\(file.fileName)\"\r\n",
+                    to: handle)
+                try append("Content-Type: \(file.mimeType)\r\n\r\n", to: handle)
+                try append(file.source, to: handle)
+                try append("\r\n", to: handle)
+            }
+
+            try append("--\(boundary)--\r\n", to: handle)
+            try handle.close()
+            return fileURL
+        } catch {
+            try? handle.close()
+            try? FileManager.default.removeItem(at: fileURL)
+            throw error
+        }
+    }
+
+    private func append(
+        _ value: String,
+        to handle: FileHandle
+    ) throws {
+        try handle.write(contentsOf: Data(value.utf8))
+    }
+
+    private func append(
+        _ source: MultipartFormFileSource,
+        to destination: FileHandle
+    ) throws {
+        switch source {
+        case .data(let data):
+            try destination.write(contentsOf: data)
+
+        case .file(let fileURL):
+            let source = try FileHandle(forReadingFrom: fileURL)
+            defer { try? source.close() }
+
+            while let data = try source.read(upToCount: 80 * 1024),
+                  !data.isEmpty {
+                try destination.write(contentsOf: data)
             }
         }
     }

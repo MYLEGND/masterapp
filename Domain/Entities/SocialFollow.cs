@@ -11,5 +11,6 @@ public sealed class SocialFollow
     public string FollowerParticipantType { get; set; } = string.Empty;
     public string FollowedUserId { get; set; } = string.Empty;
     public string FollowedParticipantType { get; set; } = string.Empty;
+    public Guid? SourceSocialPostId { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }

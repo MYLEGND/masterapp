@@ -60,6 +60,7 @@ struct LegendApplicationShell: View {
     @ObservedObject private var coordinator: MobileSessionCoordinator
     @State private var selectedTab: LegendAppTab = .home
     @StateObject private var messages: MessagingStore
+    @StateObject private var social: MobileSocialStore
 
     init(
         currentSession: MobileSession,
@@ -70,6 +71,9 @@ struct LegendApplicationShell: View {
         _messages = StateObject(
             wrappedValue: coordinator.makeMessagingStore()
         )
+        _social = StateObject(
+            wrappedValue: coordinator.makeSocialStore()
+        )
     }
 
     var body: some View {
@@ -78,6 +82,7 @@ struct LegendApplicationShell: View {
                 LegendHomeView(
                     currentSession: currentSession,
                     coordinator: coordinator,
+                    social: social,
                     selectedTab: $selectedTab
                 )
             }
@@ -125,7 +130,8 @@ struct LegendApplicationShell: View {
             NavigationStack {
                 LegendAccountView(
                     currentSession: currentSession,
-                    coordinator: coordinator
+                    coordinator: coordinator,
+                    social: social
                 )
             }
             .tag(LegendAppTab.account)
@@ -340,11 +346,12 @@ private struct LegendHomeView: View {
     let currentSession: MobileSession
     @Binding var selectedTab: LegendAppTab
     @StateObject private var store: MobileHomeStore
-    @StateObject private var social: MobileSocialStore
+    @ObservedObject private var social: MobileSocialStore
 
     init(
         currentSession: MobileSession,
         coordinator: MobileSessionCoordinator,
+        social: MobileSocialStore,
         selectedTab: Binding<LegendAppTab>
     ) {
         self.currentSession = currentSession
@@ -352,9 +359,7 @@ private struct LegendHomeView: View {
         _store = StateObject(
             wrappedValue: coordinator.makeHomeStore()
         )
-        _social = StateObject(
-            wrappedValue: coordinator.makeSocialStore()
-        )
+        _social = ObservedObject(wrappedValue: social)
     }
 
     var body: some View {
@@ -3698,15 +3703,13 @@ private struct LegendAccountView: View {
 
     @ObservedObject private var coordinator: MobileSessionCoordinator
     @StateObject private var account: MobileAccountStore
-    @StateObject private var social: MobileSocialStore
+    @ObservedObject private var social: MobileSocialStore
 
     @State private var selectedContent: LegendProfileContentFilter = .posts
     @State private var isEditing = false
     @State private var isShowingSettings = false
     @State private var isConfirmingSignOut = false
-    @State private var composerType: MobileSocialContentType = .post
-    @State private var composerBody = ""
-    @State private var isPresentingComposer = false
+    @State private var creationRoute: LegendSocialCreationRoute?
 
     private let profileColumns = [
         GridItem(.flexible(), spacing: 2),
@@ -3716,16 +3719,15 @@ private struct LegendAccountView: View {
 
     init(
         currentSession: MobileSession,
-        coordinator: MobileSessionCoordinator
+        coordinator: MobileSessionCoordinator,
+        social: MobileSocialStore
     ) {
         self.currentSession = currentSession
         _coordinator = ObservedObject(wrappedValue: coordinator)
         _account = StateObject(
             wrappedValue: coordinator.makeAccountStore()
         )
-        _social = StateObject(
-            wrappedValue: coordinator.makeSocialStore()
-        )
+        _social = ObservedObject(wrappedValue: social)
     }
 
     var body: some View {
@@ -3793,13 +3795,10 @@ private struct LegendAccountView: View {
         .sheet(isPresented: $isShowingSettings) {
             profileSettingsSheet
         }
-        .sheet(isPresented: $isPresentingComposer, onDismiss: clearComposer) {
-            LegendSocialComposer(
-                type: $composerType,
-                messageBody: $composerBody,
-                submit: shareMove,
-                cancel: { isPresentingComposer = false }
-            )
+        .sheet(item: $creationRoute) { _ in
+            LegendSocialCreationSheet(
+                route: $creationRoute,
+                social: social)
         }
         .confirmationDialog(
             "Sign out of Legend?",
@@ -4115,8 +4114,7 @@ private struct LegendAccountView: View {
                 .frame(maxWidth: 290)
 
             Button("Make Your First Move.") {
-                composerType = .post
-                isPresentingComposer = true
+                creationRoute = .menu
             }
             .buttonStyle(LegendButtonStyle(kind: .primary))
         }
@@ -4284,34 +4282,6 @@ private struct LegendAccountView: View {
 
     private var emptyMessage: String {
         "Every Move you share becomes part of your journey."
-    }
-
-    private func shareMove(
-        attachment: LegendSocialImageAttachment?
-    ) {
-        let body = composerBody.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        guard !body.isEmpty || attachment != nil else {
-            return
-        }
-
-        if let attachment {
-            social.createMediaPost(
-                body: body,
-                files: [attachment.file],
-                accessibilityText: attachment.accessibilityText
-            )
-        } else {
-            social.createPost(type: composerType, body: body)
-        }
-        isPresentingComposer = false
-        clearComposer()
-    }
-
-    private func clearComposer() {
-        composerType = .post
-        composerBody = ""
     }
 
     private func normalized(

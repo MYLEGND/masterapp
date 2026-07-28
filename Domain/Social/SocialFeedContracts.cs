@@ -19,11 +19,47 @@ public static class SocialReactionTypes
     public const string Appreciate = "Appreciate";
 }
 
+public static class SocialStoryInteractionTypes
+{
+    public const string Exit = "Exit";
+    public const string TapForward = "TapForward";
+    public const string TapBackward = "TapBackward";
+}
+
 public sealed record SocialFeedActor(MessagingActor Identity, Guid ProfileId, string DisplayName);
 
 public sealed record SocialAuthor(string UserId, string ParticipantType, Guid ProfileId, string DisplayName);
 
-public sealed record SocialCommentView(Guid Id, SocialAuthor Author, string Body, DateTime CreatedUtc);
+public sealed record SocialCommentView(Guid Id, SocialAuthor Author, Guid? ParentCommentId, string Body, DateTime CreatedUtc);
+
+public sealed record SocialPostMetrics(
+    int ViewCount,
+    int UniqueViewerCount,
+    int ReactionCount,
+    int CommentCount,
+    int ReplyCount,
+    int RepostCount,
+    int SaveCount,
+    int ShareCount,
+    int ProfileVisitCount,
+    int FollowsGenerated,
+    decimal? AverageWatchDurationSeconds,
+    decimal? AverageWatchCompletionPercentage,
+    int StoryExitCount,
+    int StoryTapForwardCount,
+    int StoryTapBackwardCount);
+
+public sealed record SocialPostMusicView(
+    string ProviderId,
+    string ProviderTrackId,
+    string TrackTitle,
+    string ArtistName,
+    decimal TrackDurationSeconds,
+    string? PreviewUrl,
+    decimal TrimStartSeconds,
+    decimal TrimEndSeconds,
+    decimal MusicVolume,
+    decimal OriginalAudioVolume);
 
 public sealed record SocialMediaAssetView(
     Guid Id,
@@ -49,6 +85,10 @@ public sealed record SocialPostView(
     int CommentCount,
     bool ReactedByCurrentActor,
     bool FollowedByCurrentActor,
+    bool SavedByCurrentActor,
+    bool RepostedByCurrentActor,
+    SocialPostMetrics Metrics,
+    SocialPostMusicView? Music,
     IReadOnlyList<SocialMediaAssetView> Media,
     IReadOnlyList<SocialCommentView> Comments);
 
@@ -58,7 +98,9 @@ public sealed record SocialFeedSnapshot(
     IReadOnlyList<SocialPostView> Stories,
     IReadOnlyList<SocialPostView> Posts,
     IReadOnlyList<SocialActivityView> Activity,
-    int ActivityCount);
+    int ActivityCount,
+    SocialProfileMetrics CurrentProfileMetrics,
+    SocialCreatorInsights CreatorInsights);
 
 public sealed record CreateSocialPostCommand(SocialFeedActor Actor, string ContentType, string Body);
 
@@ -72,15 +114,81 @@ public sealed record CreateSocialMediaPostCommand(
     SocialFeedActor Actor,
     string ContentType,
     string Body,
-    IReadOnlyList<SocialMediaUpload> Media);
+    IReadOnlyList<SocialMediaUpload> Media,
+    SocialMusicSelection? Music = null);
 
 public sealed record SocialMediaStream(
     Stream Content,
     string MimeType);
 
 public sealed record SocialPostMutationCommand(SocialFeedActor Actor, Guid PostId);
-public sealed record CreateSocialCommentCommand(SocialFeedActor Actor, Guid PostId, string Body);
-public sealed record SocialFollowCommand(SocialFeedActor Actor, string FollowedUserId, string FollowedParticipantType);
+public sealed record CreateSocialCommentCommand(SocialFeedActor Actor, Guid PostId, string Body, Guid? ParentCommentId = null);
+public sealed record SocialFollowCommand(SocialFeedActor Actor, string FollowedUserId, string FollowedParticipantType, Guid? SourcePostId = null);
+public sealed record RecordSocialPostViewCommand(
+    SocialFeedActor Actor,
+    Guid PostId,
+    decimal? WatchDurationSeconds,
+    decimal? WatchCompletionPercentage,
+    string? StoryInteractionType);
+public sealed record SocialProfileVisitCommand(
+    SocialFeedActor Actor,
+    string TargetUserId,
+    string TargetParticipantType,
+    Guid? SourcePostId);
+
+public sealed record SocialMusicTrack(
+    string ProviderId,
+    string ProviderTrackId,
+    string TrackTitle,
+    string ArtistName,
+    decimal TrackDurationSeconds,
+    string? PreviewUrl);
+
+public sealed record SocialMusicSelection(
+    string ProviderId,
+    string ProviderTrackId,
+    decimal TrimStartSeconds,
+    decimal TrimEndSeconds,
+    decimal MusicVolume,
+    decimal OriginalAudioVolume);
+
+public sealed record SocialProfileMetrics(
+    SocialAuthor Profile,
+    int PostCount,
+    int VideoCount,
+    int StoryCount,
+    int FollowerCount,
+    int FollowingCount,
+    int TotalReactionCount,
+    int TotalContentViewCount,
+    int TotalReachCount,
+    int? PrivateProfileVisitCount);
+
+public sealed record SocialCreatorInsights(
+    DateTime GeneratedUtc,
+    int TotalViews,
+    int TotalReach,
+    int FollowerCount,
+    int FollowingCount,
+    int FollowersGained,
+    int ProfileVisits,
+    int TotalReactions,
+    int TotalComments,
+    int TotalReplies,
+    int TotalShares,
+    int TotalReposts,
+    int TotalSaves,
+    decimal EngagementRatePercentage,
+    IReadOnlyList<SocialPostInsight> TopPosts,
+    IReadOnlyList<SocialPostInsight> TopVideos,
+    IReadOnlyList<SocialPostInsight> TopStories);
+
+public sealed record SocialPostInsight(
+    Guid PostId,
+    string ContentType,
+    DateTime PostedUtc,
+    SocialPostMetrics Metrics,
+    decimal EngagementRatePercentage);
 
 public sealed record SocialOperationResult<T>(bool Succeeded, string? ErrorCode = null, string? ErrorMessage = null, T? Value = default)
 {
@@ -97,4 +205,19 @@ public interface ISocialFeedService
     Task<SocialOperationResult<SocialPostView>> ToggleReactionAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialCommentView>> AddCommentAsync(CreateSocialCommentCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<bool>> ToggleFollowAsync(SocialFollowCommand command, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<bool>> ToggleSaveAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<bool>> ToggleRepostAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<bool>> RecordShareAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<SocialPostMetrics>> RecordViewAsync(RecordSocialPostViewCommand command, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<SocialProfileMetrics>> GetProfileMetricsAsync(SocialFeedActor actor, SocialAuthor? profile = null, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<SocialCreatorInsights>> GetCreatorInsightsAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<SocialPostInsight>> GetPostInsightsAsync(SocialFeedActor actor, Guid postId, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<bool>> RecordProfileVisitAsync(SocialProfileVisitCommand command, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<IReadOnlyList<SocialMusicTrack>>> SearchMusicAsync(SocialFeedActor actor, string query, CancellationToken cancellationToken = default);
+}
+
+public interface ISocialMusicCatalog
+{
+    Task<SocialOperationResult<IReadOnlyList<SocialMusicTrack>>> SearchAsync(string query, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<SocialMusicTrack>> ResolveAsync(string providerId, string providerTrackId, CancellationToken cancellationToken = default);
 }

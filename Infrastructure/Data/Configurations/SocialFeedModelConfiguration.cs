@@ -22,6 +22,7 @@ internal static class SocialFeedModelConfiguration
             entity.Property(post => post.Body).HasColumnType(textType).IsRequired();
             entity.HasIndex(post => new { post.AuthorUserId, post.AuthorParticipantType, post.PostedUtc });
             entity.HasIndex(post => new { post.DeletedUtc, post.ExpiresUtc, post.PostedUtc });
+            entity.HasIndex(post => post.RepostOfSocialPostId);
         });
 
         modelBuilder.Entity<SocialPostMediaAsset>(entity =>
@@ -85,10 +86,15 @@ internal static class SocialFeedModelConfiguration
             entity.Property(comment => comment.AuthorParticipantType).HasMaxLength(40).IsRequired();
             entity.Property(comment => comment.Body).HasColumnType(textType).IsRequired();
             entity.HasIndex(comment => new { comment.SocialPostId, comment.DeletedUtc, comment.CreatedUtc });
+            entity.HasIndex(comment => comment.ParentCommentId);
             entity.HasOne(comment => comment.SocialPost)
                 .WithMany()
                 .HasForeignKey(comment => comment.SocialPostId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(comment => comment.ParentComment)
+                .WithMany()
+                .HasForeignKey(comment => comment.ParentCommentId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<SocialPostReaction>(entity =>
@@ -121,6 +127,76 @@ internal static class SocialFeedModelConfiguration
                 follow.FollowedParticipantType
             }).IsUnique();
             entity.HasIndex(follow => new { follow.FollowedUserId, follow.FollowedParticipantType });
+            entity.HasIndex(follow => follow.SourceSocialPostId);
+        });
+
+        modelBuilder.Entity<SocialPostViewer>(entity =>
+        {
+            entity.ToTable("SocialPostViews");
+            entity.HasKey(view => view.Id);
+            entity.Property(view => view.ViewerUserId).HasMaxLength(450).IsRequired();
+            entity.Property(view => view.ViewerParticipantType).HasMaxLength(40).IsRequired();
+            entity.Property(view => view.MaximumWatchDurationSeconds).HasPrecision(12, 3);
+            entity.Property(view => view.MaximumWatchCompletionPercentage).HasPrecision(5, 2);
+            entity.HasIndex(view => new { view.SocialPostId, view.ViewerUserId, view.ViewerParticipantType }).IsUnique();
+            entity.HasIndex(view => new { view.SocialPostId, view.FirstViewedUtc });
+            entity.HasOne(view => view.SocialPost).WithMany().HasForeignKey(view => view.SocialPostId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        ConfigureActorPostEntity<SocialPostSave>(modelBuilder, "SocialPostSaves", entity => entity.SocialPostId, entity => entity.ActorUserId, entity => entity.ActorParticipantType, entity => entity.SocialPost);
+        ConfigureActorPostEntity<SocialPostShare>(modelBuilder, "SocialPostShares", entity => entity.SocialPostId, entity => entity.ActorUserId, entity => entity.ActorParticipantType, entity => entity.SocialPost);
+        ConfigureActorPostEntity<SocialPostRepost>(modelBuilder, "SocialPostReposts", entity => entity.SocialPostId, entity => entity.ActorUserId, entity => entity.ActorParticipantType, entity => entity.SocialPost);
+
+        modelBuilder.Entity<SocialProfileVisit>(entity =>
+        {
+            entity.ToTable("SocialProfileVisits");
+            entity.HasKey(visit => visit.Id);
+            entity.Property(visit => visit.TargetUserId).HasMaxLength(450).IsRequired();
+            entity.Property(visit => visit.TargetParticipantType).HasMaxLength(40).IsRequired();
+            entity.Property(visit => visit.VisitorUserId).HasMaxLength(450).IsRequired();
+            entity.Property(visit => visit.VisitorParticipantType).HasMaxLength(40).IsRequired();
+            entity.HasIndex(visit => new { visit.TargetUserId, visit.TargetParticipantType, visit.VisitorUserId, visit.VisitorParticipantType, visit.SourceSocialPostId }).IsUnique();
+            entity.HasIndex(visit => new { visit.TargetUserId, visit.TargetParticipantType, visit.FirstVisitedUtc });
+        });
+
+        modelBuilder.Entity<SocialPostMusicAttachment>(entity =>
+        {
+            entity.ToTable("SocialPostMusicAttachments");
+            entity.HasKey(music => music.Id);
+            entity.Property(music => music.ProviderId).HasMaxLength(80).IsRequired();
+            entity.Property(music => music.ProviderTrackId).HasMaxLength(256).IsRequired();
+            entity.Property(music => music.TrackTitle).HasMaxLength(400).IsRequired();
+            entity.Property(music => music.ArtistName).HasMaxLength(400).IsRequired();
+            entity.Property(music => music.PreviewUrl).HasMaxLength(2048);
+            entity.Property(music => music.TrackDurationSeconds).HasPrecision(12, 3);
+            entity.Property(music => music.TrimStartSeconds).HasPrecision(12, 3);
+            entity.Property(music => music.TrimEndSeconds).HasPrecision(12, 3);
+            entity.Property(music => music.MusicVolume).HasPrecision(5, 2);
+            entity.Property(music => music.OriginalAudioVolume).HasPrecision(5, 2);
+            entity.HasIndex(music => music.SocialPostId).IsUnique();
+            entity.HasIndex(music => new { music.ProviderId, music.ProviderTrackId });
+            entity.HasOne(music => music.SocialPost).WithOne(post => post.MusicAttachment).HasForeignKey<SocialPostMusicAttachment>(music => music.SocialPostId).OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigureActorPostEntity<TEntity>(
+        ModelBuilder modelBuilder,
+        string tableName,
+        Func<TEntity, Guid> postId,
+        Func<TEntity, string> actorUserId,
+        Func<TEntity, string> actorParticipantType,
+        Func<TEntity, SocialPost> socialPost)
+        where TEntity : class
+    {
+        modelBuilder.Entity<TEntity>(entity =>
+        {
+            entity.ToTable(tableName);
+            entity.HasKey("Id");
+            entity.Property<string>("ActorUserId").HasMaxLength(450).IsRequired();
+            entity.Property<string>("ActorParticipantType").HasMaxLength(40).IsRequired();
+            entity.HasIndex("SocialPostId", "ActorUserId", "ActorParticipantType").IsUnique();
+            entity.HasIndex("SocialPostId", "CreatedUtc");
+            entity.HasOne(typeof(SocialPost), "SocialPost").WithMany().HasForeignKey("SocialPostId").OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

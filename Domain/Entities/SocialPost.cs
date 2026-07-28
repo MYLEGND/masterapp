@@ -12,6 +12,7 @@ public sealed class SocialPost
     public Guid AuthorProfileId { get; set; }
     public string ContentType { get; set; } = string.Empty;
     public string Audience { get; set; } = string.Empty;
+    public Guid? RepostOfSocialPostId { get; set; }
     public string Body { get; set; } = string.Empty;
     public DateTime PostedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiresUtc { get; set; }
@@ -19,4 +20,6 @@ public sealed class SocialPost
 
     public ICollection<SocialPostMediaAsset> MediaAssets { get; set; } =
         new List<SocialPostMediaAsset>();
+
+    public SocialPostMusicAttachment? MusicAttachment { get; set; }
 }

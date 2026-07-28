@@ -15,6 +15,7 @@ public static class SocialServiceCollectionExtensions
 
         services.AddScoped<ISocialFeedService, SocialFeedService>();
         services.AddSingleton<ISocialMediaStorage, SocialMediaStorage>();
+        services.AddSingleton<ISocialMusicCatalog, UnavailableSocialMusicCatalog>();
 
         return services;
     }

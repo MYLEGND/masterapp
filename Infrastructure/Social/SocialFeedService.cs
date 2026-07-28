@@ -21,19 +21,26 @@ public sealed class SocialFeedService : ISocialFeedService
     private const int MaximumActivityItems = 30;
     private const int MaximumMediaItemsPerPost = 10;
     private const int MaximumAccessibilityTextLength = 500;
+    private const int MaximumMusicQueryLength = 120;
+    private const int MaximumStoryInteractionCount = 20;
+    private const int MaximumWatchDurationSeconds = 86_400;
+    private const int TopInsightItemCount = 5;
 
     private readonly MasterAppDbContext _db;
     private readonly IMessagingService _messaging;
     private readonly ISocialMediaStorage _mediaStorage;
+    private readonly ISocialMusicCatalog _musicCatalog;
 
     public SocialFeedService(
         MasterAppDbContext db,
         IMessagingService messaging,
-        ISocialMediaStorage mediaStorage)
+        ISocialMediaStorage mediaStorage,
+        ISocialMusicCatalog musicCatalog)
     {
         _db = db;
         _messaging = messaging;
         _mediaStorage = mediaStorage;
+        _musicCatalog = musicCatalog;
     }
 
     public async Task<SocialOperationResult<SocialFeedSnapshot>> GetFeedAsync(
@@ -75,8 +82,24 @@ public sealed class SocialFeedService : ISocialFeedService
             cancellationToken);
         var activity = await GetActivityAsync(actor, cancellationToken);
 
+        var profileMetrics = await GetProfileMetricsAsync(actor, cancellationToken: cancellationToken);
+        var creatorInsights = await GetCreatorInsightsAsync(actor, cancellationToken);
+        if (!profileMetrics.Succeeded || profileMetrics.Value is null ||
+            !creatorInsights.Succeeded || creatorInsights.Value is null)
+        {
+            return SocialOperationResult<SocialFeedSnapshot>.Failure(
+                "social_metrics_unavailable",
+                "Legend social metrics could not be loaded.");
+        }
+
         return SocialOperationResult<SocialFeedSnapshot>.Success(
-            new SocialFeedSnapshot(stories, feed, activity, activity.Count));
+            new SocialFeedSnapshot(
+                stories,
+                feed,
+                activity,
+                activity.Count,
+                profileMetrics.Value,
+                creatorInsights.Value));
     }
 
     public async Task<SocialOperationResult<SocialPostView>> CreatePostAsync(
@@ -133,6 +156,14 @@ public sealed class SocialFeedService : ISocialFeedService
             return SocialOperationResult<SocialPostView>.Failure(
                 "social_media_post_invalid",
                 $"Choose a post type and attach between 1 and {MaximumMediaItemsPerPost} supported media files.");
+        }
+
+        var music = await ResolveMusicAsync(command.Music, cancellationToken);
+        if (!music.Succeeded)
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                music.ErrorCode ?? "social_music_invalid",
+                music.ErrorMessage ?? "The selected music could not be verified.");
         }
 
         var postId = Guid.NewGuid();
@@ -197,7 +228,8 @@ public sealed class SocialFeedService : ISocialFeedService
                 ExpiresUtc = contentType == SocialPostContentTypes.Story
                     ? now.AddHours(24)
                     : null,
-                MediaAssets = mediaAssets
+                MediaAssets = mediaAssets,
+                MusicAttachment = music.Value
             };
 
             _db.SocialPosts.Add(post);
@@ -342,10 +374,28 @@ public sealed class SocialFeedService : ISocialFeedService
         if (string.IsNullOrWhiteSpace(body))
             return SocialOperationResult<SocialCommentView>.Failure("social_comment_invalid", "Add a concise comment before sending it.");
 
+        if (command.ParentCommentId is { } parentCommentId)
+        {
+            var parent = await _db.SocialPostComments
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    comment => comment.Id == parentCommentId &&
+                               comment.SocialPostId == post.Id &&
+                               comment.DeletedUtc == null,
+                    cancellationToken);
+            if (parent is null)
+            {
+                return SocialOperationResult<SocialCommentView>.Failure(
+                    "social_comment_parent_unavailable",
+                    "Reply only to a visible comment on this update.");
+            }
+        }
+
         var comment = new SocialPostComment
         {
             Id = Guid.NewGuid(),
             SocialPostId = post.Id,
+            ParentCommentId = command.ParentCommentId,
             AuthorUserId = Normalize(command.Actor.Identity.UserId),
             AuthorParticipantType = command.Actor.Identity.ParticipantType,
             AuthorProfileId = command.Actor.ProfileId,
@@ -358,6 +408,7 @@ public sealed class SocialFeedService : ISocialFeedService
         return SocialOperationResult<SocialCommentView>.Success(new SocialCommentView(
             comment.Id,
             ToAuthor(command.Actor),
+            comment.ParentCommentId,
             comment.Body,
             comment.CreatedUtc));
     }
@@ -382,6 +433,19 @@ public sealed class SocialFeedService : ISocialFeedService
             return SocialOperationResult<bool>.Failure("social_follow_forbidden", "You can follow only profiles already authorized for your Legend network.");
 
         var followerUserId = Normalize(command.Actor.Identity.UserId);
+        var sourcePostId = command.SourcePostId;
+        if (sourcePostId is { } candidateSourcePostId)
+        {
+            var sourcePost = await GetVisiblePostAsync(command.Actor, candidateSourcePostId, cancellationToken);
+            if (sourcePost is null ||
+                AuthorKey.From(sourcePost.AuthorUserId, sourcePost.AuthorParticipantType) !=
+                AuthorKey.From(followedUserId, followedType))
+            {
+                return SocialOperationResult<bool>.Failure(
+                    "social_follow_source_invalid",
+                    "This follow must be attributed to a visible Legend post by that profile.");
+            }
+        }
         var existing = await _db.SocialFollows.SingleOrDefaultAsync(
             follow => follow.FollowerUserId == followerUserId &&
                       follow.FollowerParticipantType == command.Actor.Identity.ParticipantType &&
@@ -397,6 +461,7 @@ public sealed class SocialFeedService : ISocialFeedService
                 FollowerParticipantType = command.Actor.Identity.ParticipantType,
                 FollowedUserId = followedUserId,
                 FollowedParticipantType = followedType,
+                SourceSocialPostId = sourcePostId,
                 CreatedUtc = DateTime.UtcNow
             });
             await _db.SaveChangesAsync(cancellationToken);
@@ -406,6 +471,378 @@ public sealed class SocialFeedService : ISocialFeedService
         _db.SocialFollows.Remove(existing);
         await _db.SaveChangesAsync(cancellationToken);
         return SocialOperationResult<bool>.Success(false);
+    }
+
+    public async Task<SocialOperationResult<bool>> ToggleSaveAsync(
+        SocialPostMutationCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(command.Actor, cancellationToken))
+            return SocialOperationResult<bool>.Failure("social_actor_invalid", "Your mobile identity is not available for Legend updates.");
+
+        var post = await GetVisiblePostAsync(command.Actor, command.PostId, cancellationToken);
+        if (post is null)
+            return SocialOperationResult<bool>.Failure("social_post_unavailable", "This post is not available to your mobile identity.");
+
+        var actorKey = AuthorKey.From(command.Actor.Identity.UserId, command.Actor.Identity.ParticipantType);
+        var existing = await _db.SocialPostSaves.SingleOrDefaultAsync(save =>
+            save.SocialPostId == post.Id &&
+            save.ActorUserId == actorKey.UserId &&
+            save.ActorParticipantType == actorKey.ParticipantType,
+            cancellationToken);
+        if (existing is null)
+        {
+            _db.SocialPostSaves.Add(new SocialPostSave
+            {
+                Id = Guid.NewGuid(),
+                SocialPostId = post.Id,
+                ActorUserId = actorKey.UserId,
+                ActorParticipantType = actorKey.ParticipantType,
+                CreatedUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync(cancellationToken);
+            return SocialOperationResult<bool>.Success(true);
+        }
+
+        _db.SocialPostSaves.Remove(existing);
+        await _db.SaveChangesAsync(cancellationToken);
+        return SocialOperationResult<bool>.Success(false);
+    }
+
+    public async Task<SocialOperationResult<bool>> ToggleRepostAsync(
+        SocialPostMutationCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(command.Actor, cancellationToken))
+            return SocialOperationResult<bool>.Failure("social_actor_invalid", "Your mobile identity is not available for Legend updates.");
+
+        var post = await GetVisiblePostAsync(command.Actor, command.PostId, cancellationToken);
+        if (post is null)
+            return SocialOperationResult<bool>.Failure("social_post_unavailable", "This post is not available to your mobile identity.");
+
+        var actorKey = AuthorKey.From(command.Actor.Identity.UserId, command.Actor.Identity.ParticipantType);
+        var existing = await _db.SocialPostReposts.SingleOrDefaultAsync(repost =>
+            repost.SocialPostId == post.Id &&
+            repost.ActorUserId == actorKey.UserId &&
+            repost.ActorParticipantType == actorKey.ParticipantType,
+            cancellationToken);
+        if (existing is null)
+        {
+            _db.SocialPostReposts.Add(new SocialPostRepost
+            {
+                Id = Guid.NewGuid(),
+                SocialPostId = post.Id,
+                ActorUserId = actorKey.UserId,
+                ActorParticipantType = actorKey.ParticipantType,
+                CreatedUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync(cancellationToken);
+            return SocialOperationResult<bool>.Success(true);
+        }
+
+        _db.SocialPostReposts.Remove(existing);
+        await _db.SaveChangesAsync(cancellationToken);
+        return SocialOperationResult<bool>.Success(false);
+    }
+
+    public async Task<SocialOperationResult<bool>> RecordShareAsync(
+        SocialPostMutationCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(command.Actor, cancellationToken))
+            return SocialOperationResult<bool>.Failure("social_actor_invalid", "Your mobile identity is not available for Legend updates.");
+
+        var post = await GetVisiblePostAsync(command.Actor, command.PostId, cancellationToken);
+        if (post is null)
+            return SocialOperationResult<bool>.Failure("social_post_unavailable", "This post is not available to your mobile identity.");
+
+        var actorKey = AuthorKey.From(command.Actor.Identity.UserId, command.Actor.Identity.ParticipantType);
+        var existing = await _db.SocialPostShares.SingleOrDefaultAsync(share =>
+            share.SocialPostId == post.Id &&
+            share.ActorUserId == actorKey.UserId &&
+            share.ActorParticipantType == actorKey.ParticipantType,
+            cancellationToken);
+        if (existing is not null)
+            return SocialOperationResult<bool>.Success(true);
+
+        _db.SocialPostShares.Add(new SocialPostShare
+        {
+            Id = Guid.NewGuid(),
+            SocialPostId = post.Id,
+            ActorUserId = actorKey.UserId,
+            ActorParticipantType = actorKey.ParticipantType,
+            CreatedUtc = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+        return SocialOperationResult<bool>.Success(true);
+    }
+
+    public async Task<SocialOperationResult<SocialPostMetrics>> RecordViewAsync(
+        RecordSocialPostViewCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(command.Actor, cancellationToken))
+            return SocialOperationResult<SocialPostMetrics>.Failure("social_actor_invalid", "Your mobile identity is not available for Legend updates.");
+
+        var post = await GetVisiblePostAsync(command.Actor, command.PostId, cancellationToken);
+        if (post is null)
+            return SocialOperationResult<SocialPostMetrics>.Failure("social_post_unavailable", "This post is not available to your mobile identity.");
+
+        if (!IsValidWatchMeasurement(command.WatchDurationSeconds, command.WatchCompletionPercentage) ||
+            !IsValidStoryInteraction(post.ContentType, command.StoryInteractionType))
+        {
+            return SocialOperationResult<SocialPostMetrics>.Failure(
+                "social_view_invalid",
+                "The engagement measurement is not valid for this content.");
+        }
+
+        var actorKey = AuthorKey.From(command.Actor.Identity.UserId, command.Actor.Identity.ParticipantType);
+        var view = await _db.SocialPostViews.SingleOrDefaultAsync(item =>
+            item.SocialPostId == post.Id &&
+            item.ViewerUserId == actorKey.UserId &&
+            item.ViewerParticipantType == actorKey.ParticipantType,
+            cancellationToken);
+        var now = DateTime.UtcNow;
+        if (view is null)
+        {
+            view = new SocialPostViewer
+            {
+                Id = Guid.NewGuid(),
+                SocialPostId = post.Id,
+                ViewerUserId = actorKey.UserId,
+                ViewerParticipantType = actorKey.ParticipantType,
+                FirstViewedUtc = now,
+                LastViewedUtc = now,
+                MaximumWatchDurationSeconds = command.WatchDurationSeconds,
+                MaximumWatchCompletionPercentage = command.WatchCompletionPercentage
+            };
+            ApplyStoryInteraction(view, command.StoryInteractionType);
+            _db.SocialPostViews.Add(view);
+        }
+        else
+        {
+            view.LastViewedUtc = now;
+            view.MaximumWatchDurationSeconds = Maximum(view.MaximumWatchDurationSeconds, command.WatchDurationSeconds);
+            view.MaximumWatchCompletionPercentage = Maximum(view.MaximumWatchCompletionPercentage, command.WatchCompletionPercentage);
+            ApplyStoryInteraction(view, command.StoryInteractionType);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        var metrics = await LoadPostMetricsAsync([post.Id], cancellationToken);
+        return SocialOperationResult<SocialPostMetrics>.Success(metrics[post.Id]);
+    }
+
+    public async Task<SocialOperationResult<SocialProfileMetrics>> GetProfileMetricsAsync(
+        SocialFeedActor actor,
+        SocialAuthor? profile = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return SocialOperationResult<SocialProfileMetrics>.Failure("social_actor_invalid", "Your mobile identity is not available for Legend updates.");
+
+        var requested = profile ?? ToAuthor(actor);
+        var targetKey = AuthorKey.From(requested.UserId, requested.ParticipantType);
+        var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+        if (targetKey != actorKey)
+        {
+            var visible = await GetVisibleAuthorsAsync(actor, cancellationToken);
+            if (!visible.Contains(targetKey))
+            {
+                return SocialOperationResult<SocialProfileMetrics>.Failure(
+                    "social_profile_forbidden",
+                    "This Legend profile is not available to your mobile identity.");
+            }
+        }
+
+        var resolved = await ResolveAuthorsAsync([new AuthorReference(targetKey.UserId, targetKey.ParticipantType, requested.ProfileId)], cancellationToken);
+        var author = resolved.GetValueOrDefault(targetKey);
+        if (author is null)
+        {
+            return SocialOperationResult<SocialProfileMetrics>.Failure(
+                "social_profile_unavailable",
+                "This Legend profile is not available.");
+        }
+
+        var posts = await _db.SocialPosts.AsNoTracking()
+            .Where(post => post.AuthorUserId == targetKey.UserId &&
+                           post.AuthorParticipantType == targetKey.ParticipantType &&
+                           post.DeletedUtc == null)
+            .Select(post => new { post.Id, post.ContentType })
+            .ToArrayAsync(cancellationToken);
+        var metrics = await LoadPostMetricsAsync(posts.Select(post => post.Id).ToArray(), cancellationToken);
+        var followerCount = await _db.SocialFollows.AsNoTracking().CountAsync(follow =>
+            follow.FollowedUserId == targetKey.UserId &&
+            follow.FollowedParticipantType == targetKey.ParticipantType,
+            cancellationToken);
+        var followingCount = await _db.SocialFollows.AsNoTracking().CountAsync(follow =>
+            follow.FollowerUserId == targetKey.UserId &&
+            follow.FollowerParticipantType == targetKey.ParticipantType,
+            cancellationToken);
+        int? privateVisits = targetKey == actorKey
+            ? await _db.SocialProfileVisits.AsNoTracking().CountAsync(visit =>
+                visit.TargetUserId == targetKey.UserId &&
+                visit.TargetParticipantType == targetKey.ParticipantType,
+                cancellationToken)
+            : null;
+
+        return SocialOperationResult<SocialProfileMetrics>.Success(new SocialProfileMetrics(
+            author,
+            posts.Count(post => post.ContentType == SocialPostContentTypes.Post),
+            posts.Count(post => post.ContentType == SocialPostContentTypes.Reel),
+            posts.Count(post => post.ContentType == SocialPostContentTypes.Story),
+            followerCount,
+            followingCount,
+            metrics.Values.Sum(metric => metric.ReactionCount),
+            metrics.Values.Sum(metric => metric.ViewCount),
+            metrics.Values.Sum(metric => metric.UniqueViewerCount),
+            privateVisits));
+    }
+
+    public async Task<SocialOperationResult<SocialCreatorInsights>> GetCreatorInsightsAsync(
+        SocialFeedActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return SocialOperationResult<SocialCreatorInsights>.Failure("social_actor_invalid", "Your mobile identity is not available for Legend updates.");
+
+        var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+        var posts = await _db.SocialPosts.AsNoTracking()
+            .Where(post => post.AuthorUserId == actorKey.UserId &&
+                           post.AuthorParticipantType == actorKey.ParticipantType &&
+                           post.DeletedUtc == null)
+            .OrderByDescending(post => post.PostedUtc)
+            .Select(post => new { post.Id, post.ContentType, post.PostedUtc })
+            .ToArrayAsync(cancellationToken);
+        var metrics = await LoadPostMetricsAsync(posts.Select(post => post.Id).ToArray(), cancellationToken);
+        var followers = await _db.SocialFollows.AsNoTracking().Where(follow =>
+            follow.FollowedUserId == actorKey.UserId &&
+            follow.FollowedParticipantType == actorKey.ParticipantType).ToArrayAsync(cancellationToken);
+        var followingCount = await _db.SocialFollows.AsNoTracking().CountAsync(follow =>
+            follow.FollowerUserId == actorKey.UserId &&
+            follow.FollowerParticipantType == actorKey.ParticipantType,
+            cancellationToken);
+        var profileVisits = await _db.SocialProfileVisits.AsNoTracking().CountAsync(visit =>
+            visit.TargetUserId == actorKey.UserId &&
+            visit.TargetParticipantType == actorKey.ParticipantType,
+            cancellationToken);
+        var weeklyStart = DateTime.UtcNow.AddDays(-7);
+        var rows = posts.Select(post => ToInsight(post.Id, post.ContentType, post.PostedUtc, metrics[post.Id])).ToArray();
+        var totalViews = rows.Sum(row => row.Metrics.ViewCount);
+        var totalReach = rows.Sum(row => row.Metrics.UniqueViewerCount);
+        var totalInteractions = rows.Sum(row => row.Metrics.ReactionCount + row.Metrics.CommentCount + row.Metrics.RepostCount + row.Metrics.ShareCount + row.Metrics.SaveCount);
+
+        return SocialOperationResult<SocialCreatorInsights>.Success(new SocialCreatorInsights(
+            DateTime.UtcNow,
+            totalViews,
+            totalReach,
+            followers.Length,
+            followingCount,
+            followers.Count(follow => follow.CreatedUtc >= weeklyStart),
+            profileVisits,
+            rows.Sum(row => row.Metrics.ReactionCount),
+            rows.Sum(row => row.Metrics.CommentCount),
+            rows.Sum(row => row.Metrics.ReplyCount),
+            rows.Sum(row => row.Metrics.ShareCount),
+            rows.Sum(row => row.Metrics.RepostCount),
+            rows.Sum(row => row.Metrics.SaveCount),
+            Percentage(totalInteractions, totalReach),
+            rows.Where(row => row.ContentType == SocialPostContentTypes.Post).OrderByDescending(InsightScore).Take(TopInsightItemCount).ToArray(),
+            rows.Where(row => row.ContentType == SocialPostContentTypes.Reel).OrderByDescending(InsightScore).Take(TopInsightItemCount).ToArray(),
+            rows.Where(row => row.ContentType == SocialPostContentTypes.Story).OrderByDescending(InsightScore).Take(TopInsightItemCount).ToArray()));
+    }
+
+    public async Task<SocialOperationResult<SocialPostInsight>> GetPostInsightsAsync(
+        SocialFeedActor actor,
+        Guid postId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return SocialOperationResult<SocialPostInsight>.Failure("social_actor_invalid", "Your mobile identity is not available for Legend updates.");
+
+        var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+        var post = await _db.SocialPosts.AsNoTracking().SingleOrDefaultAsync(item =>
+            item.Id == postId && item.DeletedUtc == null &&
+            item.AuthorUserId == actorKey.UserId &&
+            item.AuthorParticipantType == actorKey.ParticipantType,
+            cancellationToken);
+        if (post is null)
+            return SocialOperationResult<SocialPostInsight>.Failure("social_insights_forbidden", "Only the creator can view this post's insights.");
+
+        var metrics = await LoadPostMetricsAsync([post.Id], cancellationToken);
+        return SocialOperationResult<SocialPostInsight>.Success(ToInsight(post.Id, post.ContentType, post.PostedUtc, metrics[post.Id]));
+    }
+
+    public async Task<SocialOperationResult<bool>> RecordProfileVisitAsync(
+        SocialProfileVisitCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(command.Actor, cancellationToken))
+            return SocialOperationResult<bool>.Failure("social_actor_invalid", "Your mobile identity is not available for Legend updates.");
+
+        var targetKey = AuthorKey.From(command.TargetUserId, command.TargetParticipantType);
+        var actorKey = AuthorKey.From(command.Actor.Identity.UserId, command.Actor.Identity.ParticipantType);
+        if (targetKey == actorKey)
+            return SocialOperationResult<bool>.Failure("social_profile_visit_invalid", "Profile visits must target another authorized Legend profile.");
+
+        var visible = await GetVisibleAuthorsAsync(command.Actor, cancellationToken);
+        if (!visible.Contains(targetKey))
+            return SocialOperationResult<bool>.Failure("social_profile_forbidden", "This Legend profile is not available to your mobile identity.");
+
+        var sourcePostId = command.SourcePostId.GetValueOrDefault();
+        if (sourcePostId != Guid.Empty)
+        {
+            var sourcePost = await GetVisiblePostAsync(command.Actor, sourcePostId, cancellationToken);
+            if (sourcePost is null || AuthorKey.From(sourcePost.AuthorUserId, sourcePost.AuthorParticipantType) != targetKey)
+                return SocialOperationResult<bool>.Failure("social_profile_visit_source_invalid", "The profile visit source is not available.");
+        }
+
+        var visit = await _db.SocialProfileVisits.SingleOrDefaultAsync(item =>
+            item.TargetUserId == targetKey.UserId &&
+            item.TargetParticipantType == targetKey.ParticipantType &&
+            item.VisitorUserId == actorKey.UserId &&
+            item.VisitorParticipantType == actorKey.ParticipantType &&
+            item.SourceSocialPostId == sourcePostId,
+            cancellationToken);
+        if (visit is null)
+        {
+            _db.SocialProfileVisits.Add(new SocialProfileVisit
+            {
+                Id = Guid.NewGuid(),
+                TargetUserId = targetKey.UserId,
+                TargetParticipantType = targetKey.ParticipantType,
+                VisitorUserId = actorKey.UserId,
+                VisitorParticipantType = actorKey.ParticipantType,
+                SourceSocialPostId = sourcePostId,
+                FirstVisitedUtc = DateTime.UtcNow,
+                LastVisitedUtc = DateTime.UtcNow
+            });
+        }
+        else
+        {
+            visit.LastVisitedUtc = DateTime.UtcNow;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return SocialOperationResult<bool>.Success(true);
+    }
+
+    public async Task<SocialOperationResult<IReadOnlyList<SocialMusicTrack>>> SearchMusicAsync(
+        SocialFeedActor actor,
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return SocialOperationResult<IReadOnlyList<SocialMusicTrack>>.Failure("social_actor_invalid", "Your mobile identity is not available for Legend updates.");
+
+        var normalized = query?.Trim() ?? string.Empty;
+        if (normalized.Length is 0 or > MaximumMusicQueryLength)
+        {
+            return SocialOperationResult<IReadOnlyList<SocialMusicTrack>>.Failure(
+                "social_music_query_invalid",
+                "Search with between 1 and 120 characters.");
+        }
+
+        return await _musicCatalog.SearchAsync(normalized, cancellationToken);
     }
 
     private async Task<SocialPost?> GetVisiblePostAsync(
@@ -425,6 +862,176 @@ public sealed class SocialFeedService : ISocialFeedService
         var visibleAuthors = await GetVisibleAuthorsAsync(actor, cancellationToken);
         return visibleAuthors.Contains(AuthorKey.From(post.AuthorUserId, post.AuthorParticipantType)) ? post : null;
     }
+
+    private async Task<Dictionary<Guid, SocialPostMetrics>> LoadPostMetricsAsync(
+        IReadOnlyCollection<Guid> postIds,
+        CancellationToken cancellationToken)
+    {
+        if (postIds.Count == 0)
+            return new Dictionary<Guid, SocialPostMetrics>();
+
+        var ids = postIds.Distinct().ToArray();
+        var views = await _db.SocialPostViews.AsNoTracking()
+            .Where(view => ids.Contains(view.SocialPostId))
+            .ToArrayAsync(cancellationToken);
+        var reactions = await _db.SocialPostReactions.AsNoTracking()
+            .Where(reaction => ids.Contains(reaction.SocialPostId))
+            .ToArrayAsync(cancellationToken);
+        var comments = await _db.SocialPostComments.AsNoTracking()
+            .Where(comment => ids.Contains(comment.SocialPostId) && comment.DeletedUtc == null)
+            .ToArrayAsync(cancellationToken);
+        var reposts = await _db.SocialPostReposts.AsNoTracking()
+            .Where(repost => ids.Contains(repost.SocialPostId))
+            .ToArrayAsync(cancellationToken);
+        var saves = await _db.SocialPostSaves.AsNoTracking()
+            .Where(save => ids.Contains(save.SocialPostId))
+            .ToArrayAsync(cancellationToken);
+        var shares = await _db.SocialPostShares.AsNoTracking()
+            .Where(share => ids.Contains(share.SocialPostId))
+            .ToArrayAsync(cancellationToken);
+        var profileVisits = await _db.SocialProfileVisits.AsNoTracking()
+            .Where(visit => ids.Contains(visit.SourceSocialPostId))
+            .ToArrayAsync(cancellationToken);
+        var follows = await _db.SocialFollows.AsNoTracking()
+            .Where(follow => follow.SourceSocialPostId != null && ids.Contains(follow.SourceSocialPostId.Value))
+            .ToArrayAsync(cancellationToken);
+
+        return ids.ToDictionary(postId => postId, postId =>
+        {
+            var postViews = views.Where(view => view.SocialPostId == postId).ToArray();
+            var watchedDuration = postViews
+                .Where(view => view.MaximumWatchDurationSeconds.HasValue)
+                .Select(view => view.MaximumWatchDurationSeconds!.Value)
+                .ToArray();
+            var watchedCompletion = postViews
+                .Where(view => view.MaximumWatchCompletionPercentage.HasValue)
+                .Select(view => view.MaximumWatchCompletionPercentage!.Value)
+                .ToArray();
+
+            return new SocialPostMetrics(
+                postViews.Length,
+                postViews.Length,
+                reactions.Count(reaction => reaction.SocialPostId == postId),
+                comments.Count(comment => comment.SocialPostId == postId),
+                comments.Count(comment => comment.SocialPostId == postId && comment.ParentCommentId != null),
+                reposts.Count(repost => repost.SocialPostId == postId),
+                saves.Count(save => save.SocialPostId == postId),
+                shares.Count(share => share.SocialPostId == postId),
+                profileVisits.Count(visit => visit.SourceSocialPostId == postId),
+                follows.Count(follow => follow.SourceSocialPostId == postId),
+                watchedDuration.Length == 0 ? null : decimal.Round(watchedDuration.Average(), 3),
+                watchedCompletion.Length == 0 ? null : decimal.Round(watchedCompletion.Average(), 2),
+                postViews.Sum(view => view.StoryExitCount),
+                postViews.Sum(view => view.StoryTapForwardCount),
+                postViews.Sum(view => view.StoryTapBackwardCount));
+        });
+    }
+
+    private async Task<SocialOperationResult<SocialPostMusicAttachment?>> ResolveMusicAsync(
+        SocialMusicSelection? selection,
+        CancellationToken cancellationToken)
+    {
+        if (selection is null)
+            return SocialOperationResult<SocialPostMusicAttachment?>.Success(null);
+
+        var providerId = selection.ProviderId?.Trim() ?? string.Empty;
+        var trackId = selection.ProviderTrackId?.Trim() ?? string.Empty;
+        if (providerId.Length is 0 or > 80 || trackId.Length is 0 or > 256 ||
+            selection.TrimStartSeconds < 0 || selection.TrimEndSeconds <= selection.TrimStartSeconds ||
+            selection.MusicVolume is < 0 or > 1 || selection.OriginalAudioVolume is < 0 or > 1)
+        {
+            return SocialOperationResult<SocialPostMusicAttachment?>.Failure(
+                "social_music_invalid",
+                "The music selection contains an invalid provider, clip, or volume setting.");
+        }
+
+        var resolved = await _musicCatalog.ResolveAsync(providerId, trackId, cancellationToken);
+        if (!resolved.Succeeded || resolved.Value is null ||
+            !string.Equals(resolved.Value.ProviderId, providerId, StringComparison.Ordinal) ||
+            !string.Equals(resolved.Value.ProviderTrackId, trackId, StringComparison.Ordinal) ||
+            resolved.Value.TrackDurationSeconds <= 0 ||
+            selection.TrimEndSeconds > resolved.Value.TrackDurationSeconds)
+        {
+            return SocialOperationResult<SocialPostMusicAttachment?>.Failure(
+                resolved.ErrorCode ?? "social_music_invalid",
+                resolved.ErrorMessage ?? "The music selection could not be verified.");
+        }
+
+        return SocialOperationResult<SocialPostMusicAttachment?>.Success(new SocialPostMusicAttachment
+        {
+            Id = Guid.NewGuid(),
+            ProviderId = resolved.Value.ProviderId,
+            ProviderTrackId = resolved.Value.ProviderTrackId,
+            TrackTitle = resolved.Value.TrackTitle,
+            ArtistName = resolved.Value.ArtistName,
+            TrackDurationSeconds = resolved.Value.TrackDurationSeconds,
+            PreviewUrl = resolved.Value.PreviewUrl,
+            TrimStartSeconds = selection.TrimStartSeconds,
+            TrimEndSeconds = selection.TrimEndSeconds,
+            MusicVolume = selection.MusicVolume,
+            OriginalAudioVolume = selection.OriginalAudioVolume,
+            CreatedUtc = DateTime.UtcNow
+        });
+    }
+
+    private static SocialPostMusicView ToMusicView(SocialPostMusicAttachment music) => new(
+        music.ProviderId,
+        music.ProviderTrackId,
+        music.TrackTitle,
+        music.ArtistName,
+        music.TrackDurationSeconds,
+        music.PreviewUrl,
+        music.TrimStartSeconds,
+        music.TrimEndSeconds,
+        music.MusicVolume,
+        music.OriginalAudioVolume);
+
+    private static SocialPostInsight ToInsight(
+        Guid postId,
+        string contentType,
+        DateTime postedUtc,
+        SocialPostMetrics metrics) => new(
+            postId,
+            contentType,
+            postedUtc,
+            metrics,
+            Percentage(InsightScore(metrics), metrics.UniqueViewerCount));
+
+    private static int InsightScore(SocialPostInsight insight) => InsightScore(insight.Metrics);
+
+    private static int InsightScore(SocialPostMetrics metrics) =>
+        metrics.ReactionCount + metrics.CommentCount + metrics.RepostCount + metrics.ShareCount + metrics.SaveCount;
+
+    private static decimal Percentage(int numerator, int denominator) =>
+        denominator <= 0 ? 0 : decimal.Round(numerator * 100m / denominator, 2);
+
+    private static bool IsValidWatchMeasurement(decimal? duration, decimal? completion) =>
+        (!duration.HasValue || duration.Value is >= 0 and <= MaximumWatchDurationSeconds) &&
+        (!completion.HasValue || completion.Value is >= 0 and <= 100);
+
+    private static bool IsValidStoryInteraction(string contentType, string? interactionType) =>
+        string.IsNullOrWhiteSpace(interactionType) ||
+        string.Equals(contentType, SocialPostContentTypes.Story, StringComparison.Ordinal) &&
+        interactionType.Trim() is SocialStoryInteractionTypes.Exit or SocialStoryInteractionTypes.TapForward or SocialStoryInteractionTypes.TapBackward;
+
+    private static void ApplyStoryInteraction(SocialPostViewer view, string? interactionType)
+    {
+        switch (interactionType?.Trim())
+        {
+            case SocialStoryInteractionTypes.Exit when view.StoryExitCount < MaximumStoryInteractionCount:
+                view.StoryExitCount++;
+                break;
+            case SocialStoryInteractionTypes.TapForward when view.StoryTapForwardCount < MaximumStoryInteractionCount:
+                view.StoryTapForwardCount++;
+                break;
+            case SocialStoryInteractionTypes.TapBackward when view.StoryTapBackwardCount < MaximumStoryInteractionCount:
+                view.StoryTapBackwardCount++;
+                break;
+        }
+    }
+
+    private static decimal? Maximum(decimal? existing, decimal? candidate) =>
+        !existing.HasValue ? candidate : !candidate.HasValue ? existing : Math.Max(existing.Value, candidate.Value);
 
     private Task<bool> IsValidActorAsync(SocialFeedActor actor, CancellationToken cancellationToken)
     {
@@ -473,6 +1080,11 @@ public sealed class SocialFeedService : ISocialFeedService
             .Where(media => postIds.Contains(media.SocialPostId))
             .OrderBy(media => media.DisplayOrder)
             .ToListAsync(cancellationToken);
+        var metricsByPost = await LoadPostMetricsAsync(postIds, cancellationToken);
+        var musicByPost = await _db.SocialPostMusicAttachments
+            .AsNoTracking()
+            .Where(music => postIds.Contains(music.SocialPostId))
+            .ToDictionaryAsync(music => music.SocialPostId, cancellationToken);
         var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
         var follows = await _db.SocialFollows
             .AsNoTracking()
@@ -480,6 +1092,20 @@ public sealed class SocialFeedService : ISocialFeedService
                 follow.FollowerUserId == actorKey.UserId &&
                 follow.FollowerParticipantType == actorKey.ParticipantType)
             .ToListAsync(cancellationToken);
+        var savedPostIds = await _db.SocialPostSaves
+            .AsNoTracking()
+            .Where(save => postIds.Contains(save.SocialPostId) &&
+                           save.ActorUserId == actorKey.UserId &&
+                           save.ActorParticipantType == actorKey.ParticipantType)
+            .Select(save => save.SocialPostId)
+            .ToHashSetAsync(cancellationToken);
+        var repostedPostIds = await _db.SocialPostReposts
+            .AsNoTracking()
+            .Where(repost => postIds.Contains(repost.SocialPostId) &&
+                              repost.ActorUserId == actorKey.UserId &&
+                              repost.ActorParticipantType == actorKey.ParticipantType)
+            .Select(repost => repost.SocialPostId)
+            .ToHashSetAsync(cancellationToken);
 
         var authors = await ResolveAuthorsAsync(
             materialized.Select(post => new AuthorReference(post.AuthorUserId, post.AuthorParticipantType, post.AuthorProfileId))
@@ -494,6 +1120,7 @@ public sealed class SocialFeedService : ISocialFeedService
                 .Select(comment => new SocialCommentView(
                     comment.Id,
                     authors.GetValueOrDefault(AuthorKey.From(comment.AuthorUserId, comment.AuthorParticipantType)) ?? ToUnknownAuthor(comment.AuthorUserId, comment.AuthorParticipantType, comment.AuthorProfileId),
+                    comment.ParentCommentId,
                     comment.Body,
                     comment.CreatedUtc))
                 .ToArray();
@@ -511,6 +1138,10 @@ public sealed class SocialFeedService : ISocialFeedService
                 follows.Any(follow =>
                     AuthorKey.From(follow.FollowedUserId, follow.FollowedParticipantType) ==
                     AuthorKey.From(post.AuthorUserId, post.AuthorParticipantType)),
+                savedPostIds.Contains(post.Id),
+                repostedPostIds.Contains(post.Id),
+                metricsByPost[post.Id],
+                musicByPost.TryGetValue(post.Id, out var music) ? ToMusicView(music) : null,
                 mediaAssets
                     .Where(media => media.SocialPostId == post.Id)
                     .OrderBy(media => media.DisplayOrder)

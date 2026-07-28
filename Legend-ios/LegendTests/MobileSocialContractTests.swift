@@ -1,3 +1,4 @@
+import Photos
 import XCTest
 @testable import Legend
 
@@ -115,6 +116,78 @@ final class MobileSocialContractTests: XCTestCase {
         }
         XCTAssertTrue(snapshot.posts[0].followedByCurrentActor)
     }
+
+    func testCreationRoutesExposeOnlyTheAuthoritativeMenuAndSupportedTypes() {
+        XCTAssertEqual(
+            MobileSocialContentType.allCases.map(\.rawValue),
+            ["Post", "Story", "Reel"])
+        XCTAssertNotEqual(
+            LegendSocialCreationRoute.menu.id,
+            LegendSocialCreationRoute.composer(.post).id)
+        XCTAssertNotEqual(
+            LegendSocialCreationRoute.composer(.post).id,
+            LegendSocialCreationRoute.composer(.story).id)
+    }
+
+    func testPhotoLibraryAuthorizationMapsEachNativeState() {
+        XCTAssertEqual(
+            LegendPhotoLibraryAuthorization(.notDetermined),
+            .notDetermined)
+        XCTAssertEqual(
+            LegendPhotoLibraryAuthorization(.authorized),
+            .authorized)
+        XCTAssertEqual(
+            LegendPhotoLibraryAuthorization(.limited),
+            .limited)
+        XCTAssertEqual(
+            LegendPhotoLibraryAuthorization(.denied),
+            .denied)
+        XCTAssertEqual(
+            LegendPhotoLibraryAuthorization(.restricted),
+            .restricted)
+    }
+
+    func testMediaPublishForwardsTheSelectedSupportedContentType() async throws {
+        let author = MobileSocialAuthor(
+            identity: try LogicalParticipantIdentity(
+                userID: "client-one",
+                participantType: .client),
+            profileID: "00000000-0000-0000-0000-000000000002",
+            displayName: "Client One",
+            avatar: nil)
+        let post = MobileSocialPost(
+            id: UUID(),
+            author: author,
+            contentType: MobileSocialContentType.reel.rawValue,
+            body: "A focused reel.",
+            postedUTC: .now,
+            expiresUTC: nil,
+            reactionCount: 0,
+            commentCount: 0,
+            reactedByCurrentActor: false,
+            followedByCurrentActor: false,
+            media: [],
+            comments: [])
+        let api = RecordingSocialAPI(post: post)
+        let store = MobileSocialStore(
+            api: api,
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics())
+
+        let published = await store.publish(MobileSocialPublishRequest(
+            contentType: .reel,
+            body: "A focused reel.",
+            files: [MultipartFormFile(
+                fieldName: "files",
+                fileName: "legend-reel.mp4",
+                mimeType: "video/mp4",
+                data: Data([0, 1, 2, 3]))],
+            accessibilityText: "A Legend reel"))
+
+        XCTAssertTrue(published)
+        let contentTypes = await api.mediaContentTypes()
+        XCTAssertEqual(contentTypes, [.reel])
+    }
 }
 
 private struct StubSocialAPI: MobileSocialAPI {
@@ -125,7 +198,7 @@ private struct StubSocialAPI: MobileSocialAPI {
     }
 
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost { post }
-    func createMediaPost(body: String, files: [MultipartFormFile], accessibilityText: String?, accessToken: String) async throws -> MobileSocialPost { post }
+    func createMediaPost(type: MobileSocialContentType, body: String, files: [MultipartFormFile], accessibilityText: String?, accessToken: String) async throws -> MobileSocialPost { post }
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data { Data() }
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost { post }
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment {
@@ -133,5 +206,70 @@ private struct StubSocialAPI: MobileSocialAPI {
     }
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult {
         MobileSocialFollowResult(isFollowing: true)
+    }
+}
+
+private actor RecordingSocialAPI: MobileSocialAPI {
+    private let post: MobileSocialPost
+    private var recordedMediaContentTypes: [MobileSocialContentType] = []
+
+    init(post: MobileSocialPost) {
+        self.post = post
+    }
+
+    func feed(accessToken: String) async throws -> MobileSocialSnapshot {
+        MobileSocialSnapshot(stories: [], posts: [post], activity: [], activityCount: 0)
+    }
+
+    func createPost(
+        _ request: MobileCreateSocialPost,
+        accessToken: String
+    ) async throws -> MobileSocialPost {
+        post
+    }
+
+    func createMediaPost(
+        type: MobileSocialContentType,
+        body: String,
+        files: [MultipartFormFile],
+        accessibilityText: String?,
+        accessToken: String
+    ) async throws -> MobileSocialPost {
+        recordedMediaContentTypes.append(type)
+        return post
+    }
+
+    func mediaData(assetID: UUID, accessToken: String) async throws -> Data {
+        Data()
+    }
+
+    func toggleReaction(
+        postID: UUID,
+        accessToken: String
+    ) async throws -> MobileSocialPost {
+        post
+    }
+
+    func addComment(
+        postID: UUID,
+        request: MobileCreateSocialComment,
+        accessToken: String
+    ) async throws -> MobileSocialComment {
+        MobileSocialComment(
+            id: UUID(),
+            author: post.author,
+            body: request.body,
+            createdUTC: .now)
+    }
+
+    func toggleFollow(
+        _ request: MobileToggleSocialFollow,
+        accessToken: String
+    ) async throws -> MobileSocialFollowResult {
+        MobileSocialFollowResult(isFollowing: true)
+    }
+
+    func mediaContentTypes() -> [MobileSocialContentType] {
+        recordedMediaContentTypes
     }
 }

@@ -21,6 +21,7 @@
 		51DEF961F78E09E4EFCADBFB /* LegendNextButtons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78035FC866AB942A4F9F45F0 /* LegendNextButtons.swift */; };
 		5482D1AE8D1570BC5C686090 /* LegendApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 474F0CA43E80A96D179DD53F /* LegendApp.swift */; };
 		5EF643842D57B1E5FCAF8499 /* LegendDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34F2412F40E7DCDF9AEC4644 /* LegendDesignSystem.swift */; };
+		60C7F2B6B74141E54290ECC3 /* LegendSocialCreationFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C84B073BFFEE7A741B9A30 /* LegendSocialCreationFlow.swift */; };
 		6AB8FDFB34A8057871BE8441 /* LogicalParticipantIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E81305123969A7AFFB8384 /* LogicalParticipantIdentityTests.swift */; };
 		6C796FDFDDEE2E9061948116 /* LegendBrandLogo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C77437142863C4D1039F225 /* LegendBrandLogo.swift */; };
 		6C93E636A6066A8936AE152B /* LegendNextAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89D2FEC7414AEFB70386B8EB /* LegendNextAvatar.swift */; };
@@ -86,6 +87,7 @@
 		4EB710453BF121B567C8AEBD /* MobileNativeContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileNativeContractTests.swift; sourceTree = "<group>"; };
 		4EFE5E54C7A8CB19C6B48309 /* OAuthPKCE.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthPKCE.swift; sourceTree = "<group>"; };
 		538A9E85B3309A6AEE9BC228 /* LegendNextStates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextStates.swift; sourceTree = "<group>"; };
+		53C84B073BFFEE7A741B9A30 /* LegendSocialCreationFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendSocialCreationFlow.swift; sourceTree = "<group>"; };
 		5528EEB1AE65FCB262CDEB12 /* MessagingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingStore.swift; sourceTree = "<group>"; };
 		55FB2460CFBD95299E4F7590 /* MobileConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileConfiguration.swift; sourceTree = "<group>"; };
 		5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialModels.swift; sourceTree = "<group>"; };
@@ -316,6 +318,7 @@
 		E628A2A6B5C97C3B84186B36 /* Social */ = {
 			isa = PBXGroup;
 			children = (
+				53C84B073BFFEE7A741B9A30 /* LegendSocialCreationFlow.swift */,
 				7934CB78A5F42B17F1842D23 /* LegendSocialHomeSection.swift */,
 				5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */,
 				28C1D977C634FEC8B8B83B87 /* MobileSocialStore.swift */,
@@ -478,6 +481,7 @@
 				B389C8E0455AC63F91D431A2 /* LegendNextStates.swift in Sources */,
 				FF2556A053AA9A5F2644E7A3 /* LegendNextSurface.swift in Sources */,
 				0729AED3FD936A3DCECA669A /* LegendNextTheme.swift in Sources */,
+				60C7F2B6B74141E54290ECC3 /* LegendSocialCreationFlow.swift in Sources */,
 				25C3E0CF55EA37F492B4450F /* LegendSocialHomeSection.swift in Sources */,
 				9143163FFD11DECB7F307A06 /* LogicalParticipantIdentity.swift in Sources */,
 				D26F0D3763F4892CDB762AA3 /* MessagingHomeView.swift in Sources */,

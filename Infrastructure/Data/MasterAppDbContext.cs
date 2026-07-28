@@ -93,6 +93,12 @@ public class MasterAppDbContext : DbContext
     public DbSet<SocialPostComment> SocialPostComments => Set<SocialPostComment>();
     public DbSet<SocialPostReaction> SocialPostReactions => Set<SocialPostReaction>();
     public DbSet<SocialFollow> SocialFollows => Set<SocialFollow>();
+    public DbSet<SocialPostViewer> SocialPostViews => Set<SocialPostViewer>();
+    public DbSet<SocialPostSave> SocialPostSaves => Set<SocialPostSave>();
+    public DbSet<SocialPostShare> SocialPostShares => Set<SocialPostShare>();
+    public DbSet<SocialPostRepost> SocialPostReposts => Set<SocialPostRepost>();
+    public DbSet<SocialProfileVisit> SocialProfileVisits => Set<SocialProfileVisit>();
+    public DbSet<SocialPostMusicAttachment> SocialPostMusicAttachments => Set<SocialPostMusicAttachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

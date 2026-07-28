@@ -104,7 +104,8 @@ public sealed class MobileSocialController : MobileApiControllerBase
                     resolved.Actor!,
                     request?.ContentType ?? string.Empty,
                     request?.Body ?? string.Empty,
-                    uploads),
+                    uploads,
+                    ToMusicSelection(request)),
                 cancellationToken);
 
             return result.Succeeded && result.Value is not null
@@ -169,7 +170,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
             return resolved.Error;
 
         var result = await _social.AddCommentAsync(
-            new CreateSocialCommentCommand(resolved.Actor!, postId, request?.Body ?? string.Empty),
+            new CreateSocialCommentCommand(resolved.Actor!, postId, request?.Body ?? string.Empty, request?.ParentCommentId),
             cancellationToken);
         return result.Succeeded && result.Value is not null
             ? Ok(await ToCommentDtoAsync(result.Value, cancellationToken))
@@ -186,10 +187,148 @@ public sealed class MobileSocialController : MobileApiControllerBase
             return resolved.Error;
 
         var result = await _social.ToggleFollowAsync(
-            new SocialFollowCommand(resolved.Actor!, request?.FollowedUserId ?? string.Empty, request?.FollowedParticipantType ?? string.Empty),
+            new SocialFollowCommand(resolved.Actor!, request?.FollowedUserId ?? string.Empty, request?.FollowedParticipantType ?? string.Empty, request?.SourcePostId),
             cancellationToken);
         return result.Succeeded
             ? Ok(new MobileSocialFollowResultDto(result.Value))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpPost("posts/{postId:guid}/save")]
+    public async Task<IActionResult> ToggleSave(Guid postId, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.ToggleSaveAsync(new SocialPostMutationCommand(resolved.Actor!, postId), cancellationToken);
+        return result.Succeeded
+            ? Ok(new MobileSocialStateResultDto(result.Value))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpPost("posts/{postId:guid}/repost")]
+    public async Task<IActionResult> ToggleRepost(Guid postId, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.ToggleRepostAsync(new SocialPostMutationCommand(resolved.Actor!, postId), cancellationToken);
+        return result.Succeeded
+            ? Ok(new MobileSocialStateResultDto(result.Value))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpPost("posts/{postId:guid}/share")]
+    public async Task<IActionResult> RecordShare(Guid postId, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.RecordShareAsync(new SocialPostMutationCommand(resolved.Actor!, postId), cancellationToken);
+        return result.Succeeded
+            ? Ok(new MobileSocialStateResultDto(result.Value))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpPost("posts/{postId:guid}/view")]
+    public async Task<IActionResult> RecordView(
+        Guid postId,
+        [FromBody] MobileRecordSocialViewRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.RecordViewAsync(new RecordSocialPostViewCommand(
+            resolved.Actor!,
+            postId,
+            request?.WatchDurationSeconds,
+            request?.WatchCompletionPercentage,
+            request?.StoryInteractionType), cancellationToken);
+        return result.Succeeded && result.Value is not null
+            ? Ok(ToMetricsDto(result.Value))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpGet("insights/creator")]
+    public async Task<IActionResult> CreatorInsights(CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.GetCreatorInsightsAsync(resolved.Actor!, cancellationToken);
+        return result.Succeeded && result.Value is not null
+            ? Ok(ToCreatorInsightsDto(result.Value))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpGet("posts/{postId:guid}/insights")]
+    public async Task<IActionResult> PostInsights(Guid postId, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.GetPostInsightsAsync(resolved.Actor!, postId, cancellationToken);
+        return result.Succeeded && result.Value is not null
+            ? Ok(ToPostInsightDto(result.Value))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpGet("profiles/metrics")]
+    public async Task<IActionResult> ProfileMetrics(
+        [FromQuery] string? userId,
+        [FromQuery] string? participantType,
+        [FromQuery] Guid? profileId,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        SocialAuthor? profile = string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(participantType)
+            ? null
+            : new SocialAuthor(userId, participantType, profileId.GetValueOrDefault(), string.Empty);
+        var result = await _social.GetProfileMetricsAsync(resolved.Actor!, profile, cancellationToken);
+        return result.Succeeded && result.Value is not null
+            ? Ok(await ToProfileMetricsDtoAsync(result.Value, cancellationToken))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpPost("profiles/visit")]
+    public async Task<IActionResult> RecordProfileVisit(
+        [FromBody] MobileRecordProfileVisitRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.RecordProfileVisitAsync(new SocialProfileVisitCommand(
+            resolved.Actor!,
+            request?.TargetUserId ?? string.Empty,
+            request?.TargetParticipantType ?? string.Empty,
+            request?.SourcePostId), cancellationToken);
+        return result.Succeeded
+            ? Ok(new MobileSocialStateResultDto(result.Value))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpGet("music/search")]
+    public async Task<IActionResult> SearchMusic([FromQuery] string? query, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.SearchMusicAsync(resolved.Actor!, query ?? string.Empty, cancellationToken);
+        return result.Succeeded && result.Value is not null
+            ? Ok(result.Value.Select(ToMusicDto).ToArray())
             : SocialFailure(result.ErrorCode, result.ErrorMessage);
     }
 
@@ -209,7 +348,9 @@ public sealed class MobileSocialController : MobileApiControllerBase
         await Task.WhenAll(snapshot.Stories.Select(post => ToPostDtoAsync(post, cancellationToken))),
         await Task.WhenAll(snapshot.Posts.Select(post => ToPostDtoAsync(post, cancellationToken))),
         await Task.WhenAll(snapshot.Activity.Select(item => ToActivityDtoAsync(item, cancellationToken))),
-        snapshot.ActivityCount);
+        snapshot.ActivityCount,
+        await ToProfileMetricsDtoAsync(snapshot.CurrentProfileMetrics, cancellationToken),
+        ToCreatorInsightsDto(snapshot.CreatorInsights));
 
     private async Task<MobileSocialPostDto> ToPostDtoAsync(SocialPostView post, CancellationToken cancellationToken) => new(
         post.Id,
@@ -222,6 +363,10 @@ public sealed class MobileSocialController : MobileApiControllerBase
         post.CommentCount,
         post.ReactedByCurrentActor,
         post.FollowedByCurrentActor,
+        post.SavedByCurrentActor,
+        post.RepostedByCurrentActor,
+        ToMetricsDto(post.Metrics),
+        post.Music is null ? null : ToMusicDto(post.Music),
         post.Media.Select(media => new MobileSocialMediaDto(
             media.Id,
             media.DisplayOrder,
@@ -239,6 +384,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
     private async Task<MobileSocialCommentDto> ToCommentDtoAsync(SocialCommentView comment, CancellationToken cancellationToken) => new(
         comment.Id,
         await ToAuthorDtoAsync(comment.Author, cancellationToken),
+        comment.ParentCommentId,
         comment.Body,
         comment.CreatedUtc);
 
@@ -265,13 +411,112 @@ public sealed class MobileSocialController : MobileApiControllerBase
             await MobileAvatarProjection.ResolveAsync(_profiles, identity, cancellationToken));
     }
 
+    private async Task<MobileSocialProfileMetricsDto> ToProfileMetricsDtoAsync(
+        SocialProfileMetrics metrics,
+        CancellationToken cancellationToken) => new(
+            await ToAuthorDtoAsync(metrics.Profile, cancellationToken),
+            metrics.PostCount,
+            metrics.VideoCount,
+            metrics.StoryCount,
+            metrics.FollowerCount,
+            metrics.FollowingCount,
+            metrics.TotalReactionCount,
+            metrics.TotalContentViewCount,
+            metrics.TotalReachCount,
+            metrics.PrivateProfileVisitCount);
+
+    private static MobileSocialPostMetricsDto ToMetricsDto(SocialPostMetrics metrics) => new(
+        metrics.ViewCount,
+        metrics.UniqueViewerCount,
+        metrics.ReactionCount,
+        metrics.CommentCount,
+        metrics.ReplyCount,
+        metrics.RepostCount,
+        metrics.SaveCount,
+        metrics.ShareCount,
+        metrics.ProfileVisitCount,
+        metrics.FollowsGenerated,
+        metrics.AverageWatchDurationSeconds,
+        metrics.AverageWatchCompletionPercentage,
+        metrics.StoryExitCount,
+        metrics.StoryTapForwardCount,
+        metrics.StoryTapBackwardCount);
+
+    private static MobileSocialMusicDto ToMusicDto(SocialMusicTrack track) => new(
+        track.ProviderId,
+        track.ProviderTrackId,
+        track.TrackTitle,
+        track.ArtistName,
+        track.TrackDurationSeconds,
+        track.PreviewUrl,
+        null,
+        null,
+        null,
+        null);
+
+    private static MobileSocialMusicDto ToMusicDto(SocialPostMusicView music) => new(
+        music.ProviderId,
+        music.ProviderTrackId,
+        music.TrackTitle,
+        music.ArtistName,
+        music.TrackDurationSeconds,
+        music.PreviewUrl,
+        music.TrimStartSeconds,
+        music.TrimEndSeconds,
+        music.MusicVolume,
+        music.OriginalAudioVolume);
+
+    private static MobileSocialPostInsightDto ToPostInsightDto(SocialPostInsight insight) => new(
+        insight.PostId,
+        insight.ContentType,
+        insight.PostedUtc,
+        ToMetricsDto(insight.Metrics),
+        insight.EngagementRatePercentage);
+
+    private static MobileSocialCreatorInsightsDto ToCreatorInsightsDto(SocialCreatorInsights insights) => new(
+        insights.GeneratedUtc,
+        insights.TotalViews,
+        insights.TotalReach,
+        insights.FollowerCount,
+        insights.FollowingCount,
+        insights.FollowersGained,
+        insights.ProfileVisits,
+        insights.TotalReactions,
+        insights.TotalComments,
+        insights.TotalReplies,
+        insights.TotalShares,
+        insights.TotalReposts,
+        insights.TotalSaves,
+        insights.EngagementRatePercentage,
+        insights.TopPosts.Select(ToPostInsightDto).ToArray(),
+        insights.TopVideos.Select(ToPostInsightDto).ToArray(),
+        insights.TopStories.Select(ToPostInsightDto).ToArray());
+
+    private static SocialMusicSelection? ToMusicSelection(MobileCreateSocialMediaPostRequest? request) =>
+        string.IsNullOrWhiteSpace(request?.MusicProviderId) || string.IsNullOrWhiteSpace(request?.MusicTrackId)
+            ? null
+            : new SocialMusicSelection(
+                request.MusicProviderId,
+                request.MusicTrackId,
+                request.MusicTrimStartSeconds ?? 0,
+                request.MusicTrimEndSeconds ?? 0,
+                request.MusicVolume ?? 1,
+                request.OriginalAudioVolume ?? 1);
+
     private IActionResult SocialFailure(string? errorCode, string? errorMessage)
     {
         var status = errorCode is
             "social_post_invalid" or
             "social_media_post_invalid" or
             "social_comment_invalid" or
+            "social_comment_parent_unavailable" or
             "social_follow_invalid" or
+            "social_follow_source_invalid" or
+            "social_view_invalid" or
+            "social_music_invalid" or
+            "social_music_query_invalid" or
+            "social_profile_visit_invalid" or
+            "social_profile_visit_source_invalid" or
             "SOCIAL_MEDIA_ID_INVALID" or
             "SOCIAL_MEDIA_CONTENT_INVALID" or
             "SOCIAL_MEDIA_SIZE_INVALID" or
@@ -283,6 +528,8 @@ public sealed class MobileSocialController : MobileApiControllerBase
                     "SOCIAL_MEDIA_STORAGE_FAILED" or
                     "social_media_persistence_failed"
                         ? StatusCodes.Status500InternalServerError
+                        : errorCode is "social_music_provider_unavailable"
+                            ? StatusCodes.Status503ServiceUnavailable
                         : StatusCodes.Status403Forbidden;
         return Error(status, errorCode ?? "mobile_social_rejected", errorMessage ?? "This social action is not available.");
     }
@@ -295,14 +542,23 @@ public sealed class MobileCreateSocialMediaPostRequest
     public string? ContentType { get; init; }
     public string? Body { get; init; }
     public string? AccessibilityText { get; init; }
+    public string? MusicProviderId { get; init; }
+    public string? MusicTrackId { get; init; }
+    public decimal? MusicTrimStartSeconds { get; init; }
+    public decimal? MusicTrimEndSeconds { get; init; }
+    public decimal? MusicVolume { get; init; }
+    public decimal? OriginalAudioVolume { get; init; }
     public List<IFormFile> Files { get; init; } = [];
 }
 
-public sealed record MobileCreateSocialCommentRequest(string? Body);
-public sealed record MobileToggleSocialFollowRequest(string? FollowedUserId, string? FollowedParticipantType);
+public sealed record MobileCreateSocialCommentRequest(string? Body, Guid? ParentCommentId);
+public sealed record MobileToggleSocialFollowRequest(string? FollowedUserId, string? FollowedParticipantType, Guid? SourcePostId);
+public sealed record MobileRecordSocialViewRequest(decimal? WatchDurationSeconds, decimal? WatchCompletionPercentage, string? StoryInteractionType);
+public sealed record MobileRecordProfileVisitRequest(string? TargetUserId, string? TargetParticipantType, Guid? SourcePostId);
 public sealed record MobileSocialFollowResultDto(bool IsFollowing);
+public sealed record MobileSocialStateResultDto(bool IsActive);
 public sealed record MobileSocialAuthorDto(MobileLogicalIdentityDto Identity, string ProfileId, string DisplayName, MobileAvatarDto? Avatar);
-public sealed record MobileSocialCommentDto(Guid Id, MobileSocialAuthorDto Author, string Body, DateTime CreatedUtc);
+public sealed record MobileSocialCommentDto(Guid Id, MobileSocialAuthorDto Author, Guid? ParentCommentId, string Body, DateTime CreatedUtc);
 
 public sealed record MobileSocialMediaDto(
     Guid Id,
@@ -328,6 +584,10 @@ public sealed record MobileSocialPostDto(
     int CommentCount,
     bool ReactedByCurrentActor,
     bool FollowedByCurrentActor,
+    bool SavedByCurrentActor,
+    bool RepostedByCurrentActor,
+    MobileSocialPostMetricsDto Metrics,
+    MobileSocialMusicDto? Music,
     IReadOnlyList<MobileSocialMediaDto> Media,
     IReadOnlyList<MobileSocialCommentDto> Comments);
 public sealed record MobileSocialActivityDto(Guid Id, string Kind, MobileSocialAuthorDto Actor, Guid? PostId, DateTime OccurredUtc);
@@ -335,4 +595,73 @@ public sealed record MobileSocialSnapshotDto(
     IReadOnlyList<MobileSocialPostDto> Stories,
     IReadOnlyList<MobileSocialPostDto> Posts,
     IReadOnlyList<MobileSocialActivityDto> Activity,
-    int ActivityCount);
+    int ActivityCount,
+    MobileSocialProfileMetricsDto CurrentProfileMetrics,
+    MobileSocialCreatorInsightsDto CreatorInsights);
+
+public sealed record MobileSocialPostMetricsDto(
+    int ViewCount,
+    int UniqueViewerCount,
+    int ReactionCount,
+    int CommentCount,
+    int ReplyCount,
+    int RepostCount,
+    int SaveCount,
+    int ShareCount,
+    int ProfileVisitCount,
+    int FollowsGenerated,
+    decimal? AverageWatchDurationSeconds,
+    decimal? AverageWatchCompletionPercentage,
+    int StoryExitCount,
+    int StoryTapForwardCount,
+    int StoryTapBackwardCount);
+
+public sealed record MobileSocialMusicDto(
+    string ProviderId,
+    string ProviderTrackId,
+    string TrackTitle,
+    string ArtistName,
+    decimal TrackDurationSeconds,
+    string? PreviewUrl,
+    decimal? TrimStartSeconds,
+    decimal? TrimEndSeconds,
+    decimal? MusicVolume,
+    decimal? OriginalAudioVolume);
+
+public sealed record MobileSocialPostInsightDto(
+    Guid PostId,
+    string ContentType,
+    DateTime PostedUtc,
+    MobileSocialPostMetricsDto Metrics,
+    decimal EngagementRatePercentage);
+
+public sealed record MobileSocialCreatorInsightsDto(
+    DateTime GeneratedUtc,
+    int TotalViews,
+    int TotalReach,
+    int FollowerCount,
+    int FollowingCount,
+    int FollowersGained,
+    int ProfileVisits,
+    int TotalReactions,
+    int TotalComments,
+    int TotalReplies,
+    int TotalShares,
+    int TotalReposts,
+    int TotalSaves,
+    decimal EngagementRatePercentage,
+    IReadOnlyList<MobileSocialPostInsightDto> TopPosts,
+    IReadOnlyList<MobileSocialPostInsightDto> TopVideos,
+    IReadOnlyList<MobileSocialPostInsightDto> TopStories);
+
+public sealed record MobileSocialProfileMetricsDto(
+    MobileSocialAuthorDto Profile,
+    int PostCount,
+    int VideoCount,
+    int StoryCount,
+    int FollowerCount,
+    int FollowingCount,
+    int TotalReactionCount,
+    int TotalContentViewCount,
+    int TotalReachCount,
+    int? PrivateProfileVisitCount);

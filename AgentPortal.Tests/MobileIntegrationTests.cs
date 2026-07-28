@@ -526,6 +526,62 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileFinancial_UsesTheResolvedClientIdentityAndReturnsPresentationMetadata()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "client-financial-oid",
+            FirstName = "Avery",
+            LastName = "Client",
+            Email = "avery@example.test"
+        };
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var presentation = new MobileFinancialPresentation(
+            new MobileFinancialAssignedAgentContext(true, "Morgan Riley", "Morgan"),
+            [
+                new MobileFinancialPrioritySection(
+                    "current-outlook",
+                    "Current outlook",
+                    "Week at a Glance",
+                    "calendar.day.timeline.leading",
+                    1,
+                    "Current",
+                    "Current-week cash-flow timing is available.",
+                    "Consider reviewing this with Morgan.",
+                    new MobileFinancialSummaryMetric(
+                        "Ending cash",
+                        125_00,
+                        null,
+                        null,
+                        "positive"),
+                    null)
+            ]);
+        var home = new Mock<IMobileHomeService>(MockBehavior.Strict);
+        home.Setup(service => service.GetFinancialAsync(
+                It.Is<MobileResolvedActor>(actor =>
+                    actor.Actor.UserId == client.ClientUserId &&
+                    actor.Actor.ParticipantType == MessagingParticipantTypes.Client &&
+                    actor.ProfileId == client.Id),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MobileFinancialResult.Success(
+                new MobileFinancialSnapshot(null, null, [], null, presentation)));
+        var controller = CreateHomeController(db, home.Object, Principal(client.ClientUserId));
+
+        var result = await controller.Financial(CancellationToken.None);
+
+        var response = Assert.IsType<OkObjectResult>(result);
+        var snapshot = Assert.IsType<MobileFinancialSnapshot>(response.Value);
+        var returnedPresentation = Assert.IsType<MobileFinancialPresentation>(snapshot.Presentation);
+        Assert.Equal("Morgan", returnedPresentation.AssignedAgent.FirstName);
+        Assert.Equal("current-outlook", Assert.Single(returnedPresentation.PrioritySections).Key);
+        home.VerifyAll();
+    }
+
+    [Fact]
     public async Task MobileAgentClients_UsesTheServerResolvedAgentAndProjectsOnlyClientOwnedImageData()
     {
         await using var db = ControllerTestHelpers.BuildDb();

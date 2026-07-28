@@ -120,8 +120,10 @@ struct MobileCreateSocialComment: Codable, Sendable {
     let body: String
 }
 
-struct LegendSocialImageAttachment: Sendable {
-    let file: MultipartFormFile
+struct MobileSocialPublishRequest: Sendable {
+    let contentType: MobileSocialContentType
+    let body: String
+    let files: [MultipartFormFile]
     let accessibilityText: String?
 }
 
@@ -151,6 +153,47 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
         case .post: "Post"
         case .story: "Story"
         case .reel: "Reel"
+        }
+    }
+
+    var creationTitle: String {
+        switch self {
+        case .post: "Share a post"
+        case .story: "Create a story"
+        case .reel: "Create a reel"
+        }
+    }
+
+    var creationPrompt: String {
+        switch self {
+        case .post:
+            "Share a focused update with your authorized Legend network."
+        case .story:
+            "Share a 24-hour moment with your authorized Legend network."
+        case .reel:
+            "Share a photo or video moment with your authorized Legend network."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .post: "square.and.pencil"
+        case .story: "circle.dashed.inset.filled"
+        case .reel: "play.rectangle.fill"
+        }
+    }
+}
+
+enum LegendSocialCreationRoute: Identifiable {
+    case menu
+    case composer(MobileSocialContentType)
+
+    var id: String {
+        switch self {
+        case .menu:
+            "create-menu"
+        case .composer(let type):
+            "composer-\(type.rawValue)"
         }
     }
 }
