@@ -45,6 +45,8 @@
 	<string>$(LEGEND_TOKEN_ENDPOINT)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Legend uses the camera only when you choose to capture media for a Legend update.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Legend uses the microphone only when you choose to record audio with a Legend video update.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Legend uses photo access only when you choose to manage media for a Legend update.</string>
 	<key>UILaunchStoryboardName</key>

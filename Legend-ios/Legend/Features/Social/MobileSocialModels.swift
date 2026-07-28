@@ -297,6 +297,56 @@ struct MobileSocialPublishRequest: Sendable {
     let music: MobileSocialMusicSelection?
 }
 
+/// The creation surface has one explicit progression.  Media, captions, and
+/// server publication are never inferred from unrelated view booleans.
+enum LegendSocialCreationStage: Equatable {
+    case library
+    case preparingMedia
+    case camera
+    case metadata
+    case music
+    case handedOff
+    case failed(String)
+}
+
+/// A visible, server-backed publication lifecycle.  The client owns only the
+/// temporary presentation state; the created post always comes from the
+/// protected social API before it is inserted into the feed.
+enum MobileSocialPublicationStage: Equatable, Sendable {
+    case preparing
+    case uploading
+    case processing
+    case published
+    case failed
+
+    var title: String {
+        switch self {
+        case .preparing: "Preparing update"
+        case .uploading: "Uploading update"
+        case .processing: "Publishing update"
+        case .published: "Update shared"
+        case .failed: "Upload needs attention"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .preparing: "wand.and.stars"
+        case .uploading: "arrow.up.circle.fill"
+        case .processing: "gearshape.2.fill"
+        case .published: "checkmark.circle.fill"
+        case .failed: "exclamationmark.triangle.fill"
+        }
+    }
+}
+
+struct MobileSocialPublication: Equatable, Identifiable, Sendable {
+    let id: UUID
+    let contentType: MobileSocialContentType
+    var stage: MobileSocialPublicationStage
+    var failureMessage: String?
+}
+
 struct MobileSocialMusicSelection: Codable, Equatable, Sendable {
     let providerID: String
     let providerTrackID: String

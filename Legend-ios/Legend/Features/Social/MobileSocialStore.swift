@@ -201,12 +201,15 @@ final class MobileSocialStore: ObservableObject {
     @Published private(set) var isRefreshingProfilePosts = false
     @Published private(set) var refreshFailure: UserFacingFailure?
     @Published private(set) var profileRefreshFailure: UserFacingFailure?
+    @Published private(set) var publication: MobileSocialPublication?
 
     private let api: any MobileSocialAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
-    private var mediaCache: [UUID: Data] = [:]
+    private let mediaCache = NSCache<NSUUID, NSData>()
     private var mediaFileCache: [UUID: URL] = [:]
+    private var mediaLoadTasks: [UUID: Task<Data?, Never>] = [:]
+    private var pendingPublicationRequest: MobileSocialPublishRequest?
     private var feedLoadTask: Task<MobileStoreLoadResult, Never>?
     private var profilePostsLoadTask: Task<MobileStoreLoadResult, Never>?
 
@@ -218,6 +221,8 @@ final class MobileSocialStore: ObservableObject {
         self.api = api
         self.accessTokenProvider = accessTokenProvider
         self.diagnostics = diagnostics
+        mediaCache.countLimit = 48
+        mediaCache.totalCostLimit = 32 * 1_024 * 1_024
     }
 
     func load() {
@@ -254,41 +259,10 @@ final class MobileSocialStore: ObservableObject {
 
     @discardableResult
     func publish(_ request: MobileSocialPublishRequest) async -> Bool {
-        let body = request.body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty || !request.files.isEmpty else {
-            actionFailure = UserFacingFailure(
-                title: "Could not share your update",
-                message: "Add an update or attach supported media before publishing.",
-                correlationID: nil)
-            return false
-        }
-
-        actionFailure = nil
+        guard validatePublication(request) else { return false }
         do {
-            let token = try await accessTokenProvider()
-            let post: MobileSocialPost
-
-            if request.files.isEmpty {
-                post = try await api.createPost(
-                    MobileCreateSocialPost(
-                        contentType: request.contentType.rawValue,
-                        body: body),
-                    accessToken: token)
-            } else {
-                post = try await api.createMediaPost(
-                    type: request.contentType,
-                    body: body,
-                    files: request.files,
-                    accessibilityText: request.accessibilityText,
-                    music: request.music,
-                    accessToken: token)
-            }
-
-            if hasFeedValue {
-                insert(post)
-            } else {
-                _ = await refresh()
-            }
+            let post = try await publishToServer(request)
+            applyPublishedPost(post)
             return true
         } catch {
             actionFailure = failure(
@@ -296,6 +270,45 @@ final class MobileSocialStore: ObservableObject {
                 title: "Could not share your update")
             return false
         }
+    }
+
+    /// Starts an upload without trapping the user in the creation flow.  The
+    /// source request remains in this store until the server confirms it or
+    /// the user retries a recoverable failure.
+    @discardableResult
+    func beginPublication(_ request: MobileSocialPublishRequest) -> Bool {
+        guard publication == nil, validatePublication(request) else { return false }
+
+        let identifier = UUID()
+        pendingPublicationRequest = request
+        publication = MobileSocialPublication(
+            id: identifier,
+            contentType: request.contentType,
+            stage: .preparing,
+            failureMessage: nil)
+
+        Task { await runPublication(identifier: identifier, request: request) }
+        return true
+    }
+
+    func retryPublication() {
+        guard let publication,
+              publication.stage == .failed,
+              let request = pendingPublicationRequest else {
+            return
+        }
+
+        self.publication = MobileSocialPublication(
+            id: publication.id,
+            contentType: request.contentType,
+            stage: .preparing,
+            failureMessage: nil)
+        Task { await runPublication(identifier: publication.id, request: request) }
+    }
+
+    func dismissPublication() {
+        guard publication?.stage == .published else { return }
+        publication = nil
     }
 
     @discardableResult
@@ -331,28 +344,40 @@ final class MobileSocialStore: ObservableObject {
 
     func mediaData(for assetID: UUID, forceRefresh: Bool = false) async -> Data? {
         if forceRefresh {
-            mediaCache.removeValue(forKey: assetID)
-        } else if let cached = mediaCache[assetID] {
-            return cached
+            mediaCache.removeObject(forKey: assetID as NSUUID)
+        } else if let cached = mediaCache.object(forKey: assetID as NSUUID) {
+            return cached as Data
         }
 
-        do {
-            let token = try await accessTokenProvider()
-            let data = try await api.mediaData(
-                assetID: assetID,
-                accessToken: token
-            )
-            mediaCache[assetID] = data
-            return data
-        } catch {
-            let apiError = error as? MobileAPIError
-            diagnostics.record(
-                category: .networking,
-                summary: "A protected social image could not be loaded.",
-                correlationID: apiError?.correlationID
-            )
-            return nil
+        if let existingTask = mediaLoadTasks[assetID] {
+            return await existingTask.value
         }
+
+        let task = Task { [weak self] () -> Data? in
+            guard let self else { return nil }
+            do {
+                let token = try await self.accessTokenProvider()
+                let data = try await self.api.mediaData(
+                    assetID: assetID,
+                    accessToken: token)
+                self.mediaCache.setObject(
+                    data as NSData,
+                    forKey: assetID as NSUUID,
+                    cost: data.count)
+                return data
+            } catch {
+                let apiError = error as? MobileAPIError
+                self.diagnostics.record(
+                    category: .networking,
+                    summary: "A protected social image could not be loaded.",
+                    correlationID: apiError?.correlationID)
+                return nil
+            }
+        }
+        mediaLoadTasks[assetID] = task
+        let data = await task.value
+        mediaLoadTasks.removeValue(forKey: assetID)
+        return data
     }
 
     func mediaFile(for media: MobileSocialMedia) async -> URL? {
@@ -481,6 +506,83 @@ final class MobileSocialStore: ObservableObject {
 
     func dismissActionFailure() {
         actionFailure = nil
+    }
+
+    private func validatePublication(_ request: MobileSocialPublishRequest) -> Bool {
+        let body = request.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty || !request.files.isEmpty else {
+            actionFailure = UserFacingFailure(
+                title: "Could not share your update",
+                message: "Add an update or attach supported media before publishing.",
+                correlationID: nil)
+            return false
+        }
+
+        actionFailure = nil
+        return true
+    }
+
+    private func publishToServer(
+        _ request: MobileSocialPublishRequest
+    ) async throws -> MobileSocialPost {
+        let body = request.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = try await accessTokenProvider()
+
+        if request.files.isEmpty {
+            return try await api.createPost(
+                MobileCreateSocialPost(
+                    contentType: request.contentType.rawValue,
+                    body: body),
+                accessToken: token)
+        }
+
+        return try await api.createMediaPost(
+            type: request.contentType,
+            body: body,
+            files: request.files,
+            accessibilityText: request.accessibilityText,
+            music: request.music,
+            accessToken: token)
+    }
+
+    private func runPublication(
+        identifier: UUID,
+        request: MobileSocialPublishRequest
+    ) async {
+        guard publication?.id == identifier else { return }
+        publication?.stage = request.files.isEmpty ? .processing : .uploading
+
+        do {
+            let post = try await publishToServer(request)
+            guard publication?.id == identifier else { return }
+            applyPublishedPost(post)
+            discardStagedFiles(in: request)
+            pendingPublicationRequest = nil
+            publication?.stage = .published
+        } catch {
+            guard publication?.id == identifier else { return }
+            let presentation = failure(
+                for: error,
+                title: "Could not share your update")
+            actionFailure = presentation
+            publication?.stage = .failed
+            publication?.failureMessage = presentation.message
+        }
+    }
+
+    private func applyPublishedPost(_ post: MobileSocialPost) {
+        if hasFeedValue {
+            insert(post)
+        } else {
+            Task { _ = await refresh() }
+        }
+    }
+
+    private func discardStagedFiles(in request: MobileSocialPublishRequest) {
+        for file in request.files {
+            guard case let .file(url) = file.source else { continue }
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     private var hasFeedValue: Bool {

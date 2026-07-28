@@ -59,6 +59,7 @@ targets:
         LegendAuthScope: "$(LEGEND_AUTH_SCOPE)"
         LegendAuthAudience: "$(LEGEND_AUTH_AUDIENCE)"
         NSCameraUsageDescription: "Legend uses the camera only when you choose to capture media for a Legend update."
+        NSMicrophoneUsageDescription: "Legend uses the microphone only when you choose to record audio with a Legend video update."
         NSPhotoLibraryUsageDescription: "Legend uses photo access only when you choose to manage media for a Legend update."
         UILaunchStoryboardName: LaunchScreen
 

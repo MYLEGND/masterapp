@@ -243,12 +243,19 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 title: "Latest from Legend"
             )
 
+            if let publication = social.publication {
+                LegendSocialPublicationBanner(
+                    publication: publication,
+                    retry: social.retryPublication,
+                    dismiss: social.dismissPublication)
+            }
+
             if snapshot.posts.isEmpty {
                 LegendSocialEmptyFeed {
                     creationRoute = .menu
                 }
             } else {
-                ForEach(Array(snapshot.posts.prefix(3))) { post in
+                ForEach(snapshot.posts) { post in
                     LegendSocialPostCard(
                         post: post,
                         currentIdentity: session.actor.identity,
@@ -452,16 +459,16 @@ private struct LegendStoryViewer: View {
     @Environment(\.dismiss) private var dismiss
     @State private var itemIndex = 0
     @State private var progress = 0.0
+    @State private var storyDurationSeconds = 5.0
     @State private var isPaused = false
     @State private var hasRecordedDeparture = false
     @State private var replyBody = ""
 
-    private let progressTimer = Timer.publish(
+    private let imageProgressTimer = Timer.publish(
         every: 0.05,
         on: .main,
         in: .common
     ).autoconnect()
-    private let storyDurationSeconds = 5.0
 
     private var item: MobileSocialPost {
         collection.items[itemIndex]
@@ -479,7 +486,14 @@ private struct LegendStoryViewer: View {
                 LegendStoryMedia(
                     story: item,
                     social: social,
-                    isPaused: isPaused)
+                    isPaused: isPaused,
+                    playbackProgress: { current, duration in
+                        storyDurationSeconds = max(duration, 0.1)
+                        progress = min(max(current / storyDurationSeconds, 0), 1)
+                    },
+                    playbackFinished: {
+                        moveForward(manual: false)
+                    })
                     .frame(
                         width: geometry.size.width,
                         height: geometry.size.height)
@@ -522,11 +536,12 @@ private struct LegendStoryViewer: View {
         }
         .onChange(of: itemIndex) {
             progress = 0
+            storyDurationSeconds = 5
             isPaused = false
             recordInitialView()
         }
-        .onReceive(progressTimer) { _ in
-            guard !isPaused else { return }
+        .onReceive(imageProgressTimer) { _ in
+            guard !isPaused, !item.media.contains(where: \.isVideo) else { return }
             progress += 0.05 / storyDurationSeconds
             if progress >= 1 {
                 moveForward(manual: false)
@@ -710,8 +725,11 @@ private struct LegendStoryMedia: View {
     let story: MobileSocialPost
     @ObservedObject var social: MobileSocialStore
     let isPaused: Bool
+    let playbackProgress: (Double, Double) -> Void
+    let playbackFinished: () -> Void
 
     @State private var player: AVPlayer?
+    @State private var progressObserver: Any?
 
     var body: some View {
         Group {
@@ -741,6 +759,7 @@ private struct LegendStoryMedia: View {
             }
         }
         .onDisappear {
+            removeProgressObserver()
             player?.pause()
         }
     }
@@ -750,6 +769,14 @@ private struct LegendStoryMedia: View {
         if let player {
             VideoPlayer(player: player)
                 .aspectRatio(contentMode: .fit)
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: .AVPlayerItemDidPlayToEndTime)
+                ) { notification in
+                    guard let endedItem = notification.object as? AVPlayerItem,
+                          endedItem == player.currentItem else { return }
+                    playbackFinished()
+                }
         } else {
             Color.black.overlay { ProgressView().tint(.white) }
                 .task(id: media.id) {
@@ -757,11 +784,32 @@ private struct LegendStoryMedia: View {
                     let createdPlayer = AVPlayer(url: fileURL)
                     createdPlayer.isMuted = false
                     player = createdPlayer
+                    installProgressObserver(for: createdPlayer)
                     if !isPaused {
                         createdPlayer.play()
                     }
                 }
         }
+    }
+
+    private func installProgressObserver(for player: AVPlayer) {
+        removeProgressObserver()
+        progressObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.05, preferredTimescale: 600),
+            queue: .main
+        ) { [weak player] current in
+            guard let player,
+                  let item = player.currentItem else { return }
+            let duration = item.duration.seconds
+            guard duration.isFinite, duration > 0 else { return }
+            playbackProgress(current.seconds, duration)
+        }
+    }
+
+    private func removeProgressObserver() {
+        guard let progressObserver else { return }
+        player?.removeTimeObserver(progressObserver)
+        self.progressObserver = nil
     }
 }
 
@@ -1165,6 +1213,84 @@ struct LegendSocialMediaImage: View {
         case loading
         case loaded(UIImage)
         case unavailable
+    }
+}
+
+private struct LegendSocialPublicationBanner: View {
+    let publication: MobileSocialPublication
+    let retry: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            Image(systemName: publication.stage.systemImage)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(accent)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(publication.stage.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                Text(detail)
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: LegendNextSpacing.xs)
+
+            if publication.stage == .failed {
+                Button("Retry", action: retry)
+                    .font(.caption.weight(.bold))
+                    .buttonStyle(.borderedProminent)
+                    .tint(LegendNextColor.navy)
+            } else if publication.stage == .published {
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(LegendNextColor.textSecondary)
+                .accessibilityLabel("Dismiss upload confirmation")
+            } else {
+                ProgressView()
+                    .tint(accent)
+            }
+        }
+        .padding(LegendNextSpacing.sm)
+        .background(
+            LegendNextColor.surfaceElevated,
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Publication status: \(publication.stage.title). \(detail)")
+    }
+
+    private var detail: String {
+        switch publication.stage {
+        case .preparing:
+            "Your update will appear here after the secure upload begins."
+        case .uploading:
+            "You can keep browsing while this update is securely transferred."
+        case .processing:
+            "Legend is confirming your update with the server."
+        case .published:
+            "Your update is now in the authorized Legend feed."
+        case .failed:
+            publication.failureMessage ?? "Tap Retry to try this secure upload again."
+        }
+    }
+
+    private var accent: Color {
+        switch publication.stage {
+        case .failed:
+            LegendNextColor.danger
+        case .published:
+            LegendNextColor.success
+        default:
+            LegendNextColor.gold
+        }
     }
 }
 
