@@ -368,7 +368,8 @@ struct LegendSocialComposer: View {
             contentType: type,
             body: caption,
             files: selectedMedia.map(\.multipartFile),
-            accessibilityText: normalizedAccessibilityText)
+            accessibilityText: normalizedAccessibilityText,
+            music: nil)
 
         Task {
             let succeeded = await social.publish(request)

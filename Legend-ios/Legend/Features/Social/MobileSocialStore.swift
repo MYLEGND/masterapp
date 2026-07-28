@@ -9,12 +9,16 @@ protocol MobileSocialAPI: Sendable {
         body: String,
         files: [MultipartFormFile],
         accessibilityText: String?,
+        music: MobileSocialMusicSelection?,
         accessToken: String
     ) async throws -> MobileSocialPost
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult
+    func toggleSave(postID: UUID, accessToken: String) async throws -> MobileSocialShareState
+    func toggleRepost(postID: UUID, accessToken: String) async throws -> MobileSocialShareState
+    func recordShare(postID: UUID, accessToken: String) async throws -> MobileSocialShareState
 }
 
 struct MobileUnavailableSocialAPI: MobileSocialAPI {
@@ -25,6 +29,7 @@ struct MobileUnavailableSocialAPI: MobileSocialAPI {
         body: String,
         files: [MultipartFormFile],
         accessibilityText: String?,
+        music: MobileSocialMusicSelection?,
         accessToken: String
     ) async throws -> MobileSocialPost {
         throw MobileAPIError.unauthorized(correlationID: nil)
@@ -36,6 +41,9 @@ struct MobileUnavailableSocialAPI: MobileSocialAPI {
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost { throw MobileAPIError.unauthorized(correlationID: nil) }
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment { throw MobileAPIError.unauthorized(correlationID: nil) }
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func toggleSave(postID: UUID, accessToken: String) async throws -> MobileSocialShareState { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func toggleRepost(postID: UUID, accessToken: String) async throws -> MobileSocialShareState { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func recordShare(postID: UUID, accessToken: String) async throws -> MobileSocialShareState { throw MobileAPIError.unauthorized(correlationID: nil) }
 }
 
 struct URLSessionMobileSocialAPI: MobileSocialAPI {
@@ -59,17 +67,28 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
         body: String,
         files: [MultipartFormFile],
         accessibilityText: String?,
+        music: MobileSocialMusicSelection?,
         accessToken: String
     ) async throws -> MobileSocialPost {
 
-        try await client.postMultipart(
+        var fields = [
+            "contentType": type.rawValue,
+            "body": body,
+            "accessibilityText": accessibilityText ?? ""
+        ]
+        if let music {
+            fields["musicProviderId"] = music.providerID
+            fields["musicTrackId"] = music.providerTrackID
+            fields["musicTrimStartSeconds"] = NSDecimalNumber(decimal: music.trimStartSeconds).stringValue
+            fields["musicTrimEndSeconds"] = NSDecimalNumber(decimal: music.trimEndSeconds).stringValue
+            fields["musicVolume"] = NSDecimalNumber(decimal: music.musicVolume).stringValue
+            fields["originalAudioVolume"] = NSDecimalNumber(decimal: music.originalAudioVolume).stringValue
+        }
+
+        return try await client.postMultipart(
             "/api/v1/mobile/social/posts/media",
             accessToken: accessToken,
-            fields: [
-                "contentType": type.rawValue,
-                "body": body,
-                "accessibilityText": accessibilityText ?? ""
-            ],
+            fields: fields,
             files: files,
             headers: participantHeader,
             response: MobileSocialPost.self
@@ -95,6 +114,18 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
 
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult {
         try await client.post("/api/v1/mobile/social/follows/toggle", body: request, accessToken: accessToken, headers: participantHeader, response: MobileSocialFollowResult.self)
+    }
+
+    func toggleSave(postID: UUID, accessToken: String) async throws -> MobileSocialShareState {
+        try await client.post("/api/v1/mobile/social/posts/\(postID.uuidString)/save", body: EmptyMobileRequest(), accessToken: accessToken, headers: participantHeader, response: MobileSocialShareState.self)
+    }
+
+    func toggleRepost(postID: UUID, accessToken: String) async throws -> MobileSocialShareState {
+        try await client.post("/api/v1/mobile/social/posts/\(postID.uuidString)/repost", body: EmptyMobileRequest(), accessToken: accessToken, headers: participantHeader, response: MobileSocialShareState.self)
+    }
+
+    func recordShare(postID: UUID, accessToken: String) async throws -> MobileSocialShareState {
+        try await client.post("/api/v1/mobile/social/posts/\(postID.uuidString)/share", body: EmptyMobileRequest(), accessToken: accessToken, headers: participantHeader, response: MobileSocialShareState.self)
     }
 }
 
@@ -160,6 +191,7 @@ final class MobileSocialStore: ObservableObject {
                     body: body,
                     files: request.files,
                     accessibilityText: request.accessibilityText,
+                    music: request.music,
                     accessToken: token)
             }
 
@@ -205,10 +237,31 @@ final class MobileSocialStore: ObservableObject {
         }
     }
 
-    func addComment(postID: UUID, body: String) {
+    func addComment(postID: UUID, body: String, parentCommentID: UUID? = nil) {
         perform(title: "Could not add comment") { token in
-            let comment = try await self.api.addComment(postID: postID, request: MobileCreateSocialComment(body: body), accessToken: token)
+            let comment = try await self.api.addComment(postID: postID, request: MobileCreateSocialComment(body: body, parentCommentID: parentCommentID), accessToken: token)
             self.append(comment, to: postID)
+        }
+    }
+
+    func toggleSave(postID: UUID) {
+        perform(title: "Could not update saved status") { token in
+            _ = try await self.api.toggleSave(postID: postID, accessToken: token)
+            self.load()
+        }
+    }
+
+    func toggleRepost(postID: UUID) {
+        perform(title: "Could not update repost") { token in
+            _ = try await self.api.toggleRepost(postID: postID, accessToken: token)
+            self.load()
+        }
+    }
+
+    func recordShare(postID: UUID) {
+        perform(title: "Could not record share") { token in
+            _ = try await self.api.recordShare(postID: postID, accessToken: token)
+            self.load()
         }
     }
 
@@ -245,9 +298,9 @@ final class MobileSocialStore: ObservableObject {
             return
         }
         if post.contentType == MobileSocialContentType.story.rawValue {
-            snapshot = MobileSocialSnapshot(stories: [post] + snapshot.stories, posts: snapshot.posts, activity: snapshot.activity, activityCount: snapshot.activityCount)
+            snapshot = MobileSocialSnapshot(stories: [post] + snapshot.stories, posts: snapshot.posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: snapshot.currentProfileMetrics, creatorInsights: snapshot.creatorInsights)
         } else {
-            snapshot = MobileSocialSnapshot(stories: snapshot.stories, posts: [post] + snapshot.posts, activity: snapshot.activity, activityCount: snapshot.activityCount)
+            snapshot = MobileSocialSnapshot(stories: snapshot.stories, posts: [post] + snapshot.posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: snapshot.currentProfileMetrics, creatorInsights: snapshot.creatorInsights)
         }
         state = .loaded(snapshot)
     }
@@ -256,7 +309,7 @@ final class MobileSocialStore: ObservableObject {
         guard case .loaded(let snapshot) = state else { return }
         let stories = snapshot.stories.map { $0.id == post.id ? post : $0 }
         let posts = snapshot.posts.map { $0.id == post.id ? post : $0 }
-        state = .loaded(MobileSocialSnapshot(stories: stories, posts: posts, activity: snapshot.activity, activityCount: snapshot.activityCount))
+        state = .loaded(MobileSocialSnapshot(stories: stories, posts: posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: snapshot.currentProfileMetrics, creatorInsights: snapshot.creatorInsights))
     }
 
     private func append(_ comment: MobileSocialComment, to postID: UUID) {
@@ -274,6 +327,10 @@ final class MobileSocialStore: ObservableObject {
                 commentCount: post.commentCount + 1,
                 reactedByCurrentActor: post.reactedByCurrentActor,
                 followedByCurrentActor: post.followedByCurrentActor,
+                savedByCurrentActor: post.savedByCurrentActor,
+                repostedByCurrentActor: post.repostedByCurrentActor,
+                metrics: post.metrics,
+                music: post.music,
                 media: post.media,
                 comments: Array((post.comments + [comment]).suffix(4)))
         }
@@ -281,7 +338,9 @@ final class MobileSocialStore: ObservableObject {
             stories: snapshot.stories.map(update),
             posts: snapshot.posts.map(update),
             activity: snapshot.activity,
-            activityCount: snapshot.activityCount))
+            activityCount: snapshot.activityCount,
+            currentProfileMetrics: snapshot.currentProfileMetrics,
+            creatorInsights: snapshot.creatorInsights))
     }
 
     private func updateFollow(author: MobileSocialAuthor, isFollowing: Bool) {
@@ -299,6 +358,10 @@ final class MobileSocialStore: ObservableObject {
                 commentCount: post.commentCount,
                 reactedByCurrentActor: post.reactedByCurrentActor,
                 followedByCurrentActor: isFollowing,
+                savedByCurrentActor: post.savedByCurrentActor,
+                repostedByCurrentActor: post.repostedByCurrentActor,
+                metrics: post.metrics,
+                music: post.music,
                 media: post.media,
                 comments: post.comments)
         }
@@ -306,7 +369,9 @@ final class MobileSocialStore: ObservableObject {
             stories: snapshot.stories.map(update),
             posts: snapshot.posts.map(update),
             activity: snapshot.activity,
-            activityCount: snapshot.activityCount))
+            activityCount: snapshot.activityCount,
+            currentProfileMetrics: snapshot.currentProfileMetrics,
+            creatorInsights: snapshot.creatorInsights))
     }
 
     private func failure(for error: Error, title: String) -> UserFacingFailure {

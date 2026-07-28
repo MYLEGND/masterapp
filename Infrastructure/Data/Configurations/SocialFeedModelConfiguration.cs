@@ -143,9 +143,9 @@ internal static class SocialFeedModelConfiguration
             entity.HasOne(view => view.SocialPost).WithMany().HasForeignKey(view => view.SocialPostId).OnDelete(DeleteBehavior.Cascade);
         });
 
-        ConfigureActorPostEntity<SocialPostSave>(modelBuilder, "SocialPostSaves", entity => entity.SocialPostId, entity => entity.ActorUserId, entity => entity.ActorParticipantType, entity => entity.SocialPost);
-        ConfigureActorPostEntity<SocialPostShare>(modelBuilder, "SocialPostShares", entity => entity.SocialPostId, entity => entity.ActorUserId, entity => entity.ActorParticipantType, entity => entity.SocialPost);
-        ConfigureActorPostEntity<SocialPostRepost>(modelBuilder, "SocialPostReposts", entity => entity.SocialPostId, entity => entity.ActorUserId, entity => entity.ActorParticipantType, entity => entity.SocialPost);
+        ConfigureActorPostEntity<SocialPostSave>(modelBuilder, "SocialPostSaves");
+        ConfigureActorPostEntity<SocialPostShare>(modelBuilder, "SocialPostShares");
+        ConfigureActorPostEntity<SocialPostRepost>(modelBuilder, "SocialPostReposts");
 
         modelBuilder.Entity<SocialProfileVisit>(entity =>
         {
@@ -181,11 +181,7 @@ internal static class SocialFeedModelConfiguration
 
     private static void ConfigureActorPostEntity<TEntity>(
         ModelBuilder modelBuilder,
-        string tableName,
-        Func<TEntity, Guid> postId,
-        Func<TEntity, string> actorUserId,
-        Func<TEntity, string> actorParticipantType,
-        Func<TEntity, SocialPost> socialPost)
+        string tableName)
         where TEntity : class
     {
         modelBuilder.Entity<TEntity>(entity =>

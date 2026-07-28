@@ -264,9 +264,138 @@ public sealed class SocialFeedServiceTests
         Assert.Equal("social_media_unavailable", retrieved.ErrorCode);
     }
 
+    [Fact]
+    public async Task EngagementMetrics_AreIdempotent_Authorized_AndVisibleOnlyToTheCreator()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var author = Client("analytics-author", "Analytics", "Author");
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "analytics-agent",
+            AgentUpn = "analytics-agent@example.test",
+            FullName = "Analytics Agent",
+            IsActive = true
+        };
+        db.ClientProfiles.Add(author);
+        db.AgentProfiles.Add(agent);
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = agent.AgentUserId,
+            AgentUpn = agent.AgentUpn,
+            ClientUserId = author.ClientUserId
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var authorActor = ClientActor(author);
+        var agentActor = new SocialFeedActor(
+            new MessagingActor(agent.AgentUserId, MessagingParticipantTypes.Agent),
+            agent.Id,
+            agent.FullName!);
+        var post = await service.CreatePostAsync(new CreateSocialPostCommand(
+            authorActor,
+            SocialPostContentTypes.Reel,
+            "A measured Legend reel"));
+        Assert.True(post.Succeeded);
+
+        var firstView = await service.RecordViewAsync(new RecordSocialPostViewCommand(
+            agentActor, post.Value!.Id, 42, 50, null));
+        var secondView = await service.RecordViewAsync(new RecordSocialPostViewCommand(
+            agentActor, post.Value.Id, 30, 100, null));
+        Assert.True(firstView.Succeeded);
+        Assert.True(secondView.Succeeded);
+        Assert.Equal(1, secondView.Value!.ViewCount);
+        Assert.Equal(1, secondView.Value.UniqueViewerCount);
+        Assert.Equal(42, secondView.Value.AverageWatchDurationSeconds);
+        Assert.Equal(100, secondView.Value.AverageWatchCompletionPercentage);
+
+        Assert.True((await service.ToggleReactionAsync(new SocialPostMutationCommand(agentActor, post.Value.Id))).Succeeded);
+        var comment = await service.AddCommentAsync(new CreateSocialCommentCommand(agentActor, post.Value.Id, "Excellent work."));
+        Assert.True(comment.Succeeded);
+        var reply = await service.AddCommentAsync(new CreateSocialCommentCommand(authorActor, post.Value.Id, "Thank you.", comment.Value!.Id));
+        Assert.True(reply.Succeeded);
+        Assert.Equal(comment.Value.Id, reply.Value!.ParentCommentId);
+
+        Assert.True((await service.ToggleSaveAsync(new SocialPostMutationCommand(agentActor, post.Value.Id))).Value);
+        Assert.True((await service.ToggleRepostAsync(new SocialPostMutationCommand(agentActor, post.Value.Id))).Value);
+        Assert.True((await service.RecordShareAsync(new SocialPostMutationCommand(agentActor, post.Value.Id))).Value);
+        Assert.True((await service.RecordShareAsync(new SocialPostMutationCommand(agentActor, post.Value.Id))).Value);
+        Assert.True((await service.RecordProfileVisitAsync(new SocialProfileVisitCommand(
+            agentActor,
+            author.ClientUserId,
+            MessagingParticipantTypes.Client,
+            post.Value.Id))).Succeeded);
+        Assert.True((await service.ToggleFollowAsync(new SocialFollowCommand(
+            agentActor,
+            author.ClientUserId,
+            MessagingParticipantTypes.Client,
+            post.Value.Id))).Value);
+
+        var ownerInsight = await service.GetPostInsightsAsync(authorActor, post.Value.Id);
+        Assert.True(ownerInsight.Succeeded);
+        Assert.Equal(1, ownerInsight.Value!.Metrics.ViewCount);
+        Assert.Equal(1, ownerInsight.Value.Metrics.ReactionCount);
+        Assert.Equal(2, ownerInsight.Value.Metrics.CommentCount);
+        Assert.Equal(1, ownerInsight.Value.Metrics.ReplyCount);
+        Assert.Equal(1, ownerInsight.Value.Metrics.SaveCount);
+        Assert.Equal(1, ownerInsight.Value.Metrics.RepostCount);
+        Assert.Equal(1, ownerInsight.Value.Metrics.ShareCount);
+        Assert.Equal(1, ownerInsight.Value.Metrics.ProfileVisitCount);
+        Assert.Equal(1, ownerInsight.Value.Metrics.FollowsGenerated);
+
+        var rejectedInsight = await service.GetPostInsightsAsync(agentActor, post.Value.Id);
+        Assert.False(rejectedInsight.Succeeded);
+        Assert.Equal("social_insights_forbidden", rejectedInsight.ErrorCode);
+
+        var creator = await service.GetCreatorInsightsAsync(authorActor);
+        Assert.True(creator.Succeeded);
+        Assert.Equal(1, creator.Value!.TotalViews);
+        Assert.Equal(1, creator.Value.TotalReach);
+        Assert.Equal(1, creator.Value.ProfileVisits);
+        Assert.Equal(1, creator.Value.FollowersGained);
+    }
+
+    [Fact]
+    public async Task MusicAttachment_UsesProviderVerifiedMetadata_AndRejectsUnknownTracks()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("music-client", "Music", "Client");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var catalog = new TestMusicCatalog();
+        var storage = new InMemoryTestSocialMediaStorage();
+        var service = CreateService(db, storage, catalog);
+        await using var upload = new MemoryStream([1, 2, 3]);
+        var created = await service.CreateMediaPostAsync(new CreateSocialMediaPostCommand(
+            ClientActor(client),
+            SocialPostContentTypes.Reel,
+            "A licensed clip",
+            [new SocialMediaUpload("clip.mp4", 3, upload, null)],
+            new SocialMusicSelection("test-catalog", "track-1", 10, 25, 0.8m, 0.2m)));
+
+        Assert.True(created.Succeeded);
+        Assert.NotNull(created.Value!.Music);
+        Assert.Equal("Verified Track", created.Value.Music!.TrackTitle);
+        Assert.Equal(10, created.Value.Music.TrimStartSeconds);
+        Assert.Equal(25, created.Value.Music.TrimEndSeconds);
+
+        await using var rejectedUpload = new MemoryStream([4, 5, 6]);
+        var rejected = await service.CreateMediaPostAsync(new CreateSocialMediaPostCommand(
+            ClientActor(client),
+            SocialPostContentTypes.Reel,
+            "Unknown track",
+            [new SocialMediaUpload("rejected.mp4", 3, rejectedUpload, null)],
+            new SocialMusicSelection("test-catalog", "not-a-track", 0, 10, 1, 1)));
+        Assert.False(rejected.Succeeded);
+        Assert.Equal("social_music_unknown", rejected.ErrorCode);
+    }
+
     private static SocialFeedService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
-        ISocialMediaStorage? mediaStorage = null)
+        ISocialMediaStorage? mediaStorage = null,
+        ISocialMusicCatalog? musicCatalog = null)
     {
         var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
         var journeys = new JourneyCirclesService(db, moderation, NullLogger<JourneyCirclesService>.Instance);
@@ -276,7 +405,7 @@ public sealed class SocialFeedServiceTests
             db,
             messaging,
             mediaStorage ?? new UnavailableTestSocialMediaStorage(),
-            new UnavailableSocialMusicCatalog());
+            musicCatalog ?? new UnavailableSocialMusicCatalog());
     }
 
     private sealed class UnavailableTestSocialMediaStorage
@@ -349,6 +478,31 @@ public sealed class SocialFeedServiceTests
             _content.Remove(storageKey);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class TestMusicCatalog : ISocialMusicCatalog
+    {
+        private static readonly SocialMusicTrack Track = new(
+            "test-catalog",
+            "track-1",
+            "Verified Track",
+            "Legend Artist",
+            180,
+            "https://music.example.test/preview/track-1");
+
+        public Task<SocialOperationResult<IReadOnlyList<SocialMusicTrack>>> SearchAsync(
+            string query,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(SocialOperationResult<IReadOnlyList<SocialMusicTrack>>.Success([Track]));
+
+        public Task<SocialOperationResult<SocialMusicTrack>> ResolveAsync(
+            string providerId,
+            string providerTrackId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(
+                providerId == Track.ProviderId && providerTrackId == Track.ProviderTrackId
+                    ? SocialOperationResult<SocialMusicTrack>.Success(Track)
+                    : SocialOperationResult<SocialMusicTrack>.Failure("social_music_unknown", "The requested catalog track is unavailable."));
     }
 
     private static ClientProfile Client(string userId, string firstName, string lastName) => new()
