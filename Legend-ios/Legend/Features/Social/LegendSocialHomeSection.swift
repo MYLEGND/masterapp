@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 import UIKit
 
@@ -14,8 +15,10 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
 
     @State private var creationRoute: LegendSocialCreationRoute?
     @State private var isPresentingActivity = false
+    @State private var isPresentingCreatorInsights = false
     @State private var commentTarget: MobileSocialPost?
     @State private var commentBody = ""
+    @State private var postInsight: MobileSocialPostInsight?
 
     init(
         session: MobileSession,
@@ -47,6 +50,16 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         }
         .sheet(isPresented: $isPresentingActivity) {
             LegendActivitySheet(activity: activity)
+        }
+        .sheet(isPresented: $isPresentingCreatorInsights) {
+            if case .loaded(let snapshot) = social.state {
+                LegendCreatorInsightsSheet(
+                    insights: snapshot.creatorInsights,
+                    profileMetrics: snapshot.currentProfileMetrics)
+            }
+        }
+        .sheet(item: $postInsight) { insight in
+            LegendPostInsightsSheet(insight: insight)
         }
         .sheet(item: $commentTarget, onDismiss: { commentBody = "" }) { post in
             LegendCommentComposer(
@@ -229,10 +242,24 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                             commentTarget = post
                         },
                         follow: {
-                            social.toggleFollow(author: post.author)
+                            social.toggleFollow(author: post.author, sourcePostID: post.id)
+                        },
+                        insights: {
+                            Task {
+                                postInsight = await social.postInsights(postID: post.id)
+                            }
                         }
                     )
                 }
+
+                Button {
+                    isPresentingCreatorInsights = true
+                } label: {
+                    Label("Creator insights", systemImage: "chart.line.uptrend.xyaxis")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(LegendButtonStyle(kind: .secondary))
+                .accessibilityLabel("Open your server-authoritative creator insights")
             }
         }
     }
@@ -369,6 +396,7 @@ private struct LegendSocialPostCard: View {
     let react: () -> Void
     let comment: () -> Void
     let follow: () -> Void
+    let insights: () -> Void
 
     var body: some View {
         LegendNextSurface {
@@ -394,6 +422,16 @@ private struct LegendSocialPostCard: View {
                             .padding(.vertical, 6)
                             .background(LegendNextColor.surfaceInset, in: Capsule())
                             .buttonStyle(.plain)
+                    } else {
+                        Button(action: insights) {
+                            Image(systemName: "chart.bar.xaxis")
+                                .font(.caption.weight(.bold))
+                                .frame(width: 30, height: 30)
+                                .background(LegendNextColor.surfaceInset, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(LegendNextColor.information)
+                        .accessibilityLabel("View post insights")
                     }
                 }
 
@@ -409,20 +447,65 @@ private struct LegendSocialPostCard: View {
                     )
                 }
 
-                HStack(spacing: LegendNextSpacing.md) {
+                ForEach(post.media.filter(\.isVideo)) { media in
+                    LegendSocialMediaVideo(
+                        postID: post.id,
+                        media: media,
+                        music: post.music,
+                        social: social)
+                }
+
+                if let music = post.music {
+                    Label(
+                        "\(music.trackTitle) · \(music.artistName)",
+                        systemImage: "music.note")
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .lineLimit(1)
+                    .accessibilityLabel("Music: \(music.trackTitle) by \(music.artistName)")
+                }
+
+                HStack(spacing: LegendNextSpacing.sm) {
                     Button(action: react) {
-                        Label("\(post.reactionCount)", systemImage: post.reactedByCurrentActor ? "heart.fill" : "heart")
+                        Label("\(post.metrics.reactionCount)", systemImage: post.reactedByCurrentActor ? "heart.fill" : "heart")
                             .foregroundStyle(post.reactedByCurrentActor ? LegendNextColor.danger : LegendNextColor.textSecondary)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(post.reactedByCurrentActor ? "Remove appreciation" : "Appreciate this update")
 
                     Button(action: comment) {
-                        Label("\(post.commentCount)", systemImage: "bubble.right")
+                        Label("\(post.metrics.commentCount)", systemImage: "bubble.right")
                             .foregroundStyle(LegendNextColor.textSecondary)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Comment on this update")
+
+                    Button {
+                        social.toggleSave(postID: post.id)
+                    } label: {
+                        Label("\(post.metrics.saveCount)", systemImage: post.savedByCurrentActor ? "bookmark.fill" : "bookmark")
+                            .foregroundStyle(post.savedByCurrentActor ? LegendNextColor.gold : LegendNextColor.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(post.savedByCurrentActor ? "Remove saved update" : "Save this update")
+
+                    Button {
+                        social.toggleRepost(postID: post.id)
+                    } label: {
+                        Label("\(post.metrics.repostCount)", systemImage: post.repostedByCurrentActor ? "arrow.2.squarepath" : "arrow.2.squarepath")
+                            .foregroundStyle(post.repostedByCurrentActor ? LegendNextColor.information : LegendNextColor.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(post.repostedByCurrentActor ? "Remove repost" : "Repost this update")
+
+                    ShareLink(item: post.body) {
+                        Label("\(post.metrics.shareCount)", systemImage: "square.and.arrow.up")
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                    .simultaneousGesture(TapGesture().onEnded {
+                        social.recordShare(postID: post.id)
+                    })
+                    .accessibilityLabel("Share this update")
 
                     Spacer()
 
@@ -442,11 +525,135 @@ private struct LegendSocialPostCard: View {
                 }
             }
         }
+        .task(id: post.id) {
+            guard !post.media.contains(where: \.isVideo) else { return }
+            social.recordView(postID: post.id)
+        }
     }
 
     private var metadata: String {
         let kind = post.contentType == MobileSocialContentType.reel.rawValue ? "Reel" : post.contentType
         return "\(kind) · \(post.author.identity.participantType.rawValue)"
+    }
+}
+
+private struct LegendSocialMediaVideo: View {
+    let postID: UUID
+    let media: MobileSocialMedia
+    let music: MobileSocialMusic?
+    @ObservedObject var social: MobileSocialStore
+
+    @State private var player: AVPlayer?
+    @State private var isPlaying = false
+    @State private var isMuted = false
+    @State private var mostRecentRecordedWatchSeconds = 0.0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottomTrailing) {
+                Group {
+                    if let player {
+                        VideoPlayer(player: player)
+                    } else {
+                        RoundedRectangle(
+                            cornerRadius: LegendNextRadius.control,
+                            style: .continuous)
+                        .fill(LegendNextColor.surfaceInset)
+                        .overlay { ProgressView() }
+                    }
+                }
+                .frame(minHeight: 220)
+
+                HStack(spacing: LegendNextSpacing.xs) {
+                    Button {
+                        togglePlayback()
+                    } label: {
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .frame(width: 36, height: 36)
+                    }
+                    .accessibilityLabel(isPlaying ? "Pause video" : "Play video")
+
+                    Button {
+                        isMuted.toggle()
+                        player?.isMuted = isMuted
+                    } label: {
+                        Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .frame(width: 36, height: 36)
+                    }
+                    .accessibilityLabel(isMuted ? "Unmute original video audio" : "Mute original video audio")
+                }
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+                .background(.black.opacity(0.48), in: Capsule())
+                .padding(LegendNextSpacing.sm)
+            }
+
+            if let music {
+                Label("Music: \(music.trackTitle) · \(music.artistName)", systemImage: "music.note")
+                    .font(.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, LegendNextSpacing.xs)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
+        .task(id: media.id) {
+            guard let url = await social.mediaFile(for: media) else { return }
+            let created = AVPlayer(url: url)
+            created.isMuted = isMuted
+            player = created
+            created.play()
+            isPlaying = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { notification in
+            guard let item = notification.object as? AVPlayerItem,
+                  item === player?.currentItem else { return }
+            recordPlaybackMetrics(completed: true)
+            player?.seek(to: .zero) { _ in
+                player?.play()
+            }
+            isPlaying = true
+        }
+        .onDisappear {
+            recordPlaybackMetrics(completed: false)
+            player?.pause()
+            isPlaying = false
+        }
+        .accessibilityLabel(media.accessibilityText ?? "Shared video")
+    }
+
+    private func togglePlayback() {
+        guard let player else { return }
+        if isPlaying {
+            recordPlaybackMetrics(completed: false)
+            player.pause()
+        } else {
+            player.play()
+        }
+        isPlaying.toggle()
+    }
+
+    private func recordPlaybackMetrics(completed: Bool) {
+        guard let player else { return }
+
+        let watchSeconds = max(0, player.currentTime().seconds)
+        let duration = player.currentItem?.duration.seconds
+        let completion: Double?
+        if completed {
+            completion = 100
+        } else if let duration, duration.isFinite, duration > 0 {
+            completion = min(100, max(0, (watchSeconds / duration) * 100))
+        } else {
+            completion = nil
+        }
+
+        guard completed || watchSeconds > mostRecentRecordedWatchSeconds else { return }
+
+        social.recordView(
+            postID: postID,
+            watchDurationSeconds: Decimal(watchSeconds),
+            watchCompletionPercentage: completion.map { Decimal($0) })
+        mostRecentRecordedWatchSeconds = max(mostRecentRecordedWatchSeconds, watchSeconds)
     }
 }
 
@@ -604,4 +811,216 @@ private struct LegendActivitySheet: View {
         }
     }
 
+}
+
+private struct LegendCreatorInsightsSheet: View {
+    let insights: MobileSocialCreatorInsights
+    let profileMetrics: MobileSocialProfileMetrics
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
+                    LegendNextSectionHeader(
+                        eyebrow: "Creator intelligence",
+                        title: "Your Legend impact")
+
+                    LegendNextSurface(style: .elevated) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            Text("Reach and engagement are generated from protected Legend activity.")
+                                .font(LegendNextTypography.supporting)
+                                .foregroundStyle(LegendNextColor.textSecondary)
+
+                            LazyVGrid(
+                                columns: [GridItem(.flexible()), GridItem(.flexible())],
+                                spacing: LegendNextSpacing.sm
+                            ) {
+                                LegendSocialInsightMetric(label: "Views", value: "\(insights.totalViews)", symbol: "play.rectangle.fill", color: LegendNextColor.information)
+                                LegendSocialInsightMetric(label: "Reach", value: "\(insights.totalReach)", symbol: "person.2.fill", color: LegendNextColor.success)
+                                LegendSocialInsightMetric(label: "Followers", value: "\(insights.followerCount)", symbol: "person.badge.plus", color: LegendNextColor.gold)
+                                LegendSocialInsightMetric(label: "Engagement", value: socialPercentage(insights.engagementRatePercentage), symbol: "chart.line.uptrend.xyaxis", color: LegendNextColor.navy)
+                            }
+                        }
+                    }
+
+                    LegendNextSurface {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            LegendNextSectionHeader(eyebrow: "Profile", title: "Content and community")
+                            LegendSocialInsightRow(label: "Posts", value: "\(profileMetrics.postCount)")
+                            LegendSocialInsightRow(label: "Videos", value: "\(profileMetrics.videoCount)")
+                            LegendSocialInsightRow(label: "Stories", value: "\(profileMetrics.storyCount)")
+                            LegendSocialInsightRow(label: "Following", value: "\(profileMetrics.followingCount)")
+                            LegendSocialInsightRow(label: "Profile visits", value: "\(insights.profileVisits)")
+                            LegendSocialInsightRow(label: "Followers gained this week", value: "\(insights.followersGained)")
+                        }
+                    }
+
+                    LegendSocialInsightList(
+                        title: "Top posts",
+                        emptyMessage: "Publish a post to begin building performance history.",
+                        insights: insights.topPosts)
+                    LegendSocialInsightList(
+                        title: "Top videos",
+                        emptyMessage: "Publish a video to begin building video performance history.",
+                        insights: insights.topVideos)
+                    LegendSocialInsightList(
+                        title: "Top stories",
+                        emptyMessage: "Publish a story to begin building story performance history.",
+                        insights: insights.topStories)
+                }
+                .padding(LegendNextSpacing.md)
+            }
+            .background(LegendNextColor.canvas.ignoresSafeArea())
+            .navigationTitle("Creator insights")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .accessibilityLabel("Creator insights generated from your Legend activity")
+    }
+}
+
+private struct LegendPostInsightsSheet: View {
+    let insight: MobileSocialPostInsight
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
+                    LegendNextSectionHeader(
+                        eyebrow: insight.contentType,
+                        title: "Post insights")
+
+                    LegendNextSurface(style: .elevated) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                            Text("Published \(insight.postedUTC, style: .date)")
+                                .font(LegendNextTypography.supporting)
+                                .foregroundStyle(LegendNextColor.textSecondary)
+                            Text("\(insight.metrics.uniqueViewerCount) reached · \(socialPercentage(insight.engagementRatePercentage)) engagement")
+                                .font(LegendNextTypography.bodyEmphasis)
+                                .foregroundStyle(LegendNextColor.textPrimary)
+                        }
+                    }
+
+                    LegendNextSurface {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            LegendSocialInsightRow(label: "Views", value: "\(insight.metrics.viewCount)")
+                            LegendSocialInsightRow(label: "Unique viewers", value: "\(insight.metrics.uniqueViewerCount)")
+                            LegendSocialInsightRow(label: "Appreciations", value: "\(insight.metrics.reactionCount)")
+                            LegendSocialInsightRow(label: "Comments", value: "\(insight.metrics.commentCount)")
+                            LegendSocialInsightRow(label: "Replies", value: "\(insight.metrics.replyCount)")
+                            LegendSocialInsightRow(label: "Reposts", value: "\(insight.metrics.repostCount)")
+                            LegendSocialInsightRow(label: "Saves", value: "\(insight.metrics.saveCount)")
+                            LegendSocialInsightRow(label: "Shares", value: "\(insight.metrics.shareCount)")
+                            LegendSocialInsightRow(label: "Profile visits", value: "\(insight.metrics.profileVisitCount)")
+                            LegendSocialInsightRow(label: "Follows generated", value: "\(insight.metrics.followsGenerated)")
+
+                            if let averageWatchDuration = insight.metrics.averageWatchDurationSeconds {
+                                LegendSocialInsightRow(label: "Average watch time", value: "\(socialNumber(averageWatchDuration)) sec")
+                            }
+                            if let averageWatchCompletion = insight.metrics.averageWatchCompletionPercentage {
+                                LegendSocialInsightRow(label: "Average completion", value: socialPercentage(averageWatchCompletion))
+                            }
+                            if insight.contentType == MobileSocialContentType.story.rawValue {
+                                LegendSocialInsightRow(label: "Story exits", value: "\(insight.metrics.storyExitCount)")
+                                LegendSocialInsightRow(label: "Taps forward", value: "\(insight.metrics.storyTapForwardCount)")
+                                LegendSocialInsightRow(label: "Taps backward", value: "\(insight.metrics.storyTapBackwardCount)")
+                            }
+                        }
+                    }
+                }
+                .padding(LegendNextSpacing.md)
+            }
+            .background(LegendNextColor.canvas.ignoresSafeArea())
+            .navigationTitle("Post insights")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .accessibilityLabel("Private server-authoritative insights for this post")
+    }
+}
+
+private struct LegendSocialInsightMetric: View {
+    let label: String
+    let value: String
+    let symbol: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(color)
+            Text(value)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .lineLimit(1)
+            Text(label)
+                .font(LegendNextTypography.caption)
+                .foregroundStyle(LegendNextColor.textSecondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(LegendNextSpacing.sm)
+        .background(LegendNextColor.surfaceInset, in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct LegendSocialInsightRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .font(LegendNextTypography.supporting)
+                .foregroundStyle(LegendNextColor.textSecondary)
+            Spacer()
+            Text(value)
+                .font(LegendNextTypography.bodyEmphasis)
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+}
+
+private struct LegendSocialInsightList: View {
+    let title: String
+    let emptyMessage: String
+    let insights: [MobileSocialPostInsight]
+
+    var body: some View {
+        LegendNextSurface {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                Text(title)
+                    .font(LegendNextTypography.section)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+
+                if insights.isEmpty {
+                    Text(emptyMessage)
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                } else {
+                    ForEach(insights) { insight in
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                            Text(insight.postedUTC, format: .dateTime.month(.abbreviated).day().year())
+                                .font(LegendNextTypography.bodyEmphasis)
+                                .foregroundStyle(LegendNextColor.textPrimary)
+                            Text("\(insight.metrics.uniqueViewerCount) reached · \(insight.metrics.reactionCount) appreciations · \(socialPercentage(insight.engagementRatePercentage)) engagement")
+                                .font(LegendNextTypography.supporting)
+                                .foregroundStyle(LegendNextColor.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private func socialNumber(_ value: Decimal) -> String {
+    NSDecimalNumber(decimal: value).doubleValue.formatted(
+        .number.precision(.fractionLength(1)))
+}
+
+private func socialPercentage(_ value: Decimal) -> String {
+    "\(socialNumber(value))%"
 }

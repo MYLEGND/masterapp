@@ -1,3 +1,4 @@
+import AVFoundation
 import AVKit
 import Photos
 import PhotosUI
@@ -112,6 +113,8 @@ struct LegendSocialComposer: View {
     @State private var mediaSelectionError: String?
     @State private var isPreparingMedia = false
     @State private var isPublishing = false
+    @State private var isPresentingMusicPicker = false
+    @State private var selectedMusic: LegendSocialMusicDraft?
 
     var body: some View {
         NavigationStack {
@@ -171,6 +174,8 @@ struct LegendSocialComposer: View {
 
                     selectedMediaContent
 
+                    musicSelection
+
                     LegendNextSurface(style: .elevated) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
                             Label("Audience", systemImage: "person.2.fill")
@@ -215,6 +220,13 @@ struct LegendSocialComposer: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .sheet(isPresented: $isPresentingMusicPicker) {
+            LegendSocialMusicSelectionSheet(
+                social: social,
+                selection: selectedMusic,
+                save: { selectedMusic = $0 },
+                cancel: { isPresentingMusicPicker = false })
+        }
         .onAppear {
             photoLibrary.refresh()
         }
@@ -239,6 +251,52 @@ struct LegendSocialComposer: View {
     private var canPublish: Bool {
         !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
             !selectedMedia.isEmpty
+    }
+
+    private var musicSelection: some View {
+        LegendNextSurface(style: .elevated) {
+            HStack(alignment: .center, spacing: LegendNextSpacing.sm) {
+                Image(systemName: "music.note")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.gold)
+                    .frame(width: 38, height: 38)
+                    .background(
+                        LegendNextColor.gold.opacity(0.14),
+                        in: Circle())
+
+                VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                    Text(selectedMusic?.track.trackTitle ?? "Add music")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                        .lineLimit(1)
+                    Text(selectedMusic.map { "\($0.track.artistName) · clip and audio mix ready" } ?? "Available after selecting photo or video")
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: LegendNextSpacing.xs)
+
+                if selectedMusic != nil {
+                    Button("Remove") {
+                        selectedMusic = nil
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Remove selected music")
+                }
+
+                Button(selectedMusic == nil ? "Choose" : "Change") {
+                    isPresentingMusicPicker = true
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.bordered)
+                .disabled(selectedMedia.isEmpty)
+                .accessibilityLabel("Choose music for selected media")
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(selectedMusic.map { "Selected music: \($0.track.trackTitle) by \($0.track.artistName)" } ?? "No music selected")
     }
 
     @ViewBuilder
@@ -369,7 +427,7 @@ struct LegendSocialComposer: View {
             body: caption,
             files: selectedMedia.map(\.multipartFile),
             accessibilityText: normalizedAccessibilityText,
-            music: nil)
+            music: selectedMusic?.selection)
 
         Task {
             let succeeded = await social.publish(request)
@@ -389,6 +447,229 @@ struct LegendSocialComposer: View {
 
     private func discardTemporaryMedia() {
         selectedMedia.forEach { $0.discardTemporaryFile() }
+    }
+}
+
+private struct LegendSocialMusicDraft: Equatable {
+    let track: MobileSocialMusicTrack
+    let selection: MobileSocialMusicSelection
+}
+
+private struct LegendSocialMusicSelectionSheet: View {
+    @ObservedObject var social: MobileSocialStore
+    let selection: LegendSocialMusicDraft?
+    let save: (LegendSocialMusicDraft) -> Void
+    let cancel: () -> Void
+
+    @State private var query = ""
+    @State private var tracks: [MobileSocialMusicTrack] = []
+    @State private var selectedTrack: MobileSocialMusicTrack?
+    @State private var trimStart = 0.0
+    @State private var trimEnd = 0.0
+    @State private var musicVolume = 1.0
+    @State private var originalAudioVolume = 1.0
+    @State private var isSearching = false
+    @State private var previewPlayer: AVPlayer?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    Text("Search the licensed Legend music catalog, preview a track, then set its clip and audio mix.")
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+
+                    HStack(spacing: LegendNextSpacing.xs) {
+                        TextField("Search music", text: $query)
+                            .textFieldStyle(.roundedBorder)
+                            .submitLabel(.search)
+                            .onSubmit { search() }
+                            .accessibilityLabel("Search licensed music")
+
+                        Button("Search", action: search)
+                            .buttonStyle(LegendButtonStyle(kind: .secondary))
+                            .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSearching)
+                    }
+
+                    if isSearching {
+                        HStack(spacing: LegendNextSpacing.xs) {
+                            ProgressView()
+                            Text("Searching licensed music…")
+                                .font(LegendNextTypography.supporting)
+                                .foregroundStyle(LegendNextColor.textSecondary)
+                        }
+                    }
+
+                    if !tracks.isEmpty {
+                        VStack(spacing: LegendNextSpacing.xs) {
+                            ForEach(tracks) { track in
+                                Button {
+                                    choose(track)
+                                } label: {
+                                    HStack(spacing: LegendNextSpacing.sm) {
+                                        Image(systemName: selectedTrack?.id == track.id ? "checkmark.circle.fill" : "music.note")
+                                            .foregroundStyle(selectedTrack?.id == track.id ? LegendNextColor.success : LegendNextColor.gold)
+                                            .frame(width: 28)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(track.trackTitle)
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundStyle(LegendNextColor.textPrimary)
+                                                .lineLimit(1)
+                                            Text("\(track.artistName) · \(duration(track.trackDurationSeconds))")
+                                                .font(LegendNextTypography.supporting)
+                                                .foregroundStyle(LegendNextColor.textSecondary)
+                                                .lineLimit(1)
+                                        }
+                                        Spacer(minLength: LegendNextSpacing.xs)
+                                        if track.previewURL != nil {
+                                            Button {
+                                                preview(track)
+                                            } label: {
+                                                Image(systemName: "play.circle")
+                                                    .font(.title3)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .foregroundStyle(LegendNextColor.navy)
+                                            .accessibilityLabel("Preview \(track.trackTitle)")
+                                        }
+                                    }
+                                    .padding(LegendNextSpacing.sm)
+                                    .background(
+                                        selectedTrack?.id == track.id ? LegendNextColor.gold.opacity(0.12) : LegendNextColor.surfaceInset,
+                                        in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    if let selectedTrack {
+                        mixingControls(for: selectedTrack)
+                    }
+                }
+                .padding(LegendNextSpacing.md)
+            }
+            .scrollIndicators(.hidden)
+            .background(LegendNextColor.canvas.ignoresSafeArea())
+            .navigationTitle("Add music")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        stopPreview()
+                        cancel()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        guard let selectedTrack else { return }
+                        save(LegendSocialMusicDraft(
+                            track: selectedTrack,
+                            selection: MobileSocialMusicSelection(
+                                providerID: selectedTrack.providerID,
+                                providerTrackID: selectedTrack.providerTrackID,
+                                trimStartSeconds: Decimal(trimStart),
+                                trimEndSeconds: Decimal(trimEnd),
+                                musicVolume: Decimal(musicVolume),
+                                originalAudioVolume: Decimal(originalAudioVolume))))
+                        stopPreview()
+                        cancel()
+                    }
+                    .disabled(selectedTrack == nil || trimEnd <= trimStart)
+                }
+            }
+        }
+        .onAppear {
+            if let selection {
+                selectedTrack = selection.track
+                trimStart = NSDecimalNumber(decimal: selection.selection.trimStartSeconds).doubleValue
+                trimEnd = NSDecimalNumber(decimal: selection.selection.trimEndSeconds).doubleValue
+                musicVolume = NSDecimalNumber(decimal: selection.selection.musicVolume).doubleValue
+                originalAudioVolume = NSDecimalNumber(decimal: selection.selection.originalAudioVolume).doubleValue
+            }
+        }
+        .onDisappear(perform: stopPreview)
+    }
+
+    private func mixingControls(for track: MobileSocialMusicTrack) -> some View {
+        let totalDuration = max(NSDecimalNumber(decimal: track.trackDurationSeconds).doubleValue, 0.01)
+        return LegendNextSurface(style: .elevated) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                Text("Clip and audio mix")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                musicSlider("Clip begins", value: $trimStart, range: 0...max(0, trimEnd - 0.01), detail: duration(Decimal(trimStart)))
+                musicSlider("Clip ends", value: $trimEnd, range: min(totalDuration, trimStart + 0.01)...totalDuration, detail: duration(Decimal(trimEnd)))
+                musicSlider("Music volume", value: $musicVolume, range: 0...1, detail: percentage(musicVolume))
+                musicSlider("Original audio", value: $originalAudioVolume, range: 0...1, detail: percentage(originalAudioVolume))
+            }
+        }
+    }
+
+    private func musicSlider(
+        _ title: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        detail: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+            HStack {
+                Text(title)
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                Spacer()
+                Text(detail)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(LegendNextColor.textPrimary)
+            }
+            Slider(value: value, in: range)
+                .tint(LegendNextColor.gold)
+        }
+    }
+
+    private func search() {
+        let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, !isSearching else { return }
+        isSearching = true
+        Task {
+            tracks = await social.searchMusic(value)
+            isSearching = false
+        }
+    }
+
+    private func choose(_ track: MobileSocialMusicTrack) {
+        selectedTrack = track
+        trimStart = 0
+        trimEnd = max(NSDecimalNumber(decimal: track.trackDurationSeconds).doubleValue, 0.01)
+        musicVolume = 1
+        originalAudioVolume = 1
+    }
+
+    private func preview(_ track: MobileSocialMusicTrack) {
+        guard let url = track.previewURL else { return }
+        if previewPlayer?.currentItem?.asset as? AVURLAsset == AVURLAsset(url: url) {
+            previewPlayer?.seek(to: .zero)
+            previewPlayer?.play()
+            return
+        }
+
+        let player = AVPlayer(url: url)
+        previewPlayer = player
+        player.play()
+    }
+
+    private func stopPreview() {
+        previewPlayer?.pause()
+        previewPlayer = nil
+    }
+
+    private func duration(_ seconds: Decimal) -> String {
+        let total = Int(NSDecimalNumber(decimal: seconds).doubleValue.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    private func percentage(_ value: Double) -> String {
+        "\(Int((value * 100).rounded()))%"
     }
 }
 

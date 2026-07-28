@@ -99,6 +99,24 @@ struct MobileSocialMusic: Codable, Equatable, Sendable {
     }
 }
 
+struct MobileSocialMusicTrack: Codable, Equatable, Identifiable, Sendable {
+    let providerID: String
+    let providerTrackID: String
+    let trackTitle: String
+    let artistName: String
+    let trackDurationSeconds: Decimal
+    let previewURL: URL?
+
+    var id: String { "\(providerID):\(providerTrackID)" }
+
+    private enum CodingKeys: String, CodingKey {
+        case providerID = "providerId"
+        case providerTrackID = "providerTrackId"
+        case trackTitle, artistName, trackDurationSeconds
+        case previewURL = "previewUrl"
+    }
+}
+
 struct MobileSocialPostInsight: Codable, Equatable, Identifiable, Sendable {
     let postID: UUID
     let contentType: String
@@ -168,6 +186,10 @@ struct MobileSocialMedia: Codable, Equatable, Identifiable, Sendable {
 
     var isImage: Bool {
         mediaKind.caseInsensitiveCompare("Image") == .orderedSame
+    }
+
+    var isVideo: Bool {
+        mediaKind.caseInsensitiveCompare("Video") == .orderedSame
     }
 }
 
@@ -253,13 +275,21 @@ struct MobileSocialShareState: Codable, Equatable, Sendable {
     let isActive: Bool
 }
 
+struct MobileRecordSocialView: Codable, Sendable {
+    let watchDurationSeconds: Decimal?
+    let watchCompletionPercentage: Decimal?
+    let storyInteractionType: String?
+}
+
 struct MobileToggleSocialFollow: Codable, Sendable {
     let followedUserID: String
     let followedParticipantType: ParticipantType
+    let sourcePostID: UUID?
 
     private enum CodingKeys: String, CodingKey {
         case followedUserID = "followedUserId"
         case followedParticipantType
+        case sourcePostID = "sourcePostId"
     }
 }
 

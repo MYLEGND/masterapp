@@ -19,6 +19,9 @@ protocol MobileSocialAPI: Sendable {
     func toggleSave(postID: UUID, accessToken: String) async throws -> MobileSocialShareState
     func toggleRepost(postID: UUID, accessToken: String) async throws -> MobileSocialShareState
     func recordShare(postID: UUID, accessToken: String) async throws -> MobileSocialShareState
+    func recordView(postID: UUID, request: MobileRecordSocialView, accessToken: String) async throws -> MobileSocialPostMetrics
+    func postInsights(postID: UUID, accessToken: String) async throws -> MobileSocialPostInsight
+    func searchMusic(query: String, accessToken: String) async throws -> [MobileSocialMusicTrack]
 }
 
 struct MobileUnavailableSocialAPI: MobileSocialAPI {
@@ -44,6 +47,9 @@ struct MobileUnavailableSocialAPI: MobileSocialAPI {
     func toggleSave(postID: UUID, accessToken: String) async throws -> MobileSocialShareState { throw MobileAPIError.unauthorized(correlationID: nil) }
     func toggleRepost(postID: UUID, accessToken: String) async throws -> MobileSocialShareState { throw MobileAPIError.unauthorized(correlationID: nil) }
     func recordShare(postID: UUID, accessToken: String) async throws -> MobileSocialShareState { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func recordView(postID: UUID, request: MobileRecordSocialView, accessToken: String) async throws -> MobileSocialPostMetrics { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func postInsights(postID: UUID, accessToken: String) async throws -> MobileSocialPostInsight { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func searchMusic(query: String, accessToken: String) async throws -> [MobileSocialMusicTrack] { throw MobileAPIError.unauthorized(correlationID: nil) }
 }
 
 struct URLSessionMobileSocialAPI: MobileSocialAPI {
@@ -127,6 +133,27 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
     func recordShare(postID: UUID, accessToken: String) async throws -> MobileSocialShareState {
         try await client.post("/api/v1/mobile/social/posts/\(postID.uuidString)/share", body: EmptyMobileRequest(), accessToken: accessToken, headers: participantHeader, response: MobileSocialShareState.self)
     }
+
+    func recordView(postID: UUID, request: MobileRecordSocialView, accessToken: String) async throws -> MobileSocialPostMetrics {
+        try await client.post("/api/v1/mobile/social/posts/\(postID.uuidString)/view", body: request, accessToken: accessToken, headers: participantHeader, response: MobileSocialPostMetrics.self)
+    }
+
+    func postInsights(postID: UUID, accessToken: String) async throws -> MobileSocialPostInsight {
+        try await client.get(
+            "/api/v1/mobile/social/posts/\(postID.uuidString)/insights",
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: MobileSocialPostInsight.self)
+    }
+
+    func searchMusic(query: String, accessToken: String) async throws -> [MobileSocialMusicTrack] {
+        try await client.get(
+            "/api/v1/mobile/social/music/search",
+            accessToken: accessToken,
+            queryItems: [URLQueryItem(name: "query", value: query)],
+            headers: participantHeader,
+            response: [MobileSocialMusicTrack].self)
+    }
 }
 
 private struct EmptyMobileRequest: Codable, Sendable {}
@@ -140,6 +167,7 @@ final class MobileSocialStore: ObservableObject {
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
     private var mediaCache: [UUID: Data] = [:]
+    private var mediaFileCache: [UUID: URL] = [:]
 
     init(
         api: any MobileSocialAPI,
@@ -229,6 +257,31 @@ final class MobileSocialStore: ObservableObject {
         }
     }
 
+    func mediaFile(for media: MobileSocialMedia) async -> URL? {
+        if let cached = mediaFileCache[media.id],
+           FileManager.default.fileExists(atPath: cached.path) {
+            return cached
+        }
+
+        guard let data = await mediaData(for: media.id) else { return nil }
+        let fileExtension = media.mimeType.split(separator: "/").last
+            .map(String.init) ?? "media"
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("legend-social-\(media.id.uuidString)")
+            .appendingPathExtension(fileExtension)
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            mediaFileCache[media.id] = fileURL
+            return fileURL
+        } catch {
+            diagnostics.record(
+                category: .networking,
+                summary: "A protected social video could not be prepared.",
+                correlationID: nil)
+            return nil
+        }
+    }
+
 
     func toggleReaction(postID: UUID) {
         perform(title: "Could not update appreciation") { token in
@@ -265,12 +318,64 @@ final class MobileSocialStore: ObservableObject {
         }
     }
 
-    func toggleFollow(author: MobileSocialAuthor) {
+    func recordView(
+        postID: UUID,
+        watchDurationSeconds: Decimal? = nil,
+        watchCompletionPercentage: Decimal? = nil,
+        storyInteractionType: String? = nil
+    ) {
+        Task {
+            do {
+                let token = try await accessTokenProvider()
+                _ = try await api.recordView(
+                    postID: postID,
+                    request: MobileRecordSocialView(
+                        watchDurationSeconds: watchDurationSeconds,
+                        watchCompletionPercentage: watchCompletionPercentage,
+                        storyInteractionType: storyInteractionType),
+                    accessToken: token)
+            } catch {
+                let apiError = error as? MobileAPIError
+                diagnostics.record(
+                    category: .networking,
+                    summary: "A social view could not be recorded.",
+                    correlationID: apiError?.correlationID)
+            }
+        }
+    }
+
+    func searchMusic(_ query: String) async -> [MobileSocialMusicTrack] {
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return [] }
+
+        actionFailure = nil
+        do {
+            let token = try await accessTokenProvider()
+            return try await api.searchMusic(query: normalized, accessToken: token)
+        } catch {
+            actionFailure = failure(for: error, title: "Music search unavailable")
+            return []
+        }
+    }
+
+    func postInsights(postID: UUID) async -> MobileSocialPostInsight? {
+        actionFailure = nil
+        do {
+            let token = try await accessTokenProvider()
+            return try await api.postInsights(postID: postID, accessToken: token)
+        } catch {
+            actionFailure = failure(for: error, title: "Post insights unavailable")
+            return nil
+        }
+    }
+
+    func toggleFollow(author: MobileSocialAuthor, sourcePostID: UUID?) {
         perform(title: "Could not update your connection") { token in
             let result = try await self.api.toggleFollow(
                 MobileToggleSocialFollow(
                     followedUserID: author.identity.userID,
-                    followedParticipantType: author.identity.participantType),
+                    followedParticipantType: author.identity.participantType,
+                    sourcePostID: sourcePostID),
                 accessToken: token)
             self.updateFollow(author: author, isFollowing: result.isFollowing)
         }
