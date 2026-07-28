@@ -119,6 +119,208 @@ struct MobileFinancialSnapshotResponse: Codable, Equatable, Sendable {
     let intelligence: MobileFinancialIntelligenceSummary?
     let upcomingBills: [MobileUpcomingBill]
     let operatingSystem: MobileFinancialOperatingSystemSnapshotResponse?
+    let presentation: MobileFinancialPresentationResponse?
+}
+
+struct MobileFinancialPresentationResponse: Codable, Equatable, Sendable {
+    let assignedAgent: MobileFinancialAssignedAgentContextResponse
+    let prioritySections: [MobileFinancialPrioritySectionResponse]
+}
+
+struct MobileFinancialAssignedAgentContextResponse: Codable, Equatable, Sendable {
+    let hasAssignedAgent: Bool
+    let displayName: String?
+    let firstName: String?
+}
+
+struct MobileFinancialPrioritySectionResponse:
+    Codable,
+    Equatable,
+    Identifiable,
+    Sendable
+{
+    let key: String
+    let eyebrow: String
+    let title: String
+    let systemImage: String
+    let priority: Int
+    let status: String
+    let reason: String
+    let discussionPrompt: String
+    let primaryMetric: MobileFinancialSummaryMetricResponse
+    let secondaryMetric: MobileFinancialSummaryMetricResponse?
+
+    var id: String { key }
+}
+
+struct MobileFinancialSummaryMetricResponse: Codable, Equatable, Sendable {
+    let label: String
+    let amountCents: Int64?
+    let date: String?
+    let textValue: String?
+    let semantic: MobileFinancialSemantic
+
+    var displayValue: String {
+        if let amountCents {
+            return (Decimal(amountCents) / Decimal(100))
+                .formatted(.currency(code: "USD"))
+        }
+
+        if let date {
+            return MobileFinancialDisplay.date(date)
+        }
+
+        return textValue ?? "Not available"
+    }
+}
+
+enum MobileFinancialSemantic: String, Codable, Equatable, Sendable {
+    case positive
+    case caution
+    case negative
+    case neutral
+    case informational
+
+    var tone: LegendNextTone {
+        switch self {
+        case .positive:
+            return .success
+        case .caution:
+            return .warning
+        case .negative:
+            return .danger
+        case .neutral:
+            return .neutral
+        case .informational:
+            return .information
+        }
+    }
+}
+
+enum MobileFinancialAmountKind: Sendable {
+    case assets
+    case liabilities
+    case netWorth
+    case income
+    case bills
+    case debt
+    case endingCash
+    case endingDebt
+    case openingCash
+    case payoffProgress
+    case historical
+}
+
+enum MobileFinancialAmountSemantic {
+    static func tone(
+        for amount: Decimal,
+        kind: MobileFinancialAmountKind
+    ) -> LegendNextTone {
+        if amount == 0 {
+            return .neutral
+        }
+
+        switch kind {
+        case .assets, .income, .payoffProgress:
+            return amount > 0 ? .success : .neutral
+        case .liabilities, .bills, .endingDebt:
+            return amount > 0 ? .warning : .neutral
+        case .debt:
+            return amount > 0 ? .danger : .neutral
+        case .netWorth, .endingCash:
+            return amount > 0 ? .success : .danger
+        case .openingCash:
+            return amount < 0 ? .danger : .neutral
+        case .historical:
+            return .neutral
+        }
+    }
+
+    static func tone(
+        forCents amountCents: Int64,
+        kind: MobileFinancialAmountKind
+    ) -> LegendNextTone {
+        tone(for: Decimal(amountCents) / Decimal(100), kind: kind)
+    }
+
+    static func tone(forStatus status: String) -> LegendNextTone {
+        let normalized = status
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        if normalized.contains("critical") ||
+            normalized.contains("danger") ||
+            normalized.contains("severe") ||
+            normalized.contains("exposed") ||
+            normalized.contains("negative") ||
+            normalized.contains("high") ||
+            normalized.contains("shortfall") {
+            return .danger
+        }
+
+        if normalized.contains("warning") ||
+            normalized.contains("watch") ||
+            normalized.contains("tight") ||
+            normalized.contains("pressure") ||
+            normalized.contains("moderate") ||
+            normalized.contains("review") ||
+            normalized.contains("incomplete") {
+            return .warning
+        }
+
+        if normalized.contains("healthy") ||
+            normalized.contains("strong") ||
+            normalized.contains("excellent") ||
+            normalized.contains("stable") ||
+            normalized.contains("positive") ||
+            normalized.contains("improving") ||
+            normalized.contains("clear") ||
+            normalized.contains("low") {
+            return .success
+        }
+
+        if normalized.contains("progress") ||
+            normalized.contains("building") ||
+            normalized.contains("active") ||
+            normalized.contains("scheduled") ||
+            normalized.contains("current") {
+            return .information
+        }
+
+        return .neutral
+    }
+
+    static func tone(
+        forEventKind eventKind: String,
+        amountCents: Int64
+    ) -> LegendNextTone {
+        let normalized = eventKind.lowercased()
+
+        if normalized.contains("income") {
+            return tone(forCents: amountCents, kind: .income)
+        }
+
+        if normalized.contains("debt") {
+            return tone(forCents: amountCents, kind: .debt)
+        }
+
+        return tone(forCents: amountCents, kind: .bills)
+    }
+}
+
+enum MobileFinancialDisplay {
+    static func date(_ value: String) -> String {
+        let parts = value.split(separator: "-")
+
+        guard parts.count == 3,
+              let month = Int(parts[1]),
+              let day = Int(parts[2]),
+              (1...Calendar.current.shortMonthSymbols.count).contains(month) else {
+            return value
+        }
+
+        return "\(Calendar.current.shortMonthSymbols[month - 1]) \(day)"
+    }
 }
 
 struct MobileFinancialOperatingSystemSnapshotResponse: Codable, Equatable, Sendable {

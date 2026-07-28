@@ -147,29 +147,97 @@ public sealed class MobileHomeService : IMobileHomeService
             actor.ProfileId,
             cancellationToken);
 
+        var assignedAgent = await ResolveFinancialAssignedAgentAsync(
+            actor.ProfileId,
+            cancellationToken);
+
+        var intelligenceSummary = intelligence is null
+            ? null
+            : new MobileFinancialIntelligenceSummary(
+                intelligence.Status,
+                intelligence.DataCompletenessScore,
+                intelligence.CurrentRiskSummary,
+                intelligence.CurrentOpportunitySummary,
+                intelligence.CurrentLeakageSummary,
+                intelligence.LastEvaluatedUtc,
+                intelligence.Findings.Select(finding => new MobileFinancialFinding(
+                    finding.Id,
+                    finding.Category,
+                    finding.Title,
+                    finding.Explanation,
+                    finding.EstimatedImpact,
+                    finding.ImpactUnit,
+                    finding.Urgency,
+                    finding.Status,
+                    finding.LastDetectedUtc)).ToArray());
+
+        var presentation = MobileFinancialPresentationEvaluator.Evaluate(
+            position,
+            intelligenceSummary,
+            upcomingBills,
+            operatingSystem,
+            assignedAgent);
+
         return MobileFinancialResult.Success(new MobileFinancialSnapshot(
             position,
-            intelligence is null
-                ? null
-                : new MobileFinancialIntelligenceSummary(
-                    intelligence.Status,
-                    intelligence.DataCompletenessScore,
-                    intelligence.CurrentRiskSummary,
-                    intelligence.CurrentOpportunitySummary,
-                    intelligence.CurrentLeakageSummary,
-                    intelligence.LastEvaluatedUtc,
-                    intelligence.Findings.Select(finding => new MobileFinancialFinding(
-                        finding.Id,
-                        finding.Category,
-                        finding.Title,
-                        finding.Explanation,
-                        finding.EstimatedImpact,
-                        finding.ImpactUnit,
-                        finding.Urgency,
-                        finding.Status,
-                        finding.LastDetectedUtc)).ToArray()),
+            intelligenceSummary,
             upcomingBills,
-            operatingSystem));
+            operatingSystem,
+            presentation));
+    }
+
+    private async Task<MobileFinancialAssignedAgentContext>
+        ResolveFinancialAssignedAgentAsync(
+            Guid clientProfileId,
+            CancellationToken cancellationToken)
+    {
+        var clientUserId = await _db.ClientProfiles
+            .AsNoTracking()
+            .Where(profile => profile.Id == clientProfileId)
+            .Select(profile => profile.ClientUserId)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(clientUserId))
+        {
+            return new MobileFinancialAssignedAgentContext(false, null, null);
+        }
+
+        var normalizedClientUserId = clientUserId.Trim().ToLowerInvariant();
+        var assignedAgentUserId = await _db.AgentClients
+            .AsNoTracking()
+            .Where(link =>
+                link.ClientUserId.ToLower() == normalizedClientUserId &&
+                !string.IsNullOrWhiteSpace(link.AgentUserId))
+            .OrderByDescending(link => link.CreatedUtc)
+            .ThenBy(link => link.Id)
+            .Select(link => link.AgentUserId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(assignedAgentUserId))
+        {
+            return new MobileFinancialAssignedAgentContext(false, null, null);
+        }
+
+        var normalizedAgentUserId = assignedAgentUserId.Trim().ToLowerInvariant();
+        var displayName = await _db.AgentProfiles
+            .AsNoTracking()
+            .Where(profile =>
+                profile.IsActive &&
+                profile.AgentUserId.ToLower() == normalizedAgentUserId)
+            .Select(profile => profile.FullName)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var normalizedDisplayName = string.IsNullOrWhiteSpace(displayName)
+            ? null
+            : displayName.Trim();
+        var firstName = normalizedDisplayName?
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+
+        return new MobileFinancialAssignedAgentContext(
+            true,
+            normalizedDisplayName,
+            firstName);
     }
 
     public async Task<MobileAgentClientsResult> GetAgentClientsAsync(
@@ -477,7 +545,8 @@ public sealed record MobileFinancialSnapshot(
     MobileFinancialPosition? Position,
     MobileFinancialIntelligenceSummary? Intelligence,
     IReadOnlyList<MobileUpcomingBill> UpcomingBills,
-    MobileFinancialOperatingSystemSnapshot? OperatingSystem = null);
+    MobileFinancialOperatingSystemSnapshot? OperatingSystem = null,
+    MobileFinancialPresentation? Presentation = null);
 public sealed record MobileFinancialPosition(int HealthScore, decimal AssetsTotal, decimal LiabilitiesTotal, decimal NetWorth, decimal AnnualEarnings, decimal AnnualLifestyleRemaining, decimal AnnualTaxes, decimal ProtectionGapTotal, string PositionStatus, string PositionSummary, string EstatePlanningStatus, string EstatePlanningRiskLevel, DateTime UpdatedUtc);
 public sealed record MobileFinancialIntelligenceSummary(string Status, decimal DataCompletenessScore, string CurrentRiskSummary, string CurrentOpportunitySummary, string CurrentLeakageSummary, DateTime? LastEvaluatedUtc, IReadOnlyList<MobileFinancialFinding> Findings);
 public sealed record MobileFinancialFinding(Guid Id, string Category, string Title, string Explanation, decimal? EstimatedImpact, string? ImpactUnit, string Urgency, string Status, DateTime LastDetectedUtc);
