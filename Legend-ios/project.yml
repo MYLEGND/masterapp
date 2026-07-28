@@ -58,6 +58,7 @@ targets:
         LegendAuthRedirectScheme: "$(LEGEND_AUTH_REDIRECT_SCHEME)"
         LegendAuthScope: "$(LEGEND_AUTH_SCOPE)"
         LegendAuthAudience: "$(LEGEND_AUTH_AUDIENCE)"
+        NSCameraUsageDescription: "Legend uses the camera only when you choose to capture media for a Legend update."
         NSPhotoLibraryUsageDescription: "Legend uses photo access only when you choose to manage media for a Legend update."
         UILaunchStoryboardName: LaunchScreen
 

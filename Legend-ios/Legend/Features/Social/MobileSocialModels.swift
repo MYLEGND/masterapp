@@ -335,6 +335,49 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    var maximumMediaItems: Int {
+        switch self {
+        case .post:
+            10
+        case .story, .reel:
+            1
+        }
+    }
+
+    var acceptsImages: Bool {
+        self != .reel
+    }
+
+    var acceptsVideos: Bool {
+        true
+    }
+
+    var requiresVideo: Bool {
+        self == .reel
+    }
+
+    var mediaSelectionTitle: String {
+        switch self {
+        case .post:
+            "Add photos or video"
+        case .story:
+            "Add a photo or video"
+        case .reel:
+            "Add a video"
+        }
+    }
+
+    var mediaSelectionHint: String {
+        switch self {
+        case .post:
+            "Choose up to 10 photos or videos from your library, or capture a new moment."
+        case .story:
+            "Share one visual moment that disappears after 24 hours."
+        case .reel:
+            "Choose one video from your library, or record one with your camera."
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .post: "square.and.pencil"

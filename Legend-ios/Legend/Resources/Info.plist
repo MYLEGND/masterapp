@@ -43,6 +43,8 @@
 	<string>$(LEGEND_AUTHORIZATION_ENDPOINT)</string>
 	<key>LegendTokenEndpoint</key>
 	<string>$(LEGEND_TOKEN_ENDPOINT)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Legend uses the camera only when you choose to capture media for a Legend update.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Legend uses photo access only when you choose to manage media for a Legend update.</string>
 	<key>UILaunchStoryboardName</key>

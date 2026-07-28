@@ -4014,6 +4014,7 @@ private struct LegendFinanceView: View {
 
 
 
+
     private func financialMetric(
         title: String,
         value: String,
@@ -4022,20 +4023,23 @@ private struct LegendFinanceView: View {
     ) -> some View {
         VStack(
             alignment: .leading,
-            spacing: LegendNextSpacing.sm
+            spacing: LegendNextSpacing.xs
         ) {
             HStack(
-                spacing: LegendNextSpacing.xs
+                spacing: LegendNextSpacing.micro
             ) {
                 Image(systemName: symbol)
                     .font(
                         .system(
-                            size: 13,
+                            size: 10,
                             weight: .semibold
                         )
                     )
                     .foregroundStyle(tone.color)
-                    .frame(width: 30, height: 30)
+                    .frame(
+                        width: 25,
+                        height: 25
+                    )
                     .background(
                         tone.color.opacity(0.17),
                         in: Circle()
@@ -4043,18 +4047,32 @@ private struct LegendFinanceView: View {
                     .accessibilityHidden(true)
 
                 Text(title.uppercased())
-                    .font(LegendNextTypography.eyebrow)
+                    .font(
+                        .system(
+                            size: 9,
+                            weight: .bold,
+                            design: .rounded
+                        )
+                    )
+                    .tracking(0.15)
                     .foregroundStyle(
-                        Color.white.opacity(0.66)
+                        Color.white.opacity(0.68)
                     )
                     .lineLimit(1)
-                    .minimumScaleFactor(0.55)
+                    .minimumScaleFactor(0.48)
+                    .allowsTightening(true)
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: .leading
+                    )
             }
+
+            Spacer(minLength: 1)
 
             Text(value)
                 .font(
                     .system(
-                        size: 22,
+                        size: 17,
                         weight: .bold,
                         design: .rounded
                     )
@@ -4062,13 +4080,24 @@ private struct LegendFinanceView: View {
                 .foregroundStyle(tone.color)
                 .monospacedDigit()
                 .lineLimit(1)
-                .minimumScaleFactor(0.38)
+                .minimumScaleFactor(0.25)
                 .allowsTightening(true)
+                .frame(
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
         }
-        .padding(LegendNextSpacing.sm)
+        .padding(
+            .horizontal,
+            LegendNextSpacing.xs
+        )
+        .padding(
+            .vertical,
+            LegendNextSpacing.sm
+        )
         .frame(
             maxWidth: .infinity,
-            minHeight: 108,
+            minHeight: 98,
             alignment: .topLeading
         )
         .background(
@@ -4144,17 +4173,20 @@ private struct LegendFinanceView: View {
         return formattedValue + suffix
     }
 
+
     private var metricColumns: [GridItem] {
-        [
-            GridItem(
-                .flexible(),
-                spacing: LegendNextSpacing.xs
-            ),
-            GridItem(
-                .flexible(),
-                spacing: LegendNextSpacing.xs
-            )
-        ]
+        Array(
+            repeating:
+                GridItem(
+                    .flexible(
+                        minimum: 0,
+                        maximum: .infinity
+                    ),
+                    spacing: LegendNextSpacing.xs,
+                    alignment: .top
+                ),
+            count: 3
+        )
     }
 
     private func money(_ cents: Int64) -> String {

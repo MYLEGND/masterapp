@@ -37,56 +37,65 @@ private struct LegendSocialCreationMenu: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                    Text("Create")
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(.primary)
-                    Text("Choose the kind of Legend update you want to share.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    Text("Share with purpose")
+                        .font(LegendNextTypography.section)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                    Text("Choose the format that fits this moment. Your audience remains server-authorized.")
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(LegendNextColor.textSecondary)
                 }
 
-                ForEach(MobileSocialContentType.allCases) { type in
-                    Button {
-                        select(type)
-                    } label: {
-                        HStack(spacing: LegendNextSpacing.sm) {
-                            Image(systemName: type.systemImage)
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(LegendNextColor.navy)
-                                .frame(width: 38, height: 38)
-                                .background(
-                                    LegendNextColor.gold.opacity(0.18),
-                                    in: Circle())
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: LegendNextSpacing.sm),
+                        GridItem(.flexible(), spacing: LegendNextSpacing.sm)
+                    ],
+                    spacing: LegendNextSpacing.sm
+                ) {
+                    ForEach(MobileSocialContentType.allCases) { type in
+                        Button {
+                            select(type)
+                        } label: {
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                                Image(systemName: type.systemImage)
+                                    .font(.title3.weight(.bold))
+                                    .foregroundStyle(LegendNextColor.gold)
+                                    .frame(width: 42, height: 42)
+                                    .background(
+                                        LegendNextColor.navy,
+                                        in: Circle())
 
-                            VStack(alignment: .leading, spacing: 2) {
                                 Text(type.displayName)
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                Text(type.creationPrompt)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                            }
+                                    .font(.body.weight(.bold))
+                                    .foregroundStyle(LegendNextColor.textPrimary)
 
-                            Spacer(minLength: LegendNextSpacing.xs)
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.tertiary)
+                                Text(type.creationPrompt)
+                                    .font(LegendNextTypography.caption)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                                    .lineLimit(3)
+
+                                Spacer(minLength: 0)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 168, alignment: .leading)
+                            .padding(LegendNextSpacing.sm)
+                            .background(
+                                LegendNextColor.surfaceElevated,
+                                in: RoundedRectangle(
+                                    cornerRadius: LegendNextRadius.control,
+                                    style: .continuous))
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 4)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Create \(type.displayName)")
+                        .accessibilityHint(type.creationPrompt)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Create \(type.displayName)")
-                    .accessibilityHint(type.creationPrompt)
                 }
 
                 Spacer(minLength: 0)
             }
             .padding(LegendNextSpacing.md)
-            .background(Color(uiColor: .systemBackground))
+            .background(LegendNextColor.canvas)
             .navigationTitle("Create")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -95,7 +104,7 @@ private struct LegendSocialCreationMenu: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
 }
@@ -114,6 +123,7 @@ struct LegendSocialComposer: View {
     @State private var isPreparingMedia = false
     @State private var isPublishing = false
     @State private var isPresentingMusicPicker = false
+    @State private var isPresentingCamera = false
     @State private var selectedMusic: LegendSocialMusicDraft?
 
     var body: some View {
@@ -129,31 +139,57 @@ struct LegendSocialComposer: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    TextEditor(text: $caption)
-                        .font(LegendNextTypography.body)
-                        .padding(LegendNextSpacing.sm)
-                        .frame(minHeight: 150)
-                        .background(
-                            Color(uiColor: .secondarySystemBackground),
-                            in: RoundedRectangle(
-                                cornerRadius: LegendNextRadius.control,
-                                style: .continuous))
-                        .accessibilityLabel("\(type.displayName) caption")
-
-                    PhotosPicker(
-                        selection: $pickerItems,
-                        maxSelectionCount: 10,
-                        matching: .any(of: [.images, .videos]),
-                        photoLibrary: .shared()
-                    ) {
-                        Label(
-                            selectedMedia.isEmpty
-                                ? "Choose photo or video"
-                                : "Replace selected media",
-                            systemImage: "photo.on.rectangle")
+                    LegendNextSurface(style: .elevated) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                            Text(type == .story ? "Add text" : "Caption")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(LegendNextColor.textPrimary)
+                            TextEditor(text: $caption)
+                                .font(LegendNextTypography.body)
+                                .frame(minHeight: 126)
+                                .accessibilityLabel("\(type.displayName) caption")
+                        }
                     }
-                    .buttonStyle(LegendButtonStyle(kind: .secondary))
-                    .accessibilityLabel("Choose photos or videos from the system picker")
+
+                    LegendNextSurface(style: .elevated) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            Text(type.mediaSelectionTitle)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(LegendNextColor.textPrimary)
+                            Text(type.mediaSelectionHint)
+                                .font(LegendNextTypography.supporting)
+                                .foregroundStyle(LegendNextColor.textSecondary)
+
+                            HStack(spacing: LegendNextSpacing.sm) {
+                                PhotosPicker(
+                                    selection: $pickerItems,
+                                    maxSelectionCount: type.maximumMediaItems,
+                                    matching: pickerFilter,
+                                    photoLibrary: .shared()
+                                ) {
+                                    Label("Library", systemImage: "photo.on.rectangle")
+                                }
+                                .buttonStyle(LegendButtonStyle(kind: .secondary))
+                                .accessibilityLabel("Choose \(type.displayName.lowercased()) media from your library")
+
+                                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                                    Button {
+                                        isPresentingCamera = true
+                                    } label: {
+                                        Label("Camera", systemImage: "camera")
+                                    }
+                                    .buttonStyle(LegendButtonStyle(kind: .secondary))
+                                    .accessibilityLabel("Capture \(type.displayName.lowercased()) media with the camera")
+                                }
+                            }
+
+                            if type.requiresVideo {
+                                Label("Reels require one video.", systemImage: "video.fill")
+                                    .font(LegendNextTypography.caption)
+                                    .foregroundStyle(LegendNextColor.information)
+                            }
+                        }
+                    }
 
                     photoLibraryStatus
 
@@ -227,6 +263,12 @@ struct LegendSocialComposer: View {
                 save: { selectedMusic = $0 },
                 cancel: { isPresentingMusicPicker = false })
         }
+        .fullScreenCover(isPresented: $isPresentingCamera) {
+            LegendSocialCameraCapture(
+                capturesVideo: type.requiresVideo,
+                captured: addCapturedMedia)
+            .ignoresSafeArea()
+        }
         .onAppear {
             photoLibrary.refresh()
         }
@@ -249,8 +291,18 @@ struct LegendSocialComposer: View {
     }
 
     private var canPublish: Bool {
-        !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        if type.requiresVideo {
+            return selectedMedia.contains(where: \.isVideo)
+        }
+
+        return !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
             !selectedMedia.isEmpty
+    }
+
+    private var pickerFilter: PHPickerFilter {
+        type.acceptsImages
+            ? .any(of: [.images, .videos])
+            : .videos
     }
 
     private var musicSelection: some View {
@@ -404,6 +456,13 @@ struct LegendSocialComposer: View {
             let prepared = try await items.asyncMap { item in
                 try await LegendSocialMediaDraft.load(from: item)
             }
+            guard prepared.allSatisfy(type.accepts) else {
+                mediaSelectionError = type.requiresVideo
+                    ? "A reel can only contain a video."
+                    : "The selected media is not available for this update."
+                pickerItems = []
+                return
+            }
             let previous = selectedMedia
             selectedMedia = prepared
             previous.forEach { $0.discardTemporaryFile() }
@@ -416,6 +475,26 @@ struct LegendSocialComposer: View {
     private func remove(_ media: LegendSocialMediaDraft) {
         selectedMedia.removeAll { $0.id == media.id }
         media.discardTemporaryFile()
+    }
+
+    private func addCapturedMedia(_ result: Result<LegendSocialMediaDraft, Error>) {
+        switch result {
+        case .success(let media):
+            guard type.accepts(media) else {
+                media.discardTemporaryFile()
+                mediaSelectionError = type.requiresVideo
+                    ? "A reel can only contain a video."
+                    : "The captured media is not available for this update."
+                return
+            }
+            let previous = selectedMedia
+            selectedMedia = [media]
+            previous.forEach { $0.discardTemporaryFile() }
+            mediaSelectionError = nil
+
+        case .failure:
+            mediaSelectionError = "The captured media could not be prepared. Your draft was kept intact."
+        }
     }
 
     private func publish() {
@@ -764,6 +843,13 @@ private enum LegendSocialMediaDraft: Identifiable {
         }
     }
 
+    var isVideo: Bool {
+        if case .video = self {
+            return true
+        }
+        return false
+    }
+
     var multipartFile: MultipartFormFile {
         switch self {
         case .image(_, let data, let mimeType, let fileName):
@@ -784,6 +870,22 @@ private enum LegendSocialMediaDraft: Identifiable {
     func discardTemporaryFile() {
         guard case .video(_, let fileURL, _, _) = self else { return }
         try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    static func image(from image: UIImage) throws -> LegendSocialMediaDraft {
+        guard let data = image.jpegData(compressionQuality: 0.9) else {
+            throw LegendSocialMediaLoadingError.unavailable
+        }
+        return .image(UUID(), data, "image/jpeg", "legend-camera.jpg")
+    }
+
+    static func video(from sourceURL: URL) throws -> LegendSocialMediaDraft {
+        let representation = videoRepresentation(for: sourceURL)
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("legend-camera-\(UUID().uuidString)")
+            .appendingPathExtension(sourceURL.pathExtension)
+        try FileManager.default.copyItem(at: sourceURL, to: destination)
+        return .video(UUID(), destination, representation.mimeType, representation.fileName)
     }
 
     static func load(
@@ -840,6 +942,73 @@ private enum LegendSocialMediaDraft: Identifiable {
 private enum LegendSocialMediaLoadingError: Error {
     case unavailable
     case unsupported
+}
+
+private struct LegendSocialCameraCapture: UIViewControllerRepresentable {
+    let capturesVideo: Bool
+    let captured: (Result<LegendSocialMediaDraft, Error>) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(captured: captured)
+    }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.mediaTypes = [
+            capturesVideo ? UTType.movie.identifier : UTType.image.identifier
+        ]
+        picker.cameraCaptureMode = capturesVideo ? .video : .photo
+        picker.delegate = context.coordinator
+        picker.allowsEditing = false
+        return picker
+    }
+
+    func updateUIViewController(
+        _ controller: UIImagePickerController,
+        context: Context
+    ) {}
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        private let captured: (Result<LegendSocialMediaDraft, Error>) -> Void
+
+        init(captured: @escaping (Result<LegendSocialMediaDraft, Error>) -> Void) {
+            self.captured = captured
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            do {
+                let media: LegendSocialMediaDraft
+                if let image = info[.originalImage] as? UIImage {
+                    media = try .image(from: image)
+                } else if let url = info[.mediaURL] as? URL {
+                    media = try .video(from: url)
+                } else {
+                    throw LegendSocialMediaLoadingError.unavailable
+                }
+                picker.dismiss(animated: true) { [captured] in
+                    captured(.success(media))
+                }
+            } catch {
+                picker.dismiss(animated: true) { [captured] in
+                    captured(.failure(error))
+                }
+            }
+        }
+    }
+}
+
+private extension MobileSocialContentType {
+    func accepts(_ media: LegendSocialMediaDraft) -> Bool {
+        media.isVideo ? acceptsVideos : acceptsImages
+    }
 }
 
 private struct LegendPickedVideo: Transferable {
