@@ -13,6 +13,7 @@ using Infrastructure.Moderation;
 using Infrastructure.Social;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -149,6 +150,131 @@ public sealed class SocialFeedServiceTests
 
         Assert.True(result.Succeeded);
         Assert.Empty(result.Value!.Stories);
+    }
+
+    [Fact]
+    public async Task CurrentProfilePosts_UseTheExactTypedIdentity_AndExcludeExpiredStories()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "shared-profile-user",
+            AgentUpn = "shared-profile-agent@example.test",
+            FullName = "Shared Profile Agent",
+            IsActive = true
+        };
+        var client = Client("shared-profile-user", "Shared", "Profile");
+        db.AgentProfiles.Add(agent);
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var agentActor = new SocialFeedActor(
+            new MessagingActor(agent.AgentUserId, MessagingParticipantTypes.Agent),
+            agent.Id,
+            agent.FullName!);
+        var clientActor = ClientActor(client);
+
+        var agentPost = await service.CreatePostAsync(new CreateSocialPostCommand(
+            agentActor,
+            SocialPostContentTypes.Post,
+            "Agent-only profile content"));
+        var clientPost = await service.CreatePostAsync(new CreateSocialPostCommand(
+            clientActor,
+            SocialPostContentTypes.Post,
+            "Client profile content"));
+        db.SocialPosts.Add(new SocialPost
+        {
+            Id = Guid.NewGuid(),
+            AuthorUserId = client.ClientUserId,
+            AuthorParticipantType = MessagingParticipantTypes.Client,
+            AuthorProfileId = client.Id,
+            ContentType = SocialPostContentTypes.Story,
+            Audience = SocialPostAudiences.AuthorizedNetwork,
+            Body = "Expired client story",
+            PostedUtc = DateTime.UtcNow.AddDays(-2),
+            ExpiresUtc = DateTime.UtcNow.AddMinutes(-1)
+        });
+        await db.SaveChangesAsync();
+
+        var profile = await service.GetCurrentProfilePostsAsync(clientActor);
+        var metrics = await service.GetProfileMetricsAsync(clientActor);
+
+        Assert.True(agentPost.Succeeded);
+        Assert.True(clientPost.Succeeded);
+        Assert.True(profile.Succeeded);
+        Assert.True(metrics.Succeeded);
+        var visiblePost = Assert.Single(profile.Value!);
+        Assert.Equal(clientPost.Value!.Id, visiblePost.Id);
+        Assert.Equal(MessagingParticipantTypes.Client, visiblePost.Author.ParticipantType);
+        Assert.Equal(client.Id, visiblePost.Author.ProfileId);
+        Assert.Equal(1, metrics.Value!.PostCount);
+        Assert.Equal(0, metrics.Value.StoryCount);
+    }
+
+    [Fact]
+    public async Task EditAndDelete_RequireTheExactOwnerAndRemoveThePostFromTheProfile()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("post-owner", "Post", "Owner");
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "post-agent",
+            AgentUpn = "post-agent@example.test",
+            FullName = "Post Agent",
+            IsActive = true
+        };
+        db.ClientProfiles.Add(client);
+        db.AgentProfiles.Add(agent);
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = agent.AgentUserId,
+            AgentUpn = agent.AgentUpn,
+            ClientUserId = client.ClientUserId
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var owner = ClientActor(client);
+        var otherActor = new SocialFeedActor(
+            new MessagingActor(agent.AgentUserId, MessagingParticipantTypes.Agent),
+            agent.Id,
+            agent.FullName!);
+        var created = await service.CreatePostAsync(new CreateSocialPostCommand(
+            owner,
+            SocialPostContentTypes.Post,
+            "Original creator update"));
+        Assert.True(created.Succeeded);
+
+        var rejectedEdit = await service.UpdatePostAsync(new UpdateSocialPostCommand(
+            otherActor,
+            created.Value!.Id,
+            "An unauthorized edit"));
+        var updated = await service.UpdatePostAsync(new UpdateSocialPostCommand(
+            owner,
+            created.Value.Id,
+            "Updated creator update"));
+        var rejectedDelete = await service.DeletePostAsync(new SocialPostMutationCommand(
+            otherActor,
+            created.Value.Id));
+        var deleted = await service.DeletePostAsync(new SocialPostMutationCommand(
+            owner,
+            created.Value.Id));
+        var profileAfterDelete = await service.GetCurrentProfilePostsAsync(owner);
+        var stored = await db.SocialPosts.SingleAsync(post => post.Id == created.Value.Id);
+
+        Assert.False(rejectedEdit.Succeeded);
+        Assert.Equal("social_post_not_owned", rejectedEdit.ErrorCode);
+        Assert.True(updated.Succeeded);
+        Assert.Equal("Updated creator update", updated.Value!.Body);
+        Assert.False(rejectedDelete.Succeeded);
+        Assert.Equal("social_post_not_owned", rejectedDelete.ErrorCode);
+        Assert.True(deleted.Succeeded);
+        Assert.NotNull(stored.DeletedUtc);
+        Assert.True(profileAfterDelete.Succeeded);
+        Assert.Empty(profileAfterDelete.Value!);
     }
 
     [Fact]

@@ -218,6 +218,59 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertEqual(contentTypes, [.reel])
     }
 
+    func testProfileCatalogAndPostMutationsUseConfirmedServerResponses() async throws {
+        let author = MobileSocialAuthor(
+            identity: try LogicalParticipantIdentity(
+                userID: "client-one",
+                participantType: .client),
+            profileID: "00000000-0000-0000-0000-000000000002",
+            displayName: "Client One",
+            avatar: nil)
+        let post = MobileSocialPost(
+            id: UUID(),
+            author: author,
+            contentType: MobileSocialContentType.post.rawValue,
+            body: "Original move.",
+            postedUTC: .now,
+            expiresUTC: nil,
+            reactionCount: 0,
+            commentCount: 0,
+            reactedByCurrentActor: false,
+            followedByCurrentActor: false,
+            savedByCurrentActor: false,
+            repostedByCurrentActor: false,
+            metrics: testSocialMetrics,
+            music: nil,
+            media: [],
+            comments: [])
+        let api = RecordingSocialAPI(post: post)
+        let store = MobileSocialStore(
+            api: api,
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics())
+
+        store.loadProfilePosts()
+        try await Task.sleep(for: .milliseconds(50))
+        guard case .loaded(let profilePosts) = store.profileContentState else {
+            return XCTFail("Expected the server profile catalog")
+        }
+        XCTAssertEqual(profilePosts.map(\.id), [post.id])
+
+        XCTAssertTrue(await store.updatePost(postID: post.id, body: "Server-confirmed move."))
+        guard case .loaded(let updatedPosts) = store.profileContentState else {
+            return XCTFail("Expected the updated server post")
+        }
+        XCTAssertEqual(updatedPosts.first?.body, "Server-confirmed move.")
+        XCTAssertEqual(await api.lastUpdateRequest()?.body, "Server-confirmed move.")
+
+        XCTAssertTrue(await store.deletePost(postID: post.id))
+        guard case .loaded(let remainingPosts) = store.profileContentState else {
+            return XCTFail("Expected the confirmed post removal")
+        }
+        XCTAssertTrue(remainingPosts.isEmpty)
+        XCTAssertEqual(await api.lastDeletedPostID(), post.id)
+    }
+
     func testMusicSelectionPreservesProviderVerifiedTrimAndMixMetadata() throws {
         let selection = MobileSocialMusicSelection(
             providerID: "licensed-provider",
@@ -287,8 +340,12 @@ private struct StubSocialAPI: MobileSocialAPI {
         testSnapshot(post: post)
     }
 
+    func currentProfilePosts(accessToken: String) async throws -> [MobileSocialPost] { [post] }
+
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost { post }
     func createMediaPost(type: MobileSocialContentType, body: String, files: [MultipartFormFile], accessibilityText: String?, music: MobileSocialMusicSelection?, accessToken: String) async throws -> MobileSocialPost { post }
+    func updatePost(postID: UUID, request: MobileUpdateSocialPost, accessToken: String) async throws -> MobileSocialPost { updatedSocialPost(post, body: request.body) }
+    func deletePost(postID: UUID, accessToken: String) async throws {}
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data { Data() }
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost { post }
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment {
@@ -310,6 +367,8 @@ private actor RecordingSocialAPI: MobileSocialAPI {
     private var recordedMediaContentTypes: [MobileSocialContentType] = []
     private var recordedFollowRequest: MobileToggleSocialFollow?
     private var recordedViewRequest: (postID: UUID, request: MobileRecordSocialView)?
+    private var recordedUpdateRequest: MobileUpdateSocialPost?
+    private var recordedDeletedPostID: UUID?
 
     init(post: MobileSocialPost) {
         self.post = post
@@ -317,6 +376,10 @@ private actor RecordingSocialAPI: MobileSocialAPI {
 
     func feed(accessToken: String) async throws -> MobileSocialSnapshot {
         testSnapshot(post: post)
+    }
+
+    func currentProfilePosts(accessToken: String) async throws -> [MobileSocialPost] {
+        [post]
     }
 
     func createPost(
@@ -336,6 +399,19 @@ private actor RecordingSocialAPI: MobileSocialAPI {
     ) async throws -> MobileSocialPost {
         recordedMediaContentTypes.append(type)
         return post
+    }
+
+    func updatePost(
+        postID: UUID,
+        request: MobileUpdateSocialPost,
+        accessToken: String
+    ) async throws -> MobileSocialPost {
+        recordedUpdateRequest = request
+        return updatedSocialPost(post, body: request.body)
+    }
+
+    func deletePost(postID: UUID, accessToken: String) async throws {
+        recordedDeletedPostID = postID
     }
 
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data {
@@ -391,6 +467,37 @@ private actor RecordingSocialAPI: MobileSocialAPI {
     func lastViewRequest() -> (postID: UUID, request: MobileRecordSocialView)? {
         recordedViewRequest
     }
+
+    func lastUpdateRequest() -> MobileUpdateSocialPost? {
+        recordedUpdateRequest
+    }
+
+    func lastDeletedPostID() -> UUID? {
+        recordedDeletedPostID
+    }
+}
+
+private func updatedSocialPost(
+    _ post: MobileSocialPost,
+    body: String
+) -> MobileSocialPost {
+    MobileSocialPost(
+        id: post.id,
+        author: post.author,
+        contentType: post.contentType,
+        body: body,
+        postedUTC: post.postedUTC,
+        expiresUTC: post.expiresUTC,
+        reactionCount: post.reactionCount,
+        commentCount: post.commentCount,
+        reactedByCurrentActor: post.reactedByCurrentActor,
+        followedByCurrentActor: post.followedByCurrentActor,
+        savedByCurrentActor: post.savedByCurrentActor,
+        repostedByCurrentActor: post.repostedByCurrentActor,
+        metrics: post.metrics,
+        music: post.music,
+        media: post.media,
+        comments: post.comments)
 }
 
 private let testSocialMetrics = MobileSocialPostMetrics(

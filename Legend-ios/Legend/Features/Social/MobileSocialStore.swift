@@ -2,6 +2,7 @@ import Foundation
 
 protocol MobileSocialAPI: Sendable {
     func feed(accessToken: String) async throws -> MobileSocialSnapshot
+    func currentProfilePosts(accessToken: String) async throws -> [MobileSocialPost]
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost
 
     func createMediaPost(
@@ -12,6 +13,8 @@ protocol MobileSocialAPI: Sendable {
         music: MobileSocialMusicSelection?,
         accessToken: String
     ) async throws -> MobileSocialPost
+    func updatePost(postID: UUID, request: MobileUpdateSocialPost, accessToken: String) async throws -> MobileSocialPost
+    func deletePost(postID: UUID, accessToken: String) async throws
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment
@@ -26,6 +29,7 @@ protocol MobileSocialAPI: Sendable {
 
 struct MobileUnavailableSocialAPI: MobileSocialAPI {
     func feed(accessToken: String) async throws -> MobileSocialSnapshot { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func currentProfilePosts(accessToken: String) async throws -> [MobileSocialPost] { throw MobileAPIError.unauthorized(correlationID: nil) }
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost { throw MobileAPIError.unauthorized(correlationID: nil) }
     func createMediaPost(
         type: MobileSocialContentType,
@@ -37,6 +41,8 @@ struct MobileUnavailableSocialAPI: MobileSocialAPI {
     ) async throws -> MobileSocialPost {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
+    func updatePost(postID: UUID, request: MobileUpdateSocialPost, accessToken: String) async throws -> MobileSocialPost { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func deletePost(postID: UUID, accessToken: String) async throws { throw MobileAPIError.unauthorized(correlationID: nil) }
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
@@ -64,8 +70,36 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
         try await client.get("/api/v1/mobile/social/feed", accessToken: accessToken, headers: participantHeader, response: MobileSocialSnapshot.self)
     }
 
+    func currentProfilePosts(accessToken: String) async throws -> [MobileSocialPost] {
+        try await client.get(
+            "/api/v1/mobile/social/profile/posts",
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: [MobileSocialPost].self)
+    }
+
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost {
         try await client.post("/api/v1/mobile/social/posts", body: request, accessToken: accessToken, headers: participantHeader, response: MobileSocialPost.self)
+    }
+
+    func updatePost(
+        postID: UUID,
+        request: MobileUpdateSocialPost,
+        accessToken: String
+    ) async throws -> MobileSocialPost {
+        try await client.put(
+            "/api/v1/mobile/social/posts/\(postID.uuidString)",
+            body: request,
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: MobileSocialPost.self)
+    }
+
+    func deletePost(postID: UUID, accessToken: String) async throws {
+        try await client.delete(
+            "/api/v1/mobile/social/posts/\(postID.uuidString)",
+            accessToken: accessToken,
+            headers: participantHeader)
     }
 
     func createMediaPost(
@@ -161,6 +195,7 @@ private struct EmptyMobileRequest: Codable, Sendable {}
 @MainActor
 final class MobileSocialStore: ObservableObject {
     @Published private(set) var state: MobileDataLoadState<MobileSocialSnapshot> = .idle
+    @Published private(set) var profileContentState: MobileDataLoadState<[MobileSocialPost]> = .idle
     @Published private(set) var actionFailure: UserFacingFailure?
 
     private let api: any MobileSocialAPI
@@ -187,6 +222,20 @@ final class MobileSocialStore: ObservableObject {
                 state = .loaded(try await api.feed(accessToken: token))
             } catch {
                 state = .unavailable(failure(for: error, title: "Legend feed unavailable"))
+            }
+        }
+    }
+
+    func loadProfilePosts() {
+        profileContentState = .loading
+        Task {
+            do {
+                let token = try await accessTokenProvider()
+                profileContentState = .loaded(
+                    try await api.currentProfilePosts(accessToken: token))
+            } catch {
+                profileContentState = .unavailable(
+                    failure(for: error, title: "Profile updates unavailable"))
             }
         }
     }
@@ -229,6 +278,38 @@ final class MobileSocialStore: ObservableObject {
             actionFailure = failure(
                 for: error,
                 title: "Could not share your update")
+            return false
+        }
+    }
+
+    @discardableResult
+    func updatePost(postID: UUID, body: String) async -> Bool {
+        actionFailure = nil
+        do {
+            let token = try await accessTokenProvider()
+            let post = try await api.updatePost(
+                postID: postID,
+                request: MobileUpdateSocialPost(body: body),
+                accessToken: token)
+            replace(post)
+            return true
+        } catch {
+            actionFailure = failure(for: error, title: "Could not save your update")
+            return false
+        }
+    }
+
+    @discardableResult
+    func deletePost(postID: UUID) async -> Bool {
+        actionFailure = nil
+        do {
+            let token = try await accessTokenProvider()
+            try await api.deletePost(postID: postID, accessToken: token)
+            remove(postID)
+            load()
+            return true
+        } catch {
+            actionFailure = failure(for: error, title: "Could not delete your update")
             return false
         }
     }
@@ -408,6 +489,7 @@ final class MobileSocialStore: ObservableObject {
             snapshot = MobileSocialSnapshot(stories: snapshot.stories, posts: [post] + snapshot.posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: snapshot.currentProfileMetrics, creatorInsights: snapshot.creatorInsights)
         }
         state = .loaded(snapshot)
+        insertProfilePost(post)
     }
 
     private func replace(_ post: MobileSocialPost) {
@@ -415,6 +497,35 @@ final class MobileSocialStore: ObservableObject {
         let stories = snapshot.stories.map { $0.id == post.id ? post : $0 }
         let posts = snapshot.posts.map { $0.id == post.id ? post : $0 }
         state = .loaded(MobileSocialSnapshot(stories: stories, posts: posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: snapshot.currentProfileMetrics, creatorInsights: snapshot.creatorInsights))
+        replaceProfilePost(post)
+    }
+
+    private func remove(_ postID: UUID) {
+        if case .loaded(let snapshot) = state {
+            state = .loaded(MobileSocialSnapshot(
+                stories: snapshot.stories.filter { $0.id != postID },
+                posts: snapshot.posts.filter { $0.id != postID },
+                activity: snapshot.activity,
+                activityCount: snapshot.activityCount,
+                currentProfileMetrics: snapshot.currentProfileMetrics,
+                creatorInsights: snapshot.creatorInsights))
+        }
+
+        if case .loaded(let posts) = profileContentState {
+            profileContentState = .loaded(posts.filter { $0.id != postID })
+        }
+    }
+
+    private func insertProfilePost(_ post: MobileSocialPost) {
+        guard case .loaded(let posts) = profileContentState else { return }
+        profileContentState = .loaded(
+            ([post] + posts.filter { $0.id != post.id })
+                .sorted { $0.postedUTC > $1.postedUTC })
+    }
+
+    private func replaceProfilePost(_ post: MobileSocialPost) {
+        guard case .loaded(let posts) = profileContentState else { return }
+        profileContentState = .loaded(posts.map { $0.id == post.id ? post : $0 })
     }
 
     private func append(_ comment: MobileSocialComment, to postID: UUID) {

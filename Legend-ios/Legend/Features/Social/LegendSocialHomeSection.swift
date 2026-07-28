@@ -537,7 +537,7 @@ private struct LegendSocialPostCard: View {
     }
 }
 
-private struct LegendSocialMediaVideo: View {
+struct LegendSocialMediaVideo: View {
     let postID: UUID
     let media: MobileSocialMedia
     let music: MobileSocialMusic?
@@ -700,24 +700,38 @@ private struct LegendSocialEmptyFeed: View {
     }
 }
 
-private struct LegendSocialMediaImage: View {
+struct LegendSocialMediaImage: View {
     let media: MobileSocialMedia
     @ObservedObject var social: MobileSocialStore
+    let contentMode: ContentMode
+    let placeholderHeight: CGFloat?
     @State private var image: UIImage?
+
+    init(
+        media: MobileSocialMedia,
+        social: MobileSocialStore,
+        contentMode: ContentMode = .fit,
+        placeholderHeight: CGFloat? = 180
+    ) {
+        self.media = media
+        _social = ObservedObject(wrappedValue: social)
+        self.contentMode = contentMode
+        self.placeholderHeight = placeholderHeight
+    }
 
     var body: some View {
         Group {
             if let image {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFit()
+                    .aspectRatio(contentMode: contentMode)
             } else {
                 RoundedRectangle(
                     cornerRadius: LegendNextRadius.control,
                     style: .continuous
                 )
                 .fill(LegendNextColor.surfaceInset)
-                .frame(height: 180)
+                .frame(height: placeholderHeight)
                 .overlay {
                     ProgressView()
                 }

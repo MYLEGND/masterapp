@@ -160,6 +160,36 @@ struct MobileHTTPClient: Sendable {
             uploadBodyFile: bodyFile)
     }
 
+    func put<Body: Encodable, Response: Decodable>(
+        _ path: String,
+        body: Body,
+        accessToken: String,
+        headers: [String: String] = [:],
+        response: Response.Type
+    ) async throws -> Response {
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        request.httpBody = try JSONEncoder.mobile.encode(body)
+        return try await perform(request, response: response)
+    }
+
+    func delete(
+        _ path: String,
+        accessToken: String,
+        headers: [String: String] = [:]
+    ) async throws {
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        try await performEmpty(request)
+    }
+
     func put<Body: Encodable>(
         _ path: String,
         body: Body,

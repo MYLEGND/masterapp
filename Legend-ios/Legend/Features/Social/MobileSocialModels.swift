@@ -238,6 +238,10 @@ struct MobileCreateSocialPost: Codable, Sendable {
     let body: String
 }
 
+struct MobileUpdateSocialPost: Codable, Sendable {
+    let body: String
+}
+
 struct MobileCreateSocialComment: Codable, Sendable {
     let body: String
     let parentCommentID: UUID?

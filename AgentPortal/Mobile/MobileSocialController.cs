@@ -40,6 +40,19 @@ public sealed class MobileSocialController : MobileApiControllerBase
             : SocialFailure(result.ErrorCode, result.ErrorMessage);
     }
 
+    [HttpGet("profile/posts")]
+    public async Task<IActionResult> CurrentProfilePosts(CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.GetCurrentProfilePostsAsync(resolved.Actor!, cancellationToken);
+        return result.Succeeded && result.Value is not null
+            ? Ok(await Task.WhenAll(result.Value.Select(post => ToPostDtoAsync(post, cancellationToken))))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
     [HttpPost("posts")]
     public async Task<IActionResult> CreatePost(
         [FromBody] MobileCreateSocialPostRequest? request,
@@ -54,6 +67,39 @@ public sealed class MobileSocialController : MobileApiControllerBase
             cancellationToken);
         return result.Succeeded && result.Value is not null
             ? Ok(await ToPostDtoAsync(result.Value, cancellationToken))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpPut("posts/{postId:guid}")]
+    public async Task<IActionResult> UpdatePost(
+        Guid postId,
+        [FromBody] MobileUpdateSocialPostRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.UpdatePostAsync(
+            new UpdateSocialPostCommand(resolved.Actor!, postId, request?.Body ?? string.Empty),
+            cancellationToken);
+        return result.Succeeded && result.Value is not null
+            ? Ok(await ToPostDtoAsync(result.Value, cancellationToken))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpDelete("posts/{postId:guid}")]
+    public async Task<IActionResult> DeletePost(Guid postId, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.DeletePostAsync(
+            new SocialPostMutationCommand(resolved.Actor!, postId),
+            cancellationToken);
+        return result.Succeeded
+            ? NoContent()
             : SocialFailure(result.ErrorCode, result.ErrorMessage);
     }
 
@@ -507,6 +553,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
     {
         var status = errorCode is
             "social_post_invalid" or
+            "social_post_edit_invalid" or
             "social_media_post_invalid" or
             "social_comment_invalid" or
             "social_comment_parent_unavailable" or
@@ -536,6 +583,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
 }
 
 public sealed record MobileCreateSocialPostRequest(string? ContentType, string? Body);
+public sealed record MobileUpdateSocialPostRequest(string? Body);
 
 public sealed class MobileCreateSocialMediaPostRequest
 {

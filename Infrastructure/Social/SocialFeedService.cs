@@ -17,6 +17,7 @@ public sealed class SocialFeedService : ISocialFeedService
     private const int MaximumCommentLength = 800;
     private const int MaximumFeedPosts = 80;
     private const int MaximumStoryPosts = 30;
+    private const int MaximumProfilePosts = 120;
     private const int MaximumCommentsPerPost = 4;
     private const int MaximumActivityItems = 30;
     private const int MaximumMediaItemsPerPost = 10;
@@ -100,6 +101,33 @@ public sealed class SocialFeedService : ISocialFeedService
                 activity.Count,
                 profileMetrics.Value,
                 creatorInsights.Value));
+    }
+
+    public async Task<SocialOperationResult<IReadOnlyList<SocialPostView>>> GetCurrentProfilePostsAsync(
+        SocialFeedActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(actor, cancellationToken))
+        {
+            return SocialOperationResult<IReadOnlyList<SocialPostView>>.Failure(
+                "social_actor_invalid",
+                "Your mobile identity is not available for Legend updates.");
+        }
+
+        var author = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+        var now = DateTime.UtcNow;
+        var posts = await _db.SocialPosts
+            .AsNoTracking()
+            .Where(post => post.AuthorUserId == author.UserId &&
+                           post.AuthorParticipantType == author.ParticipantType &&
+                           post.DeletedUtc == null &&
+                           (post.ExpiresUtc == null || post.ExpiresUtc > now))
+            .OrderByDescending(post => post.PostedUtc)
+            .Take(MaximumProfilePosts)
+            .ToArrayAsync(cancellationToken);
+
+        return SocialOperationResult<IReadOnlyList<SocialPostView>>.Success(
+            await BuildPostViewsAsync(posts, actor, cancellationToken));
     }
 
     public async Task<SocialOperationResult<SocialPostView>> CreatePostAsync(
@@ -255,6 +283,79 @@ public sealed class SocialFeedService : ISocialFeedService
                 "social_media_persistence_failed",
                 "The media was uploaded, but the social post could not be saved.");
         }
+    }
+
+    public async Task<SocialOperationResult<SocialPostView>> UpdatePostAsync(
+        UpdateSocialPostCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(command.Actor, cancellationToken))
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_actor_invalid",
+                "Your mobile identity is not available for Legend updates.");
+        }
+
+        var author = AuthorKey.From(command.Actor.Identity.UserId, command.Actor.Identity.ParticipantType);
+        var post = await _db.SocialPosts.SingleOrDefaultAsync(
+            item => item.Id == command.PostId &&
+                    item.DeletedUtc == null &&
+                    item.AuthorUserId == author.UserId &&
+                    item.AuthorParticipantType == author.ParticipantType,
+            cancellationToken);
+        if (post is null)
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_post_not_owned",
+                "Only the creator can edit this update.");
+        }
+
+        var body = NormalizeBody(command.Body, MaximumPostLength);
+        var hasMedia = await _db.SocialPostMediaAssets
+            .AsNoTracking()
+            .AnyAsync(item => item.SocialPostId == post.Id, cancellationToken);
+        if (string.IsNullOrWhiteSpace(body) && !hasMedia)
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_post_edit_invalid",
+                "Add a concise update before saving.");
+        }
+
+        post.Body = body;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return SocialOperationResult<SocialPostView>.Success(
+            await BuildPostViewAsync(post, command.Actor, cancellationToken));
+    }
+
+    public async Task<SocialOperationResult<bool>> DeletePostAsync(
+        SocialPostMutationCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(command.Actor, cancellationToken))
+        {
+            return SocialOperationResult<bool>.Failure(
+                "social_actor_invalid",
+                "Your mobile identity is not available for Legend updates.");
+        }
+
+        var author = AuthorKey.From(command.Actor.Identity.UserId, command.Actor.Identity.ParticipantType);
+        var post = await _db.SocialPosts.SingleOrDefaultAsync(
+            item => item.Id == command.PostId &&
+                    item.DeletedUtc == null &&
+                    item.AuthorUserId == author.UserId &&
+                    item.AuthorParticipantType == author.ParticipantType,
+            cancellationToken);
+        if (post is null)
+        {
+            return SocialOperationResult<bool>.Failure(
+                "social_post_not_owned",
+                "Only the creator can delete this update.");
+        }
+
+        post.DeletedUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+        return SocialOperationResult<bool>.Success(true);
     }
 
     public async Task<SocialOperationResult<SocialMediaStream>> GetMediaAsync(
@@ -663,10 +764,12 @@ public sealed class SocialFeedService : ISocialFeedService
                 "This Legend profile is not available.");
         }
 
+        var now = DateTime.UtcNow;
         var posts = await _db.SocialPosts.AsNoTracking()
             .Where(post => post.AuthorUserId == targetKey.UserId &&
                            post.AuthorParticipantType == targetKey.ParticipantType &&
-                           post.DeletedUtc == null)
+                           post.DeletedUtc == null &&
+                           (post.ExpiresUtc == null || post.ExpiresUtc > now))
             .Select(post => new { post.Id, post.ContentType })
             .ToArrayAsync(cancellationToken);
         var metrics = await LoadPostMetricsAsync(posts.Select(post => post.Id).ToArray(), cancellationToken);

@@ -3710,6 +3710,7 @@ private struct LegendAccountView: View {
     @State private var isShowingSettings = false
     @State private var isConfirmingSignOut = false
     @State private var creationRoute: LegendSocialCreationRoute?
+    @State private var selectedPost: MobileSocialPost?
 
     private let profileColumns = [
         GridItem(.flexible(), spacing: 2),
@@ -3779,10 +3780,15 @@ private struct LegendAccountView: View {
             if case .idle = social.state {
                 social.load()
             }
+
+            if case .idle = social.profileContentState {
+                social.loadProfilePosts()
+            }
         }
         .refreshable {
             account.load()
             social.load()
+            social.loadProfilePosts()
         }
         .sheet(isPresented: $isEditing) {
             if case .loaded(let profile) = account.state {
@@ -3798,6 +3804,11 @@ private struct LegendAccountView: View {
         .sheet(item: $creationRoute) { _ in
             LegendSocialCreationSheet(
                 route: $creationRoute,
+                social: social)
+        }
+        .sheet(item: $selectedPost) { post in
+            LegendProfilePostDetail(
+                post: post,
                 social: social)
         }
         .confirmationDialog(
@@ -3879,7 +3890,7 @@ private struct LegendAccountView: View {
                 profileContentSelector
                     .padding(.top, LegendNextSpacing.sm)
 
-                profileGrid(profile)
+                profileGrid()
             }
             .padding(.bottom, 116)
         }
@@ -3918,17 +3929,17 @@ private struct LegendAccountView: View {
 
             HStack(spacing: LegendNextSpacing.xs) {
                 profileMetric(
-                    value: profilePosts.count,
+                    value: profileContentCount(for: .posts),
                     title: "Moves"
                 )
 
                 profileMetric(
-                    value: profileReels.count,
+                    value: profileContentCount(for: .reels),
                     title: "Milestones"
                 )
 
                 profileMetric(
-                    value: profileStories.count,
+                    value: profileContentCount(for: .stories),
                     title: "Journey"
                 )
             }
@@ -4045,10 +4056,8 @@ private struct LegendAccountView: View {
     }
 
     @ViewBuilder
-    private func profileGrid(
-        _ profile: MobileAccountProfile
-    ) -> some View {
-        switch social.state {
+    private func profileGrid() -> some View {
+        switch social.profileContentState {
         case .idle, .loading:
             LazyVGrid(
                 columns: profileColumns,
@@ -4067,7 +4076,7 @@ private struct LegendAccountView: View {
                 title: failure.title,
                 message: failure.message,
                 retryTitle: "Retry",
-                retry: social.load
+                retry: social.loadProfilePosts
             )
             .padding(LegendNextSpacing.sm)
 
@@ -4082,7 +4091,15 @@ private struct LegendAccountView: View {
                     spacing: 2
                 ) {
                     ForEach(items) { post in
-                        LegendProfileGridTile(post: post)
+                        Button {
+                            selectedPost = post
+                        } label: {
+                            LegendProfileGridTile(
+                                post: post,
+                                social: social)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Open post options")
                     }
                 }
             }
@@ -4140,6 +4157,7 @@ private struct LegendAccountView: View {
                     Button {
                         account.load()
                         social.load()
+                        social.loadProfilePosts()
                         isShowingSettings = false
                     } label: {
                         Label(
@@ -4220,25 +4238,6 @@ private struct LegendAccountView: View {
         }
     }
 
-    private var allProfileSocialItems: [MobileSocialPost] {
-        guard case .loaded(let snapshot) = social.state else {
-            return []
-        }
-
-        let identity = currentSession.actor.identity
-
-        return (snapshot.posts + snapshot.stories)
-            .filter { $0.author.identity == identity }
-            .reduce(into: [UUID: MobileSocialPost]()) {
-                result,
-                post in
-
-                result[post.id] = post
-            }
-            .values
-            .sorted { $0.postedUTC > $1.postedUTC }
-    }
-
     private var profilePosts: [MobileSocialPost] {
         profileItems(for: .post)
     }
@@ -4254,8 +4253,33 @@ private struct LegendAccountView: View {
     private func profileItems(
         for type: MobileSocialContentType
     ) -> [MobileSocialPost] {
-        allProfileSocialItems.filter {
+        currentProfilePosts.filter {
             $0.contentType == type.rawValue
+        }
+    }
+
+    private var currentProfilePosts: [MobileSocialPost] {
+        guard case .loaded(let posts) = social.profileContentState else {
+            return []
+        }
+
+        return posts
+    }
+
+    private func profileContentCount(
+        for filter: LegendProfileContentFilter
+    ) -> Int {
+        guard case .loaded(let snapshot) = social.state else {
+            return profileItems(for: filter.socialContentType).count
+        }
+
+        switch filter {
+        case .posts:
+            return snapshot.currentProfileMetrics.postCount
+        case .reels:
+            return snapshot.currentProfileMetrics.videoCount
+        case .stories:
+            return snapshot.currentProfileMetrics.storyCount
         }
     }
 
@@ -4330,24 +4354,42 @@ private struct LegendProfileActionButtonStyle: ButtonStyle {
 
 private struct LegendProfileGridTile: View {
     let post: MobileSocialPost
+    @ObservedObject var social: MobileSocialStore
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    LegendNextColor.navy,
-                    LegendNextColor.navy.opacity(0.78)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            if let media = post.media.first(where: \.isImage) {
+                LegendSocialMediaImage(
+                    media: media,
+                    social: social,
+                    contentMode: .fill,
+                    placeholderHeight: nil)
+            } else {
+                LinearGradient(
+                    colors: [
+                        LegendNextColor.navy,
+                        LegendNextColor.navy.opacity(0.78)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
 
-            Text(post.body)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .lineLimit(5)
+                VStack(spacing: LegendNextSpacing.xs) {
+                    Image(systemName: post.contentType == MobileSocialContentType.reel.rawValue
+                          ? "play.rectangle.fill"
+                          : "quote.bubble.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.gold)
+
+                    Text(post.body)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(5)
+                        .padding(.horizontal, 10)
+                }
                 .padding(10)
+            }
 
             if post.contentType == MobileSocialContentType.reel.rawValue {
                 Image(systemName: "play.rectangle.fill")
@@ -4371,6 +4413,204 @@ private struct LegendProfileGridTile: View {
         .accessibilityLabel(
             "\(post.contentType) by \(post.author.displayName): \(post.body)"
         )
+    }
+}
+
+private struct LegendProfilePostDetail: View {
+    let post: MobileSocialPost
+    @ObservedObject var social: MobileSocialStore
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var isEditing = false
+    @State private var isConfirmingDeletion = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    postMedia
+
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                        Text(post.body)
+                            .font(LegendNextTypography.body)
+                            .foregroundStyle(LegendNextColor.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(post.postedUTC, format: .dateTime.month(.abbreviated).day().year().hour().minute())
+                            .font(.caption)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+
+                        HStack(spacing: LegendNextSpacing.sm) {
+                            Label(post.reactionCount.formatted(), systemImage: "heart")
+                            Label(post.commentCount.formatted(), systemImage: "bubble.right")
+                            Label(post.metrics.viewCount.formatted(), systemImage: "eye")
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                    .padding(.horizontal, LegendNextSpacing.sm)
+                }
+                .padding(.vertical, LegendNextSpacing.sm)
+            }
+            .background(LegendNextColor.canvas)
+            .navigationTitle("Your move")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            isEditing = true
+                        } label: {
+                            Label("Edit caption", systemImage: "pencil")
+                        }
+
+                        Button(role: .destructive) {
+                            isConfirmingDeletion = true
+                        } label: {
+                            Label("Delete post", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.body.weight(.bold))
+                    }
+                    .accessibilityLabel("Post options")
+                }
+
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $isEditing) {
+            LegendProfilePostEditor(
+                post: post,
+                social: social,
+                onSaved: {
+                    dismiss()
+                }
+            )
+        }
+        .confirmationDialog(
+            "Delete this post?",
+            isPresented: $isConfirmingDeletion,
+            titleVisibility: .visible
+        ) {
+            Button("Delete post", role: .destructive) {
+                Task {
+                    if await social.deletePost(postID: post.id) {
+                        dismiss()
+                    }
+                }
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the post from your authorized Legend network.")
+        }
+    }
+
+    @ViewBuilder
+    private var postMedia: some View {
+        if let image = post.media.first(where: \.isImage) {
+            LegendSocialMediaImage(
+                media: image,
+                social: social,
+                contentMode: .fit,
+                placeholderHeight: 260)
+                .padding(.horizontal, LegendNextSpacing.sm)
+        } else if let video = post.media.first(where: \.isVideo) {
+            LegendSocialMediaVideo(
+                postID: post.id,
+                media: video,
+                music: post.music,
+                social: social)
+                .padding(.horizontal, LegendNextSpacing.sm)
+        } else {
+            LegendNextSurface {
+                Image(systemName: "quote.bubble.fill")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(LegendNextColor.gold)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, LegendNextSpacing.md)
+            }
+            .padding(.horizontal, LegendNextSpacing.sm)
+        }
+    }
+}
+
+private struct LegendProfilePostEditor: View {
+    let post: MobileSocialPost
+    @ObservedObject var social: MobileSocialStore
+    let onSaved: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var caption: String
+    @State private var isSaving = false
+
+    init(
+        post: MobileSocialPost,
+        social: MobileSocialStore,
+        onSaved: @escaping () -> Void) {
+        self.post = post
+        _social = ObservedObject(wrappedValue: social)
+        self.onSaved = onSaved
+        _caption = State(initialValue: post.body)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                TextEditor(text: $caption)
+                    .font(LegendNextTypography.body)
+                    .padding(LegendNextSpacing.sm)
+                    .frame(minHeight: 180)
+                    .background(
+                        LegendNextColor.surfaceInset,
+                        in: RoundedRectangle(
+                            cornerRadius: LegendNextRadius.control,
+                            style: .continuous))
+                    .accessibilityLabel("Post caption")
+
+                if post.media.isEmpty {
+                    Text("A text post needs a caption.")
+                        .font(.caption)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                }
+
+                Spacer()
+            }
+            .padding(LegendNextSpacing.sm)
+            .background(LegendNextColor.canvas)
+            .navigationTitle("Edit post")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        isSaving = true
+                        Task {
+                            if await social.updatePost(postID: post.id, body: caption) {
+                                dismiss()
+                                onSaved()
+                            }
+                            isSaving = false
+                        }
+                    }
+                    .disabled(
+                        isSaving ||
+                        (post.media.isEmpty && caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }
 
