@@ -158,6 +158,8 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
             await using (var destination = await _blobContainer
                 .GetBlockBlobClient(storageKey)
                 .OpenWriteAsync(
+                    // Azure's streaming BlockBlob writer requires overwrite.
+                    // Each object key contains the newly generated media asset ID.
                     overwrite: true,
                     options: new BlockBlobOpenWriteOptions
                     {
