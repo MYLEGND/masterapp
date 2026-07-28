@@ -38,7 +38,8 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
 
     public SocialMediaStorage(
         IConfiguration configuration,
-        ILogger<SocialMediaStorage> logger)
+        ILogger<SocialMediaStorage> logger,
+        BlobClientOptions? blobClientOptions = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(logger);
@@ -56,7 +57,9 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         _maximumMediaBytes = ParseMaximumMediaBytes(
             configuration["Social:Media:MaximumBytes"]);
 
-        _blobContainer = BuildBlobContainerClient(configuration);
+        _blobContainer = BuildBlobContainerClient(
+            configuration,
+            blobClientOptions);
         _logger = logger;
     }
 
@@ -151,13 +154,11 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
 
         try
         {
-            await EnsureBlobContainerExistsAsync(cancellationToken);
-
             long actualSizeBytes;
             await using (var destination = await _blobContainer
                 .GetBlockBlobClient(storageKey)
                 .OpenWriteAsync(
-                    overwrite: false,
+                    overwrite: true,
                     options: new BlockBlobOpenWriteOptions
                     {
                         HttpHeaders = new BlobHttpHeaders
@@ -452,7 +453,8 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
                 storageKey));
 
     private static BlobContainerClient? BuildBlobContainerClient(
-        IConfiguration configuration)
+        IConfiguration configuration,
+        BlobClientOptions? blobClientOptions)
     {
         var connectionString = configuration[
             "Social:Media:StorageConnectionString"];
@@ -461,20 +463,20 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         if (!string.IsNullOrWhiteSpace(connectionString) &&
             !string.IsNullOrWhiteSpace(containerName))
         {
-            return new BlobContainerClient(connectionString, containerName);
+            return new BlobContainerClient(
+                connectionString,
+                containerName,
+                blobClientOptions);
         }
 
         var containerUrl = configuration["Social:Media:BlobContainerUrl"];
         return Uri.TryCreate(containerUrl, UriKind.Absolute, out var uri)
-            ? new BlobContainerClient(uri, new DefaultAzureCredential())
+            ? new BlobContainerClient(
+                uri,
+                new DefaultAzureCredential(),
+                blobClientOptions)
             : null;
     }
-
-    private async Task EnsureBlobContainerExistsAsync(
-        CancellationToken cancellationToken) =>
-        await _blobContainer!.CreateIfNotExistsAsync(
-            PublicAccessType.None,
-            cancellationToken: cancellationToken);
 
     private async Task DeleteBlobIfExistsAsync(BlobClient blobClient)
     {

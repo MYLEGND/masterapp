@@ -408,6 +408,9 @@ private struct LegendHomeView: View {
                     },
                     openCircles: {
                         open(.circles)
+                    },
+                    refreshSocial: {
+                        await bootstrap.refreshSocial()
                     }
                 ) {
                     homeHero(home)
@@ -4640,7 +4643,7 @@ private struct LegendAccountView: View {
                 title: failure.title,
                 message: failure.message,
                 retryTitle: "Retry",
-                retry: social.loadProfilePosts
+                retry: { Task { await bootstrap.refreshProfile() } }
             )
             .padding(LegendNextSpacing.sm)
 

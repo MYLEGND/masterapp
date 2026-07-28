@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0729AED3FD936A3DCECA669A /* LegendNextTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72C9D00CE99AA225824D8CEC /* LegendNextTheme.swift */; };
+		0DB5B8FE0EC8C432F40A6EDE /* LegendApplicationBootstrapCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18DF8C5550EB16730C4F99C /* LegendApplicationBootstrapCoordinatorTests.swift */; };
 		18601E8AFBE103484F6576EC /* LegendUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A52D7BC1E8F6D8222D84B96 /* LegendUITests.swift */; };
 		1A4140542D44E015F343B8AC /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94AC5A93D36DCED40D9482DC /* RootView.swift */; };
 		20D1B27AA2D082F746929E01 /* LegendApplicationBootstrapCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E4615791E4EA673C5A3513 /* LegendApplicationBootstrapCoordinator.swift */; };
@@ -113,6 +114,7 @@
 		D4B6F16BA0A01123E7CABB7F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D62E96A9291858D31BE2BE3A /* LegendTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LegendTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D7D88FC1403F3F593CF31A82 /* Legend.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Legend.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E18DF8C5550EB16730C4F99C /* LegendApplicationBootstrapCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApplicationBootstrapCoordinatorTests.swift; sourceTree = "<group>"; };
 		E5C1BFF90DD76D5A09D0E3C1 /* LegendNextSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextSurface.swift; sourceTree = "<group>"; };
 		E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApplicationShell.swift; sourceTree = "<group>"; };
 		E7E81305123969A7AFFB8384 /* LogicalParticipantIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicalParticipantIdentityTests.swift; sourceTree = "<group>"; };
@@ -289,6 +291,7 @@
 		CADCC7AD3295EB37C38131C4 /* LegendTests */ = {
 			isa = PBXGroup;
 			children = (
+				E18DF8C5550EB16730C4F99C /* LegendApplicationBootstrapCoordinatorTests.swift */,
 				B3449DC74CA91AA0CDAAC840 /* LegendDiagnosticsTests.swift */,
 				2ECC81CB776EC7D6D0AF3F25 /* LegendTests.swift */,
 				E7E81305123969A7AFFB8384 /* LogicalParticipantIdentityTests.swift */,
@@ -457,6 +460,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0DB5B8FE0EC8C432F40A6EDE /* LegendApplicationBootstrapCoordinatorTests.swift in Sources */,
 				2C6A5B6C2F91A13C1C1C4BCD /* LegendDiagnosticsTests.swift in Sources */,
 				213CEBBD913B95CF1D8B5DAA /* LegendTests.swift in Sources */,
 				6AB8FDFB34A8057871BE8441 /* LogicalParticipantIdentityTests.swift in Sources */,

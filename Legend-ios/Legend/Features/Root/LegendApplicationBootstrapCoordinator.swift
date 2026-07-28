@@ -134,13 +134,18 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
         defer { isRefreshing = false }
 
         if currentSession.actor.identity.participantType == .agent {
+            guard let agentWorkspace = stores.agentWorkspace else {
+                state = .failed(agentWorkspaceUnavailableFailure)
+                return
+            }
+
             async let home = stores.home.refresh()
             async let social = stores.social.refresh()
             async let profilePosts = stores.social.refreshProfilePosts()
             async let account = stores.account.refresh()
             async let messaging = stores.messaging.refresh()
-            async let clients = stores.agentWorkspace?.refreshClients() ?? .loaded
-            async let leads = stores.agentWorkspace?.refreshLeads() ?? .loaded
+            async let clients = agentWorkspace.refreshClients()
+            async let leads = agentWorkspace.refreshLeads()
             _ = await (home, social, profilePosts, account, messaging, clients, leads)
         } else {
             async let home = stores.home.refresh()
@@ -184,12 +189,18 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
     }
 
     func refreshClients() async {
-        guard let agentWorkspace = stores.agentWorkspace else { return }
+        guard let agentWorkspace = stores.agentWorkspace else {
+            state = .failed(agentWorkspaceUnavailableFailure)
+            return
+        }
         _ = await agentWorkspace.refreshClients()
     }
 
     func refreshLeads() async {
-        guard let agentWorkspace = stores.agentWorkspace else { return }
+        guard let agentWorkspace = stores.agentWorkspace else {
+            state = .failed(agentWorkspaceUnavailableFailure)
+            return
+        }
         _ = await agentWorkspace.refreshLeads()
     }
 
@@ -197,13 +208,18 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
         let results: [(LegendBootstrapFeature, MobileStoreLoadResult)]
 
         if currentSession.actor.identity.participantType == .agent {
+            guard let agentWorkspace = stores.agentWorkspace else {
+                state = .failed(agentWorkspaceUnavailableFailure)
+                return
+            }
+
             async let home = stores.home.loadIfNeeded()
             async let social = stores.social.loadIfNeeded()
             async let profilePosts = stores.social.loadProfilePostsIfNeeded()
             async let account = stores.account.loadIfNeeded()
             async let messaging = stores.messaging.loadIfNeeded()
-            async let clients = stores.agentWorkspace?.loadClientsIfNeeded() ?? .loaded
-            async let leads = stores.agentWorkspace?.loadLeadsIfNeeded() ?? .loaded
+            async let clients = agentWorkspace.loadClientsIfNeeded()
+            async let leads = agentWorkspace.loadLeadsIfNeeded()
             let values = await (home, social, profilePosts, account, messaging, clients, leads)
             results = [
                 (.home, values.0),
@@ -265,5 +281,12 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
     ) -> (LegendBootstrapFeature, UserFacingFailure)? {
         guard case .failed(let failure) = result.1 else { return nil }
         return (result.0, failure)
+    }
+
+    private var agentWorkspaceUnavailableFailure: UserFacingFailure {
+        UserFacingFailure(
+            title: "Agent workspace unavailable",
+            message: "The required client and lead workspace could not be initialized for this agent session.",
+            correlationID: nil)
     }
 }

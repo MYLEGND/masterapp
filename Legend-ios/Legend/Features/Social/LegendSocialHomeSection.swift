@@ -12,6 +12,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     @ObservedObject var social: MobileSocialStore
     let openMessages: () -> Void
     let openCircles: () -> Void
+    let refreshSocial: () async -> Void
     let dashboardContent: DashboardContent
 
     @State private var creationRoute: LegendSocialCreationRoute?
@@ -28,6 +29,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         social: MobileSocialStore,
         openMessages: @escaping () -> Void,
         openCircles: @escaping () -> Void,
+        refreshSocial: @escaping () async -> Void,
         @ViewBuilder dashboardContent: () -> DashboardContent
     ) {
         self.session = session
@@ -35,6 +37,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         _social = ObservedObject(wrappedValue: social)
         self.openMessages = openMessages
         self.openCircles = openCircles
+        self.refreshSocial = refreshSocial
         self.dashboardContent = dashboardContent()
     }
 
@@ -71,7 +74,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 cancel: { commentTarget = nil })
         }
         .fullScreenCover(item: $storyCollection, onDismiss: {
-            Task { _ = await social.refresh() }
+            Task { await refreshSocial() }
         }) { collection in
             LegendStoryViewer(
                 collection: collection,
