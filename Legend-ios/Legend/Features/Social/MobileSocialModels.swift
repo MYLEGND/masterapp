@@ -9,6 +9,43 @@ struct MobileSocialSnapshot: Codable, Equatable, Sendable {
     let creatorInsights: MobileSocialCreatorInsights
 }
 
+/// A presentation collection for one logical Story owner. Story posts remain
+/// independently persisted on the server so expiration, analytics, and viewer
+/// tracking continue to be evaluated for each item.
+struct MobileSocialStoryCollection: Equatable, Identifiable, Sendable {
+    let author: MobileSocialAuthor
+    let items: [MobileSocialPost]
+
+    var id: String {
+        "\(author.identity.participantType.rawValue):\(author.identity.userID)"
+    }
+
+    static func grouped(from stories: [MobileSocialPost]) -> [Self] {
+        var ownerOrder: [LogicalParticipantIdentity] = []
+        var authors: [LogicalParticipantIdentity: MobileSocialAuthor] = [:]
+        var itemsByOwner: [LogicalParticipantIdentity: [MobileSocialPost]] = [:]
+
+        for story in stories where story.contentType == MobileSocialContentType.story.rawValue {
+            let owner = story.author.identity
+            if itemsByOwner[owner] == nil {
+                ownerOrder.append(owner)
+                authors[owner] = story.author
+            }
+            itemsByOwner[owner, default: []].append(story)
+        }
+
+        return ownerOrder.compactMap { owner in
+            guard let author = authors[owner], let items = itemsByOwner[owner] else {
+                return nil
+            }
+
+            return MobileSocialStoryCollection(
+                author: author,
+                items: items.sorted { $0.postedUTC < $1.postedUTC })
+        }
+    }
+}
+
 struct MobileSocialAuthor: Codable, Equatable, Sendable {
     let identity: LogicalParticipantIdentity
     let profileID: String
@@ -331,7 +368,7 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
         case .story:
             "Share a 24-hour moment with your authorized Legend network."
         case .reel:
-            "Share a photo or video moment with your authorized Legend network."
+            "Share a video moment with your authorized Legend network."
         }
     }
 

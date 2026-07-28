@@ -1,4 +1,5 @@
 import AVKit
+import Combine
 import SwiftUI
 import UIKit
 
@@ -19,6 +20,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     @State private var commentTarget: MobileSocialPost?
     @State private var commentBody = ""
     @State private var postInsight: MobileSocialPostInsight?
+    @State private var storyCollection: MobileSocialStoryCollection?
 
     init(
         session: MobileSession,
@@ -67,6 +69,12 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 messageBody: $commentBody,
                 submit: { submitComment(to: post) },
                 cancel: { commentTarget = nil })
+        }
+        .fullScreenCover(item: $storyCollection, onDismiss: social.load) { collection in
+            LegendStoryViewer(
+                collection: collection,
+                currentIdentity: session.actor.identity,
+                social: social)
         }
         .alert(
             social.actionFailure?.title ?? "Legend update unavailable",
@@ -153,9 +161,14 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         if case .loaded(let snapshot) = social.state {
             LegendStoryRail(
                 currentActor: session.actor,
-                stories: snapshot.stories,
+                collections: MobileSocialStoryCollection.grouped(
+                    from: snapshot.stories
+                ),
                 createStory: {
-                    creationRoute = .menu
+                    creationRoute = .composer(.story)
+                },
+                selectStory: { collection in
+                    storyCollection = collection
                 }
             )
         }
@@ -334,58 +347,416 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
 
 private struct LegendStoryRail: View {
     let currentActor: MobileActor
-    let stories: [MobileSocialPost]
+    let collections: [MobileSocialStoryCollection]
     let createStory: () -> Void
+    let selectStory: (MobileSocialStoryCollection) -> Void
+
+    private var currentActorCollection: MobileSocialStoryCollection? {
+        collections.first { $0.author.identity == currentActor.identity }
+    }
+
+    private var otherCollections: [MobileSocialStoryCollection] {
+        collections.filter { $0.author.identity != currentActor.identity }
+    }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: LegendNextSpacing.md) {
-                Button(action: createStory) {
-                    VStack(spacing: LegendNextSpacing.xs) {
-                        ZStack(alignment: .bottomTrailing) {
-                            LegendProfileAvatar(
-                                avatar: currentActor.avatar,
-                                displayName: currentActor.displayName,
-                                size: 58)
-                                .padding(3)
-                                .overlay { Circle().stroke(LegendNextColor.gold, lineWidth: 2) }
-                            Image(systemName: "plus")
-                                .font(.caption.weight(.black))
-                                .foregroundStyle(.white)
-                                .frame(width: 22, height: 22)
-                                .background(LegendNextColor.navy, in: Circle())
-                                .overlay { Circle().stroke(.white, lineWidth: 1.5) }
-                        }
-                        Text("Your story")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(LegendNextColor.textPrimary)
-                            .lineLimit(1)
-                    }
-                    .frame(width: 72)
-                }
-                .buttonStyle(.plain)
+                currentStoryControl
 
-                ForEach(stories) { story in
-                    VStack(spacing: LegendNextSpacing.xs) {
-                        LegendProfileAvatar(
-                            avatar: story.author.avatar,
-                            displayName: story.author.displayName,
-                            size: 58)
-                            .padding(3)
-                            .overlay { Circle().stroke(LegendNextColor.gold, lineWidth: 2) }
-                        Text(story.author.displayName)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(LegendNextColor.textPrimary)
-                            .lineLimit(1)
-                    }
-                    .frame(width: 72)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Story from \(story.author.displayName)")
+                ForEach(otherCollections) { collection in
+                    LegendStoryCircle(
+                        collection: collection,
+                        title: collection.author.displayName,
+                        action: { selectStory(collection) })
                 }
             }
             .padding(.horizontal, 2)
         }
         .accessibilityLabel("Legend stories")
+    }
+
+    @ViewBuilder
+    private var currentStoryControl: some View {
+        if let currentActorCollection {
+            LegendStoryCircle(
+                collection: currentActorCollection,
+                title: "Your story",
+                action: { selectStory(currentActorCollection) })
+        } else {
+            Button(action: createStory) {
+                VStack(spacing: LegendNextSpacing.xs) {
+                    ZStack(alignment: .bottomTrailing) {
+                        LegendProfileAvatar(
+                            avatar: currentActor.avatar,
+                            displayName: currentActor.displayName,
+                            size: 58)
+                            .padding(3)
+                            .overlay { Circle().stroke(LegendNextColor.gold, lineWidth: 2) }
+                        Image(systemName: "plus")
+                            .font(.caption.weight(.black))
+                            .foregroundStyle(.white)
+                            .frame(width: 22, height: 22)
+                            .background(LegendNextColor.navy, in: Circle())
+                            .overlay { Circle().stroke(.white, lineWidth: 1.5) }
+                    }
+                    Text("Your story")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                        .lineLimit(1)
+                }
+                .frame(width: 72)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Create your story")
+        }
+    }
+}
+
+private struct LegendStoryCircle: View {
+    let collection: MobileSocialStoryCollection
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: LegendNextSpacing.xs) {
+                LegendProfileAvatar(
+                    avatar: collection.author.avatar,
+                    displayName: collection.author.displayName,
+                    size: 58)
+                    .padding(3)
+                    .overlay { Circle().stroke(LegendNextColor.gold, lineWidth: 2) }
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .lineLimit(1)
+            }
+            .frame(width: 72)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open \(title), \(collection.items.count) story \(collection.items.count == 1 ? "item" : "items")")
+    }
+}
+
+private struct LegendStoryViewer: View {
+    let collection: MobileSocialStoryCollection
+    let currentIdentity: LogicalParticipantIdentity
+    @ObservedObject var social: MobileSocialStore
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var itemIndex = 0
+    @State private var progress = 0.0
+    @State private var isPaused = false
+    @State private var hasRecordedDeparture = false
+    @State private var replyBody = ""
+
+    private let progressTimer = Timer.publish(
+        every: 0.05,
+        on: .main,
+        in: .common
+    ).autoconnect()
+    private let storyDurationSeconds = 5.0
+
+    private var item: MobileSocialPost {
+        collection.items[itemIndex]
+    }
+
+    private var isOwner: Bool {
+        collection.author.identity == currentIdentity
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                LegendStoryMedia(
+                    story: item,
+                    social: social,
+                    isPaused: isPaused)
+                    .frame(
+                        width: geometry.size.width,
+                        height: geometry.size.height)
+                    .background(Color.black)
+
+                HStack(spacing: 0) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { moveBackward() }
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { moveForward(manual: true) }
+                }
+
+                VStack(spacing: LegendNextSpacing.sm) {
+                    progressBars
+                    header
+                    Spacer()
+                    footer
+                }
+                .padding(.horizontal, LegendNextSpacing.md)
+                .padding(.vertical, LegendNextSpacing.lg)
+            }
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 30)
+                    .onEnded { value in
+                        if value.translation.height > 70 {
+                            closeStory(recordExit: true)
+                        }
+                    })
+            .onLongPressGesture(
+                minimumDuration: 0.12,
+                maximumDistance: 12,
+                pressing: { isPaused = $0 },
+                perform: {})
+        }
+        .onAppear {
+            recordInitialView()
+        }
+        .onChange(of: itemIndex) {
+            progress = 0
+            isPaused = false
+            recordInitialView()
+        }
+        .onReceive(progressTimer) { _ in
+            guard !isPaused else { return }
+            progress += 0.05 / storyDurationSeconds
+            if progress >= 1 {
+                moveForward(manual: false)
+            }
+        }
+        .onDisappear {
+            if !hasRecordedDeparture {
+                recordCurrent(interaction: "Exit")
+            }
+        }
+        .interactiveDismissDisabled(false)
+        .accessibilityLabel("Story viewer for \(collection.author.displayName)")
+    }
+
+    private var progressBars: some View {
+        HStack(spacing: 4) {
+            ForEach(collection.items.indices, id: \.self) { index in
+                GeometryReader { proxy in
+                    Capsule()
+                        .fill(.white.opacity(0.32))
+                        .overlay(alignment: .leading) {
+                            Capsule()
+                                .fill(.white)
+                                .frame(width: proxy.size.width * progressValue(for: index))
+                        }
+                }
+                .frame(height: 3)
+            }
+        }
+        .accessibilityLabel("Story \(itemIndex + 1) of \(collection.items.count)")
+    }
+
+    private var header: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            LegendProfileAvatar(
+                avatar: collection.author.avatar,
+                displayName: collection.author.displayName,
+                size: 38)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isOwner ? "Your story" : collection.author.displayName)
+                    .font(.subheadline.weight(.bold))
+                Text(item.postedUTC, style: .relative)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.76))
+            }
+            .foregroundStyle(.white)
+
+            Spacer()
+
+            if isOwner {
+                Label("\(item.metrics.uniqueViewerCount)", systemImage: "eye")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .accessibilityLabel("\(item.metrics.uniqueViewerCount) unique viewers")
+            }
+
+            Button {
+                closeStory(recordExit: true)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.subheadline.weight(.bold))
+                    .frame(width: 36, height: 36)
+                    .background(.black.opacity(0.42), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .accessibilityLabel("Close story")
+        }
+    }
+
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+            if !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(item.body)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.white)
+                    .lineLimit(4)
+                    .shadow(color: .black.opacity(0.45), radius: 4)
+            }
+
+            HStack(spacing: LegendNextSpacing.sm) {
+                TextField("Reply to \(collection.author.displayName)", text: $replyBody)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, LegendNextSpacing.sm)
+                    .padding(.vertical, 11)
+                    .background(.black.opacity(0.46), in: Capsule())
+                    .foregroundStyle(.white)
+                    .accessibilityLabel("Reply to story")
+
+                Button(action: submitReply) {
+                    Image(systemName: "paperplane.fill")
+                        .frame(width: 40, height: 40)
+                        .background(.white.opacity(0.18), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .disabled(replyBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel("Send story reply")
+
+                Button {
+                    social.toggleReaction(postID: item.id)
+                } label: {
+                    Image(systemName: item.reactedByCurrentActor ? "heart.fill" : "heart")
+                        .frame(width: 40, height: 40)
+                        .background(.black.opacity(0.46), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(item.reactedByCurrentActor ? LegendNextColor.danger : .white)
+                .accessibilityLabel(item.reactedByCurrentActor ? "Remove appreciation" : "Appreciate story")
+
+                ShareLink(item: "Legend story: \(item.body)") {
+                    Image(systemName: "square.and.arrow.up")
+                        .frame(width: 40, height: 40)
+                        .background(.black.opacity(0.46), in: Circle())
+                }
+                .simultaneousGesture(TapGesture().onEnded {
+                    social.recordShare(postID: item.id)
+                })
+                .foregroundStyle(.white)
+                .accessibilityLabel("Share story")
+            }
+        }
+    }
+
+    private func progressValue(for index: Int) -> CGFloat {
+        if index < itemIndex { return 1 }
+        if index > itemIndex { return 0 }
+        return CGFloat(progress)
+    }
+
+    private func moveForward(manual: Bool) {
+        recordCurrent(interaction: manual ? "TapForward" : nil, completed: true)
+        guard itemIndex < collection.items.count - 1 else {
+            closeStory(recordExit: false)
+            return
+        }
+        itemIndex += 1
+    }
+
+    private func moveBackward() {
+        guard itemIndex > 0 else {
+            progress = 0
+            return
+        }
+        recordCurrent(interaction: "TapBackward")
+        itemIndex -= 1
+    }
+
+    private func submitReply() {
+        let body = replyBody.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        social.addComment(postID: item.id, body: body)
+        replyBody = ""
+    }
+
+    private func recordInitialView() {
+        social.recordView(postID: item.id)
+    }
+
+    private func recordCurrent(
+        interaction: String?,
+        completed: Bool = false
+    ) {
+        social.recordView(
+            postID: item.id,
+            watchDurationSeconds: Decimal(completed ? storyDurationSeconds : progress * storyDurationSeconds),
+            watchCompletionPercentage: Decimal(completed ? 100 : progress * 100),
+            storyInteractionType: interaction)
+    }
+
+    private func closeStory(recordExit: Bool) {
+        hasRecordedDeparture = true
+        if recordExit {
+            recordCurrent(interaction: "Exit")
+        }
+        dismiss()
+    }
+}
+
+private struct LegendStoryMedia: View {
+    let story: MobileSocialPost
+    @ObservedObject var social: MobileSocialStore
+    let isPaused: Bool
+
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        Group {
+            if let video = story.media.first(where: \.isVideo) {
+                videoPresentation(video)
+            } else if let image = story.media.first(where: \.isImage) {
+                LegendSocialMediaImage(
+                    media: image,
+                    social: social,
+                    contentMode: .fit,
+                    placeholderHeight: 520)
+            } else {
+                Color.black.overlay {
+                    Text(story.body)
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(LegendNextSpacing.xl)
+                }
+            }
+        }
+        .onChange(of: isPaused) {
+            if isPaused {
+                player?.pause()
+            } else {
+                player?.play()
+            }
+        }
+        .onDisappear {
+            player?.pause()
+        }
+    }
+
+    @ViewBuilder
+    private func videoPresentation(_ media: MobileSocialMedia) -> some View {
+        if let player {
+            VideoPlayer(player: player)
+                .aspectRatio(contentMode: .fit)
+        } else {
+            Color.black.overlay { ProgressView().tint(.white) }
+                .task(id: media.id) {
+                    guard let fileURL = await social.mediaFile(for: media) else { return }
+                    let createdPlayer = AVPlayer(url: fileURL)
+                    createdPlayer.isMuted = false
+                    player = createdPlayer
+                    if !isPaused {
+                        createdPlayer.play()
+                    }
+                }
+        }
     }
 }
 

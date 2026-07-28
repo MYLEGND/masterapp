@@ -153,6 +153,64 @@ final class MobileSocialContractTests: XCTestCase {
             LegendSocialCreationRoute.composer(.story).id)
     }
 
+    func testCreationFormatsExposeTheirServerCompatibleMediaRules() {
+        XCTAssertEqual(MobileSocialContentType.post.maximumMediaItems, 10)
+        XCTAssertTrue(MobileSocialContentType.post.acceptsImages)
+        XCTAssertTrue(MobileSocialContentType.post.acceptsVideos)
+        XCTAssertFalse(MobileSocialContentType.post.requiresVideo)
+
+        XCTAssertEqual(MobileSocialContentType.story.maximumMediaItems, 1)
+        XCTAssertTrue(MobileSocialContentType.story.acceptsImages)
+        XCTAssertTrue(MobileSocialContentType.story.acceptsVideos)
+        XCTAssertFalse(MobileSocialContentType.story.requiresVideo)
+
+        XCTAssertEqual(MobileSocialContentType.reel.maximumMediaItems, 1)
+        XCTAssertFalse(MobileSocialContentType.reel.acceptsImages)
+        XCTAssertTrue(MobileSocialContentType.reel.acceptsVideos)
+        XCTAssertTrue(MobileSocialContentType.reel.requiresVideo)
+    }
+
+    func testStoryCollectionsUseTheCompleteLogicalOwnerIdentity() throws {
+        let sharedUserID = "shared-user"
+        let agent = MobileSocialAuthor(
+            identity: try LogicalParticipantIdentity(
+                userID: sharedUserID,
+                participantType: .agent),
+            profileID: "agent-profile",
+            displayName: "Agent identity",
+            avatar: nil)
+        let client = MobileSocialAuthor(
+            identity: try LogicalParticipantIdentity(
+                userID: sharedUserID,
+                participantType: .client),
+            profileID: "client-profile",
+            displayName: "Client identity",
+            avatar: nil)
+
+        let firstAgentStory = socialPost(
+            author: agent,
+            contentType: .story,
+            postedUTC: Date(timeIntervalSince1970: 100))
+        let secondAgentStory = socialPost(
+            author: agent,
+            contentType: .story,
+            postedUTC: Date(timeIntervalSince1970: 200))
+        let clientStory = socialPost(
+            author: client,
+            contentType: .story,
+            postedUTC: Date(timeIntervalSince1970: 150))
+
+        let collections = MobileSocialStoryCollection.grouped(
+            from: [secondAgentStory, clientStory, firstAgentStory])
+
+        XCTAssertEqual(collections.count, 2)
+        XCTAssertEqual(collections[0].author.identity, agent.identity)
+        XCTAssertEqual(collections[0].items.map(\.id), [firstAgentStory.id, secondAgentStory.id])
+        XCTAssertEqual(collections[1].author.identity, client.identity)
+        XCTAssertEqual(collections[1].items.map(\.id), [clientStory.id])
+        XCTAssertNotEqual(collections[0].id, collections[1].id)
+    }
+
     func testPhotoLibraryAuthorizationMapsEachNativeState() {
         XCTAssertEqual(
             LegendPhotoLibraryAuthorization(.notDetermined),
@@ -551,6 +609,30 @@ private func updatedSocialPost(
         music: post.music,
         media: post.media,
         comments: post.comments)
+}
+
+private func socialPost(
+    author: MobileSocialAuthor,
+    contentType: MobileSocialContentType,
+    postedUTC: Date
+) -> MobileSocialPost {
+    MobileSocialPost(
+        id: UUID(),
+        author: author,
+        contentType: contentType.rawValue,
+        body: "A focused Legend update.",
+        postedUTC: postedUTC,
+        expiresUTC: contentType == .story ? postedUTC.addingTimeInterval(86_400) : nil,
+        reactionCount: 0,
+        commentCount: 0,
+        reactedByCurrentActor: false,
+        followedByCurrentActor: false,
+        savedByCurrentActor: false,
+        repostedByCurrentActor: false,
+        metrics: testSocialMetrics,
+        music: nil,
+        media: [],
+        comments: [])
 }
 
 private let testSocialMetrics = MobileSocialPostMetrics(
