@@ -418,6 +418,27 @@ enum LegendNextTone: Equatable {
     case danger
 }
 
+extension LegendNextTone {
+    var color: Color {
+        switch self {
+        case .neutral:
+            return LegendNextColor.textSecondary
+        case .navy:
+            return LegendNextColor.royal
+        case .gold:
+            return LegendNextColor.gold
+        case .information:
+            return LegendNextColor.information
+        case .success:
+            return LegendNextColor.success
+        case .warning:
+            return LegendNextColor.warning
+        case .danger:
+            return LegendNextColor.danger
+        }
+    }
+}
+
 enum LegendNextAvatarStatus: Equatable {
     case none
     case online

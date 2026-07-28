@@ -133,7 +133,13 @@ public sealed class MobileFinancialOperatingSystemProjectionService
                     $"Mobile week projection schema {schemaVersion} is not supported.");
             }
 
-            var week = MapWeek(weekElement);
+            var labelContext = await ResolveLabelContextAsync(
+                clientProfileId,
+                document.RootElement,
+                cancellationToken);
+            var week = PersonalizeWeek(
+                MapWeek(weekElement),
+                labelContext);
 
             return new MobileFinancialOperatingSystemSnapshot(
                 Projection: new MobileFinancialProjectionStatus(
@@ -270,6 +276,210 @@ public sealed class MobileFinancialOperatingSystemProjectionService
                 week,
                 "weekLabel"),
             Events: events);
+    }
+
+    private async Task<MobileFinancialLabelContext>
+        ResolveLabelContextAsync(
+            Guid clientProfileId,
+            JsonElement financeStateRoot,
+            CancellationToken cancellationToken)
+    {
+        var profile = await _db.ClientProfiles
+            .AsNoTracking()
+            .Where(candidate => candidate.Id == clientProfileId)
+            .Select(candidate => new MobileFinancialProfileName(
+                candidate.ClientUserId,
+                candidate.FirstName,
+                candidate.SignificantOtherFirstName))
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (profile is null)
+        {
+            return MobileFinancialLabelContext.Empty;
+        }
+
+        var clientUserId = NormalizeName(profile.ClientUserId);
+        var householdFirstName = string.IsNullOrWhiteSpace(clientUserId)
+            ? null
+            : await _db.HouseholdMembers
+                .AsNoTracking()
+                .Where(member => member.ClientUserId.ToLower() == clientUserId)
+                .Where(member =>
+                    member.RelationshipType == "SignificantOther" ||
+                    member.RelationshipType == "Spouse")
+                .OrderByDescending(member => member.UpdatedUtc)
+                .ThenByDescending(member => member.CreatedUtc)
+                .Select(member => member.FirstName)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        return new MobileFinancialLabelContext(
+            ClientFirstName: NormalizeName(profile.FirstName),
+            HouseholdFirstName: NormalizeName(householdFirstName) ??
+                NormalizeName(profile.SignificantOtherFirstName),
+            IncomeLabels: ReadSavedIncomeLabels(financeStateRoot));
+    }
+
+    private static MobileFinancialWeekAtGlance PersonalizeWeek(
+        MobileFinancialWeekAtGlance week,
+        MobileFinancialLabelContext context) =>
+        week with
+        {
+            Events = week.Events
+                .Select(financialEvent => financialEvent with
+                {
+                    Title = ResolveEventTitle(financialEvent, context)
+                })
+                .ToArray()
+        };
+
+    private static string ResolveEventTitle(
+        MobileFinancialCashFlowEvent financialEvent,
+        MobileFinancialLabelContext context)
+    {
+        if (!string.Equals(
+                financialEvent.Kind,
+                "income",
+                StringComparison.OrdinalIgnoreCase) ||
+            !TryReadIncomeSource(financialEvent.EventKey, out var sourceKey))
+        {
+            return financialEvent.Title;
+        }
+
+        if (context.IncomeLabels.TryGetValue(
+                sourceKey,
+                out var savedLabel))
+        {
+            return savedLabel;
+        }
+
+        if (!IsGeneratedIncomeLabel(financialEvent.Title))
+        {
+            return financialEvent.Title;
+        }
+
+        return sourceKey.StartsWith("primary-", StringComparison.Ordinal)
+            ? PossessiveIncomeLabel(context.ClientFirstName)
+            : sourceKey.StartsWith("secondary-", StringComparison.Ordinal)
+                ? PossessiveIncomeLabel(context.HouseholdFirstName)
+                : financialEvent.Title;
+    }
+
+    private static IReadOnlyDictionary<string, string> ReadSavedIncomeLabels(
+        JsonElement financeStateRoot)
+    {
+        var labels = new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase);
+
+        if (!financeStateRoot.TryGetProperty(
+                "incomeStreams",
+                out var groupsElement) ||
+            groupsElement.ValueKind != JsonValueKind.Object)
+        {
+            return labels;
+        }
+
+        foreach (var groupName in new[] { "primary", "secondary" })
+        {
+            if (!groupsElement.TryGetProperty(
+                    groupName,
+                    out var streamsElement) ||
+                streamsElement.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var stream in streamsElement.EnumerateArray())
+            {
+                if (stream.ValueKind != JsonValueKind.Object ||
+                    !stream.TryGetProperty("id", out var idElement) ||
+                    idElement.ValueKind != JsonValueKind.String ||
+                    !stream.TryGetProperty("label", out var labelElement) ||
+                    labelElement.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var id = NormalizeName(idElement.GetString());
+                var label = NormalizeName(labelElement.GetString());
+
+                if (!string.IsNullOrWhiteSpace(id) &&
+                    !string.IsNullOrWhiteSpace(label))
+                {
+                    labels[$"{groupName}-{id}"] = label;
+                }
+            }
+        }
+
+        return labels;
+    }
+
+    private static bool TryReadIncomeSource(
+        string eventKey,
+        out string sourceKey)
+    {
+        sourceKey = string.Empty;
+
+        if (!eventKey.StartsWith("income:", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var remainder = eventKey["income:".Length..];
+        var lastSeparator = remainder.LastIndexOf(':');
+
+        if (lastSeparator <= 0)
+        {
+            return false;
+        }
+
+        sourceKey = remainder[..lastSeparator].Trim();
+        return sourceKey.Length > 0;
+    }
+
+    private static bool IsGeneratedIncomeLabel(string value)
+    {
+        var normalized = value.Trim();
+
+        return string.Equals(normalized, "Income", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "Client Income", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "Partner Income", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith("Income Stream ", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith("Primary Income Stream ", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith("Partner Income Stream ", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string PossessiveIncomeLabel(string? firstName)
+    {
+        if (string.IsNullOrWhiteSpace(firstName))
+        {
+            return "Income";
+        }
+
+        return firstName.EndsWith("s", StringComparison.OrdinalIgnoreCase)
+            ? $"{firstName}' Income"
+            : $"{firstName}'s Income";
+    }
+
+    private static string? NormalizeName(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    private sealed record MobileFinancialProfileName(
+        string? ClientUserId,
+        string? FirstName,
+        string? SignificantOtherFirstName);
+
+    private sealed record MobileFinancialLabelContext(
+        string? ClientFirstName,
+        string? HouseholdFirstName,
+        IReadOnlyDictionary<string, string> IncomeLabels)
+    {
+        public static MobileFinancialLabelContext Empty { get; } = new(
+            null,
+            null,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
 
     private static MobileFinancialOperatingSystemSnapshot BuildUnavailable(

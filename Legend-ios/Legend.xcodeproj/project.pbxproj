@@ -39,11 +39,11 @@
 		CC6840D2860AC65AFA33B712 /* NativeUnreadBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8FF22E3544EE230279C2B3E /* NativeUnreadBadge.swift */; };
 		CC7037E0C4432DCBB101F4EA /* MobileHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94450DD87FBF09A656942126 /* MobileHTTPClient.swift */; };
 		CC7F46FF75ECDC0EAD02A423 /* LegendApplicationShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */; };
+		CCA4377F5A22AB95FB1925F4 /* MobileFinancialPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF72005DCAF3102C478179D /* MobileFinancialPresentationTests.swift */; };
 		CEA324C22EB521222C0E457B /* README-NEXTGEN.md in Resources */ = {isa = PBXBuildFile; fileRef = 1B1EEE02B5210AA94A3A78FA /* README-NEXTGEN.md */; };
 		D16AC0B59523AF8ABC1611C3 /* MessagingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5528EEB1AE65FCB262CDEB12 /* MessagingStore.swift */; };
 		D26F0D3763F4892CDB762AA3 /* MessagingHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AAA5690855BD6C5B4132AB3 /* MessagingHomeView.swift */; };
 		DBBEB1BAE8F2ADBDF7A37DE1 /* MobileSocialContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */; };
-		DCACEEF2475F1D024A4DA93F /* LegendLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9919D8992FC7EBC28F5DF1B1 /* LegendLaunchView.swift */; };
 		DD0CC6EE761E59591FAE8ACA /* MobileSocialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28C1D977C634FEC8B8B83B87 /* MobileSocialStore.swift */; };
 		DF44B6B8A2DC0CABCA2850B7 /* MobileConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */; };
 		ED6F8CA9B2F56B434459B527 /* MobileSocialModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */; };
@@ -102,7 +102,7 @@
 		94450DD87FBF09A656942126 /* MobileHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileHTTPClient.swift; sourceTree = "<group>"; };
 		9467A7141E660E53B92CCE3C /* MobileHomeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileHomeModels.swift; sourceTree = "<group>"; };
 		94AC5A93D36DCED40D9482DC /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
-		9919D8992FC7EBC28F5DF1B1 /* LegendLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendLaunchView.swift; sourceTree = "<group>"; };
+		AAF72005DCAF3102C478179D /* MobileFinancialPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileFinancialPresentationTests.swift; sourceTree = "<group>"; };
 		AE1E940C18A479901232F224 /* Legend-Production.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Legend-Production.xcconfig"; sourceTree = "<group>"; };
 		B3449DC74CA91AA0CDAAC840 /* LegendDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiagnosticsTests.swift; sourceTree = "<group>"; };
 		CB26E12CD661DE7C441F7218 /* LogicalParticipantIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicalParticipantIdentity.swift; sourceTree = "<group>"; };
@@ -144,7 +144,6 @@
 				8C77437142863C4D1039F225 /* LegendBrandLogo.swift */,
 				2DBFA05778BCF03C185381BE /* LegendComponents.swift */,
 				34F2412F40E7DCDF9AEC4644 /* LegendDesignSystem.swift */,
-				9919D8992FC7EBC28F5DF1B1 /* LegendLaunchView.swift */,
 			);
 			path = DesignSystem;
 			sourceTree = "<group>";
@@ -289,6 +288,7 @@
 				2ECC81CB776EC7D6D0AF3F25 /* LegendTests.swift */,
 				E7E81305123969A7AFFB8384 /* LogicalParticipantIdentityTests.swift */,
 				E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */,
+				AAF72005DCAF3102C478179D /* MobileFinancialPresentationTests.swift */,
 				4EB710453BF121B567C8AEBD /* MobileNativeContractTests.swift */,
 				6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */,
 			);
@@ -455,6 +455,7 @@
 				213CEBBD913B95CF1D8B5DAA /* LegendTests.swift in Sources */,
 				6AB8FDFB34A8057871BE8441 /* LogicalParticipantIdentityTests.swift in Sources */,
 				DF44B6B8A2DC0CABCA2850B7 /* MobileConfigurationTests.swift in Sources */,
+				CCA4377F5A22AB95FB1925F4 /* MobileFinancialPresentationTests.swift in Sources */,
 				890AF69681C5B2FC1D1BB100 /* MobileNativeContractTests.swift in Sources */,
 				DBBEB1BAE8F2ADBDF7A37DE1 /* MobileSocialContractTests.swift in Sources */,
 			);
@@ -470,7 +471,6 @@
 				844E717BB59A21BFDC60BB35 /* LegendComponents.swift in Sources */,
 				5EF643842D57B1E5FCAF8499 /* LegendDesignSystem.swift in Sources */,
 				956B671334A52CF106C5B414 /* LegendDiagnostics.swift in Sources */,
-				DCACEEF2475F1D024A4DA93F /* LegendLaunchView.swift in Sources */,
 				6C93E636A6066A8936AE152B /* LegendNextAvatar.swift in Sources */,
 				51DEF961F78E09E4EFCADBFB /* LegendNextButtons.swift in Sources */,
 				865EB2EDB9506081191CEB2C /* LegendNextContent.swift in Sources */,

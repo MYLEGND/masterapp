@@ -271,6 +271,161 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
     }
 
     [Fact]
+    public async Task ProjectAsync_UsesSavedIncomeLabelsAndCurrentHouseholdNames()
+    {
+        await using var db = CreateDbContext();
+
+        var clientProfileId = Guid.NewGuid();
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = clientProfileId,
+            ClientUserId = "client-finance-labels",
+            FirstName = "Avery",
+            LastName = "Client",
+            SignificantOtherFirstName = "Stale"
+        });
+        db.HouseholdMembers.Add(new HouseholdMember
+        {
+            ClientUserId = "client-finance-labels",
+            RelationshipType = "SignificantOther",
+            FirstName = "Daphne",
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.FinanceToolStates.Add(new FinanceToolState
+        {
+            ClientProfileId = clientProfileId,
+            ToolId = "ExpenseLens",
+            JsonState =
+                """
+                {
+                  "incomeStreams": {
+                    "primary": [
+                      { "id": "consulting", "label": "Avery Consulting" }
+                    ],
+                    "secondary": [
+                      { "id": "pay", "label": "" },
+                      { "id": "salary", "label": "Daphne's Salary" }
+                    ]
+                  },
+                  "mobileWeekProjection": {
+                    "schemaVersion": 1,
+                    "weekId": "2026-07-24_2026-07-30",
+                    "weekLabel": "Jul 24 – Jul 30",
+                    "startDate": "2026-07-24",
+                    "endDate": "2026-07-30",
+                    "status": "current",
+                    "openingCashCents": 0,
+                    "incomeCents": 300000,
+                    "debitBillsCents": 0,
+                    "creditBillsCents": 0,
+                    "requiredDebtMinimumCents": 0,
+                    "extraDebtPaymentCents": 0,
+                    "closingCashCents": 300000,
+                    "openingDebtCents": 0,
+                    "closingDebtCents": 0,
+                    "events": [
+                      {
+                        "key": "income:primary-consulting:2026-07-25",
+                        "kind": "income",
+                        "label": "Income",
+                        "dateKey": "2026-07-25",
+                        "status": "current",
+                        "amountCents": 100000
+                      },
+                      {
+                        "key": "income:secondary-pay:2026-07-26",
+                        "kind": "income",
+                        "label": "Partner Income Stream 1",
+                        "dateKey": "2026-07-26",
+                        "status": "current",
+                        "amountCents": 100000
+                      },
+                      {
+                        "key": "income:secondary-salary:2026-07-27",
+                        "kind": "income",
+                        "label": "Partner Income Stream 2",
+                        "dateKey": "2026-07-27",
+                        "status": "current",
+                        "amountCents": 100000
+                      }
+                    ]
+                  }
+                }
+                """
+        });
+        await db.SaveChangesAsync();
+
+        var snapshot = await new MobileFinancialOperatingSystemProjectionService(db)
+            .ProjectAsync(clientProfileId);
+
+        var events = snapshot.WeekAtGlance!.Events;
+        Assert.Equal("Avery Consulting", events[0].Title);
+        Assert.Equal("Daphne's Income", events[1].Title);
+        Assert.Equal("Daphne's Salary", events[2].Title);
+        Assert.DoesNotContain(
+            events,
+            item => item.Title.Contains(
+                "Partner Income Stream",
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ProjectAsync_UsesNeutralIncomeLabelWhenNoSavedPersonNameExists()
+    {
+        await using var db = CreateDbContext();
+
+        var clientProfileId = Guid.NewGuid();
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = clientProfileId,
+            ClientUserId = "client-no-personal-label"
+        });
+        db.FinanceToolStates.Add(new FinanceToolState
+        {
+            ClientProfileId = clientProfileId,
+            ToolId = "ExpenseLens",
+            JsonState =
+                """
+                {
+                  "mobileWeekProjection": {
+                    "schemaVersion": 1,
+                    "weekId": "2026-07-24_2026-07-30",
+                    "weekLabel": "Jul 24 – Jul 30",
+                    "startDate": "2026-07-24",
+                    "endDate": "2026-07-30",
+                    "status": "current",
+                    "openingCashCents": 0,
+                    "incomeCents": 100000,
+                    "debitBillsCents": 0,
+                    "creditBillsCents": 0,
+                    "requiredDebtMinimumCents": 0,
+                    "extraDebtPaymentCents": 0,
+                    "closingCashCents": 100000,
+                    "openingDebtCents": 0,
+                    "closingDebtCents": 0,
+                    "events": [
+                      {
+                        "key": "income:secondary-pay:2026-07-26",
+                        "kind": "income",
+                        "label": "Partner Income Stream 1",
+                        "dateKey": "2026-07-26",
+                        "status": "current",
+                        "amountCents": 100000
+                      }
+                    ]
+                  }
+                }
+                """
+        });
+        await db.SaveChangesAsync();
+
+        var snapshot = await new MobileFinancialOperatingSystemProjectionService(db)
+            .ProjectAsync(clientProfileId);
+
+        Assert.Equal("Income", Assert.Single(snapshot.WeekAtGlance!.Events).Title);
+    }
+
+    [Fact]
     public async Task ProjectAsync_RejectsEmptyClientProfileIdentifier()
     {
         await using var db = CreateDbContext();

@@ -4,34 +4,25 @@ import SwiftUI
 struct LegendApp: App {
     @StateObject private var diagnostics: LegendDiagnostics
     @StateObject private var session: MobileSessionCoordinator
-    @State private var isPresentingLaunch = true
 
     init() {
         let diagnostics = LegendDiagnostics()
         _diagnostics = StateObject(wrappedValue: diagnostics)
-        _session = StateObject(wrappedValue: MobileSessionCoordinator(diagnostics: diagnostics))
+        _session = StateObject(
+            wrappedValue: MobileSessionCoordinator(
+                diagnostics: diagnostics
+            )
+        )
     }
 
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                RootView()
-                    .environmentObject(session)
-                    .environmentObject(diagnostics)
-
-                if isPresentingLaunch {
-                    LegendLaunchView()
-                        .transition(.opacity)
-                        .zIndex(1)
+            RootView()
+                .environmentObject(session)
+                .environmentObject(diagnostics)
+                .task {
+                    NativeUnreadBadge.prepare()
                 }
-            }
-            .task {
-                NativeUnreadBadge.prepare()
-                try? await Task.sleep(for: .milliseconds(550))
-                withAnimation(LegendMotion.entrance) {
-                    isPresentingLaunch = false
-                }
-            }
         }
     }
 }

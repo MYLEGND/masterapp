@@ -197,6 +197,39 @@ enum MobileFinancialSemantic: String, Codable, Equatable, Sendable {
     }
 }
 
+/// Maps the server-authoritative financial section key to the one native
+/// detail destination that renders its complete read-only breakdown.
+enum MobileFinancialDetailDestination: String, Hashable, Identifiable, Sendable {
+    case currentOutlook = "current-outlook"
+    case monthlyOutlook = "monthly-outlook"
+    case debtObligations = "debt-obligations"
+    case financialPosition = "financial-position"
+    case upcomingActivity = "upcoming-activity"
+    case protectionDiscussion = "protection-discussion"
+    case dataAttention = "data-attention"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .currentOutlook:
+            return "Current Outlook"
+        case .monthlyOutlook:
+            return "Month at a Glance"
+        case .debtObligations:
+            return "Debt & Obligations"
+        case .financialPosition:
+            return "Balance Sheet"
+        case .upcomingActivity:
+            return "Upcoming Activity"
+        case .protectionDiscussion:
+            return "Protection Discussion"
+        case .dataAttention:
+            return "Data Needing Attention"
+        }
+    }
+}
+
 enum MobileFinancialAmountKind: Sendable {
     case assets
     case liabilities

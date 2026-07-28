@@ -162,31 +162,13 @@ struct LegendNextBadge: View {
                 .lineLimit(1)
         }
         .font(LegendNextTypography.caption)
-        .foregroundStyle(foreground)
+        .foregroundStyle(tone.color)
         .padding(.horizontal, LegendNextSpacing.xs)
         .padding(.vertical, LegendNextSpacing.tiny)
-        .background(foreground.opacity(0.11), in: Capsule())
+        .background(tone.color.opacity(0.11), in: Capsule())
         .accessibilityLabel(title)
     }
 
-    private var foreground: Color {
-        switch tone {
-        case .neutral:
-            return LegendNextColor.textSecondary
-        case .navy:
-            return LegendNextColor.royal
-        case .gold:
-            return LegendNextColor.gold
-        case .information:
-            return LegendNextColor.information
-        case .success:
-            return LegendNextColor.success
-        case .warning:
-            return LegendNextColor.warning
-        case .danger:
-            return LegendNextColor.danger
-        }
-    }
 }
 
 struct LegendNextMetricTile: View {
@@ -217,9 +199,9 @@ struct LegendNextMetricTile: View {
                     if let systemImage {
                         Image(systemName: systemImage)
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(accent)
+                            .foregroundStyle(tone.color)
                             .frame(width: 30, height: 30)
-                            .background(accent.opacity(0.10), in: Circle())
+                            .background(tone.color.opacity(0.10), in: Circle())
                             .accessibilityHidden(true)
                     }
 
@@ -249,24 +231,6 @@ struct LegendNextMetricTile: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var accent: Color {
-        switch tone {
-        case .neutral:
-            return LegendNextColor.textSecondary
-        case .navy:
-            return LegendNextColor.royal
-        case .gold:
-            return LegendNextColor.gold
-        case .information:
-            return LegendNextColor.information
-        case .success:
-            return LegendNextColor.success
-        case .warning:
-            return LegendNextColor.warning
-        case .danger:
-            return LegendNextColor.danger
-        }
-    }
 }
 
 struct LegendNextQuickAction: View {
@@ -299,9 +263,9 @@ struct LegendNextQuickAction: View {
                 HStack(spacing: LegendNextSpacing.sm) {
                     Image(systemName: systemImage)
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(accent)
+                        .foregroundStyle(tone.color)
                         .frame(width: 38, height: 38)
-                        .background(accent.opacity(0.11), in: Circle())
+                        .background(tone.color.opacity(0.11), in: Circle())
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
@@ -330,24 +294,6 @@ struct LegendNextQuickAction: View {
         .accessibilityLabel(detail.map { "\(title), \($0)" } ?? title)
     }
 
-    private var accent: Color {
-        switch tone {
-        case .neutral:
-            return LegendNextColor.textSecondary
-        case .navy:
-            return LegendNextColor.royal
-        case .gold:
-            return LegendNextColor.gold
-        case .information:
-            return LegendNextColor.information
-        case .success:
-            return LegendNextColor.success
-        case .warning:
-            return LegendNextColor.warning
-        case .danger:
-            return LegendNextColor.danger
-        }
-    }
 }
 
 struct LegendNextStatusBanner: View {
@@ -372,9 +318,9 @@ struct LegendNextStatusBanner: View {
         HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
             Image(systemName: systemImage)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(accent)
+                .foregroundStyle(tone.color)
                 .frame(width: 34, height: 34)
-                .background(accent.opacity(0.11), in: Circle())
+                .background(tone.color.opacity(0.11), in: Circle())
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
@@ -392,7 +338,7 @@ struct LegendNextStatusBanner: View {
         }
         .padding(LegendNextSpacing.md)
         .background(
-            accent.opacity(0.075),
+            tone.color.opacity(0.075),
             in: RoundedRectangle(
                 cornerRadius: LegendNextRadius.control,
                 style: .continuous
@@ -401,22 +347,4 @@ struct LegendNextStatusBanner: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var accent: Color {
-        switch tone {
-        case .neutral:
-            return LegendNextColor.textSecondary
-        case .navy:
-            return LegendNextColor.royal
-        case .gold:
-            return LegendNextColor.gold
-        case .information:
-            return LegendNextColor.information
-        case .success:
-            return LegendNextColor.success
-        case .warning:
-            return LegendNextColor.warning
-        case .danger:
-            return LegendNextColor.danger
-        }
-    }
 }

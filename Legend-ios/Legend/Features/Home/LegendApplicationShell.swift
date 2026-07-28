@@ -2331,6 +2331,7 @@ private struct LegendFinanceView: View {
 
     let currentSession: MobileSession
     @StateObject private var store: MobileFinancialStore
+    @State private var detailDestination: MobileFinancialDetailDestination?
 
     init(
         currentSession: MobileSession,
@@ -2440,18 +2441,7 @@ private struct LegendFinanceView: View {
 
                 lastUpdated(financial)
 
-                if let operatingSystem = financial.operatingSystem {
-                    operatingSystemContent(operatingSystem)
-                } else {
-                    operatingSystemUnavailable(
-                        summary:
-                            "Week and month projections have not been returned by the mobile service yet."
-                    )
-                }
-
-                if !financial.upcomingBills.isEmpty {
-                    upcomingBills(financial.upcomingBills)
-                }
+                financialDashboard(financial)
             }
             .padding(
                 .horizontal,
@@ -2472,6 +2462,258 @@ private struct LegendFinanceView: View {
             )
             .ignoresSafeArea()
         )
+        .refreshable {
+            store.load()
+        }
+        .navigationDestination(item: $detailDestination) { destination in
+            financialDetail(destination, financial: financial)
+        }
+    }
+
+    @ViewBuilder
+    private func financialDashboard(
+        _ financial: MobileFinancialSnapshotResponse
+    ) -> some View {
+        if let presentation = financial.presentation,
+           !presentation.prioritySections.isEmpty {
+            VStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.xs
+            ) {
+                LegendNextSectionHeader(
+                    eyebrow: "Prioritized view",
+                    title: "Financial Intelligence",
+                    detail: "Open a section to review the saved details."
+                )
+
+                ForEach(presentation.prioritySections) { section in
+                    if let destination = MobileFinancialDetailDestination(
+                        rawValue: section.key
+                    ) {
+                        financialDashboardCard(
+                            section,
+                            destination: destination
+                        )
+                    }
+                }
+            }
+        } else {
+            operatingSystemUnavailable(
+                summary:
+                    "A prioritized financial view is not available from the mobile service yet."
+            )
+        }
+    }
+
+    private func financialDashboardCard(
+        _ section: MobileFinancialPrioritySectionResponse,
+        destination: MobileFinancialDetailDestination
+    ) -> some View {
+        Button {
+            detailDestination = destination
+        } label: {
+            LegendNextSurface(style: .elevated) {
+                HStack(
+                    alignment: .top,
+                    spacing: LegendNextSpacing.sm
+                ) {
+                    Image(systemName: section.systemImage)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(section.primaryMetric.semantic.tone.color)
+                        .frame(width: 38, height: 38)
+                        .background(
+                            section.primaryMetric.semantic.tone.color.opacity(0.11),
+                            in: Circle()
+                        )
+                        .accessibilityHidden(true)
+
+                    VStack(
+                        alignment: .leading,
+                        spacing: LegendNextSpacing.micro
+                    ) {
+                        HStack(
+                            alignment: .firstTextBaseline,
+                            spacing: LegendNextSpacing.xs
+                        ) {
+                            Text(section.eyebrow.uppercased())
+                                .font(LegendNextTypography.eyebrow)
+                                .tracking(0.7)
+                                .foregroundStyle(LegendNextColor.gold)
+
+                            Spacer(minLength: LegendNextSpacing.xs)
+
+                            LegendNextBadge(
+                                section.status,
+                                tone: section.primaryMetric.semantic.tone,
+                                systemImage: "circle.fill"
+                            )
+                        }
+
+                        Text(section.title)
+                            .font(LegendNextTypography.cardTitle)
+                            .foregroundStyle(LegendNextColor.textPrimary)
+                            .lineLimit(2)
+
+                        HStack(
+                            alignment: .firstTextBaseline,
+                            spacing: LegendNextSpacing.md
+                        ) {
+                            summaryMetric(section.primaryMetric)
+
+                            if let secondary = section.secondaryMetric {
+                                summaryMetric(secondary)
+                            }
+
+                            Spacer(minLength: 0)
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(LegendNextColor.textTertiary)
+                                .accessibilityHidden(true)
+                        }
+
+                        Text(section.reason)
+                            .font(LegendNextTypography.caption)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                            .lineLimit(2)
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "\(section.title). \(section.status). \(section.reason). Open \(destination.title)."
+        )
+    }
+
+    private func summaryMetric(
+        _ metric: MobileFinancialSummaryMetricResponse
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.micro
+        ) {
+            Text(metric.label.uppercased())
+                .font(LegendNextTypography.eyebrow)
+                .foregroundStyle(LegendNextColor.textSecondary)
+
+            Text(metric.displayValue)
+                .font(LegendNextTypography.bodyEmphasis)
+                .foregroundStyle(metric.semantic.tone.color)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func financialDetail(
+        _ destination: MobileFinancialDetailDestination,
+        financial: MobileFinancialSnapshotResponse
+    ) -> some View {
+        ScrollView {
+            LazyVStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.xs
+            ) {
+                if let section = financial.presentation?.prioritySections.first(
+                    where: { $0.key == destination.rawValue }
+                ) {
+                    LegendNextStatusBanner(
+                        title: section.status,
+                        detail: "\(section.reason) \(section.discussionPrompt)",
+                        tone: section.primaryMetric.semantic.tone,
+                        systemImage: section.systemImage
+                    )
+                }
+
+                switch destination {
+                case .currentOutlook:
+                    if let week = financial.operatingSystem?.weekAtGlance {
+                        weekAtGlance(week)
+                    } else {
+                        operatingSystemUnavailable(
+                            summary: financial.operatingSystem?.projection.summary
+                                ?? "The current week projection is not available."
+                        )
+                    }
+
+                case .monthlyOutlook:
+                    if let month = financial.operatingSystem?.monthAtGlance {
+                        monthAtGlance(month)
+                    } else {
+                        operatingSystemUnavailable(
+                            summary: financial.operatingSystem?.projection.summary
+                                ?? "The current month projection is not available."
+                        )
+                    }
+
+                case .debtObligations:
+                    if let month = financial.operatingSystem?.monthAtGlance {
+                        if let obligation = month.largestObligation {
+                            largestObligation(obligation)
+                        }
+                        monthAtGlance(month)
+                    } else {
+                        operatingSystemUnavailable(
+                            summary: financial.operatingSystem?.projection.summary
+                                ?? "Scheduled obligations are not available."
+                        )
+                    }
+
+                case .financialPosition:
+                    if let position = financial.position {
+                        financialHealth(position)
+                        positionMetrics(position)
+                    } else {
+                        LegendEmptyState(
+                            title: "Financial snapshot incomplete",
+                            message: "Saved balance-sheet details are not available yet.",
+                            symbolName: "building.columns"
+                        )
+                    }
+
+                case .upcomingActivity:
+                    if financial.upcomingBills.isEmpty {
+                        LegendEmptyState(
+                            title: "No upcoming activity",
+                            message: "No saved recurring financial items are currently scheduled.",
+                            symbolName: "calendar"
+                        )
+                    } else {
+                        upcomingBills(financial.upcomingBills)
+                    }
+
+                case .protectionDiscussion:
+                    if let position = financial.position {
+                        financialHealth(position)
+                        positionMetrics(position)
+                    } else {
+                        LegendEmptyState(
+                            title: "Protection information unavailable",
+                            message: "Saved financial health information is not available yet.",
+                            symbolName: "shield.lefthalf.filled"
+                        )
+                    }
+
+                case .dataAttention:
+                    operatingSystemUnavailable(
+                        summary: financial.operatingSystem?.projection.summary
+                            ?? "The current Expense Lens projection is not available."
+                    )
+                }
+            }
+            .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+            .padding(.top, LegendNextSpacing.sm)
+            .padding(.bottom, LegendNextSpacing.xl)
+        }
+        .background(
+            LegendNextGradient.pageWash(for: colorScheme)
+                .ignoresSafeArea()
+        )
+        .navigationTitle(destination.title)
+        .navigationBarTitleDisplayMode(.inline)
         .refreshable {
             store.load()
         }
@@ -2513,16 +2755,7 @@ private struct LegendFinanceView: View {
             }
         }
 
-        var color: Color {
-            switch tone {
-            case .information:
-                return LegendNextColor.information
-            case .warning:
-                return LegendNextColor.warning
-            default:
-                return LegendNextColor.textSecondary
-            }
-        }
+        var color: Color { tone.color }
 
         var detail: String {
             switch self {
@@ -2601,8 +2834,8 @@ private struct LegendFinanceView: View {
     ) -> some View {
         LegendNextHero(
             eyebrow: "Financial Health",
-            title: healthHeadline(position.healthScore),
-            detail: position.positionSummary
+            title: "Financial health snapshot",
+            detail: "This score reflects your saved balance-sheet and cash-flow information."
         ) {
             VStack(
                 alignment: .leading,
@@ -2625,8 +2858,8 @@ private struct LegendFinanceView: View {
 
                     LegendNextBadge(
                         position.positionStatus,
-                        tone: statusTone(
-                            position.positionStatus
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forStatus: position.positionStatus
                         ),
                         systemImage: "circle.fill"
                     )
@@ -2635,10 +2868,10 @@ private struct LegendFinanceView: View {
                 HStack(spacing: LegendNextSpacing.sm) {
                     LegendNextBadge(
                         "Net Worth \(compactCurrency(position.netWorth))",
-                        tone:
-                            position.netWorth >= 0
-                                ? .success
-                                : .danger,
+                        tone: MobileFinancialAmountSemantic.tone(
+                            for: position.netWorth,
+                            kind: .netWorth
+                        ),
                         systemImage:
                             position.netWorth >= 0
                                 ? "arrow.up.right"
@@ -2674,7 +2907,10 @@ private struct LegendFinanceView: View {
                         .currency(code: "USD")
                     ),
                     systemImage: "building.columns.fill",
-                    tone: .success
+                    tone: MobileFinancialAmountSemantic.tone(
+                        for: position.assetsTotal,
+                        kind: .assets
+                    )
                 )
 
                 LegendNextMetricTile(
@@ -2683,7 +2919,10 @@ private struct LegendFinanceView: View {
                         .currency(code: "USD")
                     ),
                     systemImage: "creditcard.fill",
-                    tone: .warning
+                    tone: MobileFinancialAmountSemantic.tone(
+                        for: position.liabilitiesTotal,
+                        kind: .liabilities
+                    )
                 )
 
                 LegendNextMetricTile(
@@ -2695,39 +2934,12 @@ private struct LegendFinanceView: View {
                         position.netWorth >= 0
                             ? "arrow.up.right"
                             : "arrow.down.right",
-                    tone:
-                        position.netWorth >= 0
-                            ? .success
-                            : .danger
+                    tone: MobileFinancialAmountSemantic.tone(
+                        for: position.netWorth,
+                        kind: .netWorth
+                    )
                 )
             }
-        }
-    }
-
-    @ViewBuilder
-    private func operatingSystemContent(
-        _ operatingSystem:
-            MobileFinancialOperatingSystemSnapshotResponse
-    ) -> some View {
-        if let week = operatingSystem.weekAtGlance {
-            weekAtGlance(week)
-        }
-
-        if let month = operatingSystem.monthAtGlance {
-            monthAtGlance(month)
-
-            if let obligation = month.largestObligation {
-                largestObligation(obligation)
-            }
-        }
-
-        if operatingSystem.weekAtGlance == nil &&
-            operatingSystem.monthAtGlance == nil {
-            operatingSystemUnavailable(
-                summary:
-                    operatingSystem.projection.summary ??
-                    "Your Expense Lens projection is not available yet."
-            )
         }
     }
 
@@ -2755,14 +2967,20 @@ private struct LegendFinanceView: View {
                         title: "Opening cash",
                         value: money(week.openingCashCents),
                         symbol: "wallet.bifold.fill",
-                        tone: .neutral
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: week.openingCashCents,
+                            kind: .openingCash
+                        )
                     )
 
                     financialMetric(
                         title: "Income",
                         value: money(week.incomeCents),
                         symbol: "arrow.down.left.circle.fill",
-                        tone: .success
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: week.incomeCents,
+                            kind: .income
+                        )
                     )
 
                     financialMetric(
@@ -2772,7 +2990,12 @@ private struct LegendFinanceView: View {
                             week.creditExpenseCents
                         ),
                         symbol: "doc.text.fill",
-                        tone: .warning
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents:
+                                week.debitExpenseCents +
+                                week.creditExpenseCents,
+                            kind: .bills
+                        )
                     )
 
                     financialMetric(
@@ -2782,42 +3005,33 @@ private struct LegendFinanceView: View {
                             week.extraDebtPaymentCents
                         ),
                         symbol: "creditcard.fill",
-                        tone: .danger
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents:
+                                week.requiredDebtPaymentCents +
+                                week.extraDebtPaymentCents,
+                            kind: .debt
+                        )
                     )
 
                     financialMetric(
                         title: "Ending cash",
                         value: money(week.endingCashCents),
                         symbol: "banknote.fill",
-                        tone:
-                            week.endingCashCents >= 0
-                                ? .success
-                                : .danger,
-                        emphasized: true
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: week.endingCashCents,
+                            kind: .endingCash
+                        )
                     )
 
                     financialMetric(
                         title: "Ending debt",
                         value: money(week.endingDebtCents),
                         symbol: "chart.line.downtrend.xyaxis",
-                        tone:
-                            week.endingDebtCents > 0
-                                ? .warning
-                                : .success
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: week.endingDebtCents,
+                            kind: .endingDebt
+                        )
                     )
-                }
-
-                if let summary = week.pressureSummary,
-                   !summary.isEmpty {
-                    Text(summary)
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(
-                            LegendNextColor.textSecondary
-                        )
-                        .fixedSize(
-                            horizontal: false,
-                            vertical: true
-                        )
                 }
 
                 if !week.events.isEmpty {
@@ -2833,7 +3047,7 @@ private struct LegendFinanceView: View {
                                 LegendNextColor.textSecondary
                             )
 
-                        ForEach(week.events.prefix(6)) { event in
+                        ForEach(week.events) { event in
                             HStack(
                                 alignment: .firstTextBaseline,
                                 spacing: LegendNextSpacing.xs
@@ -2871,6 +3085,12 @@ private struct LegendFinanceView: View {
                                             .semibold
                                         )
                                     )
+                                    .foregroundStyle(
+                                        MobileFinancialAmountSemantic.tone(
+                                            forEventKind: event.kind,
+                                            amountCents: event.amountCents
+                                        ).color
+                                    )
                             }
                         }
                     }
@@ -2903,14 +3123,20 @@ private struct LegendFinanceView: View {
                         title: "Opening cash",
                         value: money(month.openingCashCents),
                         symbol: "wallet.bifold.fill",
-                        tone: .neutral
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: month.openingCashCents,
+                            kind: .openingCash
+                        )
                     )
 
                     financialMetric(
                         title: "Income",
                         value: money(month.incomeCents),
                         symbol: "arrow.down.left.circle.fill",
-                        tone: .success
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: month.incomeCents,
+                            kind: .income
+                        )
                     )
 
                     financialMetric(
@@ -2920,7 +3146,12 @@ private struct LegendFinanceView: View {
                             month.creditExpenseCents
                         ),
                         symbol: "doc.text.fill",
-                        tone: .warning
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents:
+                                month.debitExpenseCents +
+                                month.creditExpenseCents,
+                            kind: .bills
+                        )
                     )
 
                     financialMetric(
@@ -2930,28 +3161,32 @@ private struct LegendFinanceView: View {
                             month.extraDebtPaymentCents
                         ),
                         symbol: "creditcard.fill",
-                        tone: .danger
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents:
+                                month.requiredDebtPaymentCents +
+                                month.extraDebtPaymentCents,
+                            kind: .debt
+                        )
                     )
 
                     financialMetric(
                         title: "Ending cash",
                         value: money(month.endingCashCents),
                         symbol: "banknote.fill",
-                        tone:
-                            month.endingCashCents >= 0
-                                ? .success
-                                : .danger,
-                        emphasized: true
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: month.endingCashCents,
+                            kind: .endingCash
+                        )
                     )
 
                     financialMetric(
                         title: "Ending debt",
                         value: money(month.endingDebtCents),
                         symbol: "chart.line.downtrend.xyaxis",
-                        tone:
-                            month.endingDebtCents > 0
-                                ? .warning
-                                : .success
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: month.endingDebtCents,
+                            kind: .endingDebt
+                        )
                     )
                 }
 
@@ -3058,18 +3293,6 @@ private struct LegendFinanceView: View {
                     }
                 }
 
-                if let summary = month.pressureSummary,
-                   !summary.isEmpty {
-                    Text(summary)
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(
-                            LegendNextColor.textSecondary
-                        )
-                        .fixedSize(
-                            horizontal: false,
-                            vertical: true
-                        )
-                }
             }
         }
     }
@@ -3117,7 +3340,12 @@ private struct LegendFinanceView: View {
 
                 Text(money(obligation.amountCents))
                     .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(
+                        MobileFinancialAmountSemantic.tone(
+                            forCents: obligation.amountCents,
+                            kind: .bills
+                        ).color
+                    )
             }
         }
     }
@@ -3179,7 +3407,7 @@ private struct LegendFinanceView: View {
             ) {
                 VStack(spacing: 0) {
                     ForEach(
-                        Array(bills.prefix(6).enumerated()),
+                        Array(bills.enumerated()),
                         id: \.element.id
                     ) { index, bill in
                         HStack(
@@ -3243,7 +3471,10 @@ private struct LegendFinanceView: View {
                             )
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(
-                                LegendNextColor.textPrimary
+                                MobileFinancialAmountSemantic.tone(
+                                    for: bill.amount,
+                                    kind: .bills
+                                ).color
                             )
                         }
                         .padding(
@@ -3255,7 +3486,7 @@ private struct LegendFinanceView: View {
                             LegendNextSpacing.sm
                         )
 
-                        if index < min(bills.count, 6) - 1 {
+                        if index < bills.count - 1 {
                             LegendNextDivider()
                                 .padding(
                                     .leading,
@@ -3282,7 +3513,9 @@ private struct LegendFinanceView: View {
         ) {
             LegendNextBadge(
                 status,
-                tone: statusTone(status)
+                tone: MobileFinancialAmountSemantic.tone(
+                    forStatus: status
+                )
             )
         }
     }
@@ -3305,8 +3538,7 @@ private struct LegendFinanceView: View {
         title: String,
         value: String,
         symbol: String = "circle.fill",
-        tone: LegendNextTone = .neutral,
-        emphasized: Bool = false
+        tone: LegendNextTone = .neutral
     ) -> some View {
         LegendNextMetricTile(
             title: title,
@@ -3315,94 +3547,6 @@ private struct LegendFinanceView: View {
             tone: tone
         )
     }
-
-
-    private func statusBadge(
-        _ status: String
-    ) -> some View {
-        LegendNextBadge(
-            status,
-            tone: statusTone(status)
-        )
-    }
-
-    private func healthHeadline(
-        _ score: Int
-    ) -> String {
-        switch score {
-        case 80...:
-            return "Your foundation is strong."
-        case 65..<80:
-            return "You are building momentum."
-        case 45..<65:
-            return "Your plan needs attention."
-        default:
-            return "Your position needs protection."
-        }
-    }
-
-    private func healthTone(
-        _ score: Int
-    ) -> LegendNextTone {
-        switch score {
-        case 80...:
-            return .success
-        case 60..<80:
-            return .information
-        case 40..<60:
-            return .warning
-        default:
-            return .danger
-        }
-    }
-
-
-    private func statusTone(
-        _ status: String
-    ) -> LegendNextTone {
-        let normalized = status
-            .trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
-            .lowercased()
-
-        if normalized.contains("healthy") ||
-            normalized.contains("strong") ||
-            normalized.contains("excellent") ||
-            normalized.contains("stable") ||
-            normalized.contains("positive") ||
-            normalized.contains("improving") ||
-            normalized.contains("clear") ||
-            normalized.contains("low") {
-            return .success
-        }
-
-        if normalized.contains("critical") ||
-            normalized.contains("danger") ||
-            normalized.contains("severe") ||
-            normalized.contains("exposed") ||
-            normalized.contains("negative") ||
-            normalized.contains("high") {
-            return .danger
-        }
-
-        if normalized.contains("warning") ||
-            normalized.contains("watch") ||
-            normalized.contains("tight") ||
-            normalized.contains("pressure") ||
-            normalized.contains("moderate") {
-            return .warning
-        }
-
-        if normalized.contains("progress") ||
-            normalized.contains("building") ||
-            normalized.contains("active") {
-            return .information
-        }
-
-        return .neutral
-    }
-
     private func compactCurrency(
         _ value: Decimal
     ) -> String {

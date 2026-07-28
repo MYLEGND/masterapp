@@ -143,22 +143,7 @@ struct LegendNextIconButtonStyle: ButtonStyle {
     }
 
     private var foreground: Color {
-        switch tone {
-        case .neutral:
-            return LegendNextColor.textPrimary
-        case .navy:
-            return LegendNextColor.navy
-        case .gold:
-            return LegendNextColor.gold
-        case .information:
-            return LegendNextColor.information
-        case .success:
-            return LegendNextColor.success
-        case .warning:
-            return LegendNextColor.warning
-        case .danger:
-            return LegendNextColor.danger
-        }
+        tone == .neutral ? LegendNextColor.textPrimary : tone.color
     }
 
     private var background: Color {
