@@ -256,19 +256,68 @@ final class MobileSocialContractTests: XCTestCase {
         }
         XCTAssertEqual(profilePosts.map(\.id), [post.id])
 
-        XCTAssertTrue(await store.updatePost(postID: post.id, body: "Server-confirmed move."))
+        let didUpdate = await store.updatePost(postID: post.id, body: "Server-confirmed move.")
+        XCTAssertTrue(didUpdate)
         guard case .loaded(let updatedPosts) = store.profileContentState else {
             return XCTFail("Expected the updated server post")
         }
         XCTAssertEqual(updatedPosts.first?.body, "Server-confirmed move.")
-        XCTAssertEqual(await api.lastUpdateRequest()?.body, "Server-confirmed move.")
+        let updateRequest = await api.lastUpdateRequest()
+        XCTAssertEqual(updateRequest?.body, "Server-confirmed move.")
 
-        XCTAssertTrue(await store.deletePost(postID: post.id))
+        let didDelete = await store.deletePost(postID: post.id)
+        XCTAssertTrue(didDelete)
         guard case .loaded(let remainingPosts) = store.profileContentState else {
             return XCTFail("Expected the confirmed post removal")
         }
         XCTAssertTrue(remainingPosts.isEmpty)
-        XCTAssertEqual(await api.lastDeletedPostID(), post.id)
+        let deletedPostID = await api.lastDeletedPostID()
+        XCTAssertEqual(deletedPostID, post.id)
+    }
+
+    func testMediaRefreshUsesTheSingleProtectedMediaPath() async throws {
+        let author = MobileSocialAuthor(
+            identity: try LogicalParticipantIdentity(
+                userID: "client-one",
+                participantType: .client),
+            profileID: "00000000-0000-0000-0000-000000000002",
+            displayName: "Client One",
+            avatar: nil)
+        let post = MobileSocialPost(
+            id: UUID(),
+            author: author,
+            contentType: MobileSocialContentType.post.rawValue,
+            body: "An image post.",
+            postedUTC: .now,
+            expiresUTC: nil,
+            reactionCount: 0,
+            commentCount: 0,
+            reactedByCurrentActor: false,
+            followedByCurrentActor: false,
+            savedByCurrentActor: false,
+            repostedByCurrentActor: false,
+            metrics: testSocialMetrics,
+            music: nil,
+            media: [],
+            comments: [])
+        let api = RecordingSocialAPI(post: post)
+        let store = MobileSocialStore(
+            api: api,
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics())
+        let assetID = UUID()
+
+        let first = await store.mediaData(for: assetID)
+        let cached = await store.mediaData(for: assetID)
+        let refreshed = await store.mediaData(
+            for: assetID,
+            forceRefresh: true)
+        let mediaDataCallCount = await api.mediaDataCallCount()
+
+        XCTAssertEqual(first, Data())
+        XCTAssertEqual(cached, Data())
+        XCTAssertEqual(refreshed, Data())
+        XCTAssertEqual(mediaDataCallCount, 2)
     }
 
     func testMusicSelectionPreservesProviderVerifiedTrimAndMixMetadata() throws {
@@ -369,6 +418,7 @@ private actor RecordingSocialAPI: MobileSocialAPI {
     private var recordedViewRequest: (postID: UUID, request: MobileRecordSocialView)?
     private var recordedUpdateRequest: MobileUpdateSocialPost?
     private var recordedDeletedPostID: UUID?
+    private var recordedMediaDataCallCount = 0
 
     init(post: MobileSocialPost) {
         self.post = post
@@ -415,8 +465,11 @@ private actor RecordingSocialAPI: MobileSocialAPI {
     }
 
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data {
-        Data()
+        recordedMediaDataCallCount += 1
+        return Data()
     }
+
+    func mediaDataCallCount() -> Int { recordedMediaDataCallCount }
 
     func toggleReaction(
         postID: UUID,

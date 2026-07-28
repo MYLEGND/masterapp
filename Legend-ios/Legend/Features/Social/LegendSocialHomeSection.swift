@@ -705,7 +705,7 @@ struct LegendSocialMediaImage: View {
     @ObservedObject var social: MobileSocialStore
     let contentMode: ContentMode
     let placeholderHeight: CGFloat?
-    @State private var image: UIImage?
+    @State private var state = ImageState.loading
 
     init(
         media: MobileSocialMedia,
@@ -721,11 +721,12 @@ struct LegendSocialMediaImage: View {
 
     var body: some View {
         Group {
-            if let image {
+            switch state {
+            case .loaded(let image):
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
-            } else {
+            case .loading:
                 RoundedRectangle(
                     cornerRadius: LegendNextRadius.control,
                     style: .continuous
@@ -734,6 +735,27 @@ struct LegendSocialMediaImage: View {
                 .frame(height: placeholderHeight)
                 .overlay {
                     ProgressView()
+                }
+            case .unavailable:
+                RoundedRectangle(
+                    cornerRadius: LegendNextRadius.control,
+                    style: .continuous
+                )
+                .fill(LegendNextColor.surfaceInset)
+                .frame(height: placeholderHeight)
+                .overlay {
+                    Button {
+                        Task { await loadMedia(forceRefresh: true) }
+                    } label: {
+                        Label("Image unavailable", systemImage: "photo.badge.exclamationmark")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                            .padding(.horizontal, LegendNextSpacing.sm)
+                            .padding(.vertical, LegendNextSpacing.xs)
+                            .background(LegendNextColor.surfaceElevated, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Retries the secure image download")
                 }
             }
         }
@@ -744,13 +766,29 @@ struct LegendSocialMediaImage: View {
             )
         )
         .task(id: media.id) {
-            guard let data = await social.mediaData(for: media.id) else {
-                return
-            }
-
-            image = UIImage(data: data)
+            await loadMedia()
         }
         .accessibilityLabel(media.accessibilityText ?? "Shared image")
+    }
+
+    private func loadMedia(forceRefresh: Bool = false) async {
+        state = .loading
+
+        guard let data = await social.mediaData(
+            for: media.id,
+            forceRefresh: forceRefresh),
+              let image = UIImage(data: data) else {
+            state = .unavailable
+            return
+        }
+
+        state = .loaded(image)
+    }
+
+    private enum ImageState {
+        case loading
+        case loaded(UIImage)
+        case unavailable
     }
 }
 

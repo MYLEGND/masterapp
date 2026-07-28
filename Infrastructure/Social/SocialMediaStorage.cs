@@ -1,3 +1,8 @@
+using Azure;
+using Azure.Identity;
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
+using Azure.Storage.Blobs.Specialized;
 using Domain.Social;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -28,6 +33,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
 
     private readonly string _rootPath;
     private readonly long _maximumMediaBytes;
+    private readonly BlobContainerClient? _blobContainer;
     private readonly ILogger<SocialMediaStorage> _logger;
 
     public SocialMediaStorage(
@@ -50,6 +56,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         _maximumMediaBytes = ParseMaximumMediaBytes(
             configuration["Social:Media:MaximumBytes"]);
 
+        _blobContainer = BuildBlobContainerClient(configuration);
         _logger = logger;
     }
 
@@ -112,6 +119,115 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         var storageKey =
             $"originals/{utcNow:yyyy}/{utcNow:MM}/{mediaAssetId:N}/{storedFileName}";
 
+        return _blobContainer is not null
+            ? await StoreInBlobAsync(
+                storageKey,
+                safeOriginalName,
+                storedFileName,
+                supportedType,
+                declaredSizeBytes,
+                content,
+                cancellationToken)
+            : await StoreOnFileSystemAsync(
+                storageKey,
+                safeOriginalName,
+                storedFileName,
+                supportedType,
+                declaredSizeBytes,
+                content,
+                cancellationToken);
+    }
+
+    private async Task<SocialMediaStorageResult> StoreInBlobAsync(
+        string storageKey,
+        string originalFileName,
+        string storedFileName,
+        SupportedSocialMediaType supportedType,
+        long declaredSizeBytes,
+        Stream content,
+        CancellationToken cancellationToken)
+    {
+        var blobClient = _blobContainer!.GetBlobClient(storageKey);
+
+        try
+        {
+            await EnsureBlobContainerExistsAsync(cancellationToken);
+
+            long actualSizeBytes;
+            await using (var destination = await _blobContainer
+                .GetBlockBlobClient(storageKey)
+                .OpenWriteAsync(
+                    overwrite: false,
+                    options: new BlockBlobOpenWriteOptions
+                    {
+                        HttpHeaders = new BlobHttpHeaders
+                        {
+                            ContentType = supportedType.MimeType
+                        }
+                    },
+                    cancellationToken: cancellationToken))
+            {
+                actualSizeBytes = await CopyWithLimitAsync(
+                    content,
+                    destination,
+                    _maximumMediaBytes,
+                    cancellationToken);
+            }
+
+            if (actualSizeBytes != declaredSizeBytes)
+            {
+                await DeleteBlobIfExistsAsync(blobClient);
+
+                return SocialMediaStorageResult.Failure(
+                    "SOCIAL_MEDIA_SIZE_MISMATCH",
+                    "The uploaded social media size did not match the request.");
+            }
+
+            return CreateStoredMediaResult(
+                originalFileName,
+                storedFileName,
+                supportedType,
+                actualSizeBytes,
+                storageKey);
+        }
+        catch (SocialMediaMaximumSizeExceededException)
+        {
+            await DeleteBlobIfExistsAsync(blobClient);
+
+            return SocialMediaStorageResult.Failure(
+                "SOCIAL_MEDIA_SIZE_INVALID",
+                "The social media file size is not permitted.");
+        }
+        catch (OperationCanceledException)
+        {
+            await DeleteBlobIfExistsAsync(blobClient);
+            throw;
+        }
+        catch (Exception ex)
+            when (ex is RequestFailedException or IOException or UnauthorizedAccessException)
+        {
+            await DeleteBlobIfExistsAsync(blobClient);
+
+            _logger.LogError(
+                ex,
+                "Social media blob storage failed. StorageKey={StorageKey}",
+                storageKey);
+
+            return SocialMediaStorageResult.Failure(
+                "SOCIAL_MEDIA_STORAGE_FAILED",
+                "The social media file could not be stored.");
+        }
+    }
+
+    private async Task<SocialMediaStorageResult> StoreOnFileSystemAsync(
+        string storageKey,
+        string originalFileName,
+        string storedFileName,
+        SupportedSocialMediaType supportedType,
+        long declaredSizeBytes,
+        Stream content,
+        CancellationToken cancellationToken)
+    {
         var physicalPath = ResolvePhysicalPath(storageKey);
 
         if (physicalPath is null)
@@ -149,14 +265,12 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
                     "The uploaded social media size did not match the request.");
             }
 
-            return SocialMediaStorageResult.Success(
-                new SocialStoredMedia(
-                    safeOriginalName,
-                    storedFileName,
-                    supportedType.MediaKind,
-                    supportedType.MimeType,
-                    actualSizeBytes,
-                    storageKey));
+            return CreateStoredMediaResult(
+                originalFileName,
+                storedFileName,
+                supportedType,
+                actualSizeBytes,
+                storageKey);
         }
         catch (SocialMediaMaximumSizeExceededException)
         {
@@ -178,8 +292,8 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
 
             _logger.LogError(
                 ex,
-                "Social media storage failed. MediaAssetId={MediaAssetId}",
-                mediaAssetId);
+                "Social media file storage failed. StorageKey={StorageKey}",
+                storageKey);
 
             return SocialMediaStorageResult.Failure(
                 "SOCIAL_MEDIA_STORAGE_FAILED",
@@ -187,12 +301,103 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         }
     }
 
-    public Task<Stream?> OpenReadAsync(
+    public async Task<Stream?> OpenReadAsync(
         string storageKey,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (_blobContainer is null)
+            return await OpenReadFromFileSystem(storageKey);
+
+        var blobClient = _blobContainer.GetBlobClient(storageKey);
+
+        try
+        {
+            var download = await blobClient.DownloadStreamingAsync(
+                cancellationToken: cancellationToken);
+            return download.Value.Content;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return await MigrateLegacyFileAsync(
+                storageKey,
+                blobClient,
+                cancellationToken);
+        }
+        catch (RequestFailedException ex)
+        {
+            _logger.LogError(
+                ex,
+                "Social media retrieval failed. StorageKey={StorageKey}",
+                storageKey);
+            return null;
+        }
+    }
+
+    public async Task DeleteAsync(
+        string storageKey,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (_blobContainer is not null)
+        {
+            await DeleteBlobIfExistsAsync(
+                _blobContainer.GetBlobClient(storageKey));
+        }
+
+        DeleteFromFileSystem(storageKey);
+    }
+
+    private async Task<Stream?> MigrateLegacyFileAsync(
+        string storageKey,
+        BlobClient blobClient,
+        CancellationToken cancellationToken)
+    {
+        var physicalPath = ResolvePhysicalPath(storageKey);
+
+        if (physicalPath is null || !File.Exists(physicalPath))
+            return null;
+
+        try
+        {
+            await using var source = new FileStream(
+                physicalPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                CopyBufferSize,
+                useAsync: true);
+
+            await blobClient.UploadAsync(
+                source,
+                overwrite: false,
+                cancellationToken: cancellationToken);
+
+            var download = await blobClient.DownloadStreamingAsync(
+                cancellationToken: cancellationToken);
+            return download.Value.Content;
+        }
+        catch (RequestFailedException ex) when (ex.Status is 409 or 412)
+        {
+            var download = await blobClient.DownloadStreamingAsync(
+                cancellationToken: cancellationToken);
+            return download.Value.Content;
+        }
+        catch (Exception ex)
+            when (ex is RequestFailedException or IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(
+                ex,
+                "Legacy social media could not be migrated to blob storage. StorageKey={StorageKey}",
+                storageKey);
+            return await OpenReadFromFileSystem(storageKey);
+        }
+    }
+
+    private Task<Stream?> OpenReadFromFileSystem(string storageKey)
+    {
         var physicalPath = ResolvePhysicalPath(storageKey);
 
         if (physicalPath is null || !File.Exists(physicalPath))
@@ -209,16 +414,12 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         return Task.FromResult<Stream?>(stream);
     }
 
-    public Task DeleteAsync(
-        string storageKey,
-        CancellationToken cancellationToken = default)
+    private void DeleteFromFileSystem(string storageKey)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-
         var physicalPath = ResolvePhysicalPath(storageKey);
 
         if (physicalPath is null || !File.Exists(physicalPath))
-            return Task.CompletedTask;
+            return;
 
         try
         {
@@ -230,11 +431,66 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         {
             _logger.LogWarning(
                 ex,
-                "Social media deletion failed. StorageKey={StorageKey}",
+                "Social media file deletion failed. StorageKey={StorageKey}",
                 storageKey);
         }
+    }
 
-        return Task.CompletedTask;
+    private static SocialMediaStorageResult CreateStoredMediaResult(
+        string originalFileName,
+        string storedFileName,
+        SupportedSocialMediaType supportedType,
+        long actualSizeBytes,
+        string storageKey) =>
+        SocialMediaStorageResult.Success(
+            new SocialStoredMedia(
+                originalFileName,
+                storedFileName,
+                supportedType.MediaKind,
+                supportedType.MimeType,
+                actualSizeBytes,
+                storageKey));
+
+    private static BlobContainerClient? BuildBlobContainerClient(
+        IConfiguration configuration)
+    {
+        var connectionString = configuration[
+            "Social:Media:StorageConnectionString"];
+        var containerName = configuration["Social:Media:ContainerName"];
+
+        if (!string.IsNullOrWhiteSpace(connectionString) &&
+            !string.IsNullOrWhiteSpace(containerName))
+        {
+            return new BlobContainerClient(connectionString, containerName);
+        }
+
+        var containerUrl = configuration["Social:Media:BlobContainerUrl"];
+        return Uri.TryCreate(containerUrl, UriKind.Absolute, out var uri)
+            ? new BlobContainerClient(uri, new DefaultAzureCredential())
+            : null;
+    }
+
+    private async Task EnsureBlobContainerExistsAsync(
+        CancellationToken cancellationToken) =>
+        await _blobContainer!.CreateIfNotExistsAsync(
+            PublicAccessType.None,
+            cancellationToken: cancellationToken);
+
+    private async Task DeleteBlobIfExistsAsync(BlobClient blobClient)
+    {
+        try
+        {
+            await blobClient.DeleteIfExistsAsync(
+                DeleteSnapshotsOption.IncludeSnapshots,
+                cancellationToken: CancellationToken.None);
+        }
+        catch (RequestFailedException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Social media blob deletion failed. StorageKey={StorageKey}",
+                blobClient.Name);
+        }
     }
 
     private string? ResolvePhysicalPath(string? storageKey)

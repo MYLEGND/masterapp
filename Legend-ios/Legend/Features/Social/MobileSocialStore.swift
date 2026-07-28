@@ -314,8 +314,10 @@ final class MobileSocialStore: ObservableObject {
         }
     }
 
-    func mediaData(for assetID: UUID) async -> Data? {
-        if let cached = mediaCache[assetID] {
+    func mediaData(for assetID: UUID, forceRefresh: Bool = false) async -> Data? {
+        if forceRefresh {
+            mediaCache.removeValue(forKey: assetID)
+        } else if let cached = mediaCache[assetID] {
             return cached
         }
 
@@ -493,10 +495,11 @@ final class MobileSocialStore: ObservableObject {
     }
 
     private func replace(_ post: MobileSocialPost) {
-        guard case .loaded(let snapshot) = state else { return }
-        let stories = snapshot.stories.map { $0.id == post.id ? post : $0 }
-        let posts = snapshot.posts.map { $0.id == post.id ? post : $0 }
-        state = .loaded(MobileSocialSnapshot(stories: stories, posts: posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: snapshot.currentProfileMetrics, creatorInsights: snapshot.creatorInsights))
+        if case .loaded(let snapshot) = state {
+            let stories = snapshot.stories.map { $0.id == post.id ? post : $0 }
+            let posts = snapshot.posts.map { $0.id == post.id ? post : $0 }
+            state = .loaded(MobileSocialSnapshot(stories: stories, posts: posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: snapshot.currentProfileMetrics, creatorInsights: snapshot.creatorInsights))
+        }
         replaceProfilePost(post)
     }
 
