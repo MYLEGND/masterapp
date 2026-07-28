@@ -210,6 +210,21 @@ final class MobileNativeContractTests: XCTestCase {
         }
     }
 
+    func testMobileHTTPClientBoundsProtectedMediaDownloads() async throws {
+        StubURLProtocol.responseStatus = 200
+        StubURLProtocol.lastRequestTimeout = nil
+
+        let client = MobileHTTPClient(
+            baseURL: URL(string: "https://api.example.test")!,
+            session: stubSession())
+        let data = try await client.getData(
+            "/api/v1/mobile/social/media/00000000-0000-0000-0000-000000000001",
+            accessToken: "token")
+
+        XCTAssertTrue(data.isEmpty)
+        XCTAssertEqual(StubURLProtocol.lastRequestTimeout, 20)
+    }
+
     func testSignOutClearsTheKeychainAbstraction() {
         let store = InMemoryTokenStore()
         let coordinator = MobileSessionCoordinator(
@@ -410,11 +425,13 @@ private struct StubMobileFinancialAPI: MobileFinancialAPI {
 
 private final class StubURLProtocol: URLProtocol {
     static var responseStatus = 200
+    static var lastRequestTimeout: TimeInterval?
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        Self.lastRequestTimeout = request.timeoutInterval
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: Self.responseStatus,

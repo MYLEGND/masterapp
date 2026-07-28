@@ -244,28 +244,37 @@ enum MobileFinancialAmountKind: Sendable {
     case historical
 }
 
+
 enum MobileFinancialAmountSemantic {
     static func tone(
         for amount: Decimal,
         kind: MobileFinancialAmountKind
     ) -> LegendNextTone {
-        if amount == 0 {
+        guard amount != 0 else {
             return .neutral
         }
 
         switch kind {
-        case .assets, .income, .payoffProgress:
-            return amount > 0 ? .success : .neutral
-        case .liabilities, .bills, .endingDebt:
-            return amount > 0 ? .danger : .neutral
-        case .debt:
-            return amount > 0 ? .danger : .neutral
-        case .netWorth, .endingCash:
-            return amount > 0 ? .success : .danger
-        case .openingCash:
-            return amount < 0 ? .danger : .neutral
+        case .assets,
+             .income,
+             .netWorth,
+             .endingCash,
+             .openingCash,
+             .payoffProgress:
+            return amount > 0
+                ? .success
+                : .danger
+
+        case .liabilities,
+             .bills,
+             .debt,
+             .endingDebt:
+            return .danger
+
         case .historical:
-            return .neutral
+            return amount > 0
+                ? .information
+                : .danger
         }
     }
 
@@ -273,50 +282,93 @@ enum MobileFinancialAmountSemantic {
         forCents amountCents: Int64,
         kind: MobileFinancialAmountKind
     ) -> LegendNextTone {
-        tone(for: Decimal(amountCents) / Decimal(100), kind: kind)
+        tone(
+            for:
+                Decimal(amountCents)
+                / Decimal(100),
+            kind: kind
+        )
     }
 
-    static func tone(forStatus status: String) -> LegendNextTone {
+    static func tone(
+        forStatus status: String
+    ) -> LegendNextTone {
         let normalized = status
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
             .lowercased()
 
-        if normalized.contains("critical") ||
-            normalized.contains("danger") ||
-            normalized.contains("severe") ||
-            normalized.contains("exposed") ||
-            normalized.contains("negative") ||
-            normalized.contains("high") ||
-            normalized.contains("shortfall") {
+        if containsAny(
+            normalized,
+            [
+                "critical",
+                "danger",
+                "severe",
+                "exposed",
+                "negative",
+                "high risk",
+                "shortfall",
+                "deficit",
+                "overdue",
+                "past due",
+                "delinquent"
+            ]
+        ) {
             return .danger
         }
 
-        if normalized.contains("warning") ||
-            normalized.contains("watch") ||
-            normalized.contains("tight") ||
-            normalized.contains("pressure") ||
-            normalized.contains("moderate") ||
-            normalized.contains("review") ||
-            normalized.contains("incomplete") {
+        if containsAny(
+            normalized,
+            [
+                "warning",
+                "watch",
+                "tight",
+                "pressure",
+                "moderate",
+                "review",
+                "incomplete",
+                "attention",
+                "upcoming",
+                "due soon",
+                "scheduled obligation"
+            ]
+        ) {
             return .warning
         }
 
-        if normalized.contains("healthy") ||
-            normalized.contains("strong") ||
-            normalized.contains("excellent") ||
-            normalized.contains("stable") ||
-            normalized.contains("positive") ||
-            normalized.contains("improving") ||
-            normalized.contains("clear") ||
-            normalized.contains("low") {
+        if containsAny(
+            normalized,
+            [
+                "healthy",
+                "strong",
+                "excellent",
+                "stable",
+                "positive",
+                "improving",
+                "clear",
+                "low risk",
+                "on track",
+                "complete"
+            ]
+        ) {
             return .success
         }
 
-        if normalized.contains("progress") ||
-            normalized.contains("building") ||
-            normalized.contains("active") ||
-            normalized.contains("scheduled") ||
-            normalized.contains("current") {
+        if containsAny(
+            normalized,
+            [
+                "progress",
+                "building",
+                "active",
+                "scheduled",
+                "current",
+                "informational",
+                "available",
+                "updated",
+                "projected"
+            ]
+        ) {
             return .information
         }
 
@@ -327,17 +379,120 @@ enum MobileFinancialAmountSemantic {
         forEventKind eventKind: String,
         amountCents: Int64
     ) -> LegendNextTone {
-        let normalized = eventKind.lowercased()
+        let normalized = eventKind
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            .lowercased()
 
-        if normalized.contains("income") {
-            return tone(forCents: amountCents, kind: .income)
+        if containsAny(
+            normalized,
+            [
+                "income",
+                "paycheck",
+                "payroll",
+                "deposit",
+                "revenue",
+                "refund",
+                "reimbursement",
+                "cash inflow",
+                "cashflow in",
+                "cash flow in",
+                "contribution",
+                "savings",
+                "interest",
+                "dividend"
+            ]
+        ) {
+            return tone(
+                forCents: amountCents,
+                kind: .income
+            )
         }
 
-        if normalized.contains("debt") {
-            return tone(forCents: amountCents, kind: .debt)
+        if containsAny(
+            normalized,
+            [
+                "bill",
+                "expense",
+                "spending",
+                "purchase",
+                "payment",
+                "withdrawal",
+                "cash outflow",
+                "cashflow out",
+                "cash flow out",
+                "fee",
+                "charge",
+                "premium",
+                "rent",
+                "mortgage",
+                "utility"
+            ]
+        ) {
+            return amountCents == 0
+                ? .neutral
+                : .danger
         }
 
-        return tone(forCents: amountCents, kind: .bills)
+        if containsAny(
+            normalized,
+            [
+                "debt",
+                "loan",
+                "credit card",
+                "liability",
+                "principal",
+                "payoff"
+            ]
+        ) {
+            return amountCents == 0
+                ? .neutral
+                : .danger
+        }
+
+        if containsAny(
+            normalized,
+            [
+                "warning",
+                "attention",
+                "upcoming",
+                "due",
+                "scheduled"
+            ]
+        ) {
+            return .warning
+        }
+
+        if containsAny(
+            normalized,
+            [
+                "current",
+                "projection",
+                "forecast",
+                "informational",
+                "historical"
+            ]
+        ) {
+            return amountCents < 0
+                ? .danger
+                : .information
+        }
+
+        return amountCents > 0
+            ? .information
+            : amountCents < 0
+                ? .danger
+                : .neutral
+    }
+
+    private static func containsAny(
+        _ value: String,
+        _ candidates: [String]
+    ) -> Bool {
+        candidates.contains {
+            value.contains($0)
+        }
     }
 }
 

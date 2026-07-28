@@ -2557,11 +2557,11 @@ private struct LegendFinanceView: View {
                     Image(systemName: section.systemImage)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(
-                            section.primaryMetric.semantic.tone.color
+                            financialSummaryTone(section.primaryMetric).color
                         )
                         .frame(width: 36, height: 36)
                         .background(
-                            section.primaryMetric.semantic.tone.color
+                            financialSummaryTone(section.primaryMetric).color
                                 .opacity(0.16),
                             in: Circle()
                         )
@@ -2588,7 +2588,9 @@ private struct LegendFinanceView: View {
                             LegendNextBadge(
                                 section.status,
                                 tone:
-                                    section.primaryMetric.semantic.tone,
+                                    financialSummaryTone(
+                                        section.primaryMetric
+                                    ),
                                 systemImage: "circle.fill"
                             )
                         }
@@ -2628,6 +2630,104 @@ private struct LegendFinanceView: View {
         )
     }
 
+
+    private func financialSummaryTone(
+        _ metric: MobileFinancialSummaryMetricResponse
+    ) -> LegendNextTone {
+        let normalizedLabel = metric.label
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            .lowercased()
+
+        let kind: MobileFinancialAmountKind?
+
+        if normalizedLabel.contains("opening cash") {
+            kind = .openingCash
+        } else if normalizedLabel.contains("ending cash") {
+            kind = .endingCash
+        } else if normalizedLabel.contains("ending debt") {
+            kind = .endingDebt
+        } else if normalizedLabel.contains("net worth") {
+            kind = .netWorth
+        } else if normalizedLabel.contains("liabilit") {
+            kind = .liabilities
+        } else if normalizedLabel.contains("asset") {
+            kind = .assets
+        } else if normalizedLabel.contains("income") ||
+                    normalizedLabel.contains("cash inflow") {
+            kind = .income
+        } else if normalizedLabel.contains("bill") ||
+                    normalizedLabel.contains("expense") ||
+                    normalizedLabel.contains("spending") ||
+                    normalizedLabel.contains("outflow") {
+            kind = .bills
+        } else if normalizedLabel.contains("debt") ||
+                    normalizedLabel.contains("loan") {
+            kind = .debt
+        } else if normalizedLabel.contains("payoff") {
+            kind = .payoffProgress
+        } else {
+            kind = nil
+        }
+
+        guard let kind,
+              let amount = financialDecimal(
+                  from: metric.displayValue
+              ) else {
+            return metric.semantic.tone
+        }
+
+        return MobileFinancialAmountSemantic.tone(
+            for: amount,
+            kind: kind
+        )
+    }
+
+    private func financialDecimal(
+        from displayValue: String
+    ) -> Decimal? {
+        let trimmed = displayValue
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        let isParenthesized =
+            trimmed.hasPrefix("(") &&
+            trimmed.hasSuffix(")")
+
+        let allowed = CharacterSet(
+            charactersIn: "0123456789.-"
+        )
+
+        let normalized = trimmed
+            .unicodeScalars
+            .filter { allowed.contains($0) }
+            .map(String.init)
+            .joined()
+
+        guard !normalized.isEmpty,
+              normalized != "-",
+              normalized != ".",
+              normalized != "-.",
+              var amount = Decimal(
+                  string: normalized,
+                  locale: Locale(identifier: "en_US_POSIX")
+              ) else {
+            return nil
+        }
+
+        if isParenthesized && amount > 0 {
+            amount *= -1
+        }
+
+        return amount
+    }
+
     private func summaryMetric(
         _ metric: MobileFinancialSummaryMetricResponse
     ) -> some View {
@@ -2642,7 +2742,7 @@ private struct LegendFinanceView: View {
 
             Text(metric.displayValue)
                 .font(LegendNextTypography.bodyEmphasis)
-                .foregroundStyle(metric.semantic.tone.color)
+                .foregroundStyle(financialSummaryTone(metric).color)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
@@ -2663,10 +2763,12 @@ private struct LegendFinanceView: View {
                 if let section = financial.presentation?.prioritySections.first(
                     where: { $0.key == destination.rawValue }
                 ) {
-                    LegendNextStatusBanner(
+                    financialIntelligenceStatusBanner(
                         title: section.status,
                         detail: "\(section.reason) \(section.discussionPrompt)",
-                        tone: section.primaryMetric.semantic.tone,
+                        tone: financialSummaryTone(
+                            section.primaryMetric
+                        ),
                         systemImage: section.systemImage
                     )
                 }
@@ -3043,7 +3145,7 @@ private struct LegendFinanceView: View {
 
             Text(value)
                 .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(tone.color)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.42)
@@ -3069,13 +3171,14 @@ private struct LegendFinanceView: View {
         .accessibilityElement(children: .combine)
     }
 
+
     private func weekAtGlance(
         _ week: MobileFinancialWeekAtGlanceResponse
     ) -> some View {
-        LegendNextSurface {
+        financialIntelligenceSurface {
             VStack(
                 alignment: .leading,
-                spacing: LegendNextSpacing.xs
+                spacing: LegendNextSpacing.sm
             ) {
                 sectionHeading(
                     eyebrow: "CURRENT OUTLOOK",
@@ -3093,84 +3196,98 @@ private struct LegendFinanceView: View {
                         title: "Opening cash",
                         value: money(week.openingCashCents),
                         symbol: "wallet.bifold.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents: week.openingCashCents,
-                            kind: .openingCash
-                        )
+                        tone:
+                            MobileFinancialAmountSemantic.tone(
+                                forCents:
+                                    week.openingCashCents,
+                                kind: .openingCash
+                            )
                     )
 
                     financialMetric(
                         title: "Income",
                         value: money(week.incomeCents),
-                        symbol: "arrow.down.left.circle.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents: week.incomeCents,
-                            kind: .income
-                        )
+                        symbol:
+                            "arrow.down.left.circle.fill",
+                        tone:
+                            MobileFinancialAmountSemantic.tone(
+                                forCents: week.incomeCents,
+                                kind: .income
+                            )
                     )
 
                     financialMetric(
                         title: "Bills",
                         value: money(
-                            week.debitExpenseCents +
-                            week.creditExpenseCents
+                            week.debitExpenseCents
+                            + week.creditExpenseCents
                         ),
                         symbol: "doc.text.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents:
-                                week.debitExpenseCents +
-                                week.creditExpenseCents,
-                            kind: .bills
-                        )
+                        tone:
+                            MobileFinancialAmountSemantic.tone(
+                                forCents:
+                                    week.debitExpenseCents
+                                    + week.creditExpenseCents,
+                                kind: .bills
+                            )
                     )
 
                     financialMetric(
                         title: "Debt",
                         value: money(
-                            week.requiredDebtPaymentCents +
-                            week.extraDebtPaymentCents
+                            week.requiredDebtPaymentCents
+                            + week.extraDebtPaymentCents
                         ),
                         symbol: "creditcard.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents:
-                                week.requiredDebtPaymentCents +
-                                week.extraDebtPaymentCents,
-                            kind: .debt
-                        )
+                        tone:
+                            MobileFinancialAmountSemantic.tone(
+                                forCents:
+                                    week.requiredDebtPaymentCents
+                                    + week.extraDebtPaymentCents,
+                                kind: .debt
+                            )
                     )
 
                     financialMetric(
                         title: "Ending cash",
                         value: money(week.endingCashCents),
                         symbol: "banknote.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents: week.endingCashCents,
-                            kind: .endingCash
-                        )
+                        tone:
+                            MobileFinancialAmountSemantic.tone(
+                                forCents:
+                                    week.endingCashCents,
+                                kind: .endingCash
+                            )
                     )
 
                     financialMetric(
                         title: "Ending debt",
                         value: money(week.endingDebtCents),
-                        symbol: "chart.line.downtrend.xyaxis",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents: week.endingDebtCents,
-                            kind: .endingDebt
-                        )
+                        symbol:
+                            "chart.line.downtrend.xyaxis",
+                        tone:
+                            MobileFinancialAmountSemantic.tone(
+                                forCents:
+                                    week.endingDebtCents,
+                                kind: .endingDebt
+                            )
                     )
                 }
 
                 if !week.events.isEmpty {
-                    Divider()
+                    financialIntelligenceDivider
 
                     VStack(
                         alignment: .leading,
                         spacing: LegendNextSpacing.xs
                     ) {
                         Text("THIS WEEK'S ACTIVITY")
-                            .font(.caption.weight(.bold))
+                            .font(
+                                LegendNextTypography.eyebrow
+                            )
+                            .tracking(0.8)
                             .foregroundStyle(
-                                LegendNextColor.textSecondary
+                                LegendNextColor.goldBright
                             )
 
                         ForEach(week.events) { event in
@@ -3189,6 +3306,7 @@ private struct LegendFinanceView: View {
                                                 .semibold
                                             )
                                         )
+                                        .foregroundStyle(.white)
 
                                     Text(
                                         "\(displayDate(event.occursOn)) · \(event.kind)"
@@ -3198,8 +3316,7 @@ private struct LegendFinanceView: View {
                                             .supporting
                                     )
                                     .foregroundStyle(
-                                        LegendNextColor
-                                            .textSecondary
+                                        Color.white.opacity(0.62)
                                     )
                                 }
 
@@ -3207,17 +3324,24 @@ private struct LegendFinanceView: View {
 
                                 Text(money(event.amountCents))
                                     .font(
-                                        .subheadline.weight(
-                                            .semibold
-                                        )
+                                        .subheadline.weight(.bold)
                                     )
                                     .foregroundStyle(
-                                        MobileFinancialAmountSemantic.tone(
-                                            forEventKind: event.kind,
-                                            amountCents: event.amountCents
-                                        ).color
+                                        MobileFinancialAmountSemantic
+                                            .tone(
+                                                forEventKind:
+                                                    event.kind,
+                                                amountCents:
+                                                    event.amountCents
+                                            )
+                                            .color
                                     )
+                                    .monospacedDigit()
                             }
+                            .padding(
+                                .vertical,
+                                LegendNextSpacing.micro
+                            )
                         }
                     }
                 }
@@ -3225,19 +3349,19 @@ private struct LegendFinanceView: View {
         }
     }
 
+
     private func monthAtGlance(
         _ month: MobileFinancialMonthAtGlanceResponse
     ) -> some View {
-        LegendNextSurface {
+        financialIntelligenceSurface {
             VStack(
                 alignment: .leading,
-                spacing: LegendNextSpacing.xs
+                spacing: LegendNextSpacing.sm
             ) {
                 sectionHeading(
                     eyebrow: "FORWARD VIEW",
                     title: "Month at a Glance",
-                    detail:
-                        monthLabel(month.monthKey),
+                    detail: monthLabel(month.monthKey),
                     status: month.pressureStatus
                 )
 
@@ -3247,95 +3371,123 @@ private struct LegendFinanceView: View {
                 ) {
                     financialMetric(
                         title: "Opening cash",
-                        value: money(month.openingCashCents),
+                        value:
+                            money(month.openingCashCents),
                         symbol: "wallet.bifold.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents: month.openingCashCents,
-                            kind: .openingCash
-                        )
+                        tone:
+                            MobileFinancialAmountSemantic.tone(
+                                forCents:
+                                    month.openingCashCents,
+                                kind: .openingCash
+                            )
                     )
 
                     financialMetric(
                         title: "Income",
                         value: money(month.incomeCents),
-                        symbol: "arrow.down.left.circle.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents: month.incomeCents,
-                            kind: .income
-                        )
+                        symbol:
+                            "arrow.down.left.circle.fill",
+                        tone:
+                            MobileFinancialAmountSemantic.tone(
+                                forCents: month.incomeCents,
+                                kind: .income
+                            )
                     )
 
                     financialMetric(
                         title: "Bills",
                         value: money(
-                            month.debitExpenseCents +
-                            month.creditExpenseCents
+                            month.debitExpenseCents
+                            + month.creditExpenseCents
                         ),
                         symbol: "doc.text.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents:
-                                month.debitExpenseCents +
-                                month.creditExpenseCents,
-                            kind: .bills
-                        )
+                        tone:
+                            MobileFinancialAmountSemantic.tone(
+                                forCents:
+                                    month.debitExpenseCents
+                                    + month.creditExpenseCents,
+                                kind: .bills
+                            )
                     )
 
                     financialMetric(
                         title: "Debt",
                         value: money(
-                            month.requiredDebtPaymentCents +
-                            month.extraDebtPaymentCents
+                            month.requiredDebtPaymentCents
+                            + month.extraDebtPaymentCents
                         ),
                         symbol: "creditcard.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents:
-                                month.requiredDebtPaymentCents +
-                                month.extraDebtPaymentCents,
-                            kind: .debt
-                        )
+                        tone:
+                            MobileFinancialAmountSemantic.tone(
+                                forCents:
+                                    month.requiredDebtPaymentCents
+                                    + month.extraDebtPaymentCents,
+                                kind: .debt
+                            )
                     )
 
                     financialMetric(
                         title: "Ending cash",
                         value: money(month.endingCashCents),
                         symbol: "banknote.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents: month.endingCashCents,
-                            kind: .endingCash
-                        )
+                        tone:
+                            MobileFinancialAmountSemantic.tone(
+                                forCents:
+                                    month.endingCashCents,
+                                kind: .endingCash
+                            )
                     )
 
                     financialMetric(
                         title: "Ending debt",
                         value: money(month.endingDebtCents),
-                        symbol: "chart.line.downtrend.xyaxis",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents: month.endingDebtCents,
-                            kind: .endingDebt
-                        )
+                        symbol:
+                            "chart.line.downtrend.xyaxis",
+                        tone:
+                            MobileFinancialAmountSemantic.tone(
+                                forCents:
+                                    month.endingDebtCents,
+                                kind: .endingDebt
+                            )
                     )
                 }
 
                 if month.savingsContributionCents != 0 {
-                    HStack {
-                        Label(
-                            "Savings contribution",
-                            systemImage: "banknote.fill"
-                        )
-                        .font(.subheadline.weight(.semibold))
+                    HStack(
+                        spacing: LegendNextSpacing.xs
+                    ) {
+                        Image(systemName: "banknote.fill")
+                            .foregroundStyle(
+                                LegendNextColor.goldBright
+                            )
+
+                        Text("Savings contribution")
+                            .font(
+                                .subheadline.weight(
+                                    .semibold
+                                )
+                            )
+                            .foregroundStyle(.white)
 
                         Spacer()
 
                         Text(
                             money(
-                                month.savingsContributionCents
+                                month
+                                    .savingsContributionCents
                             )
                         )
-                        .font(.subheadline.weight(.bold))
+                        .font(
+                            .subheadline.weight(.bold)
+                        )
+                        .foregroundStyle(
+                            LegendNextColor.goldBright
+                        )
+                        .monospacedDigit()
                     }
                     .padding(LegendNextSpacing.sm)
                     .background(
-                        LegendNextColor.gold.opacity(0.10),
+                        Color.white.opacity(0.055),
                         in: RoundedRectangle(
                             cornerRadius:
                                 LegendNextRadius.control,
@@ -3345,16 +3497,19 @@ private struct LegendFinanceView: View {
                 }
 
                 if !month.weeks.isEmpty {
-                    Divider()
+                    financialIntelligenceDivider
 
                     VStack(
                         alignment: .leading,
                         spacing: LegendNextSpacing.xs
                     ) {
                         Text("MONTHLY ROADMAP")
-                            .font(.caption.weight(.bold))
+                            .font(
+                                LegendNextTypography.eyebrow
+                            )
+                            .tracking(0.8)
                             .foregroundStyle(
-                                LegendNextColor.textSecondary
+                                LegendNextColor.goldBright
                             )
 
                         ForEach(month.weeks) { week in
@@ -3374,6 +3529,7 @@ private struct LegendFinanceView: View {
                                             .semibold
                                         )
                                     )
+                                    .foregroundStyle(.white)
 
                                     Text(
                                         "\(week.pressureStatus) · Outflow \(money(week.outflowCents))"
@@ -3383,12 +3539,11 @@ private struct LegendFinanceView: View {
                                             .supporting
                                     )
                                     .foregroundStyle(
-                                        LegendNextColor
-                                            .textSecondary
+                                        Color.white.opacity(0.62)
                                     )
                                 }
 
-                                Spacer()
+                                Spacer(minLength: 8)
 
                                 VStack(
                                     alignment: .trailing,
@@ -3401,108 +3556,158 @@ private struct LegendFinanceView: View {
                                         )
                                     )
                                     .font(
-                                        .subheadline.weight(
-                                            .bold
-                                        )
+                                        .subheadline.weight(.bold)
                                     )
+                                    .foregroundStyle(
+                                        MobileFinancialAmountSemantic
+                                            .tone(
+                                                forCents:
+                                                    week.endingCashCents,
+                                                kind: .endingCash
+                                            )
+                                            .color
+                                    )
+                                    .monospacedDigit()
 
                                     Text("ending cash")
                                         .font(.caption2)
                                         .foregroundStyle(
-                                            LegendNextColor
-                                                .textSecondary
+                                            Color.white.opacity(0.52)
                                         )
                                 }
                             }
-                            .padding(.vertical, 4)
+                            .padding(
+                                .vertical,
+                                LegendNextSpacing.xs
+                            )
                         }
                     }
                 }
-
             }
         }
     }
+
 
     private func largestObligation(
         _ obligation:
             MobileFinancialLargestObligationResponse
     ) -> some View {
-        LegendNextSurface(style: .navy) {
+        financialIntelligenceSurface {
             HStack(
                 alignment: .center,
-                spacing: LegendNextSpacing.xs
+                spacing: LegendNextSpacing.sm
             ) {
-                Image(systemName: "calendar.badge.exclamationmark")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.gold)
-                    .frame(width: 34, height: 34)
-                    .background(
-                        LegendNextColor.gold.opacity(0.14),
-                        in: Circle()
-                    )
+                Image(
+                    systemName:
+                        "calendar.badge.exclamationmark"
+                )
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(
+                    LegendNextColor.goldBright
+                )
+                .frame(width: 42, height: 42)
+                .background(
+                    LegendNextColor.gold.opacity(0.15),
+                    in: Circle()
+                )
 
                 VStack(
                     alignment: .leading,
                     spacing: LegendNextSpacing.micro
                 ) {
                     Text("LARGEST OBLIGATION")
-                        .font(.caption.weight(.bold))
+                        .font(
+                            LegendNextTypography.eyebrow
+                        )
+                        .tracking(0.8)
                         .foregroundStyle(
-                            LegendNextColor.gold
+                            LegendNextColor.goldBright
                         )
 
                     Text(obligation.title)
-                        .font(.headline.weight(.bold))
+                        .font(
+                            LegendNextTypography
+                                .bodyEmphasis
+                        )
                         .foregroundStyle(.white)
 
                     Text(
                         "\(displayDate(obligation.occursOn)) · \(obligation.kind)"
                     )
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(.white.opacity(0.70))
+                    .font(
+                        LegendNextTypography.supporting
+                    )
+                    .foregroundStyle(
+                        Color.white.opacity(0.64)
+                    )
                 }
 
                 Spacer(minLength: 8)
 
                 Text(money(obligation.amountCents))
-                    .font(.headline.weight(.bold))
+                    .font(.title3.weight(.bold))
                     .foregroundStyle(
                         MobileFinancialAmountSemantic.tone(
-                            forCents: obligation.amountCents,
+                            forCents:
+                                obligation.amountCents,
                             kind: .bills
                         ).color
                     )
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
             }
         }
     }
 
 
+
     private func operatingSystemUnavailable(
         summary: String
     ) -> some View {
-        LegendNextSurface(style: .elevated) {
+        financialIntelligenceSurface {
             HStack(
                 alignment: .top,
                 spacing: LegendNextSpacing.sm
             ) {
-                Image(systemName: "chart.xyaxis.line")
-                    .font(LegendNextTypography.section)
-                    .foregroundStyle(LegendNextColor.gold)
-                    .accessibilityHidden(true)
+                Image(
+                    systemName: "chart.xyaxis.line"
+                )
+                .font(LegendNextTypography.section)
+                .foregroundStyle(
+                    LegendNextColor.goldBright
+                )
+                .frame(width: 42, height: 42)
+                .background(
+                    LegendNextColor.gold.opacity(0.15),
+                    in: Circle()
+                )
 
                 VStack(
                     alignment: .leading,
-                    spacing: LegendNextSpacing.tiny
+                    spacing: LegendNextSpacing.xs
                 ) {
-                    LegendNextSectionHeader(
-                        eyebrow: "Cash-Flow Intelligence",
-                        title: "Projection not ready"
-                    )
+                    Text("CASH-FLOW INTELLIGENCE")
+                        .font(
+                            LegendNextTypography.eyebrow
+                        )
+                        .tracking(0.8)
+                        .foregroundStyle(
+                            LegendNextColor.goldBright
+                        )
+
+                    Text("Projection not ready")
+                        .font(
+                            LegendNextTypography.title
+                        )
+                        .foregroundStyle(.white)
 
                     Text(summary)
-                        .font(LegendNextTypography.supporting)
+                        .font(
+                            LegendNextTypography.supporting
+                        )
                         .foregroundStyle(
-                            LegendNextColor.textSecondary
+                            Color.white.opacity(0.66)
                         )
                         .fixedSize(
                             horizontal: false,
@@ -3626,25 +3831,149 @@ private struct LegendFinanceView: View {
     }
 
 
+
+    private func financialIntelligenceSurface<
+        Content: View
+    >(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        LegendNextSurface(
+            style: .navy,
+            cornerRadius: LegendNextRadius.prominentCard,
+            padding: LegendNextSpacing.sm
+        ) {
+            content()
+        }
+    }
+
+    private var financialIntelligenceDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.10))
+            .frame(height: 1)
+    }
+
+    private func financialIntelligenceStatusBanner(
+        title: String,
+        detail: String,
+        tone: LegendNextTone,
+        systemImage: String
+    ) -> some View {
+        HStack(
+            alignment: .top,
+            spacing: LegendNextSpacing.sm
+        ) {
+            Image(systemName: systemImage)
+                .font(
+                    .system(
+                        size: 18,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(tone.color)
+                .frame(width: 42, height: 42)
+                .background(
+                    tone.color.opacity(0.16),
+                    in: Circle()
+                )
+                .accessibilityHidden(true)
+
+            VStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.micro
+            ) {
+                Text(title)
+                    .font(
+                        LegendNextTypography.bodyEmphasis
+                    )
+                    .foregroundStyle(.white)
+
+                Text(detail)
+                    .font(
+                        LegendNextTypography.supporting
+                    )
+                    .foregroundStyle(
+                        Color.white.opacity(0.68)
+                    )
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+            }
+        }
+        .padding(LegendNextSpacing.sm)
+        .frame(
+            maxWidth: .infinity,
+            alignment: .leading
+        )
+        .background(
+            LegendNextColor.navy,
+            in: RoundedRectangle(
+                cornerRadius:
+                    LegendNextRadius.prominentCard,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius:
+                    LegendNextRadius.prominentCard,
+                style: .continuous
+            )
+            .stroke(
+                tone.color.opacity(0.28),
+                lineWidth: 1
+            )
+        }
+    }
+
+
     private func sectionHeading(
         eyebrow: String,
         title: String,
         detail: String,
         status: String
     ) -> some View {
-        LegendNextSectionHeader(
-            eyebrow: eyebrow,
-            title: title,
-            detail: detail
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.xs
         ) {
-            LegendNextBadge(
-                status,
-                tone: MobileFinancialAmountSemantic.tone(
-                    forStatus: status
+            HStack(
+                alignment: .center,
+                spacing: LegendNextSpacing.xs
+            ) {
+                Text(eyebrow.uppercased())
+                    .font(LegendNextTypography.eyebrow)
+                    .tracking(0.8)
+                    .foregroundStyle(
+                        LegendNextColor.goldBright
+                    )
+
+                Spacer(minLength: 8)
+
+                LegendNextBadge(
+                    status,
+                    tone:
+                        MobileFinancialAmountSemantic
+                            .tone(forStatus: status)
                 )
-            )
+            }
+
+            Text(title)
+                .font(LegendNextTypography.title)
+                .foregroundStyle(.white)
+
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(
+                        LegendNextTypography.supporting
+                    )
+                    .foregroundStyle(
+                        Color.white.opacity(0.65)
+                    )
+            }
         }
     }
+
 
 
     private func financeSectionLabel(
@@ -3652,12 +3981,37 @@ private struct LegendFinanceView: View {
         title: String,
         detail: String
     ) -> some View {
-        LegendNextSectionHeader(
-            eyebrow: eyebrow,
-            title: title,
-            detail: detail.isEmpty ? nil : detail
-        )
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.xs
+        ) {
+            Text(eyebrow.uppercased())
+                .font(LegendNextTypography.eyebrow)
+                .tracking(0.8)
+                .foregroundStyle(
+                    LegendNextColor.goldBright
+                )
+
+            Text(title)
+                .font(LegendNextTypography.title)
+                .foregroundStyle(.white)
+
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(
+                        LegendNextTypography.supporting
+                    )
+                    .foregroundStyle(
+                        Color.white.opacity(0.65)
+                    )
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+            }
+        }
     }
+
 
 
     private func financialMetric(
@@ -3666,11 +4020,78 @@ private struct LegendFinanceView: View {
         symbol: String = "circle.fill",
         tone: LegendNextTone = .neutral
     ) -> some View {
-        LegendNextMetricTile(
-            title: title,
-            value: value,
-            systemImage: symbol,
-            tone: tone
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.sm
+        ) {
+            HStack(
+                spacing: LegendNextSpacing.xs
+            ) {
+                Image(systemName: symbol)
+                    .font(
+                        .system(
+                            size: 13,
+                            weight: .semibold
+                        )
+                    )
+                    .foregroundStyle(tone.color)
+                    .frame(width: 30, height: 30)
+                    .background(
+                        tone.color.opacity(0.17),
+                        in: Circle()
+                    )
+                    .accessibilityHidden(true)
+
+                Text(title.uppercased())
+                    .font(LegendNextTypography.eyebrow)
+                    .foregroundStyle(
+                        Color.white.opacity(0.66)
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+            }
+
+            Text(value)
+                .font(
+                    .system(
+                        size: 22,
+                        weight: .bold,
+                        design: .rounded
+                    )
+                )
+                .foregroundStyle(tone.color)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.38)
+                .allowsTightening(true)
+        }
+        .padding(LegendNextSpacing.sm)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: 108,
+            alignment: .topLeading
+        )
+        .background(
+            Color.white.opacity(0.055),
+            in: RoundedRectangle(
+                cornerRadius:
+                    LegendNextRadius.control,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius:
+                    LegendNextRadius.control,
+                style: .continuous
+            )
+            .stroke(
+                tone.color.opacity(0.20),
+                lineWidth: 1
+            )
+        }
+        .accessibilityElement(
+            children: .combine
         )
     }
     private func compactCurrency(

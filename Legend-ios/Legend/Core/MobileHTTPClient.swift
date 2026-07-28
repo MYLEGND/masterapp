@@ -46,6 +46,8 @@ private extension Data {
 }
 
 struct MobileHTTPClient: Sendable {
+    private static let protectedMediaRequestTimeout: TimeInterval = 20
+
     let baseURL: URL
     let session: URLSession
 
@@ -76,10 +78,13 @@ struct MobileHTTPClient: Sendable {
     ) async throws -> Data {
         var request = URLRequest(url: try endpointURL(path, queryItems: []))
         request.httpMethod = "GET"
+        request.timeoutInterval = Self.protectedMediaRequestTimeout
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("image/*, video/*", forHTTPHeaderField: "Accept")
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
-        let (data, _) = try await successfulData(for: request)
+        let (data, _) = try await successfulData(
+            for: request,
+            resourceTimeout: Self.protectedMediaRequestTimeout)
         return data
     }
 
@@ -235,13 +240,15 @@ struct MobileHTTPClient: Sendable {
 
     private func successfulData(
         for request: URLRequest,
-        uploadBodyFile: URL? = nil
+        uploadBodyFile: URL? = nil,
+        resourceTimeout: TimeInterval? = nil
     ) async throws -> (Data, String?) {
         let hasAuthorizationHeader = request.value(forHTTPHeaderField: "Authorization") != nil
         MobileDebugDiagnostics.record("Mobile API request started. Authorization header present: \(hasAuthorizationHeader).")
         let (data, urlResponse) = try await requestData(
             for: request,
-            uploadBodyFile: uploadBodyFile)
+            uploadBodyFile: uploadBodyFile,
+            resourceTimeout: resourceTimeout)
 
 #if DEBUG
         if let http = urlResponse as? HTTPURLResponse {
@@ -286,7 +293,42 @@ struct MobileHTTPClient: Sendable {
 
     private func requestData(
         for request: URLRequest,
-        uploadBodyFile: URL? = nil
+        uploadBodyFile: URL? = nil,
+        resourceTimeout: TimeInterval? = nil
+    ) async throws -> (Data, URLResponse) {
+        if let resourceTimeout {
+            return try await withThrowingTaskGroup(
+                of: (Data, URLResponse).self,
+                returning: (Data, URLResponse).self) { group in
+                group.addTask {
+                    try await executeRequest(
+                        for: request,
+                        uploadBodyFile: uploadBodyFile)
+                }
+                group.addTask {
+                    try await Task.sleep(
+                        nanoseconds: UInt64(
+                            resourceTimeout * 1_000_000_000))
+                    throw URLError(.timedOut)
+                }
+
+                guard let result = try await group.next() else {
+                    throw URLError(.unknown)
+                }
+
+                group.cancelAll()
+                return result
+            }
+        }
+
+        return try await executeRequest(
+            for: request,
+            uploadBodyFile: uploadBodyFile)
+    }
+
+    private func executeRequest(
+        for request: URLRequest,
+        uploadBodyFile: URL?
     ) async throws -> (Data, URLResponse) {
         do {
             if let uploadBodyFile {
