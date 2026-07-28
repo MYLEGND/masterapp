@@ -7,6 +7,24 @@ enum MobileDataLoadState<Value: Equatable>: Equatable {
     case unavailable(UserFacingFailure)
 }
 
+enum MobileStoreLoadResult: Equatable {
+    case loaded
+    case authenticationFailure(UserFacingFailure)
+    case failed(UserFacingFailure)
+}
+
+func mobileLoadResult(
+    for error: Error,
+    failure: UserFacingFailure
+) -> MobileStoreLoadResult {
+    switch error as? MobileAPIError {
+    case .unauthorized, .apiUnauthorized:
+        return .authenticationFailure(failure)
+    default:
+        return .failed(failure)
+    }
+}
+
 protocol MobileHomeAPI: Sendable {
     func home(accessToken: String) async throws -> MobileHomeResponse
 }
@@ -185,10 +203,13 @@ struct URLSessionMobileAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
 @MainActor
 final class MobileHomeStore: ObservableObject {
     @Published private(set) var state: MobileDataLoadState<MobileHomeResponse> = .idle
+    @Published private(set) var isRefreshing = false
+    @Published private(set) var refreshFailure: UserFacingFailure?
 
     private let api: any MobileHomeAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
+    private var loadTask: Task<MobileStoreLoadResult, Never>?
 
     init(
         api: any MobileHomeAPI,
@@ -201,16 +222,73 @@ final class MobileHomeStore: ObservableObject {
     }
 
     func load() {
-        state = .loading
-        Task {
-            do {
-                let accessToken = try await accessTokenProvider()
-                let home = try await api.home(accessToken: accessToken)
-                state = .loaded(home)
-                NativeUnreadBadge.update(with: home.messaging.unreadCount)
-            } catch {
-                state = .unavailable(failure(for: error, title: "Home unavailable"))
+        guard loadTask == nil else { return }
+        if !hasCachedValue {
+            state = .loading
+        }
+        Task { _ = await loadIfNeeded() }
+    }
+
+    func loadIfNeeded() async -> MobileStoreLoadResult {
+        hasCachedValue ? .loaded : await request(preservingCachedValue: false)
+    }
+
+    func refresh() async -> MobileStoreLoadResult {
+        await request(preservingCachedValue: hasCachedValue)
+    }
+
+    private var hasCachedValue: Bool {
+        if case .loaded = state { return true }
+        return false
+    }
+
+    private func request(
+        preservingCachedValue: Bool
+    ) async -> MobileStoreLoadResult {
+        if let loadTask { return await loadTask.value }
+
+        if preservingCachedValue {
+            isRefreshing = true
+            refreshFailure = nil
+        } else {
+            state = .loading
+        }
+
+        let task = Task { [weak self] in
+            guard let self else {
+                return MobileStoreLoadResult.failed(UserFacingFailure(
+                    title: "Home unavailable",
+                    message: "The home store is no longer available.",
+                    correlationID: nil))
             }
+            return await self.executeLoad(
+                preservingCachedValue: preservingCachedValue)
+        }
+        loadTask = task
+        let result = await task.value
+        loadTask = nil
+        return result
+    }
+
+    private func executeLoad(
+        preservingCachedValue: Bool
+    ) async -> MobileStoreLoadResult {
+        defer { isRefreshing = false }
+        do {
+            let accessToken = try await accessTokenProvider()
+            let home = try await api.home(accessToken: accessToken)
+            state = .loaded(home)
+            refreshFailure = nil
+            NativeUnreadBadge.update(with: home.messaging.unreadCount)
+            return .loaded
+        } catch {
+            let presentation = failure(for: error, title: "Home unavailable")
+            if preservingCachedValue {
+                refreshFailure = presentation
+            } else {
+                state = .unavailable(presentation)
+            }
+            return mobileLoadResult(for: error, failure: presentation)
         }
     }
 
@@ -233,12 +311,13 @@ final class MobileHomeStore: ObservableObject {
 @MainActor
 final class MobileFinancialStore: ObservableObject {
     @Published private(set) var state: MobileFinancialLoadState = .idle
+    @Published private(set) var isRefreshing = false
+    @Published private(set) var refreshFailure: UserFacingFailure?
 
     private let api: any MobileFinancialAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
-    private var loadTask: Task<Void, Never>?
-    private var requestSequence = 0
+    private var loadTask: Task<MobileStoreLoadResult, Never>?
 
     init(
         api: any MobileFinancialAPI,
@@ -255,41 +334,83 @@ final class MobileFinancialStore: ObservableObject {
     }
 
     func load() {
-        requestSequence += 1
-        let sequence = requestSequence
+        guard loadTask == nil else { return }
+        if !hasCachedValue {
+            state = .loading
+        }
+        Task { _ = await loadIfNeeded() }
+    }
 
-        loadTask?.cancel()
-        state = .loading
+    func loadIfNeeded() async -> MobileStoreLoadResult {
+        hasCachedValue ? .loaded : await request(preservingCachedValue: false)
+    }
 
-        loadTask = Task { [weak self] in
-            guard let self else { return }
+    func refresh() async -> MobileStoreLoadResult {
+        await request(preservingCachedValue: hasCachedValue)
+    }
 
-            do {
-                let accessToken = try await self.accessTokenProvider()
-                guard !Task.isCancelled else { return }
+    private var hasCachedValue: Bool {
+        switch state {
+        case .available, .incomplete, .neverSaved, .projectionUnavailable:
+            return true
+        case .idle, .loading, .authenticationRequired, .retryableFailure:
+            return false
+        }
+    }
 
-                let snapshot = try await self.api.financial(
-                    accessToken: accessToken
-                )
-                guard !Task.isCancelled,
-                      self.requestSequence == sequence else {
-                    return
-                }
+    private func request(
+        preservingCachedValue: Bool
+    ) async -> MobileStoreLoadResult {
+        if let loadTask { return await loadTask.value }
 
-                self.state = self.classify(snapshot)
-            } catch is CancellationError {
-                return
-            } catch {
-                guard !Task.isCancelled,
-                      self.requestSequence == sequence else {
-                    return
-                }
+        if preservingCachedValue {
+            isRefreshing = true
+            refreshFailure = nil
+        } else {
+            state = .loading
+        }
 
-                let failure = self.failure(for: error)
-                self.state = self.isAuthenticationFailure(error)
-                    ? .authenticationRequired(failure)
-                    : .retryableFailure(failure)
+        let task = Task { [weak self] in
+            guard let self else {
+                return MobileStoreLoadResult.failed(UserFacingFailure(
+                    title: "Financial intelligence unavailable",
+                    message: "The financial store is no longer available.",
+                    correlationID: nil))
             }
+            return await self.executeLoad(
+                preservingCachedValue: preservingCachedValue)
+        }
+        loadTask = task
+        let result = await task.value
+        loadTask = nil
+        return result
+    }
+
+    private func executeLoad(
+        preservingCachedValue: Bool
+    ) async -> MobileStoreLoadResult {
+        defer { isRefreshing = false }
+        do {
+            let accessToken = try await accessTokenProvider()
+            let snapshot = try await api.financial(accessToken: accessToken)
+            state = classify(snapshot)
+            refreshFailure = nil
+            return .loaded
+        } catch is CancellationError {
+            return .failed(UserFacingFailure(
+                title: "Financial intelligence unavailable",
+                message: "The financial request was cancelled.",
+                correlationID: nil))
+        } catch {
+            let presentation = failure(for: error)
+            if preservingCachedValue {
+                refreshFailure = presentation
+            } else {
+                state = isAuthenticationFailure(error)
+                    ? .authenticationRequired(presentation)
+                    : .retryableFailure(presentation)
+            }
+            return mobileLoadResult(for: error, failure: presentation)
         }
     }
 
@@ -365,10 +486,13 @@ final class MobileJourneyCirclesStore: ObservableObject {
     @Published private(set) var state: MobileDataLoadState<MobileJourneyDashboardResponse> = .idle
     @Published private(set) var actionFailure: UserFacingFailure?
     @Published private(set) var isPerformingAction = false
+    @Published private(set) var isRefreshing = false
+    @Published private(set) var refreshFailure: UserFacingFailure?
 
     private let api: any MobileJourneyCirclesAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
+    private var loadTask: Task<MobileStoreLoadResult, Never>?
 
     init(
         api: any MobileJourneyCirclesAPI,
@@ -381,14 +505,69 @@ final class MobileJourneyCirclesStore: ObservableObject {
     }
 
     func load() {
-        state = .loading
-        Task {
-            do {
-                let accessToken = try await accessTokenProvider()
-                state = .loaded(try await api.dashboard(accessToken: accessToken))
-            } catch {
-                state = .unavailable(failure(for: error))
+        guard loadTask == nil else { return }
+        if !hasCachedValue {
+            state = .loading
+        }
+        Task { _ = await loadIfNeeded() }
+    }
+
+    func loadIfNeeded() async -> MobileStoreLoadResult {
+        hasCachedValue ? .loaded : await request(preservingCachedValue: false)
+    }
+
+    func refresh() async -> MobileStoreLoadResult {
+        await request(preservingCachedValue: hasCachedValue)
+    }
+
+    private var hasCachedValue: Bool {
+        if case .loaded = state { return true }
+        return false
+    }
+
+    private func request(
+        preservingCachedValue: Bool
+    ) async -> MobileStoreLoadResult {
+        if let loadTask { return await loadTask.value }
+        if preservingCachedValue {
+            isRefreshing = true
+            refreshFailure = nil
+        } else {
+            state = .loading
+        }
+        let task = Task { [weak self] in
+            guard let self else {
+                return MobileStoreLoadResult.failed(UserFacingFailure(
+                    title: "Journey Circles unavailable",
+                    message: "The Journey Circles store is no longer available.",
+                    correlationID: nil))
             }
+            return await self.executeLoad(
+                preservingCachedValue: preservingCachedValue)
+        }
+        loadTask = task
+        let result = await task.value
+        loadTask = nil
+        return result
+    }
+
+    private func executeLoad(
+        preservingCachedValue: Bool
+    ) async -> MobileStoreLoadResult {
+        defer { isRefreshing = false }
+        do {
+            let accessToken = try await accessTokenProvider()
+            state = .loaded(try await api.dashboard(accessToken: accessToken))
+            refreshFailure = nil
+            return .loaded
+        } catch {
+            let presentation = failure(for: error)
+            if preservingCachedValue {
+                refreshFailure = presentation
+            } else {
+                state = .unavailable(presentation)
+            }
+            return mobileLoadResult(for: error, failure: presentation)
         }
     }
 
@@ -440,7 +619,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
             defer { isPerformingAction = false }
             do {
                 try await operation()
-                load()
+                _ = await refresh()
             } catch {
                 actionFailure = failure(for: error, title: "Journey Circles unavailable")
             }
@@ -464,10 +643,16 @@ final class MobileJourneyCirclesStore: ObservableObject {
 final class MobileAgentWorkspaceStore: ObservableObject {
     @Published private(set) var clientsState: MobileDataLoadState<[MobileAgentClientSummary]> = .idle
     @Published private(set) var leadsState: MobileDataLoadState<[MobileAgentLeadSummary]> = .idle
+    @Published private(set) var isRefreshingClients = false
+    @Published private(set) var isRefreshingLeads = false
+    @Published private(set) var clientsRefreshFailure: UserFacingFailure?
+    @Published private(set) var leadsRefreshFailure: UserFacingFailure?
 
     private let api: any MobileAgentWorkspaceAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
+    private var clientsLoadTask: Task<MobileStoreLoadResult, Never>?
+    private var leadsLoadTask: Task<MobileStoreLoadResult, Never>?
 
     init(
         api: any MobileAgentWorkspaceAPI,
@@ -480,26 +665,136 @@ final class MobileAgentWorkspaceStore: ObservableObject {
     }
 
     func loadClients() {
-        clientsState = .loading
-        Task {
-            do {
-                let accessToken = try await accessTokenProvider()
-                clientsState = .loaded(try await api.clients(accessToken: accessToken))
-            } catch {
-                clientsState = .unavailable(failure(for: error, resource: "client CRM"))
-            }
+        guard clientsLoadTask == nil else { return }
+        if !hasClients {
+            clientsState = .loading
         }
+        Task { _ = await loadClientsIfNeeded() }
     }
 
     func loadLeads() {
-        leadsState = .loading
-        Task {
-            do {
-                let accessToken = try await accessTokenProvider()
-                leadsState = .loaded(try await api.leads(accessToken: accessToken))
-            } catch {
-                leadsState = .unavailable(failure(for: error, resource: "lead CRM"))
+        guard leadsLoadTask == nil else { return }
+        if !hasLeads {
+            leadsState = .loading
+        }
+        Task { _ = await loadLeadsIfNeeded() }
+    }
+
+    func loadClientsIfNeeded() async -> MobileStoreLoadResult {
+        hasClients ? .loaded : await requestClients(preservingCachedValue: false)
+    }
+
+    func loadLeadsIfNeeded() async -> MobileStoreLoadResult {
+        hasLeads ? .loaded : await requestLeads(preservingCachedValue: false)
+    }
+
+    func refreshClients() async -> MobileStoreLoadResult {
+        await requestClients(preservingCachedValue: hasClients)
+    }
+
+    func refreshLeads() async -> MobileStoreLoadResult {
+        await requestLeads(preservingCachedValue: hasLeads)
+    }
+
+    private var hasClients: Bool {
+        if case .loaded = clientsState { return true }
+        return false
+    }
+
+    private var hasLeads: Bool {
+        if case .loaded = leadsState { return true }
+        return false
+    }
+
+    private func requestClients(
+        preservingCachedValue: Bool
+    ) async -> MobileStoreLoadResult {
+        if let clientsLoadTask { return await clientsLoadTask.value }
+        if preservingCachedValue {
+            isRefreshingClients = true
+            clientsRefreshFailure = nil
+        } else {
+            clientsState = .loading
+        }
+        let task = Task { [weak self] in
+            guard let self else {
+                return MobileStoreLoadResult.failed(UserFacingFailure(
+                    title: "Client CRM unavailable",
+                    message: "The client CRM store is no longer available.",
+                    correlationID: nil))
             }
+            return await self.executeClientsLoad(
+                preservingCachedValue: preservingCachedValue)
+        }
+        clientsLoadTask = task
+        let result = await task.value
+        clientsLoadTask = nil
+        return result
+    }
+
+    private func requestLeads(
+        preservingCachedValue: Bool
+    ) async -> MobileStoreLoadResult {
+        if let leadsLoadTask { return await leadsLoadTask.value }
+        if preservingCachedValue {
+            isRefreshingLeads = true
+            leadsRefreshFailure = nil
+        } else {
+            leadsState = .loading
+        }
+        let task = Task { [weak self] in
+            guard let self else {
+                return MobileStoreLoadResult.failed(UserFacingFailure(
+                    title: "Lead CRM unavailable",
+                    message: "The lead CRM store is no longer available.",
+                    correlationID: nil))
+            }
+            return await self.executeLeadsLoad(
+                preservingCachedValue: preservingCachedValue)
+        }
+        leadsLoadTask = task
+        let result = await task.value
+        leadsLoadTask = nil
+        return result
+    }
+
+    private func executeClientsLoad(
+        preservingCachedValue: Bool
+    ) async -> MobileStoreLoadResult {
+        defer { isRefreshingClients = false }
+        do {
+            let accessToken = try await accessTokenProvider()
+            clientsState = .loaded(try await api.clients(accessToken: accessToken))
+            clientsRefreshFailure = nil
+            return .loaded
+        } catch {
+            let presentation = failure(for: error, resource: "client CRM")
+            if preservingCachedValue {
+                clientsRefreshFailure = presentation
+            } else {
+                clientsState = .unavailable(presentation)
+            }
+            return mobileLoadResult(for: error, failure: presentation)
+        }
+    }
+
+    private func executeLeadsLoad(
+        preservingCachedValue: Bool
+    ) async -> MobileStoreLoadResult {
+        defer { isRefreshingLeads = false }
+        do {
+            let accessToken = try await accessTokenProvider()
+            leadsState = .loaded(try await api.leads(accessToken: accessToken))
+            leadsRefreshFailure = nil
+            return .loaded
+        } catch {
+            let presentation = failure(for: error, resource: "lead CRM")
+            if preservingCachedValue {
+                leadsRefreshFailure = presentation
+            } else {
+                leadsState = .unavailable(presentation)
+            }
+            return mobileLoadResult(for: error, failure: presentation)
         }
     }
 

@@ -138,6 +138,19 @@ final class MobileSessionCoordinator: ObservableObject {
         transition(to: configuration.validation.isReady ? .signedOut : .contractUnavailable(configuration.validation), reason: "User signed out")
     }
 
+    func handleAuthenticationFailure(_ failure: UserFacingFailure) {
+        try? tokenStore.clear()
+        activeTokens = nil
+        NativeUnreadBadge.clear()
+        transition(
+            to: configuration.validation.isReady ? .signedOut : .contractUnavailable(configuration.validation),
+            reason: "Authenticated application bootstrap rejected the bearer credential")
+        diagnostics.record(
+            category: .authentication,
+            summary: "Authenticated application bootstrap rejected the current bearer credential.",
+            correlationID: failure.correlationID)
+    }
+
     func selectRole(_ participantType: ParticipantType) {
         guard configuration.validation.isReady,
               let apiBaseURL = configuration.apiBaseURL else {

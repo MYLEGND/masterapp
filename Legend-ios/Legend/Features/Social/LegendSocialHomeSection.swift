@@ -70,7 +70,9 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 submit: { submitComment(to: post) },
                 cancel: { commentTarget = nil })
         }
-        .fullScreenCover(item: $storyCollection, onDismiss: social.load) { collection in
+        .fullScreenCover(item: $storyCollection, onDismiss: {
+            Task { _ = await social.refresh() }
+        }) { collection in
             LegendStoryViewer(
                 collection: collection,
                 currentIdentity: session.actor.identity,

@@ -58,22 +58,21 @@ private enum LegendAppTab: String, Identifiable {
 struct LegendApplicationShell: View {
     let currentSession: MobileSession
     @ObservedObject private var coordinator: MobileSessionCoordinator
+    @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     @State private var selectedTab: LegendAppTab = .home
-    @StateObject private var messages: MessagingStore
-    @StateObject private var social: MobileSocialStore
+    @ObservedObject private var messages: MessagingStore
+    @ObservedObject private var social: MobileSocialStore
 
     init(
         currentSession: MobileSession,
-        coordinator: MobileSessionCoordinator
+        coordinator: MobileSessionCoordinator,
+        bootstrap: LegendApplicationBootstrapCoordinator
     ) {
         self.currentSession = currentSession
         _coordinator = ObservedObject(wrappedValue: coordinator)
-        _messages = StateObject(
-            wrappedValue: coordinator.makeMessagingStore()
-        )
-        _social = StateObject(
-            wrappedValue: coordinator.makeSocialStore()
-        )
+        _bootstrap = ObservedObject(wrappedValue: bootstrap)
+        _messages = ObservedObject(wrappedValue: bootstrap.stores.messaging)
+        _social = ObservedObject(wrappedValue: bootstrap.stores.social)
     }
 
     var body: some View {
@@ -81,36 +80,42 @@ struct LegendApplicationShell: View {
             NavigationStack {
                 LegendHomeView(
                     currentSession: currentSession,
-                    coordinator: coordinator,
+                    store: bootstrap.stores.home,
                     social: social,
+                    bootstrap: bootstrap,
                     selectedTab: $selectedTab
                 )
             }
             .tag(LegendAppTab.home)
 
             if currentSession.actor.identity.participantType == .agent {
-                NavigationStack {
-                    LegendAgentClientsView(
-                        coordinator: coordinator,
-                        messages: messages,
-                        openMessages: {
-                            select(.messages)
-                        }
-                    )
-                }
-                .tag(LegendAppTab.clients)
+                if let agentWorkspace = bootstrap.stores.agentWorkspace {
+                    NavigationStack {
+                        LegendAgentClientsView(
+                            store: agentWorkspace,
+                            messages: messages,
+                            bootstrap: bootstrap,
+                            openMessages: {
+                                select(.messages)
+                            }
+                        )
+                    }
+                    .tag(LegendAppTab.clients)
 
-                NavigationStack {
-                    LegendAgentLeadsView(
-                        coordinator: coordinator
-                    )
+                    NavigationStack {
+                        LegendAgentLeadsView(
+                            store: agentWorkspace,
+                            bootstrap: bootstrap
+                        )
+                    }
+                    .tag(LegendAppTab.leads)
                 }
-                .tag(LegendAppTab.leads)
             } else {
                 NavigationStack {
                     LegendCirclesView(
                         currentSession: currentSession,
-                        coordinator: coordinator
+                        store: bootstrap.stores.journeyCircles,
+                        bootstrap: bootstrap
                     )
                 }
                 .tag(LegendAppTab.circles)
@@ -118,7 +123,8 @@ struct LegendApplicationShell: View {
                 NavigationStack {
                     LegendFinanceView(
                         currentSession: currentSession,
-                        coordinator: coordinator
+                        store: bootstrap.stores.financial,
+                        bootstrap: bootstrap
                     )
                 }
                 .tag(LegendAppTab.finance)
@@ -131,7 +137,9 @@ struct LegendApplicationShell: View {
                 LegendAccountView(
                     currentSession: currentSession,
                     coordinator: coordinator,
-                    social: social
+                    account: bootstrap.stores.account,
+                    social: social,
+                    bootstrap: bootstrap
                 )
             }
             .tag(LegendAppTab.account)
@@ -150,11 +158,6 @@ struct LegendApplicationShell: View {
             )
         }
         .tint(LegendNextColor.gold)
-        .task {
-            if case .idle = messages.state {
-                messages.load()
-            }
-        }
     }
 
     private var unreadMessageCount: Int {
@@ -345,21 +348,22 @@ private struct LegendMessagesTab: View {
 private struct LegendHomeView: View {
     let currentSession: MobileSession
     @Binding var selectedTab: LegendAppTab
-    @StateObject private var store: MobileHomeStore
+    @ObservedObject private var store: MobileHomeStore
     @ObservedObject private var social: MobileSocialStore
+    @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
 
     init(
         currentSession: MobileSession,
-        coordinator: MobileSessionCoordinator,
+        store: MobileHomeStore,
         social: MobileSocialStore,
+        bootstrap: LegendApplicationBootstrapCoordinator,
         selectedTab: Binding<LegendAppTab>
     ) {
         self.currentSession = currentSession
         _selectedTab = selectedTab
-        _store = StateObject(
-            wrappedValue: coordinator.makeHomeStore()
-        )
+        _store = ObservedObject(wrappedValue: store)
         _social = ObservedObject(wrappedValue: social)
+        _bootstrap = ObservedObject(wrappedValue: bootstrap)
     }
 
     var body: some View {
@@ -379,17 +383,12 @@ private struct LegendHomeView: View {
                     title: failure.title,
                     message: failure.message,
                     retryTitle: "Retry",
-                    retry: store.load
+                    retry: { Task { await bootstrap.refreshHome() } }
                 )
                 .padding(LegendNextSpacing.sm)
             }
         }
         .legendNextPageBackground()
-        .task {
-            if case .idle = store.state {
-                store.load()
-            }
-        }
     }
 
     private func homeContent(
@@ -423,14 +422,8 @@ private struct LegendHomeView: View {
             .padding(.bottom, LegendNextSpacing.xl)
         }
         .navigationBarHidden(true)
-        .task {
-            if case .idle = social.state {
-                social.load()
-            }
-        }
         .refreshable {
-            store.load()
-            social.load()
+            await bootstrap.refreshHome()
         }
     }
 
@@ -1881,17 +1874,20 @@ private struct LegendHomeView: View {
 }
 
 private struct LegendAgentClientsView: View {
-    @StateObject private var store: MobileAgentWorkspaceStore
+    @ObservedObject private var store: MobileAgentWorkspaceStore
     @ObservedObject private var messages: MessagingStore
+    @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     let openMessages: () -> Void
 
     init(
-        coordinator: MobileSessionCoordinator,
+        store: MobileAgentWorkspaceStore,
         messages: MessagingStore,
+        bootstrap: LegendApplicationBootstrapCoordinator,
         openMessages: @escaping () -> Void
     ) {
-        _store = StateObject(wrappedValue: coordinator.makeAgentWorkspaceStore())
+        _store = ObservedObject(wrappedValue: store)
         _messages = ObservedObject(wrappedValue: messages)
+        _bootstrap = ObservedObject(wrappedValue: bootstrap)
         self.openMessages = openMessages
     }
 
@@ -1903,14 +1899,14 @@ private struct LegendAgentClientsView: View {
             case .loaded(let clients):
                 clientContent(clients)
             case .unavailable(let failure):
-                LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: store.loadClients)
+                LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: { Task { await bootstrap.refreshClients() } })
                     .padding(LegendNextSpacing.sm)
             }
         }
         .background(LegendNextColor.canvas.ignoresSafeArea())
         .navigationTitle("Clients")
         .navigationBarTitleDisplayMode(.inline)
-        .task { if case .idle = store.clientsState { store.loadClients() } }
+        .refreshable { await bootstrap.refreshClients() }
     }
 
     @ViewBuilder
@@ -1950,10 +1946,15 @@ private struct LegendAgentClientsView: View {
 }
 
 private struct LegendAgentLeadsView: View {
-    @StateObject private var store: MobileAgentWorkspaceStore
+    @ObservedObject private var store: MobileAgentWorkspaceStore
+    @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
 
-    init(coordinator: MobileSessionCoordinator) {
-        _store = StateObject(wrappedValue: coordinator.makeAgentWorkspaceStore())
+    init(
+        store: MobileAgentWorkspaceStore,
+        bootstrap: LegendApplicationBootstrapCoordinator
+    ) {
+        _store = ObservedObject(wrappedValue: store)
+        _bootstrap = ObservedObject(wrappedValue: bootstrap)
     }
 
     var body: some View {
@@ -1964,14 +1965,14 @@ private struct LegendAgentLeadsView: View {
             case .loaded(let leads):
                 leadContent(leads)
             case .unavailable(let failure):
-                LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: store.loadLeads)
+                LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: { Task { await bootstrap.refreshLeads() } })
                     .padding(LegendNextSpacing.sm)
             }
         }
         .background(LegendNextColor.canvas.ignoresSafeArea())
         .navigationTitle("Leads")
         .navigationBarTitleDisplayMode(.inline)
-        .task { if case .idle = store.leadsState { store.loadLeads() } }
+        .refreshable { await bootstrap.refreshLeads() }
     }
 
     @ViewBuilder
@@ -2005,12 +2006,18 @@ private struct LegendAgentLeadsView: View {
 
 private struct LegendCirclesView: View {
     let currentSession: MobileSession
-    @StateObject private var store: MobileJourneyCirclesStore
+    @ObservedObject private var store: MobileJourneyCirclesStore
+    @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     @State private var isEditingProfile = false
 
-    init(currentSession: MobileSession, coordinator: MobileSessionCoordinator) {
+    init(
+        currentSession: MobileSession,
+        store: MobileJourneyCirclesStore,
+        bootstrap: LegendApplicationBootstrapCoordinator
+    ) {
         self.currentSession = currentSession
-        _store = StateObject(wrappedValue: coordinator.makeJourneyCirclesStore())
+        _store = ObservedObject(wrappedValue: store)
+        _bootstrap = ObservedObject(wrappedValue: bootstrap)
     }
 
     var body: some View {
@@ -2027,7 +2034,7 @@ private struct LegendCirclesView: View {
                 case .loaded(let dashboard):
                     dashboardContent(dashboard)
                 case .unavailable(let failure):
-                    LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: store.load)
+                    LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: { Task { await bootstrap.refreshJourneyCircles() } })
                         .padding(LegendNextSpacing.sm)
                 }
             }
@@ -2051,7 +2058,7 @@ private struct LegendCirclesView: View {
                 }
             }
         }
-        .task { if case .idle = store.state { store.load() } }
+        .refreshable { await bootstrap.refreshJourneyCircles() }
         .sheet(isPresented: $isEditingProfile) {
             if case .loaded(let dashboard) = store.state {
                 LegendJourneyProfileEditor(dashboard: dashboard, store: store)
@@ -2335,17 +2342,18 @@ private struct LegendFinanceView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let currentSession: MobileSession
-    @StateObject private var store: MobileFinancialStore
+    @ObservedObject private var store: MobileFinancialStore
+    @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     @State private var detailDestination: MobileFinancialDetailDestination?
 
     init(
         currentSession: MobileSession,
-        coordinator: MobileSessionCoordinator
+        store: MobileFinancialStore,
+        bootstrap: LegendApplicationBootstrapCoordinator
     ) {
         self.currentSession = currentSession
-        _store = StateObject(
-            wrappedValue: coordinator.makeFinancialStore()
-        )
+        _store = ObservedObject(wrappedValue: store)
+        _bootstrap = ObservedObject(wrappedValue: bootstrap)
     }
 
     var body: some View {
@@ -2390,7 +2398,7 @@ private struct LegendFinanceView: View {
                         title: failure.title,
                         message: failure.message,
                         retryTitle: "Sign in again",
-                        retry: store.load
+                        retry: { Task { await bootstrap.refreshFinancial() } }
                     )
                     .padding(LegendNextSpacing.sm)
 
@@ -2399,7 +2407,7 @@ private struct LegendFinanceView: View {
                         title: failure.title,
                         message: failure.message,
                         retryTitle: "Retry",
-                        retry: store.load
+                        retry: { Task { await bootstrap.refreshFinancial() } }
                     )
                     .padding(LegendNextSpacing.sm)
                 }
@@ -2410,11 +2418,6 @@ private struct LegendFinanceView: View {
         )
         .navigationTitle("Financial intelligence")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            if case .idle = store.state {
-                store.load()
-            }
-        }
     }
 
     @ViewBuilder
@@ -2468,7 +2471,7 @@ private struct LegendFinanceView: View {
             .ignoresSafeArea()
         )
         .refreshable {
-            store.load()
+            await bootstrap.refreshFinancial()
         }
         .navigationDestination(item: $detailDestination) { destination in
             financialDetail(destination, financial: financial)
@@ -2860,7 +2863,7 @@ private struct LegendFinanceView: View {
         .navigationTitle(destination.title)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
-            store.load()
+            await bootstrap.refreshFinancial()
         }
     }
 
@@ -4276,8 +4279,9 @@ private struct LegendAccountView: View {
     let currentSession: MobileSession
 
     @ObservedObject private var coordinator: MobileSessionCoordinator
-    @StateObject private var account: MobileAccountStore
+    @ObservedObject private var account: MobileAccountStore
     @ObservedObject private var social: MobileSocialStore
+    @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
 
     @State private var selectedContent: LegendProfileContentFilter = .posts
     @State private var isEditing = false
@@ -4295,14 +4299,15 @@ private struct LegendAccountView: View {
     init(
         currentSession: MobileSession,
         coordinator: MobileSessionCoordinator,
-        social: MobileSocialStore
+        account: MobileAccountStore,
+        social: MobileSocialStore,
+        bootstrap: LegendApplicationBootstrapCoordinator
     ) {
         self.currentSession = currentSession
         _coordinator = ObservedObject(wrappedValue: coordinator)
-        _account = StateObject(
-            wrappedValue: coordinator.makeAccountStore()
-        )
+        _account = ObservedObject(wrappedValue: account)
         _social = ObservedObject(wrappedValue: social)
+        _bootstrap = ObservedObject(wrappedValue: bootstrap)
     }
 
     var body: some View {
@@ -4319,7 +4324,7 @@ private struct LegendAccountView: View {
                     title: failure.title,
                     message: failure.message,
                     retryTitle: "Retry",
-                    retry: account.load
+                    retry: { Task { await bootstrap.refreshProfile() } }
                 )
                 .padding(LegendNextSpacing.sm)
             }
@@ -4346,23 +4351,8 @@ private struct LegendAccountView: View {
                 .accessibilityLabel("Open profile settings")
             }
         }
-        .task {
-            if case .idle = account.state {
-                account.load()
-            }
-
-            if case .idle = social.state {
-                social.load()
-            }
-
-            if case .idle = social.profileContentState {
-                social.loadProfilePosts()
-            }
-        }
         .refreshable {
-            account.load()
-            social.load()
-            social.loadProfilePosts()
+            await bootstrap.refreshProfile()
         }
         .sheet(isPresented: $isEditing) {
             if case .loaded(let profile) = account.state {
@@ -4729,9 +4719,7 @@ private struct LegendAccountView: View {
                     }
 
                     Button {
-                        account.load()
-                        social.load()
-                        social.loadProfilePosts()
+                        Task { await bootstrap.refreshProfile() }
                         isShowingSettings = false
                     } label: {
                         Label(

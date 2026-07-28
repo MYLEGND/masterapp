@@ -19,6 +19,7 @@ struct RootView: View {
                 RoleSelectionView(selection: selection)
             case .authenticated(let currentSession):
                 AuthenticatedHomeView(currentSession: currentSession, coordinator: session)
+                    .id(currentSession.actor.identity)
             case .failed(let failure):
                 SessionFailureView(failure: failure)
             }
@@ -278,13 +279,45 @@ private struct SessionFailureView: View {
 private struct AuthenticatedHomeView: View {
     let currentSession: MobileSession
     @ObservedObject private var coordinator: MobileSessionCoordinator
+    @StateObject private var bootstrap: LegendApplicationBootstrapCoordinator
 
     init(currentSession: MobileSession, coordinator: MobileSessionCoordinator) {
         self.currentSession = currentSession
         _coordinator = ObservedObject(wrappedValue: coordinator)
+        _bootstrap = StateObject(wrappedValue: LegendApplicationBootstrapCoordinator(
+            currentSession: currentSession,
+            coordinator: coordinator))
     }
 
     var body: some View {
-        LegendApplicationShell(currentSession: currentSession, coordinator: coordinator)
+        Group {
+            switch bootstrap.state {
+            case .idle, .loading:
+                LegendLoadingView("Preparing your Legend…")
+            case .ready, .partiallyReady:
+                LegendApplicationShell(
+                    currentSession: currentSession,
+                    coordinator: coordinator,
+                    bootstrap: bootstrap)
+            case .failed(let failure):
+                NavigationStack {
+                    LegendErrorCard(
+                        title: failure.title,
+                        message: failure.message,
+                        retryTitle: "Try again",
+                        retry: {
+                            Task { await bootstrap.retryBootstrap() }
+                        })
+                    .padding(LegendSpacing.md)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(LegendPalette.canvas.ignoresSafeArea())
+                    .navigationTitle("Legend")
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+            }
+        }
+        .task {
+            await bootstrap.bootstrapIfNeeded()
+        }
     }
 }

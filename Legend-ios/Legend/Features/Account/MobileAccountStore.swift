@@ -68,10 +68,13 @@ final class MobileAccountStore: ObservableObject {
     @Published private(set) var state: MobileDataLoadState<MobileAccountProfile> = .idle
     @Published private(set) var actionFailure: UserFacingFailure?
     @Published private(set) var isSaving = false
+    @Published private(set) var isRefreshing = false
+    @Published private(set) var refreshFailure: UserFacingFailure?
 
     private let api: any MobileAccountAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
+    private var loadTask: Task<MobileStoreLoadResult, Never>?
 
     init(
         api: any MobileAccountAPI,
@@ -84,15 +87,19 @@ final class MobileAccountStore: ObservableObject {
     }
 
     func load() {
-        state = .loading
-        Task {
-            do {
-                let accessToken = try await accessTokenProvider()
-                state = .loaded(try await api.profile(accessToken: accessToken))
-            } catch {
-                state = .unavailable(failure(for: error, title: "Account unavailable"))
-            }
+        guard loadTask == nil else { return }
+        if !hasCachedValue {
+            state = .loading
         }
+        Task { _ = await loadIfNeeded() }
+    }
+
+    func loadIfNeeded() async -> MobileStoreLoadResult {
+        hasCachedValue ? .loaded : await request(preservingCachedValue: false)
+    }
+
+    func refresh() async -> MobileStoreLoadResult {
+        await request(preservingCachedValue: hasCachedValue)
     }
 
     func save(_ update: MobileAccountUpdate) {
@@ -105,6 +112,7 @@ final class MobileAccountStore: ObservableObject {
                 let accessToken = try await accessTokenProvider()
                 try await api.update(update, accessToken: accessToken)
                 state = .loaded(try await api.profile(accessToken: accessToken))
+                refreshFailure = nil
             } catch {
                 actionFailure = failure(for: error, title: "Account update unavailable")
             }
@@ -113,6 +121,57 @@ final class MobileAccountStore: ObservableObject {
 
     func dismissActionFailure() {
         actionFailure = nil
+    }
+
+    private var hasCachedValue: Bool {
+        if case .loaded = state { return true }
+        return false
+    }
+
+    private func request(preservingCachedValue: Bool) async -> MobileStoreLoadResult {
+        if let loadTask {
+            return await loadTask.value
+        }
+
+        if preservingCachedValue {
+            isRefreshing = true
+            refreshFailure = nil
+        } else {
+            state = .loading
+        }
+
+        let task = Task { [weak self] in
+            guard let self else {
+                return MobileStoreLoadResult.failed(UserFacingFailure(
+                    title: "Account unavailable",
+                    message: "The account store is no longer available.",
+                    correlationID: nil))
+            }
+
+            return await self.executeLoad(preservingCachedValue: preservingCachedValue)
+        }
+        loadTask = task
+        let result = await task.value
+        loadTask = nil
+        return result
+    }
+
+    private func executeLoad(preservingCachedValue: Bool) async -> MobileStoreLoadResult {
+        defer { isRefreshing = false }
+        do {
+            let accessToken = try await accessTokenProvider()
+            state = .loaded(try await api.profile(accessToken: accessToken))
+            refreshFailure = nil
+            return .loaded
+        } catch {
+            let presentation = failure(for: error, title: "Account unavailable")
+            if preservingCachedValue {
+                refreshFailure = presentation
+            } else {
+                state = .unavailable(presentation)
+            }
+            return mobileLoadResult(for: error, failure: presentation)
+        }
     }
 
     private func failure(for error: Error, title: String) -> UserFacingFailure {

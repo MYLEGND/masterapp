@@ -261,7 +261,11 @@ final class MobileNativeContractTests: XCTestCase {
             diagnostics: LegendDiagnostics())
 
         store.load()
-        try? await Task.sleep(for: .milliseconds(50))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+        while case .loading = store.state,
+              ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
 
         guard case .offline = store.state else {
             return XCTFail("Expected an offline messaging state")

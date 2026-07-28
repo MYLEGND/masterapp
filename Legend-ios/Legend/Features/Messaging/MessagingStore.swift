@@ -31,10 +31,13 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var sendFailure: UserFacingFailure?
     @Published private(set) var recipientState: MobileDataLoadState<[MessagingRecipient]> = .idle
     @Published private(set) var isStartingConversation = false
+    @Published private(set) var isRefreshing = false
+    @Published private(set) var refreshFailure: UserFacingFailure?
 
     private let api: any MessagingAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
+    private var conversationListTask: Task<MobileStoreLoadResult, Never>?
 
     init(
         api: any MessagingAPI,
@@ -47,16 +50,19 @@ final class MessagingStore: ObservableObject {
     }
 
     func load() {
-        state = .loading
-        Task {
-            do {
-                let conversations = try await api.conversations(accessToken: try await accessTokenProvider())
-                state = .loaded(conversations)
-                NativeUnreadBadge.update(with: conversations.reduce(0) { $0 + max(0, $1.unreadCount) })
-            } catch {
-                state = listFailureState(for: error)
-            }
+        guard conversationListTask == nil else { return }
+        if !hasCachedConversations {
+            state = .loading
         }
+        Task { _ = await loadIfNeeded() }
+    }
+
+    func loadIfNeeded() async -> MobileStoreLoadResult {
+        hasCachedConversations ? .loaded : await requestConversationList(preservingCachedValue: false)
+    }
+
+    func refresh() async -> MobileStoreLoadResult {
+        await requestConversationList(preservingCachedValue: hasCachedConversations)
     }
 
     func openConversation(_ conversationID: UUID) {
@@ -128,9 +134,7 @@ final class MessagingStore: ObservableObject {
                     accessToken: try await accessTokenProvider())
                 detailState = .loaded(conversation)
                 selectedConversationID = conversation.id
-                let conversations = try await api.conversations(accessToken: try await accessTokenProvider())
-                state = .loaded(conversations)
-                NativeUnreadBadge.update(with: conversations.reduce(0) { $0 + max(0, $1.unreadCount) })
+                _ = await refresh()
                 completion(conversation.id)
             } catch {
                 sendFailure = failure(for: error, title: "Conversation not started")
@@ -180,6 +184,63 @@ final class MessagingStore: ObservableObject {
             isClosed: conversation.isClosed))
     }
 
+    private var hasCachedConversations: Bool {
+        if case .loaded = state { return true }
+        return false
+    }
+
+    private func requestConversationList(
+        preservingCachedValue: Bool
+    ) async -> MobileStoreLoadResult {
+        if let conversationListTask {
+            return await conversationListTask.value
+        }
+
+        if preservingCachedValue {
+            isRefreshing = true
+            refreshFailure = nil
+        } else {
+            state = .loading
+        }
+
+        let task = Task { [weak self] in
+            guard let self else {
+                return MobileStoreLoadResult.failed(UserFacingFailure(
+                    title: "Messages unavailable",
+                    message: "The messaging store is no longer available.",
+                    correlationID: nil))
+            }
+            return await self.executeConversationListRequest(
+                preservingCachedValue: preservingCachedValue)
+        }
+        conversationListTask = task
+        let result = await task.value
+        conversationListTask = nil
+        return result
+    }
+
+    private func executeConversationListRequest(
+        preservingCachedValue: Bool
+    ) async -> MobileStoreLoadResult {
+        defer { isRefreshing = false }
+        do {
+            let accessToken = try await accessTokenProvider()
+            let conversations = try await api.conversations(accessToken: accessToken)
+            state = .loaded(conversations)
+            refreshFailure = nil
+            NativeUnreadBadge.update(with: conversations.reduce(0) { $0 + max(0, $1.unreadCount) })
+            return .loaded
+        } catch {
+            let presentation = failure(for: error, title: "Messages unavailable")
+            if preservingCachedValue {
+                refreshFailure = presentation
+            } else {
+                state = listFailureState(for: error, presentation: presentation)
+            }
+            return mobileLoadResult(for: error, failure: presentation)
+        }
+    }
+
     private func updateUnreadCount(for conversationID: UUID) {
         guard case .loaded(let conversations) = state else { return }
         state = .loaded(conversations.map { conversation in
@@ -198,20 +259,22 @@ final class MessagingStore: ObservableObject {
         }
     }
 
-    private func listFailureState(for error: Error) -> MessagingLoadState {
+    private func listFailureState(
+        for error: Error,
+        presentation: UserFacingFailure
+    ) -> MessagingLoadState {
         if case MobileMessagingContractError.unavailable = error {
             return .unavailable("Secure mobile messaging is unavailable until the approved bearer API contract is configured.")
         }
-        let failure = failure(for: error, title: "Messages unavailable")
         switch error as? MobileAPIError {
         case .unauthorized, .apiUnauthorized:
-            return .unauthorized(failure)
+            return .unauthorized(presentation)
         case .forbidden, .conflict, .apiForbidden, .apiConflict:
-            return .forbidden(failure)
+            return .forbidden(presentation)
         case .invalidServerResponse, .networkUnavailable:
-            return .offline(failure)
+            return .offline(presentation)
         default:
-            return .failed(failure)
+            return .failed(presentation)
         }
     }
 

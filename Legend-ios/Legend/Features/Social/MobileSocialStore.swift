@@ -197,12 +197,18 @@ final class MobileSocialStore: ObservableObject {
     @Published private(set) var state: MobileDataLoadState<MobileSocialSnapshot> = .idle
     @Published private(set) var profileContentState: MobileDataLoadState<[MobileSocialPost]> = .idle
     @Published private(set) var actionFailure: UserFacingFailure?
+    @Published private(set) var isRefreshing = false
+    @Published private(set) var isRefreshingProfilePosts = false
+    @Published private(set) var refreshFailure: UserFacingFailure?
+    @Published private(set) var profileRefreshFailure: UserFacingFailure?
 
     private let api: any MobileSocialAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
     private var mediaCache: [UUID: Data] = [:]
     private var mediaFileCache: [UUID: URL] = [:]
+    private var feedLoadTask: Task<MobileStoreLoadResult, Never>?
+    private var profilePostsLoadTask: Task<MobileStoreLoadResult, Never>?
 
     init(
         api: any MobileSocialAPI,
@@ -215,29 +221,35 @@ final class MobileSocialStore: ObservableObject {
     }
 
     func load() {
-        state = .loading
-        Task {
-            do {
-                let token = try await accessTokenProvider()
-                state = .loaded(try await api.feed(accessToken: token))
-            } catch {
-                state = .unavailable(failure(for: error, title: "Legend feed unavailable"))
-            }
+        guard feedLoadTask == nil else { return }
+        if !hasFeedValue {
+            state = .loading
         }
+        Task { _ = await loadIfNeeded() }
     }
 
     func loadProfilePosts() {
-        profileContentState = .loading
-        Task {
-            do {
-                let token = try await accessTokenProvider()
-                profileContentState = .loaded(
-                    try await api.currentProfilePosts(accessToken: token))
-            } catch {
-                profileContentState = .unavailable(
-                    failure(for: error, title: "Profile updates unavailable"))
-            }
+        guard profilePostsLoadTask == nil else { return }
+        if !hasProfilePostsValue {
+            profileContentState = .loading
         }
+        Task { _ = await loadProfilePostsIfNeeded() }
+    }
+
+    func loadIfNeeded() async -> MobileStoreLoadResult {
+        hasFeedValue ? .loaded : await requestFeed(preservingCachedValue: false)
+    }
+
+    func refresh() async -> MobileStoreLoadResult {
+        await requestFeed(preservingCachedValue: hasFeedValue)
+    }
+
+    func loadProfilePostsIfNeeded() async -> MobileStoreLoadResult {
+        hasProfilePostsValue ? .loaded : await requestProfilePosts(preservingCachedValue: false)
+    }
+
+    func refreshProfilePosts() async -> MobileStoreLoadResult {
+        await requestProfilePosts(preservingCachedValue: hasProfilePostsValue)
     }
 
     @discardableResult
@@ -272,7 +284,11 @@ final class MobileSocialStore: ObservableObject {
                     accessToken: token)
             }
 
-            insert(post)
+            if hasFeedValue {
+                insert(post)
+            } else {
+                _ = await refresh()
+            }
             return true
         } catch {
             actionFailure = failure(
@@ -306,7 +322,6 @@ final class MobileSocialStore: ObservableObject {
             let token = try await accessTokenProvider()
             try await api.deletePost(postID: postID, accessToken: token)
             remove(postID)
-            load()
             return true
         } catch {
             actionFailure = failure(for: error, title: "Could not delete your update")
@@ -383,21 +398,21 @@ final class MobileSocialStore: ObservableObject {
     func toggleSave(postID: UUID) {
         perform(title: "Could not update saved status") { token in
             _ = try await self.api.toggleSave(postID: postID, accessToken: token)
-            self.load()
+            _ = await self.refresh()
         }
     }
 
     func toggleRepost(postID: UUID) {
         perform(title: "Could not update repost") { token in
             _ = try await self.api.toggleRepost(postID: postID, accessToken: token)
-            self.load()
+            _ = await self.refresh()
         }
     }
 
     func recordShare(postID: UUID) {
         perform(title: "Could not record share") { token in
             _ = try await self.api.recordShare(postID: postID, accessToken: token)
-            self.load()
+            _ = await self.refresh()
         }
     }
 
@@ -468,6 +483,106 @@ final class MobileSocialStore: ObservableObject {
         actionFailure = nil
     }
 
+    private var hasFeedValue: Bool {
+        if case .loaded = state { return true }
+        return false
+    }
+
+    private var hasProfilePostsValue: Bool {
+        if case .loaded = profileContentState { return true }
+        return false
+    }
+
+    private func requestFeed(preservingCachedValue: Bool) async -> MobileStoreLoadResult {
+        if let feedLoadTask {
+            return await feedLoadTask.value
+        }
+
+        if preservingCachedValue {
+            isRefreshing = true
+            refreshFailure = nil
+        } else {
+            state = .loading
+        }
+
+        let task = Task { [weak self] in
+            guard let self else {
+                return MobileStoreLoadResult.failed(UserFacingFailure(
+                    title: "Legend feed unavailable",
+                    message: "The social store is no longer available.",
+                    correlationID: nil))
+            }
+            return await self.executeFeedRequest(preservingCachedValue: preservingCachedValue)
+        }
+        feedLoadTask = task
+        let result = await task.value
+        feedLoadTask = nil
+        return result
+    }
+
+    private func requestProfilePosts(preservingCachedValue: Bool) async -> MobileStoreLoadResult {
+        if let profilePostsLoadTask {
+            return await profilePostsLoadTask.value
+        }
+
+        if preservingCachedValue {
+            isRefreshingProfilePosts = true
+            profileRefreshFailure = nil
+        } else {
+            profileContentState = .loading
+        }
+
+        let task = Task { [weak self] in
+            guard let self else {
+                return MobileStoreLoadResult.failed(UserFacingFailure(
+                    title: "Profile updates unavailable",
+                    message: "The social store is no longer available.",
+                    correlationID: nil))
+            }
+            return await self.executeProfilePostsRequest(preservingCachedValue: preservingCachedValue)
+        }
+        profilePostsLoadTask = task
+        let result = await task.value
+        profilePostsLoadTask = nil
+        return result
+    }
+
+    private func executeFeedRequest(preservingCachedValue: Bool) async -> MobileStoreLoadResult {
+        defer { isRefreshing = false }
+        do {
+            let token = try await accessTokenProvider()
+            state = .loaded(try await api.feed(accessToken: token))
+            refreshFailure = nil
+            return .loaded
+        } catch {
+            let presentation = failure(for: error, title: "Legend feed unavailable")
+            if preservingCachedValue {
+                refreshFailure = presentation
+            } else {
+                state = .unavailable(presentation)
+            }
+            return mobileLoadResult(for: error, failure: presentation)
+        }
+    }
+
+    private func executeProfilePostsRequest(preservingCachedValue: Bool) async -> MobileStoreLoadResult {
+        defer { isRefreshingProfilePosts = false }
+        do {
+            let token = try await accessTokenProvider()
+            profileContentState = .loaded(try await api.currentProfilePosts(accessToken: token))
+            profileRefreshFailure = nil
+            return .loaded
+        } catch {
+            let presentation = failure(for: error, title: "Profile updates unavailable")
+            if preservingCachedValue {
+                profileRefreshFailure = presentation
+            } else {
+                profileContentState = .unavailable(presentation)
+            }
+            return mobileLoadResult(for: error, failure: presentation)
+        }
+    }
+
     private func perform(title: String, work: @escaping @MainActor (String) async throws -> Void) {
         actionFailure = nil
         Task {
@@ -481,10 +596,7 @@ final class MobileSocialStore: ObservableObject {
     }
 
     private func insert(_ post: MobileSocialPost) {
-        guard case .loaded(var snapshot) = state else {
-            load()
-            return
-        }
+        guard case .loaded(var snapshot) = state else { return }
         if post.contentType == MobileSocialContentType.story.rawValue {
             snapshot = MobileSocialSnapshot(stories: [post] + snapshot.stories, posts: snapshot.posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: snapshot.currentProfileMetrics, creatorInsights: snapshot.creatorInsights)
         } else {

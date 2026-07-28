@@ -40,11 +40,7 @@ struct MessagingHomeView: View {
                 dismiss: { isPresentingNewConversation = false })
         }
         .background(LegendPalette.canvas.ignoresSafeArea())
-        .task {
-            if case .idle = store.state {
-                store.load()
-            }
-        }
+        .refreshable { _ = await store.refresh() }
     }
 
     @ViewBuilder
@@ -77,7 +73,7 @@ struct MessagingHomeView: View {
             title: failure.title,
             message: failure.message,
             retryTitle: "Retry",
-            retry: store.load)
+            retry: { Task { _ = await store.refresh() } })
         .padding(LegendSpacing.md)
     }
 }

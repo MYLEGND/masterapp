@@ -265,16 +265,16 @@ enum MobileFinancialAmountSemantic {
                 ? .success
                 : .danger
 
-        case .liabilities,
-             .bills,
+        case .liabilities:
+            return .warning
+
+        case .bills,
              .debt,
              .endingDebt:
             return .danger
 
         case .historical:
-            return amount > 0
-                ? .information
-                : .danger
+            return .neutral
         }
     }
 
