@@ -113,7 +113,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                     )
                 )
                 .tracking(4.6)
-                .foregroundStyle(LegendNextColor.gold)
+                .foregroundStyle(LegendNextColor.navy)
                 .accessibilityAddTraits(.isHeader)
 
             Spacer(minLength: LegendNextSpacing.sm)
