@@ -1169,18 +1169,24 @@ struct LegendSocialMediaImage: View {
                 .fill(LegendNextColor.surfaceInset)
                 .frame(height: placeholderHeight)
                 .overlay {
-                    Button {
-                        Task { await loadMedia(forceRefresh: true) }
-                    } label: {
-                        Label("Image unavailable", systemImage: "photo.badge.exclamationmark")
+                    VStack(spacing: LegendNextSpacing.xs) {
+                        Label(
+                            mediaFailure.message,
+                            systemImage: "photo.badge.exclamationmark")
                             .font(.caption.weight(.semibold))
+                            .multilineTextAlignment(.center)
                             .foregroundStyle(LegendNextColor.textSecondary)
-                            .padding(.horizontal, LegendNextSpacing.sm)
-                            .padding(.vertical, LegendNextSpacing.xs)
-                            .background(LegendNextColor.surfaceElevated, in: Capsule())
+
+                        Button("Retry media") {
+                            Task { await loadMedia(forceRefresh: true) }
+                        }
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(LegendNextColor.navy)
+                        .padding(.horizontal, LegendNextSpacing.sm)
+                        .padding(.vertical, LegendNextSpacing.xs)
+                        .background(LegendNextColor.surfaceElevated, in: Capsule())
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Retries the secure image download")
+                    .padding(LegendNextSpacing.sm)
                 }
             }
         }
@@ -1201,13 +1207,25 @@ struct LegendSocialMediaImage: View {
 
         guard let data = await social.mediaData(
             for: media.id,
-            forceRefresh: forceRefresh),
-              let image = UIImage(data: data) else {
+            forceRefresh: forceRefresh) else {
+            state = .unavailable
+            return
+        }
+
+        guard let image = UIImage(data: data) else {
+            social.recordUnreadableImage(assetID: media.id)
             state = .unavailable
             return
         }
 
         state = .loaded(image)
+    }
+
+    private var mediaFailure: UserFacingFailure {
+        social.mediaFailure(for: media.id) ?? UserFacingFailure(
+            title: "Media unavailable",
+            message: "This protected image could not be displayed. Try again shortly.",
+            correlationID: nil)
     }
 
     private enum ImageState {

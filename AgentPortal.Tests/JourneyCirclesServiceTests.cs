@@ -300,7 +300,16 @@ public sealed class JourneyCirclesServiceTests
         var disabledDashboard = await service.GetDashboardAsync(
             viewer.ClientUserId);
 
-        Assert.Empty(disabledDashboard.Recommendations);
+        var discoveryProfile =
+            Assert.Single(disabledDashboard.Recommendations);
+
+        Assert.Equal(
+            visibleCandidate.Id,
+            discoveryProfile.Profile.ClientProfileId);
+
+        Assert.Equal(
+            "Discover someone new in the Legend community.",
+            discoveryProfile.Explanation);
     }
 
     [Fact]
@@ -336,4 +345,200 @@ public sealed class JourneyCirclesServiceTests
         Assert.False(rejected.Succeeded);
         Assert.Equal("JOURNEY_TAXONOMY_INVALID", rejected.ErrorCode);
     }
+
+    [Fact]
+    public async Task DiscoverFeed_ReturnsEligibleProfiles_WhenNoRecommendationQualifies()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        var viewer = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "discover-fallback-viewer",
+            FirstName = "Fallback",
+            LastName = "Viewer",
+            Email = "fallback.viewer@example.test"
+        };
+
+        var candidate = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "discover-fallback-candidate",
+            FirstName = "Discoverable",
+            LastName = "Member",
+            Email = "discoverable.member@example.test"
+        };
+
+        db.ClientProfiles.AddRange(viewer, candidate);
+        await db.SaveChangesAsync();
+
+        var service = new JourneyCirclesService(
+            db,
+            new CommunityTextModerationService(
+                new ConfigurationBuilder().Build()),
+            NullLogger<JourneyCirclesService>.Instance);
+
+        var viewerInput = new JourneyCircleProfileInput(
+            ConsentAffirmed: true,
+            IsOptedIn: true,
+            IsDiscoverable: false,
+            AllowSuggestions: true,
+            AllowConnectionRequests: true,
+            Introduction: "Focused on building a business.",
+            LifeStages: ["Business ownership"],
+            Locations: [],
+            Goals: ["Growing a business"],
+            Interests: ["Leadership"],
+            CircleCodes: ["Entrepreneurs Circle"],
+            ConnectionTypes: ["Business peer"],
+            CommunicationStyles: ["Detailed planning"],
+            AccountabilityFrequencies: ["Weekly"]);
+
+        var candidateInput = new JourneyCircleProfileInput(
+            ConsentAffirmed: true,
+            IsOptedIn: true,
+            IsDiscoverable: true,
+            AllowSuggestions: false,
+            AllowConnectionRequests: true,
+            Introduction: "Focused on family wellness.",
+            LifeStages: ["Growing family"],
+            Locations: [],
+            Goals: ["Personal growth"],
+            Interests: ["Fitness"],
+            CircleCodes: ["Accountability Circle"],
+            ConnectionTypes: ["Accountability partner"],
+            CommunicationStyles: ["Encouragement-focused"],
+            AccountabilityFrequencies: ["Monthly"]);
+
+        Assert.True(
+            (await service.SaveProfileAsync(
+                viewer.ClientUserId,
+                viewerInput)).Succeeded);
+
+        Assert.True(
+            (await service.SaveProfileAsync(
+                candidate.ClientUserId,
+                candidateInput)).Succeeded);
+
+        var dashboard = await service.GetDashboardAsync(
+            viewer.ClientUserId);
+
+        var result = Assert.Single(dashboard.Recommendations);
+
+        Assert.Equal(
+            candidate.Id,
+            result.Profile.ClientProfileId);
+
+        Assert.Equal(
+            "Discover someone new in the Legend community.",
+            result.Explanation);
+    }
+
+    [Fact]
+    public async Task DiscoverFeed_PrioritizesRecommendations_BeforeGeneralProfiles()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        var viewer = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "discover-order-viewer",
+            FirstName = "Order",
+            LastName = "Viewer",
+            Email = "order.viewer@example.test"
+        };
+
+        var recommended = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "discover-order-recommended",
+            FirstName = "Recommended",
+            LastName = "Member",
+            Email = "recommended.member@example.test"
+        };
+
+        var general = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "discover-order-general",
+            FirstName = "General",
+            LastName = "Member",
+            Email = "general.member@example.test"
+        };
+
+        db.ClientProfiles.AddRange(viewer, recommended, general);
+        await db.SaveChangesAsync();
+
+        var service = new JourneyCirclesService(
+            db,
+            new CommunityTextModerationService(
+                new ConfigurationBuilder().Build()),
+            NullLogger<JourneyCirclesService>.Instance);
+
+        JourneyCircleProfileInput Input(
+            string goal,
+            string circle,
+            string connectionType) =>
+            new(
+                ConsentAffirmed: true,
+                IsOptedIn: true,
+                IsDiscoverable: true,
+                AllowSuggestions: true,
+                AllowConnectionRequests: true,
+                Introduction: null,
+                LifeStages: [],
+                Locations: [],
+                Goals: [goal],
+                Interests: [],
+                CircleCodes: [circle],
+                ConnectionTypes: [connectionType],
+                CommunicationStyles: [],
+                AccountabilityFrequencies: []);
+
+        Assert.True(
+            (await service.SaveProfileAsync(
+                viewer.ClientUserId,
+                Input(
+                    "Growing a business",
+                    "Entrepreneurs Circle",
+                    "Business peer"))).Succeeded);
+
+        Assert.True(
+            (await service.SaveProfileAsync(
+                recommended.ClientUserId,
+                Input(
+                    "Growing a business",
+                    "Entrepreneurs Circle",
+                    "Business peer"))).Succeeded);
+
+        Assert.True(
+            (await service.SaveProfileAsync(
+                general.ClientUserId,
+                Input(
+                    "Health and wellness",
+                    "Wellness Circle",
+                    "Accountability partner"))).Succeeded);
+
+        var dashboard = await service.GetDashboardAsync(
+            viewer.ClientUserId);
+
+        Assert.Equal(2, dashboard.Recommendations.Count);
+
+        Assert.Equal(
+            recommended.Id,
+            dashboard.Recommendations[0].Profile.ClientProfileId);
+
+        Assert.StartsWith(
+            "Recommended for you.",
+            dashboard.Recommendations[0].Explanation);
+
+        Assert.Equal(
+            general.Id,
+            dashboard.Recommendations[1].Profile.ClientProfileId);
+
+        Assert.Equal(
+            "Discover someone new in the Legend community.",
+            dashboard.Recommendations[1].Explanation);
+    }
+
 }

@@ -3117,54 +3117,87 @@ private struct LegendFinanceView: View {
     ) -> some View {
         if let presentation = financial.presentation,
            !presentation.prioritySections.isEmpty {
-            LegendNextSurface(
-                style: .navy,
-                cornerRadius: LegendNextRadius.prominentCard,
-                padding: LegendNextSpacing.sm
+            let preferredOrder = [
+                MobileFinancialDetailDestination.financialPosition.rawValue,
+                MobileFinancialDetailDestination.currentOutlook.rawValue,
+                MobileFinancialDetailDestination.monthlyOutlook.rawValue,
+                MobileFinancialDetailDestination.dataAttention.rawValue
+            ]
+
+            let orderedSections = presentation.prioritySections
+                .enumerated()
+                .sorted { lhs, rhs in
+                    let lhsRank =
+                        preferredOrder.firstIndex(of: lhs.element.key)
+                        ?? preferredOrder.count + lhs.offset
+                    let rhsRank =
+                        preferredOrder.firstIndex(of: rhs.element.key)
+                        ?? preferredOrder.count + rhs.offset
+
+                    return lhsRank < rhsRank
+                }
+                .map { $0.element }
+
+            VStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.sm
             ) {
-                VStack(
-                    alignment: .leading,
-                    spacing: LegendNextSpacing.sm
-                ) {
-                    Text("PRIORITIZED VIEW")
-                        .font(LegendNextTypography.eyebrow)
-                        .tracking(0.7)
-                        .foregroundStyle(LegendNextColor.goldBright)
+                Text("PRIORITIZED VIEW")
+                    .font(LegendNextTypography.eyebrow)
+                    .tracking(0.7)
+                    .foregroundStyle(LegendNextColor.gold)
 
-                    Text("Financial Intelligence")
-                        .font(LegendNextTypography.title)
-                        .foregroundStyle(.white)
+                Text("Financial Intelligence")
+                    .font(LegendNextTypography.title)
+                    .foregroundStyle(LegendNextColor.navy)
 
-                    Text("Open a section to review the saved details.")
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(Color.white.opacity(0.74))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                        .padding(.horizontal, LegendNextSpacing.sm)
-                        .padding(.vertical, LegendNextSpacing.xs)
-                        .background(
-                            Color.white.opacity(0.08),
-                            in: Capsule()
-                        )
-                        .overlay {
-                            Capsule()
-                                .stroke(
-                                    Color.white.opacity(0.10),
-                                    lineWidth: 1
-                                )
-                        }
-
-                    ForEach(presentation.prioritySections) { section in
-                        if let destination = MobileFinancialDetailDestination(
-                            rawValue: section.key
-                        ) {
-                            financialDashboardCard(
-                                section,
-                                destination: destination
+                Text("Open a section to review the saved details.")
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.navy.opacity(0.68))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                    .padding(.horizontal, LegendNextSpacing.sm)
+                    .padding(.vertical, LegendNextSpacing.xs)
+                    .background(
+                        LegendNextColor.navy.opacity(0.055),
+                        in: Capsule()
+                    )
+                    .overlay {
+                        Capsule()
+                            .stroke(
+                                LegendNextColor.gold.opacity(0.34),
+                                lineWidth: 1
                             )
-                        }
+                    }
+
+                ForEach(orderedSections) { section in
+                    if let destination = MobileFinancialDetailDestination(
+                        rawValue: section.key
+                    ) {
+                        financialDashboardCard(
+                            section,
+                            destination: destination
+                        )
                     }
                 }
+            }
+            .padding(LegendNextSpacing.sm)
+            .background(
+                Color.white,
+                in: RoundedRectangle(
+                    cornerRadius: LegendNextRadius.prominentCard,
+                    style: .continuous
+                )
+            )
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: LegendNextRadius.prominentCard,
+                    style: .continuous
+                )
+                .stroke(
+                    LegendNextColor.gold,
+                    lineWidth: 1
+                )
             }
         } else {
             operatingSystemUnavailable(
