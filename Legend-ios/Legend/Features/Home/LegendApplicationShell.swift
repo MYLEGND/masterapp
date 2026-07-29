@@ -5946,7 +5946,45 @@ private struct LegendProfileGridTile: View {
                         .padding(8)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 }
-            }
+cd /Users/zacowen/MASTERAPP
+
+python3 <<'PY'
+from pathlib import Path
+
+path = Path(
+    "Legend-ios/Legend/Features/Social/LegendSocialHomeSection.swift"
+)
+
+text = path.read_text()
+
+old = '''                submit: { submitComment(to: post) },
+                cancel: { commentTarget = nil })
+        }
+'''
+
+new = '''                submit: { submitComment(to: post) },
+                cancel: { commentTarget = nil }
+            )
+        }
+'''
+
+count = text.count(old)
+
+if count != 1:
+    raise SystemExit(
+        f"NORMALIZATION ABORTED: expected one compact comment-sheet call, found {count}."
+    )
+
+path.write_text(text.replace(old, new, 1))
+
+print(f"NORMALIZED: {path}")
+PY
+
+git diff --check
+
+rg -n -A10 -B2 \
+'\.sheet\(item: \$commentTarget' \
+Legend-ios/Legend/Features/Social/LegendSocialHomeSection.swift            }
         }
         .aspectRatio(1, contentMode: .fit)
         .clipped()
