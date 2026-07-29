@@ -7,7 +7,11 @@ struct LegendApp: App {
 
     init() {
         let diagnostics = LegendDiagnostics()
-        _diagnostics = StateObject(wrappedValue: diagnostics)
+
+        _diagnostics = StateObject(
+            wrappedValue: diagnostics
+        )
+
         _session = StateObject(
             wrappedValue: MobileSessionCoordinator(
                 diagnostics: diagnostics

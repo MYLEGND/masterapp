@@ -2123,13 +2123,12 @@ private struct LegendCommentComposer: View {
                     replyTarget == nil
                         ? "Add a comment…"
                         : "Reply to \(replyTarget?.author.displayName ?? "")…",
-                    text: $draft,
-                    axis: .vertical
+                    text: $draft
                 )
                 .focused($composerFocused)
                 .font(LegendNextTypography.body)
                 .foregroundStyle(LegendNextColor.textPrimary)
-                .lineLimit(1...4)
+                .lineLimit(1)
                 .textInputAutocapitalization(.sentences)
                 .submitLabel(.send)
                 .onSubmit(send)
@@ -2143,25 +2142,27 @@ private struct LegendCommentComposer: View {
                     )
                 )
 
-                Button(action: send) {
-                    Image(systemName: "arrow.up")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(
-                            canSend
-                                ? LegendNextColor.navy
-                                : LegendNextColor.textSecondary.opacity(0.4)
-                        )
-                        .frame(width: 38, height: 38)
-                        .background(
-                            canSend
-                                ? LegendNextColor.goldBright
-                                : LegendNextColor.surfaceInset,
-                            in: Circle()
-                        )
+                if !composerFocused {
+                    Button(action: send) {
+                        Image(systemName: "arrow.up")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(
+                                canSend
+                                    ? LegendNextColor.navy
+                                    : LegendNextColor.textSecondary.opacity(0.4)
+                            )
+                            .frame(width: 38, height: 38)
+                            .background(
+                                canSend
+                                    ? LegendNextColor.goldBright
+                                    : LegendNextColor.surfaceInset,
+                                in: Circle()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canSend)
+                    .accessibilityLabel("Send comment")
                 }
-                .buttonStyle(.plain)
-                .disabled(!canSend)
-                .accessibilityLabel("Send comment")
             }
             .padding(.horizontal, LegendNextSpacing.md)
             .padding(.vertical, LegendNextSpacing.xs)
