@@ -962,17 +962,29 @@ private struct LegendSocialPostCard: View {
     }
 
     private var actionBar: some View {
-        HStack(spacing: LegendNextSpacing.sm) {
+        HStack(spacing: 2) {
             Button(action: react) {
-                Label("\(post.metrics.reactionCount)", systemImage: post.reactedByCurrentActor ? "heart.circle.fill" : "heart.circle")
-                    .foregroundStyle(post.reactedByCurrentActor ? LegendNextColor.danger : LegendNextColor.textSecondary)
+                actionMetricLabel(
+                    symbolName: post.reactedByCurrentActor
+                        ? "heart.fill"
+                        : "heart",
+                    count: post.metrics.reactionCount,
+                    isActive: post.reactedByCurrentActor,
+                    activeColor: LegendNextColor.danger
+                )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(post.reactedByCurrentActor ? "Remove appreciation" : "Appreciate this update")
+            .accessibilityLabel(
+                post.reactedByCurrentActor
+                    ? "Remove appreciation"
+                    : "Appreciate this update"
+            )
 
             Button(action: comment) {
-                Label("\(post.metrics.commentCount)", systemImage: "bubble.left.and.bubble.right")
-                    .foregroundStyle(LegendNextColor.textSecondary)
+                actionMetricLabel(
+                    symbolName: "bubble.left",
+                    count: post.metrics.commentCount
+                )
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Comment on this update")
@@ -981,34 +993,101 @@ private struct LegendSocialPostCard: View {
                 Button {
                     social.toggleSave(postID: post.id)
                 } label: {
-                    Label("\(post.metrics.saveCount)", systemImage: post.savedByCurrentActor ? "bookmark.circle.fill" : "bookmark.circle")
-                        .foregroundStyle(post.savedByCurrentActor ? LegendNextColor.gold : LegendNextColor.textSecondary)
+                    actionMetricLabel(
+                        symbolName: post.savedByCurrentActor
+                            ? "bookmark.fill"
+                            : "bookmark",
+                        count: post.metrics.saveCount,
+                        isActive: post.savedByCurrentActor,
+                        activeColor: LegendNextColor.gold
+                    )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(post.savedByCurrentActor ? "Remove saved update" : "Save this update")
+                .accessibilityLabel(
+                    post.savedByCurrentActor
+                        ? "Remove saved update"
+                        : "Save this update"
+                )
             }
 
             Button {
                 social.toggleRepost(postID: post.id)
             } label: {
-                Label("\(post.metrics.repostCount)", systemImage: "arrow.triangle.2.circlepath")
-                    .foregroundStyle(post.repostedByCurrentActor ? LegendNextColor.information : LegendNextColor.textSecondary)
+                actionMetricLabel(
+                    symbolName: "arrow.2.squarepath",
+                    count: post.metrics.repostCount,
+                    isActive: post.repostedByCurrentActor,
+                    activeColor: LegendNextColor.information
+                )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(post.repostedByCurrentActor ? "Remove repost" : "Repost this update")
+            .accessibilityLabel(
+                post.repostedByCurrentActor
+                    ? "Remove repost"
+                    : "Repost this update"
+            )
 
-            ShareLink(item: post.body) {
-                Label("\(post.metrics.shareCount)", systemImage: "square.and.arrow.up.circle")
-                    .foregroundStyle(LegendNextColor.textSecondary)
+            ShareLink(
+                item: post.body.isEmpty
+                    ? "Legend post by \(post.author.displayName)"
+                    : post.body
+            ) {
+                actionMetricLabel(
+                    symbolName: "paperplane",
+                    count: post.metrics.shareCount
+                )
             }
-            .simultaneousGesture(TapGesture().onEnded {
-                social.recordShare(postID: post.id)
-            })
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    social.recordShare(postID: post.id)
+                }
+            )
             .accessibilityLabel("Share this update")
 
-            Spacer(minLength: LegendNextSpacing.xs)
-
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 2)
+    }
+
+    private func actionMetricLabel(
+        symbolName: String,
+        count: Int,
+        isActive: Bool = false,
+        activeColor: Color = LegendNextColor.gold
+    ) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbolName)
+                .font(
+                    .system(
+                        size: 18,
+                        weight: isActive ? .semibold : .medium
+                    )
+                )
+                .symbolRenderingMode(.monochrome)
+                .frame(width: 21, height: 21)
+
+            if count > 0 {
+                Text("\(count)")
+                    .font(
+                        .system(
+                            size: 13,
+                            weight: .semibold,
+                            design: .rounded
+                        )
+                    )
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+        }
+        .foregroundStyle(
+            isActive
+                ? activeColor
+                : LegendNextColor.textPrimary
+        )
+        .frame(minHeight: 36)
+        .padding(.horizontal, count > 0 ? 5 : 3)
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
