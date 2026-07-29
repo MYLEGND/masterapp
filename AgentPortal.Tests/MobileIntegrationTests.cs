@@ -698,7 +698,7 @@ public sealed class MobileIntegrationTests
         IMessagingProfileImageResolver? providedProfiles = null)
     {
         var profiles = providedProfiles ?? CreateEmptyProfileResolver();
-        var controller = new MobileMessagingController(CreateResolver(db), messaging, profiles)
+        var controller = new MobileMessagingController(CreateResolver(db), messaging, profiles, db)
         {
             ControllerContext = new ControllerContext
             {

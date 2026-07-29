@@ -656,6 +656,11 @@ struct ConversationThreadView: View {
             .foregroundStyle(LegendNextColor.textPrimary)
             .lineLimit(1...5)
             .focused($composerIsFocused)
+            .textInputAutocapitalization(.sentences)
+            .autocorrectionDisabled(false)
+            .keyboardType(.default)
+            .textContentType(.none)
+            .submitLabel(.send)
             .padding(.horizontal, LegendNextSpacing.md)
             .padding(.vertical, 12)
             .background(
