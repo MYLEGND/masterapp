@@ -251,6 +251,15 @@ public sealed class SocialFeedService : ISocialFeedService
                 });
             }
 
+            if (!HasValidMediaForContentType(contentType, mediaAssets))
+            {
+                await DeleteStoredMediaAsync(storedKeys, CancellationToken.None);
+
+                return SocialOperationResult<SocialPostView>.Failure(
+                    "social_media_post_invalid",
+                    MediaValidationMessage(contentType));
+            }
+
             var now = DateTime.UtcNow;
             var post = new SocialPost
             {
@@ -1456,6 +1465,34 @@ public sealed class SocialFeedService : ISocialFeedService
         MessagingParticipantTypes.Client => MessagingParticipantTypes.Client,
         _ => null
     };
+
+    private static bool HasValidMediaForContentType(
+        string contentType,
+        IReadOnlyCollection<SocialPostMediaAsset> mediaAssets) =>
+        contentType switch
+        {
+            SocialPostContentTypes.Post =>
+                mediaAssets.Count is > 0 and <= MaximumMediaItemsPerPost,
+            SocialPostContentTypes.Story => mediaAssets.Count == 1,
+            SocialPostContentTypes.Reel =>
+                mediaAssets.Count == 1 &&
+                string.Equals(
+                    mediaAssets.Single().MediaKind,
+                    "Video",
+                    StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+
+    private static string MediaValidationMessage(string contentType) =>
+        contentType switch
+        {
+            SocialPostContentTypes.Story =>
+                "Stories require exactly one supported image or video.",
+            SocialPostContentTypes.Reel =>
+                "Reels require exactly one supported video.",
+            _ =>
+                $"Posts require between 1 and {MaximumMediaItemsPerPost} supported media files."
+        };
 
     private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;
 

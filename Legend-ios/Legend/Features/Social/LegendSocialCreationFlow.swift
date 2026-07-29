@@ -14,9 +14,8 @@ struct LegendSocialCreationSheet: View {
         Group {
             switch route {
             case .menu:
-                LegendSocialComposer(
-                    type: .post,
-                    social: social,
+                LegendSocialCreationModeMenu(
+                    select: { route = .composer($0) },
                     dismiss: { route = nil })
 
             case .composer(let type):
@@ -29,6 +28,96 @@ struct LegendSocialCreationSheet: View {
                 EmptyView()
             }
         }
+    }
+}
+
+private struct LegendSocialCreationModeMenu: View {
+    let select: (MobileSocialContentType) -> Void
+    let dismiss: () -> Void
+
+    @State private var selectedType: MobileSocialContentType = .post
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: LegendNextSpacing.lg) {
+                Spacer(minLength: LegendNextSpacing.md)
+
+                Image(systemName: selectedType.systemImage)
+                    .font(.system(size: 44, weight: .semibold))
+                    .foregroundStyle(LegendNextColor.gold)
+                    .frame(width: 96, height: 96)
+                    .background(
+                        LegendNextColor.navy,
+                        in: Circle())
+                    .accessibilityHidden(true)
+
+                VStack(spacing: LegendNextSpacing.xs) {
+                    Text(selectedType.creationTitle)
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                    Text(selectedType.creationPrompt)
+                        .font(LegendNextTypography.body)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, LegendNextSpacing.xl)
+
+                Spacer()
+
+                Button {
+                    select(selectedType)
+                } label: {
+                    Label("Continue with \(selectedType.displayName)", systemImage: "arrow.right")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(LegendButtonStyle(kind: .primary))
+                .padding(.horizontal, LegendNextSpacing.md)
+            }
+            .padding(.vertical, LegendNextSpacing.md)
+            .background(LegendNextColor.canvas)
+            .navigationTitle("Create")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: dismiss)
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                LegendSocialCreationModeRail(selection: $selectedType)
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+private struct LegendSocialCreationModeRail: View {
+    @Binding var selection: MobileSocialContentType
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(MobileSocialContentType.allCases) { candidate in
+                Button {
+                    withAnimation(.snappy) {
+                        selection = candidate
+                    }
+                } label: {
+                    Label(candidate.displayName, systemImage: candidate.systemImage)
+                        .font(.subheadline.weight(.bold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, LegendNextSpacing.sm)
+                        .foregroundStyle(candidate == selection ? LegendNextColor.navy : LegendNextColor.textSecondary)
+                        .background(candidate == selection ? LegendNextColor.gold.opacity(0.22) : Color.clear)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Create \(candidate.displayName)")
+                .accessibilityAddTraits(candidate == selection ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, LegendNextSpacing.sm)
+        .padding(.vertical, LegendNextSpacing.xs)
+        .background(LegendNextColor.surfaceElevated)
     }
 }
 
@@ -139,7 +228,7 @@ struct LegendSocialComposer: View {
     private var canContinue: Bool {
         switch stage {
         case .library, .preparingMedia, .camera:
-            return !selectedMedia.isEmpty || type == .post
+            return hasValidSelection || type == .post
         case .metadata:
             return canPublish && social.publication == nil
         case .music, .handedOff, .failed:
@@ -165,35 +254,17 @@ struct LegendSocialComposer: View {
 
     private var libraryContent: some View {
         VStack(spacing: 0) {
-            legendModeRail
             selectionPreview
             photoLibraryStatus
             mediaGrid
+            legendModeRail
         }
         .navigationTitle(type.displayName)
         .navigationBarTitleDisplayMode(.inline)
     }
 
     private var legendModeRail: some View {
-        HStack(spacing: 0) {
-            ForEach(MobileSocialContentType.allCases) { candidate in
-                Button {
-                    type = candidate
-                } label: {
-                    Label(candidate.displayName, systemImage: candidate.systemImage)
-                        .font(.subheadline.weight(.bold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, LegendNextSpacing.sm)
-                        .foregroundStyle(candidate == type ? LegendNextColor.navy : LegendNextColor.textSecondary)
-                        .background(candidate == type ? LegendNextColor.gold.opacity(0.22) : Color.clear)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Create \(candidate.displayName)")
-                .accessibilityAddTraits(candidate == type ? .isSelected : [])
-            }
-        }
-        .padding(.horizontal, LegendNextSpacing.sm)
-        .background(LegendNextColor.surfaceElevated)
+        LegendSocialCreationModeRail(selection: $type)
     }
 
     @ViewBuilder
@@ -434,6 +505,12 @@ struct LegendSocialComposer: View {
         Set(selectedMedia.compactMap(\.sourceAssetIdentifier))
     }
 
+    private var hasValidSelection: Bool {
+        !selectedMedia.isEmpty &&
+            selectedMedia.count <= type.maximumMediaItems &&
+            selectedMedia.allSatisfy(type.accepts)
+    }
+
     private func primaryAction() {
         switch stage {
         case .library:
@@ -535,15 +612,18 @@ struct LegendSocialComposer: View {
     }
 
     private func validateSelection(for updatedType: MobileSocialContentType) {
-        let incompatible = selectedMedia.filter { !updatedType.accepts($0) }
-        incompatible.forEach { $0.discardTemporaryFile() }
-        selectedMedia.removeAll { !updatedType.accepts($0) }
-        if selectedMedia.count > updatedType.maximumMediaItems {
-            let removed = selectedMedia.dropFirst(updatedType.maximumMediaItems)
-            removed.forEach { $0.discardTemporaryFile() }
-            selectedMedia = Array(selectedMedia.prefix(updatedType.maximumMediaItems))
+        guard !selectedMedia.isEmpty else {
+            mediaSelectionError = nil
+            return
         }
-        mediaSelectionError = incompatible.isEmpty ? nil : "Incompatible media was removed for \(updatedType.displayName)."
+
+        if !selectedMedia.allSatisfy(updatedType.accepts) {
+            mediaSelectionError = "Choose media supported by \(updatedType.displayName). Your existing selection remains available when you switch back."
+        } else if selectedMedia.count > updatedType.maximumMediaItems {
+            mediaSelectionError = "\(updatedType.displayName) accepts up to \(updatedType.maximumMediaItems) item\(updatedType.maximumMediaItems == 1 ? "" : "s"). Your existing selection remains available when you switch back."
+        } else {
+            mediaSelectionError = nil
+        }
     }
 
     private func cancel() {

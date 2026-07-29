@@ -424,6 +424,51 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task MediaPost_EnforcesStoryAndReelMediaRules_AndCleansRejectedUploads()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("media-rules-client", "Media", "Rules");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var storage = new InMemoryTestSocialMediaStorage();
+        var service = CreateService(db, storage);
+
+        await using var firstStoryImage = new MemoryStream([1]);
+        await using var secondStoryImage = new MemoryStream([2]);
+        var invalidStory = await service.CreateMediaPostAsync(
+            new CreateSocialMediaPostCommand(
+                ClientActor(client),
+                SocialPostContentTypes.Story,
+                "An invalid multi-item story",
+                [
+                    new SocialMediaUpload("first.jpg", 1, firstStoryImage, null),
+                    new SocialMediaUpload("second.jpg", 1, secondStoryImage, null)
+                ]));
+
+        await using var reelImage = new MemoryStream([3]);
+        var invalidReel = await service.CreateMediaPostAsync(
+            new CreateSocialMediaPostCommand(
+                ClientActor(client),
+                SocialPostContentTypes.Reel,
+                "An invalid image reel",
+                [new SocialMediaUpload("reel.jpg", 1, reelImage, null)]));
+
+        Assert.False(invalidStory.Succeeded);
+        Assert.Equal("social_media_post_invalid", invalidStory.ErrorCode);
+        Assert.Equal(
+            "Stories require exactly one supported image or video.",
+            invalidStory.ErrorMessage);
+        Assert.False(invalidReel.Succeeded);
+        Assert.Equal("social_media_post_invalid", invalidReel.ErrorCode);
+        Assert.Equal(
+            "Reels require exactly one supported video.",
+            invalidReel.ErrorMessage);
+        Assert.Empty(db.SocialPosts);
+        Assert.Equal(0, storage.StoredMediaCount);
+    }
+
+    [Fact]
     public async Task MediaRead_RejectsAClientWhoCannotSeeThePost()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -625,6 +670,8 @@ public sealed class SocialFeedServiceTests
         : ISocialMediaStorage
     {
         private readonly Dictionary<string, byte[]> _content = [];
+
+        public int StoredMediaCount => _content.Count;
 
         public async Task<SocialMediaStorageResult> StoreAsync(
             Guid mediaAssetId,

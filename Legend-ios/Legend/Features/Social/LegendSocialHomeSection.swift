@@ -741,7 +741,8 @@ private struct LegendStoryMedia: View {
                     media: image,
                     social: social,
                     contentMode: .fit,
-                    placeholderHeight: 520)
+                    placeholderHeight: 520,
+                    usesRoundedCorners: false)
             } else {
                 Color.black.overlay {
                     Text(story.body)
@@ -824,136 +825,198 @@ private struct LegendSocialPostCard: View {
     let insights: () -> Void
 
     var body: some View {
-        LegendNextSurface {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
-                    LegendProfileAvatar(avatar: post.author.avatar, displayName: post.author.displayName, size: 42)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(post.author.displayName)
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(LegendNextColor.textPrimary)
-                            .lineLimit(1)
-                        Text(metadata)
-                            .font(LegendNextTypography.supporting)
-                            .foregroundStyle(LegendNextColor.textSecondary)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: LegendNextSpacing.xs)
-                    if post.author.identity != currentIdentity {
-                        Button(post.followedByCurrentActor ? "Following" : "Follow", action: follow)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(post.followedByCurrentActor ? LegendNextColor.textSecondary : LegendNextColor.navy)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 6)
-                            .background(LegendNextColor.surfaceInset, in: Capsule())
-                            .buttonStyle(.plain)
-                    } else {
-                        Button(action: insights) {
-                            Image(systemName: "chart.bar.xaxis")
-                                .font(.caption.weight(.bold))
-                                .frame(width: 30, height: 30)
-                                .background(LegendNextColor.surfaceInset, in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(LegendNextColor.information)
-                        .accessibilityLabel("View post insights")
-                    }
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.horizontal, LegendNextSpacing.md)
+                .padding(.vertical, LegendNextSpacing.sm)
 
-                Text(post.body)
-                    .font(LegendNextTypography.body)
-                    .foregroundStyle(LegendNextColor.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
+            mediaPresentation
 
-                ForEach(post.media.filter(\.isImage)) { media in
-                    LegendSocialMediaImage(
-                        media: media,
-                        social: social
-                    )
-                }
-
-                ForEach(post.media.filter(\.isVideo)) { media in
-                    LegendSocialMediaVideo(
-                        postID: post.id,
-                        media: media,
-                        music: post.music,
-                        social: social)
-                }
-
-                if let music = post.music {
-                    Label(
-                        "\(music.trackTitle) · \(music.artistName)",
-                        systemImage: "music.note")
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(LegendNextColor.textSecondary)
-                    .lineLimit(1)
-                    .accessibilityLabel("Music: \(music.trackTitle) by \(music.artistName)")
-                }
-
-                HStack(spacing: LegendNextSpacing.sm) {
-                    Button(action: react) {
-                        Label("\(post.metrics.reactionCount)", systemImage: post.reactedByCurrentActor ? "heart.fill" : "heart")
-                            .foregroundStyle(post.reactedByCurrentActor ? LegendNextColor.danger : LegendNextColor.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(post.reactedByCurrentActor ? "Remove appreciation" : "Appreciate this update")
-
-                    Button(action: comment) {
-                        Label("\(post.metrics.commentCount)", systemImage: "bubble.right")
-                            .foregroundStyle(LegendNextColor.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Comment on this update")
-
-                    Button {
-                        social.toggleSave(postID: post.id)
-                    } label: {
-                        Label("\(post.metrics.saveCount)", systemImage: post.savedByCurrentActor ? "bookmark.fill" : "bookmark")
-                            .foregroundStyle(post.savedByCurrentActor ? LegendNextColor.gold : LegendNextColor.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(post.savedByCurrentActor ? "Remove saved update" : "Save this update")
-
-                    Button {
-                        social.toggleRepost(postID: post.id)
-                    } label: {
-                        Label("\(post.metrics.repostCount)", systemImage: post.repostedByCurrentActor ? "arrow.2.squarepath" : "arrow.2.squarepath")
-                            .foregroundStyle(post.repostedByCurrentActor ? LegendNextColor.information : LegendNextColor.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(post.repostedByCurrentActor ? "Remove repost" : "Repost this update")
-
-                    ShareLink(item: post.body) {
-                        Label("\(post.metrics.shareCount)", systemImage: "square.and.arrow.up")
-                            .foregroundStyle(LegendNextColor.textSecondary)
-                    }
-                    .simultaneousGesture(TapGesture().onEnded {
-                        social.recordShare(postID: post.id)
-                    })
-                    .accessibilityLabel("Share this update")
-
-                    Spacer()
-
-                    Text(post.postedUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
-                        .font(.caption2)
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                }
-
-                if !post.comments.isEmpty {
-                    Divider()
-                    ForEach(post.comments.suffix(2)) { comment in
-                        Text("\(comment.author.displayName): \(comment.body)")
-                            .font(LegendNextTypography.supporting)
-                            .foregroundStyle(LegendNextColor.textSecondary)
-                            .lineLimit(2)
-                    }
-                }
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                actionBar
+                metadataContent
             }
+            .padding(.horizontal, LegendNextSpacing.md)
+            .padding(.vertical, LegendNextSpacing.sm)
+        }
+        .background(LegendNextColor.canvas)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(LegendNextColor.separator)
+                .frame(height: 0.5)
         }
         .task(id: post.id) {
             guard !post.media.contains(where: \.isVideo) else { return }
             social.recordView(postID: post.id)
         }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+            LegendProfileAvatar(
+                avatar: post.author.avatar,
+                displayName: post.author.displayName,
+                size: 42)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(post.author.displayName)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .lineLimit(1)
+                Text(metadata)
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: LegendNextSpacing.xs)
+
+            if post.author.identity != currentIdentity {
+                Button(post.followedByCurrentActor ? "Following" : "Follow", action: follow)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(post.followedByCurrentActor ? LegendNextColor.textSecondary : LegendNextColor.navy)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(LegendNextColor.surfaceInset, in: Capsule())
+                    .buttonStyle(.plain)
+            } else {
+                Button(action: insights) {
+                    Image(systemName: "chart.bar.xaxis")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 30, height: 30)
+                        .background(LegendNextColor.surfaceInset, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(LegendNextColor.information)
+                .accessibilityLabel("View post insights")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var mediaPresentation: some View {
+        if !post.media.isEmpty {
+            TabView {
+                ForEach(post.media, id: \.id) { (media: MobileSocialMedia) in
+                    Group {
+                        if media.isImage {
+                            LegendSocialMediaImage(
+                                media: media,
+                                social: social,
+                                contentMode: .fill,
+                                placeholderHeight: nil,
+                                usesRoundedCorners: false)
+                        } else if media.isVideo {
+                            LegendSocialMediaVideo(
+                                postID: post.id,
+                                media: media,
+                                music: post.music,
+                                social: social,
+                                usesRoundedCorners: false)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2, perform: react)
+                    .accessibilityHint("Double tap to appreciate this update")
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: post.media.count > 1 ? .automatic : .never))
+            .aspectRatio(mediaAspectRatio, contentMode: .fit)
+            .clipped()
+        }
+    }
+
+    private var actionBar: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            Button(action: react) {
+                Label("\(post.metrics.reactionCount)", systemImage: post.reactedByCurrentActor ? "heart.fill" : "heart")
+                    .foregroundStyle(post.reactedByCurrentActor ? LegendNextColor.danger : LegendNextColor.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(post.reactedByCurrentActor ? "Remove appreciation" : "Appreciate this update")
+
+            Button(action: comment) {
+                Label("\(post.metrics.commentCount)", systemImage: "bubble.right")
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Comment on this update")
+
+            Button {
+                social.toggleSave(postID: post.id)
+            } label: {
+                Label("\(post.metrics.saveCount)", systemImage: post.savedByCurrentActor ? "bookmark.fill" : "bookmark")
+                    .foregroundStyle(post.savedByCurrentActor ? LegendNextColor.gold : LegendNextColor.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(post.savedByCurrentActor ? "Remove saved update" : "Save this update")
+
+            Button {
+                social.toggleRepost(postID: post.id)
+            } label: {
+                Label("\(post.metrics.repostCount)", systemImage: "arrow.2.squarepath")
+                    .foregroundStyle(post.repostedByCurrentActor ? LegendNextColor.information : LegendNextColor.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(post.repostedByCurrentActor ? "Remove repost" : "Repost this update")
+
+            ShareLink(item: post.body) {
+                Label("\(post.metrics.shareCount)", systemImage: "square.and.arrow.up")
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            }
+            .simultaneousGesture(TapGesture().onEnded {
+                social.recordShare(postID: post.id)
+            })
+            .accessibilityLabel("Share this update")
+
+            Spacer(minLength: LegendNextSpacing.xs)
+
+        }
+    }
+
+    @ViewBuilder
+    private var metadataContent: some View {
+        if !post.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            (Text(post.author.displayName).fontWeight(.bold) + Text(" \(post.body)"))
+                .font(LegendNextTypography.supporting)
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        if let music = post.music {
+            Label(
+                "\(music.trackTitle) · \(music.artistName)",
+                systemImage: "music.note")
+            .font(LegendNextTypography.supporting)
+            .foregroundStyle(LegendNextColor.textSecondary)
+            .lineLimit(1)
+            .accessibilityLabel("Music: \(music.trackTitle) by \(music.artistName)")
+        }
+
+        if !post.comments.isEmpty {
+            ForEach(post.comments.suffix(2)) { comment in
+                Text("\(comment.author.displayName): \(comment.body)")
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .lineLimit(2)
+            }
+        }
+
+        Text(post.postedUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
+            .font(.caption2)
+            .foregroundStyle(LegendNextColor.textSecondary)
+    }
+
+    private var mediaAspectRatio: CGFloat {
+        if post.contentType == MobileSocialContentType.story.rawValue ||
+            post.contentType == MobileSocialContentType.reel.rawValue {
+            return 9 / 16
+        }
+
+        guard let aspectRatio = post.media.first?.aspectRatio else { return 1 }
+        let value = CGFloat(truncating: NSDecimalNumber(decimal: aspectRatio))
+        return min(max(value, 0.5), 2)
     }
 
     private var metadata: String {
@@ -967,11 +1030,26 @@ struct LegendSocialMediaVideo: View {
     let media: MobileSocialMedia
     let music: MobileSocialMusic?
     @ObservedObject var social: MobileSocialStore
+    let usesRoundedCorners: Bool
 
     @State private var player: AVPlayer?
     @State private var isPlaying = false
-    @State private var isMuted = false
+    @State private var isMuted = true
     @State private var mostRecentRecordedWatchSeconds = 0.0
+
+    init(
+        postID: UUID,
+        media: MobileSocialMedia,
+        music: MobileSocialMusic?,
+        social: MobileSocialStore,
+        usesRoundedCorners: Bool = true
+    ) {
+        self.postID = postID
+        self.media = media
+        self.music = music
+        _social = ObservedObject(wrappedValue: social)
+        self.usesRoundedCorners = usesRoundedCorners
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1021,7 +1099,12 @@ struct LegendSocialMediaVideo: View {
                     .padding(.top, LegendNextSpacing.xs)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: usesRoundedCorners
+                    ? LegendNextRadius.control
+                    : 0,
+                style: .continuous))
         .task(id: media.id) {
             guard let url = await social.mediaFile(for: media) else { return }
             let created = AVPlayer(url: url)
@@ -1130,18 +1213,21 @@ struct LegendSocialMediaImage: View {
     @ObservedObject var social: MobileSocialStore
     let contentMode: ContentMode
     let placeholderHeight: CGFloat?
+    let usesRoundedCorners: Bool
     @State private var state = ImageState.loading
 
     init(
         media: MobileSocialMedia,
         social: MobileSocialStore,
         contentMode: ContentMode = .fit,
-        placeholderHeight: CGFloat? = 180
+        placeholderHeight: CGFloat? = 180,
+        usesRoundedCorners: Bool = true
     ) {
         self.media = media
         _social = ObservedObject(wrappedValue: social)
         self.contentMode = contentMode
         self.placeholderHeight = placeholderHeight
+        self.usesRoundedCorners = usesRoundedCorners
     }
 
     var body: some View {
@@ -1192,10 +1278,10 @@ struct LegendSocialMediaImage: View {
         }
         .clipShape(
             RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
-                style: .continuous
-            )
-        )
+                cornerRadius: usesRoundedCorners
+                    ? LegendNextRadius.control
+                    : 0,
+                style: .continuous))
         .task(id: media.id) {
             await loadMedia()
         }

@@ -1,8 +1,11 @@
 using Domain.Messaging;
 using Infrastructure.Messaging;
+using Infrastructure.Data;
 using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+
+using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Mobile;
 
@@ -15,15 +18,18 @@ public sealed class MobileMessagingController : MobileApiControllerBase
 {
     private readonly IMessagingService _messaging;
     private readonly IMessagingProfileImageResolver _profiles;
+    private readonly MasterAppDbContext _db;
 
     public MobileMessagingController(
         IMobileActorResolver actorResolver,
         IMessagingService messaging,
-        IMessagingProfileImageResolver profiles)
+        IMessagingProfileImageResolver profiles,
+        MasterAppDbContext db)
         : base(actorResolver)
     {
         _messaging = messaging;
         _profiles = profiles;
+        _db = db;
     }
 
     [HttpGet("session")]
@@ -120,14 +126,19 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         foreach (var recipient in result.Recipients)
         {
             identities.TryGetValue((recipient.UserId, recipient.ParticipantType), out var identity);
-            response.Add(new MobileMessagingRecipientDto(
+            response.Add((new MobileMessagingRecipientDto(
                 new MobileLogicalIdentityDto(recipient.UserId, recipient.ParticipantType),
                 identity?.ProfileId.ToString("D") ?? string.Empty,
                 identity?.DisplayName ?? recipient.DisplayName,
                 recipient.Email,
                 recipient.RelationshipLabel,
                 recipient.ExistingConversationId,
-                identity is null ? null : await ToAvatarDtoAsync(identity, cancellationToken)));
+                identity is null ? null : await ToAvatarDtoAsync(identity, cancellationToken))) with
+            {
+                Title = await ResolveCanonicalAgentTitleAsync(
+                    identity,
+                    cancellationToken)
+            });
         }
 
         return Ok(response);
@@ -281,11 +292,16 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         CancellationToken cancellationToken)
     {
         identities.TryGetValue((participant.UserId, participant.ParticipantType), out var identity);
-        return new MobileParticipantDto(
+        return (new MobileParticipantDto(
             new MobileLogicalIdentityDto(participant.UserId, participant.ParticipantType),
             identity?.ProfileId.ToString("D") ?? string.Empty,
             identity?.DisplayName ?? participant.DisplayName,
-            identity is null ? null : await ToAvatarDtoAsync(identity, cancellationToken));
+            identity is null ? null : await ToAvatarDtoAsync(identity, cancellationToken))) with
+        {
+            Title = await ResolveCanonicalAgentTitleAsync(
+                identity,
+                cancellationToken)
+        };
     }
 
     private async Task<MobileMessageDto> ToMessageDtoAsync(
@@ -303,6 +319,30 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         message.SentUtc,
         string.Equals(message.SenderUserId, actor.UserId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(message.SenderType, actor.ParticipantType, StringComparison.Ordinal));
+
+    private async Task<string?> ResolveCanonicalAgentTitleAsync(
+        MessagingParticipantIdentity? identity,
+        CancellationToken cancellationToken)
+    {
+        if (identity is null ||
+            !string.Equals(
+                identity.ParticipantType,
+                MessagingParticipantTypes.Agent,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var title = await _db.AgentProfiles
+            .AsNoTracking()
+            .Where(profile => profile.Id == identity.ProfileId)
+            .Select(profile => profile.Title)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return string.IsNullOrWhiteSpace(title)
+            ? null
+            : title.Trim();
+    }
 
     private async Task<MobileAvatarDto?> ToAvatarDtoAsync(
         MessagingParticipantIdentity identity,
@@ -333,7 +373,10 @@ public sealed record MobileParticipantDto(
     MobileLogicalIdentityDto Identity,
     string ProfileId,
     string DisplayName,
-    MobileAvatarDto? Avatar);
+    MobileAvatarDto? Avatar)
+{
+    public string? Title { get; init; }
+}
 
 public sealed record MobileSessionResponse(
     bool Authenticated,
@@ -390,7 +433,10 @@ public sealed record MobileMessagingRecipientDto(
     string? Email,
     string? RelationshipLabel,
     Guid? ExistingConversationId,
-    MobileAvatarDto? Avatar);
+    MobileAvatarDto? Avatar)
+{
+    public string? Title { get; init; }
+}
 
 internal static class MobileParticipantIdentityDictionaryExtensions
 {

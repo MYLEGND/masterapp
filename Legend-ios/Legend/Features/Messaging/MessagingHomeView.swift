@@ -1,6 +1,62 @@
 import SwiftUI
 import UIKit
 
+
+private func publicParticipantSubtitle(
+    title: String?,
+    participantType: ParticipantType
+) -> String {
+    guard participantType == .agent else {
+        return "Connection"
+    }
+
+    guard let normalizedTitle = title?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+          !normalizedTitle.isEmpty else {
+        return "Legend"
+    }
+
+    let suffix = " - Legend"
+
+    if normalizedTitle.count >= suffix.count {
+        let suffixStart = normalizedTitle.index(
+            normalizedTitle.endIndex,
+            offsetBy: -suffix.count
+        )
+
+        let existingSuffix = String(normalizedTitle[suffixStart...])
+
+        if existingSuffix.localizedCaseInsensitiveCompare(suffix) == .orderedSame {
+            return normalizedTitle
+        }
+    }
+
+    return normalizedTitle + suffix
+}
+
+private func publicRelationshipLabel(
+    _ value: String?
+) -> String? {
+    guard let normalized = value?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+          !normalized.isEmpty else {
+        return nil
+    }
+
+    let internalLabels = Set([
+        "agent",
+        "client",
+        "legend agent",
+        "legend client"
+    ])
+
+    guard !internalLabels.contains(normalized.lowercased()) else {
+        return nil
+    }
+
+    return normalized
+}
+
 // MARK: - Messages Inbox
 
 struct MessagingHomeView: View {
@@ -463,7 +519,7 @@ private struct LegendRecipientPicker: View {
         _ recipients: [MessagingRecipient]
     ) -> some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+            LazyVStack(alignment: .leading, spacing: 3) {
                 Text("Your Legend network")
                     .font(.system(.headline, design: .rounded).weight(.bold))
                     .foregroundStyle(LegendNextColor.textPrimary)
@@ -739,6 +795,8 @@ private struct LegendConversationRow: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
+    private let unreadColor = Color(uiColor: .systemRed)
+
     var body: some View {
         HStack(spacing: LegendNextSpacing.md) {
             LegendMessagingAvatar(
@@ -772,7 +830,7 @@ private struct LegendConversationRow: View {
                             ))
                             .foregroundStyle(
                                 conversation.unreadCount > 0
-                                    ? LegendNextColor.gold
+                                    ? unreadColor
                                     : LegendNextColor.textTertiary
                             )
                             .lineLimit(1)
@@ -802,10 +860,10 @@ private struct LegendConversationRow: View {
                     if conversation.unreadCount > 0 {
                         Text(unreadText)
                             .font(.caption2.weight(.bold))
-                            .foregroundStyle(LegendNextColor.midnight)
+                            .foregroundStyle(.white)
                             .frame(minWidth: 22, minHeight: 22)
                             .padding(.horizontal, conversation.unreadCount > 9 ? 4 : 0)
-                            .background(LegendNextGradient.gold, in: Capsule())
+                            .background(unreadColor, in: Capsule())
                             .accessibilityLabel(
                                 "\(conversation.unreadCount) unread messages"
                             )
@@ -852,7 +910,7 @@ private struct LegendConversationRow: View {
             )
             .stroke(
                 conversation.unreadCount > 0
-                    ? LegendNextColor.gold.opacity(0.26)
+                    ? unreadColor.opacity(0.34)
                     : LegendNextColor.subtleBorder(for: colorScheme),
                 lineWidth: 1
             )
@@ -869,10 +927,39 @@ private struct LegendConversationRow: View {
     private var relationshipTitle: String {
         switch conversation.counterparty.identity.participantType {
         case .agent:
-            return "Legend agent"
+            return agentPublicTitle(conversation.counterparty.title)
+
         case .client:
-            return "Legend client"
+            return "Connection"
         }
+    }
+
+    private func agentPublicTitle(
+        _ value: String?
+    ) -> String {
+        guard let title = normalized(value) else {
+            return "Legend"
+        }
+
+        let suffix = " - Legend"
+
+        if title.localizedCaseInsensitiveContains(suffix) {
+            return title
+        }
+
+        return title + suffix
+    }
+
+    private func normalized(
+        _ value: String?
+    ) -> String? {
+        guard let value = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+
+        return value
     }
 
     private var relationshipSymbol: String {
@@ -904,6 +991,7 @@ private struct LegendRecipientRow: View {
                     identity: recipient.identity,
                     profileID: recipient.profileID,
                     displayName: recipient.displayName,
+                    title: recipient.title,
                     avatar: recipient.avatar
                 ),
                 size: 54,
@@ -980,16 +1068,51 @@ private struct LegendRecipientRow: View {
     }
 
     private var relationshipLabel: String {
-        if let label = normalized(recipient.relationshipLabel) {
-            return label
-        }
-
         switch recipient.identity.participantType {
         case .agent:
-            return "Legend agent"
+            return agentPublicTitle(recipient.title)
+
         case .client:
-            return "Legend client"
+            return publicRelationshipLabel(recipient.relationshipLabel)
+                ?? "Connection"
         }
+    }
+
+    private func agentPublicTitle(
+        _ value: String?
+    ) -> String {
+        guard let title = normalized(value) else {
+            return "Legend"
+        }
+
+        let suffix = " - Legend"
+
+        if title.localizedCaseInsensitiveContains(suffix) {
+            return title
+        }
+
+        return title + suffix
+    }
+
+    private func publicRelationshipLabel(
+        _ value: String?
+    ) -> String? {
+        guard let value = normalized(value) else {
+            return nil
+        }
+
+        let blocked = [
+            "agent",
+            "client",
+            "legend agent",
+            "legend client"
+        ]
+
+        guard !blocked.contains(value.lowercased()) else {
+            return nil
+        }
+
+        return value
     }
 
     private func normalized(
@@ -1087,15 +1210,44 @@ private struct LegendConversationHeader: View {
 
     private var relationshipSubtitle: String {
         guard let counterparty else {
-            return "Authorized Legend network"
+            return "Private Legend conversation"
         }
 
         switch counterparty.identity.participantType {
         case .agent:
-            return "Legend agent"
+            return agentPublicTitle(counterparty.title)
+
         case .client:
-            return "Legend client"
+            return "Private connection"
         }
+    }
+
+    private func agentPublicTitle(
+        _ value: String?
+    ) -> String {
+        guard let title = normalized(value) else {
+            return "Legend"
+        }
+
+        let suffix = " - Legend"
+
+        if title.localizedCaseInsensitiveContains(suffix) {
+            return title
+        }
+
+        return title + suffix
+    }
+
+    private func normalized(
+        _ value: String?
+    ) -> String? {
+        guard let value = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+
+        return value
     }
 }
 
@@ -1144,7 +1296,7 @@ private struct LegendMessageTimeline: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: LegendNextSpacing.sm) {
+                LazyVStack(spacing: 2) {
                     if messages.isEmpty {
                         LegendMessagingEmptyState(
                             symbol: "bubble.left.and.bubble.right.fill",
@@ -1183,9 +1335,9 @@ private struct LegendMessageTimeline: View {
                         .frame(height: 1)
                         .id("MESSAGES_BOTTOM")
                 }
-                .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-                .padding(.top, LegendNextSpacing.md)
-                .padding(.bottom, LegendNextSpacing.lg)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
             }
             .scrollDismissesKeyboard(.interactively)
             .scrollIndicators(.hidden)
@@ -1245,11 +1397,11 @@ private struct LegendMessageDateSeparator: View {
         Text(LegendMessagingDateFormatter.threadDate(date))
             .font(.caption2.weight(.semibold))
             .foregroundStyle(LegendNextColor.textTertiary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 3)
             .background(LegendNextColor.fill, in: Capsule())
             .frame(maxWidth: .infinity)
-            .padding(.vertical, LegendNextSpacing.xs)
+            .padding(.vertical, 4)
     }
 }
 
@@ -1257,77 +1409,161 @@ private struct LegendMessageBubble: View {
     let message: ConversationMessage
     let showsSender: Bool
 
+    private let senderBubbleColor = Color(
+        red: 8.0 / 255.0,
+        green: 103.0 / 255.0,
+        blue: 198.0 / 255.0
+    )
+
+    private let recipientBubbleColor = LegendNextColor.navy
+
+    private let accessoryColumnWidth: CGFloat = 24
+    private let bubbleSpacing: CGFloat = 5
+    private let opposingGutter: CGFloat = 52
+
     var body: some View {
-        HStack(alignment: .bottom, spacing: LegendNextSpacing.xs) {
+        HStack(alignment: .bottom, spacing: bubbleSpacing) {
+            leadingAccessoryColumn
+
             if message.isMine {
-                Spacer(minLength: 58)
-            } else {
-                LegendMessagingAvatar(
-                    participant: message.sender,
-                    size: 28,
-                    showsGoldRing: false
-                )
-                .opacity(showsSender ? 1 : 0)
-                .accessibilityHidden(!showsSender)
+                Spacer(minLength: opposingGutter)
             }
 
-            VStack(
-                alignment: message.isMine ? .trailing : .leading,
-                spacing: LegendNextSpacing.tiny
-            ) {
-                if showsSender {
-                    Text(message.sender.displayName)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.textTertiary)
-                        .padding(.horizontal, 5)
-                }
-
-                Text(message.body)
-                    .font(.body)
-                    .foregroundStyle(
-                        message.isMine
-                            ? Color.white
-                            : LegendNextColor.textPrimary
-                    )
-                    .textSelection(.enabled)
-                    .padding(.horizontal, LegendNextSpacing.md)
-                    .padding(.vertical, 11)
-                    .background(
-                        message.isMine
-                            ? AnyShapeStyle(LegendNextGradient.hero)
-                            : AnyShapeStyle(LegendNextColor.surfaceElevated),
-                        in: RoundedRectangle(
-                            cornerRadius: 19,
-                            style: .continuous
-                        )
-                    )
-                    .overlay {
-                        RoundedRectangle(
-                            cornerRadius: 19,
-                            style: .continuous
-                        )
-                        .stroke(
-                            message.isMine
-                                ? Color.white.opacity(0.08)
-                                : LegendNextColor.separator,
-                            lineWidth: 1
-                        )
-                    }
-
-                Text(
-                    message.sentUTC,
-                    format: .dateTime.hour().minute()
-                )
-                .font(.caption2)
-                .foregroundStyle(LegendNextColor.textTertiary)
-                .padding(.horizontal, 5)
-            }
+            bubbleContent
+                .layoutPriority(1)
 
             if !message.isMine {
-                Spacer(minLength: 58)
+                Spacer(minLength: opposingGutter)
             }
+
+            trailingAccessoryColumn
         }
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+    }
+
+    private var bubbleContent: some View {
+        VStack(
+            alignment: message.isMine ? .trailing : .leading,
+            spacing: 1
+        ) {
+            Text(message.body)
+                .font(.system(size: 15, weight: .regular))
+                .lineSpacing(0)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    bubbleColor,
+                    in: RoundedRectangle(
+                        cornerRadius: 16,
+                        style: .continuous
+                    )
+                )
+
+            Text(
+                message.sentUTC,
+                format: .dateTime.hour().minute()
+            )
+            .font(.system(size: 10, weight: .regular))
+            .foregroundStyle(LegendNextColor.textTertiary)
+            .padding(
+                message.isMine ? .trailing : .leading,
+                3
+            )
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private var leadingAccessoryColumn: some View {
+        if message.isMine {
+            Color.clear
+                .frame(
+                    width: accessoryColumnWidth,
+                    height: 1
+                )
+                .accessibilityHidden(true)
+        } else {
+            incomingAvatar
+        }
+    }
+
+    private var trailingAccessoryColumn: some View {
+        Color.clear
+            .frame(
+                width: accessoryColumnWidth,
+                height: 1
+            )
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var incomingAvatar: some View {
+        if showsSender {
+            Group {
+                if let data = message.sender.avatar?.imageData,
+                   let image = UIImage(data: data) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Text(senderInitials)
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(
+                            maxWidth: .infinity,
+                            maxHeight: .infinity
+                        )
+                        .background(recipientBubbleColor)
+                }
+            }
+            .frame(
+                width: accessoryColumnWidth,
+                height: accessoryColumnWidth
+            )
+            .clipShape(Circle())
+            .padding(.bottom, 13)
+            .accessibilityHidden(true)
+        } else {
+            Color.clear
+                .frame(
+                    width: accessoryColumnWidth,
+                    height: 1
+                )
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var bubbleColor: Color {
+        message.isMine
+            ? senderBubbleColor
+            : recipientBubbleColor
+    }
+
+    private var senderInitials: String {
+        message.sender.displayName
+            .split(separator: " ")
+            .prefix(2)
+            .compactMap(\.first)
+            .map(String.init)
+            .joined()
+            .uppercased()
+    }
+
+    private var accessibilityDescription: String {
+        if message.isMine {
+            return "Sent message. \(message.body)"
+        }
+
+        return "Received message from "
+            + message.sender.displayName
+            + ". "
+            + message.body
     }
 }
 

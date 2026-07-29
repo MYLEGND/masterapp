@@ -4,6 +4,7 @@ struct MessagingParticipant: Codable, Equatable, Identifiable, Sendable {
     let identity: LogicalParticipantIdentity
     let profileID: String
     let displayName: String
+    let title: String?
     let avatar: ProfileAvatar?
 
     var id: LogicalParticipantIdentity { identity }
@@ -12,6 +13,7 @@ struct MessagingParticipant: Codable, Equatable, Identifiable, Sendable {
         case identity
         case profileID = "profileId"
         case displayName
+        case title
         case avatar
     }
 }
@@ -72,6 +74,7 @@ struct MessagingRecipient: Codable, Equatable, Identifiable, Sendable {
     let profileID: String
     let displayName: String
     let email: String?
+    let title: String?
     let relationshipLabel: String?
     let existingConversationID: UUID?
     let avatar: ProfileAvatar?
@@ -79,7 +82,13 @@ struct MessagingRecipient: Codable, Equatable, Identifiable, Sendable {
     var id: LogicalParticipantIdentity { identity }
 
     private enum CodingKeys: String, CodingKey {
-        case identity, profileID = "profileId", displayName, email, relationshipLabel, avatar
+        case identity
+        case profileID = "profileId"
+        case displayName
+        case email
+        case title
+        case relationshipLabel
+        case avatar
         case existingConversationID = "existingConversationId"
     }
 }
