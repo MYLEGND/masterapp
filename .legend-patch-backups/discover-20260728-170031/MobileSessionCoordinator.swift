@@ -271,6 +271,41 @@ final class MobileSessionCoordinator: ObservableObject {
             diagnostics: diagnostics)
     }
 
+    func makeLegendIdentityStore() -> LegendIdentityStore {
+        guard let apiBaseURL = configuration.apiBaseURL,
+              case .authenticated(let currentSession) = state else {
+            return LegendIdentityStore(
+                api: MobileUnavailableLegendIdentityAPI(),
+                accessTokenProvider: {
+                    throw MobileAPIError.unauthorized(
+                        correlationID: nil
+                    )
+                },
+                diagnostics: diagnostics
+            )
+        }
+
+        return LegendIdentityStore(
+            api: URLSessionLegendIdentityAPI(
+                client: MobileHTTPClient(
+                    baseURL: apiBaseURL
+                ),
+                participantType:
+                    currentSession.actor.identity.participantType
+            ),
+            accessTokenProvider: { [weak self] in
+                guard let self else {
+                    throw MobileAPIError.unauthorized(
+                        correlationID: nil
+                    )
+                }
+
+                return try await self.accessTokenForRequest()
+            },
+            diagnostics: diagnostics
+        )
+    }
+
     func makeJourneyCirclesStore() -> MobileJourneyCirclesStore {
         guard let apiBaseURL = configuration.apiBaseURL,
               case .authenticated(let currentSession) = state else {

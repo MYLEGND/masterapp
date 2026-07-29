@@ -1032,6 +1032,7 @@ private final class LegendSocialCameraViewController: UIViewController {
     private var videoInput: AVCaptureDeviceInput?
     private var configured = false
     private var completed = false
+    private var isCancellingRecording = false
     private var flashEnabled = false
     private var recordingURL: URL?
 
@@ -1247,11 +1248,13 @@ private final class LegendSocialCameraViewController: UIViewController {
     }
 
     @objc private func close() {
-        guard !completed else { return }
-        completed = true
+        guard !completed, !isCancellingRecording else { return }
         if movieOutput.isRecording {
+            isCancellingRecording = true
             movieOutput.stopRecording()
+            return
         }
+        completed = true
         cancelled()
     }
 
@@ -1285,7 +1288,7 @@ private final class LegendSocialCameraViewController: UIViewController {
         }
 
         let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("legend-camera-(UUID().uuidString)")
+            .appendingPathComponent("legend-camera-\(UUID().uuidString)")
             .appendingPathExtension("mov")
         recordingURL = destination
         movieOutput.startRecording(to: destination, recordingDelegate: self)
@@ -1385,6 +1388,14 @@ extension LegendSocialCameraViewController: AVCapturePhotoCaptureDelegate, AVCap
     ) {
         defer {
             recordingURL = nil
+        }
+        if isCancellingRecording {
+            try? FileManager.default.removeItem(at: outputFileURL)
+            completed = true
+            DispatchQueue.main.async { [cancelled] in
+                cancelled()
+            }
+            return
         }
         if let error {
             try? FileManager.default.removeItem(at: outputFileURL)

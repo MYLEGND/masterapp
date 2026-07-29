@@ -224,6 +224,15 @@ public sealed class SocialFeedService : ISocialFeedService
                 var stored = storageResult.Media;
                 storedKeys.Add(stored.StorageKey);
 
+                if (!await CanReadStoredMediaAsync(stored, cancellationToken))
+                {
+                    await DeleteStoredMediaAsync(storedKeys, CancellationToken.None);
+
+                    return SocialOperationResult<SocialPostView>.Failure(
+                        "SOCIAL_MEDIA_STORAGE_UNAVAILABLE",
+                        "Legend could not verify the uploaded media in secure storage.");
+                }
+
                 mediaAssets.Add(new SocialPostMediaAsset
                 {
                     Id = mediaAssetId,
@@ -406,11 +415,19 @@ public sealed class SocialFeedService : ISocialFeedService
                 "This media is not available to your mobile identity.");
         }
 
-        var content = await _mediaStorage.OpenReadAsync(
+        var storedMedia = await _mediaStorage.OpenReadAsync(
             media.StorageKey,
             cancellationToken);
 
-        if (content is null)
+        if (storedMedia.Status == SocialMediaReadStatus.Unavailable)
+        {
+            return SocialOperationResult<SocialMediaStream>.Failure(
+                "social_media_storage_unavailable",
+                "Legend media is temporarily unavailable. Please try again shortly.");
+        }
+
+        if (storedMedia.Status != SocialMediaReadStatus.Available ||
+            storedMedia.Content is null)
         {
             return SocialOperationResult<SocialMediaStream>.Failure(
                 "social_media_unavailable",
@@ -419,8 +436,27 @@ public sealed class SocialFeedService : ISocialFeedService
 
         return SocialOperationResult<SocialMediaStream>.Success(
             new SocialMediaStream(
-                content,
+                storedMedia.Content,
                 media.MimeType));
+    }
+
+    private async Task<bool> CanReadStoredMediaAsync(
+        SocialStoredMedia stored,
+        CancellationToken cancellationToken)
+    {
+        var storedMedia = await _mediaStorage.OpenReadAsync(
+            stored.StorageKey,
+            cancellationToken);
+
+        if (storedMedia.Status != SocialMediaReadStatus.Available ||
+            storedMedia.Content is null)
+            return false;
+
+        await using (storedMedia.Content)
+        {
+            var firstByte = new byte[1];
+            return await storedMedia.Content.ReadAsync(firstByte.AsMemory(), cancellationToken) == 1;
+        }
     }
 
     public async Task<SocialOperationResult<SocialPostView>> ToggleReactionAsync(

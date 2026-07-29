@@ -15,13 +15,40 @@ public interface ISocialMediaStorage
         Stream content,
         CancellationToken cancellationToken = default);
 
-    Task<Stream?> OpenReadAsync(
+    Task<SocialMediaReadResult> OpenReadAsync(
         string storageKey,
         CancellationToken cancellationToken = default);
 
     Task DeleteAsync(
         string storageKey,
         CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// The result of resolving a protected social-media object. A missing object
+/// and an unavailable storage provider are deliberately distinct: the former
+/// remains hidden from unauthorized callers, while the latter lets an already
+/// authorized caller retry a transient platform failure safely.
+/// </summary>
+public sealed record SocialMediaReadResult(
+    SocialMediaReadStatus Status,
+    Stream? Content)
+{
+    public static SocialMediaReadResult Available(Stream content) =>
+        new(SocialMediaReadStatus.Available, content);
+
+    public static SocialMediaReadResult Missing() =>
+        new(SocialMediaReadStatus.Missing, null);
+
+    public static SocialMediaReadResult Unavailable() =>
+        new(SocialMediaReadStatus.Unavailable, null);
+}
+
+public enum SocialMediaReadStatus
+{
+    Available,
+    Missing,
+    Unavailable
 }
 
 public sealed record SocialMediaStorageResult(

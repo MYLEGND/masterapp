@@ -181,7 +181,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
 
         if (!result.Succeeded || result.Value is null)
         {
-            return result.ErrorCode == "social_actor_invalid"
+            return result.ErrorCode is "social_actor_invalid" or "social_media_storage_unavailable"
                 ? SocialFailure(result.ErrorCode, result.ErrorMessage)
                 : NotFound();
         }
@@ -573,8 +573,10 @@ public sealed class MobileSocialController : MobileApiControllerBase
                 ? StatusCodes.Status400BadRequest
                 : errorCode is
                     "SOCIAL_MEDIA_STORAGE_FAILED" or
+                    "SOCIAL_MEDIA_STORAGE_UNAVAILABLE" or
+                    "social_media_storage_unavailable" or
                     "social_media_persistence_failed"
-                        ? StatusCodes.Status500InternalServerError
+                        ? StatusCodes.Status503ServiceUnavailable
                         : errorCode is "social_music_provider_unavailable"
                             ? StatusCodes.Status503ServiceUnavailable
                         : StatusCodes.Status403Forbidden;

@@ -304,7 +304,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         }
     }
 
-    public async Task<Stream?> OpenReadAsync(
+    public async Task<SocialMediaReadResult> OpenReadAsync(
         string storageKey,
         CancellationToken cancellationToken = default)
     {
@@ -319,7 +319,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         {
             var download = await blobClient.DownloadStreamingAsync(
                 cancellationToken: cancellationToken);
-            return download.Value.Content;
+            return SocialMediaReadResult.Available(download.Value.Content);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
@@ -334,7 +334,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
                 ex,
                 "Social media retrieval failed. StorageKey={StorageKey}",
                 storageKey);
-            return null;
+            return SocialMediaReadResult.Unavailable();
         }
     }
 
@@ -353,7 +353,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         DeleteFromFileSystem(storageKey);
     }
 
-    private async Task<Stream?> MigrateLegacyFileAsync(
+    private async Task<SocialMediaReadResult> MigrateLegacyFileAsync(
         string storageKey,
         BlobClient blobClient,
         CancellationToken cancellationToken)
@@ -361,7 +361,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         var physicalPath = ResolvePhysicalPath(storageKey);
 
         if (physicalPath is null || !File.Exists(physicalPath))
-            return null;
+            return SocialMediaReadResult.Missing();
 
         try
         {
@@ -380,13 +380,13 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
 
             var download = await blobClient.DownloadStreamingAsync(
                 cancellationToken: cancellationToken);
-            return download.Value.Content;
+            return SocialMediaReadResult.Available(download.Value.Content);
         }
         catch (RequestFailedException ex) when (ex.Status is 409 or 412)
         {
             var download = await blobClient.DownloadStreamingAsync(
                 cancellationToken: cancellationToken);
-            return download.Value.Content;
+            return SocialMediaReadResult.Available(download.Value.Content);
         }
         catch (Exception ex)
             when (ex is RequestFailedException or IOException or UnauthorizedAccessException)
@@ -399,22 +399,34 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         }
     }
 
-    private Task<Stream?> OpenReadFromFileSystem(string storageKey)
+    private Task<SocialMediaReadResult> OpenReadFromFileSystem(string storageKey)
     {
         var physicalPath = ResolvePhysicalPath(storageKey);
 
         if (physicalPath is null || !File.Exists(physicalPath))
-            return Task.FromResult<Stream?>(null);
+            return Task.FromResult(SocialMediaReadResult.Missing());
 
-        Stream stream = new FileStream(
-            physicalPath,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read,
-            CopyBufferSize,
-            useAsync: true);
+        try
+        {
+            Stream stream = new FileStream(
+                physicalPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                CopyBufferSize,
+                useAsync: true);
 
-        return Task.FromResult<Stream?>(stream);
+            return Task.FromResult(SocialMediaReadResult.Available(stream));
+        }
+        catch (Exception ex)
+            when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogError(
+                ex,
+                "Social media file retrieval failed. StorageKey={StorageKey}",
+                storageKey);
+            return Task.FromResult(SocialMediaReadResult.Unavailable());
+        }
     }
 
     private void DeleteFromFileSystem(string storageKey)

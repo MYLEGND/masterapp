@@ -494,6 +494,7 @@ private struct LegendStoryViewer: View {
                     playbackFinished: {
                         moveForward(manual: false)
                     })
+                    .id(item.id)
                     .frame(
                         width: geometry.size.width,
                         height: geometry.size.height)

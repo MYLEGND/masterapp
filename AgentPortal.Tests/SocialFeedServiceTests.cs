@@ -320,6 +320,31 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task MediaPost_IsNotPublishedUntilSecureStorageCanReadTheStoredObject()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("unreadable-media-client", "Unreadable", "Media");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var storage = new WriteOnlyTestSocialMediaStorage();
+        var service = CreateService(db, storage);
+        await using var uploadStream = new MemoryStream([1, 2, 3, 4]);
+
+        var created = await service.CreateMediaPostAsync(
+            new CreateSocialMediaPostCommand(
+                ClientActor(client),
+                SocialPostContentTypes.Post,
+                "A media update that cannot be read back",
+                [new SocialMediaUpload("unavailable.jpg", 4, uploadStream, null)]));
+
+        Assert.False(created.Succeeded);
+        Assert.Equal("SOCIAL_MEDIA_STORAGE_UNAVAILABLE", created.ErrorCode);
+        Assert.Empty(db.SocialPosts);
+        Assert.True(storage.DeleteWasCalled);
+    }
+
+    [Fact]
     public async Task VideoReel_IsStoredAndReadThroughTheAuthorizedMediaPath()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -547,10 +572,10 @@ public sealed class SocialFeedServiceTests
                 "test_media_storage_unused",
                 "This text-only test fixture does not store media."));
 
-        public Task<Stream?> OpenReadAsync(
+        public Task<SocialMediaReadResult> OpenReadAsync(
             string storageKey,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Stream?>(null);
+            Task.FromResult(SocialMediaReadResult.Missing());
 
         public Task DeleteAsync(
             string storageKey,
@@ -589,19 +614,56 @@ public sealed class SocialFeedServiceTests
                     storageKey));
         }
 
-        public Task<Stream?> OpenReadAsync(
+        public Task<SocialMediaReadResult> OpenReadAsync(
             string storageKey,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<Stream?>(
+            Task.FromResult(
                 _content.TryGetValue(storageKey, out var bytes)
-                    ? new MemoryStream(bytes, writable: false)
-                    : null);
+                    ? SocialMediaReadResult.Available(new MemoryStream(bytes, writable: false))
+                    : SocialMediaReadResult.Missing());
 
         public Task DeleteAsync(
             string storageKey,
             CancellationToken cancellationToken = default)
         {
             _content.Remove(storageKey);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class WriteOnlyTestSocialMediaStorage
+        : ISocialMediaStorage
+    {
+        public bool DeleteWasCalled { get; private set; }
+
+        public async Task<SocialMediaStorageResult> StoreAsync(
+            Guid mediaAssetId,
+            string originalFileName,
+            long declaredSizeBytes,
+            Stream content,
+            CancellationToken cancellationToken = default)
+        {
+            await content.CopyToAsync(Stream.Null, cancellationToken);
+            return SocialMediaStorageResult.Success(
+                new SocialStoredMedia(
+                    originalFileName,
+                    $"{mediaAssetId:N}.jpg",
+                    "Image",
+                    "image/jpeg",
+                    declaredSizeBytes,
+                    $"test/{mediaAssetId:N}.jpg"));
+        }
+
+        public Task<SocialMediaReadResult> OpenReadAsync(
+            string storageKey,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(SocialMediaReadResult.Unavailable());
+
+        public Task DeleteAsync(
+            string storageKey,
+            CancellationToken cancellationToken = default)
+        {
+            DeleteWasCalled = true;
             return Task.CompletedTask;
         }
     }

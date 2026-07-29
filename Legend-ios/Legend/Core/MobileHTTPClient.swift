@@ -283,7 +283,11 @@ struct MobileHTTPClient: Sendable {
         case 409:
             throw MobileAPIError.apiConflict(code: problem.code, correlationID: problem.correlationID)
         default:
-            throw MobileAPIError.server(statusCode: http.statusCode, correlationID: problem.correlationID)
+            throw MobileAPIError.apiServer(
+                statusCode: http.statusCode,
+                code: problem.code,
+                message: problem.message,
+                correlationID: problem.correlationID)
         }
     }
 
@@ -424,10 +428,12 @@ struct MobileHTTPClient: Sendable {
 
 private struct MobileAPIProblem: Decodable {
     let code: String?
+    let message: String?
     let correlationID: String?
 
     private enum CodingKeys: String, CodingKey {
         case code
+        case message
         case correlationID = "correlationId"
     }
 
@@ -435,6 +441,7 @@ private struct MobileAPIProblem: Decodable {
         let decoded = try? JSONDecoder.mobile.decode(MobileAPIProblem.self, from: data)
         return MobileAPIProblem(
             code: decoded?.code,
+            message: decoded?.message,
             correlationID: decoded?.correlationID ?? fallbackCorrelationID)
     }
 }
@@ -451,11 +458,12 @@ enum MobileAPIError: LocalizedError, Equatable {
     case apiUnauthorized(code: String?, correlationID: String?)
     case apiForbidden(code: String?, correlationID: String?)
     case apiConflict(code: String?, correlationID: String?)
+    case apiServer(statusCode: Int, code: String?, message: String?, correlationID: String?)
     case server(statusCode: Int, correlationID: String?)
 
     var correlationID: String? {
         switch self {
-        case .decodingFailed(let correlationID), .unauthorized(let correlationID), .forbidden(let correlationID), .conflict(let correlationID), .server(_, let correlationID), .apiUnauthorized(_, let correlationID), .apiForbidden(_, let correlationID), .apiConflict(_, let correlationID):
+        case .decodingFailed(let correlationID), .unauthorized(let correlationID), .forbidden(let correlationID), .conflict(let correlationID), .server(_, let correlationID), .apiUnauthorized(_, let correlationID), .apiForbidden(_, let correlationID), .apiConflict(_, let correlationID), .apiServer(_, _, _, let correlationID):
             return correlationID
         case .invalidBaseURL, .invalidPath, .invalidServerResponse, .networkUnavailable:
             return nil
@@ -464,7 +472,7 @@ enum MobileAPIError: LocalizedError, Equatable {
 
     var safeCode: String? {
         switch self {
-        case .apiUnauthorized(let code, _), .apiForbidden(let code, _), .apiConflict(let code, _):
+        case .apiUnauthorized(let code, _), .apiForbidden(let code, _), .apiConflict(let code, _), .apiServer(_, let code, _, _):
             return code
         case .invalidBaseURL, .invalidPath, .invalidServerResponse, .networkUnavailable, .decodingFailed, .unauthorized, .forbidden, .conflict, .server:
             return nil
@@ -492,6 +500,8 @@ enum MobileAPIError: LocalizedError, Equatable {
             return "You do not have access to this action."
         case .conflict, .apiConflict:
             return "Choose an authorized role before continuing."
+        case .apiServer(_, _, let message, _):
+            return message ?? "The service could not complete this request."
         case .server:
             return "The service could not complete this request."
         }

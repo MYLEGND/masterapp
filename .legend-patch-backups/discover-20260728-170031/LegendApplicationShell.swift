@@ -5,9 +5,9 @@ private enum LegendAppTab: String, Identifiable {
     case home
     case clients
     case leads
-    case discover
+    case circles
     case finance
-    
+    case messages
     case account
 
     var id: Self { self }
@@ -15,7 +15,7 @@ private enum LegendAppTab: String, Identifiable {
     static func available(for participantType: ParticipantType) -> [Self] {
         participantType == .agent
             ? [.home, .clients, .leads, .messages, .account]
-            : [.home, .discover, .messages, .finance, .account]
+            : [.home, .circles, .finance, .messages, .account]
     }
 
     var title: String {
@@ -23,7 +23,7 @@ private enum LegendAppTab: String, Identifiable {
         case .home: return "Home"
         case .clients: return "Clients"
         case .leads: return "Leads"
-        case .discover: return "Discover"
+        case .circles: return "Circles"
         case .finance: return "Finance"
         case .messages: return "Messages"
         case .account: return "Account"
@@ -35,7 +35,7 @@ private enum LegendAppTab: String, Identifiable {
         case .home: return "house"
         case .clients: return "person.2"
         case .leads: return "person.crop.circle.badge.plus"
-        case .discover: return "magnifyingglass"
+        case .circles: return "person.3"
         case .finance: return "chart.line.uptrend.xyaxis"
         case .messages: return "message"
         case .account: return "person"
@@ -47,7 +47,7 @@ private enum LegendAppTab: String, Identifiable {
         case .home: return "house.fill"
         case .clients: return "person.2.fill"
         case .leads: return "person.crop.circle.badge.plus"
-        case .discover: return "magnifyingglass"
+        case .circles: return "person.3.fill"
         case .finance: return "chart.line.uptrend.xyaxis"
         case .messages: return "message.fill"
         case .account: return "person.fill"
@@ -118,7 +118,7 @@ struct LegendApplicationShell: View {
                         bootstrap: bootstrap
                     )
                 }
-                .tag(LegendAppTab.discover)
+                .tag(LegendAppTab.circles)
 
                 NavigationStack {
                     LegendFinanceView(
@@ -407,7 +407,7 @@ private struct LegendHomeView: View {
                         open(.messages)
                     },
                     openCircles: {
-                        open(.discover)
+                        open(.circles)
                     },
                     refreshSocial: {
                         await bootstrap.refreshSocial()
@@ -511,7 +511,7 @@ private struct LegendHomeView: View {
                         LegendNextMetricTile(
                             title: "Clients",
                             value: "\(home.activeClientCount)",
-                            detail: "Connections",
+                            detail: "Active relationships",
                             systemImage: "person.2.fill",
                             tone: .navy
                         )
@@ -566,7 +566,7 @@ private struct LegendHomeView: View {
 
                     if let journey = home.journey {
                         Button {
-                            open(.discover)
+                            open(.circles)
                         } label: {
                             LegendNextMetricTile(
                                 title: "Connections",
@@ -579,7 +579,7 @@ private struct LegendHomeView: View {
                         .buttonStyle(.plain)
                     } else {
                         Button {
-                            open(.discover)
+                            open(.circles)
                         } label: {
                             LegendNextMetricTile(
                                 title: "Journey",
@@ -1139,7 +1139,7 @@ private struct LegendHomeView: View {
         _ journey: MobileJourneySummary
     ) -> some View {
         Button {
-            open(.discover)
+            open(.circles)
         } label: {
             LegendNextSurface(
                 style: .elevated,
@@ -1167,7 +1167,7 @@ private struct LegendHomeView: View {
                         alignment: .leading,
                         spacing: LegendNextSpacing.micro
                     ) {
-                        Text("Discover")
+                        Text("Journey Circles")
                             .font(LegendNextTypography.cardTitle)
                             .foregroundStyle(
                                 LegendNextColor.textPrimary
@@ -1176,7 +1176,7 @@ private struct LegendHomeView: View {
                         Text(
                             journey.hasProfile
                                 ? "\(journey.connectedPeerCount) connections · \(journey.recommendationCount) recommendations"
-                                : "Complete your Discover profile to receive relevant member recommendations and connection requests."
+                                : "Set up your profile to receive authorized connections and recommendations."
                         )
                         .font(LegendNextTypography.supporting)
                         .foregroundStyle(
@@ -1555,7 +1555,7 @@ private struct LegendHomeView: View {
                         systemImage: "person.3.fill",
                         tone: .gold
                     ) {
-                        open(.discover)
+                        open(.circles)
                     }
                 }
 
@@ -2011,10 +2011,7 @@ private struct LegendCirclesView: View {
     let currentSession: MobileSession
     @ObservedObject private var store: MobileJourneyCirclesStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
-
     @State private var isEditingProfile = false
-    @State private var searchText = ""
-    @State private var selectedScope: DiscoverScope = .people
 
     init(
         currentSession: MobileSession,
@@ -2030,35 +2027,23 @@ private struct LegendCirclesView: View {
         Group {
             if currentSession.actor.identity.participantType != .client {
                 LegendEmptyState(
-                    title: "Discover",
-                    message: "Discover is available from an authenticated client identity.",
-                    symbolName: "person.3"
-                )
+                    title: "Journey Circles",
+                    message: "Journey Circles is available from an authorized client mobile identity.",
+                    symbolName: "person.3")
             } else {
                 switch store.state {
                 case .idle, .loading:
-                    LegendLoadingView("Loading Discover…")
-
+                    LegendLoadingView("Loading Journey Circles…")
                 case .loaded(let dashboard):
                     dashboardContent(dashboard)
-
                 case .unavailable(let failure):
-                    LegendErrorCard(
-                        title: failure.title,
-                        message: failure.message,
-                        retryTitle: "Retry",
-                        retry: {
-                            Task {
-                                await bootstrap.refreshJourneyCircles()
-                            }
-                        }
-                    )
-                    .padding(LegendNextSpacing.sm)
+                    LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: { Task { await bootstrap.refreshJourneyCircles() } })
+                        .padding(LegendNextSpacing.sm)
                 }
             }
         }
         .background(LegendNextColor.canvas.ignoresSafeArea())
-        .navigationTitle("Discover")
+        .navigationTitle("Journey Circles")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if case .loaded(let dashboard) = store.state {
@@ -2066,394 +2051,89 @@ private struct LegendCirclesView: View {
                     Button {
                         isEditingProfile = true
                     } label: {
-                        Image(
-                            systemName: dashboard.profile == nil
-                                ? "person.crop.circle.badge.plus"
-                                : "line.3.horizontal.decrease.circle"
-                        )
-                        .font(.system(size: 17, weight: .semibold))
+                        Label("Manage Journey Circles profile", systemImage: "slider.horizontal.3")
                     }
                     .accessibilityLabel(
                         dashboard.profile == nil
-                            ? "Set up Discover profile"
-                            : "Manage Discover profile"
+                            ? "Set up Journey Circles profile"
+                            : "Manage Journey Circles profile"
                     )
                 }
             }
         }
-        .refreshable {
-            await bootstrap.refreshJourneyCircles()
-        }
+        .refreshable { await bootstrap.refreshJourneyCircles() }
         .sheet(isPresented: $isEditingProfile) {
             if case .loaded(let dashboard) = store.state {
-                LegendJourneyProfileEditor(
-                    dashboard: dashboard,
-                    store: store
-                )
+                LegendJourneyProfileEditor(dashboard: dashboard, store: store)
             }
         }
         .alert(
-            store.actionFailure?.title ?? "Discover unavailable",
+            store.actionFailure?.title ?? "Journey Circles unavailable",
             isPresented: Binding(
-                get: {
-                    store.actionFailure != nil
-                },
-                set: {
-                    if !$0 {
-                        store.dismissActionFailure()
-                    }
-                }
-            ),
-            actions: {
-                Button("OK", role: .cancel) {
-                    store.dismissActionFailure()
-                }
-            },
-            message: {
-                Text(
-                    store.actionFailure?.message
-                        ?? "The request could not be completed."
-                )
-            }
-        )
+                get: { store.actionFailure != nil },
+                set: { if !$0 { store.dismissActionFailure() } }),
+            actions: { Button("OK", role: .cancel) { store.dismissActionFailure() } },
+            message: { Text(store.actionFailure?.message ?? "The request could not be completed.") })
     }
 
-    private func dashboardContent(
-        _ dashboard: MobileJourneyDashboardResponse
-    ) -> some View {
+    private func dashboardContent(_ dashboard: MobileJourneyDashboardResponse) -> some View {
         ScrollView {
-            LazyVStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.sm
-            ) {
-                discoverHeader(dashboard)
+            LazyVStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                LegendHero(
+                    eyebrow: "COMMUNITY",
+                    title: "Journey Circles",
+                    detail: dashboard.profile == nil
+                        ? "Complete your approved selections in the client portal to participate."
+                        : "",
+                    symbolName: "person.3.fill")
 
-                if dashboard.profile == nil {
-                    setupCard
-                } else {
-                    searchField
-                    scopePicker(dashboard)
-                    scopedContent(dashboard)
+                if let profile = dashboard.profile {
+                    profileCard(profile)
+                }
+
+                if !dashboard.requests.isEmpty {
+                    connectionSection("Requests", connections: dashboard.requests, kind: .request)
+                }
+
+                if !dashboard.connections.isEmpty {
+                    connectionSection("Your connections", connections: dashboard.connections, kind: .connection)
+                }
+
+                if !dashboard.recommendations.isEmpty {
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                        LegendNextSectionHeader(title: "Recommendations")
+                        ForEach(dashboard.recommendations) { recommendation in
+                            recommendationCard(recommendation)
+                        }
+                    }
+                }
+
+                if dashboard.profile != nil && dashboard.recommendations.isEmpty && dashboard.connections.isEmpty && dashboard.requests.isEmpty {
+                    LegendEmptyState(
+                        title: "No recommendations yet",
+                        message: "New authorized connections will appear here when they match your saved preferences.",
+                        symbolName: "person.3")
                 }
             }
             .padding(.horizontal, LegendNextSpacing.sm)
-            .padding(.top, LegendNextSpacing.xs)
-            .padding(.bottom, LegendNextSpacing.xl)
+            .padding(.vertical, LegendNextSpacing.sm)
         }
-        .scrollDismissesKeyboard(.interactively)
     }
 
-    private func discoverHeader(
-        _ dashboard: MobileJourneyDashboardResponse
-    ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.xs
-        ) {
-            HStack(
-                alignment: .center,
-                spacing: LegendNextSpacing.xs
-            ) {
-                VStack(
-                    alignment: .leading,
-                    spacing: LegendNextSpacing.micro
-                ) {
-                    Text("DISCOVER")
-                        .font(.caption2.weight(.bold))
-                        .tracking(1.4)
-                        .foregroundStyle(LegendNextColor.gold)
-
-                    Text("Find your people")
-                        .font(.title2.weight(.bold))
-
-                    Text(
-                        "Build meaningful connections around shared goals, interests, and life stages."
-                    )
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(LegendNextColor.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: LegendNextSpacing.sm)
-
-                Image(systemName: "sparkles")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(LegendNextColor.gold)
-            }
-
-            if let profile = dashboard.profile {
-                HStack(spacing: LegendNextSpacing.xs) {
-                    LegendProfileAvatar(
-                        avatar: profile.avatar,
-                        displayName: profile.displayName,
-                        size: 38
-                    )
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: LegendNextSpacing.micro
-                    ) {
-                        Text(profile.displayName)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-
-                        Text("Your Discover profile")
-                            .font(.caption)
-                            .foregroundStyle(
-                                LegendNextColor.textSecondary
-                            )
-                    }
-
-                    Spacer()
-
-                    Button("Edit") {
-                        isEditingProfile = true
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.gold)
-                }
-                .padding(.top, LegendNextSpacing.micro)
-            }
-        }
-        .padding(.vertical, LegendNextSpacing.xs)
-    }
-
-    private var setupCard: some View {
+    private func profileCard(_ profile: MobileJourneyProfile) -> some View {
         LegendNextSurface(style: .navy) {
-            VStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.xs
-            ) {
-                Image(systemName: "person.2.badge.plus")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(LegendNextColor.gold)
-
-                Text("Complete your Discover profile")
-                    .font(LegendNextTypography.section)
-                    .foregroundStyle(.white)
-
-                Text(
-                    "Choose your goals, interests, and connection preferences to unlock relevant people and requests."
-                )
-                .font(LegendNextTypography.supporting)
-                .foregroundStyle(.white.opacity(0.78))
-
-                Button("Get started") {
-                    isEditingProfile = true
-                }
-                .buttonStyle(
-                    LegendInlineButtonStyle(kind: .primary)
-                )
-            }
-        }
-    }
-
-    private var searchField: some View {
-        HStack(spacing: LegendNextSpacing.xs) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(LegendNextColor.textSecondary)
-
-            TextField(
-                "Search people, goals, or interests",
-                text: $searchText
-            )
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-
-            if !searchText.isEmpty {
-                Button {
-                    searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(
-                            LegendNextColor.textSecondary
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
-            }
-        }
-        .padding(.horizontal, LegendNextSpacing.sm)
-        .frame(minHeight: 46)
-        .background(
-            LegendNextColor.surfaceInset,
-            in: RoundedRectangle(
-                cornerRadius: 14,
-                style: .continuous
-            )
-        )
-    }
-
-    private func scopePicker(
-        _ dashboard: MobileJourneyDashboardResponse
-    ) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: LegendNextSpacing.xs) {
-                ForEach(DiscoverScope.allCases) { scope in
-                    Button {
-                        withAnimation(
-                            .easeInOut(duration: 0.18)
-                        ) {
-                            selectedScope = scope
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: scope.symbolName)
-
-                            Text(scope.title)
-
-                            Text(
-                                "\(count(for: scope, in: dashboard))"
-                            )
-                            .font(.caption2.weight(.bold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                selectedScope == scope
-                                    ? Color.white.opacity(0.18)
-                                    : LegendNextColor.surfaceInset,
-                                in: Capsule()
-                            )
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(
-                            selectedScope == scope
-                                ? Color.white
-                                : LegendNextColor.textPrimary
-                        )
-                        .padding(
-                            .horizontal,
-                            LegendNextSpacing.sm
-                        )
-                        .frame(height: 38)
-                        .background(
-                            selectedScope == scope
-                                ? LegendNextColor.navy
-                                : LegendNextColor.surface,
-                            in: Capsule()
-                        )
-                        .overlay {
-                            Capsule()
-                                .stroke(
-                                    LegendNextColor.textSecondary
-                                        .opacity(
-                                            selectedScope == scope
-                                                ? 0
-                                                : 0.18
-                                        ),
-                                    lineWidth: 1
-                                )
-                        }
+            HStack(alignment: .top, spacing: LegendNextSpacing.xs) {
+                LegendProfileAvatar(avatar: profile.avatar, displayName: profile.displayName, size: 52)
+                VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                    Text(profile.displayName).font(LegendNextTypography.section).foregroundStyle(.white)
+                    if let introduction = profile.introduction, !introduction.isEmpty {
+                        Text(introduction).font(LegendNextTypography.supporting).foregroundStyle(.white.opacity(0.78)).lineLimit(3)
                     }
-                    .buttonStyle(.plain)
+                    if !profile.goals.isEmpty {
+                        Text(profile.goals.joined(separator: " · ")).font(.caption).foregroundStyle(LegendNextColor.gold).lineLimit(2)
+                    }
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private func scopedContent(
-        _ dashboard: MobileJourneyDashboardResponse
-    ) -> some View {
-        switch selectedScope {
-        case .people:
-            peopleContent(dashboard)
-
-        case .requests:
-            requestsContent(dashboard)
-
-        case .connections:
-            connectionsContent(dashboard)
-        }
-    }
-
-    @ViewBuilder
-    private func peopleContent(
-        _ dashboard: MobileJourneyDashboardResponse
-    ) -> some View {
-        let recommendations = filteredRecommendations(
-            dashboard.recommendations
-        )
-
-        if recommendations.isEmpty {
-            LegendEmptyState(
-                title: searchText.isEmpty
-                    ? "No recommendations yet"
-                    : "No people found",
-                message: searchText.isEmpty
-                    ? "New member recommendations will appear as your Discover network grows."
-                    : "Try another name, goal, interest, or location.",
-                symbolName: "person.2"
-            )
-        } else {
-            VStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.xs
-            ) {
-                LegendNextSectionHeader(
-                    title: searchText.isEmpty
-                        ? "Suggested for you"
-                        : "Search results"
-                )
-
-                ForEach(recommendations) { recommendation in
-                    recommendationCard(recommendation)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func requestsContent(
-        _ dashboard: MobileJourneyDashboardResponse
-    ) -> some View {
-        let requests = filteredConnections(
-            dashboard.requests
-        )
-
-        if requests.isEmpty {
-            LegendEmptyState(
-                title: searchText.isEmpty
-                    ? "No connection requests"
-                    : "No requests found",
-                message: searchText.isEmpty
-                    ? "Incoming requests will appear here for your approval."
-                    : "Try a different search.",
-                symbolName: "person.crop.circle.badge.checkmark"
-            )
-        } else {
-            connectionSection(
-                "Connection requests",
-                connections: requests,
-                kind: .request
-            )
-        }
-    }
-
-    @ViewBuilder
-    private func connectionsContent(
-        _ dashboard: MobileJourneyDashboardResponse
-    ) -> some View {
-        let connections = filteredConnections(
-            dashboard.connections
-        )
-
-        if connections.isEmpty {
-            LegendEmptyState(
-                title: searchText.isEmpty
-                    ? "No connections yet"
-                    : "No connections found",
-                message: searchText.isEmpty
-                    ? "People you connect with will be collected here."
-                    : "Try a different search.",
-                symbolName: "person.2.fill"
-            )
-        } else {
-            connectionSection(
-                "Your connections",
-                connections: connections,
-                kind: .connection
-            )
         }
     }
 
@@ -2462,72 +2142,27 @@ private struct LegendCirclesView: View {
         connections: [MobileJourneyConnection],
         kind: JourneyConnectionSectionKind
     ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.xs
-        ) {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
             LegendNextSectionHeader(title: title)
-
             ForEach(connections) { connection in
                 LegendNextSurface {
-                    HStack(
-                        alignment: .top,
-                        spacing: LegendNextSpacing.xs
-                    ) {
-                        LegendProfileAvatar(
-                            avatar: connection.profile.avatar,
-                            displayName:
-                                connection.profile.displayName,
-                            size: 48
-                        )
-
-                        VStack(
-                            alignment: .leading,
-                            spacing: LegendNextSpacing.micro
-                        ) {
-                            Text(connection.profile.displayName)
-                                .font(
-                                    .subheadline.weight(.semibold)
-                                )
-                                .lineLimit(1)
-
-                            if let introduction =
-                                connection.profile.introduction,
-                               !introduction.isEmpty {
-                                Text(introduction)
-                                    .font(
-                                        LegendNextTypography
-                                            .supporting
-                                    )
-                                    .foregroundStyle(
-                                        LegendNextColor
-                                            .textSecondary
-                                    )
-                                    .lineLimit(2)
+                    HStack(spacing: LegendNextSpacing.xs) {
+                        LegendProfileAvatar(avatar: connection.profile.avatar, displayName: connection.profile.displayName, size: 42)
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                            Text(connection.profile.displayName).font(.subheadline.weight(.semibold))
+                            Text(connection.status).font(LegendNextTypography.supporting).foregroundStyle(LegendNextColor.textSecondary)
+                        }
+                        Spacer()
+                        if kind == .request {
+                            HStack(spacing: LegendNextSpacing.xs) {
+                                Button("Decline") { store.respondToConnection(id: connection.id, accept: false) }
+                                    .buttonStyle(LegendInlineButtonStyle(kind: .secondary))
+                                Button("Accept") { store.respondToConnection(id: connection.id, accept: true) }
+                                    .buttonStyle(LegendInlineButtonStyle(kind: .primary))
                             }
-
-                            if let reason =
-                                connection.connectionReason,
-                               !reason.isEmpty {
-                                Label(
-                                    reason,
-                                    systemImage: "quote.bubble"
-                                )
-                                .font(.caption)
-                                .foregroundStyle(
-                                    LegendNextColor.textSecondary
-                                )
-                                .lineLimit(2)
-                            }
-
-                            actionRow(
-                                for: connection,
-                                kind: kind
-                            )
-                            .padding(
-                                .top,
-                                LegendNextSpacing.micro
-                            )
+                        } else {
+                            Button("Disconnect") { store.disconnect(id: connection.id) }
+                                .buttonStyle(LegendInlineButtonStyle(kind: .destructive))
                         }
                     }
                 }
@@ -2535,279 +2170,17 @@ private struct LegendCirclesView: View {
         }
     }
 
-    @ViewBuilder
-    private func actionRow(
-        for connection: MobileJourneyConnection,
-        kind: JourneyConnectionSectionKind
-    ) -> some View {
-        if kind == .request {
-            HStack(spacing: LegendNextSpacing.xs) {
-                Button("Decline") {
-                    store.respondToConnection(
-                        id: connection.id,
-                        accept: false
-                    )
-                }
-                .buttonStyle(
-                    LegendInlineButtonStyle(kind: .secondary)
-                )
-
-                Button("Accept") {
-                    store.respondToConnection(
-                        id: connection.id,
-                        accept: true
-                    )
-                }
-                .buttonStyle(
-                    LegendInlineButtonStyle(kind: .primary)
-                )
-            }
-        } else {
-            HStack {
-                Label(
-                    "Connected",
-                    systemImage: "checkmark.circle.fill"
-                )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(
-                    LegendNextColor.textSecondary
-                )
-
-                Spacer()
-
-                Button("Disconnect") {
-                    store.disconnect(id: connection.id)
-                }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.red)
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private func recommendationCard(
-        _ recommendation: MobileJourneyRecommendation
-    ) -> some View {
+    private func recommendationCard(_ recommendation: MobileJourneyRecommendation) -> some View {
         LegendNextSurface {
-            VStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.xs
-            ) {
-                HStack(
-                    alignment: .top,
-                    spacing: LegendNextSpacing.xs
-                ) {
-                    LegendProfileAvatar(
-                        avatar: recommendation.profile.avatar,
-                        displayName:
-                            recommendation.profile.displayName,
-                        size: 52
-                    )
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: LegendNextSpacing.micro
-                    ) {
-                        Text(
-                            recommendation.profile.displayName
-                        )
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-
-                        Text(recommendation.explanation)
-                            .font(
-                                LegendNextTypography.supporting
-                            )
-                            .foregroundStyle(
-                                LegendNextColor.textSecondary
-                            )
-                            .fixedSize(
-                                horizontal: false,
-                                vertical: true
-                            )
-                    }
-
-                    Spacer(minLength: LegendNextSpacing.xs)
+            HStack(alignment: .top, spacing: LegendNextSpacing.xs) {
+                LegendProfileAvatar(avatar: recommendation.profile.avatar, displayName: recommendation.profile.displayName, size: 44)
+                VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                    Text(recommendation.profile.displayName).font(.subheadline.weight(.semibold))
+                    Text(recommendation.explanation).font(LegendNextTypography.supporting).foregroundStyle(LegendNextColor.textSecondary).fixedSize(horizontal: false, vertical: true)
                 }
-
-                let highlights = Array(
-                    (
-                        recommendation.profile.goals
-                        + recommendation.profile.interests
-                    )
-                    .prefix(3)
-                )
-
-                if !highlights.isEmpty {
-                    ScrollView(
-                        .horizontal,
-                        showsIndicators: false
-                    ) {
-                        HStack(spacing: 6) {
-                            ForEach(
-                                highlights,
-                                id: \.self
-                            ) { highlight in
-                                Text(highlight)
-                                    .font(
-                                        .caption.weight(.medium)
-                                    )
-                                    .padding(.horizontal, 9)
-                                    .padding(.vertical, 5)
-                                    .background(
-                                        LegendNextColor
-                                            .surfaceInset,
-                                        in: Capsule()
-                                    )
-                            }
-                        }
-                    }
-                }
-
-                Button {
-                    store.requestConnection(
-                        to: recommendation.profile.id
-                    )
-                } label: {
-                    Label(
-                        "Connect",
-                        systemImage: "person.badge.plus"
-                    )
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(
-                    LegendInlineButtonStyle(kind: .primary)
-                )
-                .disabled(store.isPerformingAction)
-            }
-        }
-    }
-
-    private func count(
-        for scope: DiscoverScope,
-        in dashboard: MobileJourneyDashboardResponse
-    ) -> Int {
-        switch scope {
-        case .people:
-            return dashboard.recommendations.count
-
-        case .requests:
-            return dashboard.requests.count
-
-        case .connections:
-            return dashboard.connections.count
-        }
-    }
-
-    private func filteredRecommendations(
-        _ recommendations: [MobileJourneyRecommendation]
-    ) -> [MobileJourneyRecommendation] {
-        guard !normalizedSearch.isEmpty else {
-            return recommendations
-        }
-
-        return recommendations.filter { recommendation in
-            profileMatches(recommendation.profile)
-                || recommendation.explanation
-                    .localizedCaseInsensitiveContains(
-                        normalizedSearch
-                    )
-        }
-    }
-
-    private func filteredConnections(
-        _ connections: [MobileJourneyConnection]
-    ) -> [MobileJourneyConnection] {
-        guard !normalizedSearch.isEmpty else {
-            return connections
-        }
-
-        return connections.filter { connection in
-            profileMatches(connection.profile)
-                || connection.status
-                    .localizedCaseInsensitiveContains(
-                        normalizedSearch
-                    )
-                || (
-                    connection.connectionReason?
-                        .localizedCaseInsensitiveContains(
-                            normalizedSearch
-                        )
-                    ?? false
-                )
-                || (
-                    connection.introduction?
-                        .localizedCaseInsensitiveContains(
-                            normalizedSearch
-                        )
-                    ?? false
-                )
-        }
-    }
-
-    private func profileMatches(
-        _ profile: MobileJourneyProfile
-    ) -> Bool {
-        let searchableValues =
-            [
-                profile.displayName,
-                profile.introduction ?? ""
-            ]
-            + profile.goals
-            + profile.interests
-            + profile.locations
-            + profile.lifeStages
-            + profile.circleCodes
-
-        return searchableValues.contains {
-            $0.localizedCaseInsensitiveContains(
-                normalizedSearch
-            )
-        }
-    }
-
-    private var normalizedSearch: String {
-        searchText.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-    }
-
-    private enum DiscoverScope:
-        String,
-        CaseIterable,
-        Identifiable
-    {
-        case people
-        case requests
-        case connections
-
-        var id: String {
-            rawValue
-        }
-
-        var title: String {
-            switch self {
-            case .people:
-                return "People"
-
-            case .requests:
-                return "Requests"
-
-            case .connections:
-                return "Connections"
-            }
-        }
-
-        var symbolName: String {
-            switch self {
-            case .people:
-                return "sparkles"
-
-            case .requests:
-                return "person.crop.circle.badge.plus"
-
-            case .connections:
-                return "person.2.fill"
+                Spacer(minLength: LegendNextSpacing.xs)
+                Button("Connect") { store.requestConnection(to: recommendation.profile.id) }
+                    .buttonStyle(LegendInlineButtonStyle(kind: .primary))
             }
         }
     }
@@ -2879,7 +2252,7 @@ private struct LegendJourneyProfileEditor: View {
                             Toggle("Join Journey Circles", isOn: $isOptedIn)
                             Toggle("Allow recommendations", isOn: $allowSuggestions)
                             Toggle("Allow connection requests", isOn: $allowConnectionRequests)
-                            Toggle("Show my profile in Discover", isOn: $isDiscoverable)
+                            Toggle("Appear to matching members", isOn: $isDiscoverable)
                         }
                         .tint(LegendNextColor.gold)
                     }
@@ -2908,7 +2281,7 @@ private struct LegendJourneyProfileEditor: View {
                 .padding(.vertical, LegendNextSpacing.sm)
             }
             .background(LegendNextColor.canvas.ignoresSafeArea())
-            .navigationTitle("Discover")
+            .navigationTitle("Journey Circles")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -5699,7 +5072,7 @@ private struct LegendProfilePostDetail: View {
 
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes the post from your Legend profile and feed.")
+            Text("This removes the post from your authorized Legend network.")
         }
     }
 
