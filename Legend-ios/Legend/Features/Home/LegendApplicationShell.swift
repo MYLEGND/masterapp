@@ -6,6 +6,7 @@ private enum LegendAppTab: String, Identifiable {
     case clients
     case leads
     case discover
+    case messages
     case finance
     
     case account
