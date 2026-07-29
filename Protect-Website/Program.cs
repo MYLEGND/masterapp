@@ -1,3 +1,4 @@
+using Infrastructure.DailyScripture;
 using ProtectWebsite.Services.Communication;
 using Azure.Identity;
 using Infrastructure.Data;
@@ -32,6 +33,7 @@ if (builder.Environment.IsDevelopment())
     mvcBuilder.AddRazorRuntimeCompilation();
 }
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddDailyScripture();
 builder.Services.AddHttpClient();
 
 // DbContext for tracking resolution

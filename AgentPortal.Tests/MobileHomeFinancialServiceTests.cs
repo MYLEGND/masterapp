@@ -161,7 +161,8 @@ public sealed class MobileHomeFinancialServiceTests
             new Mock<IJourneyCirclesService>().Object,
             financialIntelligence.Object,
             new Mock<IBillingEntitlementService>().Object,
-            operatingSystemService.Object);
+            operatingSystemService.Object,
+            new Mock<Infrastructure.DailyScripture.IDailyScriptureService>().Object);
     }
 
     private static MobileFinancialOperatingSystemSnapshot OperatingSystem() =>

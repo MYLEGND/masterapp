@@ -330,6 +330,49 @@ private struct LegendNextTabBar: View {
     }
 }
 
+private struct DailyScriptureSheet: View {
+    let scripture: MobileDailyScripture
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("LIFE HAC | GOD ABOVE ALL")
+                        .font(.caption.weight(.bold))
+                        .tracking(1.2)
+                        .foregroundStyle(.secondary)
+
+                    Text(scripture.reference)
+                        .font(.largeTitle.bold())
+
+                    Text(scripture.translation)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    ForEach(Array(scripture.verses.enumerated()), id: \.offset) { index, verse in
+                        Text("\(index + 1). \(verse)")
+                            .font(.body)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(24)
+            }
+            .navigationTitle("God Above All")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+extension MobileDailyScripture: Identifiable {
+    var id: String { date }
+}
+
 private struct LegendMessagesTab: View {
     @ObservedObject var messages: MessagingStore
     @State private var navigationPath: [UUID] = []
@@ -354,6 +397,7 @@ private struct LegendHomeView: View {
     @ObservedObject private var store: MobileHomeStore
     @ObservedObject private var social: MobileSocialStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
+    @State private var presentedScripture: MobileDailyScripture?
 
     init(
         currentSession: MobileSession,
@@ -392,6 +436,9 @@ private struct LegendHomeView: View {
             }
         }
         .legendNextPageBackground()
+        .sheet(item: $presentedScripture) { scripture in
+            DailyScriptureSheet(scripture: scripture)
+        }
     }
 
     private func homeContent(
@@ -434,35 +481,44 @@ private struct LegendHomeView: View {
     }
 
     private func homeHero(
-        _ _: MobileHomeResponse
+        _ home: MobileHomeResponse
     ) -> some View {
         LegendNextSurface(
             style: .navy,
             cornerRadius: LegendNextRadius.prominentCard,
             padding: LegendNextSpacing.sm
         ) {
-            HStack(
-                alignment: .firstTextBaseline,
-                spacing: LegendNextSpacing.xs
-            ) {
-                Text(greetingEyebrow.capitalized)
-                    .font(LegendNextTypography.title)
-                    .foregroundStyle(LegendNextColor.goldBright)
-                    .lineLimit(1)
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                HStack(alignment: .firstTextBaseline, spacing: LegendNextSpacing.xs) {
+                    Text(greetingEyebrow.capitalized)
+                        .font(LegendNextTypography.title)
+                        .foregroundStyle(LegendNextColor.goldBright)
+                        .lineLimit(1)
 
-                Text(firstName)
-                    .font(LegendNextTypography.title)
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
+                    Text(firstName)
+                        .font(LegendNextTypography.title)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
 
-                Spacer(minLength: 0)
+                    Spacer(minLength: 0)
+                }
+                .minimumScaleFactor(0.78)
+                .allowsTightening(true)
+
+                Button {
+                    presentedScripture = home.dailyScripture
+                } label: {
+                    Text("\(home.dailyScripture.reference) — \(home.dailyScripture.text)")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.88))
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Verse of the day, \(home.dailyScripture.reference). Double tap to read the full passage.")
             }
-            .minimumScaleFactor(0.78)
-            .allowsTightening(true)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(
-                "\(greetingEyebrow.capitalized) \(firstName)"
-            )
         }
     }
 

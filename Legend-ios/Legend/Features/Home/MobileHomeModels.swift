@@ -10,7 +10,16 @@ struct MobileHomeResponse: Codable, Equatable, Sendable {
     let upcomingAppointments: [MobileUpcomingAppointment]
     let actions: [MobileActionItem]
     let notifications: [MobileBillingNotification]
+    let dailyScripture: MobileDailyScripture
     let activeClientCount: Int
+}
+
+struct MobileDailyScripture: Codable, Equatable, Sendable {
+    let date: String
+    let reference: String
+    let translation: String
+    let verses: [String]
+    let text: String
 }
 
 struct MobileHomeIdentity: Codable, Equatable, Sendable {

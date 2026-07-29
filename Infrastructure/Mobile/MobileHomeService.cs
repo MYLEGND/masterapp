@@ -5,6 +5,8 @@ using Domain.FinancialIntelligence;
 using Domain.JourneyCircles;
 using Domain.Messaging;
 using Infrastructure.Data;
+using Infrastructure.DailyScripture;
+using DailyScriptureRecord = Infrastructure.DailyScripture.DailyScripture;
 using Microsoft.EntityFrameworkCore;
 using Shared.Finance;
 
@@ -34,6 +36,7 @@ public sealed class MobileHomeService : IMobileHomeService
     private readonly IFinancialIntelligenceEvaluationService _financialIntelligence;
     private readonly IBillingEntitlementService _entitlements;
     private readonly IMobileFinancialOperatingSystemProjectionService _financialOperatingSystem;
+    private readonly IDailyScriptureService _dailyScripture;
 
     public MobileHomeService(
         MasterAppDbContext db,
@@ -41,7 +44,8 @@ public sealed class MobileHomeService : IMobileHomeService
         IJourneyCirclesService journeyCircles,
         IFinancialIntelligenceEvaluationService financialIntelligence,
         IBillingEntitlementService entitlements,
-        IMobileFinancialOperatingSystemProjectionService financialOperatingSystem)
+        IMobileFinancialOperatingSystemProjectionService financialOperatingSystem,
+        IDailyScriptureService dailyScripture)
     {
         _db = db;
         _messaging = messaging;
@@ -49,6 +53,7 @@ public sealed class MobileHomeService : IMobileHomeService
         _financialIntelligence = financialIntelligence;
         _entitlements = entitlements;
         _financialOperatingSystem = financialOperatingSystem;
+        _dailyScripture = dailyScripture;
     }
 
     public async Task<MobileHomeResult> GetHomeAsync(
@@ -388,6 +393,7 @@ public sealed class MobileHomeService : IMobileHomeService
             appointments,
             Array.Empty<MobileActionItem>(),
             notifications,
+            ToMobileDailyScripture(_dailyScripture.GetTodayUtc()),
             0);
     }
 
@@ -442,8 +448,18 @@ public sealed class MobileHomeService : IMobileHomeService
             appointments,
             actions,
             Array.Empty<MobileBillingNotification>(),
+            ToMobileDailyScripture(_dailyScripture.GetTodayUtc()),
             activeClientCount);
     }
+
+
+    private static MobileDailyScripture ToMobileDailyScripture(
+        DailyScriptureRecord scripture) => new(
+        scripture.Date,
+        scripture.Reference,
+        scripture.Translation,
+        scripture.Verses,
+        scripture.Text);
 
     private Task<List<MobileUpcomingAppointment>> QueryAppointmentsForClientAsync(
         Guid clientProfileId,
@@ -523,6 +539,7 @@ public sealed record MobileHome(
     IReadOnlyList<MobileUpcomingAppointment> UpcomingAppointments,
     IReadOnlyList<MobileActionItem> Actions,
     IReadOnlyList<MobileBillingNotification> Notifications,
+    MobileDailyScripture DailyScripture,
     int ActiveClientCount);
 
 public sealed record MobileHomeIdentity(string UserId, string ParticipantType, Guid ProfileId, string DisplayName)
@@ -541,6 +558,7 @@ public sealed record MobileJourneySummary(bool HasProfile, int RecommendationCou
 public sealed record MobileUpcomingAppointment(Guid Id, DateTime StartUtc, DateTime? EndUtc, string Status);
 public sealed record MobileActionItem(Guid Id, string Title, string Status, string Priority, DateTime? DueDateUtc);
 public sealed record MobileBillingNotification(Guid Id, string Kind, string Subject, DateTime OccurredUtc);
+public sealed record MobileDailyScripture(string Date, string Reference, string Translation, IReadOnlyList<string> Verses, string Text);
 public sealed record MobileFinancialSnapshot(
     MobileFinancialPosition? Position,
     MobileFinancialIntelligenceSummary? Intelligence,
