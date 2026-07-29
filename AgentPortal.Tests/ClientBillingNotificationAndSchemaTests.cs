@@ -161,6 +161,196 @@ public sealed class ClientBillingNotificationAndSchemaTests
         Assert.Equal(0, await db.ClientBillingNotifications.CountAsync());
     }
 
+    [Fact]
+    public async Task SQLiteBootstrapper_StampsMessagingReplyAuthorityForLegacyInternalMessagesSchema()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        await CreateMigrationHistoryBeforeMessagingReplyAuthorityAsync(db);
+        await RecreateLegacyInternalMessagesSchemaAsync(db);
+
+        Assert.Equal(0, await GetReplyToMessageIdColumnCountAsync(connection));
+        Assert.Equal(0, await GetReplyToMessageIdIndexCountAsync(connection));
+        Assert.Equal(0, await GetMessagingReplyAuthorityMigrationStampCountAsync(connection));
+        Assert.Equal(1, await GetLegacyInternalMessageCountAsync(connection));
+
+        await MasterAppSqliteSchemaBootstrapper.InitializeAsync(
+            db,
+            NullLogger.Instance);
+
+        Assert.Equal(1, await GetReplyToMessageIdColumnCountAsync(connection));
+        Assert.Equal(1, await GetReplyToMessageIdIndexCountAsync(connection));
+        Assert.Equal(1, await GetMessagingReplyAuthorityMigrationStampCountAsync(connection));
+        Assert.Equal(1, await GetLegacyInternalMessageCountAsync(connection));
+
+        await MasterAppSqliteSchemaBootstrapper.InitializeAsync(
+            db,
+            NullLogger.Instance);
+
+        Assert.Equal(1, await GetReplyToMessageIdColumnCountAsync(connection));
+        Assert.Equal(1, await GetReplyToMessageIdIndexCountAsync(connection));
+        Assert.Equal(1, await GetMessagingReplyAuthorityMigrationStampCountAsync(connection));
+        Assert.Equal(1, await GetLegacyInternalMessageCountAsync(connection));
+    }
+
+    [Fact]
+    public async Task SQLiteBootstrapper_StampsMessagingReplyAuthorityForTheCurrentMessagingSchema()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        await CreateMigrationHistoryBeforeMessagingReplyAuthorityAsync(db);
+
+        Assert.Equal(1, await GetReplyToMessageIdColumnCountAsync(connection));
+        Assert.Equal(1, await GetReplyToMessageIdIndexCountAsync(connection));
+        Assert.Equal(0, await GetMessagingReplyAuthorityMigrationStampCountAsync(connection));
+
+        await MasterAppSqliteSchemaBootstrapper.InitializeAsync(
+            db,
+            NullLogger.Instance);
+
+        Assert.Equal(1, await GetReplyToMessageIdColumnCountAsync(connection));
+        Assert.Equal(1, await GetReplyToMessageIdIndexCountAsync(connection));
+        Assert.Equal(1, await GetMessagingReplyAuthorityMigrationStampCountAsync(connection));
+
+        await MasterAppSqliteSchemaBootstrapper.InitializeAsync(
+            db,
+            NullLogger.Instance);
+
+        Assert.Equal(1, await GetReplyToMessageIdColumnCountAsync(connection));
+        Assert.Equal(1, await GetReplyToMessageIdIndexCountAsync(connection));
+        Assert.Equal(1, await GetMessagingReplyAuthorityMigrationStampCountAsync(connection));
+    }
+
+    private static async Task CreateMigrationHistoryBeforeMessagingReplyAuthorityAsync(MasterAppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE "__EFMigrationsHistory" (
+                "MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY,
+                "ProductVersion" TEXT NOT NULL
+            )
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+            VALUES ('20260728035648_AddSocialEngagementMetrics', '10.0.2')
+            """);
+    }
+
+    private static async Task RecreateLegacyInternalMessagesSchemaAsync(MasterAppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = OFF");
+        await db.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS \"IX_InternalMessages_ReplyToMessageId\"");
+        await db.Database.ExecuteSqlRawAsync("DROP TABLE \"InternalMessages\"");
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE "InternalMessages" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_InternalMessages" PRIMARY KEY,
+                "ConversationId" TEXT NOT NULL,
+                "SenderUserId" TEXT NOT NULL,
+                "SenderType" TEXT NOT NULL,
+                "Body" TEXT NOT NULL,
+                "SentUtc" TEXT NOT NULL,
+                "EditedUtc" TEXT NULL,
+                "DeletedUtc" TEXT NULL,
+                "IsDeleted" INTEGER NOT NULL,
+                "ClientMessageId" TEXT NULL,
+                "RowVersion" BLOB NOT NULL DEFAULT X'',
+                CONSTRAINT "FK_InternalMessages_MessageConversations_ConversationId"
+                    FOREIGN KEY ("ConversationId") REFERENCES "MessageConversations" ("Id") ON DELETE CASCADE
+            )
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE UNIQUE INDEX "IX_InternalMessages_ClientMessageId"
+            ON "InternalMessages" ("ClientMessageId")
+            WHERE "ClientMessageId" IS NOT NULL
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE INDEX "IX_InternalMessages_ConversationId_SentUtc"
+            ON "InternalMessages" ("ConversationId", "SentUtc")
+            """);
+        await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON");
+
+        var conversation = new MessageConversation
+        {
+            ConversationType = "Direct",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow,
+            CreatedByUserId = "legacy-agent"
+        };
+        db.MessageConversations.Add(conversation);
+        await db.SaveChangesAsync();
+
+        var messageId = Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "InternalMessages" (
+                "Id",
+                "ConversationId",
+                "SenderUserId",
+                "SenderType",
+                "Body",
+                "SentUtc",
+                "IsDeleted",
+                "ClientMessageId",
+                "RowVersion")
+            VALUES (
+                {messageId},
+                {conversation.Id},
+                {"legacy-client"},
+                {"Client"},
+                {"Legacy message survives"},
+                {DateTime.UtcNow},
+                {false},
+                {"legacy-client-message"},
+                {Array.Empty<byte>()})
+            """);
+
+    }
+
+    private static Task<int> GetReplyToMessageIdColumnCountAsync(SqliteConnection connection) =>
+        ExecuteScalarIntAsync(connection, """
+            SELECT COUNT(*)
+            FROM pragma_table_info('InternalMessages')
+            WHERE name = 'ReplyToMessageId'
+            """);
+
+    private static Task<int> GetReplyToMessageIdIndexCountAsync(SqliteConnection connection) =>
+        ExecuteScalarIntAsync(connection, """
+            SELECT COUNT(*)
+            FROM pragma_index_list('InternalMessages')
+            WHERE name = 'IX_InternalMessages_ReplyToMessageId'
+            """);
+
+    private static Task<int> GetMessagingReplyAuthorityMigrationStampCountAsync(SqliteConnection connection) =>
+        ExecuteScalarIntAsync(connection, """
+            SELECT COUNT(*)
+            FROM "__EFMigrationsHistory"
+            WHERE "MigrationId" = '20260729063438_AddMessagingReplyAuthority'
+            """);
+
+    private static Task<int> GetLegacyInternalMessageCountAsync(SqliteConnection connection) =>
+        ExecuteScalarIntAsync(connection, """
+            SELECT COUNT(*)
+            FROM "InternalMessages"
+            WHERE "Body" = 'Legacy message survives'
+            """);
+
+    private static async Task<int> ExecuteScalarIntAsync(SqliteConnection connection, string sql)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
     private static async Task<ClientProfile> AddProfileAsync(MasterAppDbContext db)
     {
         var profile = new ClientProfile

@@ -15,6 +15,8 @@ public static class MasterAppSqliteSchemaBootstrapper
     private const string PlatformManagedRecurringBillingMigrationId = "20260724100000_AddPlatformManagedRecurringBilling";
     private const string NormalizeClientPaymentMethodsMigrationId = "20260725192303_NormalizeClientPaymentMethods";
     private const string AddClientBillingNotificationsMigrationId = "20260725195951_AddClientBillingNotifications";
+    private const string MessagingReplyAuthorityMigrationId = "20260729063438_AddMessagingReplyAuthority";
+    private const string MessagingReplyAuthorityIndexName = "IX_InternalMessages_ReplyToMessageId";
 
     private static readonly ColumnPatch[] AdditiveColumnPatches =
     {
@@ -195,6 +197,11 @@ public static class MasterAppSqliteSchemaBootstrapper
                 }
             }
 
+            if (await EnsureMessagingReplyAuthorityAsync(connection, cancellationToken))
+            {
+                repairs.Add("InternalMessages.ReplyToMessageId");
+            }
+
             if (await CreateAnalyticsDriftAlertsTableIfMissingAsync(connection, cancellationToken))
             {
                 repairs.Add("AnalyticsDriftAlerts");
@@ -295,6 +302,11 @@ public static class MasterAppSqliteSchemaBootstrapper
             await StampMigrationIfMissingAsync(db, connection, NormalizeClientPaymentMethodsMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, AddClientBillingNotificationsMigrationId, cancellationToken);
 
+            if (await HasMessagingReplyAuthorityAsync(connection, cancellationToken))
+            {
+                await StampMigrationIfMissingAsync(db, connection, MessagingReplyAuthorityMigrationId, cancellationToken);
+            }
+
             if (createdFromModel)
             {
                 logger.LogInformation("SQLite database was created from the current model and stamped with migration history.");
@@ -336,6 +348,53 @@ public static class MasterAppSqliteSchemaBootstrapper
             cancellationToken);
 
         return true;
+    }
+
+    private static async Task<bool> EnsureMessagingReplyAuthorityAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        if (!await TableExistsAsync(connection, "InternalMessages", cancellationToken))
+        {
+            return false;
+        }
+
+        var changed = false;
+
+        if (!await ColumnExistsAsync(connection, "InternalMessages", "ReplyToMessageId", cancellationToken))
+        {
+            await ExecuteNonQueryAsync(
+                connection,
+                "ALTER TABLE \"InternalMessages\" ADD COLUMN \"ReplyToMessageId\" TEXT NULL",
+                cancellationToken);
+            changed = true;
+        }
+
+        if (!await TableExistsAsync(connection, "InternalMessages", cancellationToken) ||
+            !await ColumnExistsAsync(connection, "InternalMessages", "ReplyToMessageId", cancellationToken))
+        {
+            return changed;
+        }
+
+        if (!await IndexExistsAsync(connection, MessagingReplyAuthorityIndexName, cancellationToken))
+        {
+            await ExecuteNonQueryAsync(
+                connection,
+                "CREATE INDEX \"IX_InternalMessages_ReplyToMessageId\" ON \"InternalMessages\" (\"ReplyToMessageId\")",
+                cancellationToken);
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private static async Task<bool> HasMessagingReplyAuthorityAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        return await TableExistsAsync(connection, "InternalMessages", cancellationToken) &&
+               await ColumnExistsAsync(connection, "InternalMessages", "ReplyToMessageId", cancellationToken) &&
+               await IndexExistsAsync(connection, MessagingReplyAuthorityIndexName, cancellationToken);
     }
 
     private static async Task<bool> CreateAnalyticsDriftAlertsTableIfMissingAsync(
@@ -1003,6 +1062,7 @@ public static class MasterAppSqliteSchemaBootstrapper
 
         var allMigrations = db.Database.GetMigrations()
             .OrderBy(x => x, StringComparer.Ordinal)
+            .Where(x => !string.Equals(x, MessagingReplyAuthorityMigrationId, StringComparison.Ordinal))
             .ToList();
 
         var migrationsToStamp = createdFromModel

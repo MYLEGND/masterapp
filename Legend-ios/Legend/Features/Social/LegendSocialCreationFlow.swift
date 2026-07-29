@@ -35,60 +35,109 @@ private struct LegendSocialCreationModeMenu: View {
     let select: (MobileSocialContentType) -> Void
     let dismiss: () -> Void
 
-    @State private var selectedType: MobileSocialContentType = .post
-
     var body: some View {
         NavigationStack {
-            VStack(spacing: LegendNextSpacing.lg) {
-                Spacer(minLength: LegendNextSpacing.md)
+            ZStack {
+                LegendNextGradient.hero
+                    .ignoresSafeArea()
 
-                Image(systemName: selectedType.systemImage)
-                    .font(.system(size: 44, weight: .semibold))
-                    .foregroundStyle(LegendNextColor.gold)
-                    .frame(width: 96, height: 96)
-                    .background(
-                        LegendNextColor.navy,
-                        in: Circle())
-                    .accessibilityHidden(true)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.xl) {
+                        HStack {
+                            Button(action: dismiss) {
+                                Image(systemName: "xmark")
+                                    .font(.title3.weight(.semibold))
+                                    .frame(
+                                        width: LegendNextSize.prominentControlHeight,
+                                        height: LegendNextSize.prominentControlHeight)
+                                    .background(
+                                        Color.white.opacity(0.12),
+                                        in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.white)
+                            .accessibilityLabel("Close creator")
 
-                VStack(spacing: LegendNextSpacing.xs) {
-                    Text(selectedType.creationTitle)
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(LegendNextColor.textPrimary)
-                    Text(selectedType.creationPrompt)
-                        .font(LegendNextTypography.body)
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
+                            Spacer()
+
+                            Text("Create")
+                                .font(LegendNextTypography.hero)
+                                .foregroundStyle(.white)
+
+                            Spacer()
+
+                            Color.clear
+                                .frame(
+                                    width: LegendNextSize.prominentControlHeight,
+                                    height: LegendNextSize.prominentControlHeight)
+                        }
+
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                            Text("Share what matters")
+                                .font(LegendNextTypography.display)
+                                .foregroundStyle(.white)
+                            Text("Choose how you want to share with your Legend network.")
+                                .font(LegendNextTypography.body)
+                                .foregroundStyle(Color.white.opacity(0.72))
+                        }
+
+                        VStack(spacing: LegendNextSpacing.sm) {
+                            ForEach(MobileSocialContentType.allCases) { candidate in
+                                Button {
+                                    select(candidate)
+                                } label: {
+                                    creationOption(candidate)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Create \(candidate.displayName)")
+                                .accessibilityHint(candidate.creationPrompt)
+                            }
+                        }
+
+                        Spacer(minLength: LegendNextSpacing.scene)
+                    }
+                    .padding(.horizontal, LegendNextSpacing.lg)
+                    .padding(.vertical, LegendNextSpacing.md)
                 }
-                .padding(.horizontal, LegendNextSpacing.xl)
-
-                Spacer()
-
-                Button {
-                    select(selectedType)
-                } label: {
-                    Label("Continue with \(selectedType.displayName)", systemImage: "arrow.right")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(LegendButtonStyle(kind: .primary))
-                .padding(.horizontal, LegendNextSpacing.md)
             }
-            .padding(.vertical, LegendNextSpacing.md)
-            .background(LegendNextColor.canvas)
-            .navigationTitle("Create")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: dismiss)
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                LegendSocialCreationModeRail(selection: $selectedType)
-            }
+            .toolbar(.hidden, for: .navigationBar)
         }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+    }
+
+    private func creationOption(_ type: MobileSocialContentType) -> some View {
+        HStack(spacing: LegendNextSpacing.md) {
+            Image(systemName: type.systemImage)
+                .font(.title2.weight(.semibold))
+                .frame(width: 52, height: 52)
+                .foregroundStyle(LegendNextColor.goldBright)
+                .background(LegendNextColor.midnight, in: Circle())
+
+            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                Text(type.displayName)
+                    .font(LegendNextTypography.section)
+                    .foregroundStyle(.white)
+                Text(type.creationPrompt)
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(Color.white.opacity(0.68))
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: LegendNextSpacing.xs)
+
+            Image(systemName: "arrow.right")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(LegendNextColor.goldBright)
+                .accessibilityHidden(true)
+        }
+        .padding(LegendNextSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.13), lineWidth: 1)
+        }
     }
 }
 
@@ -96,28 +145,33 @@ private struct LegendSocialCreationModeRail: View {
     @Binding var selection: MobileSocialContentType
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: LegendNextSpacing.tiny) {
             ForEach(MobileSocialContentType.allCases) { candidate in
                 Button {
-                    withAnimation(.snappy) {
+                    withAnimation(LegendNextMotion.tab) {
                         selection = candidate
                     }
                 } label: {
                     Label(candidate.displayName, systemImage: candidate.systemImage)
-                        .font(.subheadline.weight(.bold))
+                        .font(LegendNextTypography.label)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, LegendNextSpacing.sm)
-                        .foregroundStyle(candidate == selection ? LegendNextColor.navy : LegendNextColor.textSecondary)
-                        .background(candidate == selection ? LegendNextColor.gold.opacity(0.22) : Color.clear)
+                        .frame(height: LegendNextSize.compactControlHeight)
+                        .foregroundStyle(candidate == selection ? LegendNextColor.midnight : Color.white.opacity(0.72))
+                        .background(
+                            candidate == selection ? LegendNextColor.goldBright : Color.clear,
+                            in: Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Create \(candidate.displayName)")
                 .accessibilityAddTraits(candidate == selection ? .isSelected : [])
             }
         }
-        .padding(.horizontal, LegendNextSpacing.sm)
-        .padding(.vertical, LegendNextSpacing.xs)
-        .background(LegendNextColor.surfaceElevated)
+        .padding(LegendNextSpacing.tiny)
+        .background(Color.white.opacity(0.10), in: Capsule())
+        .overlay {
+            Capsule()
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+        }
     }
 }
 
@@ -154,24 +208,7 @@ struct LegendSocialComposer: View {
                     libraryContent
                 }
             }
-            .background(LegendNextColor.canvas)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(stage == .metadata ? "Back" : "Cancel") {
-                        if stage == .metadata {
-                            stage = .library
-                        } else {
-                            cancel()
-                        }
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(primaryActionTitle) {
-                        primaryAction()
-                    }
-                    .disabled(!canContinue)
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
@@ -253,14 +290,75 @@ struct LegendSocialComposer: View {
     }
 
     private var libraryContent: some View {
-        VStack(spacing: 0) {
-            selectionPreview
-            photoLibraryStatus
-            mediaGrid
-            legendModeRail
+        ZStack {
+            LegendNextGradient.hero
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                libraryHeader
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
+                        selectionPreview(isDark: true)
+                        legendModeRail
+                        photoLibraryStatus
+
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Recents")
+                                .font(LegendNextTypography.title)
+                                .foregroundStyle(.white)
+                            Spacer()
+                            Text("Select media")
+                                .font(LegendNextTypography.label)
+                                .foregroundStyle(LegendNextColor.goldBright)
+                        }
+
+                        mediaGrid
+                    }
+                    .padding(.horizontal, LegendNextSpacing.md)
+                    .padding(.bottom, LegendNextSpacing.xl)
+                }
+                .scrollIndicators(.hidden)
+            }
         }
-        .navigationTitle(type.displayName)
-        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var libraryHeader: some View {
+        HStack {
+            Button(action: cancel) {
+                Image(systemName: "xmark")
+                    .font(.title3.weight(.semibold))
+                    .frame(
+                        width: LegendNextSize.prominentControlHeight,
+                        height: LegendNextSize.prominentControlHeight)
+                    .background(Color.white.opacity(0.12), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .accessibilityLabel("Close creator")
+
+            Spacer()
+
+            Text("New \(type.displayName.lowercased())")
+                .font(LegendNextTypography.section)
+                .foregroundStyle(.white)
+
+            Spacer()
+
+            Button(action: primaryAction) {
+                Text(primaryActionTitle)
+                    .font(LegendNextTypography.label)
+                    .foregroundStyle(canContinue ? LegendNextColor.goldBright : Color.white.opacity(0.38))
+                    .frame(
+                        width: LegendNextSize.prominentControlHeight,
+                        height: LegendNextSize.prominentControlHeight)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canContinue)
+            .accessibilityLabel("Continue to \(type.displayName) details")
+        }
+        .padding(.horizontal, LegendNextSpacing.md)
+        .padding(.vertical, LegendNextSpacing.sm)
     }
 
     private var legendModeRail: some View {
@@ -268,16 +366,16 @@ struct LegendSocialComposer: View {
     }
 
     @ViewBuilder
-    private var selectionPreview: some View {
+    private func selectionPreview(isDark: Bool) -> some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(type.mediaSelectionTitle)
                         .font(.headline.weight(.bold))
-                        .foregroundStyle(LegendNextColor.textPrimary)
+                        .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
                     Text(type.mediaSelectionHint)
                         .font(LegendNextTypography.supporting)
-                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .foregroundStyle(isDark ? Color.white.opacity(0.68) : LegendNextColor.textSecondary)
                         .lineLimit(2)
                 }
                 Spacer(minLength: LegendNextSpacing.sm)
@@ -286,23 +384,37 @@ struct LegendSocialComposer: View {
                 } label: {
                     Image(systemName: "camera.fill")
                         .font(.title3.weight(.bold))
-                        .frame(width: 44, height: 44)
+                        .frame(width: LegendNextSize.controlHeight, height: LegendNextSize.controlHeight)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(LegendNextColor.navy)
-                .background(LegendNextColor.gold, in: Circle())
+                .foregroundStyle(LegendNextColor.midnight)
+                .background(LegendNextColor.goldBright, in: Circle())
                 .accessibilityLabel("Open camera for \(type.displayName.lowercased())")
             }
 
             if selectedMedia.isEmpty {
-                RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous)
-                    .fill(LegendNextColor.surfaceInset)
-                    .frame(height: type == .reel || type == .story ? 168 : 128)
-                    .overlay {
-                        Label("Choose media below", systemImage: "photo.stack")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(LegendNextColor.textSecondary)
-                    }
+                VStack(spacing: LegendNextSpacing.sm) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 34, weight: .semibold))
+                    Text("Choose from your library below")
+                        .font(LegendNextTypography.cardTitle)
+                    Text("or use the camera above")
+                        .font(LegendNextTypography.supporting)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: type == .post ? 196 : 272)
+                .foregroundStyle(isDark ? Color.white.opacity(0.80) : LegendNextColor.textSecondary)
+                .background(
+                    isDark ? Color.white.opacity(0.08) : LegendNextColor.surfaceInset,
+                    in: RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous)
+                        .strokeBorder(
+                            isDark ? Color.white.opacity(0.13) : LegendNextColor.separator,
+                            style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Select media from your library below, or use the camera above")
             } else {
                 ScrollView(.horizontal) {
                     LazyHStack(spacing: LegendNextSpacing.xs) {
@@ -310,19 +422,27 @@ struct LegendSocialComposer: View {
                             LegendSocialMediaPreview(media: media) {
                                 remove(media)
                             }
-                            .frame(width: 128, height: 128)
+                            .frame(
+                                width: type == .post ? 172 : 252,
+                                height: type == .post ? 172 : 302)
                         }
                     }
                     .padding(.vertical, 2)
                 }
                 .scrollIndicators(.hidden)
             }
+
+            if let mediaSelectionError {
+                Label(mediaSelectionError, systemImage: "exclamationmark.triangle.fill")
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .padding(LegendNextSpacing.md)
     }
 
     private var mediaGrid: some View {
-        ScrollView {
+        VStack(spacing: LegendNextSpacing.md) {
             LazyVGrid(
                 columns: Array(
                     repeating: GridItem(.flexible(), spacing: 2),
@@ -339,27 +459,23 @@ struct LegendSocialComposer: View {
                     .aspectRatio(1, contentMode: .fit)
                 }
             }
-            .padding(.horizontal, 2)
 
             if photoLibrary.canLoadMore {
                 Button("Show more") {
                     photoLibrary.loadNextPage()
                 }
-                .buttonStyle(LegendButtonStyle(kind: .secondary))
-                .padding(LegendNextSpacing.md)
+                .font(LegendNextTypography.label)
+                .foregroundStyle(LegendNextColor.goldBright)
+                .padding(.vertical, LegendNextSpacing.sm)
             }
         }
-        .scrollIndicators(.hidden)
     }
 
     @ViewBuilder
     private var photoLibraryStatus: some View {
         switch photoLibrary.status {
         case .authorized:
-            photoLibraryNotice(
-                "Full photo library access is enabled.",
-                symbol: "checkmark.shield.fill",
-                color: LegendNextColor.success)
+            EmptyView()
 
         case .limited:
             HStack(spacing: LegendNextSpacing.sm) {
@@ -424,78 +540,223 @@ struct LegendSocialComposer: View {
             .accessibilityLabel(message)
     }
 
+    @ViewBuilder
     private var metadataContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                selectionPreview
-
-                LegendNextSurface(style: .elevated) {
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                        Text(type == .story ? "Story text" : "Caption")
-                            .font(.headline.weight(.bold))
-                            .foregroundStyle(LegendNextColor.textPrimary)
-                        TextEditor(text: $caption)
-                            .font(LegendNextTypography.body)
-                            .frame(minHeight: 118)
-                            .accessibilityLabel("\(type.displayName) caption")
-                    }
-                }
-
-                if !selectedMedia.isEmpty {
-                    TextField(
-                        "Describe this media for accessibility",
-                        text: $accessibilityText,
-                        axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Media description")
-                }
-
-                musicSelection
-
-                LegendNextSurface(style: .elevated) {
-                    Label("Shared only with people authorized by Legend. Visibility is set by the server.", systemImage: "checkmark.shield.fill")
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                }
-
-                if let failure = social.actionFailure {
-                    Text(failure.message)
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(LegendNextColor.danger)
-                }
-            }
-            .padding(LegendNextSpacing.md)
+        if type == .story {
+            storyDetailsContent
+        } else {
+            publicationDetailsContent
         }
-        .scrollIndicators(.hidden)
-        .navigationTitle("Finish \(type.displayName)")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
-    private var musicSelection: some View {
+    private var publicationDetailsContent: some View {
+        VStack(spacing: 0) {
+            metadataHeader(isDark: false)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
+                    metadataMediaPreview(isDark: false)
+                    captionEditor(isDark: false)
+                    musicSelection(isDark: false)
+                    accessibilityEditor(isDark: false)
+                    publicationFailure
+                }
+                .padding(.horizontal, LegendNextSpacing.md)
+                .padding(.top, LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.md)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .background(LegendNextColor.canvas)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            shareControl
+                .padding(.horizontal, LegendNextSpacing.md)
+                .padding(.vertical, LegendNextSpacing.sm)
+                .background(LegendNextColor.canvas)
+        }
+    }
+
+    private var storyDetailsContent: some View {
+        ZStack {
+            LegendNextGradient.hero
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                metadataHeader(isDark: true)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
+                        metadataMediaPreview(isDark: true)
+                        captionEditor(isDark: true)
+                        musicSelection(isDark: true)
+                        accessibilityEditor(isDark: true)
+                        publicationFailure
+                    }
+                    .padding(.horizontal, LegendNextSpacing.md)
+                    .padding(.top, LegendNextSpacing.sm)
+                    .padding(.bottom, LegendNextSpacing.md)
+                }
+                .scrollIndicators(.hidden)
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            shareControl
+                .padding(.horizontal, LegendNextSpacing.md)
+                .padding(.vertical, LegendNextSpacing.sm)
+                .background(LegendNextColor.midnight)
+        }
+    }
+
+    private func metadataHeader(isDark: Bool) -> some View {
+        HStack {
+            Button {
+                stage = .library
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.title3.weight(.semibold))
+                    .frame(
+                        width: LegendNextSize.prominentControlHeight,
+                        height: LegendNextSize.prominentControlHeight)
+                    .background(
+                        isDark ? Color.white.opacity(0.12) : LegendNextColor.fill,
+                        in: Circle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
+            .accessibilityLabel("Back to media selection")
+
+            Spacer()
+
+            Text("New \(type.displayName.lowercased())")
+                .font(LegendNextTypography.section)
+                .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
+
+            Spacer()
+
+            Color.clear
+                .frame(
+                    width: LegendNextSize.prominentControlHeight,
+                    height: LegendNextSize.prominentControlHeight)
+        }
+        .padding(.horizontal, LegendNextSpacing.md)
+        .padding(.vertical, LegendNextSpacing.sm)
+    }
+
+    @ViewBuilder
+    private func metadataMediaPreview(isDark: Bool) -> some View {
+        if selectedMedia.isEmpty {
+            LegendNextInsetSurface {
+                Label("Text-only \(type.displayName.lowercased())", systemImage: type.systemImage)
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(isDark ? Color.white.opacity(0.72) : LegendNextColor.textSecondary)
+            }
+        } else {
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: LegendNextSpacing.xs) {
+                    ForEach(selectedMedia) { media in
+                        LegendSocialMediaPreview(media: media) {
+                            remove(media)
+                        }
+                        .frame(width: type == .post ? 150 : 248, height: type == .post ? 150 : 294)
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    private func captionEditor(isDark: Bool) -> some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            Text(type == .story ? "Add text" : "Write a caption")
+                .font(LegendNextTypography.section)
+                .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
+            TextEditor(text: $caption)
+                .font(LegendNextTypography.body)
+                .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: type == .story ? 150 : 118)
+                .padding(LegendNextSpacing.xs)
+                .background(
+                    isDark ? Color.white.opacity(0.10) : LegendNextColor.surfaceInset,
+                    in: RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous)
+                        .strokeBorder(
+                            isDark ? Color.white.opacity(0.14) : LegendNextColor.separator,
+                            lineWidth: 1)
+                }
+                .accessibilityLabel("\(type.displayName) caption")
+        }
+    }
+
+    @ViewBuilder
+    private func accessibilityEditor(isDark: Bool) -> some View {
+        if !selectedMedia.isEmpty {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                Text("Accessibility")
+                    .font(LegendNextTypography.label)
+                    .foregroundStyle(isDark ? Color.white.opacity(0.80) : LegendNextColor.textSecondary)
+                TextField(
+                    "Describe this media",
+                    text: $accessibilityText,
+                    axis: .vertical)
+                .textFieldStyle(.plain)
+                .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
+                .padding(LegendNextSpacing.sm)
+                .background(
+                    isDark ? Color.white.opacity(0.10) : LegendNextColor.surfaceInset,
+                    in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
+                .accessibilityLabel("Media description")
+            }
+        }
+    }
+
+    private var shareControl: some View {
+        Button(action: primaryAction) {
+            Label("Share \(type.displayName)", systemImage: "arrow.up.circle.fill")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(LegendButtonStyle(kind: .primary))
+        .disabled(!canContinue)
+        .accessibilityLabel("Share \(type.displayName)")
+    }
+
+    @ViewBuilder
+    private var publicationFailure: some View {
+        if let failure = social.actionFailure {
+            Label(failure.message, systemImage: "exclamationmark.triangle.fill")
+                .font(LegendNextTypography.supporting)
+                .foregroundStyle(LegendNextColor.danger)
+        }
+    }
+
+    private func musicSelection(isDark: Bool) -> some View {
         Button {
             stage = .music
         } label: {
             HStack(spacing: LegendNextSpacing.sm) {
                 Image(systemName: "music.note")
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.gold)
-                    .frame(width: 40, height: 40)
-                    .background(LegendNextColor.navy, in: Circle())
+                    .foregroundStyle(LegendNextColor.goldBright)
+                    .frame(width: LegendNextSize.controlHeight, height: LegendNextSize.controlHeight)
+                    .background(isDark ? LegendNextColor.midnight : LegendNextColor.navy, in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(selectedMusic?.track.trackTitle ?? "Add licensed music")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(LegendNextColor.textPrimary)
+                        .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
                     Text(selectedMusic.map { "\($0.track.trackTitle) · \($0.track.artistName) · linked from Spotify" } ?? "Search Spotify and link a track to this post.")
                         .font(LegendNextTypography.supporting)
-                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .foregroundStyle(isDark ? Color.white.opacity(0.68) : LegendNextColor.textSecondary)
                         .lineLimit(2)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .foregroundStyle(isDark ? Color.white.opacity(0.68) : LegendNextColor.textSecondary)
             }
             .padding(LegendNextSpacing.sm)
-            .background(LegendNextColor.surfaceElevated, in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
+            .background(
+                isDark ? Color.white.opacity(0.10) : LegendNextColor.surfaceElevated,
+                in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(selectedMedia.isEmpty)
@@ -860,35 +1121,46 @@ private struct LegendSocialMediaPreview: View {
     let remove: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+        ZStack(alignment: .topTrailing) {
             preview
-                .frame(width: 92, height: 92)
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: LegendNextRadius.control,
-                        style: .continuous))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+
+            LinearGradient(
+                colors: [.clear, Color.black.opacity(0.68)],
+                startPoint: .center,
+                endPoint: .bottom)
 
             VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                Spacer(minLength: 0)
                 Text(media.kindDescription)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .font(.caption.weight(.bold))
                 Text(media.fileName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-
-                Button("Remove", role: .destructive, action: remove)
-                    .font(.caption.weight(.semibold))
+                    .font(.caption2)
+                    .lineLimit(1)
             }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .padding(LegendNextSpacing.sm)
 
-            Spacer(minLength: 0)
+            Button(action: remove) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(LegendNextColor.midnight)
+                    .frame(width: 30, height: 30)
+                    .background(.white, in: Circle())
+            }
+            .padding(LegendNextSpacing.xs)
+            .accessibilityLabel("Remove selected media")
         }
-        .padding(LegendNextSpacing.xs)
-        .background(
-            Color(uiColor: .secondarySystemBackground),
-            in: RoundedRectangle(
+        .clipShape(
+            RoundedRectangle(
                 cornerRadius: LegendNextRadius.control,
                 style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.36), lineWidth: 1)
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Selected \(media.kindDescription): \(media.fileName)")
     }
