@@ -187,6 +187,7 @@ struct LegendSocialComposer: View {
     @State private var mediaSelectionError: String?
     @State private var stage: LegendSocialCreationStage = .library
     @State private var selectedMusic: LegendSocialMusicDraft?
+    @State private var activeStoryTool: LegendSocialStoryEditingTool = .text
     @State private var ownsMediaAfterDismissal = false
 
     init(
@@ -416,20 +417,7 @@ struct LegendSocialComposer: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Select media from your library below, or use the camera above")
             } else {
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: LegendNextSpacing.xs) {
-                        ForEach(selectedMedia) { media in
-                            LegendSocialMediaPreview(media: media) {
-                                remove(media)
-                            }
-                            .frame(
-                                width: type == .post ? 172 : 252,
-                                height: type == .post ? 172 : 302)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-                .scrollIndicators(.hidden)
+                mediaPreviewStrip(isDark: isDark)
             }
 
             if let mediaSelectionError {
@@ -441,34 +429,89 @@ struct LegendSocialComposer: View {
         }
     }
 
-    private var mediaGrid: some View {
-        VStack(spacing: LegendNextSpacing.md) {
-            LazyVGrid(
-                columns: Array(
-                    repeating: GridItem(.flexible(), spacing: 2),
-                    count: 3),
-                spacing: 2
-            ) {
-                ForEach(photoLibrary.visibleAssets) { asset in
-                    LegendPhotoLibraryThumbnail(
-                        asset: asset,
-                        photoLibrary: photoLibrary,
-                        isSelected: selectedAssetIdentifiers.contains(asset.id),
-                        isEligible: type.accepts(asset),
-                        select: { select(asset) })
-                    .aspectRatio(1, contentMode: .fit)
-                }
-            }
+    private func mediaPreviewStrip(
+        isDark: Bool,
+        overlayText: String? = nil
+    ) -> some View {
+        let featuredHeight: CGFloat = type == .post ? 286 : 412
+        let featuredWidth: CGFloat = type == .post ? 286 : 232
+        let companionHeight: CGFloat = type == .post ? 132 : 232
+        let companionWidth: CGFloat = 132
 
-            if photoLibrary.canLoadMore {
-                Button("Show more") {
-                    photoLibrary.loadNextPage()
+        return ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: LegendNextSpacing.xs) {
+                if let primaryMedia = selectedMedia.first {
+                    LegendSocialMediaPreview(
+                        media: primaryMedia,
+                        presentation: .featured,
+                        overlayText: overlayText,
+                        remove: { remove(primaryMedia) })
+                    .frame(width: featuredWidth, height: featuredHeight)
                 }
-                .font(LegendNextTypography.label)
-                .foregroundStyle(LegendNextColor.goldBright)
-                .padding(.vertical, LegendNextSpacing.sm)
+
+                ForEach(Array(selectedMedia.dropFirst())) { media in
+                    LegendSocialMediaPreview(
+                        media: media,
+                        presentation: .companion,
+                        remove: { remove(media) })
+                    .frame(width: companionWidth, height: companionHeight)
+                }
             }
+            .padding(.vertical, 2)
         }
+        .scrollIndicators(.hidden)
+        .background(
+            isDark ? Color.clear : LegendNextColor.surfaceInset,
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.card,
+                style: .continuous))
+    }
+
+    private var mediaGrid: some View {
+        GeometryReader { proxy in
+            let tileSide = min(
+                112,
+                max(92, (proxy.size.width - 4) / 3))
+            let rows = [
+                GridItem(.fixed(tileSide), spacing: 2),
+                GridItem(.fixed(tileSide), spacing: 2)
+            ]
+
+            ScrollView(.horizontal) {
+                LazyHGrid(rows: rows, spacing: 2) {
+                    ForEach(photoLibrary.visibleAssets) { asset in
+                        LegendPhotoLibraryThumbnail(
+                            asset: asset,
+                            photoLibrary: photoLibrary,
+                            isSelected: selectedAssetIdentifiers.contains(asset.id),
+                            isEligible: type.accepts(asset),
+                            select: { select(asset) })
+                        .frame(width: tileSide, height: tileSide)
+                    }
+
+                    if photoLibrary.canLoadMore {
+                        Button {
+                            photoLibrary.loadNextPage()
+                        } label: {
+                            Label("Show more", systemImage: "plus")
+                                .font(LegendNextTypography.label)
+                                .foregroundStyle(LegendNextColor.goldBright)
+                                .frame(width: tileSide, height: tileSide)
+                                .background(
+                                    Color.white.opacity(0.08),
+                                    in: RoundedRectangle(
+                                        cornerRadius: LegendNextRadius.control,
+                                        style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Show more recent media")
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .frame(height: 226)
     }
 
     @ViewBuilder
@@ -586,10 +629,9 @@ struct LegendSocialComposer: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
-                        metadataMediaPreview(isDark: true)
-                        captionEditor(isDark: true)
-                        musicSelection(isDark: true)
-                        accessibilityEditor(isDark: true)
+                        storyEditingCanvas
+                        storyToolRail
+                        storyToolDetail
                         publicationFailure
                     }
                     .padding(.horizontal, LegendNextSpacing.md)
@@ -651,17 +693,77 @@ struct LegendSocialComposer: View {
                     .foregroundStyle(isDark ? Color.white.opacity(0.72) : LegendNextColor.textSecondary)
             }
         } else {
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: LegendNextSpacing.xs) {
-                    ForEach(selectedMedia) { media in
-                        LegendSocialMediaPreview(media: media) {
-                            remove(media)
-                        }
-                        .frame(width: type == .post ? 150 : 248, height: type == .post ? 150 : 294)
-                    }
+            mediaPreviewStrip(isDark: isDark)
+        }
+    }
+
+    private var storyEditingCanvas: some View {
+        Group {
+            if selectedMedia.isEmpty {
+                LegendNextInsetSurface {
+                    Label("Select a story visual", systemImage: "photo.on.rectangle.angled")
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(Color.white.opacity(0.72))
                 }
+            } else {
+                mediaPreviewStrip(
+                    isDark: true,
+                    overlayText: caption.isEmpty ? "Tap Text to add a message" : caption)
             }
-            .scrollIndicators(.hidden)
+        }
+    }
+
+    private var storyToolRail: some View {
+        HStack(spacing: LegendNextSpacing.xs) {
+            ForEach(LegendSocialStoryEditingTool.allCases) { tool in
+                Button {
+                    activeStoryTool = tool
+                    if tool == .audio {
+                        stage = .music
+                    }
+                } label: {
+                    VStack(spacing: LegendNextSpacing.micro) {
+                        Image(systemName: tool.systemImage)
+                            .font(.title3.weight(.semibold))
+                        Text(tool.title)
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(
+                        activeStoryTool == tool
+                            ? LegendNextColor.midnight
+                            : .white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 74)
+                    .background(
+                        activeStoryTool == tool
+                            ? LegendNextColor.goldBright
+                            : Color.white.opacity(0.10),
+                        in: RoundedRectangle(
+                            cornerRadius: LegendNextRadius.control,
+                            style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Story (tool.title)")
+                .accessibilityAddTraits(activeStoryTool == tool ? .isSelected : [])
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var storyToolDetail: some View {
+        switch activeStoryTool {
+        case .audio:
+            musicSelection(isDark: true)
+        case .text, .overlay:
+            captionEditor(isDark: true)
+        case .filter:
+            LegendNextInsetSurface {
+                Label("Original presentation", systemImage: "camera.filters")
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(Color.white.opacity(0.80))
+            }
+        case .edit:
+            accessibilityEditor(isDark: true)
         }
     }
 
@@ -735,16 +837,13 @@ struct LegendSocialComposer: View {
             stage = .music
         } label: {
             HStack(spacing: LegendNextSpacing.sm) {
-                Image(systemName: "music.note")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.goldBright)
-                    .frame(width: LegendNextSize.controlHeight, height: LegendNextSize.controlHeight)
-                    .background(isDark ? LegendNextColor.midnight : LegendNextColor.navy, in: Circle())
+                LegendSocialMusicArtwork(
+                    artistName: selectedMusic?.track.artistName ?? "Legend")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(selectedMusic?.track.trackTitle ?? "Add licensed music")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
-                    Text(selectedMusic.map { "\($0.track.trackTitle) · \($0.track.artistName) · linked from Spotify" } ?? "Search Spotify and link a track to this post.")
+                    Text(selectedMusic.map { "\($0.track.artistName) · \($0.track.trackTitle)" } ?? "Browse Christian music or search for a song.")
                         .font(LegendNextTypography.supporting)
                         .foregroundStyle(isDark ? Color.white.opacity(0.68) : LegendNextColor.textSecondary)
                         .lineLimit(2)
@@ -916,111 +1015,57 @@ private struct LegendSocialMusicSelectionSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                    Text("Search Spotify and link a track to this Legend post. Spotify audio remains on Spotify and is not mixed into the uploaded media.")
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(LegendNextColor.textSecondary)
+            ZStack {
+                LegendNextGradient.hero
+                    .ignoresSafeArea()
 
-                    HStack(spacing: LegendNextSpacing.xs) {
-                        TextField("Search music", text: $query)
-                            .textFieldStyle(.roundedBorder)
-                            .submitLabel(.search)
-                            .onSubmit { search() }
-                            .accessibilityLabel("Search Spotify music")
+                VStack(spacing: 0) {
+                    musicHeader
 
-                        Button("Search", action: search)
-                            .buttonStyle(LegendButtonStyle(kind: .secondary))
-                            .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSearching)
-                    }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                            musicSearchField
 
-                    if isSearching {
-                        HStack(spacing: LegendNextSpacing.xs) {
-                            ProgressView()
-                            Text("Searching Spotify…")
-                                .font(LegendNextTypography.supporting)
-                                .foregroundStyle(LegendNextColor.textSecondary)
-                        }
-                    }
+                            Text(query.isEmpty ? "Christian music" : "Search results")
+                                .font(LegendNextTypography.section)
+                                .foregroundStyle(.white)
 
-                    if !tracks.isEmpty {
-                        VStack(spacing: LegendNextSpacing.xs) {
-                            ForEach(tracks) { track in
-                                Button {
-                                    choose(track)
-                                } label: {
-                                    HStack(spacing: LegendNextSpacing.sm) {
-                                        Image(systemName: selectedTrack?.id == track.id ? "checkmark.circle.fill" : "music.note")
-                                            .foregroundStyle(selectedTrack?.id == track.id ? LegendNextColor.success : LegendNextColor.gold)
-                                            .frame(width: 28)
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(track.trackTitle)
-                                                .font(.subheadline.weight(.semibold))
-                                                .foregroundStyle(LegendNextColor.textPrimary)
-                                                .lineLimit(1)
-                                            Text("\(track.artistName) · \(duration(track.trackDurationSeconds))")
-                                                .font(LegendNextTypography.supporting)
-                                                .foregroundStyle(LegendNextColor.textSecondary)
-                                                .lineLimit(1)
-                                        }
-                                        Spacer(minLength: LegendNextSpacing.xs)
-                                        if track.previewURL != nil {
-                                            Button {
-                                                preview(track)
-                                            } label: {
-                                                Image(systemName: "play.circle")
-                                                    .font(.title3)
-                                            }
-                                            .buttonStyle(.plain)
-                                            .foregroundStyle(LegendNextColor.navy)
-                                            .accessibilityLabel("Preview \(track.trackTitle)")
-                                        }
-                                    }
-                                    .padding(LegendNextSpacing.sm)
-                                    .background(
-                                        selectedTrack?.id == track.id ? LegendNextColor.gold.opacity(0.12) : LegendNextColor.surfaceInset,
-                                        in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
+                            if isSearching {
+                                HStack(spacing: LegendNextSpacing.xs) {
+                                    ProgressView()
+                                        .tint(LegendNextColor.goldBright)
+                                    Text("Finding music")
+                                        .font(LegendNextTypography.supporting)
+                                        .foregroundStyle(Color.white.opacity(0.70))
                                 }
-                                .buttonStyle(.plain)
+                            } else if tracks.isEmpty {
+                                Label("No matching music found", systemImage: "music.quarternote.3")
+                                    .font(LegendNextTypography.supporting)
+                                    .foregroundStyle(Color.white.opacity(0.72))
+                                    .frame(maxWidth: .infinity, minHeight: 120)
+                                    .background(
+                                        Color.white.opacity(0.08),
+                                        in: RoundedRectangle(
+                                            cornerRadius: LegendNextRadius.card,
+                                            style: .continuous))
+                            } else {
+                                LazyVStack(spacing: LegendNextSpacing.xs) {
+                                    ForEach(tracks) { track in
+                                        musicResultRow(track)
+                                    }
+                                }
+                            }
+
+                            if let selectedTrack {
+                                mixingControls(for: selectedTrack)
                             }
                         }
+                        .padding(LegendNextSpacing.md)
                     }
-
-                    if let selectedTrack {
-                        mixingControls(for: selectedTrack)
-                    }
-                }
-                .padding(LegendNextSpacing.md)
-            }
-            .scrollIndicators(.hidden)
-            .background(LegendNextColor.canvas.ignoresSafeArea())
-            .navigationTitle("Add music")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        stopPreview()
-                        cancel()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        guard let selectedTrack else { return }
-                        save(LegendSocialMusicDraft(
-                            track: selectedTrack,
-                            selection: MobileSocialMusicSelection(
-                                providerID: selectedTrack.providerID,
-                                providerTrackID: selectedTrack.providerTrackID,
-                                trimStartSeconds: Decimal(trimStart),
-                                trimEndSeconds: Decimal(trimEnd),
-                                musicVolume: Decimal(musicVolume),
-                                originalAudioVolume: Decimal(originalAudioVolume))))
-                        stopPreview()
-                        cancel()
-                    }
-                    .disabled(selectedTrack == nil || trimEnd <= trimStart)
+                    .scrollIndicators(.hidden)
                 }
             }
+            .toolbar(.hidden, for: .navigationBar)
         }
         .onAppear {
             if let selection {
@@ -1030,22 +1075,174 @@ private struct LegendSocialMusicSelectionSheet: View {
                 musicVolume = NSDecimalNumber(decimal: selection.selection.musicVolume).doubleValue
                 originalAudioVolume = NSDecimalNumber(decimal: selection.selection.originalAudioVolume).doubleValue
             }
+
+            if tracks.isEmpty {
+                search("Christian music")
+            }
         }
         .onDisappear(perform: stopPreview)
     }
 
+    private var musicHeader: some View {
+        HStack {
+            Button("Cancel") {
+                stopPreview()
+                cancel()
+            }
+            .font(LegendNextTypography.label)
+            .foregroundStyle(LegendNextColor.goldBright)
+            .frame(width: LegendNextSize.prominentControlHeight, height: LegendNextSize.prominentControlHeight)
+            .accessibilityLabel("Cancel music selection")
+
+            Spacer()
+
+            Text("Add music")
+                .font(LegendNextTypography.section)
+                .foregroundStyle(.white)
+
+            Spacer()
+
+            Button("Add") {
+                guard let selectedTrack else { return }
+                save(LegendSocialMusicDraft(
+                    track: selectedTrack,
+                    selection: MobileSocialMusicSelection(
+                        providerID: selectedTrack.providerID,
+                        providerTrackID: selectedTrack.providerTrackID,
+                        trimStartSeconds: Decimal(trimStart),
+                        trimEndSeconds: Decimal(trimEnd),
+                        musicVolume: Decimal(musicVolume),
+                        originalAudioVolume: Decimal(originalAudioVolume))))
+                stopPreview()
+                cancel()
+            }
+            .font(LegendNextTypography.label)
+            .foregroundStyle(
+                selectedTrack != nil && trimEnd > trimStart
+                    ? LegendNextColor.goldBright
+                    : Color.white.opacity(0.38))
+            .frame(width: LegendNextSize.prominentControlHeight, height: LegendNextSize.prominentControlHeight)
+            .disabled(selectedTrack == nil || trimEnd <= trimStart)
+            .accessibilityLabel("Add selected music")
+        }
+        .padding(.horizontal, LegendNextSpacing.md)
+        .padding(.vertical, LegendNextSpacing.sm)
+    }
+
+    private var musicSearchField: some View {
+        HStack(spacing: LegendNextSpacing.xs) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(LegendNextColor.goldBright)
+                .accessibilityHidden(true)
+            TextField("Search Christian music or an artist", text: $query)
+                .font(LegendNextTypography.body)
+                .foregroundStyle(.white)
+                .tint(LegendNextColor.goldBright)
+                .submitLabel(.search)
+                .onSubmit { search(query) }
+                .accessibilityLabel("Search music")
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                    search("Christian music")
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Color.white.opacity(0.62))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear music search")
+            }
+        }
+        .padding(.horizontal, LegendNextSpacing.sm)
+        .frame(height: LegendNextSize.controlHeight)
+        .background(
+            Color.white.opacity(0.10),
+            in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+        }
+    }
+
+    private func musicResultRow(_ track: MobileSocialMusicTrack) -> some View {
+        HStack(spacing: LegendNextSpacing.xs) {
+            Button {
+                choose(track)
+            } label: {
+                HStack(spacing: LegendNextSpacing.sm) {
+                    LegendSocialMusicArtwork(artistName: track.artistName)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(track.trackTitle)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        Text("\(track.artistName) · \(duration(track.trackDurationSeconds))")
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(Color.white.opacity(0.66))
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: LegendNextSpacing.xs)
+                    Image(systemName: selectedTrack?.id == track.id ? "checkmark.circle.fill" : "plus.circle")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(
+                            selectedTrack?.id == track.id
+                                ? LegendNextColor.goldBright
+                                : Color.white.opacity(0.72))
+                }
+                .padding(LegendNextSpacing.sm)
+                .background(
+                    selectedTrack?.id == track.id
+                        ? LegendNextColor.goldBright.opacity(0.22)
+                        : Color.white.opacity(0.08),
+                    in: RoundedRectangle(
+                        cornerRadius: LegendNextRadius.control,
+                        style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous)
+                        .strokeBorder(
+                            selectedTrack?.id == track.id
+                                ? LegendNextColor.goldBright.opacity(0.72)
+                                : Color.white.opacity(0.12),
+                            lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Select \(track.trackTitle) by \(track.artistName)")
+
+            if track.previewURL != nil {
+                Button {
+                    preview(track)
+                } label: {
+                    Image(systemName: "play.fill")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(LegendNextColor.midnight)
+                        .frame(width: LegendNextSize.controlHeight, height: LegendNextSize.controlHeight)
+                        .background(LegendNextColor.goldBright, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Preview \(track.trackTitle)")
+            }
+        }
+    }
+
     private func mixingControls(for track: MobileSocialMusicTrack) -> some View {
         let totalDuration = max(NSDecimalNumber(decimal: track.trackDurationSeconds).doubleValue, 0.01)
-        return LegendNextSurface(style: .elevated) {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                Text("Clip and audio mix")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.textPrimary)
-                musicSlider("Clip begins", value: $trimStart, range: 0...max(0, trimEnd - 0.01), detail: duration(Decimal(trimStart)))
-                musicSlider("Clip ends", value: $trimEnd, range: min(totalDuration, trimStart + 0.01)...totalDuration, detail: duration(Decimal(trimEnd)))
-                musicSlider("Music volume", value: $musicVolume, range: 0...1, detail: percentage(musicVolume))
-                musicSlider("Original audio", value: $originalAudioVolume, range: 0...1, detail: percentage(originalAudioVolume))
-            }
+        return VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+            Text("Clip and audio mix")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+            musicSlider("Clip begins", value: $trimStart, range: 0...max(0, trimEnd - 0.01), detail: duration(Decimal(trimStart)))
+            musicSlider("Clip ends", value: $trimEnd, range: min(totalDuration, trimStart + 0.01)...totalDuration, detail: duration(Decimal(trimEnd)))
+            musicSlider("Music volume", value: $musicVolume, range: 0...1, detail: percentage(musicVolume))
+            musicSlider("Original audio", value: $originalAudioVolume, range: 0...1, detail: percentage(originalAudioVolume))
+        }
+        .padding(LegendNextSpacing.md)
+        .background(
+            Color.white.opacity(0.10),
+            in: RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
         }
     }
 
@@ -1059,19 +1256,19 @@ private struct LegendSocialMusicSelectionSheet: View {
             HStack {
                 Text(title)
                     .font(LegendNextTypography.supporting)
-                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .foregroundStyle(Color.white.opacity(0.68))
                 Spacer()
                 Text(detail)
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .foregroundStyle(.white)
             }
             Slider(value: value, in: range)
                 .tint(LegendNextColor.gold)
         }
     }
 
-    private func search() {
-        let value = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func search(_ rawValue: String) {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !isSearching else { return }
         isSearching = true
         Task {
@@ -1116,32 +1313,120 @@ private struct LegendSocialMusicSelectionSheet: View {
     }
 }
 
+private struct LegendSocialMusicArtwork: View {
+    let artistName: String
+
+    private var monogram: String {
+        let letters = artistName
+            .split(whereSeparator: { $0.isWhitespace })
+            .prefix(2)
+            .compactMap(\.first)
+        let value = String(letters)
+        return value.isEmpty ? "L" : value.uppercased()
+    }
+
+    var body: some View {
+        Text(monogram)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(LegendNextColor.midnight)
+            .frame(width: LegendNextSize.controlHeight, height: LegendNextSize.controlHeight)
+            .background(LegendNextColor.goldBright, in: Circle())
+            .accessibilityLabel("\(artistName) artist monogram")
+    }
+}
+
+private enum LegendSocialStoryEditingTool: CaseIterable, Identifiable {
+    case audio
+    case text
+    case overlay
+    case filter
+    case edit
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .audio: "Audio"
+        case .text: "Text"
+        case .overlay: "Overlay"
+        case .filter: "Filter"
+        case .edit: "Edit"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .audio: "music.note"
+        case .text: "textformat"
+        case .overlay: "square.3.layers.3d.top.filled"
+        case .filter: "camera.filters"
+        case .edit: "slider.horizontal.3"
+        }
+    }
+}
+
+private enum LegendSocialMediaPreviewPresentation {
+    case featured
+    case companion
+}
+
 private struct LegendSocialMediaPreview: View {
     let media: LegendSocialMediaDraft
+    let presentation: LegendSocialMediaPreviewPresentation
+    let overlayText: String?
     let remove: () -> Void
+
+    init(
+        media: LegendSocialMediaDraft,
+        presentation: LegendSocialMediaPreviewPresentation,
+        overlayText: String? = nil,
+        remove: @escaping () -> Void
+    ) {
+        self.media = media
+        self.presentation = presentation
+        self.overlayText = overlayText
+        self.remove = remove
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             preview
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
+                .background(Color.black.opacity(0.16))
 
-            LinearGradient(
-                colors: [.clear, Color.black.opacity(0.68)],
-                startPoint: .center,
-                endPoint: .bottom)
+            if presentation == .companion {
+                LinearGradient(
+                    colors: [.clear, Color.black.opacity(0.68)],
+                    startPoint: .center,
+                    endPoint: .bottom)
 
-            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                Spacer(minLength: 0)
-                Text(media.kindDescription)
-                    .font(.caption.weight(.bold))
-                Text(media.fileName)
-                    .font(.caption2)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                    Spacer(minLength: 0)
+                    Text(media.kindDescription)
+                        .font(.caption.weight(.bold))
+                    Text(media.fileName)
+                        .font(.caption2)
+                        .lineLimit(1)
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                .padding(LegendNextSpacing.sm)
             }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            .padding(LegendNextSpacing.sm)
+
+            if presentation == .featured,
+               let overlayText,
+               !overlayText.isEmpty {
+                Text(overlayText)
+                    .font(LegendNextTypography.cardTitle)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white)
+                    .padding(LegendNextSpacing.sm)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .background(Color.black.opacity(0.38), in: Capsule())
+                    .padding(LegendNextSpacing.md)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .accessibilityLabel("Story text: \(overlayText)")
+            }
 
             Button(action: remove) {
                 Image(systemName: "xmark")
@@ -1172,13 +1457,15 @@ private struct LegendSocialMediaPreview: View {
             if let image = UIImage(data: data) {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
             } else {
                 mediaPlaceholder
             }
 
         case .video(_, let fileURL, _, _, _):
             VideoPlayer(player: AVPlayer(url: fileURL))
+                .aspectRatio(contentMode: .fit)
+                .allowsHitTesting(false)
         }
     }
 
