@@ -116,6 +116,63 @@ struct MobileSocialPostMetrics: Codable, Equatable, Sendable {
     let storyTapBackwardCount: Int
 }
 
+extension MobileSocialPost {
+    func replacing(
+        reactionCount: Int? = nil,
+        commentCount: Int? = nil,
+        reactedByCurrentActor: Bool? = nil,
+        followedByCurrentActor: Bool? = nil,
+        savedByCurrentActor: Bool? = nil,
+        repostedByCurrentActor: Bool? = nil,
+        metrics: MobileSocialPostMetrics? = nil,
+        comments: [MobileSocialComment]? = nil
+    ) -> MobileSocialPost {
+        MobileSocialPost(
+            id: id,
+            author: author,
+            contentType: contentType,
+            body: body,
+            postedUTC: postedUTC,
+            expiresUTC: expiresUTC,
+            reactionCount: reactionCount ?? self.reactionCount,
+            commentCount: commentCount ?? self.commentCount,
+            reactedByCurrentActor: reactedByCurrentActor ?? self.reactedByCurrentActor,
+            followedByCurrentActor: followedByCurrentActor ?? self.followedByCurrentActor,
+            savedByCurrentActor: savedByCurrentActor ?? self.savedByCurrentActor,
+            repostedByCurrentActor: repostedByCurrentActor ?? self.repostedByCurrentActor,
+            metrics: metrics ?? self.metrics,
+            music: music,
+            media: media,
+            comments: comments ?? self.comments)
+    }
+}
+
+extension MobileSocialPostMetrics {
+    func adjusting(
+        reactionCountBy: Int = 0,
+        commentCountBy: Int = 0,
+        repostCountBy: Int = 0,
+        saveCountBy: Int = 0
+    ) -> MobileSocialPostMetrics {
+        MobileSocialPostMetrics(
+            viewCount: viewCount,
+            uniqueViewerCount: uniqueViewerCount,
+            reactionCount: max(0, reactionCount + reactionCountBy),
+            commentCount: max(0, commentCount + commentCountBy),
+            replyCount: replyCount,
+            repostCount: max(0, repostCount + repostCountBy),
+            saveCount: max(0, saveCount + saveCountBy),
+            shareCount: shareCount,
+            profileVisitCount: profileVisitCount,
+            followsGenerated: followsGenerated,
+            averageWatchDurationSeconds: averageWatchDurationSeconds,
+            averageWatchCompletionPercentage: averageWatchCompletionPercentage,
+            storyExitCount: storyExitCount,
+            storyTapForwardCount: storyTapForwardCount,
+            storyTapBackwardCount: storyTapBackwardCount)
+    }
+}
+
 struct MobileSocialMusic: Codable, Equatable, Sendable {
     let providerID: String
     let providerTrackID: String

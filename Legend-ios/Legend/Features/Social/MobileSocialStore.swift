@@ -202,6 +202,7 @@ final class MobileSocialStore: ObservableObject {
     @Published private(set) var refreshFailure: UserFacingFailure?
     @Published private(set) var profileRefreshFailure: UserFacingFailure?
     @Published private(set) var publication: MobileSocialPublication?
+    @Published private(set) var mediaFailures: [UUID: UserFacingFailure] = [:]
 
     private let api: any MobileSocialAPI
     private let accessTokenProvider: () async throws -> String
@@ -345,6 +346,7 @@ final class MobileSocialStore: ObservableObject {
     func mediaData(for assetID: UUID, forceRefresh: Bool = false) async -> Data? {
         if forceRefresh {
             mediaCache.removeObject(forKey: assetID as NSUUID)
+            mediaFailures.removeValue(forKey: assetID)
         } else if let cached = mediaCache.object(forKey: assetID as NSUUID) {
             return cached as Data
         }
@@ -364,13 +366,11 @@ final class MobileSocialStore: ObservableObject {
                     data as NSData,
                     forKey: assetID as NSUUID,
                     cost: data.count)
+                self.mediaFailures.removeValue(forKey: assetID)
                 return data
             } catch {
-                let apiError = error as? MobileAPIError
-                self.diagnostics.record(
-                    category: .networking,
-                    summary: "A protected social image could not be loaded.",
-                    correlationID: apiError?.correlationID)
+                self.mediaFailures[assetID] = self.mediaFailurePresentation(
+                    for: error)
                 return nil
             }
         }
@@ -401,8 +401,23 @@ final class MobileSocialStore: ObservableObject {
                 category: .networking,
                 summary: "A protected social video could not be prepared.",
                 correlationID: nil)
+            mediaFailures[media.id] = UserFacingFailure(
+                title: "Media temporarily unavailable",
+                message: "The protected file could not be prepared. Please try again.",
+                correlationID: nil)
             return nil
         }
+    }
+
+    func mediaFailure(for assetID: UUID) -> UserFacingFailure? {
+        mediaFailures[assetID]
+    }
+
+    func recordUnreadableImage(assetID: UUID) {
+        mediaFailures[assetID] = UserFacingFailure(
+            title: "Media unavailable",
+            message: "This file is not a supported image. Please try again or ask the author to replace it.",
+            correlationID: nil)
     }
 
 
@@ -422,22 +437,35 @@ final class MobileSocialStore: ObservableObject {
 
     func toggleSave(postID: UUID) {
         perform(title: "Could not update saved status") { token in
-            _ = try await self.api.toggleSave(postID: postID, accessToken: token)
-            _ = await self.refresh()
+            let state = try await self.api.toggleSave(postID: postID, accessToken: token)
+            self.mutate(postID: postID) { post in
+                let delta = state.isActive == post.savedByCurrentActor
+                    ? 0
+                    : state.isActive ? 1 : -1
+                return post.replacing(
+                    savedByCurrentActor: state.isActive,
+                    metrics: post.metrics.adjusting(saveCountBy: delta))
+            }
         }
     }
 
     func toggleRepost(postID: UUID) {
         perform(title: "Could not update repost") { token in
-            _ = try await self.api.toggleRepost(postID: postID, accessToken: token)
-            _ = await self.refresh()
+            let state = try await self.api.toggleRepost(postID: postID, accessToken: token)
+            self.mutate(postID: postID) { post in
+                let delta = state.isActive == post.repostedByCurrentActor
+                    ? 0
+                    : state.isActive ? 1 : -1
+                return post.replacing(
+                    repostedByCurrentActor: state.isActive,
+                    metrics: post.metrics.adjusting(repostCountBy: delta))
+            }
         }
     }
 
     func recordShare(postID: UUID) {
         perform(title: "Could not record share") { token in
             _ = try await self.api.recordShare(postID: postID, accessToken: token)
-            _ = await self.refresh()
         }
     }
 
@@ -709,12 +737,7 @@ final class MobileSocialStore: ObservableObject {
     }
 
     private func replace(_ post: MobileSocialPost) {
-        if case .loaded(let snapshot) = state {
-            let stories = snapshot.stories.map { $0.id == post.id ? post : $0 }
-            let posts = snapshot.posts.map { $0.id == post.id ? post : $0 }
-            state = .loaded(MobileSocialSnapshot(stories: stories, posts: posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: snapshot.currentProfileMetrics, creatorInsights: snapshot.creatorInsights))
-        }
-        replaceProfilePost(post)
+        mutate(postID: post.id) { _ in post }
     }
 
     private func remove(_ postID: UUID) {
@@ -740,71 +763,54 @@ final class MobileSocialStore: ObservableObject {
                 .sorted { $0.postedUTC > $1.postedUTC })
     }
 
-    private func replaceProfilePost(_ post: MobileSocialPost) {
-        guard case .loaded(let posts) = profileContentState else { return }
-        profileContentState = .loaded(posts.map { $0.id == post.id ? post : $0 })
-    }
-
     private func append(_ comment: MobileSocialComment, to postID: UUID) {
-        guard case .loaded(let snapshot) = state else { return }
-        let update: (MobileSocialPost) -> MobileSocialPost = { post in
-            guard post.id == postID else { return post }
-            return MobileSocialPost(
-                id: post.id,
-                author: post.author,
-                contentType: post.contentType,
-                body: post.body,
-                postedUTC: post.postedUTC,
-                expiresUTC: post.expiresUTC,
-                reactionCount: post.reactionCount,
+        mutate(postID: postID) { post in
+            post.replacing(
                 commentCount: post.commentCount + 1,
-                reactedByCurrentActor: post.reactedByCurrentActor,
-                followedByCurrentActor: post.followedByCurrentActor,
-                savedByCurrentActor: post.savedByCurrentActor,
-                repostedByCurrentActor: post.repostedByCurrentActor,
-                metrics: post.metrics,
-                music: post.music,
-                media: post.media,
+                metrics: post.metrics.adjusting(commentCountBy: 1),
                 comments: Array((post.comments + [comment]).suffix(4)))
         }
-        state = .loaded(MobileSocialSnapshot(
-            stories: snapshot.stories.map(update),
-            posts: snapshot.posts.map(update),
-            activity: snapshot.activity,
-            activityCount: snapshot.activityCount,
-            currentProfileMetrics: snapshot.currentProfileMetrics,
-            creatorInsights: snapshot.creatorInsights))
     }
 
     private func updateFollow(author: MobileSocialAuthor, isFollowing: Bool) {
-        guard case .loaded(let snapshot) = state else { return }
-        let update: (MobileSocialPost) -> MobileSocialPost = { post in
-            guard post.author.identity == author.identity else { return post }
-            return MobileSocialPost(
-                id: post.id,
-                author: post.author,
-                contentType: post.contentType,
-                body: post.body,
-                postedUTC: post.postedUTC,
-                expiresUTC: post.expiresUTC,
-                reactionCount: post.reactionCount,
-                commentCount: post.commentCount,
-                reactedByCurrentActor: post.reactedByCurrentActor,
-                followedByCurrentActor: isFollowing,
-                savedByCurrentActor: post.savedByCurrentActor,
-                repostedByCurrentActor: post.repostedByCurrentActor,
-                metrics: post.metrics,
-                music: post.music,
-                media: post.media,
-                comments: post.comments)
+        transformPosts(
+            matching: { $0.author.identity == author.identity },
+            transform: { $0.replacing(followedByCurrentActor: isFollowing) })
+    }
+
+    private func mutate(
+        postID: UUID,
+        transform: @escaping (MobileSocialPost) -> MobileSocialPost
+    ) {
+        transformPosts(matching: { $0.id == postID }, transform: transform)
+    }
+
+    private func transformPosts(
+        matching predicate: @escaping (MobileSocialPost) -> Bool,
+        transform: @escaping (MobileSocialPost) -> MobileSocialPost
+    ) {
+        if case .loaded(let snapshot) = state {
+            let update: (MobileSocialPost) -> MobileSocialPost = {
+                predicate($0) ? transform($0) : $0
+            }
+            state = .loaded(MobileSocialSnapshot(
+                stories: snapshot.stories.map(update),
+                posts: snapshot.posts.map(update),
+                activity: snapshot.activity,
+                activityCount: snapshot.activityCount,
+                currentProfileMetrics: snapshot.currentProfileMetrics,
+                creatorInsights: snapshot.creatorInsights))
         }
-        state = .loaded(MobileSocialSnapshot(
-            stories: snapshot.stories.map(update),
-            posts: snapshot.posts.map(update),
-            activity: snapshot.activity,
-            activityCount: snapshot.activityCount,
-            currentProfileMetrics: snapshot.currentProfileMetrics,
-            creatorInsights: snapshot.creatorInsights))
+
+        if case .loaded(let posts) = profileContentState {
+            profileContentState = .loaded(posts.map {
+                predicate($0) ? transform($0) : $0
+            })
+        }
+    }
+
+    private func mediaFailurePresentation(for error: Error) -> UserFacingFailure {
+        failure(for: error, title: "Media temporarily unavailable")
     }
 
     private func failure(for error: Error, title: String) -> UserFacingFailure {
