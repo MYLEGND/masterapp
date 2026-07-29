@@ -80,7 +80,26 @@ struct LegendApplicationShell: View {
     }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        selectedTabContent
+            .legendNextPageBackground()
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                LegendNextTabBar(
+                    selection: $selectedTab,
+                    tabs: LegendAppTab.available(
+                        for: currentSession.actor.identity.participantType
+                    ),
+                    accountAvatar: currentSession.actor.avatar,
+                    accountDisplayName: currentSession.actor.displayName,
+                    unreadMessageCount: unreadMessageCount
+                )
+            }
+            .tint(LegendNextColor.gold)
+    }
+
+    @ViewBuilder
+    private var selectedTabContent: some View {
+        switch selectedTab {
+        case .home:
             NavigationStack {
                 LegendHomeView(
                     currentSession: currentSession,
@@ -90,72 +109,65 @@ struct LegendApplicationShell: View {
                     selectedTab: $selectedTab
                 )
             }
-            .tag(LegendAppTab.home)
 
-            if currentSession.actor.identity.participantType == .agent {
-                if let agentWorkspace = bootstrap.stores.agentWorkspace {
-                    NavigationStack {
-                        LegendAgentClientsView(
-                            store: agentWorkspace,
-                            messages: messages,
-                            bootstrap: bootstrap,
-                            openMessages: {
-                                select(.messages)
-                            }
-                        )
-                    }
-                    .tag(LegendAppTab.clients)
-
-                    NavigationStack {
-                        LegendAgentLeadsView(
-                            store: agentWorkspace,
-                            bootstrap: bootstrap
-                        )
-                    }
-                    .tag(LegendAppTab.leads)
-                }
-
+        case .clients:
+            if let agentWorkspace = bootstrap.stores.agentWorkspace {
                 NavigationStack {
-                    LegendForYouView(
-                        currentIdentity: currentSession.actor.identity,
-                        social: social
+                    LegendAgentClientsView(
+                        store: agentWorkspace,
+                        messages: messages,
+                        bootstrap: bootstrap,
+                        openMessages: {
+                            select(.messages)
+                        }
                     )
                 }
-                .tag(LegendAppTab.fyp)
-
-                LegendMessagesTab(messages: messages)
-                    .tag(LegendAppTab.messages)
             } else {
-                NavigationStack {
-                    LegendCirclesView(
-                        currentSession: currentSession,
-                        store: bootstrap.stores.journeyCircles,
-                        bootstrap: bootstrap
-                    )
-                }
-                .tag(LegendAppTab.discover)
-
-                NavigationStack {
-                    LegendForYouView(
-                        currentIdentity: currentSession.actor.identity,
-                        social: social
-                    )
-                }
-                .tag(LegendAppTab.fyp)
-
-                LegendMessagesTab(messages: messages)
-                    .tag(LegendAppTab.messages)
-
-                NavigationStack {
-                    LegendFinanceView(
-                        currentSession: currentSession,
-                        store: bootstrap.stores.financial,
-                        bootstrap: bootstrap
-                    )
-                }
-                .tag(LegendAppTab.finance)
+                unavailableTab
             }
 
+        case .leads:
+            if let agentWorkspace = bootstrap.stores.agentWorkspace {
+                NavigationStack {
+                    LegendAgentLeadsView(
+                        store: agentWorkspace,
+                        bootstrap: bootstrap
+                    )
+                }
+            } else {
+                unavailableTab
+            }
+
+        case .discover:
+            NavigationStack {
+                LegendCirclesView(
+                    currentSession: currentSession,
+                    store: bootstrap.stores.journeyCircles,
+                    bootstrap: bootstrap
+                )
+            }
+
+        case .fyp:
+            NavigationStack {
+                LegendForYouView(
+                    currentIdentity: currentSession.actor.identity,
+                    social: social
+                )
+            }
+
+        case .messages:
+            LegendMessagesTab(messages: messages)
+
+        case .finance:
+            NavigationStack {
+                LegendFinanceView(
+                    currentSession: currentSession,
+                    store: bootstrap.stores.financial,
+                    bootstrap: bootstrap
+                )
+            }
+
+        case .account:
             NavigationStack {
                 LegendAccountView(
                     currentSession: currentSession,
@@ -165,22 +177,18 @@ struct LegendApplicationShell: View {
                     bootstrap: bootstrap
                 )
             }
-            .tag(LegendAppTab.account)
         }
-        .toolbar(.hidden, for: .tabBar)
-        .legendNextPageBackground()
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            LegendNextTabBar(
-                selection: $selectedTab,
-                tabs: LegendAppTab.available(
-                    for: currentSession.actor.identity.participantType
-                ),
-                accountAvatar: currentSession.actor.avatar,
-                accountDisplayName: currentSession.actor.displayName,
-                unreadMessageCount: unreadMessageCount
+    }
+
+    private var unavailableTab: some View {
+        NavigationStack {
+            LegendEmptyState(
+                title: "Page unavailable",
+                message: "This page is not available for the current account.",
+                symbolName: "exclamationmark.triangle"
             )
+            .padding(LegendNextSpacing.sm)
         }
-        .tint(LegendNextColor.gold)
     }
 
     private var unreadMessageCount: Int {

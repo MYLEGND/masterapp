@@ -1250,7 +1250,7 @@ struct LegendForYouView: View {
             .onAppear {
                 selectInitialPost(from: posts)
             }
-            .onChange(of: posts.map(\.id)) { _ in
+            .onChange(of: posts.map(\.id)) {
                 selectInitialPost(from: posts)
             }
         }
