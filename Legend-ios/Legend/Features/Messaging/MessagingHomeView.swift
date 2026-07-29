@@ -595,6 +595,7 @@ struct ConversationThreadView: View {
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isImportingFile = false
     @State private var messageForStagedAttachments: ConversationMessage?
+    @State private var replyingToMessage: ConversationMessage?
 
     var body: some View {
         ZStack {
@@ -646,7 +647,11 @@ struct ConversationThreadView: View {
             LegendConversationHeader(conversation: conversation)
 
             LegendMessageTimeline(
-                messages: conversation.messages
+                messages: conversation.messages,
+                onReply: { message in
+                    replyingToMessage = message
+                    composerIsFocused = true
+                }
             )
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -674,6 +679,16 @@ struct ConversationThreadView: View {
                     attachments: stagedAttachments,
                     onRemove: removeAttachment,
                     onRetry: retryAttachment
+                )
+                .padding(.top, LegendNextSpacing.xs)
+            }
+
+            if let replyingToMessage {
+                LegendMessageReplyComposerPreview(
+                    message: replyingToMessage,
+                    onDismiss: {
+                        self.replyingToMessage = nil
+                    }
                 )
                 .padding(.top, LegendNextSpacing.xs)
             }
@@ -852,6 +867,7 @@ struct ConversationThreadView: View {
         Task {
             guard let message = await store.send(body: outgoing) else { return }
             draft = ""
+            replyingToMessage = nil
             messageForStagedAttachments = message
             await uploadStagedAttachments(to: message)
         }
@@ -1604,6 +1620,7 @@ private struct LegendConversationFallbackHeader: View {
 
 private struct LegendMessageTimeline: View {
     let messages: [ConversationMessage]
+    let onReply: (ConversationMessage) -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -1637,7 +1654,10 @@ private struct LegendMessageTimeline: View {
                                 showsSender: shouldShowSender(
                                     at: index,
                                     messages: messages
-                                )
+                                ),
+                                onReply: {
+                                    onReply(message)
+                                }
                             )
                             .id(message.id)
                         }
@@ -1717,15 +1737,162 @@ private struct LegendMessageDateSeparator: View {
     }
 }
 
+
+private struct LegendMessageReplyComposerPreview: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    let message: ConversationMessage
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            RoundedRectangle(
+                cornerRadius: 2,
+                style: .continuous
+            )
+            .fill(LegendNextColor.gold)
+            .frame(width: 3)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
+                    Image(systemName: "arrowshape.turn.up.left.fill")
+                        .font(.system(size: 9, weight: .bold))
+
+                    Text("Replying to \(replyTargetName)")
+                        .font(.caption.weight(.bold))
+                }
+                .foregroundStyle(LegendNextColor.gold)
+
+                Text(message.body)
+                    .font(.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+
+            Spacer(minLength: LegendNextSpacing.sm)
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        LegendNextColor.fill,
+                        in: Circle()
+                    )
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+            .accessibilityLabel("Cancel reply")
+        }
+        .padding(.horizontal, LegendNextSpacing.md)
+        .padding(.vertical, 10)
+        .background(
+            LegendNextColor.surfaceElevated,
+            in: RoundedRectangle(
+                cornerRadius: 16,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: 16,
+                style: .continuous
+            )
+            .stroke(
+                LegendNextColor.gold.opacity(0.32),
+                lineWidth: 1
+            )
+        }
+        .shadow(
+            color: LegendNextColor.ambientShadow(
+                for: colorScheme
+            ),
+            radius: 14,
+            x: 0,
+            y: 5
+        )
+    }
+
+    private var replyTargetName: String {
+        message.isMine ? "yourself" : message.sender.displayName
+    }
+}
+
+private struct LegendMessageContextPreview: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    let message: ConversationMessage
+
+    var body: some View {
+        VStack(
+            alignment: message.isMine ? .trailing : .leading,
+            spacing: LegendNextSpacing.xs
+        ) {
+            Text(message.sender.displayName)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(LegendNextColor.textSecondary)
+
+            Text(message.body)
+                .font(.body)
+                .foregroundStyle(
+                    message.isMine
+                        ? LegendNextColor.midnight
+                        : Color.white
+                )
+                .multilineTextAlignment(.leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(
+                    message.isMine
+                        ? LegendNextColor.gold
+                        : LegendNextColor.navy,
+                    in: RoundedRectangle(
+                        cornerRadius: 16,
+                        style: .continuous
+                    )
+                )
+        }
+        .padding(LegendNextSpacing.md)
+        .frame(maxWidth: 320)
+        .background(
+            LegendNextColor.surfaceElevated,
+            in: RoundedRectangle(
+                cornerRadius: 22,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: 22,
+                style: .continuous
+            )
+            .stroke(
+                LegendNextColor.gold.opacity(0.24),
+                lineWidth: 1
+            )
+        }
+        .shadow(
+            color: LegendNextColor.ambientShadow(
+                for: colorScheme
+            ),
+            radius: 20,
+            x: 0,
+            y: 10
+        )
+    }
+}
+
 private struct LegendMessageBubble: View {
     let message: ConversationMessage
     let showsSender: Bool
+    let onReply: () -> Void
 
-    private let senderBubbleColor = Color(
-        red: 8.0 / 255.0,
-        green: 103.0 / 255.0,
-        blue: 198.0 / 255.0
-    )
+    @State private var copyFeedbackTrigger = 0
+
+    private let senderBubbleColor = LegendNextColor.gold
 
     private let recipientBubbleColor = LegendNextColor.navy
 
@@ -1751,8 +1918,47 @@ private struct LegendMessageBubble: View {
             trailingAccessoryColumn
         }
         .frame(maxWidth: .infinity)
+        .contentShape(
+            RoundedRectangle(
+                cornerRadius: 18,
+                style: .continuous
+            )
+        )
+        .contextMenu {
+            Button {
+                onReply()
+            } label: {
+                Label(
+                    "Reply",
+                    systemImage: "arrowshape.turn.up.left.fill"
+                )
+            }
+
+            Button {
+                UIPasteboard.general.string = message.body
+                copyFeedbackTrigger += 1
+            } label: {
+                Label(
+                    "Copy",
+                    systemImage: "doc.on.doc.fill"
+                )
+            }
+        } preview: {
+            LegendMessageContextPreview(message: message)
+        }
+        .sensoryFeedback(
+            .success,
+            trigger: copyFeedbackTrigger
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
+        .accessibilityAction(named: "Reply") {
+            onReply()
+        }
+        .accessibilityAction(named: "Copy") {
+            UIPasteboard.general.string = message.body
+            copyFeedbackTrigger += 1
+        }
     }
 
     private var bubbleContent: some View {
@@ -1767,13 +1973,20 @@ private struct LegendMessageBubble: View {
                 Text(message.body)
                     .font(.system(size: 15, weight: .regular))
                     .lineSpacing(0)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(
+                        message.isMine
+                            ? LegendNextColor.midnight
+                            : Color.white
+                    )
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
 
                 ForEach(message.attachments) { attachment in
-                    LegendMessageAttachmentChip(attachment: attachment)
+                    LegendMessageAttachmentChip(
+                        attachment: attachment,
+                        isMine: message.isMine
+                    )
                 }
             }
             .padding(.horizontal, 10)
@@ -1896,6 +2109,7 @@ private struct LegendMessageBubble: View {
 
 private struct LegendMessageAttachmentChip: View {
     let attachment: MessagingAttachment
+    let isMine: Bool
 
     private var isImage: Bool {
         attachment.contentType.hasPrefix("image/")
@@ -1918,10 +2132,28 @@ private struct LegendMessageAttachmentChip: View {
                 .opacity(0.78)
         }
         .font(.caption.weight(.medium))
-        .foregroundStyle(.white)
+        .foregroundStyle(
+            isMine
+                ? LegendNextColor.midnight
+                : Color.white
+        )
         .padding(.horizontal, LegendNextSpacing.sm)
         .padding(.vertical, 6)
-        .background(.white.opacity(0.16), in: Capsule())
+        .background(
+            isMine
+                ? LegendNextColor.midnight.opacity(0.09)
+                : Color.white.opacity(0.14),
+            in: Capsule()
+        )
+        .overlay {
+            Capsule()
+                .stroke(
+                    isMine
+                        ? LegendNextColor.midnight.opacity(0.12)
+                        : Color.white.opacity(0.12),
+                    lineWidth: 0.75
+                )
+        }
         .accessibilityLabel(
             "\(attachment.originalFileName), \(scanStatusLabel)"
         )

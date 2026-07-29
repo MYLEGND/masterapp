@@ -55,6 +55,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
     let sentUTC: Date
     let attachments: [MessagingAttachment]
     let isMine: Bool
+    let reply: MessageReplyPreview?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -64,7 +65,15 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         case sentUTC = "sentUtc"
         case attachments
         case isMine
+        case reply
     }
+}
+
+struct MessageReplyPreview: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let sender: MessagingParticipant
+    let body: String
+    let isDeleted: Bool
 }
 
 struct MessagingAttachment: Codable, Equatable, Identifiable, Sendable {
@@ -117,6 +126,12 @@ struct MessagingAttachmentDraft: Identifiable, Equatable, Sendable {
 
 struct SendMessageRequest: Encodable, Sendable {
     let body: String
+    let replyToMessageID: UUID?
+
+    private enum CodingKeys: String, CodingKey {
+        case body
+        case replyToMessageID = "replyToMessageId"
+    }
 }
 
 struct MessagingRecipient: Codable, Equatable, Identifiable, Sendable {
@@ -180,7 +195,12 @@ protocol MessagingAPI: Sendable {
     func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage]
-    func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage
+    func send(
+        conversationID: UUID,
+        body: String,
+        replyToMessageID: UUID?,
+        accessToken: String
+    ) async throws -> ConversationMessage
     func upload(
         conversationID: UUID,
         messageID: UUID,
@@ -215,7 +235,12 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
         throw MobileMessagingContractError.unavailable
     }
 
-    func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage {
+    func send(
+        conversationID: UUID,
+        body: String,
+        replyToMessageID: UUID?,
+        accessToken: String
+    ) async throws -> ConversationMessage {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -304,10 +329,17 @@ struct URLSessionMessagingAPI: MessagingAPI {
         )
     }
 
-    func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage {
+    func send(
+        conversationID: UUID,
+        body: String,
+        replyToMessageID: UUID?,
+        accessToken: String
+    ) async throws -> ConversationMessage {
         try await client.post(
             "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/messages",
-            body: SendMessageRequest(body: body),
+            body: SendMessageRequest(
+                body: body,
+                replyToMessageID: replyToMessageID),
             accessToken: accessToken,
             idempotencyKey: UUID(),
             headers: participantHeader,

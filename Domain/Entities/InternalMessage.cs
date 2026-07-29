@@ -22,10 +22,16 @@ public class InternalMessage
 
     public string? ClientMessageId { get; set; }
 
+    public Guid? ReplyToMessageId { get; set; }
+
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 
     public MessageConversation Conversation { get; set; } = null!;
 
+    public InternalMessage? ReplyToMessage { get; set; }
+
+    public ICollection<InternalMessage> Replies { get; set; }
+        = new List<InternalMessage>();
 
     public ICollection<MessageAttachment> Attachments { get; set; }
         = new List<MessageAttachment>();

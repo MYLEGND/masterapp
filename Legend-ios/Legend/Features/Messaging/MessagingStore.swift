@@ -194,7 +194,10 @@ final class MessagingStore: ObservableObject {
         }
     }
 
-    func send(body: String) async -> ConversationMessage? {
+    func send(
+        body: String,
+        replyingTo replyTarget: ConversationMessage? = nil
+    ) async -> ConversationMessage? {
         let normalizedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedBody.isEmpty,
               let conversationID = selectedConversationID,
@@ -209,6 +212,7 @@ final class MessagingStore: ObservableObject {
             let message = try await api.send(
                 conversationID: conversationID,
                 body: normalizedBody,
+                replyToMessageID: replyTarget?.id,
                 accessToken: try await accessTokenProvider())
             append(message: message, to: conversationID)
             return message
@@ -274,7 +278,8 @@ final class MessagingStore: ObservableObject {
                     body: message.body,
                     sentUTC: message.sentUTC,
                     attachments: message.attachments + [attachment],
-                    isMine: message.isMine)
+                    isMine: message.isMine,
+                    reply: message.reply)
             },
             isMuted: conversation.isMuted,
             isClosed: conversation.isClosed))

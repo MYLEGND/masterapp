@@ -169,7 +169,12 @@ public abstract class MessagingControllerBase : Controller
             return Forbid();
 
         var result = await _messagingService.SendMessageAsync(
-            new SendMessagingMessageCommand(actor, conversationId, request.Body, request.ClientMessageId),
+            new SendMessagingMessageCommand(
+                actor,
+                conversationId,
+                request.Body,
+                request.ClientMessageId,
+                request.ReplyToMessageId),
             HttpContext.RequestAborted);
         if (!result.Succeeded)
             return Failure(result.ErrorCode, result.ErrorMessage);

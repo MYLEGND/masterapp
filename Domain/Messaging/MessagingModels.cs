@@ -50,7 +50,8 @@ public sealed record SendMessagingMessageCommand(
     MessagingActor Actor,
     Guid ConversationId,
     string Body,
-    string? ClientMessageId = null);
+    string? ClientMessageId = null,
+    Guid? ReplyToMessageId = null);
 
 public sealed record MessagingConversationActionCommand(
     MessagingActor Actor,
@@ -234,7 +235,16 @@ public sealed record MessagingMessageSummary(
     DateTime SentUtc,
     DateTime? EditedUtc,
     bool IsDeleted,
-    IReadOnlyList<MessagingAttachmentSummary> Attachments);
+    IReadOnlyList<MessagingAttachmentSummary> Attachments,
+    Guid? ReplyToMessageId = null,
+    MessagingReplyPreview? Reply = null);
+
+public sealed record MessagingReplyPreview(
+    Guid Id,
+    string SenderUserId,
+    string SenderType,
+    string Body,
+    bool IsDeleted);
 
 public sealed record MessagingAttachmentSummary(
     Guid Id,

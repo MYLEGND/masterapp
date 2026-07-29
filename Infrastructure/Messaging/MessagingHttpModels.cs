@@ -8,7 +8,8 @@ public sealed record StartMessagingConversationRequest(
 
 public sealed record SendMessagingMessageRequest(
     string Body,
-    string? ClientMessageId);
+    string? ClientMessageId,
+    Guid? ReplyToMessageId = null);
 
 public sealed record SetMessagingConversationMutedRequest(bool IsMuted);
 

@@ -332,39 +332,321 @@ private struct LegendNextTabBar: View {
 
 private struct DailyScriptureSheet: View {
     let scripture: MobileDailyScripture
+
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("LIFE HAC | GOD ABOVE ALL")
-                        .font(.caption.weight(.bold))
-                        .tracking(1.2)
-                        .foregroundStyle(.secondary)
+            ZStack {
+                LegendNextColor.canvas
+                    .ignoresSafeArea()
 
-                    Text(scripture.reference)
-                        .font(.largeTitle.bold())
+                ScrollView {
+                    VStack(
+                        alignment: .leading,
+                        spacing: LegendNextSpacing.sm
+                    ) {
+                        scriptureHero
 
-                    Text(scripture.translation)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        verseCard
 
-                    ForEach(Array(scripture.verses.enumerated()), id: \.offset) { index, verse in
-                        Text("\(index + 1). \(verse)")
-                            .font(.body)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        reflectionFooter
                     }
+                    .padding(.horizontal, LegendNextSpacing.sm)
+                    .padding(.top, LegendNextSpacing.sm)
+                    .padding(.bottom, LegendNextSpacing.xl)
                 }
-                .padding(24)
+                .scrollIndicators(.hidden)
             }
             .navigationTitle("God Above All")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(
+                LegendNextColor.canvas,
+                for: .navigationBar
+            )
+            .toolbarBackground(
+                .visible,
+                for: .navigationBar
+            )
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text("Done")
+                            .font(LegendNextTypography.bodyEmphasis)
+                            .foregroundStyle(LegendNextColor.midnight)
+                            .padding(.horizontal, 18)
+                            .frame(minHeight: 44)
+                            .background(
+                                LegendNextColor.goldBright,
+                                in: Capsule()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close scripture")
                 }
             }
+        }
+        .tint(LegendNextColor.gold)
+        .presentationBackground(LegendNextColor.canvas)
+        .presentationCornerRadius(32)
+    }
+
+    private var scriptureHero: some View {
+        LegendNextSurface(
+            style: .navy,
+            cornerRadius: LegendNextRadius.prominentCard,
+            padding: LegendNextSpacing.sm
+        ) {
+            VStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.xs
+            ) {
+                HStack(
+                    alignment: .center,
+                    spacing: LegendNextSpacing.xs
+                ) {
+                    Image(systemName: "book.closed.fill")
+                        .font(
+                            .system(
+                                size: 17,
+                                weight: .semibold
+                            )
+                        )
+                        .foregroundStyle(LegendNextColor.midnight)
+                        .frame(width: 40, height: 40)
+                        .background(
+                            LegendNextColor.goldBright,
+                            in: Circle()
+                        )
+
+                    VStack(
+                        alignment: .leading,
+                        spacing: LegendNextSpacing.micro
+                    ) {
+                        Text("LIFE HAC")
+                            .font(LegendNextTypography.eyebrow)
+                            .tracking(1.1)
+                            .foregroundStyle(
+                                LegendNextColor.goldBright
+                            )
+
+                        Text("GOD ABOVE ALL")
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(
+                                Color.white.opacity(0.70)
+                            )
+                    }
+
+                    Spacer(minLength: LegendNextSpacing.sm)
+
+                    Image(systemName: "cross.fill")
+                        .font(
+                            .system(
+                                size: 18,
+                                weight: .semibold
+                            )
+                        )
+                        .foregroundStyle(
+                            LegendNextColor.goldBright.opacity(0.90)
+                        )
+                }
+
+                LegendNextDivider()
+                    .opacity(0.35)
+
+                Text(scripture.reference)
+                    .font(LegendNextTypography.hero)
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.72)
+
+                HStack(
+                    spacing: LegendNextSpacing.micro
+                ) {
+                    Text(scripture.translation.uppercased())
+                        .font(LegendNextTypography.eyebrow)
+                        .tracking(0.8)
+                        .foregroundStyle(
+                            LegendNextColor.goldBright
+                        )
+
+                    Text("•")
+
+                    Text("DAILY SCRIPTURE")
+                        .font(LegendNextTypography.eyebrow)
+                        .tracking(0.8)
+                }
+                .foregroundStyle(Color.white.opacity(0.62))
+            }
+        }
+    }
+
+    private var verseCard: some View {
+        LegendNextSurface(
+            style: .elevated,
+            cornerRadius: LegendNextRadius.prominentCard,
+            padding: LegendNextSpacing.sm
+        ) {
+            VStack(
+                alignment: .leading,
+                spacing: 0
+            ) {
+                HStack(
+                    alignment: .center,
+                    spacing: LegendNextSpacing.xs
+                ) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: LegendNextSpacing.micro
+                    ) {
+                        Text("THE WORD")
+                            .font(LegendNextTypography.eyebrow)
+                            .tracking(1)
+                            .foregroundStyle(LegendNextColor.gold)
+
+                        Text("Read slowly. Reflect deeply.")
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(
+                                LegendNextColor.textSecondary
+                            )
+                    }
+
+                    Spacer(minLength: LegendNextSpacing.sm)
+
+                    Image(systemName: "sparkles")
+                        .font(
+                            .system(
+                                size: 17,
+                                weight: .semibold
+                            )
+                        )
+                        .foregroundStyle(LegendNextColor.gold)
+                }
+                .padding(.bottom, LegendNextSpacing.sm)
+
+                ForEach(
+                    Array(scripture.verses.enumerated()),
+                    id: \.offset
+                ) { index, verse in
+                    if index > 0 {
+                        LegendNextDivider()
+                            .padding(.vertical, LegendNextSpacing.sm)
+                    }
+
+                    verseRow(
+                        number: index + 1,
+                        text: verse
+                    )
+                }
+            }
+        }
+    }
+
+    private func verseRow(
+        number: Int,
+        text: String
+    ) -> some View {
+        HStack(
+            alignment: .top,
+            spacing: LegendNextSpacing.xs
+        ) {
+            Text("\(number)")
+                .font(
+                    .system(
+                        size: 13,
+                        weight: .bold,
+                        design: .rounded
+                    )
+                )
+                .foregroundStyle(LegendNextColor.midnight)
+                .frame(width: 30, height: 30)
+                .background(
+                    LegendNextColor.goldBright,
+                    in: Circle()
+                )
+                .accessibilityHidden(true)
+
+            Text(text)
+                .font(LegendNextTypography.body)
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .lineSpacing(5)
+                .fixedSize(
+                    horizontal: false,
+                    vertical: true
+                )
+                .frame(
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
+                .accessibilityLabel("Verse \(number). \(text)")
+        }
+    }
+
+    private var reflectionFooter: some View {
+        HStack(
+            alignment: .top,
+            spacing: LegendNextSpacing.xs
+        ) {
+            Image(systemName: "sun.max.fill")
+                .font(
+                    .system(
+                        size: 15,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(LegendNextColor.gold)
+                .frame(width: 34, height: 34)
+                .background(
+                    LegendNextColor.gold.opacity(0.10),
+                    in: Circle()
+                )
+
+            VStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.micro
+            ) {
+                Text("CARRY IT WITH YOU")
+                    .font(LegendNextTypography.eyebrow)
+                    .tracking(0.8)
+                    .foregroundStyle(LegendNextColor.gold)
+
+                Text(
+                    "Let today’s scripture shape your decisions, your discipline, and the legacy you are building."
+                )
+                .font(LegendNextTypography.supporting)
+                .foregroundStyle(LegendNextColor.textSecondary)
+                .fixedSize(
+                    horizontal: false,
+                    vertical: true
+                )
+            }
+        }
+        .padding(LegendNextSpacing.sm)
+        .frame(
+            maxWidth: .infinity,
+            alignment: .leading
+        )
+        .background(
+            LegendNextColor.gold.opacity(
+                colorScheme == .dark ? 0.12 : 0.07
+            ),
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+            .strokeBorder(
+                LegendNextColor.gold.opacity(0.20),
+                lineWidth: 1
+            )
         }
     }
 }
@@ -393,11 +675,12 @@ private struct LegendMessagesTab: View {
 
 private struct LegendHomeView: View {
     let currentSession: MobileSession
-    @Binding var selectedTab: LegendAppTab
+
+    @Binding private var selectedTab: LegendAppTab
     @ObservedObject private var store: MobileHomeStore
     @ObservedObject private var social: MobileSocialStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
-    @State private var presentedScripture: MobileDailyScripture?
+    @State private var presentedScripture: MobileDailyScripture? = nil
 
     init(
         currentSession: MobileSession,
@@ -411,6 +694,7 @@ private struct LegendHomeView: View {
         _store = ObservedObject(wrappedValue: store)
         _social = ObservedObject(wrappedValue: social)
         _bootstrap = ObservedObject(wrappedValue: bootstrap)
+        _presentedScripture = State(initialValue: nil)
     }
 
     var body: some View {
@@ -430,7 +714,11 @@ private struct LegendHomeView: View {
                     title: failure.title,
                     message: failure.message,
                     retryTitle: "Retry",
-                    retry: { Task { await bootstrap.refreshHome() } }
+                    retry: {
+                        Task {
+                            await bootstrap.refreshHome()
+                        }
+                    }
                 )
                 .padding(LegendNextSpacing.sm)
             }

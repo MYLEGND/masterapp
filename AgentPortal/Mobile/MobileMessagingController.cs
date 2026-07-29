@@ -215,7 +215,11 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             return resolved.Error;
 
         var result = await _messaging.SendMessageAsync(
-            new SendMessagingMessageCommand(resolved.Actor!.Actor, conversationId, request?.Body ?? string.Empty),
+            new SendMessagingMessageCommand(
+                resolved.Actor!.Actor,
+                conversationId,
+                request?.Body ?? string.Empty,
+                ReplyToMessageId: request?.ReplyToMessageId),
             cancellationToken);
         if (!result.Succeeded || result.Message is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
@@ -392,7 +396,20 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         message.SentUtc,
         message.Attachments.Select(ToAttachmentDto).ToArray(),
         string.Equals(message.SenderUserId, actor.UserId, StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(message.SenderType, actor.ParticipantType, StringComparison.Ordinal));
+        string.Equals(message.SenderType, actor.ParticipantType, StringComparison.Ordinal),
+        message.Reply is null
+            ? null
+            : new MobileReplyPreviewDto(
+                message.Reply.Id,
+                await ToParticipantDtoAsync(
+                    new MessagingParticipantSummary(
+                        message.Reply.SenderUserId,
+                        message.Reply.SenderType,
+                        string.Empty),
+                    identities,
+                    cancellationToken),
+                message.Reply.Body,
+                message.Reply.IsDeleted));
 
     private async Task<string?> ResolveCanonicalAgentTitleAsync(
         MessagingParticipantIdentity? identity,
@@ -502,7 +519,14 @@ public sealed record MobileMessageDto(
     string Body,
     DateTime SentUtc,
     IReadOnlyList<MobileMessageAttachmentDto> Attachments,
-    bool IsMine);
+    bool IsMine,
+    MobileReplyPreviewDto? Reply = null);
+
+public sealed record MobileReplyPreviewDto(
+    Guid Id,
+    MobileParticipantDto Sender,
+    string Body,
+    bool IsDeleted);
 
 public sealed record MobileMessageAttachmentDto(
     Guid Id,
@@ -513,7 +537,9 @@ public sealed record MobileMessageAttachmentDto(
     DateTime CreatedUtc,
     bool CanDownload);
 
-public sealed record MobileSendMessageRequest(string? Body);
+public sealed record MobileSendMessageRequest(
+    string? Body,
+    Guid? ReplyToMessageId = null);
 public sealed record MobileStartConversationRequest(
     string? TargetUserId,
     string? TargetParticipantType,

@@ -7,7 +7,7 @@ namespace AgentPortal.Services;
 
 /// <summary>
 /// Lightweight startup diagnostics to surface migration drift across providers.
-/// Logs pending migrations and table presence for core execution surfaces.
+/// Logs pending migrations and table presence for core execution and mobile social surfaces.
 /// No schema changes are applied here.
 /// </summary>
 public sealed class MigrationHealthHostedService : IHostedService
@@ -19,7 +19,10 @@ public sealed class MigrationHealthHostedService : IHostedService
 
     private static readonly string[] CriticalTables =
     {
-        "ActionItems", "ActionLogs", "Blockers", "DecisionRecords", "Commitments", "AnalyticsEvents"
+        "ActionItems", "ActionLogs", "Blockers", "DecisionRecords", "Commitments", "AnalyticsEvents",
+        "SocialPosts", "SocialPostMediaAssets", "SocialPostComments", "SocialPostReactions",
+        "SocialPostMusicAttachments", "SocialPostReposts", "SocialPostSaves", "SocialPostShares",
+        "SocialPostViews", "SocialProfileVisits"
     };
 
     public MigrationHealthHostedService(
@@ -51,13 +54,22 @@ public sealed class MigrationHealthHostedService : IHostedService
                 _logger.LogInformation("SQLite data source: {DataSource}", dataSource);
             }
 
+            var missingTables = new List<string>();
             foreach (var table in CriticalTables)
             {
                 var exists = await TableExistsAsync(db, table, cancellationToken);
                 if (!exists)
                 {
+                    missingTables.Add(table);
                     _logger.LogWarning("Critical table missing: {Table}. Apply migrations for provider {Provider}.", table, provider);
                 }
+            }
+
+            if (missingTables.Count > 0 && IsStrictMigrationsEnabled())
+            {
+                throw new InvalidOperationException(
+                    $"STARTUP BLOCKED: Required database tables are missing: {string.Join(", ", missingTables)}. " +
+                    $"Apply migrations for provider {provider} before starting the application.");
             }
         }
         catch (Exception ex) when (ShouldSuppressStartupFailure(db, ex))

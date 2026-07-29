@@ -213,7 +213,16 @@ internal sealed class MessagingService : IMessagingService
                 x.Body,
                 x.SentUtc,
                 x.EditedUtc,
-                x.IsDeleted))
+                x.IsDeleted,
+                x.ReplyToMessageId,
+                x.ReplyToMessage == null
+                    ? null
+                    : new ReplyDetailRow(
+                        x.ReplyToMessage.Id,
+                        x.ReplyToMessage.SenderUserId,
+                        x.ReplyToMessage.SenderType,
+                        x.ReplyToMessage.Body,
+                        x.ReplyToMessage.IsDeleted)))
             .ToListAsync(cancellationToken);
         var displayNames = await LoadDisplayNamesAsync(participants, cancellationToken);
         var currentParticipant = participants.FirstOrDefault(x =>
@@ -512,12 +521,50 @@ internal sealed class MessagingService : IMessagingService
                 "This client membership is inactive. The conversation history remains available, but new messages cannot be sent until membership is restored.");
         }
 
+        InternalMessage? replyTarget = null;
+        if (command.ReplyToMessageId.HasValue)
+        {
+            replyTarget = await _db.InternalMessages
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    message =>
+                        message.Id == command.ReplyToMessageId.Value &&
+                        message.ConversationId == conversation.Id,
+                    cancellationToken);
+
+            if (replyTarget is null)
+            {
+                return MessagingMessageResult.Failure(
+                    "MESSAGING_REPLY_TARGET_INVALID",
+                    "The message you are replying to is no longer available in this conversation.");
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(clientMessageId))
         {
             var duplicate = await _db.InternalMessages
                 .AsNoTracking()
                 .Where(x => x.ClientMessageId == clientMessageId)
-                .Select(x => new { x.Id, x.ConversationId, x.SenderUserId, x.SenderType, x.Body, x.SentUtc, x.EditedUtc, x.IsDeleted })
+                .Select(x => new
+                {
+                    x.Id,
+                    x.ConversationId,
+                    x.SenderUserId,
+                    x.SenderType,
+                    x.Body,
+                    x.SentUtc,
+                    x.EditedUtc,
+                    x.IsDeleted,
+                    x.ReplyToMessageId,
+                    Reply = x.ReplyToMessage == null
+                        ? null
+                        : new MessagingReplyPreview(
+                            x.ReplyToMessage.Id,
+                            x.ReplyToMessage.SenderUserId,
+                            x.ReplyToMessage.SenderType,
+                            x.ReplyToMessage.Body,
+                            x.ReplyToMessage.IsDeleted)
+                })
                 .FirstOrDefaultAsync(cancellationToken);
             if (duplicate is not null)
             {
@@ -541,7 +588,9 @@ internal sealed class MessagingService : IMessagingService
                             duplicate.SentUtc,
                             duplicate.EditedUtc,
                             duplicate.IsDeleted,
-                            Array.Empty<MessagingAttachmentSummary>()),
+                            Array.Empty<MessagingAttachmentSummary>(),
+                            duplicate.ReplyToMessageId,
+                            duplicate.Reply),
                         duplicate.ConversationId);
                 }
 
@@ -558,7 +607,8 @@ internal sealed class MessagingService : IMessagingService
             SenderType = actor.ParticipantType,
             Body = body,
             SentUtc = nowUtc,
-            ClientMessageId = clientMessageId
+            ClientMessageId = clientMessageId,
+            ReplyToMessageId = command.ReplyToMessageId
         };
         _db.InternalMessages.Add(message);
         conversation.LastMessageUtc = nowUtc;
@@ -588,7 +638,16 @@ internal sealed class MessagingService : IMessagingService
                 message.SentUtc,
                 message.EditedUtc,
                 message.IsDeleted,
-                Array.Empty<MessagingAttachmentSummary>()),
+                Array.Empty<MessagingAttachmentSummary>(),
+                message.ReplyToMessageId,
+                replyTarget is null
+                    ? null
+                    : new MessagingReplyPreview(
+                        replyTarget.Id,
+                        replyTarget.SenderUserId,
+                        replyTarget.SenderType,
+                        replyTarget.Body,
+                        replyTarget.IsDeleted)),
             conversation.Id);
     }
 
@@ -1500,7 +1559,18 @@ internal sealed class MessagingService : IMessagingService
             message.SentUtc,
             message.EditedUtc,
             message.IsDeleted,
-            attachments.Where(x => x.InternalMessageId == message.Id).Select(ToAttachmentSummary).ToList());
+            attachments.Where(x => x.InternalMessageId == message.Id).Select(ToAttachmentSummary).ToList(),
+            message.ReplyToMessageId,
+            message.Reply is null
+                ? null
+                : new MessagingReplyPreview(
+                    message.Reply.Id,
+                    message.Reply.SenderUserId,
+                    message.Reply.SenderType,
+                    message.Reply.IsDeleted
+                        ? "Message unavailable"
+                        : message.Reply.Body,
+                    message.Reply.IsDeleted));
     }
 
     private static MessagingAttachmentSummary ToAttachmentSummary(AttachmentRow attachment) => new(
@@ -1604,6 +1674,15 @@ internal sealed class MessagingService : IMessagingService
         string Body,
         DateTime SentUtc,
         DateTime? EditedUtc,
+        bool IsDeleted,
+        Guid? ReplyToMessageId,
+        ReplyDetailRow? Reply);
+
+    private sealed record ReplyDetailRow(
+        Guid Id,
+        string SenderUserId,
+        string SenderType,
+        string Body,
         bool IsDeleted);
 
     private sealed record AttachmentRow(
