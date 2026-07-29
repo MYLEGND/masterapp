@@ -345,6 +345,44 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task MediaRead_ReturnsRetryableFailure_WhenAuthorizedStorageIsUnavailable()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("storage-outage-client", "Storage", "Outage");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db, new WriteOnlyTestSocialMediaStorage());
+        var post = await service.CreatePostAsync(new CreateSocialPostCommand(
+            ClientActor(client),
+            SocialPostContentTypes.Post,
+            "A post whose protected object is temporarily unavailable"));
+        Assert.True(post.Succeeded);
+
+        var asset = new SocialPostMediaAsset
+        {
+            Id = Guid.NewGuid(),
+            SocialPostId = post.Value!.Id,
+            DisplayOrder = 0,
+            MediaKind = "Image",
+            StorageKey = "test/unavailable.jpg",
+            MimeType = "image/jpeg",
+            FileSizeBytes = 4,
+            ProcessingState = "Ready"
+        };
+        db.SocialPostMediaAssets.Add(asset);
+        await db.SaveChangesAsync();
+
+        var retrieved = await service.GetMediaAsync(ClientActor(client), asset.Id);
+
+        Assert.False(retrieved.Succeeded);
+        Assert.Equal("social_media_storage_unavailable", retrieved.ErrorCode);
+        Assert.Equal(
+            "Legend media is temporarily unavailable. Please try again shortly.",
+            retrieved.ErrorMessage);
+    }
+
+    [Fact]
     public async Task VideoReel_IsStoredAndReadThroughTheAuthorizedMediaPath()
     {
         await using var db = ControllerTestHelpers.BuildDb();

@@ -110,6 +110,9 @@ struct LegendApplicationShell: View {
                     }
                     .tag(LegendAppTab.leads)
                 }
+
+                LegendMessagesTab(messages: messages)
+                    .tag(LegendAppTab.messages)
             } else {
                 NavigationStack {
                     LegendCirclesView(
@@ -120,6 +123,9 @@ struct LegendApplicationShell: View {
                 }
                 .tag(LegendAppTab.discover)
 
+                LegendMessagesTab(messages: messages)
+                    .tag(LegendAppTab.messages)
+
                 NavigationStack {
                     LegendFinanceView(
                         currentSession: currentSession,
@@ -129,9 +135,6 @@ struct LegendApplicationShell: View {
                 }
                 .tag(LegendAppTab.finance)
             }
-
-            LegendMessagesTab(messages: messages)
-                .tag(LegendAppTab.messages)
 
             NavigationStack {
                 LegendAccountView(
