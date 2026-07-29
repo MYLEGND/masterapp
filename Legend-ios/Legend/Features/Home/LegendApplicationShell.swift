@@ -8,7 +8,6 @@ private enum LegendAppTab: String, Identifiable {
     case discover
     case messages
     case finance
-    
     case account
 
     var id: Self { self }
