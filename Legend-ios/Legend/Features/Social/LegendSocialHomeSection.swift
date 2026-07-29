@@ -19,7 +19,6 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     @State private var isPresentingActivity = false
     @State private var isPresentingCreatorInsights = false
     @State private var commentTarget: MobileSocialPost?
-    @State private var commentBody = ""
     @State private var postInsight: MobileSocialPostInsight?
     @State private var storyCollection: MobileSocialStoryCollection?
     @State private var selectedForYouPost: MobileSocialPost?
@@ -67,12 +66,12 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         .sheet(item: $postInsight) { insight in
             LegendPostInsightsSheet(insight: insight)
         }
-        .sheet(item: $commentTarget, onDismiss: { commentBody = "" }) { post in
+.sheet(item: $commentTarget) { post in
             LegendCommentComposer(
-                authorName: post.author.displayName,
-                messageBody: $commentBody,
-                submit: { submitComment(to: post) },
-                cancel: { commentTarget = nil })
+                postID: post.id,
+                social: social,
+                cancel: { commentTarget = nil }
+            )
         }
         .fullScreenCover(item: $storyCollection, onDismiss: {
             Task { await refreshSocial() }
@@ -363,13 +362,6 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         }
     }
 
-    private func submitComment(to post: MobileSocialPost) {
-        let body = commentBody.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else { return }
-        social.addComment(postID: post.id, body: body)
-        commentTarget = nil
-        commentBody = ""
-    }
 }
 
 private struct LegendStoryRail: View {
@@ -1149,7 +1141,6 @@ struct LegendForYouView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPostID: UUID?
     @State private var commentTarget: MobileSocialPost?
-    @State private var commentBody = ""
     @State private var postInsight: MobileSocialPostInsight?
     @State private var editingPost: MobileSocialPost?
     @State private var deletionTarget: MobileSocialPost?
@@ -1224,11 +1215,10 @@ struct LegendForYouView: View {
                 }
             }
         }
-        .sheet(item: $commentTarget, onDismiss: { commentBody = "" }) { post in
+.sheet(item: $commentTarget) { post in
             LegendCommentComposer(
-                authorName: post.author.displayName,
-                messageBody: $commentBody,
-                submit: { submitComment(to: post) },
+                postID: post.id,
+                social: social,
                 cancel: { commentTarget = nil }
             )
         }
@@ -1349,14 +1339,6 @@ struct LegendForYouView: View {
         return snapshot.posts.first { $0.id == selectedPostID }
     }
 
-    private func submitComment(to post: MobileSocialPost) {
-        let body = commentBody.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else { return }
-
-        social.addComment(postID: post.id, body: body)
-        commentTarget = nil
-        commentBody = ""
-    }
 }
 
 struct LegendSocialPostEditor: View {
@@ -1814,36 +1796,410 @@ private struct LegendSocialPublicationBanner: View {
 }
 
 private struct LegendCommentComposer: View {
-    let authorName: String
-    @Binding var messageBody: String
-    let submit: () -> Void
+    let postID: UUID
+    @ObservedObject var social: MobileSocialStore
     let cancel: () -> Void
+
+    @FocusState private var composerFocused: Bool
+    @State private var draft = ""
+    @State private var replyTarget: MobileSocialComment?
+    @State private var selectedDetent: PresentationDetent = .medium
+
+    private var post: MobileSocialPost? {
+        guard case .loaded(let snapshot) = social.state else {
+            return nil
+        }
+
+        return (snapshot.posts + snapshot.stories).first {
+            $0.id == postID
+        }
+    }
+
+    private var comments: [MobileSocialComment] {
+        post?.comments ?? []
+    }
+
+    private var rootComments: [MobileSocialComment] {
+        comments
+            .filter { $0.parentCommentID == nil }
+            .sorted { $0.createdUTC < $1.createdUTC }
+    }
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                Text("Reply to \(authorName)")
-                    .font(LegendNextTypography.section)
-                TextEditor(text: $messageBody)
-                    .font(LegendNextTypography.body)
-                    .padding(LegendNextSpacing.sm)
-                    .frame(minHeight: 130)
-                    .background(LegendNextColor.surfaceInset, in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
-                    .accessibilityLabel("Comment")
-                Spacer()
+            VStack(spacing: 0) {
+                if let post {
+                    postPreview(post)
+
+                    Rectangle()
+                        .fill(LegendNextColor.separator)
+                        .frame(height: 0.5)
+
+                    commentsSection
+                } else {
+                    LegendLoadingView("Loading comments…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+
+                composer
             }
-            .padding(LegendNextSpacing.md)
-            .background(LegendNextColor.canvas.ignoresSafeArea())
-            .navigationTitle("Comment")
+            .background(
+                LegendNextColor.canvas
+                    .ignoresSafeArea()
+            )
+            .navigationTitle("Comments")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: cancel) }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Send", action: submit)
-                        .disabled(messageBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: cancel) {
+                        Image(systemName: "xmark")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(LegendNextColor.textPrimary)
+                            .frame(width: 34, height: 34)
+                            .background(
+                                LegendNextColor.surfaceInset,
+                                in: Circle()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close comments")
                 }
             }
         }
+        .presentationDetents(
+            [.medium, .large],
+            selection: $selectedDetent
+        )
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(28)
+        .presentationBackground(LegendNextColor.canvas)
+    }
+
+    private func postPreview(
+        _ post: MobileSocialPost
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.xs
+        ) {
+            HStack(spacing: LegendNextSpacing.sm) {
+                LegendProfileAvatar(
+                    avatar: post.author.avatar,
+                    displayName: post.author.displayName,
+                    size: 34
+                )
+
+                VStack(
+                    alignment: .leading,
+                    spacing: LegendNextSpacing.micro
+                ) {
+                    Text(post.author.displayName)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                        .lineLimit(1)
+
+                    Text(post.postedUTC, style: .relative)
+                        .font(LegendNextTypography.caption)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                }
+
+                Spacer(minLength: LegendNextSpacing.xs)
+
+                Label(
+                    "\(comments.count)",
+                    systemImage: "bubble.left"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(LegendNextColor.textSecondary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(
+                    LegendNextColor.surfaceInset,
+                    in: Capsule()
+                )
+            }
+
+            let caption = post.body.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+
+            if !caption.isEmpty {
+                (
+                    Text(post.author.displayName)
+                        .fontWeight(.bold)
+                    +
+                    Text(" \(caption)")
+                )
+                .font(LegendNextTypography.supporting)
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .lineLimit(selectedDetent == .large ? 3 : 2)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, LegendNextSpacing.md)
+        .padding(.vertical, LegendNextSpacing.sm)
+        .background(LegendNextColor.surfaceElevated)
+    }
+
+    @ViewBuilder
+    private var commentsSection: some View {
+        if rootComments.isEmpty {
+            VStack(spacing: LegendNextSpacing.xs) {
+                Image(systemName: "bubble.left")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(LegendNextColor.gold)
+
+                Text("Start the conversation")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+
+                Text("Be the first to leave a comment.")
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(LegendNextSpacing.md)
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(
+                        alignment: .leading,
+                        spacing: LegendNextSpacing.sm
+                    ) {
+                        ForEach(rootComments) { comment in
+                            commentThread(comment)
+                                .id(comment.id)
+                        }
+                    }
+                    .padding(.horizontal, LegendNextSpacing.md)
+                    .padding(.vertical, LegendNextSpacing.sm)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .scrollIndicators(.hidden)
+                .onChange(of: comments.map(\.id)) {
+                    guard let newest = comments.last else {
+                        return
+                    }
+
+                    withAnimation(LegendNextMotion.tab) {
+                        proxy.scrollTo(
+                            newest.parentCommentID ?? newest.id,
+                            anchor: .bottom
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func commentThread(
+        _ comment: MobileSocialComment
+    ) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.xs
+        ) {
+            commentRow(comment, isReply: false)
+
+            let replies = comments
+                .filter {
+                    $0.parentCommentID == comment.id
+                }
+                .sorted {
+                    $0.createdUTC < $1.createdUTC
+                }
+
+            if !replies.isEmpty {
+                VStack(
+                    alignment: .leading,
+                    spacing: LegendNextSpacing.xs
+                ) {
+                    ForEach(replies) { reply in
+                        commentRow(reply, isReply: true)
+                    }
+                }
+                .padding(.leading, 38)
+            }
+        }
+    }
+
+    private func commentRow(
+        _ comment: MobileSocialComment,
+        isReply: Bool
+    ) -> some View {
+        HStack(
+            alignment: .top,
+            spacing: LegendNextSpacing.xs
+        ) {
+            LegendProfileAvatar(
+                avatar: comment.author.avatar,
+                displayName: comment.author.displayName,
+                size: isReply ? 27 : 33
+            )
+
+            VStack(
+                alignment: .leading,
+                spacing: 3
+            ) {
+                HStack(
+                    alignment: .firstTextBaseline,
+                    spacing: LegendNextSpacing.xs
+                ) {
+                    Text(comment.author.displayName)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(LegendNextColor.textPrimary)
+
+                    Text(comment.createdUTC, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                }
+
+                Text(comment.body)
+                    .font(
+                        isReply
+                            ? LegendNextTypography.supporting
+                            : LegendNextTypography.body
+                    )
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    replyTarget = comment
+                    composerFocused = true
+                } label: {
+                    Text("Reply")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    "Reply to \(comment.author.displayName)"
+                )
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var composer: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(LegendNextColor.separator)
+                .frame(height: 0.5)
+
+            if let replyTarget {
+                HStack(spacing: LegendNextSpacing.xs) {
+                    Image(systemName: "arrowshape.turn.up.left")
+                        .font(.caption.weight(.semibold))
+
+                    Text(
+                        "Replying to \(replyTarget.author.displayName)"
+                    )
+                    .font(LegendNextTypography.caption)
+                    .lineLimit(1)
+
+                    Spacer(minLength: LegendNextSpacing.xs)
+
+                    Button {
+                        self.replyTarget = nil
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.bold))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Cancel reply")
+                }
+                .foregroundStyle(LegendNextColor.textSecondary)
+                .padding(.horizontal, LegendNextSpacing.md)
+                .padding(.vertical, 6)
+                .background(LegendNextColor.surfaceInset)
+            }
+
+            HStack(
+                alignment: .bottom,
+                spacing: LegendNextSpacing.xs
+            ) {
+                TextField(
+                    replyTarget == nil
+                        ? "Add a comment…"
+                        : "Reply to \(replyTarget?.author.displayName ?? "")…",
+                    text: $draft,
+                    axis: .vertical
+                )
+                .focused($composerFocused)
+                .font(LegendNextTypography.body)
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .lineLimit(1...4)
+                .textInputAutocapitalization(.sentences)
+                .submitLabel(.send)
+                .onSubmit(send)
+                .padding(.horizontal, LegendNextSpacing.sm)
+                .padding(.vertical, 9)
+                .background(
+                    LegendNextColor.surfaceInset,
+                    in: RoundedRectangle(
+                        cornerRadius: 19,
+                        style: .continuous
+                    )
+                )
+
+                Button(action: send) {
+                    Image(systemName: "arrow.up")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(
+                            canSend
+                                ? LegendNextColor.navy
+                                : LegendNextColor.textSecondary.opacity(0.4)
+                        )
+                        .frame(width: 38, height: 38)
+                        .background(
+                            canSend
+                                ? LegendNextColor.goldBright
+                                : LegendNextColor.surfaceInset,
+                            in: Circle()
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+                .accessibilityLabel("Send comment")
+            }
+            .padding(.horizontal, LegendNextSpacing.md)
+            .padding(.vertical, LegendNextSpacing.xs)
+            .background(LegendNextColor.surfaceElevated)
+        }
+    }
+
+    private var canSend: Bool {
+        !draft
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            .isEmpty
+    }
+
+    private func send() {
+        let body = draft.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard !body.isEmpty else {
+            return
+        }
+
+        let parentCommentID =
+            replyTarget?.parentCommentID
+            ?? replyTarget?.id
+
+        draft = ""
+        replyTarget = nil
+
+        social.addComment(
+            postID: postID,
+            body: body,
+            parentCommentID: parentCommentID
+        )
+
+        composerFocused = true
     }
 }
 
