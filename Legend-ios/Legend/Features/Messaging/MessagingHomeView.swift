@@ -191,26 +191,7 @@ struct MessagingHomeView: View {
                         )
                 }
                 .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel("Start a new authorized conversation")
-            }
-
-            HStack(spacing: LegendNextSpacing.sm) {
-                Image(systemName: "lock.shield.fill")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.goldBright)
-
-                Text("Authorized Legend relationships only")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.84))
-
-                Spacer()
-            }
-            .padding(.horizontal, LegendNextSpacing.md)
-            .frame(height: 38)
-            .background(.white.opacity(0.075), in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(.white.opacity(0.10), lineWidth: 1)
+                .accessibilityLabel("Start a new conversation")
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -272,7 +253,7 @@ struct MessagingHomeView: View {
         LegendMessagingEmptyState(
             symbol: "message.badge.waveform.fill",
             title: "Start a private conversation",
-            message: "Connect with an authorized member of your Legend network.",
+            message: "Choose someone in your Legend network to begin.",
             actionTitle: "New message",
             action: {
                 isPresentingNewConversation = true
@@ -333,7 +314,7 @@ struct MessagingHomeView: View {
     }
 }
 
-// MARK: - Authorized Contact Picker
+// MARK: - Recipient Picker
 
 private struct LegendRecipientPicker: View {
     @ObservedObject var store: MessagingStore
@@ -353,12 +334,13 @@ private struct LegendRecipientPicker: View {
                 VStack(spacing: 0) {
                     recipientHeader
                     searchField
+                    recipientScopes
                     recipientContent
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
             .onChange(of: search) { _, value in
-                store.loadRecipients(search: value)
+                store.searchRecipients(value)
             }
         }
     }
@@ -384,7 +366,7 @@ private struct LegendRecipientPicker: View {
                         .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundStyle(.white)
 
-                    Text("Authorized contacts")
+                    Text("Search your Legend network")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.66))
                 }
@@ -394,18 +376,6 @@ private struct LegendRecipientPicker: View {
                 Color.clear
                     .frame(width: 68, height: 44)
                     .accessibilityHidden(true)
-            }
-
-            HStack(spacing: LegendNextSpacing.xs) {
-                Image(systemName: "lock.shield.fill")
-                    .foregroundStyle(LegendNextColor.goldBright)
-
-                Text("Only people within your approved Legend relationships appear here.")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.80))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Spacer()
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -433,7 +403,7 @@ private struct LegendRecipientPicker: View {
                         : LegendNextColor.textTertiary
                 )
 
-            TextField("Search authorized contacts", text: $search)
+            TextField("Search people", text: $search)
                 .font(.body)
                 .foregroundStyle(LegendNextColor.textPrimary)
                 .textInputAutocapitalization(.words)
@@ -477,6 +447,52 @@ private struct LegendRecipientPicker: View {
         .padding(.bottom, LegendNextSpacing.sm)
     }
 
+    private var recipientScopes: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: LegendNextSpacing.xs) {
+                ForEach(store.availableRecipientScopes) { scope in
+                    Button {
+                        search = ""
+                        store.selectRecipientScope(scope)
+                    } label: {
+                        Label(scope.rawValue, systemImage: scope.icon)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(
+                                store.selectedRecipientScope == scope
+                                    ? LegendNextColor.midnight
+                                    : LegendNextColor.textSecondary
+                            )
+                            .padding(.horizontal, LegendNextSpacing.md)
+                            .frame(minHeight: 38)
+                            .background {
+                                if store.selectedRecipientScope == scope {
+                                    Capsule()
+                                        .fill(LegendNextGradient.gold)
+                                } else {
+                                    Capsule()
+                                        .fill(LegendNextColor.surfaceElevated)
+                                }
+                            }
+                            .overlay {
+                                Capsule()
+                                    .stroke(
+                                        store.selectedRecipientScope == scope
+                                            ? Color.clear
+                                            : LegendNextColor.separator,
+                                        lineWidth: 1
+                                    )
+                            }
+                    }
+                    .buttonStyle(LegendMessagingPressButtonStyle())
+                    .accessibilityLabel("Show \(scope.rawValue.lowercased())")
+                }
+            }
+            .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+        }
+        .scrollIndicators(.hidden)
+        .padding(.bottom, LegendNextSpacing.sm)
+    }
+
     @ViewBuilder
     private var recipientContent: some View {
         switch store.recipientState {
@@ -501,11 +517,11 @@ private struct LegendRecipientPicker: View {
                 LegendMessagingEmptyState(
                     symbol: "person.2.slash",
                     title: search.isEmpty
-                        ? "No authorized contacts"
-                        : "No contacts found",
+                        ? "No people found"
+                        : "No matches found",
                     message: search.isEmpty
-                        ? "Only contacts approved through an existing Legend relationship can be messaged."
-                        : "No authorized contact matches “\(search)”.",
+                        ? "Try another category or search."
+                        : "No \(store.selectedRecipientScope.rawValue.lowercased()) match “\(search)”.",
                     actionTitle: nil,
                     action: nil
                 )
@@ -522,7 +538,7 @@ private struct LegendRecipientPicker: View {
     ) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 3) {
-                Text("Your Legend network")
+                Text(store.selectedRecipientScope.rawValue)
                     .font(.system(.headline, design: .rounded).weight(.bold))
                     .foregroundStyle(LegendNextColor.textPrimary)
                     .padding(.bottom, LegendNextSpacing.tiny)
@@ -562,7 +578,7 @@ private struct LegendRecipientPicker: View {
             .padding(.top, LegendNextSpacing.sm)
         }
         .scrollIndicators(.hidden)
-        .accessibilityLabel("Loading authorized contacts")
+        .accessibilityLabel("Loading people")
     }
 }
 
@@ -2056,12 +2072,6 @@ private struct LegendMessagingEmptyState: View {
                     .buttonStyle(LegendMessagingPressButtonStyle())
             }
 
-            HStack(spacing: LegendNextSpacing.xs) {
-                Image(systemName: "lock.shield.fill")
-                Text("Authorized Legend network")
-            }
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(LegendNextColor.textTertiary)
         }
         .padding(.horizontal, LegendNextSpacing.lg)
         .padding(.vertical, LegendNextSpacing.xl)

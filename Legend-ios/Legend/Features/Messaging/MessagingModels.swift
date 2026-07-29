@@ -143,6 +143,21 @@ struct MessagingRecipient: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+enum MessagingRecipientScope: String, CaseIterable, Identifiable, Sendable {
+    case clients = "Clients"
+    case agents = "Agents"
+    case leads = "Leads"
+
+    var id: String { rawValue }
+    var icon: String {
+        switch self {
+        case .clients: "person.2.fill"
+        case .agents: "briefcase.fill"
+        case .leads: "target"
+        }
+    }
+}
+
 struct StartConversationRequest: Encodable, Sendable {
     let targetUserID: String
     let targetParticipantType: ParticipantType
@@ -157,7 +172,11 @@ struct StartConversationRequest: Encodable, Sendable {
 
 protocol MessagingAPI: Sendable {
     func conversations(accessToken: String) async throws -> [ConversationSummary]
-    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient]
+    func recipients(
+        search: String?,
+        scope: MessagingRecipientScope?,
+        accessToken: String
+    ) async throws -> [MessagingRecipient]
     func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage]
@@ -176,7 +195,11 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
         throw MobileMessagingContractError.unavailable
     }
 
-    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] {
+    func recipients(
+        search: String?,
+        scope: MessagingRecipientScope?,
+        accessToken: String
+    ) async throws -> [MessagingRecipient] {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -230,10 +253,18 @@ struct URLSessionMessagingAPI: MessagingAPI {
         )
     }
 
-    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] {
-        let queryItems = search?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            ? [URLQueryItem(name: "search", value: search)]
-            : []
+    func recipients(
+        search: String?,
+        scope: MessagingRecipientScope?,
+        accessToken: String
+    ) async throws -> [MessagingRecipient] {
+        var queryItems: [URLQueryItem] = []
+        if search?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            queryItems.append(URLQueryItem(name: "search", value: search))
+        }
+        if let scope {
+            queryItems.append(URLQueryItem(name: "scope", value: scope.rawValue))
+        }
         return try await client.get(
             "/api/v1/mobile/messaging/recipients",
             accessToken: accessToken,

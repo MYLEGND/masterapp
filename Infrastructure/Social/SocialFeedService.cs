@@ -8,8 +8,8 @@ namespace Infrastructure.Social;
 
 /// <summary>
 /// Server-authoritative community feed. Visibility is derived exclusively from
-/// typed profiles and existing servicing/Journey Circles relationships; a
-/// follow is only a feed preference and never grants access by itself.
+/// typed profiles and the shared messaging recipient authority; a follow is
+/// only a feed preference and never grants access by itself.
 /// </summary>
 public sealed class SocialFeedService : ISocialFeedService
 {
@@ -571,12 +571,12 @@ public sealed class SocialFeedService : ISocialFeedService
         if (string.IsNullOrWhiteSpace(followedUserId) || followedType is null ||
             (followedUserId == Normalize(command.Actor.Identity.UserId) && followedType == command.Actor.Identity.ParticipantType))
         {
-            return SocialOperationResult<bool>.Failure("social_follow_invalid", "Choose another authorized Legend profile to follow.");
+            return SocialOperationResult<bool>.Failure("social_follow_invalid", "Choose another profile in your Legend network to follow.");
         }
 
         var visibleAuthors = await GetVisibleAuthorsAsync(command.Actor, cancellationToken);
         if (!visibleAuthors.Contains(AuthorKey.From(followedUserId, followedType)))
-            return SocialOperationResult<bool>.Failure("social_follow_forbidden", "You can follow only profiles already authorized for your Legend network.");
+            return SocialOperationResult<bool>.Failure("social_follow_forbidden", "You can follow only profiles available in your Legend network.");
 
         var followerUserId = Normalize(command.Actor.Identity.UserId);
         var sourcePostId = command.SourcePostId;
@@ -930,7 +930,7 @@ public sealed class SocialFeedService : ISocialFeedService
         var targetKey = AuthorKey.From(command.TargetUserId, command.TargetParticipantType);
         var actorKey = AuthorKey.From(command.Actor.Identity.UserId, command.Actor.Identity.ParticipantType);
         if (targetKey == actorKey)
-            return SocialOperationResult<bool>.Failure("social_profile_visit_invalid", "Profile visits must target another authorized Legend profile.");
+            return SocialOperationResult<bool>.Failure("social_profile_visit_invalid", "Profile visits must target another profile in your Legend network.");
 
         var visible = await GetVisibleAuthorsAsync(command.Actor, cancellationToken);
         if (!visible.Contains(targetKey))

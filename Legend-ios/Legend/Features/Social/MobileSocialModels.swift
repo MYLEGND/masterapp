@@ -471,11 +471,11 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
     var creationPrompt: String {
         switch self {
         case .post:
-            "Share a focused update with your authorized Legend network."
+            "Share a focused update with your Legend network."
         case .story:
-            "Share a 24-hour moment with your authorized Legend network."
+            "Share a 24-hour moment with your Legend network."
         case .reel:
-            "Share a video moment with your authorized Legend network."
+            "Share a video moment with your Legend network."
         }
     }
 

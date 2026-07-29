@@ -187,7 +187,8 @@ final class MobileSessionCoordinator: ObservableObject {
             return MessagingStore(
                 api: MobileContractUnavailableMessagingAPI(),
                 accessTokenProvider: { throw MobileMessagingContractError.unavailable },
-                diagnostics: diagnostics
+                diagnostics: diagnostics,
+                actorParticipantType: .client
             )
         }
 
@@ -199,7 +200,8 @@ final class MobileSessionCoordinator: ObservableObject {
                 guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
                 return try await self.accessTokenForRequest()
             },
-            diagnostics: diagnostics
+            diagnostics: diagnostics,
+            actorParticipantType: currentSession.actor.identity.participantType
         )
     }
 

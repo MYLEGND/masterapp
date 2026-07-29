@@ -1168,7 +1168,7 @@ struct LegendSocialMediaVideo: View {
 private struct LegendSocialLoadingSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-            LegendNextSectionHeader(title: "From your authorized Legend network")
+            LegendNextSectionHeader(title: "From your Legend network")
             HStack(spacing: LegendNextSpacing.md) {
                 ForEach(0 ..< 4, id: \.self) { _ in
                     Circle()
@@ -1198,7 +1198,7 @@ private struct LegendSocialEmptyFeed: View {
                 Label("Start the conversation", systemImage: "sparkles")
                     .font(LegendNextTypography.section)
                     .foregroundStyle(LegendNextColor.textPrimary)
-                Text("Share a focused update with the people already authorized in your Legend network.")
+                Text("Share a focused update with people in your Legend network.")
                     .font(LegendNextTypography.supporting)
                     .foregroundStyle(LegendNextColor.textSecondary)
                 Button("Create update", action: createPost)

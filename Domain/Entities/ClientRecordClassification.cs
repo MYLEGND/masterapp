@@ -12,8 +12,25 @@ public static class ClientRecordClassification
     public const string BusinessClient = "BusinessClient";
     public const string Lead = "Lead";
 
-    public static bool IsClientOrBusinessClient(string? clientUserId, string? crmNotes) =>
-        Resolve(clientUserId, crmNotes) is Client or BusinessClient;
+    public static bool IsClientOrBusinessClient(
+        string? clientUserId,
+        string? crmNotes,
+        string? crmStatus = null) =>
+        !IsLead(clientUserId, crmNotes, crmStatus);
+
+    public static bool IsLead(
+        string? clientUserId,
+        string? crmNotes,
+        string? crmStatus = null)
+    {
+        var resolved = Resolve(clientUserId, crmNotes);
+        if (resolved is Client or BusinessClient)
+            return false;
+
+        var normalizedStatus = Normalize(crmStatus);
+        return normalizedStatus is "lead" or "prospect" ||
+            (string.IsNullOrWhiteSpace(normalizedStatus) && resolved == Lead);
+    }
 
     public static string Resolve(string? clientUserId, string? crmNotes)
     {

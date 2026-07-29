@@ -31,6 +31,7 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var isUploadingAttachment = false
     @Published private(set) var sendFailure: UserFacingFailure?
     @Published private(set) var recipientState: MobileDataLoadState<[MessagingRecipient]> = .idle
+    @Published private(set) var selectedRecipientScope: MessagingRecipientScope
     @Published private(set) var isStartingConversation = false
     @Published private(set) var isRefreshing = false
     @Published private(set) var refreshFailure: UserFacingFailure?
@@ -38,16 +39,28 @@ final class MessagingStore: ObservableObject {
     private let api: any MessagingAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
+    private let actorParticipantType: ParticipantType
     private var conversationListTask: Task<MobileStoreLoadResult, Never>?
+    private var recipientSearchTask: Task<Void, Never>?
+    private var recipientRequestGeneration = 0
 
     init(
         api: any MessagingAPI,
         accessTokenProvider: @escaping () async throws -> String,
-        diagnostics: LegendDiagnostics
+        diagnostics: LegendDiagnostics,
+        actorParticipantType: ParticipantType
     ) {
         self.api = api
         self.accessTokenProvider = accessTokenProvider
         self.diagnostics = diagnostics
+        self.actorParticipantType = actorParticipantType
+        selectedRecipientScope = .clients
+    }
+
+    var availableRecipientScopes: [MessagingRecipientScope] {
+        actorParticipantType == .agent
+            ? [.clients, .agents, .leads]
+            : [.clients, .agents]
     }
 
     func load() {
@@ -84,15 +97,52 @@ final class MessagingStore: ObservableObject {
     }
 
     func loadRecipients(search: String? = nil) {
+        requestRecipients(search: search, debounceNanoseconds: 0)
+    }
+
+    func searchRecipients(_ search: String) {
+        requestRecipients(search: search, debounceNanoseconds: 260_000_000)
+    }
+
+    func selectRecipientScope(_ scope: MessagingRecipientScope) {
+        guard availableRecipientScopes.contains(scope) else { return }
+        selectedRecipientScope = scope
+        requestRecipients(search: nil, debounceNanoseconds: 0)
+    }
+
+    private func requestRecipients(
+        search: String?,
+        debounceNanoseconds: UInt64
+    ) {
+        recipientSearchTask?.cancel()
+        recipientRequestGeneration += 1
+        let requestGeneration = recipientRequestGeneration
         recipientState = .loading
-        Task {
+        let selectedScope = selectedRecipientScope
+        recipientSearchTask = Task { [weak self] in
+            guard let self else { return }
             do {
-                let recipients = try await api.recipients(
+                if debounceNanoseconds > 0 {
+                    try await Task.sleep(nanoseconds: debounceNanoseconds)
+                }
+                try Task.checkCancellation()
+                let recipients = try await self.api.recipients(
                     search: search,
-                    accessToken: try await accessTokenProvider())
-                recipientState = .loaded(recipients)
+                    scope: selectedScope,
+                    accessToken: try await self.accessTokenProvider())
+                guard !Task.isCancelled,
+                      self.recipientRequestGeneration == requestGeneration else {
+                    return
+                }
+                self.recipientState = .loaded(recipients)
             } catch {
-                recipientState = .unavailable(failure(for: error, title: "Recipients unavailable"))
+                guard !Task.isCancelled,
+                      self.recipientRequestGeneration == requestGeneration else {
+                    return
+                }
+                self.recipientState = .unavailable(
+                    self.failure(for: error, title: "Recipients unavailable")
+                )
             }
         }
     }
@@ -108,12 +158,13 @@ final class MessagingStore: ObservableObject {
         beginConversation(resolveRecipient: {
             let recipients = try await self.api.recipients(
                 search: nil,
+                scope: .clients,
                 accessToken: try await self.accessTokenProvider())
             guard let recipient = recipients.first(where: {
                 $0.identity.participantType == .client &&
                     UUID(uuidString: $0.profileID) == clientProfileID
             }) else {
-                throw MobileMessagingRecipientError.clientNoLongerAuthorized
+                throw MobileMessagingRecipientError.clientNoLongerAvailable
             }
             return recipient
         }, completion: completion)
@@ -354,9 +405,9 @@ final class MessagingStore: ObservableObject {
 }
 
 private enum MobileMessagingRecipientError: LocalizedError {
-    case clientNoLongerAuthorized
+    case clientNoLongerAvailable
 
     var errorDescription: String? {
-        "This CRM record is no longer an authorized active client for messaging."
+        "This CRM record is no longer an active client available for messaging."
     }
 }

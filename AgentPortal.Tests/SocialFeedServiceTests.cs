@@ -7,7 +7,6 @@ using Domain.Entities;
 using System.Threading.Tasks;
 using Domain.Messaging;
 using Domain.Social;
-using Infrastructure.JourneyCircles;
 using Infrastructure.Messaging;
 using Infrastructure.Moderation;
 using Infrastructure.Social;
@@ -94,7 +93,7 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
-    public async Task FeedVisibility_ReusesMessagingAuthorization_AndFollowCannotExpandIt()
+    public async Task FeedVisibility_ReusesTheActiveClientMessagingAuthority()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var first = Client("client-one", "First", "Client");
@@ -106,24 +105,22 @@ public sealed class SocialFeedServiceTests
         var firstActor = ClientActor(first);
         var secondActor = ClientActor(second);
 
-        var privatePost = await service.CreatePostAsync(
-            new CreateSocialPostCommand(secondActor, SocialPostContentTypes.Post, "Not authorized for the first client"));
-        Assert.True(privatePost.Succeeded);
+        var post = await service.CreatePostAsync(
+            new CreateSocialPostCommand(secondActor, SocialPostContentTypes.Post, "Visible to active clients"));
+        Assert.True(post.Succeeded);
 
         var initialFeed = await service.GetFeedAsync(firstActor);
         Assert.True(initialFeed.Succeeded);
-        Assert.DoesNotContain(initialFeed.Value!.Posts, post => post.Id == privatePost.Value!.Id);
+        Assert.Contains(initialFeed.Value!.Posts, item => item.Id == post.Value!.Id);
 
-        var rejectedFollow = await service.ToggleFollowAsync(new SocialFollowCommand(
+        var follow = await service.ToggleFollowAsync(new SocialFollowCommand(
             firstActor,
             second.ClientUserId,
             MessagingParticipantTypes.Client));
-        Assert.False(rejectedFollow.Succeeded);
-        Assert.Equal("social_follow_forbidden", rejectedFollow.ErrorCode);
+        Assert.True(follow.Succeeded);
 
-        var rejectedReaction = await service.ToggleReactionAsync(new SocialPostMutationCommand(firstActor, privatePost.Value!.Id));
-        Assert.False(rejectedReaction.Succeeded);
-        Assert.Equal("social_post_unavailable", rejectedReaction.ErrorCode);
+        var reaction = await service.ToggleReactionAsync(new SocialPostMutationCommand(firstActor, post.Value!.Id));
+        Assert.True(reaction.Succeeded);
     }
 
     [Fact]
@@ -307,6 +304,14 @@ public sealed class SocialFeedServiceTests
         Assert.Equal("image/jpeg", media.MimeType);
         Assert.Equal("A Legend client profile image", media.AccessibilityText);
 
+        var profile = await service.GetCurrentProfilePostsAsync(ClientActor(client));
+        var feed = await service.GetFeedAsync(ClientActor(client));
+
+        Assert.True(profile.Succeeded);
+        Assert.True(feed.Succeeded);
+        Assert.Equal(media.Id, Assert.Single(profile.Value!).Media.Single().Id);
+        Assert.Equal(media.Id, Assert.Single(feed.Value!.Posts).Media.Single().Id);
+
         var retrieved = await service.GetMediaAsync(
             ClientActor(client),
             media.Id);
@@ -317,6 +322,45 @@ public sealed class SocialFeedServiceTests
         await received.CopyToAsync(buffer);
         Assert.Equal(content, buffer.ToArray());
         Assert.Equal("image/jpeg", retrieved.Value.MimeType);
+    }
+
+    [Fact]
+    public async Task ActiveStory_IsReturnedThroughTheHomeFeedWithReadableMedia()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("story-media-client", "Story", "Media");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var storage = new InMemoryTestSocialMediaStorage();
+        var service = CreateService(db, storage);
+        var content = new byte[] { 10, 20, 30, 40 };
+        await using var uploadStream = new MemoryStream(content);
+
+        var created = await service.CreateMediaPostAsync(
+            new CreateSocialMediaPostCommand(
+                ClientActor(client),
+                SocialPostContentTypes.Story,
+                "A current Story",
+                [new SocialMediaUpload("story.jpg", content.Length, uploadStream, "Legend Story") ]));
+
+        Assert.True(created.Succeeded);
+
+        var feed = await service.GetFeedAsync(ClientActor(client));
+
+        Assert.True(feed.Succeeded);
+        var story = Assert.Single(feed.Value!.Stories);
+        var media = Assert.Single(story.Media);
+        Assert.Equal(created.Value!.Id, story.Id);
+        Assert.Equal("Image", media.MediaKind);
+
+        var retrieved = await service.GetMediaAsync(ClientActor(client), media.Id);
+
+        Assert.True(retrieved.Succeeded);
+        await using var received = retrieved.Value!.Content;
+        using var buffer = new MemoryStream();
+        await received.CopyToAsync(buffer);
+        Assert.Equal(content, buffer.ToArray());
     }
 
     [Fact]
@@ -469,7 +513,7 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
-    public async Task MediaRead_RejectsAClientWhoCannotSeeThePost()
+    public async Task MediaRead_AllowsAnActiveClientWhoCanSeeThePost()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var author = Client("media-author", "Media", "Author");
@@ -494,8 +538,8 @@ public sealed class SocialFeedServiceTests
             ClientActor(unrelatedClient),
             mediaId);
 
-        Assert.False(retrieved.Succeeded);
-        Assert.Equal("social_media_unavailable", retrieved.ErrorCode);
+        Assert.True(retrieved.Succeeded);
+        Assert.NotNull(retrieved.Value);
     }
 
     [Fact]
@@ -632,9 +676,8 @@ public sealed class SocialFeedServiceTests
         ISocialMusicCatalog? musicCatalog = null)
     {
         var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
-        var journeys = new JourneyCirclesService(db, moderation, NullLogger<JourneyCirclesService>.Instance);
         var images = new MessagingProfileImageResolver(db, NullLogger<MessagingProfileImageResolver>.Instance);
-        var messaging = new MessagingService(db, NullLogger<MessagingService>.Instance, moderation, journeys, images);
+        var messaging = new MessagingService(db, NullLogger<MessagingService>.Instance, moderation, images);
         return new SocialFeedService(
             db,
             messaging,

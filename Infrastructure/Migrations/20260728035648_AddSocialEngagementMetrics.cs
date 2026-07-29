@@ -247,21 +247,31 @@ namespace Infrastructure.Migrations
                 columns: new[] { "TargetUserId", "TargetParticipantType", "VisitorUserId", "VisitorParticipantType", "SourceSocialPostId" },
                 unique: true);
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_SocialPostComments_SocialPostComments_ParentCommentId",
-                table: "SocialPostComments",
-                column: "ParentCommentId",
-                principalTable: "SocialPostComments",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Restrict);
+            // SQLite cannot rebuild the pre-existing SocialPostComments table
+            // because its historic Body column was created as nvarchar(max).
+            // The relational model and application ownership validation remain
+            // the authority in local SQLite; SQL Server receives the FK below.
+            if (ActiveProvider != "Microsoft.EntityFrameworkCore.Sqlite")
+            {
+                migrationBuilder.AddForeignKey(
+                    name: "FK_SocialPostComments_SocialPostComments_ParentCommentId",
+                    table: "SocialPostComments",
+                    column: "ParentCommentId",
+                    principalTable: "SocialPostComments",
+                    principalColumn: "Id",
+                    onDelete: ReferentialAction.Restrict);
+            }
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_SocialPostComments_SocialPostComments_ParentCommentId",
-                table: "SocialPostComments");
+            if (ActiveProvider != "Microsoft.EntityFrameworkCore.Sqlite")
+            {
+                migrationBuilder.DropForeignKey(
+                    name: "FK_SocialPostComments_SocialPostComments_ParentCommentId",
+                    table: "SocialPostComments");
+            }
 
             migrationBuilder.DropTable(
                 name: "SocialPostMusicAttachments");
