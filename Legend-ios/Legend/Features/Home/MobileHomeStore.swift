@@ -38,7 +38,6 @@ protocol MobileJourneyCirclesAPI: Sendable {
     func saveProfile(_ profile: MobileJourneyProfileInput, accessToken: String) async throws
     func requestConnection(_ request: MobileJourneyConnectionRequestBody, accessToken: String) async throws
     func respondToConnection(id: UUID, accept: Bool, accessToken: String) async throws
-    func disconnect(id: UUID, accessToken: String) async throws
 }
 
 protocol MobileAgentWorkspaceAPI: Sendable {
@@ -75,9 +74,6 @@ struct MobileUnavailableJourneyCirclesAPI: MobileJourneyCirclesAPI {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
 
-    func disconnect(id: UUID, accessToken: String) async throws {
-        throw MobileAPIError.unauthorized(correlationID: nil)
-    }
 }
 
 struct MobileUnavailableAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
@@ -159,15 +155,6 @@ struct URLSessionMobileJourneyCirclesAPI: MobileJourneyCirclesAPI {
         try await client.post(
             "/api/v1/mobile/journey-circles/connections/\(id.uuidString)/response",
             body: MobileJourneyConnectionResponseBody(accept: accept),
-            accessToken: accessToken,
-            idempotencyKey: UUID(),
-            headers: participantHeader)
-    }
-
-    func disconnect(id: UUID, accessToken: String) async throws {
-        try await client.post(
-            "/api/v1/mobile/journey-circles/connections/\(id.uuidString)/disconnect",
-            body: MobileEmptyRequest(),
             accessToken: accessToken,
             idempotencyKey: UUID(),
             headers: participantHeader)
@@ -595,14 +582,6 @@ final class MobileJourneyCirclesStore: ObservableObject {
             try await self.api.respondToConnection(
                 id: id,
                 accept: accept,
-                accessToken: try await self.accessTokenProvider())
-        }
-    }
-
-    func disconnect(id: UUID) {
-        performAction {
-            try await self.api.disconnect(
-                id: id,
                 accessToken: try await self.accessTokenProvider())
         }
     }

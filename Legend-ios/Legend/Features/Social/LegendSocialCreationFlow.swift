@@ -485,7 +485,7 @@ struct LegendSocialComposer: View {
                     Text(selectedMusic?.track.trackTitle ?? "Add licensed music")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(LegendNextColor.textPrimary)
-                    Text(selectedMusic.map { "\($0.track.artistName) · audio mix configured" } ?? "Search becomes available when a licensed provider is configured.")
+                    Text(selectedMusic.map { "\($0.track.trackTitle) · \($0.track.artistName) · linked from Spotify" } ?? "Search Spotify and link a track to this post.")
                         .font(LegendNextTypography.supporting)
                         .foregroundStyle(LegendNextColor.textSecondary)
                         .lineLimit(2)
@@ -657,7 +657,7 @@ private struct LegendSocialMusicSelectionSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                    Text("Search the licensed Legend music catalog, preview a track, then set its clip and audio mix.")
+                    Text("Search Spotify and link a track to this Legend post. Spotify audio remains on Spotify and is not mixed into the uploaded media.")
                         .font(LegendNextTypography.supporting)
                         .foregroundStyle(LegendNextColor.textSecondary)
 
@@ -666,7 +666,7 @@ private struct LegendSocialMusicSelectionSheet: View {
                             .textFieldStyle(.roundedBorder)
                             .submitLabel(.search)
                             .onSubmit { search() }
-                            .accessibilityLabel("Search licensed music")
+                            .accessibilityLabel("Search Spotify music")
 
                         Button("Search", action: search)
                             .buttonStyle(LegendButtonStyle(kind: .secondary))
@@ -676,7 +676,7 @@ private struct LegendSocialMusicSelectionSheet: View {
                     if isSearching {
                         HStack(spacing: LegendNextSpacing.xs) {
                             ProgressView()
-                            Text("Searching licensed music…")
+                            Text("Searching Spotify…")
                                 .font(LegendNextTypography.supporting)
                                 .foregroundStyle(LegendNextColor.textSecondary)
                         }

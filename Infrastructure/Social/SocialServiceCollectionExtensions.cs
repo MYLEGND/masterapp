@@ -1,4 +1,5 @@
 using Domain.Social;
+using Infrastructure.Social.Spotify;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,7 +16,20 @@ public static class SocialServiceCollectionExtensions
 
         services.AddScoped<ISocialFeedService, SocialFeedService>();
         services.AddSingleton<ISocialMediaStorage, SocialMediaStorage>();
-        services.AddSingleton<ISocialMusicCatalog, UnavailableSocialMusicCatalog>();
+        services.Configure<SpotifySocialMusicOptions>(
+            configuration.GetSection(SpotifySocialMusicOptions.SectionName));
+        services.AddHttpClient<SpotifySocialMusicCatalog>();
+        services.AddSingleton<UnavailableSocialMusicCatalog>();
+        services.AddTransient<ISocialMusicCatalog>(serviceProvider =>
+        {
+            var spotify = configuration
+                .GetSection(SpotifySocialMusicOptions.SectionName)
+                .Get<SpotifySocialMusicOptions>();
+
+            return spotify?.IsConfigured == true
+                ? serviceProvider.GetRequiredService<SpotifySocialMusicCatalog>()
+                : serviceProvider.GetRequiredService<UnavailableSocialMusicCatalog>();
+        });
 
         return services;
     }

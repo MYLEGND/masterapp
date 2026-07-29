@@ -181,7 +181,7 @@ final class MobileNativeContractTests: XCTestCase {
     }
 
     func testSendRequestEncodingDoesNotContainSenderOrParticipantIdentity() throws {
-        let data = try JSONEncoder.mobile.encode(SendMessageRequest(body: "Secure hello"))
+        let data = try JSONEncoder.mobile.encode(SendMessageRequest(body: "Secure hello", replyToMessageID: nil))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
         XCTAssertEqual(object["body"] as? String, "Secure hello")
@@ -280,7 +280,8 @@ final class MobileNativeContractTests: XCTestCase {
         let store = MessagingStore(
             api: StubMessagingAPI(),
             accessTokenProvider: { "token" },
-            diagnostics: LegendDiagnostics())
+            diagnostics: LegendDiagnostics(),
+            actorParticipantType: .client)
 
         store.load()
         try? await Task.sleep(for: .milliseconds(50))
@@ -295,7 +296,8 @@ final class MobileNativeContractTests: XCTestCase {
         let store = MessagingStore(
             api: OfflineMessagingAPI(),
             accessTokenProvider: { "token" },
-            diagnostics: LegendDiagnostics())
+            diagnostics: LegendDiagnostics(),
+            actorParticipantType: .client)
 
         store.load()
         let deadline = ContinuousClock.now.advanced(by: .seconds(1))
@@ -313,7 +315,8 @@ final class MobileNativeContractTests: XCTestCase {
         let store = MessagingStore(
             api: UnauthorizedMessagingAPI(),
             accessTokenProvider: { "token" },
-            diagnostics: LegendDiagnostics())
+            diagnostics: LegendDiagnostics(),
+            actorParticipantType: .client)
 
         store.load()
         try? await Task.sleep(for: .milliseconds(50))
@@ -330,7 +333,8 @@ final class MobileNativeContractTests: XCTestCase {
         let store = MessagingStore(
             api: api,
             accessTokenProvider: { "token" },
-            diagnostics: LegendDiagnostics())
+            diagnostics: LegendDiagnostics(),
+            actorParticipantType: .agent)
         let started = expectation(description: "Starts the exact client conversation")
 
         store.startConversation(forClientProfileID: clientProfileID) { _ in
@@ -521,11 +525,12 @@ private struct TestTokenExchanger: OAuthTokenExchanging {
 
 private struct StubMessagingAPI: MessagingAPI {
     func conversations(accessToken: String) async throws -> [ConversationSummary] { [] }
-    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] { [] }
+    func recipients(search: String?, scope: MessagingRecipientScope?, accessToken: String) async throws -> [MessagingRecipient] { [] }
     func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] { throw MobileMessagingContractError.unavailable }
-    func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
+    func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment { throw MobileMessagingContractError.unavailable }
     func markRead(conversationID: UUID, accessToken: String) async throws {}
 }
 
@@ -534,7 +539,7 @@ private struct OfflineMessagingAPI: MessagingAPI {
         throw MobileAPIError.networkUnavailable
     }
 
-    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] {
+    func recipients(search: String?, scope: MessagingRecipientScope?, accessToken: String) async throws -> [MessagingRecipient] {
         throw MobileAPIError.networkUnavailable
     }
 
@@ -550,7 +555,11 @@ private struct OfflineMessagingAPI: MessagingAPI {
         throw MobileAPIError.networkUnavailable
     }
 
-    func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage {
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage {
+        throw MobileAPIError.networkUnavailable
+    }
+
+    func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment {
         throw MobileAPIError.networkUnavailable
     }
 
@@ -564,7 +573,7 @@ private struct UnauthorizedMessagingAPI: MessagingAPI {
         throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
     }
 
-    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] {
+    func recipients(search: String?, scope: MessagingRecipientScope?, accessToken: String) async throws -> [MessagingRecipient] {
         throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
     }
 
@@ -580,7 +589,11 @@ private struct UnauthorizedMessagingAPI: MessagingAPI {
         throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
     }
 
-    func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage {
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage {
+        throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
+    }
+
+    func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment {
         throw MobileAPIError.apiUnauthorized(code: "mobile_authentication_required", correlationID: "test-correlation")
     }
 
@@ -599,13 +612,14 @@ private final class TypedClientRecipientMessagingAPI: MessagingAPI, @unchecked S
 
     func conversations(accessToken: String) async throws -> [ConversationSummary] { [] }
 
-    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] {
+    func recipients(search: String?, scope: MessagingRecipientScope?, accessToken: String) async throws -> [MessagingRecipient] {
         [
             MessagingRecipient(
                 identity: try LogicalParticipantIdentity(userID: "same-person", participantType: .agent),
                 profileID: "00000000-0000-0000-0000-000000000111",
                 displayName: "Agent identity",
                 email: "agent@example.test",
+                title: nil,
                 relationshipLabel: "Company agent",
                 existingConversationID: nil,
                 avatar: nil),
@@ -614,6 +628,7 @@ private final class TypedClientRecipientMessagingAPI: MessagingAPI, @unchecked S
                 profileID: clientProfileID.uuidString,
                 displayName: "Client identity",
                 email: "client@example.test",
+                title: nil,
                 relationshipLabel: "Active client",
                 existingConversationID: nil,
                 avatar: nil)
@@ -633,6 +648,7 @@ private final class TypedClientRecipientMessagingAPI: MessagingAPI, @unchecked S
 
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] { [] }
-    func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
+    func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment { throw MobileMessagingContractError.unavailable }
     func markRead(conversationID: UUID, accessToken: String) async throws {}
 }

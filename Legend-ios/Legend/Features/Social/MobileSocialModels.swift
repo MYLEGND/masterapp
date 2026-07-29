@@ -265,6 +265,28 @@ struct MobileSocialProfileMetrics: Codable, Equatable, Sendable {
     let privateProfileVisitCount: Int?
 }
 
+extension MobileSocialProfileMetrics {
+    func adjusting(
+        postCountBy: Int = 0,
+        videoCountBy: Int = 0,
+        storyCountBy: Int = 0,
+        followingCountBy: Int = 0
+    ) -> MobileSocialProfileMetrics {
+        MobileSocialProfileMetrics(
+            profile: profile,
+            postCount: max(0, postCount + postCountBy),
+            videoCount: max(0, videoCount + videoCountBy),
+            storyCount: max(0, storyCount + storyCountBy),
+            followerCount: followerCount,
+            followingCount: max(0, followingCount + followingCountBy),
+            totalReactionCount: totalReactionCount,
+            totalContentViewCount: totalContentViewCount,
+            totalReachCount: totalReachCount,
+            privateProfileVisitCount: privateProfileVisitCount
+        )
+    }
+}
+
 struct MobileSocialMedia: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     let displayOrder: Int

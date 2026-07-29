@@ -22,6 +22,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     @State private var commentBody = ""
     @State private var postInsight: MobileSocialPostInsight?
     @State private var storyCollection: MobileSocialStoryCollection?
+    @State private var selectedForYouPost: MobileSocialPost?
 
     init(
         session: MobileSession,
@@ -80,6 +81,16 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 collection: collection,
                 currentIdentity: session.actor.identity,
                 social: social)
+        }
+        .fullScreenCover(item: $selectedForYouPost) { post in
+            NavigationStack {
+                LegendForYouView(
+                    currentIdentity: session.actor.identity,
+                    social: social,
+                    initialPostID: post.id,
+                    presentsDismissControl: true
+                )
+            }
         }
         .alert(
             social.actionFailure?.title ?? "Legend update unavailable",
@@ -273,6 +284,10 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                             Task {
                                 postInsight = await social.postInsights(postID: post.id)
                             }
+                        },
+                        presentation: .preview,
+                        open: {
+                            selectedForYouPost = post
                         }
                     )
                 }
@@ -815,6 +830,19 @@ private struct LegendStoryMedia: View {
     }
 }
 
+private enum LegendSocialPostPresentation {
+    case preview
+    case immersive
+
+    var includesSaveAction: Bool {
+        self == .immersive
+    }
+
+    var opensForYou: Bool {
+        self == .preview
+    }
+}
+
 private struct LegendSocialPostCard: View {
     let post: MobileSocialPost
     let currentIdentity: LogicalParticipantIdentity
@@ -823,6 +851,8 @@ private struct LegendSocialPostCard: View {
     let comment: () -> Void
     let follow: () -> Void
     let insights: () -> Void
+    let presentation: LegendSocialPostPresentation
+    let open: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -918,6 +948,10 @@ private struct LegendSocialPostCard: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2, perform: react)
+                    .onTapGesture {
+                        guard presentation.opensForYou else { return }
+                        open()
+                    }
                     .accessibilityHint("Double tap to appreciate this update")
                 }
             }
@@ -930,39 +964,41 @@ private struct LegendSocialPostCard: View {
     private var actionBar: some View {
         HStack(spacing: LegendNextSpacing.sm) {
             Button(action: react) {
-                Label("\(post.metrics.reactionCount)", systemImage: post.reactedByCurrentActor ? "heart.fill" : "heart")
+                Label("\(post.metrics.reactionCount)", systemImage: post.reactedByCurrentActor ? "heart.circle.fill" : "heart.circle")
                     .foregroundStyle(post.reactedByCurrentActor ? LegendNextColor.danger : LegendNextColor.textSecondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(post.reactedByCurrentActor ? "Remove appreciation" : "Appreciate this update")
 
             Button(action: comment) {
-                Label("\(post.metrics.commentCount)", systemImage: "bubble.right")
+                Label("\(post.metrics.commentCount)", systemImage: "bubble.left.and.bubble.right")
                     .foregroundStyle(LegendNextColor.textSecondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Comment on this update")
 
-            Button {
-                social.toggleSave(postID: post.id)
-            } label: {
-                Label("\(post.metrics.saveCount)", systemImage: post.savedByCurrentActor ? "bookmark.fill" : "bookmark")
-                    .foregroundStyle(post.savedByCurrentActor ? LegendNextColor.gold : LegendNextColor.textSecondary)
+            if presentation.includesSaveAction {
+                Button {
+                    social.toggleSave(postID: post.id)
+                } label: {
+                    Label("\(post.metrics.saveCount)", systemImage: post.savedByCurrentActor ? "bookmark.circle.fill" : "bookmark.circle")
+                        .foregroundStyle(post.savedByCurrentActor ? LegendNextColor.gold : LegendNextColor.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(post.savedByCurrentActor ? "Remove saved update" : "Save this update")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(post.savedByCurrentActor ? "Remove saved update" : "Save this update")
 
             Button {
                 social.toggleRepost(postID: post.id)
             } label: {
-                Label("\(post.metrics.repostCount)", systemImage: "arrow.2.squarepath")
+                Label("\(post.metrics.repostCount)", systemImage: "arrow.triangle.2.circlepath")
                     .foregroundStyle(post.repostedByCurrentActor ? LegendNextColor.information : LegendNextColor.textSecondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(post.repostedByCurrentActor ? "Remove repost" : "Repost this update")
 
             ShareLink(item: post.body) {
-                Label("\(post.metrics.shareCount)", systemImage: "square.and.arrow.up")
+                Label("\(post.metrics.shareCount)", systemImage: "square.and.arrow.up.circle")
                     .foregroundStyle(LegendNextColor.textSecondary)
             }
             .simultaneousGesture(TapGesture().onEnded {
@@ -1022,6 +1058,305 @@ private struct LegendSocialPostCard: View {
     private var metadata: String {
         let kind = post.contentType == MobileSocialContentType.reel.rawValue ? "Reel" : post.contentType
         return "\(kind) · \(post.author.identity.participantType.rawValue)"
+    }
+}
+
+struct LegendForYouView: View {
+    let currentIdentity: LogicalParticipantIdentity
+    @ObservedObject var social: MobileSocialStore
+    let initialPostID: UUID?
+    let presentsDismissControl: Bool
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedPostID: UUID?
+    @State private var commentTarget: MobileSocialPost?
+    @State private var commentBody = ""
+    @State private var postInsight: MobileSocialPostInsight?
+    @State private var editingPost: MobileSocialPost?
+    @State private var deletionTarget: MobileSocialPost?
+
+    init(
+        currentIdentity: LogicalParticipantIdentity,
+        social: MobileSocialStore,
+        initialPostID: UUID? = nil,
+        presentsDismissControl: Bool = false
+    ) {
+        self.currentIdentity = currentIdentity
+        _social = ObservedObject(wrappedValue: social)
+        self.initialPostID = initialPostID
+        self.presentsDismissControl = presentsDismissControl
+        _selectedPostID = State(initialValue: initialPostID)
+    }
+
+    var body: some View {
+        Group {
+            switch social.state {
+            case .idle, .loading:
+                LegendLoadingView("Loading your For You feed…")
+
+            case .unavailable(let failure):
+                LegendErrorCard(
+                    title: failure.title,
+                    message: failure.message,
+                    retryTitle: "Retry",
+                    retry: { social.load() }
+                )
+                .padding(LegendNextSpacing.sm)
+
+            case .loaded(let snapshot):
+                feed(snapshot.posts)
+            }
+        }
+        .background(LegendNextColor.canvas.ignoresSafeArea())
+        .navigationTitle("For You")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if presentsDismissControl {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.backward")
+                    }
+                    .accessibilityLabel("Back to home feed")
+                }
+            }
+
+            if let selectedPost,
+               selectedPost.author.identity == currentIdentity {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            editingPost = selectedPost
+                        } label: {
+                            Label("Edit caption", systemImage: "pencil")
+                        }
+
+                        Button(role: .destructive) {
+                            deletionTarget = selectedPost
+                        } label: {
+                            Label("Delete post", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.body.weight(.semibold))
+                    }
+                    .accessibilityLabel("Post options")
+                }
+            }
+        }
+        .sheet(item: $commentTarget, onDismiss: { commentBody = "" }) { post in
+            LegendCommentComposer(
+                authorName: post.author.displayName,
+                messageBody: $commentBody,
+                submit: { submitComment(to: post) },
+                cancel: { commentTarget = nil }
+            )
+        }
+        .sheet(item: $postInsight) { insight in
+            LegendPostInsightsSheet(insight: insight)
+        }
+        .sheet(item: $editingPost) { post in
+            LegendSocialPostEditor(
+                post: post,
+                social: social,
+                onSaved: { editingPost = nil }
+            )
+        }
+        .confirmationDialog(
+            "Delete this post?",
+            isPresented: Binding(
+                get: { deletionTarget != nil },
+                set: { if !$0 { deletionTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let post = deletionTarget {
+                Button("Delete post", role: .destructive) {
+                    Task {
+                        if await social.deletePost(postID: post.id) {
+                            deletionTarget = nil
+                        }
+                    }
+                }
+            }
+
+            Button("Cancel", role: .cancel) {
+                deletionTarget = nil
+            }
+        } message: {
+            Text("This removes the post from your Legend profile and feed.")
+        }
+        .alert(
+            social.actionFailure?.title ?? "Legend update unavailable",
+            isPresented: Binding(
+                get: { social.actionFailure != nil },
+                set: { if !$0 { social.dismissActionFailure() } }
+            ),
+            actions: {
+                Button("OK", role: .cancel) {
+                    social.dismissActionFailure()
+                }
+            },
+            message: {
+                Text(social.actionFailure?.message ?? "The request could not be completed.")
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func feed(_ posts: [MobileSocialPost]) -> some View {
+        if posts.isEmpty {
+            LegendEmptyState(
+                title: "No updates yet",
+                message: "New posts and reels from your Legend network will appear here.",
+                symbolName: "play.rectangle.on.rectangle"
+            )
+        } else {
+            TabView(selection: $selectedPostID) {
+                ForEach(posts) { post in
+                    ScrollView {
+                        LegendSocialPostCard(
+                            post: post,
+                            currentIdentity: currentIdentity,
+                            social: social,
+                            react: {
+                                social.toggleReaction(postID: post.id)
+                            },
+                            comment: {
+                                commentTarget = post
+                            },
+                            follow: {
+                                social.toggleFollow(
+                                    author: post.author,
+                                    sourcePostID: post.id
+                                )
+                            },
+                            insights: {
+                                Task {
+                                    postInsight = await social.postInsights(postID: post.id)
+                                }
+                            },
+                            presentation: .immersive,
+                            open: {}
+                        )
+                        .padding(.bottom, LegendNextSpacing.xl)
+                    }
+                    .scrollIndicators(.hidden)
+                    .tag(Optional(post.id))
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .onAppear {
+                selectInitialPost(from: posts)
+            }
+            .onChange(of: posts.map(\.id)) { _ in
+                selectInitialPost(from: posts)
+            }
+        }
+    }
+
+    private func selectInitialPost(from posts: [MobileSocialPost]) {
+        guard posts.contains(where: { $0.id == selectedPostID }) else {
+            selectedPostID = initialPostID.flatMap { requestedID in
+                posts.contains(where: { $0.id == requestedID }) ? requestedID : nil
+            } ?? posts.first?.id
+            return
+        }
+    }
+
+    private var selectedPost: MobileSocialPost? {
+        guard case .loaded(let snapshot) = social.state else { return nil }
+        return snapshot.posts.first { $0.id == selectedPostID }
+    }
+
+    private func submitComment(to post: MobileSocialPost) {
+        let body = commentBody.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+
+        social.addComment(postID: post.id, body: body)
+        commentTarget = nil
+        commentBody = ""
+    }
+}
+
+struct LegendSocialPostEditor: View {
+    let post: MobileSocialPost
+    @ObservedObject var social: MobileSocialStore
+    let onSaved: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var caption: String
+    @State private var isSaving = false
+
+    init(
+        post: MobileSocialPost,
+        social: MobileSocialStore,
+        onSaved: @escaping () -> Void
+    ) {
+        self.post = post
+        _social = ObservedObject(wrappedValue: social)
+        self.onSaved = onSaved
+        _caption = State(initialValue: post.body)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                TextEditor(text: $caption)
+                    .font(LegendNextTypography.body)
+                    .padding(LegendNextSpacing.sm)
+                    .frame(minHeight: 180)
+                    .background(
+                        LegendNextColor.surfaceInset,
+                        in: RoundedRectangle(
+                            cornerRadius: LegendNextRadius.control,
+                            style: .continuous
+                        )
+                    )
+                    .accessibilityLabel("Post caption")
+
+                if post.media.isEmpty {
+                    Text("A text post needs a caption.")
+                        .font(.caption)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                }
+
+                Spacer()
+            }
+            .padding(LegendNextSpacing.sm)
+            .background(LegendNextColor.canvas)
+            .navigationTitle("Edit post")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        isSaving = true
+                        Task {
+                            if await social.updatePost(postID: post.id, body: caption) {
+                                dismiss()
+                                onSaved()
+                            }
+                            isSaving = false
+                        }
+                    }
+                    .disabled(
+                        isSaving ||
+                        (post.media.isEmpty && caption.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        ).isEmpty)
+                    )
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }
 

@@ -305,7 +305,8 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
             messaging: MessagingStore(
                 api: services.messaging,
                 accessTokenProvider: tokenProvider,
-                diagnostics: diagnostics),
+                diagnostics: diagnostics,
+                actorParticipantType: participantType),
             agentWorkspace: includesAgentWorkspace
                 ? MobileAgentWorkspaceStore(
                     api: services.workspace,
@@ -363,6 +364,12 @@ private struct BootstrapFixture {
             upcomingAppointments: [],
             actions: [],
             notifications: [],
+            dailyScripture: MobileDailyScripture(
+                date: "2026-07-29",
+                reference: "Psalm 1:1",
+                translation: "KJV",
+                verses: ["Psalm 1:1"],
+                text: "Blessed is the man that walketh not in the counsel of the ungodly."),
             activeClientCount: 0)
         financial = MobileFinancialSnapshotResponse(
             position: nil,
@@ -526,7 +533,6 @@ private actor JourneyBootstrapAPI: MobileJourneyCirclesAPI {
     func saveProfile(_ profile: MobileJourneyProfileInput, accessToken: String) async throws {}
     func requestConnection(_ request: MobileJourneyConnectionRequestBody, accessToken: String) async throws {}
     func respondToConnection(id: UUID, accept: Bool, accessToken: String) async throws {}
-    func disconnect(id: UUID, accessToken: String) async throws {}
 }
 
 private actor AccountBootstrapAPI: MobileAccountAPI {
@@ -576,11 +582,12 @@ private actor MessagingBootstrapAPI: MessagingAPI {
 
     func calls() -> Int { conversationCallCount }
 
-    func recipients(search: String?, accessToken: String) async throws -> [MessagingRecipient] { [] }
+    func recipients(search: String?, scope: MessagingRecipientScope?, accessToken: String) async throws -> [MessagingRecipient] { [] }
     func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail { fatalError("Not used by bootstrap") }
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail { fatalError("Not used by bootstrap") }
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] { [] }
-    func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage { fatalError("Not used by bootstrap") }
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage { fatalError("Not used by bootstrap") }
+    func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment { fatalError("Not used by bootstrap") }
     func markRead(conversationID: UUID, accessToken: String) async throws {}
 }
 

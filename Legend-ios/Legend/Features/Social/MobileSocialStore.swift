@@ -521,6 +521,7 @@ final class MobileSocialStore: ObservableObject {
     }
 
     func toggleFollow(author: MobileSocialAuthor, sourcePostID: UUID?) {
+        let wasFollowing = follows(author)
         perform(title: "Could not update your connection") { token in
             let result = try await self.api.toggleFollow(
                 MobileToggleSocialFollow(
@@ -529,6 +530,10 @@ final class MobileSocialStore: ObservableObject {
                     sourcePostID: sourcePostID),
                 accessToken: token)
             self.updateFollow(author: author, isFollowing: result.isFollowing)
+            guard result.isFollowing != wasFollowing else { return }
+            self.adjustCurrentProfileMetrics(
+                followingCountBy: result.isFollowing ? 1 : -1
+            )
         }
     }
 
@@ -727,10 +732,15 @@ final class MobileSocialStore: ObservableObject {
 
     private func insert(_ post: MobileSocialPost) {
         guard case .loaded(var snapshot) = state else { return }
+        let profileMetrics = metrics(
+            snapshot.currentProfileMetrics,
+            adjustedFor: post,
+            by: 1
+        )
         if post.contentType == MobileSocialContentType.story.rawValue {
-            snapshot = MobileSocialSnapshot(stories: [post] + snapshot.stories, posts: snapshot.posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: snapshot.currentProfileMetrics, creatorInsights: snapshot.creatorInsights)
+            snapshot = MobileSocialSnapshot(stories: [post] + snapshot.stories, posts: snapshot.posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: profileMetrics, creatorInsights: snapshot.creatorInsights)
         } else {
-            snapshot = MobileSocialSnapshot(stories: snapshot.stories, posts: [post] + snapshot.posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: snapshot.currentProfileMetrics, creatorInsights: snapshot.creatorInsights)
+            snapshot = MobileSocialSnapshot(stories: snapshot.stories, posts: [post] + snapshot.posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: profileMetrics, creatorInsights: snapshot.creatorInsights)
         }
         state = .loaded(snapshot)
         insertProfilePost(post)
@@ -742,12 +752,16 @@ final class MobileSocialStore: ObservableObject {
 
     private func remove(_ postID: UUID) {
         if case .loaded(let snapshot) = state {
+            let removedPost = snapshot.stories.first { $0.id == postID }
+                ?? snapshot.posts.first { $0.id == postID }
             state = .loaded(MobileSocialSnapshot(
                 stories: snapshot.stories.filter { $0.id != postID },
                 posts: snapshot.posts.filter { $0.id != postID },
                 activity: snapshot.activity,
                 activityCount: snapshot.activityCount,
-                currentProfileMetrics: snapshot.currentProfileMetrics,
+                currentProfileMetrics: removedPost.map {
+                    metrics(snapshot.currentProfileMetrics, adjustedFor: $0, by: -1)
+                } ?? snapshot.currentProfileMetrics,
                 creatorInsights: snapshot.creatorInsights))
         }
 
@@ -776,6 +790,44 @@ final class MobileSocialStore: ObservableObject {
         transformPosts(
             matching: { $0.author.identity == author.identity },
             transform: { $0.replacing(followedByCurrentActor: isFollowing) })
+    }
+
+    private func follows(_ author: MobileSocialAuthor) -> Bool {
+        guard case .loaded(let snapshot) = state else { return false }
+        return (snapshot.stories + snapshot.posts)
+            .first { $0.author.identity == author.identity }?
+            .followedByCurrentActor ?? false
+    }
+
+    private func adjustCurrentProfileMetrics(followingCountBy: Int) {
+        guard case .loaded(let snapshot) = state else { return }
+        state = .loaded(MobileSocialSnapshot(
+            stories: snapshot.stories,
+            posts: snapshot.posts,
+            activity: snapshot.activity,
+            activityCount: snapshot.activityCount,
+            currentProfileMetrics: snapshot.currentProfileMetrics.adjusting(
+                followingCountBy: followingCountBy
+            ),
+            creatorInsights: snapshot.creatorInsights
+        ))
+    }
+
+    private func metrics(
+        _ profileMetrics: MobileSocialProfileMetrics,
+        adjustedFor post: MobileSocialPost,
+        by change: Int
+    ) -> MobileSocialProfileMetrics {
+        switch post.contentType {
+        case MobileSocialContentType.post.rawValue:
+            return profileMetrics.adjusting(postCountBy: change)
+        case MobileSocialContentType.reel.rawValue:
+            return profileMetrics.adjusting(videoCountBy: change)
+        case MobileSocialContentType.story.rawValue:
+            return profileMetrics.adjusting(storyCountBy: change)
+        default:
+            return profileMetrics
+        }
     }
 
     private func mutate(

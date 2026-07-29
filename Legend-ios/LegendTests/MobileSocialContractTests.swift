@@ -137,6 +137,7 @@ final class MobileSocialContractTests: XCTestCase {
             return XCTFail("Expected social store to load")
         }
         XCTAssertTrue(snapshot.posts[0].followedByCurrentActor)
+        XCTAssertEqual(snapshot.currentProfileMetrics.followingCount, 1)
         let followRequest = await api.lastFollowRequest()
         XCTAssertEqual(followRequest?.sourcePostID, post.id)
     }
@@ -307,6 +308,8 @@ final class MobileSocialContractTests: XCTestCase {
             accessTokenProvider: { "token" },
             diagnostics: LegendDiagnostics())
 
+        store.load()
+        try await Task.sleep(for: .milliseconds(50))
         store.loadProfilePosts()
         try await Task.sleep(for: .milliseconds(50))
         guard case .loaded(let profilePosts) = store.profileContentState else {
@@ -329,6 +332,10 @@ final class MobileSocialContractTests: XCTestCase {
             return XCTFail("Expected the confirmed post removal")
         }
         XCTAssertTrue(remainingPosts.isEmpty)
+        guard case .loaded(let snapshot) = store.state else {
+            return XCTFail("Expected the social snapshot to remain loaded")
+        }
+        XCTAssertEqual(snapshot.currentProfileMetrics.postCount, 0)
         let deletedPostID = await api.lastDeletedPostID()
         XCTAssertEqual(deletedPostID, post.id)
     }

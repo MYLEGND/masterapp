@@ -6,6 +6,7 @@ private enum LegendAppTab: String, Identifiable {
     case clients
     case leads
     case discover
+    case fyp
     case messages
     case finance
     case account
@@ -14,8 +15,8 @@ private enum LegendAppTab: String, Identifiable {
 
     static func available(for participantType: ParticipantType) -> [Self] {
         participantType == .agent
-            ? [.home, .clients, .leads, .messages, .account]
-            : [.home, .discover, .messages, .finance, .account]
+            ? [.home, .clients, .leads, .fyp, .messages, .account]
+            : [.home, .discover, .fyp, .messages, .finance, .account]
     }
 
     var title: String {
@@ -24,6 +25,7 @@ private enum LegendAppTab: String, Identifiable {
         case .clients: return "Clients"
         case .leads: return "Leads"
         case .discover: return "Discover"
+        case .fyp: return "For You"
         case .finance: return "Finance"
         case .messages: return "Messages"
         case .account: return "Account"
@@ -36,6 +38,7 @@ private enum LegendAppTab: String, Identifiable {
         case .clients: return "person.2"
         case .leads: return "person.crop.circle.badge.plus"
         case .discover: return "magnifyingglass"
+        case .fyp: return "play.rectangle.on.rectangle"
         case .finance: return "chart.line.uptrend.xyaxis"
         case .messages: return "message"
         case .account: return "person"
@@ -48,6 +51,7 @@ private enum LegendAppTab: String, Identifiable {
         case .clients: return "person.2.fill"
         case .leads: return "person.crop.circle.badge.plus"
         case .discover: return "magnifyingglass"
+        case .fyp: return "play.rectangle.on.rectangle.fill"
         case .finance: return "chart.line.uptrend.xyaxis"
         case .messages: return "message.fill"
         case .account: return "person.fill"
@@ -111,6 +115,14 @@ struct LegendApplicationShell: View {
                     .tag(LegendAppTab.leads)
                 }
 
+                NavigationStack {
+                    LegendForYouView(
+                        currentIdentity: currentSession.actor.identity,
+                        social: social
+                    )
+                }
+                .tag(LegendAppTab.fyp)
+
                 LegendMessagesTab(messages: messages)
                     .tag(LegendAppTab.messages)
             } else {
@@ -122,6 +134,14 @@ struct LegendApplicationShell: View {
                     )
                 }
                 .tag(LegendAppTab.discover)
+
+                NavigationStack {
+                    LegendForYouView(
+                        currentIdentity: currentSession.actor.identity,
+                        social: social
+                    )
+                }
+                .tag(LegendAppTab.fyp)
 
                 LegendMessagesTab(messages: messages)
                     .tag(LegendAppTab.messages)
@@ -2505,16 +2525,16 @@ private struct LegendCirclesView: View {
                     alignment: .leading,
                     spacing: LegendNextSpacing.micro
                 ) {
-                    Text("DISCOVER")
+                    Text("JOURNEY CIRCLES")
                         .font(.caption2.weight(.bold))
                         .tracking(1.4)
                         .foregroundStyle(LegendNextColor.gold)
 
-                    Text("Find your people")
+                    Text("Build your circle")
                         .font(.title2.weight(.bold))
 
                     Text(
-                        "Build meaningful connections around shared goals, interests, and life stages."
+                        "Meet people through the goals, interests, and life direction you choose."
                     )
                     .font(LegendNextTypography.supporting)
                     .foregroundStyle(LegendNextColor.textSecondary)
@@ -2544,7 +2564,7 @@ private struct LegendCirclesView: View {
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
 
-                        Text("Your Discover profile")
+                        Text("Your Journey Circles profile")
                             .font(.caption)
                             .foregroundStyle(
                                 LegendNextColor.textSecondary
@@ -2575,12 +2595,12 @@ private struct LegendCirclesView: View {
                     .font(.system(size: 28, weight: .semibold))
                     .foregroundStyle(LegendNextColor.gold)
 
-                Text("Complete your Discover profile")
+                Text("Complete your Journey Circles profile")
                     .font(LegendNextTypography.section)
                     .foregroundStyle(.white)
 
                 Text(
-                    "Choose your goals, interests, and connection preferences to unlock relevant people and requests."
+                    "Choose the goals, interests, and partnership preferences that shape your recommendations."
                 )
                 .font(LegendNextTypography.supporting)
                 .foregroundStyle(.white.opacity(0.78))
@@ -2601,7 +2621,7 @@ private struct LegendCirclesView: View {
                 .foregroundStyle(LegendNextColor.textSecondary)
 
             TextField(
-                "Search people, goals, or interests",
+                "Search partners, goals, or interests",
                 text: $searchText
             )
             .textInputAutocapitalization(.never)
@@ -2709,8 +2729,6 @@ private struct LegendCirclesView: View {
         case .requests:
             requestsContent(dashboard)
 
-        case .connections:
-            connectionsContent(dashboard)
         }
     }
 
@@ -2754,77 +2772,44 @@ private struct LegendCirclesView: View {
     private func requestsContent(
         _ dashboard: MobileJourneyDashboardResponse
     ) -> some View {
-        let requests = filteredConnections(
+        let requests = filteredRequests(
             dashboard.requests
         )
 
         if requests.isEmpty {
             LegendEmptyState(
                 title: searchText.isEmpty
-                    ? "No connection requests"
+                    ? "No partnership requests"
                     : "No requests found",
                 message: searchText.isEmpty
-                    ? "Incoming requests will appear here for your approval."
+                    ? "People who would like to connect with you will appear here."
                     : "Try a different search.",
                 symbolName: "person.crop.circle.badge.checkmark"
             )
         } else {
-            connectionSection(
-                "Connection requests",
-                connections: requests,
-                kind: .request
-            )
+            requestSection(requests)
         }
     }
 
-    @ViewBuilder
-    private func connectionsContent(
-        _ dashboard: MobileJourneyDashboardResponse
-    ) -> some View {
-        let connections = filteredConnections(
-            dashboard.connections
-        )
-
-        if connections.isEmpty {
-            LegendEmptyState(
-                title: searchText.isEmpty
-                    ? "No connections yet"
-                    : "No connections found",
-                message: searchText.isEmpty
-                    ? "People you connect with will be collected here."
-                    : "Try a different search.",
-                symbolName: "person.2.fill"
-            )
-        } else {
-            connectionSection(
-                "Your connections",
-                connections: connections,
-                kind: .connection
-            )
-        }
-    }
-
-    private func connectionSection(
-        _ title: String,
-        connections: [MobileJourneyConnection],
-        kind: JourneyConnectionSectionKind
+    private func requestSection(
+        _ requests: [MobileJourneyConnection]
     ) -> some View {
         VStack(
             alignment: .leading,
             spacing: LegendNextSpacing.xs
         ) {
-            LegendNextSectionHeader(title: title)
+            LegendNextSectionHeader(title: "Partnership requests")
 
-            ForEach(connections) { connection in
+            ForEach(requests) { request in
                 LegendNextSurface {
                     HStack(
                         alignment: .top,
                         spacing: LegendNextSpacing.xs
                     ) {
                         LegendProfileAvatar(
-                            avatar: connection.profile.avatar,
+                            avatar: request.profile.avatar,
                             displayName:
-                                connection.profile.displayName,
+                                request.profile.displayName,
                             size: 48
                         )
 
@@ -2832,14 +2817,14 @@ private struct LegendCirclesView: View {
                             alignment: .leading,
                             spacing: LegendNextSpacing.micro
                         ) {
-                            Text(connection.profile.displayName)
+                            Text(request.profile.displayName)
                                 .font(
                                     .subheadline.weight(.semibold)
                                 )
                                 .lineLimit(1)
 
                             if let introduction =
-                                connection.profile.introduction,
+                                request.profile.introduction,
                                !introduction.isEmpty {
                                 Text(introduction)
                                     .font(
@@ -2854,7 +2839,7 @@ private struct LegendCirclesView: View {
                             }
 
                             if let reason =
-                                connection.connectionReason,
+                                request.connectionReason,
                                !reason.isEmpty {
                                 Label(
                                     reason,
@@ -2867,10 +2852,7 @@ private struct LegendCirclesView: View {
                                 .lineLimit(2)
                             }
 
-                            actionRow(
-                                for: connection,
-                                kind: kind
-                            )
+                            requestActionRow(for: request)
                             .padding(
                                 .top,
                                 LegendNextSpacing.micro
@@ -2883,52 +2865,29 @@ private struct LegendCirclesView: View {
     }
 
     @ViewBuilder
-    private func actionRow(
-        for connection: MobileJourneyConnection,
-        kind: JourneyConnectionSectionKind
+    private func requestActionRow(
+        for request: MobileJourneyConnection
     ) -> some View {
-        if kind == .request {
-            HStack(spacing: LegendNextSpacing.xs) {
-                Button("Decline") {
-                    store.respondToConnection(
-                        id: connection.id,
-                        accept: false
-                    )
-                }
-                .buttonStyle(
-                    LegendInlineButtonStyle(kind: .secondary)
-                )
-
-                Button("Accept") {
-                    store.respondToConnection(
-                        id: connection.id,
-                        accept: true
-                    )
-                }
-                .buttonStyle(
-                    LegendInlineButtonStyle(kind: .primary)
+        HStack(spacing: LegendNextSpacing.xs) {
+            Button("Decline") {
+                store.respondToConnection(
+                    id: request.id,
+                    accept: false
                 )
             }
-        } else {
-            HStack {
-                Label(
-                    "Connected",
-                    systemImage: "checkmark.circle.fill"
-                )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(
-                    LegendNextColor.textSecondary
-                )
+            .buttonStyle(
+                LegendInlineButtonStyle(kind: .secondary)
+            )
 
-                Spacer()
-
-                Button("Disconnect") {
-                    store.disconnect(id: connection.id)
-                }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.red)
-                .buttonStyle(.plain)
+            Button("Accept") {
+                store.respondToConnection(
+                    id: request.id,
+                    accept: true
+                )
             }
+            .buttonStyle(
+                LegendInlineButtonStyle(kind: .primary)
+            )
         }
     }
 
@@ -3041,8 +3000,6 @@ private struct LegendCirclesView: View {
         case .requests:
             return dashboard.requests.count
 
-        case .connections:
-            return dashboard.connections.count
         }
     }
 
@@ -3062,28 +3019,28 @@ private struct LegendCirclesView: View {
         }
     }
 
-    private func filteredConnections(
-        _ connections: [MobileJourneyConnection]
+    private func filteredRequests(
+        _ requests: [MobileJourneyConnection]
     ) -> [MobileJourneyConnection] {
         guard !normalizedSearch.isEmpty else {
-            return connections
+            return requests
         }
 
-        return connections.filter { connection in
-            profileMatches(connection.profile)
-                || connection.status
+        return requests.filter { request in
+            profileMatches(request.profile)
+                || request.status
                     .localizedCaseInsensitiveContains(
                         normalizedSearch
                     )
                 || (
-                    connection.connectionReason?
+                    request.connectionReason?
                         .localizedCaseInsensitiveContains(
                             normalizedSearch
                         )
                     ?? false
                 )
                 || (
-                    connection.introduction?
+                    request.introduction?
                         .localizedCaseInsensitiveContains(
                             normalizedSearch
                         )
@@ -3126,7 +3083,6 @@ private struct LegendCirclesView: View {
     {
         case people
         case requests
-        case connections
 
         var id: String {
             rawValue
@@ -3140,8 +3096,6 @@ private struct LegendCirclesView: View {
             case .requests:
                 return "Requests"
 
-            case .connections:
-                return "Connections"
             }
         }
 
@@ -3153,15 +3107,8 @@ private struct LegendCirclesView: View {
             case .requests:
                 return "person.crop.circle.badge.plus"
 
-            case .connections:
-                return "person.2.fill"
             }
         }
-    }
-
-    private enum JourneyConnectionSectionKind {
-        case request
-        case connection
     }
 }
 
@@ -5265,11 +5212,11 @@ private enum LegendProfileContentFilter: String, CaseIterable, Identifiable {
     var accessibilityTitle: String {
         switch self {
         case .posts:
-            return "Moves"
+            return "Posts"
         case .reels:
-            return "Milestones"
+            return "Reels"
         case .stories:
-            return "Journey"
+            return "Stories"
         }
     }
 
@@ -5380,10 +5327,15 @@ private struct LegendAccountView: View {
                 route: $creationRoute,
                 social: social)
         }
-        .sheet(item: $selectedPost) { post in
-            LegendProfilePostDetail(
-                post: post,
-                social: social)
+        .fullScreenCover(item: $selectedPost) { post in
+            NavigationStack {
+                LegendForYouView(
+                    currentIdentity: currentSession.actor.identity,
+                    social: social,
+                    initialPostID: post.id,
+                    presentsDismissControl: true
+                )
+            }
         }
         .confirmationDialog(
             "Sign out of Legend?",
@@ -5503,18 +5455,18 @@ private struct LegendAccountView: View {
 
             HStack(spacing: LegendNextSpacing.xs) {
                 profileMetric(
-                    value: profileContentCount(for: .posts),
-                    title: "Moves"
+                    value: postsAndReelsCount,
+                    title: "Posts + Reels"
                 )
 
                 profileMetric(
-                    value: profileContentCount(for: .reels),
-                    title: "Milestones"
+                    value: currentProfileMetrics?.followingCount ?? 0,
+                    title: "Following"
                 )
 
                 profileMetric(
-                    value: profileContentCount(for: .stories),
-                    title: "Journey"
+                    value: currentProfileMetrics?.followerCount ?? 0,
+                    title: "Followers"
                 )
             }
             .frame(maxWidth: .infinity)
@@ -5838,21 +5790,24 @@ private struct LegendAccountView: View {
         return posts
     }
 
-    private func profileContentCount(
-        for filter: LegendProfileContentFilter
-    ) -> Int {
+    private var currentProfileMetrics: MobileSocialProfileMetrics? {
         guard case .loaded(let snapshot) = social.state else {
-            return profileItems(for: filter.socialContentType).count
+            return nil
         }
 
-        switch filter {
-        case .posts:
-            return snapshot.currentProfileMetrics.postCount
-        case .reels:
-            return snapshot.currentProfileMetrics.videoCount
-        case .stories:
-            return snapshot.currentProfileMetrics.storyCount
+        return snapshot.currentProfileMetrics
+    }
+
+    private var postsAndReelsCount: Int {
+        if case .loaded = social.profileContentState {
+            return currentProfilePosts.count {
+                $0.contentType == MobileSocialContentType.post.rawValue
+                    || $0.contentType == MobileSocialContentType.reel.rawValue
+            }
         }
+
+        return (currentProfileMetrics?.postCount ?? 0)
+            + (currentProfileMetrics?.videoCount ?? 0)
     }
 
     private func profileMetric(
@@ -5929,54 +5884,60 @@ private struct LegendProfileGridTile: View {
     @ObservedObject var social: MobileSocialStore
 
     var body: some View {
-        ZStack {
-            if let media = post.media.first(where: \.isImage) {
-                LegendSocialMediaImage(
-                    media: media,
-                    social: social,
-                    contentMode: .fill,
-                    placeholderHeight: nil)
-            } else {
-                LinearGradient(
-                    colors: [
-                        LegendNextColor.navy,
-                        LegendNextColor.navy.opacity(0.78)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+        GeometryReader { proxy in
+            ZStack {
+                if let media = post.media.first(where: \.isImage) {
+                    LegendSocialMediaImage(
+                        media: media,
+                        social: social,
+                        contentMode: .fill,
+                        placeholderHeight: proxy.size.height,
+                        usesRoundedCorners: false
+                    )
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+                } else {
+                    LinearGradient(
+                        colors: [
+                            LegendNextColor.navy,
+                            LegendNextColor.navy.opacity(0.78)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
 
-                VStack(spacing: LegendNextSpacing.xs) {
-                    Image(systemName: post.contentType == MobileSocialContentType.reel.rawValue
-                          ? "play.rectangle.fill"
-                          : "quote.bubble.fill")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.gold)
+                    VStack(spacing: LegendNextSpacing.xs) {
+                        Image(systemName: post.contentType == MobileSocialContentType.reel.rawValue
+                              ? "play.rectangle.fill"
+                              : "quote.bubble.fill")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.gold)
 
-                    Text(post.body)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(5)
-                        .padding(.horizontal, 10)
+                        Text(post.body)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(5)
+                            .padding(.horizontal, 10)
+                    }
+                    .padding(10)
                 }
-                .padding(10)
-            }
 
-            if post.contentType == MobileSocialContentType.reel.rawValue {
-                Image(systemName: "play.rectangle.fill")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
+                if post.contentType == MobileSocialContentType.reel.rawValue {
+                    Image(systemName: "play.rectangle.fill")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                }
 
-            if post.contentType == MobileSocialContentType.story.rawValue {
-                Image(systemName: "circle.dashed")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.gold)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                if post.contentType == MobileSocialContentType.story.rawValue {
+                    Image(systemName: "circle.dashed")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.gold)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                }
             }
         }
         .aspectRatio(1, contentMode: .fit)
@@ -5985,204 +5946,6 @@ private struct LegendProfileGridTile: View {
         .accessibilityLabel(
             "\(post.contentType) by \(post.author.displayName): \(post.body)"
         )
-    }
-}
-
-private struct LegendProfilePostDetail: View {
-    let post: MobileSocialPost
-    @ObservedObject var social: MobileSocialStore
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var isEditing = false
-    @State private var isConfirmingDeletion = false
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                    postMedia
-
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                        Text(post.body)
-                            .font(LegendNextTypography.body)
-                            .foregroundStyle(LegendNextColor.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Text(post.postedUTC, format: .dateTime.month(.abbreviated).day().year().hour().minute())
-                            .font(.caption)
-                            .foregroundStyle(LegendNextColor.textSecondary)
-
-                        HStack(spacing: LegendNextSpacing.sm) {
-                            Label(post.reactionCount.formatted(), systemImage: "heart")
-                            Label(post.commentCount.formatted(), systemImage: "bubble.right")
-                            Label(post.metrics.viewCount.formatted(), systemImage: "eye")
-                        }
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                    }
-                    .padding(.horizontal, LegendNextSpacing.sm)
-                }
-                .padding(.vertical, LegendNextSpacing.sm)
-            }
-            .background(LegendNextColor.canvas)
-            .navigationTitle("Your move")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            isEditing = true
-                        } label: {
-                            Label("Edit caption", systemImage: "pencil")
-                        }
-
-                        Button(role: .destructive) {
-                            isConfirmingDeletion = true
-                        } label: {
-                            Label("Delete post", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.body.weight(.bold))
-                    }
-                    .accessibilityLabel("Post options")
-                }
-
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-        .sheet(isPresented: $isEditing) {
-            LegendProfilePostEditor(
-                post: post,
-                social: social,
-                onSaved: {
-                    dismiss()
-                }
-            )
-        }
-        .confirmationDialog(
-            "Delete this post?",
-            isPresented: $isConfirmingDeletion,
-            titleVisibility: .visible
-        ) {
-            Button("Delete post", role: .destructive) {
-                Task {
-                    if await social.deletePost(postID: post.id) {
-                        dismiss()
-                    }
-                }
-            }
-
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the post from your Legend profile and feed.")
-        }
-    }
-
-    @ViewBuilder
-    private var postMedia: some View {
-        if let image = post.media.first(where: \.isImage) {
-            LegendSocialMediaImage(
-                media: image,
-                social: social,
-                contentMode: .fit,
-                placeholderHeight: 260)
-                .padding(.horizontal, LegendNextSpacing.sm)
-        } else if let video = post.media.first(where: \.isVideo) {
-            LegendSocialMediaVideo(
-                postID: post.id,
-                media: video,
-                music: post.music,
-                social: social)
-                .padding(.horizontal, LegendNextSpacing.sm)
-        } else {
-            LegendNextSurface {
-                Image(systemName: "quote.bubble.fill")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(LegendNextColor.gold)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, LegendNextSpacing.md)
-            }
-            .padding(.horizontal, LegendNextSpacing.sm)
-        }
-    }
-}
-
-private struct LegendProfilePostEditor: View {
-    let post: MobileSocialPost
-    @ObservedObject var social: MobileSocialStore
-    let onSaved: () -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var caption: String
-    @State private var isSaving = false
-
-    init(
-        post: MobileSocialPost,
-        social: MobileSocialStore,
-        onSaved: @escaping () -> Void) {
-        self.post = post
-        _social = ObservedObject(wrappedValue: social)
-        self.onSaved = onSaved
-        _caption = State(initialValue: post.body)
-    }
-
-    var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                TextEditor(text: $caption)
-                    .font(LegendNextTypography.body)
-                    .padding(LegendNextSpacing.sm)
-                    .frame(minHeight: 180)
-                    .background(
-                        LegendNextColor.surfaceInset,
-                        in: RoundedRectangle(
-                            cornerRadius: LegendNextRadius.control,
-                            style: .continuous))
-                    .accessibilityLabel("Post caption")
-
-                if post.media.isEmpty {
-                    Text("A text post needs a caption.")
-                        .font(.caption)
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                }
-
-                Spacer()
-            }
-            .padding(LegendNextSpacing.sm)
-            .background(LegendNextColor.canvas)
-            .navigationTitle("Edit post")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        isSaving = true
-                        Task {
-                            if await social.updatePost(postID: post.id, body: caption) {
-                                dismiss()
-                                onSaved()
-                            }
-                            isSaving = false
-                        }
-                    }
-                    .disabled(
-                        isSaving ||
-                        (post.media.isEmpty && caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
     }
 }
 
