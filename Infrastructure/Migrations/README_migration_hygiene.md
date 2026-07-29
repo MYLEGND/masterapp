@@ -8,7 +8,7 @@ Providers
 Known risks mitigated
 - Startup now hard-blocks in strict environments (Prod/Staging or MIGRATION_STRICT=true) when pending migrations exist.
 - 20260330094500_RepairAgentProfilesSqlite ensures AgentProfiles exists on SQLite before later ALTERs.
-- MigrationHealthHostedService logs provider, pending migrations, and presence of critical tables (ActionItems, ActionLogs, Blockers, DecisionRecords, Commitments) at startup without mutating schema.
+- MigrationHealthHostedService logs provider, pending migrations, and presence of critical execution and mobile-social tables at startup without mutating schema. In strict environments, missing required tables block startup instead of surfacing as request-time failures.
 
 Local discipline
 - Use `dotnet ef migrations add` from Infrastructure with the correct provider set in `appsettings.Development.json` to avoid provider-mismatched SQL.

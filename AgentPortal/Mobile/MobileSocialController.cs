@@ -49,7 +49,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
 
         var result = await _social.GetCurrentProfilePostsAsync(resolved.Actor!, cancellationToken);
         return result.Succeeded && result.Value is not null
-            ? Ok(await Task.WhenAll(result.Value.Select(post => ToPostDtoAsync(post, cancellationToken))))
+            ? Ok(await ToPostDtosAsync(result.Value, cancellationToken))
             : SocialFailure(result.ErrorCode, result.ErrorMessage);
     }
 
@@ -391,12 +391,36 @@ public sealed class MobileSocialController : MobileApiControllerBase
     }
 
     private async Task<MobileSocialSnapshotDto> ToSnapshotDtoAsync(SocialFeedSnapshot snapshot, CancellationToken cancellationToken) => new(
-        await Task.WhenAll(snapshot.Stories.Select(post => ToPostDtoAsync(post, cancellationToken))),
-        await Task.WhenAll(snapshot.Posts.Select(post => ToPostDtoAsync(post, cancellationToken))),
-        await Task.WhenAll(snapshot.Activity.Select(item => ToActivityDtoAsync(item, cancellationToken))),
+        await ToPostDtosAsync(snapshot.Stories, cancellationToken),
+        await ToPostDtosAsync(snapshot.Posts, cancellationToken),
+        await ToActivityDtosAsync(snapshot.Activity, cancellationToken),
         snapshot.ActivityCount,
         await ToProfileMetricsDtoAsync(snapshot.CurrentProfileMetrics, cancellationToken),
         ToCreatorInsightsDto(snapshot.CreatorInsights));
+
+    // Avatar resolution uses the request-scoped MasterAppDbContext. EF Core permits one
+    // operation at a time per context, so all DTO projection stays sequential.
+    private async Task<IReadOnlyList<MobileSocialPostDto>> ToPostDtosAsync(
+        IEnumerable<SocialPostView> posts,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<MobileSocialPostDto>();
+        foreach (var post in posts)
+            result.Add(await ToPostDtoAsync(post, cancellationToken));
+
+        return result;
+    }
+
+    private async Task<IReadOnlyList<MobileSocialActivityDto>> ToActivityDtosAsync(
+        IEnumerable<SocialActivityView> activity,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<MobileSocialActivityDto>();
+        foreach (var item in activity)
+            result.Add(await ToActivityDtoAsync(item, cancellationToken));
+
+        return result;
+    }
 
     private async Task<MobileSocialPostDto> ToPostDtoAsync(SocialPostView post, CancellationToken cancellationToken) => new(
         post.Id,
@@ -425,7 +449,18 @@ public sealed class MobileSocialController : MobileApiControllerBase
             media.DurationSeconds,
             media.ProcessingState,
             media.AccessibilityText)).ToArray(),
-        await Task.WhenAll(post.Comments.Select(comment => ToCommentDtoAsync(comment, cancellationToken))));
+        await ToCommentDtosAsync(post.Comments, cancellationToken));
+
+    private async Task<IReadOnlyList<MobileSocialCommentDto>> ToCommentDtosAsync(
+        IEnumerable<SocialCommentView> comments,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<MobileSocialCommentDto>();
+        foreach (var comment in comments)
+            result.Add(await ToCommentDtoAsync(comment, cancellationToken));
+
+        return result;
+    }
 
     private async Task<MobileSocialCommentDto> ToCommentDtoAsync(SocialCommentView comment, CancellationToken cancellationToken) => new(
         comment.Id,

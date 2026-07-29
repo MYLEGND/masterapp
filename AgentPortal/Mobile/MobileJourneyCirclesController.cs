@@ -170,23 +170,9 @@ public sealed class MobileJourneyCirclesController : MobileApiControllerBase
                 dashboard.Preferences.IsDiscoverable,
                 dashboard.Preferences.AllowSuggestions,
                 dashboard.Preferences.AllowConnectionRequests),
-            await Task.WhenAll(dashboard.Recommendations.Select(async recommendation => new MobileJourneyRecommendation(
-                await ToProfileAsync(recommendation.Profile, identitiesByProfileId, cancellationToken),
-                recommendation.Explanation))),
-            await Task.WhenAll(dashboard.Connections.Select(async connection => new MobileJourneyConnection(
-                connection.Id,
-                await ToProfileAsync(connection.Profile, identitiesByProfileId, cancellationToken),
-                connection.Status,
-                connection.ConnectionReason,
-                connection.Introduction,
-                connection.CreatedUtc))),
-            await Task.WhenAll(dashboard.Requests.Select(async request => new MobileJourneyConnection(
-                request.Id,
-                await ToProfileAsync(request.Profile, identitiesByProfileId, cancellationToken),
-                request.Status,
-                request.ConnectionReason,
-                request.Introduction,
-                request.CreatedUtc))),
+            await ToRecommendationsAsync(dashboard.Recommendations, identitiesByProfileId, cancellationToken),
+            await ToConnectionsAsync(dashboard.Connections, identitiesByProfileId, cancellationToken),
+            await ToConnectionsAsync(dashboard.Requests, identitiesByProfileId, cancellationToken),
             new MobileJourneyTaxonomy(
                 dashboard.Goals,
                 dashboard.Circles,
@@ -196,6 +182,44 @@ public sealed class MobileJourneyCirclesController : MobileApiControllerBase
                 dashboard.ConnectionTypes,
                 dashboard.CommunicationStyles,
                 dashboard.AccountabilityFrequencies));
+    }
+
+    // Avatar resolution uses the request-scoped MasterAppDbContext. Keep all dashboard
+    // projection sequential so no request issues concurrent operations against that context.
+    private async Task<IReadOnlyList<MobileJourneyRecommendation>> ToRecommendationsAsync(
+        IEnumerable<JourneyCircleRecommendation> recommendations,
+        IReadOnlyDictionary<Guid, MessagingParticipantIdentity> identitiesByProfileId,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<MobileJourneyRecommendation>();
+        foreach (var recommendation in recommendations)
+        {
+            result.Add(new MobileJourneyRecommendation(
+                await ToProfileAsync(recommendation.Profile, identitiesByProfileId, cancellationToken),
+                recommendation.Explanation));
+        }
+
+        return result;
+    }
+
+    private async Task<IReadOnlyList<MobileJourneyConnection>> ToConnectionsAsync(
+        IEnumerable<JourneyCircleConnectionSummary> connections,
+        IReadOnlyDictionary<Guid, MessagingParticipantIdentity> identitiesByProfileId,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<MobileJourneyConnection>();
+        foreach (var connection in connections)
+        {
+            result.Add(new MobileJourneyConnection(
+                connection.Id,
+                await ToProfileAsync(connection.Profile, identitiesByProfileId, cancellationToken),
+                connection.Status,
+                connection.ConnectionReason,
+                connection.Introduction,
+                connection.CreatedUtc));
+        }
+
+        return result;
     }
 
     private async Task<MobileJourneyProfile> ToProfileAsync(

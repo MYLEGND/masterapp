@@ -12,6 +12,7 @@ using AgentPortal.Services.Tracking;
 using Domain.Entities;
 using Domain.JourneyCircles;
 using Domain.Messaging;
+using Domain.Social;
 using Infrastructure.Messaging;
 using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Authorization;
@@ -701,6 +702,165 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileSocialProfilePosts_ProjectsProfileOwnedAvatarsSequentially()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "client-social-oid",
+            FirstName = "Client",
+            LastName = "Social",
+            Email = "client-social@example.test"
+        };
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var author = new SocialAuthor(
+            client.ClientUserId,
+            MessagingParticipantTypes.Client,
+            client.Id,
+            "Client Social");
+        var posts = new[]
+        {
+            CreateSocialPostView(author),
+            CreateSocialPostView(author)
+        };
+        var social = new Mock<ISocialFeedService>(MockBehavior.Strict);
+        social
+            .Setup(service => service.GetCurrentProfilePostsAsync(
+                It.Is<SocialFeedActor>(actor =>
+                    actor.Identity.UserId == client.ClientUserId &&
+                    actor.Identity.ParticipantType == MessagingParticipantTypes.Client &&
+                    actor.ProfileId == client.Id),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SocialOperationResult<IReadOnlyList<SocialPostView>>.Success(posts));
+
+        var activeResolutions = 0;
+        var peakResolutions = 0;
+        var resolutionGate = new object();
+        var images = new Mock<IMessagingProfileImageResolver>(MockBehavior.Strict);
+        images
+            .Setup(service => service.ResolveAsync(It.IsAny<MessagingParticipantIdentity>(), It.IsAny<CancellationToken>()))
+            .Returns(async (MessagingParticipantIdentity _, CancellationToken cancellationToken) =>
+            {
+                lock (resolutionGate)
+                {
+                    activeResolutions++;
+                    peakResolutions = Math.Max(peakResolutions, activeResolutions);
+                }
+
+                try
+                {
+                    await Task.Delay(15, cancellationToken);
+                    return new MessagingProfileImage([1, 2, 3], "image/png");
+                }
+                finally
+                {
+                    lock (resolutionGate)
+                        activeResolutions--;
+                }
+            });
+        var controller = CreateSocialController(db, social.Object, Principal(client.ClientUserId), images.Object);
+
+        var result = await controller.CurrentProfilePosts(CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(1, peakResolutions);
+        social.VerifyAll();
+        images.Verify(service => service.ResolveAsync(It.IsAny<MessagingParticipantIdentity>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task MobileSocialFeed_ProjectsStoriesPostsAndActivitySequentially()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "client-feed-oid",
+            FirstName = "Client",
+            LastName = "Feed",
+            Email = "client-feed@example.test"
+        };
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var author = new SocialAuthor(
+            client.ClientUserId,
+            MessagingParticipantTypes.Client,
+            client.Id,
+            "Client Feed");
+        var snapshot = new SocialFeedSnapshot(
+            [CreateSocialPostView(author)],
+            [CreateSocialPostView(author)],
+            [new SocialActivityView(Guid.NewGuid(), "post", author, null, DateTime.UtcNow)],
+            1,
+            new SocialProfileMetrics(author, 2, 0, 1, 0, 0, 0, 0, 0, null),
+            new SocialCreatorInsights(
+                DateTime.UtcNow,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                Array.Empty<SocialPostInsight>(),
+                Array.Empty<SocialPostInsight>(),
+                Array.Empty<SocialPostInsight>()));
+        var social = new Mock<ISocialFeedService>(MockBehavior.Strict);
+        social
+            .Setup(service => service.GetFeedAsync(
+                It.Is<SocialFeedActor>(actor =>
+                    actor.Identity.UserId == client.ClientUserId &&
+                    actor.Identity.ParticipantType == MessagingParticipantTypes.Client &&
+                    actor.ProfileId == client.Id),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SocialOperationResult<SocialFeedSnapshot>.Success(snapshot));
+
+        var activeResolutions = 0;
+        var peakResolutions = 0;
+        var resolutionGate = new object();
+        var images = new Mock<IMessagingProfileImageResolver>(MockBehavior.Strict);
+        images
+            .Setup(service => service.ResolveAsync(It.IsAny<MessagingParticipantIdentity>(), It.IsAny<CancellationToken>()))
+            .Returns(async (MessagingParticipantIdentity _, CancellationToken cancellationToken) =>
+            {
+                lock (resolutionGate)
+                {
+                    activeResolutions++;
+                    peakResolutions = Math.Max(peakResolutions, activeResolutions);
+                }
+
+                try
+                {
+                    await Task.Delay(15, cancellationToken);
+                    return new MessagingProfileImage([1, 2, 3], "image/png");
+                }
+                finally
+                {
+                    lock (resolutionGate)
+                        activeResolutions--;
+                }
+            });
+        var controller = CreateSocialController(db, social.Object, Principal(client.ClientUserId), images.Object);
+
+        var result = await controller.Feed(CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(1, peakResolutions);
+        social.VerifyAll();
+        images.Verify(service => service.ResolveAsync(It.IsAny<MessagingParticipantIdentity>(), It.IsAny<CancellationToken>()), Times.Exactly(4));
+    }
+
+    [Fact]
     public async Task MobileFinancial_UsesTheResolvedClientIdentityAndReturnsPresentationMetadata()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -924,6 +1084,21 @@ public sealed class MobileIntegrationTests
         return controller;
     }
 
+    private static MobileSocialController CreateSocialController(
+        Infrastructure.Data.MasterAppDbContext db,
+        ISocialFeedService social,
+        ClaimsPrincipal principal,
+        IMessagingProfileImageResolver profiles)
+    {
+        return new MobileSocialController(CreateResolver(db), social, profiles)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = principal }
+            }
+        };
+    }
+
     private static MobileAccountController CreateAccountController(
         Infrastructure.Data.MasterAppDbContext db,
         ClaimsPrincipal principal)
@@ -959,6 +1134,24 @@ public sealed class MobileIntegrationTests
             .ReturnsAsync(new Dictionary<Guid, MessagingParticipantIdentity>());
         return profiles.Object;
     }
+
+    private static SocialPostView CreateSocialPostView(SocialAuthor author) => new(
+        Guid.NewGuid(),
+        author,
+        SocialPostContentTypes.Post,
+        "A social update",
+        DateTime.UtcNow,
+        null,
+        0,
+        0,
+        false,
+        false,
+        false,
+        false,
+        new SocialPostMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, 0, 0),
+        null,
+        Array.Empty<SocialMediaAssetView>(),
+        Array.Empty<SocialCommentView>());
 
     private static MobileAuthConfiguration ConfiguredMobileAuth() =>
         MobileAuthConfiguration.FromConfiguration(new ConfigurationBuilder()
