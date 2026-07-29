@@ -297,6 +297,181 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileController_UploadAttachmentUsesExistingStorageAndTypedMessageAuthority()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "agent-oid",
+            AgentUpn = "agent@example.test",
+            FullName = "Agent",
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var actor = new MessagingActor("agent-oid", MessagingParticipantTypes.Agent);
+        var conversationId = Guid.NewGuid();
+        var messageId = Guid.NewGuid();
+        var attachmentId = Guid.NewGuid();
+        var createdUtc = DateTime.UtcNow;
+        AddPendingMessagingAttachmentCommand? addCommand = null;
+        var messaging = new Mock<IMessagingService>(MockBehavior.Strict);
+        messaging.Setup(x => x.GetConversationAsync(actor, conversationId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MessagingConversationResult(
+                true,
+                null,
+                null,
+                new MessagingConversationDetail(
+                    conversationId,
+                    MessagingConversationTypes.ClientAgent,
+                    null,
+                    createdUtc,
+                    createdUtc,
+                    false,
+                    false,
+                    false,
+                    [new MessagingParticipantSummary(actor.UserId, actor.ParticipantType, "Agent")],
+                    Array.Empty<MessagingMessageSummary>())));
+        messaging.Setup(x => x.AddPendingAttachmentAsync(
+                It.IsAny<AddPendingMessagingAttachmentCommand>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<AddPendingMessagingAttachmentCommand, CancellationToken>((command, _) => addCommand = command)
+            .ReturnsAsync(new MessagingAttachmentResult(
+                true,
+                null,
+                null,
+                new MessagingAttachmentSummary(
+                    attachmentId,
+                    "plan.pdf",
+                    "application/pdf",
+                    3,
+                    MessagingAttachmentScanStatuses.Pending,
+                    createdUtc,
+                    false),
+                conversationId));
+        var storage = new Mock<IMessageAttachmentStorage>(MockBehavior.Strict);
+        storage.Setup(x => x.StoreAsync(
+                It.IsAny<Guid>(),
+                "plan.pdf",
+                3,
+                It.IsAny<Stream>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, string _, long _, Stream _, CancellationToken _) =>
+                new MessagingStoredAttachmentResult(
+                    true,
+                    null,
+                    null,
+                    new MessagingStoredAttachment(
+                        "plan.pdf",
+                        $"{id:N}.pdf",
+                        "application/pdf",
+                        3,
+                        $"attachments/{id:N}.pdf")));
+        var realtime = new Mock<IMessagingRealtimePublisher>(MockBehavior.Strict);
+        realtime.Setup(x => x.PublishAsync(
+                It.Is<MessagingRealtimeEvent>(notification =>
+                    notification.EventType == "conversationUpdated" &&
+                    notification.ConversationId == conversationId &&
+                    notification.MessageId == messageId &&
+                    notification.Recipients.Single().UserId == actor.UserId &&
+                    notification.Recipients.Single().ParticipantType == actor.ParticipantType),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var controller = CreateController(
+            db,
+            messaging.Object,
+            Principal("agent-oid"),
+            attachmentStorage: storage.Object,
+            realtimePublisher: realtime.Object);
+        await using var content = new MemoryStream([1, 2, 3]);
+        var file = new FormFile(content, 0, content.Length, "file", "plan.pdf");
+
+        var result = await controller.UploadAttachment(
+            conversationId,
+            messageId,
+            file,
+            CancellationToken.None);
+
+        var response = Assert.IsType<OkObjectResult>(result).Value as MobileMessageAttachmentDto;
+        Assert.NotNull(response);
+        Assert.Equal(attachmentId, response!.Id);
+        Assert.Equal(MessagingAttachmentScanStatuses.Pending, response.ScanStatus);
+        Assert.False(response.CanDownload);
+        Assert.NotNull(addCommand);
+        Assert.Equal(actor, addCommand!.Actor);
+        Assert.Equal(messageId, addCommand.InternalMessageId);
+        Assert.Equal("plan.pdf", addCommand.OriginalFileName);
+        storage.Verify(x => x.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        messaging.VerifyAll();
+        storage.VerifyAll();
+        realtime.VerifyAll();
+    }
+
+    [Fact]
+    public async Task MobileController_UploadAttachmentRemovesStoredContentWhenMessageAuthorityRejectsIt()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "agent-oid",
+            AgentUpn = "agent@example.test",
+            FullName = "Agent",
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var actor = new MessagingActor("agent-oid", MessagingParticipantTypes.Agent);
+        var messageId = Guid.NewGuid();
+        var storagePath = "attachments/rejected-plan.pdf";
+        var messaging = new Mock<IMessagingService>(MockBehavior.Strict);
+        messaging.Setup(x => x.AddPendingAttachmentAsync(
+                It.Is<AddPendingMessagingAttachmentCommand>(command =>
+                    command.Actor == actor &&
+                    command.InternalMessageId == messageId),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MessagingAttachmentResult.Failure(
+                "MESSAGING_ATTACHMENT_FORBIDDEN",
+                "Attachments can only be added to your own messages."));
+        var storage = new Mock<IMessageAttachmentStorage>(MockBehavior.Strict);
+        storage.Setup(x => x.StoreAsync(
+                It.IsAny<Guid>(),
+                "plan.pdf",
+                3,
+                It.IsAny<Stream>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MessagingStoredAttachmentResult(
+                true,
+                null,
+                null,
+                new MessagingStoredAttachment(
+                    "plan.pdf",
+                    "rejected-plan.pdf",
+                    "application/pdf",
+                    3,
+                    storagePath)));
+        storage.Setup(x => x.DeleteAsync(storagePath, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var controller = CreateController(
+            db,
+            messaging.Object,
+            Principal("agent-oid"),
+            attachmentStorage: storage.Object);
+        await using var content = new MemoryStream([1, 2, 3]);
+        var file = new FormFile(content, 0, content.Length, "file", "plan.pdf");
+
+        var result = await controller.UploadAttachment(
+            Guid.NewGuid(),
+            messageId,
+            file,
+            CancellationToken.None);
+
+        var response = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, response.StatusCode);
+        messaging.VerifyAll();
+        storage.VerifyAll();
+    }
+
+    [Fact]
     public async Task MobileController_ConversationMessagesAndReadUseTheResolvedTypedActor()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -695,10 +870,18 @@ public sealed class MobileIntegrationTests
         Infrastructure.Data.MasterAppDbContext db,
         IMessagingService messaging,
         ClaimsPrincipal principal,
-        IMessagingProfileImageResolver? providedProfiles = null)
+        IMessagingProfileImageResolver? providedProfiles = null,
+        IMessageAttachmentStorage? attachmentStorage = null,
+        IMessagingRealtimePublisher? realtimePublisher = null)
     {
         var profiles = providedProfiles ?? CreateEmptyProfileResolver();
-        var controller = new MobileMessagingController(CreateResolver(db), messaging, profiles, db)
+        var controller = new MobileMessagingController(
+            CreateResolver(db),
+            messaging,
+            attachmentStorage ?? new Mock<IMessageAttachmentStorage>(MockBehavior.Strict).Object,
+            realtimePublisher ?? new Mock<IMessagingRealtimePublisher>(MockBehavior.Loose).Object,
+            profiles,
+            db)
         {
             ControllerContext = new ControllerContext
             {

@@ -87,6 +87,7 @@ final class MobileNativeContractTests: XCTestCase {
             },
             "body": "Hello",
             "sentUtc": "2026-07-25T20:00:00Z",
+            "attachments": [],
             "isMine": false
           }],
           "isMuted": false,
@@ -112,6 +113,7 @@ final class MobileNativeContractTests: XCTestCase {
           },
           "body": "Hello",
           "sentUtc": "2026-07-26T11:27:01.1234567Z",
+          "attachments": [],
           "isMine": true
         }
         """.utf8)
@@ -119,6 +121,40 @@ final class MobileNativeContractTests: XCTestCase {
         let message = try JSONDecoder.mobile.decode(ConversationMessage.self, from: data)
 
         XCTAssertEqual(message.sentUTC.timeIntervalSince1970, 1_785_065_221.1234567, accuracy: 0.001)
+    }
+
+    func testMessageAttachmentDTOUsesTheServerScanState() throws {
+        let data = Data("""
+        {
+          "id": "00000000-0000-0000-0000-000000000011",
+          "conversationId": "00000000-0000-0000-0000-000000000010",
+          "sender": {
+            "identity": { "userId": "agent-oid", "participantType": "Agent" },
+            "profileId": "00000000-0000-0000-0000-000000000001",
+            "displayName": "Agent One",
+            "avatar": null
+          },
+          "body": "Your plan is attached.",
+          "sentUtc": "2026-07-26T11:27:01Z",
+          "attachments": [{
+            "id": "00000000-0000-0000-0000-000000000012",
+            "originalFileName": "plan.pdf",
+            "contentType": "application/pdf",
+            "sizeBytes": 512,
+            "scanStatus": "Pending",
+            "createdUtc": "2026-07-26T11:27:01Z",
+            "canDownload": false
+          }],
+          "isMine": true
+        }
+        """.utf8)
+
+        let message = try JSONDecoder.mobile.decode(ConversationMessage.self, from: data)
+        let attachment = try XCTUnwrap(message.attachments.first)
+
+        XCTAssertEqual(attachment.originalFileName, "plan.pdf")
+        XCTAssertEqual(attachment.scanStatus, "Pending")
+        XCTAssertFalse(attachment.canDownload)
     }
 
     func testJSONDecoderTreatsAZoneLessAspNetCoreUtcFieldAsUtc() throws {
@@ -134,6 +170,7 @@ final class MobileNativeContractTests: XCTestCase {
           },
           "body": "Hello",
           "sentUtc": "2026-07-26T11:27:01.1234567",
+          "attachments": [],
           "isMine": true
         }
         """.utf8)

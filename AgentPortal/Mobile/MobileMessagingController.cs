@@ -17,17 +17,23 @@ namespace AgentPortal.Mobile;
 public sealed class MobileMessagingController : MobileApiControllerBase
 {
     private readonly IMessagingService _messaging;
+    private readonly IMessageAttachmentStorage _attachmentStorage;
+    private readonly IMessagingRealtimePublisher _realtimePublisher;
     private readonly IMessagingProfileImageResolver _profiles;
     private readonly MasterAppDbContext _db;
 
     public MobileMessagingController(
         IMobileActorResolver actorResolver,
         IMessagingService messaging,
+        IMessageAttachmentStorage attachmentStorage,
+        IMessagingRealtimePublisher realtimePublisher,
         IMessagingProfileImageResolver profiles,
         MasterAppDbContext db)
         : base(actorResolver)
     {
         _messaging = messaging;
+        _attachmentStorage = attachmentStorage;
+        _realtimePublisher = realtimePublisher;
         _profiles = profiles;
         _db = db;
     }
@@ -223,6 +229,73 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         return Ok(await ToMessageDtoAsync(result.Message, resolved.Actor.Actor, identities, cancellationToken));
     }
 
+    [HttpPost("messaging/conversations/{conversationId:guid}/messages/{messageId:guid}/attachments")]
+    [RequestFormLimits(MultipartBodyLengthLimit = 10 * 1024 * 1024)]
+    public async Task<IActionResult> UploadAttachment(
+        Guid conversationId,
+        Guid messageId,
+        IFormFile? file,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+        if (resolved.Actor is null)
+            return Error(StatusCodes.Status403Forbidden, "mobile_actor_unavailable", "Messaging is not available for this user.");
+        if (file is null)
+            return Error(StatusCodes.Status400BadRequest, "mobile_attachment_required", "Choose an attachment to upload.");
+
+        var actor = resolved.Actor.Actor;
+
+        var attachmentId = Guid.NewGuid();
+        await using var content = file.OpenReadStream();
+        var stored = await _attachmentStorage.StoreAsync(
+            attachmentId,
+            file.FileName,
+            file.Length,
+            content,
+            cancellationToken);
+        if (!stored.Succeeded || stored.Attachment is null)
+            return Error(StatusCodes.Status400BadRequest, "mobile_attachment_rejected", stored.ErrorMessage ?? "This attachment is not permitted.");
+
+        var attachment = stored.Attachment;
+        var result = await _messaging.AddPendingAttachmentAsync(
+            new AddPendingMessagingAttachmentCommand(
+                actor,
+                messageId,
+                attachmentId,
+                attachment.OriginalFileName,
+                attachment.StoredFileName,
+                attachment.ContentType,
+                attachment.SizeBytes,
+                attachment.StoragePath),
+            cancellationToken);
+        if (!result.Succeeded || result.Attachment is null || result.ConversationId != conversationId)
+        {
+            await _attachmentStorage.DeleteAsync(attachment.StoragePath, cancellationToken);
+            return MessagingFailure(result.ErrorCode, result.ErrorMessage);
+        }
+
+        var conversation = await _messaging.GetConversationAsync(actor, conversationId, cancellationToken);
+        if (conversation.Succeeded && conversation.Conversation is not null)
+        {
+            await _realtimePublisher.PublishAsync(
+                new MessagingRealtimeEvent(
+                    "conversationUpdated",
+                    conversationId,
+                    messageId,
+                    DateTime.UtcNow,
+                    conversation.Conversation.Participants
+                        .Select(participant => new MessagingRealtimeRecipient(
+                            participant.UserId,
+                            participant.ParticipantType))
+                        .ToArray()),
+                cancellationToken);
+        }
+
+        return Ok(ToAttachmentDto(result.Attachment));
+    }
+
     [HttpPost("messaging/conversations/{conversationId:guid}/read")]
     public async Task<IActionResult> MarkRead(Guid conversationId, CancellationToken cancellationToken)
     {
@@ -317,6 +390,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             cancellationToken),
         message.Body,
         message.SentUtc,
+        message.Attachments.Select(ToAttachmentDto).ToArray(),
         string.Equals(message.SenderUserId, actor.UserId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(message.SenderType, actor.ParticipantType, StringComparison.Ordinal));
 
@@ -348,6 +422,15 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         MessagingParticipantIdentity identity,
         CancellationToken cancellationToken) =>
         await MobileAvatarProjection.ResolveAsync(_profiles, identity, cancellationToken);
+
+    private static MobileMessageAttachmentDto ToAttachmentDto(MessagingAttachmentSummary attachment) => new(
+        attachment.Id,
+        attachment.OriginalFileName,
+        attachment.ContentType,
+        attachment.SizeBytes,
+        attachment.ScanStatus,
+        attachment.CreatedUtc,
+        attachment.CanDownload);
 
     private IActionResult MessagingFailure(string? errorCode, string? errorMessage)
     {
@@ -418,7 +501,17 @@ public sealed record MobileMessageDto(
     MobileParticipantDto Sender,
     string Body,
     DateTime SentUtc,
+    IReadOnlyList<MobileMessageAttachmentDto> Attachments,
     bool IsMine);
+
+public sealed record MobileMessageAttachmentDto(
+    Guid Id,
+    string OriginalFileName,
+    string ContentType,
+    long SizeBytes,
+    string ScanStatus,
+    DateTime CreatedUtc,
+    bool CanDownload);
 
 public sealed record MobileSendMessageRequest(string? Body);
 public sealed record MobileStartConversationRequest(

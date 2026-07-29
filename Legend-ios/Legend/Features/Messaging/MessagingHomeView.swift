@@ -1,5 +1,7 @@
 import SwiftUI
 import UIKit
+import PhotosUI
+import UniformTypeIdentifiers
 
 
 private func publicParticipantSubtitle(
@@ -573,6 +575,10 @@ struct ConversationThreadView: View {
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var composerIsFocused: Bool
     @State private var draft = ""
+    @State private var stagedAttachments: [MessagingAttachmentDraft] = []
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var isImportingFile = false
+    @State private var messageForStagedAttachments: ConversationMessage?
 
     var body: some View {
         ZStack {
@@ -626,27 +632,75 @@ struct ConversationThreadView: View {
             LegendMessageTimeline(
                 messages: conversation.messages
             )
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if conversation.isClosed {
+                closedConversationBanner
+            } else {
+                composerArea
+            }
+        }
+    }
 
+    private var composerArea: some View {
+        VStack(spacing: 0) {
             if let sendFailure = store.sendFailure {
                 LegendMessagingStatusBanner(
                     symbol: "exclamationmark.circle.fill",
                     title: "Message not sent",
                     message: sendFailure.message
                 )
-                .padding(.horizontal, LegendNextSpacing.pageHorizontal)
                 .padding(.top, LegendNextSpacing.xs)
             }
 
-            if conversation.isClosed {
-                closedConversationBanner
-            } else {
-                messageComposer
+            if !stagedAttachments.isEmpty {
+                LegendMessageAttachmentStaging(
+                    attachments: stagedAttachments,
+                    onRemove: removeAttachment,
+                    onRetry: retryAttachment
+                )
+                .padding(.top, LegendNextSpacing.xs)
             }
+
+            messageComposer
+        }
+        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+        .padding(.top, LegendNextSpacing.sm)
+        .padding(.bottom, LegendNextSpacing.sm)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(LegendNextColor.separator)
+                .frame(height: 0.5)
         }
     }
 
     private var messageComposer: some View {
         HStack(alignment: .bottom, spacing: LegendNextSpacing.sm) {
+            Menu {
+                PhotosPicker(
+                    selection: $selectedPhoto,
+                    matching: .images,
+                    photoLibrary: PHPhotoLibrary.shared()
+                ) {
+                    Label("Photo Library", systemImage: "photo.on.rectangle")
+                }
+
+                Button {
+                    isImportingFile = true
+                } label: {
+                    Label("Files", systemImage: "doc")
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .frame(width: 42, height: 42)
+                    .background(LegendNextColor.fill, in: Circle())
+            }
+            .buttonStyle(LegendMessagingPressButtonStyle())
+            .accessibilityLabel("Add photo or file")
+
             TextField(
                 "Write a message",
                 text: $draft,
@@ -661,6 +715,11 @@ struct ConversationThreadView: View {
             .keyboardType(.default)
             .textContentType(.none)
             .submitLabel(.send)
+            .onSubmit {
+                if canSend {
+                    sendDraft()
+                }
+            }
             .padding(.horizontal, LegendNextSpacing.md)
             .padding(.vertical, 12)
             .background(
@@ -685,7 +744,9 @@ struct ConversationThreadView: View {
             .accessibilityLabel("Message")
 
             Button {
-                sendDraft()
+                if canSend {
+                    sendDraft()
+                }
             } label: {
                 ZStack {
                     Circle()
@@ -695,12 +756,12 @@ struct ConversationThreadView: View {
                                 : AnyShapeStyle(LegendNextColor.fill)
                         )
 
-                    if store.isSending {
+                    if store.isSending || store.isUploadingAttachment {
                         ProgressView()
                             .controlSize(.small)
                             .tint(LegendNextColor.midnight)
                     } else {
-                        Image(systemName: "arrow.up")
+                        Image(systemName: canSend ? "arrow.up" : "mic.fill")
                             .font(.system(size: 17, weight: .bold))
                             .foregroundStyle(
                                 canSend
@@ -713,17 +774,24 @@ struct ConversationThreadView: View {
             }
             .buttonStyle(LegendMessagingPressButtonStyle())
             .disabled(!canSend)
-            .accessibilityLabel(store.isSending ? "Sending message" : "Send message")
+            .accessibilityLabel(
+                store.isSending || store.isUploadingAttachment
+                    ? "Sending message"
+                    : canSend
+                        ? "Send message"
+                        : "Voice messages are not enabled"
+            )
         }
-        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-        .padding(.top, LegendNextSpacing.sm)
-        .padding(.bottom, LegendNextSpacing.sm)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(LegendNextColor.separator)
-                .frame(height: 0.5)
+        .onChange(of: selectedPhoto) { _, item in
+            guard let item else { return }
+            Task { await stagePhoto(item) }
         }
+        .fileImporter(
+            isPresented: $isImportingFile,
+            allowedContentTypes: supportedAttachmentTypes,
+            allowsMultipleSelection: true,
+            onCompletion: stageFiles
+        )
     }
 
     private var closedConversationBanner: some View {
@@ -754,6 +822,7 @@ struct ConversationThreadView: View {
 
     private var canSend: Bool {
         !store.isSending &&
+        !store.isUploadingAttachment &&
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -764,8 +833,116 @@ struct ConversationThreadView: View {
 
         guard !outgoing.isEmpty else { return }
 
-        draft = ""
-        store.send(body: outgoing)
+        Task {
+            guard let message = await store.send(body: outgoing) else { return }
+            draft = ""
+            messageForStagedAttachments = message
+            await uploadStagedAttachments(to: message)
+        }
+    }
+
+    private var supportedAttachmentTypes: [UTType] {
+        [.image, .pdf, .plainText] + ["doc", "docx", "xls", "xlsx"]
+            .compactMap { UTType(filenameExtension: $0) }
+    }
+
+    private func stagePhoto(_ item: PhotosPickerItem) async {
+        defer { selectedPhoto = nil }
+
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data),
+              let jpegData = image.jpegData(compressionQuality: 0.88) else {
+            return
+        }
+
+        stage(MessagingAttachmentDraft(
+            fileName: "photo-\(UUID().uuidString).jpg",
+            contentType: "image/jpeg",
+            data: jpegData
+        ))
+    }
+
+    private func stageFiles(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result else { return }
+
+        for url in urls {
+            let hasSecurityScope = url.startAccessingSecurityScopedResource()
+            defer {
+                if hasSecurityScope {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            guard let data = try? Data(contentsOf: url),
+                  let fileType = UTType(filenameExtension: url.pathExtension),
+                  let contentType = fileType.preferredMIMEType else {
+                continue
+            }
+
+            stage(MessagingAttachmentDraft(
+                fileName: url.lastPathComponent,
+                contentType: contentType,
+                data: data
+            ))
+        }
+    }
+
+    private func stage(_ attachment: MessagingAttachmentDraft) {
+        guard attachment.data.count <= 10 * 1024 * 1024 else {
+            return
+        }
+
+        stagedAttachments.append(attachment)
+    }
+
+    private func removeAttachment(_ attachmentID: UUID) {
+        stagedAttachments.removeAll { $0.id == attachmentID }
+    }
+
+    private func retryAttachment(_ attachmentID: UUID) {
+        guard let message = messageForStagedAttachments else { return }
+        Task {
+            await uploadStagedAttachments(
+                to: message,
+                attachmentIDs: [attachmentID]
+            )
+        }
+    }
+
+    private func uploadStagedAttachments(
+        to message: ConversationMessage,
+        attachmentIDs: Set<UUID>? = nil
+    ) async {
+        let uploads = stagedAttachments.filter { attachment in
+            (attachmentIDs == nil || attachmentIDs?.contains(attachment.id) == true) &&
+                attachment.state != .uploading
+        }
+
+        for attachment in uploads {
+            updateAttachment(attachment.id, state: .uploading)
+
+            if await store.upload(attachment: attachment, to: message) != nil {
+                removeAttachment(attachment.id)
+            } else {
+                updateAttachment(
+                    attachment.id,
+                    state: .failed("Upload failed")
+                )
+            }
+        }
+    }
+
+    private func updateAttachment(
+        _ attachmentID: UUID,
+        state: MessagingAttachmentDraft.State
+    ) {
+        guard let index = stagedAttachments.firstIndex(where: {
+            $0.id == attachmentID
+        }) else {
+            return
+        }
+
+        stagedAttachments[index].state = state
     }
 
     private func conversationFailure(
@@ -789,6 +966,120 @@ struct ConversationThreadView: View {
             .padding(.top, LegendNextSpacing.display)
 
             Spacer()
+        }
+    }
+}
+
+private struct LegendMessageAttachmentStaging: View {
+    let attachments: [MessagingAttachmentDraft]
+    let onRemove: (UUID) -> Void
+    let onRetry: (UUID) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: LegendNextSpacing.sm) {
+                ForEach(attachments) { attachment in
+                    HStack(spacing: LegendNextSpacing.xs) {
+                        attachmentSymbol(for: attachment)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(attachment.fileName)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(LegendNextColor.textPrimary)
+                                .lineLimit(1)
+
+                            attachmentStatus(for: attachment)
+                        }
+
+                        attachmentAction(for: attachment)
+                    }
+                    .padding(.leading, LegendNextSpacing.sm)
+                    .padding(.trailing, LegendNextSpacing.xs)
+                    .padding(.vertical, LegendNextSpacing.xs)
+                    .frame(maxWidth: 220)
+                    .background(
+                        LegendNextColor.surfaceElevated,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .scrollIndicators(.hidden)
+        .accessibilityLabel("Attachments ready to send")
+    }
+
+    @ViewBuilder
+    private func attachmentSymbol(
+        for attachment: MessagingAttachmentDraft
+    ) -> some View {
+        if attachment.contentType.hasPrefix("image/"),
+           let image = UIImage(data: attachment.data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 36, height: 36)
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .accessibilityHidden(true)
+        } else {
+            Image(systemName: "doc.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(LegendNextColor.gold)
+                .frame(width: 36, height: 36)
+                .background(LegendNextColor.fill, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .accessibilityHidden(true)
+        }
+    }
+
+    @ViewBuilder
+    private func attachmentStatus(
+        for attachment: MessagingAttachmentDraft
+    ) -> some View {
+        switch attachment.state {
+        case .ready:
+            Text("Ready to send")
+                .font(.caption2)
+                .foregroundStyle(LegendNextColor.textSecondary)
+        case .uploading:
+            HStack(spacing: 4) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Uploading")
+            }
+            .font(.caption2)
+            .foregroundStyle(LegendNextColor.textSecondary)
+        case .failed(let message):
+            Text(message)
+                .font(.caption2)
+                .foregroundStyle(Color(uiColor: .systemRed))
+        }
+    }
+
+    @ViewBuilder
+    private func attachmentAction(
+        for attachment: MessagingAttachmentDraft
+    ) -> some View {
+        switch attachment.state {
+        case .uploading:
+            EmptyView()
+        case .ready:
+            Button {
+                onRemove(attachment.id)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(LegendNextColor.textTertiary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(attachment.fileName)")
+        case .failed:
+            Button {
+                onRetry(attachment.id)
+            } label: {
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .foregroundStyle(LegendNextColor.gold)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Retry \(attachment.fileName)")
         }
     }
 }
@@ -1453,22 +1744,31 @@ private struct LegendMessageBubble: View {
             alignment: message.isMine ? .trailing : .leading,
             spacing: 1
         ) {
-            Text(message.body)
-                .font(.system(size: 15, weight: .regular))
-                .lineSpacing(0)
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    bubbleColor,
-                    in: RoundedRectangle(
-                        cornerRadius: 16,
-                        style: .continuous
-                    )
+            VStack(
+                alignment: message.isMine ? .trailing : .leading,
+                spacing: LegendNextSpacing.xs
+            ) {
+                Text(message.body)
+                    .font(.system(size: 15, weight: .regular))
+                    .lineSpacing(0)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+
+                ForEach(message.attachments) { attachment in
+                    LegendMessageAttachmentChip(attachment: attachment)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                bubbleColor,
+                in: RoundedRectangle(
+                    cornerRadius: 16,
+                    style: .continuous
                 )
+            )
 
             Text(
                 message.sentUTC,
@@ -1561,14 +1861,54 @@ private struct LegendMessageBubble: View {
     }
 
     private var accessibilityDescription: String {
+        let attachmentDescription = message.attachments.isEmpty
+            ? ""
+            : " Includes \(message.attachments.count) attachment"
+                + (message.attachments.count == 1 ? "." : "s.")
+
         if message.isMine {
-            return "Sent message. \(message.body)"
+            return "Sent message. \(message.body)\(attachmentDescription)"
         }
 
         return "Received message from "
             + message.sender.displayName
             + ". "
             + message.body
+            + attachmentDescription
+    }
+}
+
+private struct LegendMessageAttachmentChip: View {
+    let attachment: MessagingAttachment
+
+    private var isImage: Bool {
+        attachment.contentType.hasPrefix("image/")
+    }
+
+    private var scanStatusLabel: String {
+        "\(attachment.scanStatus.capitalized) scan"
+    }
+
+    var body: some View {
+        HStack(spacing: LegendNextSpacing.xs) {
+            Image(systemName: isImage ? "photo.fill" : "doc.fill")
+                .font(.caption.weight(.semibold))
+
+            Text(attachment.originalFileName)
+                .lineLimit(1)
+
+            Text(scanStatusLabel)
+                .font(.caption2.weight(.semibold))
+                .opacity(0.78)
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.white)
+        .padding(.horizontal, LegendNextSpacing.sm)
+        .padding(.vertical, 6)
+        .background(.white.opacity(0.16), in: Capsule())
+        .accessibilityLabel(
+            "\(attachment.originalFileName), \(scanStatusLabel)"
+        )
     }
 }
 

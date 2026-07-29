@@ -53,6 +53,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
     let sender: MessagingParticipant
     let body: String
     let sentUTC: Date
+    let attachments: [MessagingAttachment]
     let isMine: Bool
 
     private enum CodingKeys: String, CodingKey {
@@ -61,7 +62,56 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         case sender
         case body
         case sentUTC = "sentUtc"
+        case attachments
         case isMine
+    }
+}
+
+struct MessagingAttachment: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let originalFileName: String
+    let contentType: String
+    let sizeBytes: Int64
+    let scanStatus: String
+    let createdUTC: Date
+    let canDownload: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case originalFileName
+        case contentType
+        case sizeBytes
+        case scanStatus
+        case createdUTC = "createdUtc"
+        case canDownload
+    }
+}
+
+struct MessagingAttachmentDraft: Identifiable, Equatable, Sendable {
+    enum State: Equatable, Sendable {
+        case ready
+        case uploading
+        case failed(String)
+    }
+
+    let id: UUID
+    let fileName: String
+    let contentType: String
+    let data: Data
+    var state: State
+
+    init(
+        id: UUID = UUID(),
+        fileName: String,
+        contentType: String,
+        data: Data,
+        state: State = .ready
+    ) {
+        self.id = id
+        self.fileName = fileName
+        self.contentType = contentType
+        self.data = data
+        self.state = state
     }
 }
 
@@ -112,6 +162,12 @@ protocol MessagingAPI: Sendable {
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage]
     func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage
+    func upload(
+        conversationID: UUID,
+        messageID: UUID,
+        attachment: MessagingAttachmentDraft,
+        accessToken: String
+    ) async throws -> MessagingAttachment
     func markRead(conversationID: UUID, accessToken: String) async throws
 }
 
@@ -137,6 +193,10 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
     }
 
     func send(conversationID: UUID, body: String, accessToken: String) async throws -> ConversationMessage {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -222,6 +282,25 @@ struct URLSessionMessagingAPI: MessagingAPI {
             headers: participantHeader,
             response: ConversationMessage.self
         )
+    }
+
+    func upload(
+        conversationID: UUID,
+        messageID: UUID,
+        attachment: MessagingAttachmentDraft,
+        accessToken: String
+    ) async throws -> MessagingAttachment {
+        try await client.postMultipart(
+            "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/messages/\(messageID.uuidString)/attachments",
+            accessToken: accessToken,
+            fields: [:],
+            files: [MultipartFormFile(
+                fieldName: "file",
+                fileName: attachment.fileName,
+                mimeType: attachment.contentType,
+                data: attachment.data)],
+            headers: participantHeader,
+            response: MessagingAttachment.self)
     }
 
     func markRead(conversationID: UUID, accessToken: String) async throws {

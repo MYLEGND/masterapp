@@ -28,6 +28,7 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var detailState: ConversationDetailLoadState = .idle
     @Published private(set) var selectedConversationID: UUID?
     @Published private(set) var isSending = false
+    @Published private(set) var isUploadingAttachment = false
     @Published private(set) var sendFailure: UserFacingFailure?
     @Published private(set) var recipientState: MobileDataLoadState<[MessagingRecipient]> = .idle
     @Published private(set) var isStartingConversation = false
@@ -142,31 +143,54 @@ final class MessagingStore: ObservableObject {
         }
     }
 
-    func send(body: String) {
+    func send(body: String) async -> ConversationMessage? {
         let normalizedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedBody.isEmpty,
               let conversationID = selectedConversationID,
               !isSending else {
-            return
+            return nil
         }
 
         isSending = true
         sendFailure = nil
-        Task {
-            defer { isSending = false }
-            do {
-                let message = try await api.send(
-                    conversationID: conversationID,
-                    body: normalizedBody,
-                    accessToken: try await accessTokenProvider())
-                append(message: message, to: conversationID)
-            } catch {
-                sendFailure = failure(for: error, title: "Message not sent")
-                diagnostics.record(
-                    category: .messaging,
-                    summary: "A native message could not be sent.",
-                    correlationID: (error as? MobileAPIError)?.correlationID)
-            }
+        defer { isSending = false }
+        do {
+            let message = try await api.send(
+                conversationID: conversationID,
+                body: normalizedBody,
+                accessToken: try await accessTokenProvider())
+            append(message: message, to: conversationID)
+            return message
+        } catch {
+            sendFailure = failure(for: error, title: "Message not sent")
+            diagnostics.record(
+                category: .messaging,
+                summary: "A native message could not be sent.",
+                correlationID: (error as? MobileAPIError)?.correlationID)
+            return nil
+        }
+    }
+
+    func upload(
+        attachment: MessagingAttachmentDraft,
+        to message: ConversationMessage
+    ) async -> MessagingAttachment? {
+        guard !isUploadingAttachment else { return nil }
+        isUploadingAttachment = true
+        sendFailure = nil
+        defer { isUploadingAttachment = false }
+
+        do {
+            let uploaded = try await api.upload(
+                conversationID: message.conversationID,
+                messageID: message.id,
+                attachment: attachment,
+                accessToken: try await accessTokenProvider())
+            append(attachment: uploaded, to: message.id)
+            return uploaded
+        } catch {
+            sendFailure = failure(for: error, title: "Attachment not sent")
+            return nil
         }
     }
 
@@ -180,6 +204,27 @@ final class MessagingStore: ObservableObject {
             title: conversation.title,
             participants: conversation.participants,
             messages: conversation.messages + [message],
+            isMuted: conversation.isMuted,
+            isClosed: conversation.isClosed))
+    }
+
+    private func append(attachment: MessagingAttachment, to messageID: UUID) {
+        guard case .loaded(let conversation) = detailState else { return }
+        detailState = .loaded(ConversationDetail(
+            id: conversation.id,
+            title: conversation.title,
+            participants: conversation.participants,
+            messages: conversation.messages.map { message in
+                guard message.id == messageID else { return message }
+                return ConversationMessage(
+                    id: message.id,
+                    conversationID: message.conversationID,
+                    sender: message.sender,
+                    body: message.body,
+                    sentUTC: message.sentUTC,
+                    attachments: message.attachments + [attachment],
+                    isMine: message.isMine)
+            },
             isMuted: conversation.isMuted,
             isClosed: conversation.isClosed))
     }
