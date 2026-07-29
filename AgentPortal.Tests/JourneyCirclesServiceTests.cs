@@ -378,47 +378,49 @@ public sealed class JourneyCirclesServiceTests
                 new ConfigurationBuilder().Build()),
             NullLogger<JourneyCirclesService>.Instance);
 
-        var viewerInput = new JourneyCircleProfileInput(
-            ConsentAffirmed: true,
-            IsOptedIn: true,
-            IsDiscoverable: false,
-            AllowSuggestions: true,
-            AllowConnectionRequests: true,
-            Introduction: "Focused on building a business.",
-            LifeStages: ["Business ownership"],
-            Locations: [],
-            Goals: ["Growing a business"],
-            Interests: ["Leadership"],
-            CircleCodes: ["Entrepreneurs Circle"],
-            ConnectionTypes: ["Business peer"],
-            CommunicationStyles: ["Detailed planning"],
-            AccountabilityFrequencies: ["Weekly"]);
-
-        var candidateInput = new JourneyCircleProfileInput(
-            ConsentAffirmed: true,
-            IsOptedIn: true,
-            IsDiscoverable: true,
-            AllowSuggestions: false,
-            AllowConnectionRequests: true,
-            Introduction: "Focused on family wellness.",
-            LifeStages: ["Growing family"],
-            Locations: [],
-            Goals: ["Personal growth"],
-            Interests: ["Fitness"],
-            CircleCodes: ["Accountability Circle"],
-            ConnectionTypes: ["Accountability partner"],
-            CommunicationStyles: ["Encouragement-focused"],
-            AccountabilityFrequencies: ["Monthly"]);
+        var viewerResult = await service.SaveProfileAsync(
+            viewer.ClientUserId,
+            new JourneyCircleProfileInput(
+                ConsentAffirmed: true,
+                IsOptedIn: true,
+                IsDiscoverable: false,
+                AllowSuggestions: true,
+                AllowConnectionRequests: true,
+                Introduction: null,
+                LifeStages: [],
+                Locations: [],
+                Goals: ["Growing a business"],
+                Interests: [],
+                CircleCodes: [],
+                ConnectionTypes: [],
+                CommunicationStyles: [],
+                AccountabilityFrequencies: []));
 
         Assert.True(
-            (await service.SaveProfileAsync(
-                viewer.ClientUserId,
-                viewerInput)).Succeeded);
+            viewerResult.Succeeded,
+            $"{viewerResult.ErrorCode}: {viewerResult.ErrorMessage}");
+
+        var candidateResult = await service.SaveProfileAsync(
+            candidate.ClientUserId,
+            new JourneyCircleProfileInput(
+                ConsentAffirmed: true,
+                IsOptedIn: true,
+                IsDiscoverable: true,
+                AllowSuggestions: true,
+                AllowConnectionRequests: true,
+                Introduction: null,
+                LifeStages: [],
+                Locations: [],
+                Goals: ["Reducing debt"],
+                Interests: [],
+                CircleCodes: [],
+                ConnectionTypes: [],
+                CommunicationStyles: [],
+                AccountabilityFrequencies: []));
 
         Assert.True(
-            (await service.SaveProfileAsync(
-                candidate.ClientUserId,
-                candidateInput)).Succeeded);
+            candidateResult.Succeeded,
+            $"{candidateResult.ErrorCode}: {candidateResult.ErrorMessage}");
 
         var dashboard = await service.GetDashboardAsync(
             viewer.ClientUserId);
@@ -475,10 +477,7 @@ public sealed class JourneyCirclesServiceTests
                 new ConfigurationBuilder().Build()),
             NullLogger<JourneyCirclesService>.Instance);
 
-        JourneyCircleProfileInput Input(
-            string goal,
-            string circle,
-            string connectionType) =>
+        static JourneyCircleProfileInput Input(string goal) =>
             new(
                 ConsentAffirmed: true,
                 IsOptedIn: true,
@@ -490,34 +489,35 @@ public sealed class JourneyCirclesServiceTests
                 Locations: [],
                 Goals: [goal],
                 Interests: [],
-                CircleCodes: [circle],
-                ConnectionTypes: [connectionType],
+                CircleCodes: [],
+                ConnectionTypes: [],
                 CommunicationStyles: [],
                 AccountabilityFrequencies: []);
 
-        Assert.True(
-            (await service.SaveProfileAsync(
-                viewer.ClientUserId,
-                Input(
-                    "Growing a business",
-                    "Entrepreneurs Circle",
-                    "Business peer"))).Succeeded);
+        var viewerResult = await service.SaveProfileAsync(
+            viewer.ClientUserId,
+            Input("Growing a business"));
 
         Assert.True(
-            (await service.SaveProfileAsync(
-                recommended.ClientUserId,
-                Input(
-                    "Growing a business",
-                    "Entrepreneurs Circle",
-                    "Business peer"))).Succeeded);
+            viewerResult.Succeeded,
+            $"{viewerResult.ErrorCode}: {viewerResult.ErrorMessage}");
+
+        var recommendedResult = await service.SaveProfileAsync(
+            recommended.ClientUserId,
+            Input("Growing a business"));
 
         Assert.True(
-            (await service.SaveProfileAsync(
-                general.ClientUserId,
-                Input(
-                    "Health and wellness",
-                    "Wellness Circle",
-                    "Accountability partner"))).Succeeded);
+            recommendedResult.Succeeded,
+            $"{recommendedResult.ErrorCode}: " +
+            recommendedResult.ErrorMessage);
+
+        var generalResult = await service.SaveProfileAsync(
+            general.ClientUserId,
+            Input("Reducing debt"));
+
+        Assert.True(
+            generalResult.Succeeded,
+            $"{generalResult.ErrorCode}: {generalResult.ErrorMessage}");
 
         var dashboard = await service.GetDashboardAsync(
             viewer.ClientUserId);
