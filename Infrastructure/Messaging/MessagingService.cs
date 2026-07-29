@@ -159,7 +159,38 @@ internal sealed class MessagingService : IMessagingService
                 latest is null ? null : Preview(latest.Body)));
         }
 
-        return new MessagingConversationListResult(true, null, null, result);
+        // Legacy data can contain more than one direct conversation for the
+        // same typed counterparty. The direct-conversation key prevents new
+        // duplicates, while this projection keeps every client authoritative
+        // and stable until legacy rows are repaired.
+        var canonicalConversations = result
+            .GroupBy(
+                conversation => new
+                {
+                    UserId = NormalizeUserId(conversation.Counterparty.UserId),
+                    ParticipantType = NormalizeRequired(conversation.Counterparty.ParticipantType)
+                })
+            .Select(group =>
+            {
+                var canonical = group
+                    .OrderByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
+                    .ThenByDescending(conversation => conversation.Id)
+                    .First();
+
+                return canonical with
+                {
+                    UnreadCount = group.Sum(conversation => conversation.UnreadCount)
+                };
+            })
+            .OrderByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
+            .ThenByDescending(conversation => conversation.Id)
+            .ToArray();
+
+        return new MessagingConversationListResult(
+            true,
+            null,
+            null,
+            canonicalConversations);
     }
 
     public async Task<MessagingConversationResult> GetConversationAsync(
@@ -351,9 +382,12 @@ internal sealed class MessagingService : IMessagingService
             targetUserId,
             targetParticipantType);
 
-        var existing = await FindDirectConversationAsync(
+        var existing = await FindOrClaimDirectConversationAsync(
             conversationType,
             directConversationKey,
+            actor,
+            targetUserId,
+            targetParticipantType,
             cancellationToken);
         if (existing is not null)
         {
@@ -956,6 +990,71 @@ internal sealed class MessagingService : IMessagingService
             x.ConversationId == conversationId && x.IsActive &&
             x.UserId.ToLower() == actor.UserId && x.ParticipantType == actor.ParticipantType,
             cancellationToken);
+    }
+
+    private async Task<MessageConversation?> FindOrClaimDirectConversationAsync(
+        string conversationType,
+        string directConversationKey,
+        MessagingActor actor,
+        string targetUserId,
+        string targetParticipantType,
+        CancellationToken cancellationToken)
+    {
+        var keyedConversation = await FindDirectConversationAsync(
+            conversationType,
+            directConversationKey,
+            cancellationToken);
+        if (keyedConversation is not null)
+            return keyedConversation;
+
+        var actorUserId = NormalizeUserId(actor.UserId);
+        var actorParticipantType = NormalizeRequired(actor.ParticipantType);
+        targetUserId = NormalizeUserId(targetUserId);
+        targetParticipantType = NormalizeRequired(targetParticipantType);
+
+        // The original direct-key migration intentionally left existing rows
+        // nullable. Without this participant-identity fallback, opening a
+        // legacy direct thread creates a second keyed conversation.
+        var legacyConversation = await _db.MessageConversations
+            .Where(conversation => conversation.ConversationType == conversationType)
+            .Where(conversation => conversation.DirectConversationKey == null)
+            .Where(conversation =>
+                conversation.Participants.Count(participant => participant.IsActive) == 2 &&
+                conversation.Participants.Any(participant =>
+                    participant.IsActive &&
+                    participant.UserId.ToLower() == actorUserId &&
+                    participant.ParticipantType == actorParticipantType) &&
+                conversation.Participants.Any(participant =>
+                    participant.IsActive &&
+                    participant.UserId.ToLower() == targetUserId &&
+                    participant.ParticipantType == targetParticipantType))
+            .OrderByDescending(conversation => conversation.LastMessageUtc ?? conversation.CreatedUtc)
+            .ThenByDescending(conversation => conversation.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (legacyConversation is null)
+            return null;
+
+        legacyConversation.DirectConversationKey = directConversationKey;
+
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation(
+                "Messaging legacy direct conversation claimed. ConversationId={ConversationId} ConversationType={ConversationType} DirectConversationKey={DirectConversationKey}",
+                legacyConversation.Id,
+                conversationType,
+                directConversationKey);
+            return legacyConversation;
+        }
+        catch (DbUpdateException ex) when (IsVerifiedDirectConversationKeyConflict(ex))
+        {
+            _db.ChangeTracker.Clear();
+            return await FindDirectConversationAsync(
+                conversationType,
+                directConversationKey,
+                cancellationToken);
+        }
     }
 
     private async Task<MessageConversation?> FindDirectConversationAsync(

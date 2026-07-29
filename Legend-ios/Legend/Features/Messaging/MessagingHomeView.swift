@@ -544,19 +544,24 @@ private struct LegendRecipientPicker: View {
                     .padding(.bottom, LegendNextSpacing.tiny)
 
                 ForEach(recipients) { recipient in
-                    Button {
-                        store.startConversation(
-                            with: recipient,
-                            completion: selectConversation
-                        )
-                    } label: {
-                        LegendRecipientRow(
-                            recipient: recipient,
-                            isStarting: store.isStartingConversation
-                        )
+                    LegendRecipientRow(
+                        recipient: recipient,
+                        isStarting: store.isStartingConversation
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        select(recipient)
                     }
-                    .buttonStyle(LegendMessagingPressButtonStyle())
-                    .disabled(store.isStartingConversation)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint(
+                        recipient.existingConversationID == nil
+                            ? "Start a conversation"
+                            : "Open the existing conversation"
+                    )
+                    .accessibilityAction {
+                        select(recipient)
+                    }
+                    .allowsHitTesting(!store.isStartingConversation)
                 }
             }
             .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -565,6 +570,19 @@ private struct LegendRecipientPicker: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .scrollIndicators(.hidden)
+    }
+
+    private func select(
+        _ recipient: MessagingRecipient
+    ) {
+        guard !store.isStartingConversation else {
+            return
+        }
+
+        store.startConversation(
+            with: recipient,
+            completion: selectConversation
+        )
     }
 
     private var recipientLoading: some View {

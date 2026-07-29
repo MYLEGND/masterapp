@@ -344,6 +344,63 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task LegacyDirectConversationWithoutKey_IsClaimedInsteadOfDuplicated()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+
+        var legacyConversation = new MessageConversation
+        {
+            Id = Guid.NewGuid(),
+            ConversationType = MessagingConversationTypes.ClientAgent,
+            DirectConversationKey = null,
+            CreatedUtc = DateTime.UtcNow.AddDays(-1),
+            UpdatedUtc = DateTime.UtcNow.AddDays(-1),
+            CreatedByUserId = "agent-1"
+        };
+        db.MessageConversations.Add(legacyConversation);
+        db.MessageConversationParticipants.AddRange(
+            new MessageConversationParticipant
+            {
+                Id = Guid.NewGuid(),
+                ConversationId = legacyConversation.Id,
+                UserId = "agent-1",
+                ParticipantType = MessagingParticipantTypes.Agent,
+                IsActive = true,
+                JoinedUtc = legacyConversation.CreatedUtc
+            },
+            new MessageConversationParticipant
+            {
+                Id = Guid.NewGuid(),
+                ConversationId = legacyConversation.Id,
+                UserId = "client-1",
+                ParticipantType = MessagingParticipantTypes.Client,
+                IsActive = true,
+                JoinedUtc = legacyConversation.CreatedUtc
+            });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var result = await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                new MessagingActor("agent-1", MessagingParticipantTypes.Agent),
+                "client-1",
+                MessagingParticipantTypes.Client,
+                InitialMessageBody: "Continue the existing conversation.",
+                ClientMessageId: "legacy-direct-reuse"));
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(legacyConversation.Id, result.Conversation!.Id);
+        Assert.Single(await db.MessageConversations.ToListAsync());
+
+        var stored = await db.MessageConversations.SingleAsync();
+        Assert.Equal(
+            "ClientAgent|5:Agent7:agent-1|6:Client8:client-1",
+            stored.DirectConversationKey);
+        Assert.Single(await db.InternalMessages.ToListAsync());
+    }
+
+    [Fact]
     public async Task RepeatedDirectConversationStarts_ReuseTheSameConversationKey()
     {
         await using var db = ControllerTestHelpers.BuildDb();
