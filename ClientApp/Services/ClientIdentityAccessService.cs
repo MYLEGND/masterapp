@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Domain.Billing;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Shared.Auth;
 
 namespace ClientApp.Services;
 
@@ -161,10 +162,11 @@ public sealed class ClientIdentityAccessService
         if (IsAgentPrincipal(principal) && IsSupportReturnUrl(safeReturnUrl))
             return new ClientSignInCompletionResult(true, safeReturnUrl);
 
-        var oid = NormalizeId(
-            principal.FindFirst("oid")?.Value
-            ?? principal.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
-            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+        // Canonical Entra Object ID only (F19). GetCanonicalUserId reads oid /
+        // objectidentifier and normalizes exactly as NormalizeId did, but never
+        // falls back to NameIdentifier — which could resolve a different/legacy
+        // client profile.
+        var oid = principal.GetCanonicalUserId();
 
         if (string.IsNullOrWhiteSpace(oid))
             return new ClientSignInCompletionResult(false, safeReturnUrl, "MISSING_OBJECT_ID", "A valid client sign-in is required.");

@@ -11,7 +11,6 @@ namespace AgentPortal.Controllers;
 [Authorize]
 [Route("api/zoom-links")]
 [ApiController]
-[IgnoreAntiforgeryToken]
 public class ZoomLinksController : ControllerBase
 {
     private readonly MasterAppDbContext _db;

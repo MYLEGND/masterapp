@@ -115,18 +115,20 @@ public sealed class AgentDocumentsController : Controller
             return RedirectToAction(nameof(Index));
         }
 
-        if (file.Length > 20 * 1024 * 1024)
+        // Delegate size / extension / dangerous-extension / filename validation to
+        // the shared upload authority (non-buffering). This requires a real ".pdf"
+        // extension and rejects dangerous extensions, closing the previous
+        // extension-OR-client-content-type loophole. (In-stream %PDF signature
+        // validation remains deferred for this streaming path.)
+        var metadata = Infrastructure.Security.UploadValidation.UploadValidator.ValidateMetadata(
+            file.FileName,
+            file.Length,
+            Infrastructure.Security.UploadValidation.UploadValidationPolicy.Pdf(20 * 1024 * 1024));
+        if (!metadata.IsValid)
         {
-            TempData["AgentDocsError"] = "Please keep uploads under 20 MB per file.";
-            return RedirectToAction(nameof(Index));
-        }
-
-        var ext = Path.GetExtension(file.FileName);
-        var isPdf = string.Equals(ext, ".pdf", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(file.ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase);
-        if (!isPdf)
-        {
-            TempData["AgentDocsError"] = "Only PDF uploads are allowed.";
+            TempData["AgentDocsError"] = metadata.ErrorCode == "UPLOAD_TOO_LARGE"
+                ? "Please keep uploads under 20 MB per file."
+                : "Only PDF uploads are allowed.";
             return RedirectToAction(nameof(Index));
         }
 

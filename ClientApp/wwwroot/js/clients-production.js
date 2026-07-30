@@ -1,5 +1,14 @@
 // Production modal logic for Clients CRM
 (function () {
+    // Read the hidden anti-forgery token and send it in the RequestVerificationToken
+    // header (platform convention) so cookie-authenticated production mutations
+    // satisfy [ValidateAntiForgeryToken] on the server.
+    function getAntiForgeryToken() {
+        return document.querySelector('#productionForm input[name="__RequestVerificationToken"]')?.value
+            || document.querySelector('input[name="__RequestVerificationToken"]')?.value
+            || '';
+    }
+
     function loadProductionHistory(clientId) {
         const list = document.getElementById('prodHistoryList');
         if (!list) return;
@@ -39,7 +48,10 @@
                         if (!confirm('Delete this production entry?')) return;
                         fetch('/production/delete', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                                'RequestVerificationToken': getAntiForgeryToken()
+                            },
                             body: `id=${encodeURIComponent(btn.getAttribute('data-id'))}`
                         }).then(() => loadProductionHistory(clientId));
                     });
@@ -77,7 +89,10 @@
             : `clientId=${encodeURIComponent(clientId)}&amount=${encodeURIComponent(amount)}&personalAmount=${encodeURIComponent(personalAmount)}&status=${encodeURIComponent(status)}&notes=${encodeURIComponent(notes)}`;
         fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'RequestVerificationToken': getAntiForgeryToken()
+            },
             body
         }).then(() => {
             loadProductionHistory(clientId);

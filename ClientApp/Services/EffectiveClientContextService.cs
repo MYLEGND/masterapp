@@ -229,14 +229,14 @@ public sealed class EffectiveClientContextService
             .Distinct()
             .ToArray();
 
-        var ownsClient = await _db.AgentClients
-            .AsNoTracking()
-            .AnyAsync(link =>
-                (link.ClientUserId ?? "").ToLower() == clientUserId &&
-                (
-                    (!string.IsNullOrWhiteSpace(upn) && (link.AgentUpn ?? "").ToLower() == upn) ||
-                    agentIdCandidates.Contains((link.AgentUserId ?? "").ToLower())
-                ));
+        // Delegate to the single shared ownership authority (D2/F21) rather than
+        // reproducing the AgentClients predicate. Object ID is authoritative;
+        // legacy candidate ids and UPN remain explicit compatibility inputs.
+        var ownsClient = await _db.AgentOwnsClientAsync(
+            user.GetCanonicalUserId(),
+            clientUserId,
+            upn,
+            agentIdCandidates);
 
         if (!ownsClient)
             return null;

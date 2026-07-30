@@ -25,6 +25,17 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
+// Fail fast on a partial Data Protection configuration in production. ParfaitApp
+// intentionally retains its existing key ring here (changing it would invalidate
+// live internal-auth cookies and existing Meta CAPI ciphertext); a deliberate,
+// migration-gated adoption of the platform Blob+Key Vault ring is a deployment step.
+Shared.Security.PlatformConfigValidation.ValidateDataProtection(
+    builder.Configuration, builder.Environment.IsProduction());
+
+// Rate limiting (was absent). Opt-in named policies from the shared authority;
+// applied to the public analytics ingest endpoint.
+builder.Services.AddRateLimiter(Infrastructure.Security.PlatformRateLimiting.ConfigurePolicies);
+
 {
     var configuredOwnerEmails = builder.Configuration
         .GetSection("Founder:OwnerEmails")
@@ -67,6 +78,18 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
     if (!string.IsNullOrWhiteSpace(resolvedFounderOid))
         Environment.SetEnvironmentVariable("FOUNDER_OID", resolvedFounderOid);
+}
+
+// PRODUCTION GUARD: a valid founder Object ID is required. Founder authority is
+// Object-ID-only in production (fail closed); a missing or malformed FOUNDER_OID
+// must be a hard startup failure, not a silent first-request denial.
+if (string.Equals(builder.Environment.EnvironmentName, "Production", StringComparison.OrdinalIgnoreCase) &&
+    !Shared.Auth.FounderAuthority.IsConfiguredAndValid(Environment.GetEnvironmentVariable("FOUNDER_OID")))
+{
+    throw new InvalidOperationException(
+        "STARTUP BLOCKED: A valid founder Object ID (GUID) is required in Production. " +
+        "Set FOUNDER_OID in Azure App Service → Configuration → Application settings, " +
+        "or add Founder:Oid to appsettings.Production.json. Founder access is Object-ID-only in production.");
 }
 
 static string? ResolveMasterDb(IConfiguration config)
@@ -320,6 +343,7 @@ app.UseStaticFiles(new StaticFileOptions
 });
 app.UseStaticFiles();
 app.UseRouting();
+app.UseRateLimiter();
 
 app.UseSession();
 

@@ -218,6 +218,7 @@
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <form id="productionForm">
+                            @Html.AntiForgeryToken()
                             <input type="hidden" name="clientId" id="prodClientId" />
                             <div class="modal-body">
                                 <div class="mb-2">

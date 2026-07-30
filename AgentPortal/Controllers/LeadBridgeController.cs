@@ -160,7 +160,6 @@ public class LeadBridgeController : ControllerBase
     public record LeadBridgeNextRequest(string? QueueKey, string? Version);
 
     [HttpPost("Next")]
-    [IgnoreAntiforgeryToken] // prevent stale/missing token from blocking Next; auth still required
     public async Task<IActionResult> Next([FromForm] LeadBridgeNextRequest req)
     {
         var agentId = GetAgentId();
@@ -209,7 +208,6 @@ public class LeadBridgeController : ControllerBase
     public record SetFiltersRequest(string? QueueKey, string? FilterState, string? Version);
 
     [HttpPost("SetFilters")]
-    [IgnoreAntiforgeryToken]
     public async Task<IActionResult> SetFilters([FromForm] SetFiltersRequest req)
     {
         var agentId = GetAgentId();

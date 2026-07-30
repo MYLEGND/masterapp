@@ -21,9 +21,10 @@ public class AccountController : Controller
 
     private static string? GetCurrentUserId(ClaimsPrincipal user)
     {
+        // Canonical Entra Object ID only. Must NOT fall back to NameIdentifier or
+        // display name for an authoritative identity key (F19).
         var value = user.FindFirst("oid")?.Value
-            ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? user.Identity?.Name;
+            ?? user.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value;
         value = value?.Trim();
         return string.IsNullOrWhiteSpace(value) ? null : value;
     }

@@ -518,6 +518,24 @@ enum MobileFinancialDisplay {
 
         return "\(Calendar.current.shortMonthSymbols[month - 1]) \(day)"
     }
+
+    static func month(_ value: String) -> String {
+        let parts = value.split(separator: "-")
+
+        guard parts.count >= 2,
+              let year = Int(parts[0]),
+              let month = Int(parts[1]),
+              (1...Calendar.current.monthSymbols.count).contains(month) else {
+            return value
+        }
+
+        return "\(Calendar.current.monthSymbols[month - 1]) \(year)"
+    }
+
+    static func currency(cents: Int64) -> String {
+        (Decimal(cents) / Decimal(100))
+            .formatted(.currency(code: "USD"))
+    }
 }
 
 struct MobileFinancialOperatingSystemSnapshotResponse: Codable, Equatable, Sendable {

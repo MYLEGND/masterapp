@@ -104,15 +104,15 @@ public class SupportController : Controller
 
         var agentIdCandidates = GetAgentIdCandidates();
 
-        // Enforce ownership: only the agent who owns this client can impersonate
-        var owns = await _db.AgentClients
-            .AsNoTracking()
-            .AnyAsync(a =>
-                (a.ClientUserId ?? "").Trim().ToLower() == clientUserId &&
-                (
-                    (!string.IsNullOrWhiteSpace(upn) && (a.AgentUpn ?? "").Trim().ToLower() == upn) ||
-                    agentIdCandidates.Contains((a.AgentUserId ?? "").Trim().ToLower())
-                ));
+        // Enforce ownership via the single shared ownership authority (D2/F21)
+        // rather than reproducing the AgentClients predicate. Object ID is
+        // authoritative; legacy candidate ids and UPN remain explicit
+        // compatibility inputs.
+        var owns = await _db.AgentOwnsClientAsync(
+            User.GetCanonicalUserId(),
+            clientUserId,
+            upn,
+            agentIdCandidates);
 
         if (owns)
         {

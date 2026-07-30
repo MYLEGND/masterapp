@@ -242,6 +242,7 @@
             </div>
 
             <form class="home-zoom-add-form" id="homeZoomForm" autocomplete="off">
+                @Html.AntiForgeryToken()
                 <div class="home-zoom-add-fields">
                     <input id="homeZoomName" class="home-zoom-input" type="text" placeholder="Link name (e.g. Personal Meeting Room)" maxlength="200" />
                     <input id="homeZoomUrl" class="home-zoom-input" type="url" placeholder="https://zoom.us/j/..." maxlength="2048" />

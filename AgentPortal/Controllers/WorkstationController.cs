@@ -120,7 +120,6 @@ public class WorkstationController : Controller
     }
 
     [HttpPost("AdvancedMarkets/Calculate")]
-    [IgnoreAntiforgeryToken]
     public IActionResult AdvancedMarketsCalculate(
         [FromServices] AgentPortal.Services.IAdvancedMarketsCalculationService calcService,
         [FromForm] Models.AdvancedMarketsPageViewModel model)

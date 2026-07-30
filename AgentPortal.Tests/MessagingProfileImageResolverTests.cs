@@ -255,7 +255,9 @@ public sealed class MessagingProfileImageResolverTests
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext }
         };
-        var imageBytes = "profile owned image"u8.ToArray();
+        // Valid PNG file signature (magic bytes) so the shared upload validator
+        // accepts it — the client Content-Type alone is no longer trusted.
+        var imageBytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D };
         await using var imageStream = new MemoryStream(imageBytes);
         var upload = new FormFile(imageStream, 0, imageBytes.Length, "photo", "avatar.png")
         {
@@ -310,7 +312,9 @@ public sealed class MessagingProfileImageResolverTests
             ControllerContext = new ControllerContext { HttpContext = httpContext },
             TempData = new TempDataDictionary(httpContext, Mock.Of<ITempDataProvider>())
         };
-        var imageBytes = "agent profile image upload"u8.ToArray();
+        // Valid WEBP file signature ("RIFF"...."WEBP") so the shared upload
+        // validator accepts it — the client Content-Type alone is no longer trusted.
+        var imageBytes = new byte[] { 0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x00, 0x00 };
         await using var imageStream = new MemoryStream(imageBytes);
         var upload = new FormFile(imageStream, 0, imageBytes.Length, "photo", "avatar.webp")
         {

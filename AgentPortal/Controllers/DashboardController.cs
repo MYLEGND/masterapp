@@ -188,7 +188,6 @@ public class DashboardController : Controller
     public record CompleteActionRequest(Guid Id);
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view actions use authenticated AJAX and can outlive stale anti-forgery tokens
     public async Task<IActionResult> CompleteAction([FromBody] CompleteActionRequest request)
     {
         var ownerId = CurrentUserId();

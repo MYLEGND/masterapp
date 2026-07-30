@@ -50,6 +50,7 @@ namespace ClientApp.Controllers
 
         // POST: /production/add/client
         [HttpPost("add/client")]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> AddClient([FromForm] string clientId, [FromForm] decimal amount, [FromForm] decimal? personalAmount, [FromForm] int status, [FromForm] string? notes)
         {
             if (string.IsNullOrWhiteSpace(clientId))
@@ -87,6 +88,7 @@ namespace ClientApp.Controllers
 
         // POST: /production/update
         [HttpPost("update")]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Update([FromForm] Guid id, [FromForm] decimal amount, [FromForm] decimal? personalAmount, [FromForm] int status, [FromForm] string? notes)
         {
             var context = await _clientContext.ResolveAsync(User, Request.Cookies);
@@ -109,6 +111,7 @@ namespace ClientApp.Controllers
 
         // POST: /production/delete
         [HttpPost("delete")]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Delete([FromForm] Guid id)
         {
             var context = await _clientContext.ResolveAsync(User, Request.Cookies);

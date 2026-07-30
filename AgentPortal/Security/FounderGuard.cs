@@ -2,6 +2,7 @@ using System;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Shared.Auth;
 
 namespace AgentPortal.Security;
 
@@ -14,39 +15,34 @@ public static class FounderGuard
     // Delegates to OnboardingGuard — single source of truth for the owner email.
     public static string FounderEmail => OnboardingGuard.OwnerEmail;
 
-    // Resolved once at startup. Both casing variants accepted for Azure App Service
-    // Application Settings (which uppercases env var names on some platforms).
-    private static readonly string FounderOid =
+    // Read at call time (both casing variants accepted for Azure App Service
+    // Application Settings). Startup binds Founder:Oid into FOUNDER_OID.
+    public static string FounderOid =>
         (Environment.GetEnvironmentVariable("FOUNDER_OID")
          ?? Environment.GetEnvironmentVariable("FounderOid")
          ?? string.Empty).Trim();
 
+    /// <summary>
+    /// Founder authority is decided by the shared fail-closed rule
+    /// (<see cref="FounderAuthority"/>): canonical Entra Object ID must match a
+    /// valid configured FOUNDER_OID. Email is consulted only as a development
+    /// convenience when no OID is configured and the environment is not
+    /// production; it never grants founder access in production.
+    /// </summary>
     public static bool IsFounder(ClaimsPrincipal? user)
+        => FounderAuthority.Evaluate(
+            user,
+            FounderOid,
+            FounderAuthority.IsProductionEnvironment(
+                Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")),
+            MatchesOwnerEmail);
+
+    private static bool MatchesOwnerEmail(ClaimsPrincipal user)
     {
-        if (user?.Identity?.IsAuthenticated != true) return false;
-
-        // Primary gate: Azure AD Object ID. Immune to email alias changes and
-        // account renames. Requires FOUNDER_OID to be set in environment config.
-        if (!string.IsNullOrWhiteSpace(FounderOid))
-        {
-            var oid =
-                user.FindFirstValue("oid") ??
-                user.FindFirstValue("http://schemas.microsoft.com/identity/claims/objectidentifier");
-
-            return !string.IsNullOrWhiteSpace(oid) &&
-                   oid.Equals(FounderOid, StringComparison.OrdinalIgnoreCase);
-        }
-
-        // Local-development fallback when an OID has intentionally not been configured.
-        var email =
-            user.FindFirstValue(ClaimTypes.Email) ??
-            user.FindFirstValue("email") ??
-            user.FindFirstValue("preferred_username") ??
-            user.FindFirstValue("upn") ??
-            user.Identity?.Name;
-
+        var email = user.GetEmailCandidate();
         return !string.IsNullOrWhiteSpace(email) &&
-               email.Equals(FounderEmail, StringComparison.OrdinalIgnoreCase);
+               !string.IsNullOrWhiteSpace(OnboardingGuard.OwnerEmail) &&
+               string.Equals(email, OnboardingGuard.OwnerEmail, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

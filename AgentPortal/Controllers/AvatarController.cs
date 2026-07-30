@@ -69,7 +69,20 @@ public sealed class AvatarController : Controller
         {
             await using var stream = new MemoryStream();
             await photo.CopyToAsync(stream, HttpContext.RequestAborted);
-            profile.ProfileImageContent = stream.ToArray();
+            var bytes = stream.ToArray();
+
+            // Verify the actual bytes are a real image of an allowed type — the
+            // client-declared Content-Type alone is not trustworthy.
+            var validation = Infrastructure.Security.UploadValidation.UploadValidator.ValidateImageContent(
+                bytes,
+                Infrastructure.Security.UploadValidation.UploadValidationPolicy.Images(3 * 1024 * 1024));
+            if (!validation.IsValid)
+            {
+                TempData["AvatarError"] = "Only valid PNG, JPG, or WEBP images are allowed.";
+                return RedirectToAction("ManageProfile", "Account");
+            }
+
+            profile.ProfileImageContent = bytes;
             profile.ProfileImageContentType = NormalizeImageContentType(photo.ContentType);
             profile.UpdatedUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(HttpContext.RequestAborted);

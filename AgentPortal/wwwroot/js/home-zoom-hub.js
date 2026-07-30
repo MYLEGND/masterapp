@@ -19,6 +19,16 @@
 
     const API = '/api/zoom-links';
 
+    // Attach the AgentPortal anti-forgery token (same convention as other
+    // authenticated same-origin AJAX: read the hidden field, send it in the
+    // RequestVerificationToken header) so cookie-authenticated writes satisfy
+    // the global AutoValidateAntiforgeryToken policy.
+    function getAntiForgeryToken() {
+        return document.querySelector('#homeZoomForm input[name="__RequestVerificationToken"]')?.value
+            || document.querySelector('input[name="__RequestVerificationToken"]')?.value
+            || '';
+    }
+
     // ── Actions submenu (body-level, avoids overflow:hidden clipping) ───────
     let actionsMenu = null;
     let activeDotsUrl = null;
@@ -247,7 +257,10 @@
 
     async function deleteLink(id) {
         try {
-            const res = await fetch(`${API}/${id}`, { method: 'DELETE' });
+            const res = await fetch(`${API}/${id}`, {
+                method: 'DELETE',
+                headers: { 'RequestVerificationToken': getAntiForgeryToken() }
+            });
             if (!res.ok) throw new Error('Delete failed');
             await loadLinks();
         } catch {
@@ -271,7 +284,10 @@
         try {
             const res = await fetch(API, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': getAntiForgeryToken()
+                },
                 body: JSON.stringify({ name, url })
             });
             if (!res.ok) {

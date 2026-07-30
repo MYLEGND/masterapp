@@ -383,6 +383,7 @@ enum LegendSocialCreationStage: Equatable {
     case preparingMedia
     case camera
     case metadata
+    case share
     case music
     case handedOff
     case failed(String)

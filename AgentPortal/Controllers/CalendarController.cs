@@ -885,6 +885,38 @@ public class CalendarController : Controller
                 .ToLower() ==
             currentAgentUserId;
 
+        // SECURITY (IDOR): when a specific appointment is targeted, client/lead
+        // ownership only authorizes this mutation if that appointment actually
+        // belongs to the resolved client/lead. Without this, an agent could
+        // satisfy the gate with an unrelated self-owned client/lead and mutate
+        // another agent's appointment. Direct appointment-owner match is
+        // intentionally left untouched.
+        if (appointment != null)
+        {
+            var appointmentClientProfileKey =
+                Norm(appointment.ClientProfileId);
+            var resolvedClientProfileKey =
+                clientProfile != null
+                    ? Norm(clientProfile.Id.ToString())
+                    : string.Empty;
+            var clientMatchesAppointment =
+                !string.IsNullOrWhiteSpace(resolvedClientProfileKey) &&
+                appointmentClientProfileKey == resolvedClientProfileKey;
+
+            var appointmentLeadKey =
+                Norm(appointment.WorkstationLeadId);
+            var resolvedLeadKey =
+                leadProfile != null
+                    ? Norm(leadProfile.LeadId)
+                    : string.Empty;
+            var leadMatchesAppointment =
+                !string.IsNullOrWhiteSpace(resolvedLeadKey) &&
+                appointmentLeadKey == resolvedLeadKey;
+
+            ownsClient = ownsClient && clientMatchesAppointment;
+            ownsLead = ownsLead && leadMatchesAppointment;
+        }
+
         if (!ownsClient && !ownsLead && !ownsAppointment)
             return null;
 

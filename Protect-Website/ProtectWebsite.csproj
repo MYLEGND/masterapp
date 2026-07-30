@@ -7,8 +7,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**;publish-*/**;publish-macos/**;publish-azure/**;**/*.zip;</DefaultItemExcludes>
-    <!-- Temporarily suppress MimeKit advisory until we can pull patched package -->
-    <NoWarn>$(NoWarn);NU1902</NoWarn>
     <UserSecretsId>680ba4b7-8e6b-4176-abe9-f48152a6867c</UserSecretsId>
   </PropertyGroup>
 
@@ -23,8 +21,8 @@
     <!-- MailKit for SMTP (patched MimeKit) -->
     <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Blobs" Version="1.5.1" />
     <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Keys" Version="1.6.1" />
-    <PackageReference Include="MailKit" Version="4.14.1" />
-    <PackageReference Include="MimeKit" Version="4.14.0" />
+    <PackageReference Include="MailKit" Version="4.17.0" />
+    <PackageReference Include="MimeKit" Version="4.17.0" />
 
     <!-- Microsoft Graph client library -->
     <PackageReference Include="Microsoft.Graph" Version="5.105.0" />

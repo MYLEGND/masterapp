@@ -29,9 +29,10 @@ public sealed class EffectiveAgentContext
 
     private ClaimsPrincipal? User => _http.HttpContext?.User;
 
+    // Canonical Entra Object ID only. Must NOT fall back to NameIdentifier/sub,
+    // which are not stable cross-application identity keys (F19).
     public string? ActualUserOid =>
         User?.FindFirstValue("oid") ??
-        User?.FindFirstValue(ClaimTypes.NameIdentifier) ??
         User?.FindFirstValue("http://schemas.microsoft.com/identity/claims/objectidentifier");
 
     public string? ActualUserUpn =>

@@ -173,4 +173,160 @@ public class CalendarControllerTests
         Assert.True(latestAppointmentPayload.GetProperty("confirmationVerified").GetBoolean());
         Assert.Equal("Booked / verified", latestAppointmentPayload.GetProperty("confirmationStateLabel").GetString());
     }
+
+    private static GraphServiceClient BuildGraphClient()
+    {
+        var requestAdapter = new Mock<IRequestAdapter>();
+        requestAdapter.SetupGet(adapter => adapter.BaseUrl).Returns("https://graph.microsoft.com/v1.0");
+        requestAdapter.SetupGet(adapter => adapter.SerializationWriterFactory).Returns(new JsonSerializationWriterFactory());
+        return new GraphServiceClient(requestAdapter.Object);
+    }
+
+    // SECURITY REGRESSION (Calendar appointment IDOR):
+    // An authenticated agent must not be able to mutate another agent's
+    // appointment by supplying their OWN (unrelated) client to satisfy the
+    // ownership gate. Fixed code rejects at the authorization gate (before any
+    // Microsoft Bookings/Graph call), so the attacker receives the gate's
+    // "context not found" NotFound and the victim's appointment is unchanged.
+    [Fact]
+    public async Task CancelAppointment_Rejects_ForeignAppointment_WhenAgentSuppliesOwnClient()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        var victimProfileId = Guid.NewGuid();
+        var attackerProfileId = Guid.NewGuid();
+
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = victimProfileId,
+            ClientUserId = "client-victim",
+            FirstName = "Vic",
+            LastName = "Tim",
+            Email = "victim@example.com",
+            NormalizedEmail = "victim@example.com",
+            CreatedUtc = DateTime.UtcNow
+        });
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = attackerProfileId,
+            ClientUserId = "client-attacker",
+            FirstName = "At",
+            LastName = "Tacker",
+            Email = "attacker@example.com",
+            NormalizedEmail = "attacker@example.com",
+            CreatedUtc = DateTime.UtcNow
+        });
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "agent-victim",
+            ClientUserId = "client-victim",
+            CreatedUtc = DateTime.UtcNow
+        });
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "agent-attacker",
+            ClientUserId = "client-attacker",
+            CreatedUtc = DateTime.UtcNow
+        });
+
+        var appointmentId = Guid.NewGuid();
+        db.LeadAppointments.Add(new LeadAppointment
+        {
+            Id = appointmentId,
+            OwnerAgentUserId = "agent-victim",
+            ClientProfileId = victimProfileId.ToString(),
+            CalendarEventId = "evt-victim",
+            Status = LeadAppointmentStatus.Booked,
+            ScheduledStartUtc = new DateTime(2026, 5, 21, 9, 0, 0, DateTimeKind.Utc),
+            ScheduledEndUtc = new DateTime(2026, 5, 21, 9, 30, 0, DateTimeKind.Utc),
+            CreatedUtc = DateTime.UtcNow
+        });
+        // Give the attacker a booking profile so that, on vulnerable code, the
+        // flow would have proceeded past configuration checks toward mutation.
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "agent-attacker",
+            AgentUpn = "attacker@example.test",
+            BookingPageIdOrMailbox = "attacker-booking"
+        });
+        await db.SaveChangesAsync();
+
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var controller = ControllerTestHelpers.BuildCalendarController(
+            db,
+            ControllerTestHelpers.BuildUser("agent-attacker"),
+            handler,
+            BuildGraphClient());
+
+        var result = await controller.CancelAppointment(new CalendarController.CancelAppointmentRequest
+        {
+            AppointmentId = appointmentId,
+            ClientProfileId = attackerProfileId // attacker's OWN client, unrelated to the appointment
+        });
+
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Contains("context", notFound.Value?.ToString() ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        var unchanged = await db.LeadAppointments.SingleAsync(x => x.Id == appointmentId);
+        Assert.Equal("agent-victim", unchanged.OwnerAgentUserId);
+        Assert.Equal(LeadAppointmentStatus.Booked, unchanged.Status);
+    }
+
+    // No-regression companion: the legitimate owner still clears the
+    // authorization gate. With no live Bookings event linked, the request is
+    // then rejected downstream with a BadRequest, proving the gate was passed
+    // without requiring any Graph interaction.
+    [Fact]
+    public async Task CancelAppointment_Allows_Owner_PastAuthorizationGate()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        var clientProfileId = Guid.NewGuid();
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = clientProfileId,
+            ClientUserId = "client-owned",
+            FirstName = "Owned",
+            LastName = "Client",
+            Email = "owned@example.com",
+            NormalizedEmail = "owned@example.com",
+            CreatedUtc = DateTime.UtcNow
+        });
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "agent-owner",
+            ClientUserId = "client-owned",
+            CreatedUtc = DateTime.UtcNow
+        });
+
+        var appointmentId = Guid.NewGuid();
+        db.LeadAppointments.Add(new LeadAppointment
+        {
+            Id = appointmentId,
+            OwnerAgentUserId = "agent-owner",
+            ClientProfileId = clientProfileId.ToString(),
+            CalendarEventId = null, // not linked to a live Bookings event
+            Status = LeadAppointmentStatus.Booked,
+            ScheduledStartUtc = new DateTime(2026, 5, 21, 9, 0, 0, DateTimeKind.Utc),
+            ScheduledEndUtc = new DateTime(2026, 5, 21, 9, 30, 0, DateTimeKind.Utc),
+            CreatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        var controller = ControllerTestHelpers.BuildCalendarController(
+            db,
+            ControllerTestHelpers.BuildUser("agent-owner"),
+            handler,
+            BuildGraphClient());
+
+        var result = await controller.CancelAppointment(new CalendarController.CancelAppointmentRequest
+        {
+            AppointmentId = appointmentId,
+            ClientProfileId = clientProfileId
+        });
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Contains("not linked", badRequest.Value?.ToString() ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
 }

@@ -92,27 +92,26 @@ builder.Services.AddHttpClient<IMetaConversionsApiService, MetaConversionsApiSer
 builder.Services.AddHostedService<MetaSignalAnalyticsBridge>();
 builder.Services.AddHostedService<MetaSignalOutcomeDispatcherHostedService>();
 
-var dpBlobUri = builder.Configuration["DataProtection:BlobUri"];
-var dpKeyVaultId = builder.Configuration["DataProtection:KeyVaultKeyId"];
+// Data Protection — platform authority. Shares the "AgentPortal" application
+// name and (in dev) the AgentPortal key directory so protected agent-scoped Meta
+// CAPI credentials can be cross-decrypted here. Same behavior as before.
+Shared.Security.PlatformConfigValidation.ValidateDataProtection(
+    builder.Configuration, builder.Environment.IsProduction());
+Infrastructure.Security.PlatformDataProtection.AddPlatformDataProtection(
+    builder.Services,
+    builder.Configuration,
+    builder.Environment,
+    "AgentPortal",
+    developmentKeysDirectory: Path.GetFullPath(
+        Path.Combine(builder.Environment.ContentRootPath, "..", "AgentPortal", "App_Data", "keys")));
 
-var dataProtectionBuilder = builder.Services.AddDataProtection()
-    // Shares the same key ring/app isolation as AgentPortal so protected
-    // agent-scoped Meta CAPI credentials can be decrypted safely here.
-    .SetApplicationName("AgentPortal");
+// Reverse-proxy forwarded headers (was missing) so HTTPS/HSTS/redirect logic and
+// client IP are correct behind Azure's TLS-terminating proxy.
+Shared.Security.PlatformSecurityHeaders.AddPlatformForwardedHeaders(builder.Services);
 
-if (!string.IsNullOrWhiteSpace(dpBlobUri) && !string.IsNullOrWhiteSpace(dpKeyVaultId))
-{
-    var azureCred = new DefaultAzureCredential();
-    dataProtectionBuilder
-        .PersistKeysToAzureBlobStorage(new Uri(dpBlobUri), azureCred)
-        .ProtectKeysWithAzureKeyVault(new Uri(dpKeyVaultId), azureCred);
-}
-else
-{
-    var sharedKeysDir = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "AgentPortal", "App_Data", "keys"));
-    Directory.CreateDirectory(sharedKeysDir);
-    dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(sharedKeysDir));
-}
+// Rate limiting (was absent). Opt-in named policies from the shared authority;
+// applied to the public analytics/tracking ingest endpoints below.
+builder.Services.AddRateLimiter(Infrastructure.Security.PlatformRateLimiting.ConfigurePolicies);
 
 // 🔹 🔹 SESSION SUPPORT for TempData
 builder.Services.AddDistributedMemoryCache();
@@ -170,6 +169,11 @@ if (app.Environment.IsDevelopment())
     }
 }
 
+// Forwarded headers must run before HTTPS redirection/HSTS so the scheme is
+// correct behind the Azure proxy. Baseline security headers added platform-wide.
+app.UseForwardedHeaders();
+Shared.Security.PlatformSecurityHeaders.UsePlatformSecurityHeaders(app);
+
 // 🔹 Middleware
 if (app.Environment.IsDevelopment())
 {
@@ -187,6 +191,7 @@ app.UseMiddleware<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 
 app.UseStaticFiles();
 app.UseRouting();
+app.UseRateLimiter();
 
 // 🔹 Enable session BEFORE MVC
 app.UseSession();

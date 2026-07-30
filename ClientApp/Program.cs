@@ -38,6 +38,13 @@ builder.Services.AddControllersWithViews(options =>
 })
     .AddApplicationPart(typeof(MessagingHub).Assembly);
 
+// Browser anti-forgery: use the platform header convention (matches AgentPortal
+// and existing ClientApp AJAX callers) so cookie-authenticated same-origin
+// mutations can present the token via the RequestVerificationToken header.
+// Protection is applied explicitly per state-changing action ([ValidateAntiForgeryToken]);
+// no global auto-validate filter is added here.
+builder.Services.AddAntiforgery(o => o.HeaderName = "RequestVerificationToken");
+
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddDailyScripture();
 builder.Services.AddMasterAppBilling(builder.Configuration);
@@ -57,34 +64,32 @@ builder.Services.AddScoped<ClientAppSignInEntryPoint>();
 builder.Services.AddScoped<SubscriptionActivationService>();
 builder.Services.AddScoped<ClientSubscriptionAuthorizeFilter>();
 builder.Services.AddScoped<IAuthorizationHandler, ClientSubscriptionActiveHandler>();
-builder.Services.AddDataProtection().SetApplicationName("MasterApp.ClientApp");
+// Data Protection — platform authority. Application name is preserved
+// ("MasterApp.ClientApp") so purpose isolation is unchanged; this now PERSISTS
+// the key ring (Azure Blob + Key Vault in production, otherwise file-system)
+// instead of the previous ephemeral in-memory ring, so cookies / continuation
+// tokens survive restarts and work across scaled-out instances.
+Shared.Security.PlatformConfigValidation.ValidateDataProtection(
+    builder.Configuration, builder.Environment.IsProduction());
+Infrastructure.Security.PlatformDataProtection.AddPlatformDataProtection(
+    builder.Services,
+    builder.Configuration,
+    builder.Environment,
+    "MasterApp.ClientApp");
+
+// Reverse-proxy forwarded headers (was missing) for correct HTTPS/HSTS/redirect
+// behavior and client IP behind Azure's TLS-terminating proxy.
+Shared.Security.PlatformSecurityHeaders.AddPlatformForwardedHeaders(builder.Services);
 builder.Services.AddSignalR(options =>
 {
     options.MaximumReceiveMessageSize = 64 * 1024;
 });
 builder.Services.AddRateLimiter(options =>
 {
-    options.AddPolicy("clientapp-public", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anon",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 20,
-                Window = TimeSpan.FromMinutes(1),
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 0
-            }));
-
-    options.AddPolicy("clientapp-login", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anon",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 8,
-                Window = TimeSpan.FromMinutes(1),
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 0
-            }));
+    // Shared fixed-window construction (one authority); ClientApp's login/public
+    // policy names and limits are app profiles. IP partitioning preserved exactly.
+    Infrastructure.Security.PlatformRateLimiting.AddFixedWindowPolicy(options, "clientapp-public", 20, TimeSpan.FromMinutes(1));
+    Infrastructure.Security.PlatformRateLimiting.AddFixedWindowPolicy(options, "clientapp-login", 8, TimeSpan.FromMinutes(1));
 
     options.OnRejected = (context, _) =>
     {
@@ -484,6 +489,11 @@ var app = builder.Build();
     log.LogWarning("AzureAd:TenantId={TenantId} ClientId={ClientId} CallbackPath={CallbackPath}", tenantId, clientId, callbackPath);
     log.LogWarning("AzureAd secret present? {Present} len={Len}", !string.IsNullOrWhiteSpace(aadSecret), aadSecret?.Length ?? 0);
 }
+
+// Forwarded headers must run before HTTPS redirection/HSTS so the scheme is
+// correct behind the Azure proxy. Baseline security headers added platform-wide.
+app.UseForwardedHeaders();
+Shared.Security.PlatformSecurityHeaders.UsePlatformSecurityHeaders(app);
 
 // ------------------------------------------------------------
 // HARD PRODUCTION EXCEPTION HANDLER (CAN'T FAIL)

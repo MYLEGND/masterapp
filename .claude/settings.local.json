@@ -57,7 +57,8 @@
       "Bash(grep -rn \"\\\\.more\\\\|\\\\.menu\\\\|\\\\.options\\\\|\\\\.action\" /Users/zacowen/MASTERAPP/AgentPortal/wwwroot/css/*.css)",
       "Bash(grep -r \"OWNER_EMAIL\\\\|FOUNDER_OID\\\\|FounderOid\\\\|OwnerEmail\\\\|Founder:Upn\" /Users/zacowen/MASTERAPP/AgentPortal/appsettings*.json /Users/zacowen/MASTERAPP/AgentPortal/Properties/launchSettings.json)",
       "Bash(grep -r \"Founder:Upn\\\\|Founder__Upn\" /Users/zacowen/MASTERAPP/AgentPortal/appsettings*.json /Users/zacowen/MASTERAPP/AgentPortal/Properties/launchSettings.json)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(dotnet --version)"
     ]
   }
 }

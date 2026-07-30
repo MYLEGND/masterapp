@@ -47,4 +47,34 @@ public static class UserIdExtensions
     /// </summary>
     public static string GetStableUserId(this ClaimsPrincipal user)
         => GetCanonicalUserId(user);
+
+    /// <summary>
+    /// NON-AUTHORITATIVE email candidate for display, invitation matching, or
+    /// dev-only checks. This is explicitly NOT the canonical user id and MUST
+    /// NOT be used to make cross-application authorization decisions. Returns a
+    /// trimmed value or null.
+    /// </summary>
+    public static string? GetEmailCandidate(this ClaimsPrincipal? user)
+    {
+        if (user is null) return null;
+
+        var candidates = new[]
+        {
+            Claim(user, "preferred_username"),
+            Claim(user, ClaimTypes.Email),
+            Claim(user, "email"),
+            Claim(user, "upn"),
+            Claim(user, ClaimTypes.Upn),
+            user.Identity?.Name
+        };
+
+        foreach (var candidate in candidates)
+        {
+            var value = candidate?.Trim();
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
+    }
 }

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Shared.Auth;
 
 namespace ParfaitApp.Security;
 
@@ -14,33 +15,21 @@ public static class ParfaitFounderGuard
          ?? Environment.GetEnvironmentVariable("FounderOid")
          ?? string.Empty).Trim();
 
+    /// <summary>
+    /// Delegates to the shared fail-closed founder rule
+    /// (<see cref="FounderAuthority"/>): canonical Entra Object ID must match a
+    /// valid configured FOUNDER_OID. Email is consulted only as a development
+    /// convenience when no OID is configured and the environment is not
+    /// production; a configured OID that does not match never falls through to
+    /// email, and production never grants founder access by email.
+    /// </summary>
     public static bool IsFounder(ClaimsPrincipal? user)
-    {
-        if (user?.Identity?.IsAuthenticated != true)
-            return false;
-
-        if (!string.IsNullOrWhiteSpace(FounderOid))
-        {
-            var oid =
-                user.FindFirstValue("oid") ??
-                user.FindFirstValue("http://schemas.microsoft.com/identity/claims/objectidentifier");
-
-            if (!string.IsNullOrWhiteSpace(oid) &&
-                oid.Equals(FounderOid, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        var email =
-            user.FindFirstValue(ClaimTypes.Email) ??
-            user.FindFirstValue("email") ??
-            user.FindFirstValue("preferred_username") ??
-            user.FindFirstValue("upn") ??
-            user.Identity?.Name;
-
-        return IsOwnerEmail(email);
-    }
+        => FounderAuthority.Evaluate(
+            user,
+            FounderOid,
+            FounderAuthority.IsProductionEnvironment(
+                Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")),
+            u => IsOwnerEmail(u.GetEmailCandidate()));
 
     public static bool IsOwnerEmail(string? email)
     {

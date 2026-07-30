@@ -248,51 +248,30 @@ builder.Services.AddCors(options =>
 //   - Storage Blob Data Contributor on the storage account (or the container)
 //   - Key Vault Crypto User on the Key Vault key
 // ------------------------------------------------------------
-var dpBlobUri = builder.Configuration["DataProtection:BlobUri"];
-var dpKeyVaultId = builder.Configuration["DataProtection:KeyVaultKeyId"];
-
-var dataProtectionBuilder = builder.Services.AddDataProtection()
-    .SetApplicationName("AgentPortal");
-
-if (!string.IsNullOrWhiteSpace(dpBlobUri) && !string.IsNullOrWhiteSpace(dpKeyVaultId))
-{
-    // Production path: Azure Blob + Key Vault via Managed Identity
-    var azureCred = new Azure.Identity.DefaultAzureCredential();
-    dataProtectionBuilder
-        .PersistKeysToAzureBlobStorage(new Uri(dpBlobUri), azureCred)
-        .ProtectKeysWithAzureKeyVault(new Uri(dpKeyVaultId), azureCred);
-}
-else
-{
-    // Local dev fallback: filesystem keys under App_Data/keys
-    var localKeysDir = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "keys");
-    Directory.CreateDirectory(localKeysDir);
-    dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(localKeysDir));
-}
+// Data Protection — platform authority. AgentPortal and Protect-Website
+// deliberately share the "AgentPortal" application name so agent-scoped Meta CAPI
+// credentials can be cross-decrypted; do not change this name without a key
+// migration. (Same behavior as before: Blob + Key Vault in production, otherwise
+// persistent file-system keys under App_Data/keys.)
+Shared.Security.PlatformConfigValidation.ValidateDataProtection(
+    builder.Configuration, builder.Environment.IsProduction());
+Infrastructure.Security.PlatformDataProtection.AddPlatformDataProtection(
+    builder.Services,
+    builder.Configuration,
+    builder.Environment,
+    "AgentPortal");
 
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddPolicy("ingest", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anon",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 300,
-                Window = TimeSpan.FromMinutes(1),
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 0
-            }));
-    options.AddPolicy("anon-public", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anon",
-            factory: _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 30,
-                Window = TimeSpan.FromMinutes(1),
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 0
-            }));
+
+    // Shared fixed-window construction (one authority); AgentPortal's policy
+    // names and limits are app profiles. IP partitioning preserved exactly.
+    Infrastructure.Security.PlatformRateLimiting.AddFixedWindowPolicy(options, "ingest", 300, TimeSpan.FromMinutes(1));
+    Infrastructure.Security.PlatformRateLimiting.AddFixedWindowPolicy(options, "anon-public", 30, TimeSpan.FromMinutes(1));
+
+    // App-specific global limiter profile: SignalR hubs remain exempt; the
+    // identity-or-IP partition uses the shared partition-key helper.
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
     {
         var path = context.Request.Path.Value ?? "";
@@ -303,11 +282,8 @@ builder.Services.AddRateLimiter(options =>
             return RateLimitPartition.GetNoLimiter("hub");
         }
 
-        var key = context.User?.Identity?.IsAuthenticated == true
-            ? (context.User.Identity?.Name ?? "auth-unknown")
-            : (context.Connection.RemoteIpAddress?.ToString() ?? "anon");
-
-        return RateLimitPartition.GetFixedWindowLimiter(key,
+        return RateLimitPartition.GetFixedWindowLimiter(
+            Infrastructure.Security.PlatformRateLimiting.ResolvePartitionKey(context),
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 120,
@@ -521,6 +497,19 @@ if (string.IsNullOrWhiteSpace(ownerEmail) &&
         "STARTUP BLOCKED: Owner email is required in Production. " +
         "Set OWNER_EMAIL in Azure App Service → Configuration → Application settings, " +
         "or add Founder:Email to appsettings.Production.json.");
+}
+
+// PRODUCTION GUARD: a valid founder Object ID is required. Founder authority is
+// Object-ID-only in production (fail closed); a missing or malformed FOUNDER_OID
+// must be a hard startup failure, not a silent first-request denial. (Founder:Oid
+// is bound into FOUNDER_OID by the resolution block above.)
+if (string.Equals(builder.Environment.EnvironmentName, "Production", StringComparison.OrdinalIgnoreCase) &&
+    !Shared.Auth.FounderAuthority.IsConfiguredAndValid(Environment.GetEnvironmentVariable("FOUNDER_OID")))
+{
+    throw new InvalidOperationException(
+        "STARTUP BLOCKED: A valid founder Object ID (GUID) is required in Production. " +
+        "Set FOUNDER_OID in Azure App Service → Configuration → Application settings, " +
+        "or add Founder:Oid to appsettings.Production.json. Founder access is Object-ID-only in production.");
 }
 
 // PRODUCTION GUARD: refuse to start on SQLite when running on Azure App Service.

@@ -61,7 +61,17 @@ namespace ClientApp.Controllers
 
             await using var stream = new MemoryStream();
             await photo.CopyToAsync(stream, HttpContext.RequestAborted);
-            profile.ProfileImageContent = stream.ToArray();
+            var bytes = stream.ToArray();
+
+            // Verify the actual bytes are a real image of an allowed type — the
+            // client-declared Content-Type alone is not trustworthy.
+            var validation = global::Infrastructure.Security.UploadValidation.UploadValidator.ValidateImageContent(
+                bytes,
+                global::Infrastructure.Security.UploadValidation.UploadValidationPolicy.Images(3 * 1024 * 1024));
+            if (!validation.IsValid)
+                return BadRequest(new { message = "Only valid PNG, JPG, or WEBP images are allowed." });
+
+            profile.ProfileImageContent = bytes;
             profile.ProfileImageContentType = photo.ContentType == "image/jpg"
                 ? "image/jpeg"
                 : photo.ContentType;

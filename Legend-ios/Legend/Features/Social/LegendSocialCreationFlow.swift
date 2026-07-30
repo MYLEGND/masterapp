@@ -184,8 +184,13 @@ struct LegendSocialComposer: View {
     @State private var type: MobileSocialContentType
     @State private var selectedMedia: [LegendSocialMediaDraft] = []
     @State private var accessibilityText = ""
+    @State private var tagsAndMentions = ""
+    @State private var shareLocation = ""
+    @State private var shareAudience = "Followers"
+    @State private var commentsEnabled = true
     @State private var mediaSelectionError: String?
     @State private var stage: LegendSocialCreationStage = .library
+    @State private var musicReturnStage: LegendSocialCreationStage = .metadata
     @State private var selectedMusic: LegendSocialMusicDraft?
     @State private var activeStoryTool: LegendSocialStoryEditingTool = .text
     @State private var ownsMediaAfterDismissal = false
@@ -203,10 +208,28 @@ struct LegendSocialComposer: View {
     var body: some View {
         NavigationStack {
             Group {
-                if stage == .metadata || stage == .music || stage == .handedOff {
-                    metadataContent
-                } else {
+                switch stage {
+                case .library,
+                     .preparingMedia,
+                     .camera,
+                     .failed:
                     libraryContent
+
+                case .metadata:
+                    metadataContent
+
+                case .share:
+                    shareDetailsContent
+
+                case .music:
+                    if musicReturnStage == .share {
+                        shareDetailsContent
+                    } else {
+                        metadataContent
+                    }
+
+                case .handedOff:
+                    shareDetailsContent
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -219,9 +242,11 @@ struct LegendSocialComposer: View {
                 selection: selectedMusic,
                 save: {
                     selectedMusic = $0
-                    stage = .metadata
+                    stage = musicReturnStage
                 },
-                cancel: { stage = .metadata })
+                cancel: {
+                    stage = musicReturnStage
+                })
         }
         .fullScreenCover(isPresented: cameraPresented) {
             LegendSocialCameraCapture(
@@ -267,21 +292,36 @@ struct LegendSocialComposer: View {
         switch stage {
         case .library, .preparingMedia, .camera:
             return hasValidSelection || type == .post
-        case .metadata:
-            return canPublish && social.publication == nil
+
+        case .metadata, .share:
+            return canPublish &&
+                social.publication == nil
+
         case .music, .handedOff, .failed:
             return false
         }
     }
 
     private var primaryActionTitle: String {
-        stage == .metadata ? "Share" : "Next"
+        switch stage {
+        case .share:
+            "Share"
+        default:
+            "Next"
+        }
     }
 
     private var musicPickerPresented: Binding<Bool> {
         Binding(
-            get: { stage == .music },
-            set: { if !$0 { stage = .metadata } })
+            get: {
+                stage == .music
+            },
+            set: {
+                if !$0 && stage == .music {
+                    stage = musicReturnStage
+                }
+            }
+        )
     }
 
     private var cameraPresented: Binding<Bool> {
@@ -715,188 +755,821 @@ struct LegendSocialComposer: View {
             .accessibilityLabel(message)
     }
 
-    @ViewBuilder
     private var metadataContent: some View {
-        if type == .story {
-            storyDetailsContent
-        } else {
-            publicationDetailsContent
+        immersiveEditingContent
+    }
+
+    private var editorCanvasAspectRatio: CGFloat {
+        switch type {
+        case .post:
+            1
+        case .story, .reel:
+            9 / 16
         }
     }
 
-    private var publicationDetailsContent: some View {
-        VStack(spacing: 0) {
-            metadataHeader(isDark: false)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
-                    metadataMediaPreview(isDark: false)
-                    captionEditor(isDark: false)
-                    musicSelection(isDark: false)
-                    accessibilityEditor(isDark: false)
-                    publicationFailure
-                }
-                .padding(.horizontal, LegendNextSpacing.md)
-                .padding(.top, LegendNextSpacing.sm)
-                .padding(.bottom, LegendNextSpacing.md)
-            }
-            .scrollIndicators(.hidden)
-        }
-        .background(LegendNextColor.canvas)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            shareControl
-                .padding(.horizontal, LegendNextSpacing.md)
-                .padding(.vertical, LegendNextSpacing.sm)
-                .background(LegendNextColor.canvas)
+    private var editorCanvasMaximumWidth: CGFloat {
+        switch type {
+        case .post:
+            390
+        case .story, .reel:
+            350
         }
     }
 
-    private var storyDetailsContent: some View {
+    private var immersiveEditingContent: some View {
         ZStack {
-            LegendNextGradient.hero
+            Color.black
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                metadataHeader(isDark: true)
+                immersiveEditorHeader
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
-                        storyEditingCanvas
-                        storyToolRail
-                        storyToolDetail
-                        publicationFailure
+                GeometryReader { geometry in
+                    let availableWidth = max(
+                        0,
+                        geometry.size.width -
+                            LegendNextSpacing.md * 2
+                    )
+                    let availableHeight = max(
+                        0,
+                        geometry.size.height -
+                            LegendNextSpacing.sm * 2
+                    )
+                    let widthFromHeight =
+                        availableHeight *
+                        editorCanvasAspectRatio
+                    let canvasWidth = min(
+                        editorCanvasMaximumWidth,
+                        availableWidth,
+                        widthFromHeight
+                    )
+                    let canvasHeight =
+                        canvasWidth /
+                        editorCanvasAspectRatio
+
+                    ZStack(alignment: .trailing) {
+                        editorMediaCanvas
+                            .frame(
+                                width: canvasWidth,
+                                height: canvasHeight
+                            )
+                            .clipShape(
+                                RoundedRectangle(
+                                    cornerRadius: 22,
+                                    style: .continuous
+                                )
+                            )
+                            .overlay {
+                                RoundedRectangle(
+                                    cornerRadius: 22,
+                                    style: .continuous
+                                )
+                                .strokeBorder(
+                                    Color.white.opacity(0.18),
+                                    lineWidth: 1
+                                )
+                            }
+                            .frame(
+                                maxWidth: .infinity,
+                                maxHeight: .infinity,
+                                alignment: .center
+                            )
+
+                        immersiveToolRail
+                            .padding(.trailing, LegendNextSpacing.sm)
                     }
-                    .padding(.horizontal, LegendNextSpacing.md)
-                    .padding(.top, LegendNextSpacing.sm)
-                    .padding(.bottom, LegendNextSpacing.md)
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity
+                    )
                 }
-                .scrollIndicators(.hidden)
+
+                immersiveEditorFooter
             }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            shareControl
-                .padding(.horizontal, LegendNextSpacing.md)
-                .padding(.vertical, LegendNextSpacing.sm)
-                .background(LegendNextColor.midnight)
         }
     }
 
-    private func metadataHeader(isDark: Bool) -> some View {
+    private var immersiveEditorHeader: some View {
         HStack {
             Button {
                 stage = .library
             } label: {
-                Image(systemName: "chevron.left")
-                    .font(.title3.weight(.semibold))
+                Image(systemName: "xmark")
+                    .font(.title2.weight(.medium))
                     .frame(
-                        width: LegendNextSize.prominentControlHeight,
-                        height: LegendNextSize.prominentControlHeight)
+                        width:
+                            LegendNextSize
+                                .prominentControlHeight,
+                        height:
+                            LegendNextSize
+                                .prominentControlHeight
+                    )
                     .background(
-                        isDark ? Color.white.opacity(0.12) : LegendNextColor.fill,
-                        in: Circle())
+                        Color.white.opacity(0.20),
+                        in: Circle()
+                    )
             }
             .buttonStyle(.plain)
-            .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
+            .foregroundStyle(.white)
             .accessibilityLabel("Back to media selection")
 
-            Spacer()
+            Spacer(minLength: 0)
 
-            Text("New \(type.displayName.lowercased())")
+            Text("Edit \(type.displayName.lowercased())")
                 .font(LegendNextTypography.section)
-                .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
+                .foregroundStyle(.white)
 
-            Spacer()
+            Spacer(minLength: 0)
 
             Color.clear
                 .frame(
-                    width: LegendNextSize.prominentControlHeight,
-                    height: LegendNextSize.prominentControlHeight)
+                    width:
+                        LegendNextSize
+                            .prominentControlHeight,
+                    height:
+                        LegendNextSize
+                            .prominentControlHeight
+                )
         }
         .padding(.horizontal, LegendNextSpacing.md)
         .padding(.vertical, LegendNextSpacing.sm)
     }
 
     @ViewBuilder
-    private func metadataMediaPreview(isDark: Bool) -> some View {
+    private var editorMediaCanvas: some View {
         if selectedMedia.isEmpty {
-            LegendNextInsetSurface {
-                Label("Text-only \(type.displayName.lowercased())", systemImage: type.systemImage)
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(isDark ? Color.white.opacity(0.72) : LegendNextColor.textSecondary)
+            ZStack {
+                LegendNextGradient.hero
+
+                VStack(spacing: LegendNextSpacing.sm) {
+                    Image(systemName: type.systemImage)
+                        .font(
+                            .system(
+                                size: 42,
+                                weight: .semibold
+                            )
+                        )
+
+                    Text("Add content")
+                        .font(LegendNextTypography.cardTitle)
+                }
+                .foregroundStyle(.white)
             }
         } else {
-            mediaPreviewStrip(isDark: isDark)
-        }
-    }
+            ZStack {
+                Color.black
 
-    private var storyEditingCanvas: some View {
-        Group {
-            if selectedMedia.isEmpty {
-                LegendNextInsetSurface {
-                    Label("Select a story visual", systemImage: "photo.on.rectangle.angled")
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(Color.white.opacity(0.72))
+                if let primaryMedia = selectedMedia.first {
+                    LegendSocialMediaPreview(
+                        media: primaryMedia,
+                        presentation: .featured,
+                        overlayText:
+                            editorOverlayText,
+                        remove: {
+                            remove(primaryMedia)
+                        }
+                    )
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity
+                    )
+                    .clipped()
                 }
-            } else {
-                mediaPreviewStrip(
-                    isDark: true,
-                    overlayText: caption.isEmpty ? "Tap Text to add a message" : caption)
+
+                if type == .post &&
+                    selectedMedia.count > 1 {
+                    VStack {
+                        Spacer()
+
+                        Text(
+                            "1 of \(selectedMedia.count)"
+                        )
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(
+                            Color.black.opacity(0.55),
+                            in: Capsule()
+                        )
+                        .padding(.bottom, 12)
+                    }
+                }
             }
         }
     }
 
-    private var storyToolRail: some View {
-        HStack(spacing: LegendNextSpacing.xs) {
-            ForEach(LegendSocialStoryEditingTool.allCases) { tool in
-                Button {
-                    activeStoryTool = tool
-                    if tool == .audio {
-                        stage = .music
-                    }
-                } label: {
-                    VStack(spacing: LegendNextSpacing.micro) {
-                        Image(systemName: tool.systemImage)
-                            .font(.title3.weight(.semibold))
-                        Text(tool.title)
-                            .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(
-                        activeStoryTool == tool
-                            ? LegendNextColor.midnight
-                            : .white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 74)
-                    .background(
-                        activeStoryTool == tool
-                            ? LegendNextColor.goldBright
-                            : Color.white.opacity(0.10),
-                        in: RoundedRectangle(
-                            cornerRadius: LegendNextRadius.control,
-                            style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Story (tool.title)")
-                .accessibilityAddTraits(activeStoryTool == tool ? .isSelected : [])
-            }
+    private var editorOverlayText: String? {
+        guard type == .story else {
+            return nil
         }
+
+        let value = caption.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        return value.isEmpty
+            ? nil
+            : value
+    }
+
+    private var immersiveToolRail: some View {
+        VStack(spacing: LegendNextSpacing.xs) {
+            editorToolButton(
+                tool: .text
+            )
+
+            editorToolButton(
+                tool: .audio
+            )
+
+            editorToolButton(
+                tool: .overlay
+            )
+
+            editorToolButton(
+                tool: .filter
+            )
+
+            editorToolButton(
+                tool: .edit
+            )
+        }
+    }
+
+    private func editorToolButton(
+        tool: LegendSocialStoryEditingTool
+    ) -> some View {
+        Button {
+            activeStoryTool = tool
+
+            if tool == .audio {
+                musicReturnStage = .metadata
+                stage = .music
+            }
+        } label: {
+            Image(systemName: tool.systemImage)
+                .font(.title3.weight(.semibold))
+                .frame(width: 50, height: 50)
+                .foregroundStyle(
+                    activeStoryTool == tool
+                        ? LegendNextColor.midnight
+                        : .white
+                )
+                .background(
+                    activeStoryTool == tool
+                        ? LegendNextColor.goldBright
+                        : Color.black.opacity(0.56),
+                    in: Circle()
+                )
+                .overlay {
+                    Circle()
+                        .strokeBorder(
+                            Color.white.opacity(0.22),
+                            lineWidth: 1
+                        )
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tool.title)
+        .accessibilityAddTraits(
+            activeStoryTool == tool
+                ? .isSelected
+                : []
+        )
     }
 
     @ViewBuilder
-    private var storyToolDetail: some View {
+    private var immersiveToolDetail: some View {
         switch activeStoryTool {
         case .audio:
-            musicSelection(isDark: true)
+            EmptyView()
+
         case .text, .overlay:
-            captionEditor(isDark: true)
+            TextField(
+                type == .story
+                    ? "Add text..."
+                    : "Add a caption...",
+                text: $caption,
+                axis: .vertical
+            )
+            .lineLimit(1...3)
+            .font(LegendNextTypography.body)
+            .foregroundStyle(.white)
+            .tint(LegendNextColor.goldBright)
+            .padding(.horizontal, LegendNextSpacing.md)
+            .frame(
+                minHeight:
+                    LegendNextSize.controlHeight
+            )
+            .background(
+                Color.white.opacity(0.14),
+                in: RoundedRectangle(
+                    cornerRadius:
+                        LegendNextRadius.control,
+                    style: .continuous
+                )
+            )
+            .accessibilityLabel(
+                type == .story
+                    ? "Story text"
+                    : "\(type.displayName) caption"
+            )
+
         case .filter:
-            LegendNextInsetSurface {
-                Label("Original presentation", systemImage: "camera.filters")
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(Color.white.opacity(0.80))
-            }
+            Label(
+                "Original presentation",
+                systemImage: "camera.filters"
+            )
+            .font(LegendNextTypography.supporting)
+            .foregroundStyle(
+                Color.white.opacity(0.80)
+            )
+            .frame(maxWidth: .infinity)
+            .padding(LegendNextSpacing.sm)
+            .background(
+                Color.white.opacity(0.10),
+                in: RoundedRectangle(
+                    cornerRadius:
+                        LegendNextRadius.control,
+                    style: .continuous
+                )
+            )
+
         case .edit:
             accessibilityEditor(isDark: true)
         }
+    }
+
+    private var immersiveEditorFooter: some View {
+        VStack(spacing: LegendNextSpacing.sm) {
+            immersiveToolDetail
+            publicationFailure
+
+            Button {
+                stage = .share
+            } label: {
+                Label(
+                    "Next",
+                    systemImage: "arrow.right"
+                )
+                .font(LegendNextTypography.section)
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(
+                LegendButtonStyle(kind: .primary)
+            )
+            .disabled(!canContinue)
+            .accessibilityLabel(
+                "Continue to share \(type.displayName)"
+            )
+        }
+        .padding(.horizontal, LegendNextSpacing.md)
+        .padding(.top, LegendNextSpacing.sm)
+        .padding(.bottom, LegendNextSpacing.sm)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0),
+                    Color.black.opacity(0.96)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+
+    private var shareDetailsContent: some View {
+        VStack(spacing: 0) {
+            instagramShareHeader
+
+            Divider()
+                .overlay(LegendNextColor.separator)
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    instagramCaptionComposer
+
+                    Divider()
+                        .padding(.leading, 96)
+
+                    instagramTagsRow
+
+                    Divider()
+                        .padding(.leading, 56)
+
+                    instagramLocationRow
+
+                    Divider()
+                        .padding(.leading, 56)
+
+                    instagramMusicRow
+
+                    Divider()
+                        .padding(.leading, 56)
+
+                    instagramAudienceRow
+
+                    Divider()
+                        .padding(.leading, 56)
+
+                    instagramAccessibilityRow
+
+                    Divider()
+                        .padding(.leading, 56)
+
+                    instagramCommentsRow
+
+                    publicationFailure
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                }
+            }
+            .scrollIndicators(.hidden)
+        }
+        .background(Color.white)
+    }
+
+    private var instagramShareHeader: some View {
+        HStack(spacing: 12) {
+            Button {
+                stage = .metadata
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 20, weight: .semibold))
+                    .frame(width: 32, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(LegendNextColor.textPrimary)
+            .accessibilityLabel("Back to media editing")
+
+            Spacer(minLength: 0)
+
+            Text("New \(type.displayName.lowercased())")
+                .font(.headline)
+                .foregroundStyle(LegendNextColor.textPrimary)
+
+            Spacer(minLength: 0)
+
+            Button(action: publish) {
+                Text("Share")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(
+                canPublish && social.publication == nil
+                    ? LegendNextColor.goldBright
+                    : LegendNextColor.textSecondary.opacity(0.45)
+            )
+            .disabled(
+                !canPublish ||
+                social.publication != nil
+            )
+            .accessibilityLabel(
+                "Publish \(type.displayName)"
+            )
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 52)
+        .background(Color.white)
+    }
+
+    private var instagramCaptionComposer: some View {
+        HStack(alignment: .top, spacing: 12) {
+            instagramShareThumbnail
+
+            ZStack(alignment: .topLeading) {
+                if caption.isEmpty {
+                    Text(
+                        type == .story
+                            ? "Add a story message..."
+                            : "Write a caption..."
+                    )
+                    .font(.system(size: 15))
+                    .foregroundStyle(
+                        LegendNextColor.textSecondary
+                    )
+                    .padding(.top, 8)
+                    .padding(.leading, 5)
+                    .allowsHitTesting(false)
+                }
+
+                TextEditor(text: $caption)
+                    .font(.system(size: 15))
+                    .foregroundStyle(
+                        LegendNextColor.textPrimary
+                    )
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 92)
+                    .padding(.horizontal, 0)
+                    .padding(.vertical, 0)
+                    .background(Color.clear)
+                    .accessibilityLabel(
+                        "\(type.displayName) caption"
+                    )
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+
+    @ViewBuilder
+    private var instagramShareThumbnail: some View {
+        if let primaryMedia = selectedMedia.first {
+            LegendSocialMediaPreview(
+                media: primaryMedia,
+                presentation: .companion,
+                remove: {}
+            )
+            .frame(
+                width: 68,
+                height: type == .post ? 68 : 88
+            )
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: 5,
+                    style: .continuous
+                )
+            )
+            .allowsHitTesting(false)
+        } else {
+            ZStack {
+                LegendNextColor.surfaceInset
+
+                Image(systemName: type.systemImage)
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(
+                        LegendNextColor.textSecondary
+                    )
+            }
+            .frame(width: 68, height: 68)
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: 5,
+                    style: .continuous
+                )
+            )
+        }
+    }
+
+    private var instagramTagsRow: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "person.crop.circle.badge.plus")
+                .font(.system(size: 20))
+                .frame(width: 26)
+                .foregroundStyle(
+                    LegendNextColor.textPrimary
+                )
+
+            TextField(
+                "Tag people or add mentions",
+                text: $tagsAndMentions,
+                axis: .vertical
+            )
+            .lineLimit(1...2)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .font(.system(size: 15))
+            .foregroundStyle(
+                LegendNextColor.textPrimary
+            )
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(
+                    LegendNextColor.textSecondary.opacity(0.55)
+                )
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 54)
+        .background(Color.white)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var instagramLocationRow: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "mappin.and.ellipse")
+                .font(.system(size: 20))
+                .frame(width: 26)
+                .foregroundStyle(
+                    LegendNextColor.textPrimary
+                )
+
+            TextField(
+                "Add location",
+                text: $shareLocation
+            )
+            .font(.system(size: 15))
+            .foregroundStyle(
+                LegendNextColor.textPrimary
+            )
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(
+                    LegendNextColor.textSecondary.opacity(0.55)
+                )
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 54)
+        .background(Color.white)
+    }
+
+    private var instagramMusicRow: some View {
+        Button {
+            musicReturnStage = .share
+            stage = .music
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "music.note")
+                    .font(.system(size: 20))
+                    .frame(width: 26)
+                    .foregroundStyle(
+                        LegendNextColor.textPrimary
+                    )
+
+                VStack(
+                    alignment: .leading,
+                    spacing: 2
+                ) {
+                    Text("Add music")
+                        .font(.system(size: 15))
+                        .foregroundStyle(
+                            LegendNextColor.textPrimary
+                        )
+
+                    if let selectedMusic {
+                        Text(
+                            "\(selectedMusic.track.trackTitle) · " +
+                            selectedMusic.track.artistName
+                        )
+                        .font(.system(size: 12))
+                        .foregroundStyle(
+                            LegendNextColor.textSecondary
+                        )
+                        .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(
+                        .system(
+                            size: 13,
+                            weight: .semibold
+                        )
+                    )
+                    .foregroundStyle(
+                        LegendNextColor.textSecondary.opacity(0.55)
+                    )
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 54)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(selectedMedia.isEmpty)
+        .background(Color.white)
+        .accessibilityLabel(
+            selectedMusic == nil
+                ? "Add music"
+                : "Change music"
+        )
+    }
+
+    private var instagramAudienceRow: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "person.2")
+                .font(.system(size: 20))
+                .frame(width: 26)
+                .foregroundStyle(
+                    LegendNextColor.textPrimary
+                )
+
+            Text("Audience")
+                .font(.system(size: 15))
+                .foregroundStyle(
+                    LegendNextColor.textPrimary
+                )
+
+            Spacer(minLength: 8)
+
+            Menu {
+                Button("Followers") {
+                    shareAudience = "Followers"
+                }
+
+                Button("Close Friends") {
+                    shareAudience = "Close Friends"
+                }
+
+                Button("Connections") {
+                    shareAudience = "Connections"
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(shareAudience)
+                        .font(.system(size: 14))
+                        .foregroundStyle(
+                            LegendNextColor.textSecondary
+                        )
+
+                    Image(systemName: "chevron.right")
+                        .font(
+                            .system(
+                                size: 13,
+                                weight: .semibold
+                            )
+                        )
+                        .foregroundStyle(
+                            LegendNextColor.textSecondary.opacity(0.55)
+                        )
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 54)
+        .background(Color.white)
+    }
+
+    private var instagramAccessibilityRow: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: "accessibility")
+                .font(.system(size: 20))
+                .frame(width: 26)
+                .foregroundStyle(
+                    LegendNextColor.textPrimary
+                )
+                .padding(.top, 9)
+
+            TextField(
+                "Write alt text",
+                text: $accessibilityText,
+                axis: .vertical
+            )
+            .lineLimit(1...3)
+            .font(.system(size: 15))
+            .foregroundStyle(
+                LegendNextColor.textPrimary
+            )
+            .padding(.vertical, 9)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(
+                    LegendNextColor.textSecondary.opacity(0.55)
+                )
+                .padding(.top, 12)
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 54)
+        .background(Color.white)
+    }
+
+    private var instagramCommentsRow: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "ellipsis.bubble")
+                .font(.system(size: 20))
+                .frame(width: 26)
+                .foregroundStyle(
+                    LegendNextColor.textPrimary
+                )
+
+            VStack(
+                alignment: .leading,
+                spacing: 2
+            ) {
+                Text("Allow comments")
+                    .font(.system(size: 15))
+                    .foregroundStyle(
+                        LegendNextColor.textPrimary
+                    )
+
+                Text("Advanced settings")
+                    .font(.system(size: 12))
+                    .foregroundStyle(
+                        LegendNextColor.textSecondary
+                    )
+            }
+
+            Spacer(minLength: 8)
+
+            Toggle(
+                "",
+                isOn: $commentsEnabled
+            )
+            .labelsHidden()
+            .tint(LegendNextColor.goldBright)
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 58)
+        .background(Color.white)
     }
 
     private func captionEditor(isDark: Bool) -> some View {
@@ -1007,8 +1680,13 @@ struct LegendSocialComposer: View {
         switch stage {
         case .library:
             stage = .metadata
+
         case .metadata:
+            stage = .share
+
+        case .share:
             publish()
+
         default:
             break
         }
@@ -1081,7 +1759,7 @@ struct LegendSocialComposer: View {
     private func publish() {
         let request = MobileSocialPublishRequest(
             contentType: type,
-            body: caption,
+            body: normalizedPublicationBody,
             files: selectedMedia.map(\.multipartFile),
             accessibilityText: normalizedAccessibilityText,
             music: selectedMusic?.selection)
@@ -1091,6 +1769,20 @@ struct LegendSocialComposer: View {
             stage = .handedOff
             dismiss()
         }
+    }
+
+
+    private var normalizedPublicationBody: String {
+        [
+            caption.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ),
+            tagsAndMentions.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: "\n\n")
     }
 
     private var normalizedAccessibilityText: String? {

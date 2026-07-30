@@ -38,7 +38,6 @@ public class ActionsController : Controller
     }
 
     [HttpPost("/Actions/Edit/{id:guid}")]
-    [IgnoreAntiforgeryToken] // action edit is authenticated; avoid stale token 400 after long-running quick-view sessions
     public async Task<IActionResult> Edit(Guid id, [FromForm] EditActionRequest req)
     {
         var ownerId = CurrentUserId();
@@ -54,7 +53,6 @@ public class ActionsController : Controller
     }
 
     [HttpPost("/Actions/Delete/{id:guid}")]
-    [IgnoreAntiforgeryToken] // quick-view delete is authenticated; avoid stale token 400 after long-running sessions
     public async Task<IActionResult> Delete(Guid id)
     {
         var ownerId = CurrentUserId();

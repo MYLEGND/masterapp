@@ -5,6 +5,7 @@ using ParfaitApp.Services;
 namespace ParfaitApp.Controllers;
 
 [Route("parfait-analytics")]
+[Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("public-ingest")]
 public sealed class ParfaitAnalyticsController : Controller
 {
     private readonly ParfaitAnalyticsService _analytics;

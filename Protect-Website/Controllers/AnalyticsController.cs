@@ -10,6 +10,7 @@ using Shared.Analytics;
 namespace Protect_Website.Controllers;
 
 [Route("analytics")]
+[Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("public-ingest")]
 public sealed class AnalyticsController : Controller
 {
     private readonly MasterAppDbContext _db;

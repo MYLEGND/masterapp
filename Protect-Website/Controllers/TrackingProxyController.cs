@@ -11,6 +11,7 @@ namespace ProtectWebsite.Controllers;
 
 [ApiController]
 [AllowAnonymous]
+[Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("public-ingest")]
 public sealed class TrackingProxyController : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonPascalCase = new()

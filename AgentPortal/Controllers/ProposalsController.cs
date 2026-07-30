@@ -13,7 +13,6 @@ namespace AgentPortal.Controllers;
 [Authorize]
 [Route("api/[controller]")]
 [ApiController]
-[IgnoreAntiforgeryToken] // Workstation AJAX uses authenticated same-origin fetch; avoid stale token 400s.
 public class ProposalsController : ControllerBase
 {
     private readonly MasterAppDbContext _db;
