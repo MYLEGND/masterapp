@@ -326,10 +326,20 @@ final class MessagingStore: ObservableObject {
         defer { isRefreshing = false }
         do {
             let accessToken = try await accessTokenProvider()
-            let conversations = try await api.conversations(accessToken: accessToken)
-            state = .loaded(conversations)
+            let conversations = try await api.conversations(
+                accessToken: accessToken
+            )
+            let persistedConversations = conversations.filter {
+                $0.lastMessageUTC != nil
+            }
+
+            state = .loaded(persistedConversations)
             refreshFailure = nil
-            NativeUnreadBadge.update(with: conversations.reduce(0) { $0 + max(0, $1.unreadCount) })
+            NativeUnreadBadge.update(
+                with: persistedConversations.reduce(0) {
+                    $0 + max(0, $1.unreadCount)
+                }
+            )
             return .loaded
         } catch {
             let presentation = failure(for: error, title: "Messages unavailable")

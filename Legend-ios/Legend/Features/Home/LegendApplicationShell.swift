@@ -66,6 +66,7 @@ struct LegendApplicationShell: View {
     @State private var selectedTab: LegendAppTab = .home
     @ObservedObject private var messages: MessagingStore
     @ObservedObject private var social: MobileSocialStore
+    @State private var isMessageThreadActive = false
 
     init(
         currentSession: MobileSession,
@@ -83,15 +84,17 @@ struct LegendApplicationShell: View {
         selectedTabContent
             .legendNextPageBackground()
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                LegendNextTabBar(
-                    selection: $selectedTab,
-                    tabs: LegendAppTab.available(
-                        for: currentSession.actor.identity.participantType
-                    ),
-                    accountAvatar: currentSession.actor.avatar,
-                    accountDisplayName: currentSession.actor.displayName,
-                    unreadMessageCount: unreadMessageCount
-                )
+                if !isMessageThreadActive {
+                    LegendNextTabBar(
+                        selection: $selectedTab,
+                        tabs: LegendAppTab.available(
+                            for: currentSession.actor.identity.participantType
+                        ),
+                        accountAvatar: currentSession.actor.avatar,
+                        accountDisplayName: currentSession.actor.displayName,
+                        unreadMessageCount: unreadMessageCount
+                    )
+                }
             }
             .tint(LegendNextColor.gold)
     }
@@ -156,7 +159,10 @@ struct LegendApplicationShell: View {
             }
 
         case .messages:
-            LegendMessagesTab(messages: messages)
+            LegendMessagesTab(
+                isThreadActive: $isMessageThreadActive,
+                messages: messages
+            )
 
         case .finance:
             NavigationStack {
@@ -684,15 +690,27 @@ extension MobileDailyScripture: Identifiable {
 }
 
 private struct LegendMessagesTab: View {
+    @Binding var isThreadActive: Bool
     @ObservedObject var messages: MessagingStore
     @State private var navigationPath: [UUID] = []
 
     var body: some View {
-        NavigationStack(path: $navigationPath) {
+        NavigationStack(
+            path: Binding(
+                get: {
+                    navigationPath
+                },
+                set: { updatedPath in
+                    navigationPath = updatedPath
+                    isThreadActive = !updatedPath.isEmpty
+                }
+            )
+        ) {
             MessagingHomeView(
                 store: messages,
                 openConversation: { conversationID in
                     navigationPath = [conversationID]
+                    isThreadActive = true
                 })
                 .navigationDestination(for: UUID.self) { conversationID in
                     ConversationThreadView(store: messages, conversationID: conversationID)

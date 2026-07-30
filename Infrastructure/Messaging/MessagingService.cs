@@ -51,6 +51,10 @@ internal sealed class MessagingService : IMessagingService
             return MessagingConversationListResult.Failure("MESSAGING_SEARCH_INVALID", "The conversation search text is too long.");
 
         var conversationsQuery = await AuthorizedConversationsQueryAsync(actor, cancellationToken);
+
+        conversationsQuery = conversationsQuery.Where(conversation =>
+            conversation.Messages.Any(message => !message.IsDeleted));
+
         if (!query.IncludeClosed)
             conversationsQuery = conversationsQuery.Where(x => !x.IsClosed);
 
