@@ -366,6 +366,55 @@ struct LegendSocialComposer: View {
         LegendSocialCreationModeRail(selection: $type)
     }
 
+    private var eligibleLibraryAssets: [LegendPhotoLibraryAsset] {
+        photoLibrary.visibleAssets.filter(type.accepts)
+    }
+
+    private var selectionAspectRatio: CGFloat {
+        switch type {
+        case .post:
+            1
+        case .story, .reel:
+            9 / 16
+        }
+    }
+
+    private var emptyPreviewHeight: CGFloat {
+        switch type {
+        case .post:
+            286
+        case .story, .reel:
+            440
+        }
+    }
+
+    private var primaryPreviewSize: CGSize {
+        switch type {
+        case .post:
+            CGSize(width: 286, height: 286)
+        case .story, .reel:
+            CGSize(width: 248, height: 440)
+        }
+    }
+
+    private var companionPreviewSize: CGSize {
+        switch type {
+        case .post:
+            CGSize(width: 132, height: 132)
+        case .story, .reel:
+            CGSize(width: 124, height: 220)
+        }
+    }
+
+    private var libraryTileHeight: CGFloat {
+        switch type {
+        case .post:
+            112
+        case .story, .reel:
+            196
+        }
+    }
+
     @ViewBuilder
     private func selectionPreview(isDark: Bool) -> some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
@@ -403,8 +452,12 @@ struct LegendSocialComposer: View {
                         .font(LegendNextTypography.supporting)
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: type == .post ? 196 : 272)
-                .foregroundStyle(isDark ? Color.white.opacity(0.80) : LegendNextColor.textSecondary)
+                .frame(height: emptyPreviewHeight)
+                .foregroundStyle(
+                    isDark
+                        ? Color.white.opacity(0.80)
+                        : LegendNextColor.textSecondary
+                )
                 .background(
                     isDark ? Color.white.opacity(0.08) : LegendNextColor.surfaceInset,
                     in: RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous))
@@ -429,89 +482,168 @@ struct LegendSocialComposer: View {
         }
     }
 
+    @ViewBuilder
     private func mediaPreviewStrip(
         isDark: Bool,
         overlayText: String? = nil
     ) -> some View {
-        let featuredHeight: CGFloat = type == .post ? 286 : 412
-        let featuredWidth: CGFloat = type == .post ? 286 : 232
-        let companionHeight: CGFloat = type == .post ? 132 : 232
-        let companionWidth: CGFloat = 132
+        if type == .post {
+            ScrollView(.horizontal) {
+                HStack(
+                    alignment: .top,
+                    spacing: LegendNextSpacing.xs
+                ) {
+                    if let primaryMedia = selectedMedia.first {
+                        LegendSocialMediaPreview(
+                            media: primaryMedia,
+                            presentation: .featured,
+                            overlayText: overlayText,
+                            remove: { remove(primaryMedia) }
+                        )
+                        .frame(
+                            width: primaryPreviewSize.width,
+                            height: primaryPreviewSize.height
+                        )
+                    }
 
-        return ScrollView(.horizontal) {
-            HStack(alignment: .top, spacing: LegendNextSpacing.xs) {
+                    ForEach(Array(selectedMedia.dropFirst())) { media in
+                        LegendSocialMediaPreview(
+                            media: media,
+                            presentation: .companion,
+                            remove: { remove(media) }
+                        )
+                        .frame(
+                            width: companionPreviewSize.width,
+                            height: companionPreviewSize.height
+                        )
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollIndicators(.hidden)
+            .background(
+                isDark ? Color.clear : LegendNextColor.surfaceInset,
+                in: RoundedRectangle(
+                    cornerRadius: LegendNextRadius.card,
+                    style: .continuous
+                )
+            )
+        } else {
+            HStack {
+                Spacer(minLength: 0)
+
                 if let primaryMedia = selectedMedia.first {
                     LegendSocialMediaPreview(
                         media: primaryMedia,
                         presentation: .featured,
                         overlayText: overlayText,
-                        remove: { remove(primaryMedia) })
-                    .frame(width: featuredWidth, height: featuredHeight)
+                        remove: { remove(primaryMedia) }
+                    )
+                    .frame(
+                        width: primaryPreviewSize.width,
+                        height: primaryPreviewSize.height
+                    )
                 }
 
-                ForEach(Array(selectedMedia.dropFirst())) { media in
-                    LegendSocialMediaPreview(
-                        media: media,
-                        presentation: .companion,
-                        remove: { remove(media) })
-                    .frame(width: companionWidth, height: companionHeight)
-                }
+                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity)
             .padding(.vertical, 2)
+            .background(
+                isDark ? Color.clear : LegendNextColor.surfaceInset,
+                in: RoundedRectangle(
+                    cornerRadius: LegendNextRadius.card,
+                    style: .continuous
+                )
+            )
         }
-        .scrollIndicators(.hidden)
-        .background(
-            isDark ? Color.clear : LegendNextColor.surfaceInset,
-            in: RoundedRectangle(
-                cornerRadius: LegendNextRadius.card,
-                style: .continuous))
     }
 
     private var mediaGrid: some View {
         GeometryReader { proxy in
-            let tileSide = min(
-                112,
-                max(92, (proxy.size.width - 4) / 3))
-            let rows = [
-                GridItem(.fixed(tileSide), spacing: 2),
-                GridItem(.fixed(tileSide), spacing: 2)
-            ]
-
-            ScrollView(.horizontal) {
-                LazyHGrid(rows: rows, spacing: 2) {
-                    ForEach(photoLibrary.visibleAssets) { asset in
-                        LegendPhotoLibraryThumbnail(
-                            asset: asset,
-                            photoLibrary: photoLibrary,
-                            isSelected: selectedAssetIdentifiers.contains(asset.id),
-                            isEligible: type.accepts(asset),
-                            select: { select(asset) })
-                        .frame(width: tileSide, height: tileSide)
-                    }
-
-                    if photoLibrary.canLoadMore {
-                        Button {
-                            photoLibrary.loadNextPage()
-                        } label: {
-                            Label("Show more", systemImage: "plus")
-                                .font(LegendNextTypography.label)
-                                .foregroundStyle(LegendNextColor.goldBright)
-                                .frame(width: tileSide, height: tileSide)
-                                .background(
-                                    Color.white.opacity(0.08),
-                                    in: RoundedRectangle(
-                                        cornerRadius: LegendNextRadius.control,
-                                        style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Show more recent media")
-                    }
+            let spacing: CGFloat = 2
+            let columnsCount = 3
+            let availableWidth =
+                proxy.size.width -
+                (spacing * CGFloat(columnsCount - 1))
+            let tileWidth = floor(
+                availableWidth / CGFloat(columnsCount)
+            )
+            let tileHeight: CGFloat = {
+                switch type {
+                case .post:
+                    return tileWidth
+                case .story, .reel:
+                    return tileWidth / selectionAspectRatio
                 }
-                .padding(.vertical, 1)
+            }()
+
+            let columns = Array(
+                repeating: GridItem(
+                    .fixed(tileWidth),
+                    spacing: spacing
+                ),
+                count: columnsCount
+            )
+
+            LazyVGrid(
+                columns: columns,
+                alignment: .center,
+                spacing: spacing
+            ) {
+                ForEach(eligibleLibraryAssets) { asset in
+                    LegendPhotoLibraryThumbnail(
+                        asset: asset,
+                        photoLibrary: photoLibrary,
+                        isSelected:
+                            selectedAssetIdentifiers.contains(asset.id),
+                        isEligible: true,
+                        select: { select(asset) }
+                    )
+                    .frame(
+                        width: tileWidth,
+                        height: tileHeight
+                    )
+                    .clipped()
+                }
+
+                if photoLibrary.canLoadMore {
+                    Button {
+                        photoLibrary.loadNextPage()
+                    } label: {
+                        VStack(spacing: LegendNextSpacing.xs) {
+                            Image(systemName: "plus")
+                                .font(.title3.weight(.bold))
+
+                            Text("More")
+                                .font(LegendNextTypography.label)
+                        }
+                        .foregroundStyle(LegendNextColor.goldBright)
+                        .frame(
+                            width: tileWidth,
+                            height: tileHeight
+                        )
+                        .background(
+                            Color.white.opacity(0.08),
+                            in: RoundedRectangle(
+                                cornerRadius: LegendNextRadius.control,
+                                style: .continuous
+                            )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        "Show more recent \(type.displayName.lowercased()) media"
+                    )
+                }
             }
-            .scrollIndicators(.hidden)
         }
-        .frame(height: 226)
+        .frame(
+            minHeight:
+                type == .post
+                    ? 226
+                    : libraryTileHeight * 2 + 2
+        )
     }
 
     @ViewBuilder
@@ -1391,7 +1523,11 @@ private struct LegendSocialMediaPreview: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             preview
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity
+                )
+                .clipped()
                 .background(Color.black.opacity(0.16))
 
             if presentation == .companion {
@@ -1457,14 +1593,24 @@ private struct LegendSocialMediaPreview: View {
             if let image = UIImage(data: data) {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFit()
+                    .scaledToFill()
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity
+                    )
+                    .clipped()
             } else {
                 mediaPlaceholder
             }
 
         case .video(_, let fileURL, _, _, _):
             VideoPlayer(player: AVPlayer(url: fileURL))
-                .aspectRatio(contentMode: .fit)
+                .aspectRatio(contentMode: .fill)
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity
+                )
+                .clipped()
                 .allowsHitTesting(false)
         }
     }
@@ -2118,16 +2264,25 @@ private struct LegendPhotoLibraryThumbnail: View {
         .disabled(!isEligible)
         .accessibilityLabel("\(asset.isVideo ? "Video" : "Photo")\(isSelected ? ", selected" : "")")
         .accessibilityHint(isEligible ? "Double tap to select." : "Not available for this format.")
-        .task(id: asset.id) {
+        .task(id: "\(asset.id)-\(typeThumbnailKey)") {
             requestID = photoLibrary.thumbnailRequest(
                 for: asset.id,
-                targetSize: CGSize(width: 280, height: 280)) { image in
-                    self.image = image
-                }
+                targetSize: thumbnailRequestSize
+            ) { image in
+                self.image = image
+            }
         }
         .onDisappear {
             photoLibrary.cancelThumbnailRequest(requestID)
         }
+    }
+
+    private var typeThumbnailKey: String {
+        "\(Int(thumbnailRequestSize.width))x\(Int(thumbnailRequestSize.height))"
+    }
+
+    private var thumbnailRequestSize: CGSize {
+        CGSize(width: 360, height: 640)
     }
 
     @ViewBuilder
