@@ -60,6 +60,7 @@
       email: item.email,
       phone: item.phone,
       recordType: item.recordType,
+      agentWorkspaceAccessEnabled: item.agentWorkspaceAccessEnabled === true,
       profileUrl: item.profileUrl,
       openedAt: new Date().toISOString()
     };
@@ -84,7 +85,7 @@
   }
 
   function openProfile(item) {
-    if (!item || !item.clientUserId) return;
+    if (!item || !item.clientUserId || item.agentWorkspaceAccessEnabled !== true) return;
     rememberClient(item);
     const href = norm(item.profileUrl) || `/ClientWorkspace/Profile?clientUserId=${encodeURIComponent(item.clientUserId)}`;
     window.open(href, "_blank", "noopener,noreferrer");
@@ -140,11 +141,19 @@
     const actions = document.createElement("div");
     actions.className = "home-clients-card-actions";
 
-    const openButton = document.createElement("button");
-    openButton.type = "button";
-    openButton.className = "home-clients-card-action is-primary";
-    openButton.textContent = "Open Client Profile";
-    openButton.addEventListener("click", () => openProfile(item));
+    if (item.agentWorkspaceAccessEnabled === true) {
+      const openButton = document.createElement("button");
+      openButton.type = "button";
+      openButton.className = "home-clients-card-action is-primary";
+      openButton.textContent = "Open Client Profile";
+      openButton.addEventListener("click", () => openProfile(item));
+      actions.appendChild(openButton);
+    } else {
+      const selfManaged = document.createElement("span");
+      selfManaged.className = "home-clients-card-meta";
+      selfManaged.textContent = "Self-managed account";
+      actions.appendChild(selfManaged);
+    }
 
     const editButton = document.createElement("button");
     editButton.type = "button";
@@ -152,7 +161,6 @@
     editButton.textContent = "Edit Record";
     editButton.addEventListener("click", () => openEdit(item));
 
-    actions.appendChild(openButton);
     actions.appendChild(editButton);
 
     card.appendChild(titleRow);

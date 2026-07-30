@@ -71,11 +71,15 @@ namespace AgentPortal.Controllers.API
             if (normalizedUserKeys.Contains(normalizedClientUserId))
                 return true;
 
-            // Avoid custom helpers inside the EF expression so it can translate.
-            var clientUserIdLower = normalizedClientUserId;
-            return await _db.AgentClients.AnyAsync(x =>
-                normalizedUserKeys.Contains((x.AgentUserId ?? string.Empty).ToLower()) &&
-                (x.ClientUserId ?? string.Empty).ToLower() == clientUserIdLower);
+            var effectiveAgentOid = Norm(_agentContext.EffectiveAgentOid);
+            if (string.IsNullOrWhiteSpace(effectiveAgentOid))
+                return false;
+
+            return await _db.AgentCanAccessClientWorkspaceAsync(
+                effectiveAgentOid,
+                normalizedClientUserId,
+                User.FindFirstValue("preferred_username") ?? User.FindFirstValue(ClaimTypes.Email),
+                normalizedUserKeys);
         }
 
         private async Task<Guid?> ResolveAccessibleClientProfileIdAsync(Guid clientProfileId, string? clientUserId)

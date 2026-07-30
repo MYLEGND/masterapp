@@ -1875,6 +1875,8 @@ namespace AgentPortal.Controllers;
             clientUserId = profile.ClientUserId,
             sourceWorkstationLeadId = ResolveSourceWorkstationLeadId(profile, meta, latestAppointment),
             portalAccessEnabled = HasPortalAccess(profile.ClientUserId),
+            accountManagementMode = ClientAccountManagementModes.Normalize(profile.AccountManagementMode),
+            agentWorkspaceAccessEnabled = ClientAccountManagementModes.AllowsAgentWorkspaceAccess(profile.AccountManagementMode),
             recordType,
             advancedMarketsEligible = IsBusinessClientRecordType(recordType),
             recordTypeLabel = RecordTypeLabel(recordType),
@@ -2093,6 +2095,22 @@ namespace AgentPortal.Controllers;
         return linked ? profile : null;
     }
 
+    private async Task<ClientProfile?> GetOwnedSharedClientProfileAsync(string agentOid, string clientUserId)
+    {
+        var profile = await GetOwnedClientProfileAsync(agentOid, clientUserId);
+        return profile != null && ClientAccountManagementModes.AllowsAgentWorkspaceAccess(profile.AccountManagementMode)
+            ? profile
+            : null;
+    }
+
+    private async Task<ClientProfile?> GetOwnedSharedClientProfileAsync(string agentOid, Guid clientProfileId)
+    {
+        var profile = await GetOwnedClientProfileAsync(agentOid, clientProfileId);
+        return profile != null && ClientAccountManagementModes.AllowsAgentWorkspaceAccess(profile.AccountManagementMode)
+            ? profile
+            : null;
+    }
+
     private static bool IsToday(long? ticks)
         => ticks.HasValue && new System.DateTime(ticks.Value).Date == System.DateTime.UtcNow.Date;
 
@@ -2240,6 +2258,7 @@ namespace AgentPortal.Controllers;
                     Age = meta.Age,
                     Btc = meta.Btc,
                     RecordType = recordType,
+                    AccountManagementMode = ClientAccountManagementModes.Normalize(x.AccountManagementMode),
                     CrmStatus = string.IsNullOrWhiteSpace(x.CrmStatus) ? "Lead" : x.CrmStatus!,
                     CrmPriority = string.IsNullOrWhiteSpace(x.CrmPriority) ? "Normal" : x.CrmPriority!,
                     CrmLastTouch = x.CrmLastTouch,
@@ -3123,6 +3142,18 @@ namespace AgentPortal.Controllers;
         var recordType = NormalizeRecordType(model.RecordType);
         model.RecordType = recordType;
         var isPortalClient = IsPortalRecordType(recordType);
+        if (isPortalClient && !ClientAccountManagementModes.IsValid(model.AccountManagementMode))
+        {
+            ModelState.AddModelError(
+                nameof(CreateClientViewModel.AccountManagementMode),
+                "Choose Shared Account or Self Managed for this client.");
+            return View(model);
+        }
+
+        var accountManagementMode = isPortalClient
+            ? ClientAccountManagementModes.Normalize(model.AccountManagementMode)
+            : ClientAccountManagementModes.SharedAccount;
+        model.AccountManagementMode = isPortalClient ? accountManagementMode : null;
         var sourceLeadClientUserId = NormLower(model.SourceLeadClientUserId);
         var sourceWorkstationLeadId = Norm(model.SourceWorkstationLeadId);
         if (!string.IsNullOrWhiteSpace(sourceLeadClientUserId) && !string.IsNullOrWhiteSpace(sourceWorkstationLeadId))
@@ -3339,6 +3370,7 @@ namespace AgentPortal.Controllers;
                     recordType,
                     pipelineStage,
                     agentUpn);
+                conversionSourceLead.AccountManagementMode = accountManagementMode;
 
                 var conversion = await EnablePortalAccessInternalAsync(
                     conversionSourceLead,
@@ -3486,6 +3518,7 @@ namespace AgentPortal.Controllers;
 
                 // Relationship notes (DB)
                 AgentNotes = crmNotes,
+                AccountManagementMode = accountManagementMode,
 
                 CreatedUtc = DateTime.UtcNow,
                 UpdatedUtc = DateTime.UtcNow
@@ -3751,7 +3784,12 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(clientUserIdNorm))
             return RedirectToAction(nameof(Index));
 
-        if (!await AgentOwnsClientAsync(agentOid, clientUserIdNorm, HttpContext.RequestAborted))
+        if (!await _db.AgentCanAccessClientWorkspaceAsync(
+                agentOid,
+                clientUserIdNorm,
+                GetAgentUpnForAudit(),
+                GetAgentIdCandidates(agentOid),
+                HttpContext.RequestAborted))
             return Forbid();
 
         var clientProfileId = await _db.ClientProfiles
@@ -4561,6 +4599,7 @@ namespace AgentPortal.Controllers;
                     profile.Email,
                     profile.Phone,
                     profile.CrmNotes,
+                    profile.AccountManagementMode,
                     profile.UpdatedUtc
                 }
             ).ToListAsync();
@@ -4574,6 +4613,7 @@ namespace AgentPortal.Controllers;
                         return null;
 
                     var recordType = RecordTypeLabel(ResolveRecordType(profile.ClientUserId, meta));
+                    var agentWorkspaceAccessEnabled = ClientAccountManagementModes.AllowsAgentWorkspaceAccess(profile.AccountManagementMode);
                     var displayName = $"{Norm(profile.FirstName)} {Norm(profile.LastName)}".Trim();
                     if (string.IsNullOrWhiteSpace(displayName))
                         displayName = recordType;
@@ -4591,9 +4631,12 @@ namespace AgentPortal.Controllers;
                         email = profile.Email ?? "",
                         phone = profile.Phone ?? "",
                         recordType,
+                        agentWorkspaceAccessEnabled,
                         updatedUtc = profile.UpdatedUtc,
                         haystack,
-                        profileUrl = Url.Action("Profile", "ClientWorkspace", new { clientUserId = profile.ClientUserId })
+                        profileUrl = agentWorkspaceAccessEnabled
+                            ? Url.Action("Profile", "ClientWorkspace", new { clientUserId = profile.ClientUserId })
+                            : null
                     };
                 })
                 .Where(x => x != null)
@@ -4608,8 +4651,9 @@ namespace AgentPortal.Controllers;
                     email = x.email,
                     phone = x.phone,
                     recordType = x.recordType,
+                    agentWorkspaceAccessEnabled = x.agentWorkspaceAccessEnabled,
                     updatedUtc = x.updatedUtc.ToString("o"),
-                    profileUrl = x.profileUrl ?? $"/ClientWorkspace/Profile?clientUserId={Uri.EscapeDataString(x.ClientUserId)}"
+                    profileUrl = x.profileUrl
                 })
                 .ToList();
 
@@ -4992,10 +5036,10 @@ namespace AgentPortal.Controllers;
 
         ClientProfile? profile = null;
         if (clientProfileId.HasValue && clientProfileId.Value != Guid.Empty)
-            profile = await GetOwnedClientProfileAsync(agentOid, clientProfileId.Value);
+            profile = await GetOwnedSharedClientProfileAsync(agentOid, clientProfileId.Value);
 
         if (profile == null && !string.IsNullOrWhiteSpace(clientUserId))
-            profile = await GetOwnedClientProfileAsync(agentOid, clientUserId);
+            profile = await GetOwnedSharedClientProfileAsync(agentOid, clientUserId);
 
         if (profile == null) return Forbid();
 
@@ -5046,9 +5090,9 @@ namespace AgentPortal.Controllers;
 
         try
         {
-            ClientProfile? profile = await GetOwnedClientProfileAsync(agentOid, id);
+            ClientProfile? profile = await GetOwnedSharedClientProfileAsync(agentOid, id);
             if (profile == null && !string.IsNullOrWhiteSpace(clientUserIdNorm))
-                profile = await GetOwnedClientProfileAsync(agentOid, clientUserIdNorm);
+                profile = await GetOwnedSharedClientProfileAsync(agentOid, clientUserIdNorm);
 
             if (profile == null) return Forbid();
 
@@ -5136,10 +5180,10 @@ namespace AgentPortal.Controllers;
 
         ClientProfile? profile = null;
         if (request.ClientProfileId.HasValue && request.ClientProfileId.Value != Guid.Empty)
-            profile = await GetOwnedClientProfileAsync(agentOid, request.ClientProfileId.Value);
+            profile = await GetOwnedSharedClientProfileAsync(agentOid, request.ClientProfileId.Value);
 
         if (profile == null && !string.IsNullOrWhiteSpace(request.ClientUserId))
-            profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
+            profile = await GetOwnedSharedClientProfileAsync(agentOid, request.ClientUserId);
 
         if (profile == null) return Forbid();
 
@@ -5235,11 +5279,11 @@ namespace AgentPortal.Controllers;
 
         try
         {
-            ClientProfile? profile = await GetOwnedClientProfileAsync(agentOid, id);
+            ClientProfile? profile = await GetOwnedSharedClientProfileAsync(agentOid, id);
             if (profile == null && request.ClientProfileId.HasValue && request.ClientProfileId.Value != Guid.Empty)
-                profile = await GetOwnedClientProfileAsync(agentOid, request.ClientProfileId.Value);
+                profile = await GetOwnedSharedClientProfileAsync(agentOid, request.ClientProfileId.Value);
             if (profile == null && !string.IsNullOrWhiteSpace(request.ClientUserId))
-                profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
+                profile = await GetOwnedSharedClientProfileAsync(agentOid, request.ClientUserId);
 
             if (profile == null) return Forbid();
 

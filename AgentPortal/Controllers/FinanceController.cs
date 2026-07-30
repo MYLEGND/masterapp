@@ -61,7 +61,7 @@ namespace AgentPortal.Controllers
         {
             clientUserId = Norm(clientUserId);
             if (string.IsNullOrWhiteSpace(clientUserId) ||
-                !await _db.AgentOwnsClientAsync(
+                !await _db.AgentCanAccessClientWorkspaceAsync(
                     agentOid,
                     clientUserId,
                     GetAgentUpn(),

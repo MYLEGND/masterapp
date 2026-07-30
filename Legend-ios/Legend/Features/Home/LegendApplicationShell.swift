@@ -210,7 +210,6 @@ struct LegendApplicationShell: View {
 }
 
 private struct LegendNextTabBar: View {
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Binding var selection: LegendAppTab
@@ -220,6 +219,9 @@ private struct LegendNextTabBar: View {
     let unreadMessageCount: Int
     let alternateAccountTypes: [ParticipantType]
     let switchAccount: (ParticipantType) -> Void
+
+    @State private var isAccountSwitcherPresented = false
+    @State private var suppressNextAccountTap = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -235,6 +237,18 @@ private struct LegendNextTabBar: View {
         }
         .padding(.horizontal, LegendNextSpacing.sm)
         .padding(.bottom, 4)
+        .sheet(isPresented: $isAccountSwitcherPresented) {
+            LegendAccountSwitcherSheet(
+                accountAvatar: accountAvatar,
+                accountDisplayName: accountDisplayName,
+                currentAccountType: currentAccountType,
+                alternateAccountTypes: alternateAccountTypes,
+                switchAccount: { participantType in
+                    isAccountSwitcherPresented = false
+                    switchAccount(participantType)
+                }
+            )
+        }
     }
 
     @ViewBuilder
@@ -244,19 +258,14 @@ private struct LegendNextTabBar: View {
         if tab == .account,
            !alternateAccountTypes.isEmpty {
             tabButtonContent(tab)
-                .contextMenu {
-                    Section("Switch account") {
-                        ForEach(alternateAccountTypes, id: \.self) { participantType in
-                            Button {
-                                switchAccount(participantType)
-                            } label: {
-                                Label(
-                                    "Switch to \(participantType.accountLabel)",
-                                    systemImage: participantType.accountSystemImage
-                                )
-                            }
-                        }
-                    }
+                .onLongPressGesture(
+                    minimumDuration: 0.45,
+                    maximumDistance: 24
+                ) {
+                    suppressNextAccountTap = true
+                    UIImpactFeedbackGenerator(style: .medium)
+                        .impactOccurred()
+                    isAccountSwitcherPresented = true
                 }
         } else {
             tabButtonContent(tab)
@@ -267,20 +276,13 @@ private struct LegendNextTabBar: View {
         _ tab: LegendAppTab
     ) -> some View {
         Button {
-            guard selection != tab else {
+            if tab == .account,
+               suppressNextAccountTap {
+                suppressNextAccountTap = false
                 return
             }
 
-            UISelectionFeedbackGenerator()
-                .selectionChanged()
-
-            if reduceMotion {
-                selection = tab
-            } else {
-                withAnimation(LegendNextMotion.tab) {
-                    selection = tab
-                }
-            }
+            activate(tab)
         } label: {
             tabIcon(tab)
                 .foregroundStyle(
@@ -301,12 +303,31 @@ private struct LegendNextTabBar: View {
         )
         .accessibilityHint(
             tab == .account && !alternateAccountTypes.isEmpty
-                ? "Long press to switch accounts."
+                ? "Tap to open your profile. Long press to switch accounts."
                 : ""
         )
         .accessibilityAddTraits(
             selection == tab ? .isSelected : []
         )
+    }
+
+    private func activate(
+        _ tab: LegendAppTab
+    ) {
+        guard selection != tab else {
+            return
+        }
+
+        UISelectionFeedbackGenerator()
+            .selectionChanged()
+
+        if reduceMotion {
+            selection = tab
+        } else {
+            withAnimation(LegendNextMotion.tab) {
+                selection = tab
+            }
+        }
     }
 
     @ViewBuilder
@@ -381,10 +402,411 @@ private struct LegendNextTabBar: View {
         }
     }
 
+    private var currentAccountType: ParticipantType {
+        if alternateAccountTypes.contains(.client) {
+            return .agent
+        }
+
+        return .client
+    }
+
     private var unreadBadgeText: String {
         unreadMessageCount > 99
             ? "99+"
             : "\(unreadMessageCount)"
+    }
+}
+
+private struct LegendAccountSwitcherSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let accountAvatar: ProfileAvatar?
+    let accountDisplayName: String
+    let currentAccountType: ParticipantType
+    let alternateAccountTypes: [ParticipantType]
+    let switchAccount: (ParticipantType) -> Void
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LegendNextGradient.hero
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(
+                        alignment: .leading,
+                        spacing: LegendNextSpacing.sm
+                    ) {
+                        sheetHeader
+                        currentAccountCard
+                        availableAccounts
+                        securityNotice
+                    }
+                    .padding(
+                        .horizontal,
+                        LegendNextSpacing.pageHorizontal
+                    )
+                    .padding(.top, LegendNextSpacing.xs)
+                    .padding(.bottom, LegendNextSpacing.xl)
+                }
+                .scrollIndicators(.hidden)
+            }
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .tint(LegendNextColor.goldBright)
+        .presentationDetents([.height(preferredHeight), .large])
+        .presentationDragIndicator(.hidden)
+        .presentationCornerRadius(34)
+        .presentationBackground(LegendNextColor.midnight)
+    }
+
+    private var sheetHeader: some View {
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.sm
+        ) {
+            Capsule()
+                .fill(Color.white.opacity(0.34))
+                .frame(width: 52, height: 5)
+                .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
+
+            HStack(
+                alignment: .center,
+                spacing: LegendNextSpacing.sm
+            ) {
+                Image(systemName: "person.2.badge.gearshape.fill")
+                    .font(
+                        .system(
+                            size: 20,
+                            weight: .semibold
+                        )
+                    )
+                    .foregroundStyle(LegendNextColor.midnight)
+                    .frame(width: 52, height: 52)
+                    .background(
+                        LegendNextColor.goldBright,
+                        in: Circle()
+                    )
+                    .accessibilityHidden(true)
+
+                VStack(
+                    alignment: .leading,
+                    spacing: LegendNextSpacing.micro
+                ) {
+                    Text("LEGEND IDENTITY")
+                        .font(LegendNextTypography.eyebrow)
+                        .tracking(1)
+                        .foregroundStyle(
+                            LegendNextColor.goldBright
+                        )
+
+                    Text("Switch account")
+                        .font(LegendNextTypography.hero)
+                        .foregroundStyle(.white)
+
+                    Text(
+                        "Move between your authorized Legend experiences without signing out."
+                    )
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(
+                        Color.white.opacity(0.68)
+                    )
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+                }
+
+                Spacer(minLength: LegendNextSpacing.xs)
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(
+                            .system(
+                                size: 15,
+                                weight: .bold
+                            )
+                        )
+                        .foregroundStyle(.white)
+                        .frame(width: 46, height: 46)
+                        .background(
+                            Color.white.opacity(0.08),
+                            in: Circle()
+                        )
+                        .overlay {
+                            Circle()
+                                .strokeBorder(
+                                    Color.white.opacity(0.18),
+                                    lineWidth: 1
+                                )
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close account switcher")
+            }
+        }
+        .padding(LegendNextSpacing.sm)
+        .background(
+            Color.white.opacity(0.055),
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.prominentCard,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.prominentCard,
+                style: .continuous
+            )
+            .strokeBorder(
+                Color.white.opacity(0.14),
+                lineWidth: 1
+            )
+        }
+    }
+
+    private var currentAccountCard: some View {
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.xs
+        ) {
+            Text("CURRENT ACCOUNT")
+                .font(LegendNextTypography.eyebrow)
+                .tracking(0.9)
+                .foregroundStyle(
+                    LegendNextColor.goldBright
+                )
+
+            HStack(
+                spacing: LegendNextSpacing.sm
+            ) {
+                LegendProfileAvatar(
+                    avatar: accountAvatar,
+                    displayName: accountDisplayName,
+                    size: 58
+                )
+                .overlay {
+                    Circle()
+                        .strokeBorder(
+                            LegendNextColor.goldBright,
+                            lineWidth: 2
+                        )
+                }
+
+                VStack(
+                    alignment: .leading,
+                    spacing: LegendNextSpacing.micro
+                ) {
+                    Text(accountDisplayName)
+                        .font(LegendNextTypography.section)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+
+                    Label(
+                        currentAccountType.accountLabel,
+                        systemImage: currentAccountType.accountSystemImage
+                    )
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(
+                        Color.white.opacity(0.68)
+                    )
+                }
+
+                Spacer(minLength: LegendNextSpacing.xs)
+
+                Label(
+                    "Active",
+                    systemImage: "checkmark.circle.fill"
+                )
+                .font(LegendNextTypography.caption)
+                .foregroundStyle(
+                    LegendNextColor.success
+                )
+                .padding(.horizontal, 12)
+                .frame(minHeight: 34)
+                .background(
+                    LegendNextColor.success.opacity(0.12),
+                    in: Capsule()
+                )
+            }
+        }
+        .padding(LegendNextSpacing.sm)
+        .background(
+            Color.white.opacity(0.055),
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.prominentCard,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.prominentCard,
+                style: .continuous
+            )
+            .strokeBorder(
+                LegendNextColor.goldBright.opacity(0.30),
+                lineWidth: 1
+            )
+        }
+    }
+
+    private var availableAccounts: some View {
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.xs
+        ) {
+            LegendNextSectionHeader(
+                eyebrow: "Authorized access",
+                title: "Available accounts",
+                detail: "Select the Legend experience you want to enter."
+            )
+            .foregroundStyle(.white)
+
+            ForEach(
+                alternateAccountTypes,
+                id: \.self
+            ) { participantType in
+                accountButton(participantType)
+            }
+        }
+    }
+
+    private func accountButton(
+        _ participantType: ParticipantType
+    ) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium)
+                .impactOccurred()
+            switchAccount(participantType)
+        } label: {
+            HStack(
+                spacing: LegendNextSpacing.sm
+            ) {
+                Image(
+                    systemName: participantType.accountSystemImage
+                )
+                .font(
+                    .system(
+                        size: 18,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(LegendNextColor.midnight)
+                .frame(width: 48, height: 48)
+                .background(
+                    LegendNextColor.goldBright,
+                    in: Circle()
+                )
+                .accessibilityHidden(true)
+
+                VStack(
+                    alignment: .leading,
+                    spacing: LegendNextSpacing.micro
+                ) {
+                    Text(
+                        "Continue as \(participantType.accountLabel)"
+                    )
+                    .font(LegendNextTypography.bodyEmphasis)
+                    .foregroundStyle(.white)
+
+                    Text(participantType.accountDescription)
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(
+                            Color.white.opacity(0.64)
+                        )
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
+                        )
+                }
+
+                Spacer(minLength: LegendNextSpacing.xs)
+
+                Image(systemName: "arrow.right")
+                    .font(
+                        .system(
+                            size: 15,
+                            weight: .bold
+                        )
+                    )
+                    .foregroundStyle(
+                        LegendNextColor.goldBright
+                    )
+                    .frame(width: 38, height: 38)
+                    .background(
+                        LegendNextColor.goldBright.opacity(0.10),
+                        in: Circle()
+                    )
+                    .accessibilityHidden(true)
+            }
+            .padding(LegendNextSpacing.sm)
+            .frame(
+                maxWidth: .infinity,
+                alignment: .leading
+            )
+            .background(
+                Color.white.opacity(0.055),
+                in: RoundedRectangle(
+                    cornerRadius: LegendNextRadius.prominentCard,
+                    style: .continuous
+                )
+            )
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: LegendNextRadius.prominentCard,
+                    style: .continuous
+                )
+                .strokeBorder(
+                    Color.white.opacity(0.14),
+                    lineWidth: 1
+                )
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "Switch to \(participantType.accountLabel) account"
+        )
+    }
+
+    private var securityNotice: some View {
+        HStack(
+            alignment: .top,
+            spacing: LegendNextSpacing.xs
+        ) {
+            Image(systemName: "lock.shield.fill")
+                .font(
+                    .system(
+                        size: 14,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(
+                    LegendNextColor.goldBright
+                )
+                .accessibilityHidden(true)
+
+            Text(
+                "Your secure session remains active. Legend validates the selected account before loading its data."
+            )
+            .font(LegendNextTypography.caption)
+            .foregroundStyle(
+                Color.white.opacity(0.56)
+            )
+            .fixedSize(
+                horizontal: false,
+                vertical: true
+            )
+        }
+        .padding(.horizontal, LegendNextSpacing.xs)
+    }
+
+    private var preferredHeight: CGFloat {
+        alternateAccountTypes.count > 1
+            ? 690
+            : 610
     }
 }
 
@@ -400,6 +822,15 @@ private extension ParticipantType {
         switch self {
         case .agent: "briefcase.fill"
         case .client: "person.fill"
+        }
+    }
+
+    var accountDescription: String {
+        switch self {
+        case .agent:
+            return "Manage clients, leads, operations, and your professional workspace."
+        case .client:
+            return "Open your personal financial, protection, and community experience."
         }
     }
 }

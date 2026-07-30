@@ -2,6 +2,7 @@ using ClientApp.Models;
 using ClientApp.Services;
 using Domain.Billing;
 using Domain.Entities;
+using Domain.Enums;
 using Infrastructure.Data;
 using Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
@@ -141,6 +142,7 @@ public class ProfileController : Controller
             Email = profile.Email ?? string.Empty,
             Phone = profile.Phone ?? string.Empty,
             MaritalStatus = profile.MaritalStatus ?? string.Empty,
+            AccountManagementMode = ClientAccountManagementModes.Normalize(profile.AccountManagementMode),
             DOB = profile.DOB,
             SignificantOtherFirstName = significantOther?.FirstName ?? profile.SignificantOtherFirstName,
             SignificantOtherLastName = significantOther?.LastName ?? profile.SignificantOtherLastName,
@@ -205,6 +207,14 @@ public class ProfileController : Controller
         if (!ModelState.IsValid)
             return await ProfileViewAsync(model, context);
 
+        if (!context.IsAgentView && !ClientAccountManagementModes.IsValid(model.AccountManagementMode))
+        {
+            ModelState.AddModelError(
+                nameof(EditClientViewModel.AccountManagementMode),
+                "Choose Shared Account or Self Managed.");
+            return await ProfileViewAsync(model, context);
+        }
+
         var email = NormalizeEmail(model.Email);
         if (string.IsNullOrWhiteSpace(email))
         {
@@ -232,6 +242,8 @@ public class ProfileController : Controller
         profile.NormalizedEmail = email;
         profile.Phone = (model.Phone ?? string.Empty).Trim();
         profile.MaritalStatus = (model.MaritalStatus ?? string.Empty).Trim();
+        if (!context.IsAgentView)
+            profile.AccountManagementMode = ClientAccountManagementModes.Normalize(model.AccountManagementMode);
         profile.UpdatedUtc = DateTime.UtcNow;
 
         if (NeedsSignificantOther(profile.MaritalStatus))
@@ -328,6 +340,7 @@ public class ProfileController : Controller
         model.LastName = profile.LastName;
         model.Phone = profile.Phone;
         model.MaritalStatus = profile.MaritalStatus;
+        model.AccountManagementMode = ClientAccountManagementModes.Normalize(profile.AccountManagementMode);
 
         return await ProfileViewAsync(
             model,

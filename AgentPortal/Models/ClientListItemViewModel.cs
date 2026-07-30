@@ -12,6 +12,7 @@ public sealed class ClientListItemViewModel
     public string? Age { get; set; }
     public string? Btc { get; set; }
     public string RecordType { get; set; } = "Lead";
+    public string AccountManagementMode { get; set; } = "SharedAccount";
     public string CrmStatus { get; set; } = "Lead";
     public string CrmPriority { get; set; } = "Normal";
     public DateTime? CrmLastTouch { get; set; }

@@ -734,6 +734,9 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<ClientProfile>(e =>
         {
+            e.Property(x => x.AccountManagementMode)
+                .HasMaxLength(32)
+                .HasDefaultValue(ClientAccountManagementModes.SharedAccount);
             e.Property(x => x.Email).HasMaxLength(320);
             e.Property(x => x.NormalizedEmail).HasMaxLength(320);
             e.Property(x => x.ExternalIdentityObjectId).HasMaxLength(450);

@@ -43,6 +43,10 @@ namespace ClientApp.Models
         [Required(ErrorMessage = "Marital status is required.")]
         public string MaritalStatus { get; set; } = "";
 
+        // The client, not the agent, controls whether their agent can enter
+        // the private client workspace.
+        public string? AccountManagementMode { get; set; }
+
         // DOB is display-only (does not change)
         public DateTime? DOB { get; set; }
 

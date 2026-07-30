@@ -44,6 +44,7 @@ public static class MasterAppSqliteSchemaBootstrapper
         new("MetaSignalEvents", "Language", "TEXT"),
         new("MetaSignalEvents", "TimeZone", "TEXT"),
         new("ClientProfiles", "ExternalIdentityObjectId", "TEXT"),
+        new("ClientProfiles", "AccountManagementMode", "TEXT NOT NULL DEFAULT 'SharedAccount'"),
         new("ClientSubscriptions", "BillingTimeZoneId", "TEXT NOT NULL DEFAULT 'UTC'"),
         new("ClientSubscriptions", "FirstChargeUtc", "TEXT"),
         new("ClientSubscriptions", "FirstRecurringRenewalUtc", "TEXT"),

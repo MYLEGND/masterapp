@@ -835,6 +835,21 @@ private enum LegendSocialPostPresentation {
     }
 }
 
+/// Keeps participant-role labels inside the agent's CRM context only. Public
+/// and client social surfaces identify the post type, never the author's
+/// account type.
+enum LegendSocialPostMetadata {
+    static func summary(
+        contentType: String,
+        authorParticipantType: ParticipantType,
+        viewerParticipantType: ParticipantType
+    ) -> String {
+        let kind = contentType == MobileSocialContentType.reel.rawValue ? "Reel" : contentType
+        guard viewerParticipantType == .agent else { return kind }
+        return "\(kind) · \(authorParticipantType.rawValue)"
+    }
+}
+
 private struct LegendSocialPostCard: View {
     let post: MobileSocialPost
     let currentIdentity: LogicalParticipantIdentity
@@ -1127,8 +1142,10 @@ private struct LegendSocialPostCard: View {
     }
 
     private var metadata: String {
-        let kind = post.contentType == MobileSocialContentType.reel.rawValue ? "Reel" : post.contentType
-        return "\(kind) · \(post.author.identity.participantType.rawValue)"
+        LegendSocialPostMetadata.summary(
+            contentType: post.contentType,
+            authorParticipantType: post.author.identity.participantType,
+            viewerParticipantType: currentIdentity.participantType)
     }
 }
 

@@ -52,6 +52,32 @@ public static class OwnershipQueries
                 ct);
     }
 
+    /// <summary>
+    /// Authorization for entering the client-owned workspace. CRM ownership is
+    /// deliberately separate: a self-managed client remains on the agent's
+    /// contact card while their portal data is private.
+    /// </summary>
+    public static async Task<bool> AgentCanAccessClientWorkspaceAsync(
+        this MasterAppDbContext db,
+        string agentOid,
+        string clientUserId,
+        string? agentUpn = null,
+        IEnumerable<string>? agentIdCandidates = null,
+        CancellationToken ct = default)
+    {
+        if (!await db.AgentOwnsClientAsync(agentOid, clientUserId, agentUpn, agentIdCandidates, ct))
+            return false;
+
+        var clientKey = IdentityKey.Normalize(clientUserId);
+        var mode = await db.ClientProfiles
+            .AsNoTracking()
+            .Where(profile => (profile.ClientUserId ?? string.Empty).ToLower() == clientKey)
+            .Select(profile => profile.AccountManagementMode)
+            .SingleOrDefaultAsync(ct);
+
+        return ClientAccountManagementModes.AllowsAgentWorkspaceAccess(mode);
+    }
+
     public static Task<bool> AgentOwnsLeadAsync(
         this MasterAppDbContext db,
         string agentOid,

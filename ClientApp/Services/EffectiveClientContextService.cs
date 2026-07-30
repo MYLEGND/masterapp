@@ -1,4 +1,5 @@
 using Domain.Entities;
+using Domain.Enums;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -142,6 +143,12 @@ public sealed class EffectiveClientContextService
             .FirstOrDefaultAsync(x => x.Id == clientProfileId);
 
         if (profile == null)
+            return null;
+
+        // Re-check the client-controlled mode for every request. This closes
+        // a previously issued view-as-client cookie immediately if the client
+        // changes their account to self-managed.
+        if (!ClientAccountManagementModes.AllowsAgentWorkspaceAccess(profile.AccountManagementMode))
             return null;
 
         var clientUserId = Norm(profile.ClientUserId);

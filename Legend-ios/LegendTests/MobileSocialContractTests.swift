@@ -4,6 +4,21 @@ import XCTest
 
 @MainActor
 final class MobileSocialContractTests: XCTestCase {
+    func testPostMetadataHidesParticipantRoleOutsideAgentContext() {
+        XCTAssertEqual(
+            LegendSocialPostMetadata.summary(
+                contentType: MobileSocialContentType.post.rawValue,
+                authorParticipantType: .client,
+                viewerParticipantType: .client),
+            MobileSocialContentType.post.rawValue)
+        XCTAssertEqual(
+            LegendSocialPostMetadata.summary(
+                contentType: MobileSocialContentType.reel.rawValue,
+                authorParticipantType: .client,
+                viewerParticipantType: .agent),
+            "Reel · Client")
+    }
+
     func testSocialSnapshotDecodesTypedAuthorsWithIndependentProfileImages() throws {
         let data = Data("""
         {

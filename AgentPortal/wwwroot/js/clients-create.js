@@ -9,6 +9,8 @@
   const soLast = document.getElementById("SignificantOtherLastName");
   const soDob = document.getElementById("SignificantOtherDOB");
   const requiredForClient = Array.from(document.querySelectorAll("[data-client-required]"));
+  const accountManagementCard = document.getElementById("accountManagementCard");
+  const accountManagementInputs = Array.from(document.querySelectorAll('input[name="AccountManagementMode"]'));
   const subscriptionCard = document.getElementById("subscriptionCard");
   const subscriptionPriceType = document.getElementById("SubscriptionPriceType");
   const subscriptionCustomAmount = document.getElementById("SubscriptionCustomMonthlyAmount");
@@ -114,6 +116,15 @@
     if (subscriptionCard) {
       subscriptionCard.classList.toggle("is-hidden", !isClient);
     }
+
+    if (accountManagementCard) {
+      accountManagementCard.classList.toggle("is-hidden", !isClient);
+    }
+    accountManagementInputs.forEach((input) => {
+      input.disabled = !isClient;
+      input.required = isClient;
+      input.toggleAttribute("aria-required", isClient);
+    });
 
     if (subscriptionCurrency && !subscriptionCurrency.value) {
       subscriptionCurrency.value = "USD";

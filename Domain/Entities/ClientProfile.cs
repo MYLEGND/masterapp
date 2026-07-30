@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations.Schema;
+using Domain.Enums;
 
 namespace Domain.Entities;
 
@@ -58,6 +59,10 @@ public class ClientProfile
     public string? CrmNextText { get; set; }
     public string? CrmTags { get; set; }     // comma-separated
     public string? CrmNotes { get; set; }
+
+    // Client-controlled. Self-managed clients remain CRM contacts but their
+    // agent cannot enter the ClientApp workspace until the client shares it.
+    public string AccountManagementMode { get; set; } = ClientAccountManagementModes.SharedAccount;
 
     // Legacy/compatibility: some callers still expect a RecordType directly on ClientProfile.
     // The canonical value is stored inside serialized CrmNotes metadata, so this property is

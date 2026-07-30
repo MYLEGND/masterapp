@@ -106,6 +106,28 @@
                             </div>
                         </div>
 
+                        @if (!isAgentView)
+                        {
+                            <div class="client-create-section client-create-section-shell client-edit-section-spaced">
+                                <div class="client-create-section-head">
+                                    <div>
+                                        <div class="client-create-section-title">Account Privacy</div>
+                                        <p class="client-edit-note">Choose whether your agent can open your full Legend client workspace. Your CRM contact remains visible either way.</p>
+                                    </div>
+                                </div>
+                                <div class="client-create-grid">
+                                    <div class="client-create-full">
+                                        <label asp-for="AccountManagementMode" class="client-create-label is-required">Agent Access</label>
+                                        <select asp-for="AccountManagementMode" class="client-create-input">
+                                            <option value="SharedAccount">Shared Account — allow my agent to work in my account</option>
+                                            <option value="SelfManaged">Self Managed — keep my account private</option>
+                                        </select>
+                                        <span asp-validation-for="AccountManagementMode" class="client-create-validation"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
                         <div id="significantOtherSection" class="client-create-section client-create-section-shell client-edit-section-spaced" hidden>
                             <div class="client-edit-section-head">
                                 <div>

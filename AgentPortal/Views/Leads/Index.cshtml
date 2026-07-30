@@ -303,6 +303,7 @@ var sCity = (c.City ?? "").Trim();
                 };
                 var dialPhone = (c.Phone ?? "").Trim();
                 var isFakeEmail = IsPlaceholderEmail(c.Email);
+                var isSelfManaged = hasPortalAccess && string.Equals(c.AccountManagementMode, "SelfManaged", StringComparison.OrdinalIgnoreCase);
                 var prodPaid = c.ProductionPaidAmount;
                 var prodIssued = c.ProductionIssuedAmount;
                 var prodSubmitted = c.ProductionSubmittedAmount;
@@ -326,6 +327,7 @@ var sCity = (c.City ?? "").Trim();
                     data-btc="@sBtc"
                     data-original-lead-type="@sOriginalLeadType"
                     data-isguid="@hasPortalAccess.ToString().ToLower()"
+                    data-account-management-mode="@c.AccountManagementMode"
                     data-clienturl="@clientUrl"
                     data-s-status="@sStatus"
                     data-s-priority="@sPriority"
@@ -419,7 +421,13 @@ var sCity = (c.City ?? "").Trim();
                                     }
                                 }
                             </div>
-                            <span class="name open-drawer" title="Quick View">@c.FirstName @c.LastName</span>
+                            <div class="crm-contact-name-row">
+                                <span class="name open-drawer" title="Quick View">@c.FirstName @c.LastName</span>
+                                @if (hasPortalAccess)
+                                {
+                                    <span class="crm-account-management-pill @(isSelfManaged ? "is-self-managed" : "is-shared")">@(isSelfManaged ? "Self managed" : "Managed")</span>
+                                }
+                            </div>
                             <span class="muted@(isFakeEmail ? " crm-email-fake" : "")" data-email-summary="true">@c.Email</span>
                             @if (!string.IsNullOrWhiteSpace(dialPhone))
                             {
@@ -481,6 +489,10 @@ var sCity = (c.City ?? "").Trim();
                         @if (!string.IsNullOrWhiteSpace(dialPhone))
                         {
                             <a class="phone-link" href="tel:@dialPhone">@c.Phone</a>
+                        }
+                        else if (isSelfManaged)
+                        {
+                            <span class="crm-account-management-pill is-self-managed">Self managed</span>
                         }
                         else
                         {

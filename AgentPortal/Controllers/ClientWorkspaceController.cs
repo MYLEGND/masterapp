@@ -56,9 +56,9 @@ namespace AgentPortal.Controllers;
         return raw;
     }
 
-    private async Task<bool> AgentOwnsClientAsync(string agentOid, string clientUserId)
+    private async Task<bool> AgentCanAccessClientWorkspaceAsync(string agentOid, string clientUserId)
     {
-        return await _db.AgentOwnsClientAsync(
+        return await _db.AgentCanAccessClientWorkspaceAsync(
             agentOid,
             clientUserId,
             GetAgentUpn(),
@@ -120,7 +120,7 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(clientUserId))
             return RedirectToAction("Index", "Clients");
 
-        if (!await AgentOwnsClientAsync(agentOid, clientUserId))
+        if (!await AgentCanAccessClientWorkspaceAsync(agentOid, clientUserId))
             return Forbid();
 
         var client = await GetClientAsync(clientUserId);
@@ -145,7 +145,7 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(clientUserId))
             return RedirectToAction("Index", "Clients");
 
-        if (!await AgentOwnsClientAsync(agentOid, clientUserId))
+        if (!await AgentCanAccessClientWorkspaceAsync(agentOid, clientUserId))
             return Forbid();
 
         var client = await GetClientAsync(clientUserId);
@@ -165,7 +165,7 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(clientUserId))
             return RedirectToAction("Index", "Clients");
 
-        if (!await AgentOwnsClientAsync(agentOid, clientUserId))
+        if (!await AgentCanAccessClientWorkspaceAsync(agentOid, clientUserId))
             return Forbid();
 
         var client = await GetClientAsync(clientUserId);
@@ -186,7 +186,7 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(clientUserId))
             return RedirectToAction("Index", "Clients");
 
-        if (!await AgentOwnsClientAsync(agentOid, clientUserId))
+        if (!await AgentCanAccessClientWorkspaceAsync(agentOid, clientUserId))
             return Forbid();
 
         var client = await GetClientAsync(clientUserId);
@@ -207,7 +207,7 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(clientUserId))
             return RedirectToAction("Index", "Clients");
 
-        if (!await AgentOwnsClientAsync(agentOid, clientUserId))
+        if (!await AgentCanAccessClientWorkspaceAsync(agentOid, clientUserId))
             return Forbid();
 
         return RedirectToAction("Index", "Training", new { clientUserId });

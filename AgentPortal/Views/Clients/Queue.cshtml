@@ -62,6 +62,7 @@
             @foreach (var c in Model.Items)
             {
                 var portalEnabled = Guid.TryParse(c.ClientUserId, out _);
+                var isSelfManaged = portalEnabled && string.Equals(c.AccountManagementMode, "SelfManaged", StringComparison.OrdinalIgnoreCase);
                 var portalUrl = $"{portalBase}/support/view-as-client/{c.Id}";
                 var isFakeEmail = IsPlaceholderEmail(c.Email);
 
@@ -83,9 +84,13 @@
                         </div>
                         <div class="queue-record-actions">
                             <a class="btn btn-ghost" asp-action="Edit" asp-route-clientUserId="@c.ClientUserId">Edit Full Record</a>
-                            @if (portalEnabled)
+                            @if (portalEnabled && !isSelfManaged)
                             {
                                 <a class="btn btn-gold" href="@portalUrl" target="_blank" rel="noopener noreferrer">Open Client Profile</a>
+                            }
+                            else if (isSelfManaged)
+                            {
+                                <span class="crm-account-management-pill is-self-managed">Self managed</span>
                             }
                         </div>
                     </div>

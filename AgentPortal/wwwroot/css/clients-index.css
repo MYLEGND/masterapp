@@ -3698,6 +3698,40 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
         font-weight:900;
     }
 
+    .crm-contact-name-row{
+        display:flex;
+        align-items:center;
+        flex-wrap:wrap;
+        gap:6px;
+        min-width:0;
+    }
+
+    .crm-account-management-pill{
+        display:inline-flex;
+        align-items:center;
+        min-height:20px;
+        padding:2px 7px;
+        border:1px solid transparent;
+        border-radius:999px;
+        font-size:.68rem;
+        font-weight:850;
+        letter-spacing:.01em;
+        line-height:1;
+        white-space:nowrap;
+    }
+
+    .crm-account-management-pill.is-shared{
+        color:#166534;
+        background:#dcfce7;
+        border-color:#86efac;
+    }
+
+    .crm-account-management-pill.is-self-managed{
+        color:#b91c1c;
+        background:#fee2e2;
+        border-color:#fca5a5;
+    }
+
     .lead-command-stack{
         display:grid;
         gap:6px;

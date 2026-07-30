@@ -7,6 +7,7 @@ using System.Linq;
 using System.Security.Claims;
 using ClientApp.Services;
 using ClientApp.Infrastructure;
+using Domain.Enums;
 
 namespace ClientApp.Controllers;
 
@@ -91,7 +92,8 @@ public class SupportController : Controller
             {
                 ClientUserId = (p.ClientUserId ?? "").Trim().ToLower(),
                 ExternalIdentityObjectId = (p.ExternalIdentityObjectId ?? "").Trim().ToLower(),
-                Email = (p.Email ?? "").Trim().ToLower()
+                Email = (p.Email ?? "").Trim().ToLower(),
+                p.AccountManagementMode
             })
             .FirstOrDefaultAsync();
 
@@ -114,7 +116,7 @@ public class SupportController : Controller
             upn,
             agentIdCandidates);
 
-        if (owns)
+        if (owns && ClientAccountManagementModes.AllowsAgentWorkspaceAccess(profile.AccountManagementMode))
         {
             // Agent path
             Response.Cookies.Append(

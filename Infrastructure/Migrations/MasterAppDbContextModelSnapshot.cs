@@ -1661,6 +1661,12 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("AccountManagementMode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasDefaultValue("SharedAccount")
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<string>("ClientUserId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using Domain.Billing;
+using Domain.Enums;
 
 namespace AgentPortal.Models
 {
@@ -10,6 +11,9 @@ namespace AgentPortal.Models
     {
         [Required(ErrorMessage = "Choose whether this is a lead, client, or business client.")]
         public string RecordType { get; set; } = "Lead";
+
+        // Required only for Client and Business Client. Leads stay CRM-only.
+        public string? AccountManagementMode { get; set; }
 
         public string? FirstName { get; set; }
 
@@ -96,6 +100,11 @@ namespace AgentPortal.Models
 
             if (isPortalClient)
             {
+                if (!ClientAccountManagementModes.IsValid(AccountManagementMode))
+                    yield return new ValidationResult(
+                        "Choose Shared Account or Self Managed for this client.",
+                        new[] { nameof(AccountManagementMode) });
+
                 if (string.IsNullOrWhiteSpace(FirstName))
                     yield return new ValidationResult(
                         "First name is required for a client.",

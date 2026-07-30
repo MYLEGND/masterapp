@@ -1161,6 +1161,12 @@ function renderProtectionSnapshotSummary(snapshot, options = {}){
 
 async function hydrateProtectionSnapshot(row, detail){
   const requestClientId = row?.dataset?.clientId || "";
+  const isSelfManaged = detail?.agentWorkspaceAccessEnabled === false ||
+    norm(row?.dataset?.accountManagementMode).toLowerCase() === "selfmanaged";
+  if (isSelfManaged) {
+    renderProtectionSnapshotSummary(null, { error: true, clientPortalUrl: "" });
+    return;
+  }
   renderProtectionSnapshotSummary(null, {
     loading: true,
     clientPortalUrl: detail?.clientPortalUrl || ""
@@ -3810,7 +3816,12 @@ async function openDrawerForRow(row){
     btnCall.href = phone ? ("tel:" + phone) : "#";
     const ts = Date.now();
     if (btnOpenProfile){
-      if (row.dataset.isguid === "true" && row.dataset.clientId){
+      const isSelfManaged = norm(row.dataset.accountManagementMode).toLowerCase() === "selfmanaged";
+      btnOpenProfile.hidden = isSelfManaged;
+      btnOpenProfile.setAttribute("aria-hidden", isSelfManaged ? "true" : "false");
+      if (isSelfManaged) {
+        btnOpenProfile.href = "#";
+      } else if (row.dataset.isguid === "true" && row.dataset.clientId){
         btnOpenProfile.href = `/ClientWorkspace/Profile?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}`;
       }else{
         btnOpenProfile.href = row.dataset.clientId ? `/Clients/Edit?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}` : "#";
@@ -3898,6 +3909,16 @@ async function openDrawerForRow(row){
     }, "drawer");
 
     activeClientDetail = detail;
+    if (detail.accountManagementMode) {
+      row.dataset.accountManagementMode = detail.accountManagementMode;
+    }
+    if (btnOpenProfile) {
+      const isSelfManaged = detail.agentWorkspaceAccessEnabled === false ||
+        norm(row.dataset.accountManagementMode).toLowerCase() === "selfmanaged";
+      btnOpenProfile.hidden = isSelfManaged;
+      btnOpenProfile.setAttribute("aria-hidden", isSelfManaged ? "true" : "false");
+      if (isSelfManaged) btnOpenProfile.href = "#";
+    }
     storeRowLatestAppointment(row, detail.latestAppointment || rowLatestAppointment(row));
     dStatus.value = detail.crmStatus || row.dataset.crmStatus || "Active";
     dPipelineStage.value = detail.pipelineStage || row.dataset.crmPipeline || "NewLead";
@@ -4632,6 +4653,8 @@ function renderPortalActions(row, detail){
   const isGuid = (row.dataset.isguid === "true");
   const isLeadRecord = norm(row.dataset.sRecordtype || detail?.recordType).toLowerCase() === "lead";
   const portal = norm(row.dataset.clienturl);
+  const isSelfManaged = detail?.agentWorkspaceAccessEnabled === false ||
+    norm(row.dataset.accountManagementMode).toLowerCase() === "selfmanaged";
 
   if (!isGuid || isLeadRecord) {
     dPortalWrap.innerHTML = `
@@ -4654,6 +4677,13 @@ function renderPortalActions(row, detail){
 
     btn?.addEventListener("click", () => runConvert("Client"));
     btnBiz?.addEventListener("click", () => runConvert("BusinessClient"));
+    if (btnResendClientInvite) btnResendClientInvite.style.display = "none";
+    if (dResendInviteStatus) dResendInviteStatus.textContent = "";
+    return;
+  }
+
+  if (isSelfManaged) {
+    dPortalWrap.innerHTML = `<span class="btn btn-ghost" aria-disabled="true">Client workspace is self managed</span>`;
     if (btnResendClientInvite) btnResendClientInvite.style.display = "none";
     if (dResendInviteStatus) dResendInviteStatus.textContent = "";
     return;
