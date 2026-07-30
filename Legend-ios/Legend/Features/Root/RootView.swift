@@ -9,12 +9,14 @@ struct RootView: View {
             switch session.state {
             case .loading:
                 LegendLoadingView("Preparing secure access…")
+                    .background(Color.white.ignoresSafeArea())
             case .contractUnavailable(let validation):
                 ConfigurationStateView(validation: validation)
             case .signedOut:
                 SignInView()
             case .authenticating:
                 LegendLoadingView("Opening secure sign-in…")
+                    .background(Color.white.ignoresSafeArea())
             case .roleSelection(let selection):
                 RoleSelectionView(selection: selection)
             case .authenticated(let currentSession):
@@ -201,7 +203,7 @@ private struct ConfigurationStateView: View {
                 .padding(.vertical, LegendSpacing.xl)
                 .frame(maxWidth: .infinity)
             }
-            .background(LegendPalette.canvas.ignoresSafeArea())
+            .background(Color.white.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
         }
     }
@@ -248,7 +250,7 @@ private struct SignInView: View {
                 .padding(.vertical, LegendSpacing.lg)
                 .frame(maxWidth: .infinity, minHeight: 640)
             }
-            .background(LegendPalette.canvas.ignoresSafeArea())
+            .background(Color.white.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
         }
     }
@@ -269,7 +271,7 @@ private struct SessionFailureView: View {
             }
             .padding(LegendSpacing.md)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(LegendPalette.canvas.ignoresSafeArea())
+            .background(Color.white.ignoresSafeArea())
             .navigationTitle("Secure access")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -294,6 +296,7 @@ private struct AuthenticatedHomeView: View {
             switch bootstrap.state {
             case .idle, .loading:
                 LegendLoadingView("Preparing your Legend…")
+                    .background(Color.white.ignoresSafeArea())
             case .ready, .partiallyReady:
                 LegendApplicationShell(
                     currentSession: currentSession,
@@ -310,7 +313,7 @@ private struct AuthenticatedHomeView: View {
                         })
                     .padding(LegendSpacing.md)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(LegendPalette.canvas.ignoresSafeArea())
+                    .background(Color.white.ignoresSafeArea())
                     .navigationTitle("Legend")
                     .navigationBarTitleDisplayMode(.inline)
                 }

@@ -742,11 +742,7 @@ private struct LegendHomeView: View {
                 )
 
             case .loaded(let home):
-                if currentSession.actor.identity.participantType == .client {
-                    clientHomeContent(home)
-                } else {
-                    homeContent(home)
-                }
+                financialHomeContent(home)
 
             case .unavailable(let failure):
                 LegendNextErrorState(
@@ -807,7 +803,7 @@ private struct LegendHomeView: View {
         }
     }
 
-    private func clientHomeContent(
+    private func financialHomeContent(
         _ home: MobileHomeResponse
     ) -> some View {
         TabView(selection: $homePage) {
@@ -2290,8 +2286,7 @@ private struct LegendHomeView: View {
     }
 
     private func openFinancialPanel() {
-        guard currentSession.actor.identity.participantType == .client,
-              homePage != 1 else {
+        guard homePage != 1 else {
             return
         }
 
@@ -3322,10 +3317,74 @@ private struct JourneyMultiSelectSection: View {
     }
 }
 
+/// A selected, server-authoritative cash-flow view. The home cards pass the
+/// exact response payload into this sheet; the native client never recreates
+/// a projection or mutates financial state locally.
+private enum LegendFinancialOutlookSelection: Identifiable {
+    case week(MobileFinancialWeekAtGlanceResponse)
+    case month(MobileFinancialMonthAtGlanceResponse)
+
+    var id: String {
+        switch self {
+        case .week(let week):
+            return "week-\(week.weekKey)"
+        case .month(let month):
+            return "month-\(month.monthKey)"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .week:
+            return "Week at a Glance"
+        case .month:
+            return "Month at a Glance"
+        }
+    }
+
+    var eyebrow: String {
+        switch self {
+        case .week:
+            return "Synced weekly outlook"
+        case .month:
+            return "Synced monthly outlook"
+        }
+    }
+
+    var period: String {
+        switch self {
+        case .week(let week):
+            return "\(MobileFinancialDisplay.date(week.startDate)) – \(MobileFinancialDisplay.date(week.endDate))"
+        case .month(let month):
+            return MobileFinancialDisplay.month(month.monthKey)
+        }
+    }
+
+    var pressureStatus: String {
+        switch self {
+        case .week(let week):
+            return week.pressureStatus
+        case .month(let month):
+            return month.pressureStatus
+        }
+    }
+
+    var pressureSummary: String? {
+        switch self {
+        case .week(let week):
+            return week.pressureSummary
+        case .month(let month):
+            return month.pressureSummary
+        }
+    }
+}
+
+
 private struct LegendFinancialHomePanel: View {
     @ObservedObject private var store: MobileFinancialStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     let openFinancialIntelligence: () -> Void
+    @State private var selectedOutlook: LegendFinancialOutlookSelection?
 
     init(
         store: MobileFinancialStore,
@@ -3391,6 +3450,9 @@ private struct LegendFinancialHomePanel: View {
                 await bootstrap.refreshFinancial()
             }
         }
+        .sheet(item: $selectedOutlook) { selection in
+            LegendFinancialOutlookSheet(selection: selection)
+        }
     }
 
     private func financialPanel(
@@ -3438,7 +3500,10 @@ private struct LegendFinancialHomePanel: View {
                             openingCashCents: week.openingCashCents,
                             incomeCents: week.incomeCents,
                             expenseCents: week.debitExpenseCents + week.creditExpenseCents,
-                            endingCashCents: week.endingCashCents
+                            endingCashCents: week.endingCashCents,
+                            action: {
+                                selectedOutlook = .week(week)
+                            }
                         )
                     }
 
@@ -3451,7 +3516,10 @@ private struct LegendFinancialHomePanel: View {
                             openingCashCents: month.openingCashCents,
                             incomeCents: month.incomeCents,
                             expenseCents: month.debitExpenseCents + month.creditExpenseCents,
-                            endingCashCents: month.endingCashCents
+                            endingCashCents: month.endingCashCents,
+                            action: {
+                                selectedOutlook = .month(month)
+                            }
                         )
                     }
 
@@ -3478,6 +3546,35 @@ private struct LegendFinancialHomePanel: View {
     }
 
     private func outlookSection(
+        eyebrow: String,
+        title: String,
+        detail: String,
+        status: String,
+        openingCashCents: Int64,
+        incomeCents: Int64,
+        expenseCents: Int64,
+        endingCashCents: Int64,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            outlookPreview(
+                eyebrow: eyebrow,
+                title: title,
+                detail: detail,
+                status: status,
+                openingCashCents: openingCashCents,
+                incomeCents: incomeCents,
+                expenseCents: expenseCents,
+                endingCashCents: endingCashCents
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "\(title). \(status). Open the complete synced financial breakdown."
+        )
+    }
+
+    private func outlookPreview(
         eyebrow: String,
         title: String,
         detail: String,
@@ -3571,6 +3668,19 @@ private struct LegendFinancialHomePanel: View {
                         )
                     )
                 }
+
+                HStack(spacing: LegendNextSpacing.micro) {
+                    Text("Open full breakdown")
+                        .font(LegendNextTypography.caption)
+                        .foregroundStyle(LegendNextColor.goldBright)
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.goldBright)
+                        .accessibilityHidden(true)
+                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -3626,6 +3736,747 @@ private struct LegendFinancialHomePanel: View {
     }
 }
 
+private struct LegendFinancialOutlookSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let selection: LegendFinancialOutlookSelection
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LegendNextGradient.hero
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    LazyVStack(
+                        alignment: .leading,
+                        spacing: LegendNextSpacing.sm
+                    ) {
+                        premiumModalHeader
+
+                        if let pressureSummary = selection.pressureSummary,
+                           !pressureSummary.isEmpty {
+                            outlookSummary(pressureSummary)
+                        }
+
+                        switch selection {
+                        case .week(let week):
+                            weekBreakdown(week)
+
+                        case .month(let month):
+                            monthBreakdown(month)
+                        }
+                    }
+                    .padding(
+                        .horizontal,
+                        LegendNextSpacing.pageHorizontal
+                    )
+                    .padding(.top, LegendNextSpacing.xs)
+                    .padding(.bottom, LegendNextSpacing.xl)
+                }
+                .scrollIndicators(.hidden)
+            }
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .tint(LegendNextColor.goldBright)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+        .presentationCornerRadius(34)
+        .presentationBackground(LegendNextColor.midnight)
+    }
+
+    private var premiumModalHeader: some View {
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.sm
+        ) {
+            Capsule()
+                .fill(Color.white.opacity(0.34))
+                .frame(width: 52, height: 5)
+                .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
+
+            HStack(
+                alignment: .top,
+                spacing: LegendNextSpacing.sm
+            ) {
+                Image(systemName: outlookSystemImage)
+                    .font(
+                        .system(
+                            size: 20,
+                            weight: .semibold
+                        )
+                    )
+                    .foregroundStyle(LegendNextColor.midnight)
+                    .frame(width: 52, height: 52)
+                    .background(
+                        LegendNextColor.goldBright,
+                        in: Circle()
+                    )
+                    .overlay {
+                        Circle()
+                            .strokeBorder(
+                                Color.white.opacity(0.24),
+                                lineWidth: 1
+                            )
+                    }
+                    .accessibilityHidden(true)
+
+                VStack(
+                    alignment: .leading,
+                    spacing: LegendNextSpacing.micro
+                ) {
+                    Text(selection.eyebrow.uppercased())
+                        .font(LegendNextTypography.eyebrow)
+                        .tracking(1)
+                        .foregroundStyle(
+                            LegendNextColor.goldBright
+                        )
+
+                    Text(selection.title)
+                        .font(LegendNextTypography.hero)
+                        .foregroundStyle(.white)
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
+                        )
+
+                    Text(selection.period)
+                        .font(LegendNextTypography.body)
+                        .foregroundStyle(
+                            Color.white.opacity(0.70)
+                        )
+                }
+
+                Spacer(minLength: LegendNextSpacing.xs)
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(
+                            .system(
+                                size: 16,
+                                weight: .bold
+                            )
+                        )
+                        .foregroundStyle(.white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            Color.white.opacity(0.08),
+                            in: Circle()
+                        )
+                        .overlay {
+                            Circle()
+                                .strokeBorder(
+                                    Color.white.opacity(0.20),
+                                    lineWidth: 1
+                                )
+                        }
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close \(selection.title)")
+            }
+
+            HStack(
+                spacing: LegendNextSpacing.xs
+            ) {
+                LegendNextBadge(
+                    selection.pressureStatus,
+                    tone: MobileFinancialAmountSemantic.tone(
+                        forStatus: selection.pressureStatus
+                    ),
+                    systemImage: "circle.fill"
+                )
+
+                Spacer(minLength: 0)
+
+                Text("SERVER-SYNCED")
+                    .font(LegendNextTypography.eyebrow)
+                    .tracking(0.8)
+                    .foregroundStyle(
+                        Color.white.opacity(0.52)
+                    )
+            }
+        }
+        .padding(LegendNextSpacing.sm)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0.075),
+                    Color.white.opacity(0.025)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.prominentCard,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.prominentCard,
+                style: .continuous
+            )
+            .strokeBorder(
+                Color.white.opacity(0.16),
+                lineWidth: 1
+            )
+        }
+    }
+
+    private func outlookSummary(
+        _ summary: String
+    ) -> some View {
+        HStack(
+            alignment: .top,
+            spacing: LegendNextSpacing.xs
+        ) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(
+                    .system(
+                        size: 15,
+                        weight: .semibold
+                    )
+                )
+                .foregroundStyle(LegendNextColor.goldBright)
+                .frame(width: 38, height: 38)
+                .background(
+                    LegendNextColor.goldBright.opacity(0.12),
+                    in: Circle()
+                )
+                .accessibilityHidden(true)
+
+            VStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.micro
+            ) {
+                Text("OUTLOOK SUMMARY")
+                    .font(LegendNextTypography.eyebrow)
+                    .tracking(0.8)
+                    .foregroundStyle(
+                        LegendNextColor.goldBright
+                    )
+
+                Text(summary)
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(
+                        Color.white.opacity(0.72)
+                    )
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+            }
+        }
+        .padding(LegendNextSpacing.sm)
+        .frame(
+            maxWidth: .infinity,
+            alignment: .leading
+        )
+        .background(
+            Color.white.opacity(0.055),
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+            .strokeBorder(
+                Color.white.opacity(0.12),
+                lineWidth: 1
+            )
+        }
+    }
+
+    private var outlookSystemImage: String {
+        switch selection {
+        case .week:
+            return "calendar.badge.clock"
+
+        case .month:
+            return "calendar"
+        }
+    }
+
+    @ViewBuilder
+    private func weekBreakdown(
+        _ week: MobileFinancialWeekAtGlanceResponse
+    ) -> some View {
+        outlookBalances(
+            openingCashCents: week.openingCashCents,
+            incomeCents: week.incomeCents,
+            debitExpenseCents: week.debitExpenseCents,
+            creditExpenseCents: week.creditExpenseCents,
+            endingCashCents: week.endingCashCents
+        )
+
+        debtBreakdown(
+            openingDebtCents: week.openingDebtCents,
+            requiredDebtPaymentCents: week.requiredDebtPaymentCents,
+            extraDebtPaymentCents: week.extraDebtPaymentCents,
+            endingDebtCents: week.endingDebtCents
+        )
+
+        cashFlowEvents(week.events)
+    }
+
+    @ViewBuilder
+    private func monthBreakdown(
+        _ month: MobileFinancialMonthAtGlanceResponse
+    ) -> some View {
+        outlookBalances(
+            openingCashCents: month.openingCashCents,
+            incomeCents: month.incomeCents,
+            debitExpenseCents: month.debitExpenseCents,
+            creditExpenseCents: month.creditExpenseCents,
+            endingCashCents: month.endingCashCents
+        )
+
+        debtBreakdown(
+            openingDebtCents: month.openingDebtCents,
+            requiredDebtPaymentCents: month.requiredDebtPaymentCents,
+            extraDebtPaymentCents: month.extraDebtPaymentCents,
+            endingDebtCents: month.endingDebtCents
+        )
+
+        LegendNextSurface(
+            style: .navy,
+            cornerRadius: LegendNextRadius.prominentCard
+        ) {
+            outlookMetric(
+                title: "Savings contribution",
+                cents: month.savingsContributionCents,
+                systemImage: "banknote.fill",
+                tone: MobileFinancialAmountSemantic.tone(
+                    forCents: month.savingsContributionCents,
+                    kind: .income
+                )
+            )
+        }
+
+        if let obligation = month.largestObligation {
+            LegendNextSurface(
+                style: .navy,
+                cornerRadius: LegendNextRadius.prominentCard
+            ) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                    Text("LARGEST SCHEDULED OBLIGATION")
+                        .font(LegendNextTypography.eyebrow)
+                        .tracking(0.8)
+                        .foregroundStyle(LegendNextColor.goldBright)
+
+                    Text(obligation.title)
+                        .font(LegendNextTypography.bodyEmphasis)
+                        .foregroundStyle(.white)
+
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("\(MobileFinancialDisplay.date(obligation.occursOn)) · \(obligation.kind)")
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(Color.white.opacity(0.66))
+
+                        Spacer(minLength: LegendNextSpacing.sm)
+
+                        Text(MobileFinancialDisplay.currency(cents: obligation.amountCents))
+                            .font(LegendNextTypography.bodyEmphasis)
+                            .foregroundStyle(LegendNextColor.danger)
+                            .monospacedDigit()
+                    }
+                }
+            }
+        }
+
+        monthWeeks(month.weeks)
+    }
+
+    private func outlookBalances(
+        openingCashCents: Int64,
+        incomeCents: Int64,
+        debitExpenseCents: Int64,
+        creditExpenseCents: Int64,
+        endingCashCents: Int64
+    ) -> some View {
+        LegendNextSurface(
+            style: .navy,
+            cornerRadius: LegendNextRadius.prominentCard
+        ) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                Text("CASH FLOW")
+                    .font(LegendNextTypography.eyebrow)
+                    .tracking(0.8)
+                    .foregroundStyle(LegendNextColor.goldBright)
+
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: LegendNextSpacing.xs),
+                        GridItem(.flexible(), spacing: LegendNextSpacing.xs)
+                    ],
+                    spacing: LegendNextSpacing.xs
+                ) {
+                    outlookMetric(
+                        title: "Opening cash",
+                        cents: openingCashCents,
+                        systemImage: "wallet.bifold.fill",
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: openingCashCents,
+                            kind: .openingCash
+                        )
+                    )
+                    outlookMetric(
+                        title: "Income",
+                        cents: incomeCents,
+                        systemImage: "arrow.down.left.circle.fill",
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: incomeCents,
+                            kind: .income
+                        )
+                    )
+                    outlookMetric(
+                        title: "Debit expenses",
+                        cents: debitExpenseCents,
+                        systemImage: "doc.text.fill",
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: debitExpenseCents,
+                            kind: .bills
+                        )
+                    )
+                    outlookMetric(
+                        title: "Credit expenses",
+                        cents: creditExpenseCents,
+                        systemImage: "creditcard.fill",
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: creditExpenseCents,
+                            kind: .bills
+                        )
+                    )
+                    outlookMetric(
+                        title: "Ending cash",
+                        cents: endingCashCents,
+                        systemImage: "banknote.fill",
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: endingCashCents,
+                            kind: .endingCash
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    private func debtBreakdown(
+        openingDebtCents: Int64,
+        requiredDebtPaymentCents: Int64,
+        extraDebtPaymentCents: Int64,
+        endingDebtCents: Int64
+    ) -> some View {
+        LegendNextSurface(
+            style: .navy,
+            cornerRadius: LegendNextRadius.prominentCard
+        ) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                Text("DEBT POSITION")
+                    .font(LegendNextTypography.eyebrow)
+                    .tracking(0.8)
+                    .foregroundStyle(LegendNextColor.goldBright)
+
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: LegendNextSpacing.xs),
+                        GridItem(.flexible(), spacing: LegendNextSpacing.xs)
+                    ],
+                    spacing: LegendNextSpacing.xs
+                ) {
+                    outlookMetric(
+                        title: "Opening debt",
+                        cents: openingDebtCents,
+                        systemImage: "creditcard.fill",
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: openingDebtCents,
+                            kind: .debt
+                        )
+                    )
+                    outlookMetric(
+                        title: "Required payment",
+                        cents: requiredDebtPaymentCents,
+                        systemImage: "arrow.down.circle.fill",
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: requiredDebtPaymentCents,
+                            kind: .debt
+                        )
+                    )
+                    outlookMetric(
+                        title: "Extra payment",
+                        cents: extraDebtPaymentCents,
+                        systemImage: "arrow.down.circle.fill",
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: extraDebtPaymentCents,
+                            kind: .debt
+                        )
+                    )
+                    outlookMetric(
+                        title: "Ending debt",
+                        cents: endingDebtCents,
+                        systemImage: "creditcard.fill",
+                        tone: MobileFinancialAmountSemantic.tone(
+                            forCents: endingDebtCents,
+                            kind: .endingDebt
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    private func cashFlowEvents(
+        _ events: [MobileFinancialCashFlowEventResponse]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            LegendNextSectionHeader(
+                eyebrow: "Synced schedule",
+                title: "Scheduled activity",
+                detail: "Every dated cash-flow event returned by your saved projection."
+            )
+
+            if events.isEmpty {
+                LegendNextSurface(style: .elevated) {
+                    Label(
+                        "No dated cash-flow events were returned for this week.",
+                        systemImage: "calendar"
+                    )
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                }
+            } else {
+                ForEach(events) { event in
+                    cashFlowEvent(event)
+                }
+            }
+        }
+    }
+
+    private func cashFlowEvent(
+        _ event: MobileFinancialCashFlowEventResponse
+    ) -> some View {
+        let tone = eventTone(event)
+
+        return LegendNextSurface(
+            style: .navy,
+            cornerRadius: LegendNextRadius.control,
+            padding: LegendNextSpacing.sm
+        ) {
+            HStack(alignment: .top, spacing: LegendNextSpacing.xs) {
+                Image(systemName: eventSystemImage(event))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(tone.color)
+                    .frame(width: 32, height: 32)
+                    .background(tone.color.opacity(0.16), in: Circle())
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                    Text(event.title)
+                        .font(LegendNextTypography.bodyEmphasis)
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("\(MobileFinancialDisplay.date(event.occursOn)) · \(event.kind) · \(event.status)")
+                        .font(LegendNextTypography.caption)
+                        .foregroundStyle(Color.white.opacity(0.66))
+
+                    if let sourceToolID = event.sourceToolId,
+                       !sourceToolID.isEmpty {
+                        Text("Synced from \(sourceToolID)")
+                            .font(LegendNextTypography.caption)
+                            .foregroundStyle(Color.white.opacity(0.54))
+                    }
+                }
+
+                Spacer(minLength: LegendNextSpacing.xs)
+
+                Text(MobileFinancialDisplay.currency(cents: event.amountCents))
+                    .font(LegendNextTypography.bodyEmphasis)
+                    .foregroundStyle(tone.color)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+        }
+    }
+
+    private func monthWeeks(
+        _ weeks: [MobileFinancialWeekSummaryResponse]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            LegendNextSectionHeader(
+                eyebrow: "Monthly breakdown",
+                title: "Week by week",
+                detail: "The full weekly cash and debt rollup saved for this month."
+            )
+
+            if weeks.isEmpty {
+                LegendNextSurface(style: .elevated) {
+                    Label(
+                        "No weekly rollups were returned for this month.",
+                        systemImage: "calendar"
+                    )
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                }
+            } else {
+                ForEach(weeks) { week in
+                    LegendNextSurface(
+                        style: .navy,
+                        cornerRadius: LegendNextRadius.control,
+                        padding: LegendNextSpacing.sm
+                    ) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text("\(MobileFinancialDisplay.date(week.startDate)) – \(MobileFinancialDisplay.date(week.endDate))")
+                                    .font(LegendNextTypography.bodyEmphasis)
+                                    .foregroundStyle(.white)
+
+                                Spacer(minLength: LegendNextSpacing.xs)
+
+                                LegendNextBadge(
+                                    week.pressureStatus,
+                                    tone: MobileFinancialAmountSemantic.tone(
+                                        forStatus: week.pressureStatus
+                                    ),
+                                    systemImage: "circle.fill"
+                                )
+                            }
+
+                            LazyVGrid(
+                                columns: [
+                                    GridItem(.flexible(), spacing: LegendNextSpacing.xs),
+                                    GridItem(.flexible(), spacing: LegendNextSpacing.xs)
+                                ],
+                                spacing: LegendNextSpacing.xs
+                            ) {
+                                outlookMetric(
+                                    title: "Income",
+                                    cents: week.incomeCents,
+                                    systemImage: "arrow.down.left.circle.fill",
+                                    tone: MobileFinancialAmountSemantic.tone(
+                                        forCents: week.incomeCents,
+                                        kind: .income
+                                    )
+                                )
+                                outlookMetric(
+                                    title: "Outflow",
+                                    cents: week.outflowCents,
+                                    systemImage: "doc.text.fill",
+                                    tone: MobileFinancialAmountSemantic.tone(
+                                        forCents: week.outflowCents,
+                                        kind: .bills
+                                    )
+                                )
+                                outlookMetric(
+                                    title: "Ending cash",
+                                    cents: week.endingCashCents,
+                                    systemImage: "banknote.fill",
+                                    tone: MobileFinancialAmountSemantic.tone(
+                                        forCents: week.endingCashCents,
+                                        kind: .endingCash
+                                    )
+                                )
+                                outlookMetric(
+                                    title: "Ending debt",
+                                    cents: week.endingDebtCents,
+                                    systemImage: "creditcard.fill",
+                                    tone: MobileFinancialAmountSemantic.tone(
+                                        forCents: week.endingDebtCents,
+                                        kind: .endingDebt
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func outlookMetric(
+        title: String,
+        cents: Int64,
+        systemImage: String,
+        tone: LegendNextTone
+    ) -> some View {
+        HStack(spacing: LegendNextSpacing.xs) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(tone.color)
+                .frame(width: 28, height: 28)
+                .background(tone.color.opacity(0.16), in: Circle())
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                Text(title)
+                    .font(LegendNextTypography.eyebrow)
+                    .foregroundStyle(Color.white.opacity(0.66))
+                    .lineLimit(1)
+
+                Text(MobileFinancialDisplay.currency(cents: cents))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(tone.color)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.66)
+            }
+        }
+        .padding(LegendNextSpacing.xs)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color.white.opacity(0.055),
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+        )
+    }
+
+    private func eventTone(
+        _ event: MobileFinancialCashFlowEventResponse
+    ) -> LegendNextTone {
+        let kind = event.kind.lowercased()
+        if kind.contains("income") {
+            return MobileFinancialAmountSemantic.tone(
+                forCents: event.amountCents,
+                kind: .income
+            )
+        }
+        if kind.contains("debt") {
+            return MobileFinancialAmountSemantic.tone(
+                forCents: event.amountCents,
+                kind: .debt
+            )
+        }
+        return MobileFinancialAmountSemantic.tone(
+            forCents: event.amountCents,
+            kind: .bills
+        )
+    }
+
+    private func eventSystemImage(
+        _ event: MobileFinancialCashFlowEventResponse
+    ) -> String {
+        let kind = event.kind.lowercased()
+        if kind.contains("income") {
+            return "arrow.down.left.circle.fill"
+        }
+        if kind.contains("debt") {
+            return "creditcard.fill"
+        }
+        return "doc.text.fill"
+    }
+}
+
 private struct LegendFinanceView: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -3646,59 +4497,50 @@ private struct LegendFinanceView: View {
 
     var body: some View {
         Group {
-            if currentSession.actor.identity.participantType != .client {
-                LegendEmptyState(
-                    title: "Financial intelligence",
-                    message:
-                        "Client financial intelligence is available from an authorized client mobile identity.",
-                    symbolName: "chart.line.uptrend.xyaxis"
+            switch store.state {
+            case .idle, .loading:
+                LegendLoadingView(
+                    "Loading financial intelligence…"
                 )
-            } else {
-                switch store.state {
-                case .idle, .loading:
-                    LegendLoadingView(
-                        "Loading financial intelligence…"
-                    )
 
-                case .available(let financial):
-                    financialContent(financial)
+            case .available(let financial):
+                financialContent(financial)
 
-                case .incomplete(let financial, let detail):
-                    financialContent(
-                        financial,
-                        availability: .incomplete(detail)
-                    )
+            case .incomplete(let financial, let detail):
+                financialContent(
+                    financial,
+                    availability: .incomplete(detail)
+                )
 
-                case .neverSaved(let financial, let detail):
-                    financialContent(
-                        financial,
-                        availability: .neverSaved(detail)
-                    )
+            case .neverSaved(let financial, let detail):
+                financialContent(
+                    financial,
+                    availability: .neverSaved(detail)
+                )
 
-                case .projectionUnavailable(let financial, let detail):
-                    financialContent(
-                        financial,
-                        availability: .projectionUnavailable(detail)
-                    )
+            case .projectionUnavailable(let financial, let detail):
+                financialContent(
+                    financial,
+                    availability: .projectionUnavailable(detail)
+                )
 
-                case .authenticationRequired(let failure):
-                    LegendErrorCard(
-                        title: failure.title,
-                        message: failure.message,
-                        retryTitle: "Sign in again",
-                        retry: { Task { await bootstrap.refreshFinancial() } }
-                    )
-                    .padding(LegendNextSpacing.sm)
+            case .authenticationRequired(let failure):
+                LegendErrorCard(
+                    title: failure.title,
+                    message: failure.message,
+                    retryTitle: "Sign in again",
+                    retry: { Task { await bootstrap.refreshFinancial() } }
+                )
+                .padding(LegendNextSpacing.sm)
 
-                case .retryableFailure(let failure):
-                    LegendErrorCard(
-                        title: failure.title,
-                        message: failure.message,
-                        retryTitle: "Retry",
-                        retry: { Task { await bootstrap.refreshFinancial() } }
-                    )
-                    .padding(LegendNextSpacing.sm)
-                }
+            case .retryableFailure(let failure):
+                LegendErrorCard(
+                    title: failure.title,
+                    message: failure.message,
+                    retryTitle: "Retry",
+                    retry: { Task { await bootstrap.refreshFinancial() } }
+                )
+                .padding(LegendNextSpacing.sm)
             }
         }
         .background(
@@ -3729,7 +4571,7 @@ private struct LegendFinanceView: View {
                     LegendEmptyState(
                         title: "Financial snapshot incomplete",
                         message:
-                            "Your saved financial health data will appear here after it is completed in the client portal.",
+                            "Your saved financial health data will appear here after it is completed in your account workspace.",
                         symbolName:
                             "chart.line.uptrend.xyaxis"
                     )
@@ -3795,66 +4637,28 @@ private struct LegendFinanceView: View {
                 }
                 .map { $0.element }
 
-            VStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.sm
-            ) {
-                Text("PRIORITIZED VIEW")
-                    .font(LegendNextTypography.eyebrow)
-                    .tracking(0.7)
-                    .foregroundStyle(LegendNextColor.gold)
-
-                Text("Financial Intelligence")
-                    .font(LegendNextTypography.title)
-                    .foregroundStyle(LegendNextColor.navy)
-
-                Text("Open a section to review the saved details.")
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(LegendNextColor.navy.opacity(0.68))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-                    .padding(.horizontal, LegendNextSpacing.sm)
-                    .padding(.vertical, LegendNextSpacing.xs)
-                    .background(
-                        LegendNextColor.navy.opacity(0.055),
-                        in: Capsule()
+            if !orderedSections.isEmpty {
+                VStack(
+                    alignment: .leading,
+                    spacing: LegendNextSpacing.sm
+                ) {
+                    LegendNextHero(
+                        eyebrow: "Prioritized view",
+                        title: "Financial intelligence",
+                        detail: "Open a card to review the complete synced breakdown."
                     )
-                    .overlay {
-                        Capsule()
-                            .stroke(
-                                LegendNextColor.gold.opacity(0.34),
-                                lineWidth: 1
-                            )
-                    }
 
-                ForEach(orderedSections) { section in
-                    if let destination = MobileFinancialDetailDestination(
-                        rawValue: section.key
-                    ) {
-                        financialDashboardCard(
-                            section,
-                            destination: destination
-                        )
+                    ForEach(orderedSections) { section in
+                        if let destination = MobileFinancialDetailDestination(
+                            rawValue: section.key
+                        ) {
+                            financialDashboardCard(
+                                section,
+                                destination: destination
+                            )
+                        }
                     }
                 }
-            }
-            .padding(LegendNextSpacing.sm)
-            .background(
-                Color.white,
-                in: RoundedRectangle(
-                    cornerRadius: LegendNextRadius.prominentCard,
-                    style: .continuous
-                )
-            )
-            .overlay {
-                RoundedRectangle(
-                    cornerRadius: LegendNextRadius.prominentCard,
-                    style: .continuous
-                )
-                .stroke(
-                    LegendNextColor.gold,
-                    lineWidth: 1
-                )
             }
         } else {
             operatingSystemUnavailable(

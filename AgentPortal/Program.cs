@@ -655,13 +655,74 @@ builder.Services.Configure<OpenIdConnectOptions>(OpenIdConnectDefaults.Authentic
     };
     oidcOptions.Events.OnRemoteFailure = async ctx =>
     {
+        LogOidcCallbackFailure(ctx);
         OidcTransientCookieCleanup.Clear(ctx.HttpContext, callbackPath);
+
+        // Keep the existing Microsoft Identity failure behavior intact while the
+        // production callback is being diagnosed. Do not redirect or handle it.
         if (originalRemoteFailure != null)
-        {
             await originalRemoteFailure(ctx);
-        }
     };
 });
+
+static void LogOidcCallbackFailure(Microsoft.AspNetCore.Authentication.RemoteFailureContext context)
+{
+    var httpContext = context.HttpContext;
+    var failure = context.Failure;
+    var cookies = httpContext.Request.Cookies.Keys;
+    var hasCorrelationCookie = cookies.Any(key => key.StartsWith(".AspNetCore.Correlation.", StringComparison.OrdinalIgnoreCase));
+    var hasNonceCookie = cookies.Any(key => key.StartsWith(".AspNetCore.OpenIdConnect.Nonce", StringComparison.OrdinalIgnoreCase));
+    var forwardedProtoWasPresent = httpContext.Items.TryGetValue("OidcDiagnostic.ForwardedProtoPresent", out var protoValue) && protoValue is true;
+    var forwardedHostWasPresent = httpContext.Items.TryGetValue("OidcDiagnostic.ForwardedHostPresent", out var hostValue) && hostValue is true;
+
+    httpContext.RequestServices
+        .GetRequiredService<ILoggerFactory>()
+        .CreateLogger("OpenIdConnect")
+        .LogWarning(
+            "OIDC callback failed. RequestId={RequestId} ExceptionType={ExceptionType} InnerExceptionType={InnerExceptionType} " +
+            "FailureClass={FailureClass} RequestScheme={RequestScheme} RequestHost={RequestHost} " +
+            "ForwardedProtoPresent={ForwardedProtoPresent} ForwardedHostPresent={ForwardedHostPresent} " +
+            "CorrelationCookiePresent={CorrelationCookiePresent} NonceCookiePresent={NonceCookiePresent}",
+            httpContext.TraceIdentifier,
+            failure?.GetType().FullName ?? "(none)",
+            failure?.InnerException?.GetType().FullName ?? "(none)",
+            ClassifyOidcFailure(failure),
+            httpContext.Request.Scheme,
+            httpContext.Request.Host.Value,
+            forwardedProtoWasPresent,
+            forwardedHostWasPresent,
+            hasCorrelationCookie,
+            hasNonceCookie);
+}
+
+static string ClassifyOidcFailure(Exception? failure)
+{
+    for (var current = failure; current != null; current = current.InnerException)
+    {
+        var message = current.Message;
+        if (message.Contains("Correlation failed", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("correlation cookie", StringComparison.OrdinalIgnoreCase))
+            return "correlation_validation_failed";
+
+        if (message.Contains("State is null or empty", StringComparison.OrdinalIgnoreCase))
+            return "state_missing";
+
+        if (message.Contains("state", StringComparison.OrdinalIgnoreCase) &&
+            message.Contains("unprotect", StringComparison.OrdinalIgnoreCase))
+            return "state_unprotect_failed";
+
+        if (message.Contains("nonce", StringComparison.OrdinalIgnoreCase))
+            return "nonce_validation_failed";
+
+        if (message.Contains("invalid_client", StringComparison.OrdinalIgnoreCase))
+            return "client_credential_rejected";
+
+        if (message.Contains("invalid_grant", StringComparison.OrdinalIgnoreCase))
+            return "authorization_grant_rejected";
+    }
+
+    return "remote_authentication_failed";
+}
 
 // Cookie behavior (kept)
 builder.Services.ConfigureApplicationCookie(options =>
@@ -720,6 +781,9 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+var oidcCallbackPathForDiagnostics = builder.Configuration["AzureAd:CallbackPath"];
+if (string.IsNullOrWhiteSpace(oidcCallbackPathForDiagnostics))
+    oidcCallbackPathForDiagnostics = "/signin-oidc";
 
 if (builder.Configuration.GetValue<bool>("Database:RunMigrationsOnStartup"))
 {
@@ -844,6 +908,20 @@ app.Use(async (context, next) =>
         headers["Content-Security-Policy"] = csp;
         return Task.CompletedTask;
     });
+    await next();
+});
+
+// Capture only non-sensitive presence flags before forwarded headers consume the
+// values. The OIDC failure event later logs these flags with the effective scheme
+// and host, never any header values, tokens, cookies, codes, state, or secrets.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.Equals(oidcCallbackPathForDiagnostics, StringComparison.OrdinalIgnoreCase))
+    {
+        context.Items["OidcDiagnostic.ForwardedProtoPresent"] = context.Request.Headers.ContainsKey("X-Forwarded-Proto");
+        context.Items["OidcDiagnostic.ForwardedHostPresent"] = context.Request.Headers.ContainsKey("X-Forwarded-Host");
+    }
+
     await next();
 });
 

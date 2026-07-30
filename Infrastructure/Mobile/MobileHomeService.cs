@@ -84,12 +84,31 @@ public sealed class MobileHomeService : IMobileHomeService
         MobileResolvedActor actor,
         CancellationToken cancellationToken = default)
     {
-        if (!string.Equals(actor.Actor.ParticipantType, MessagingParticipantTypes.Client, StringComparison.Ordinal))
+        if (string.Equals(
+                actor.Actor.ParticipantType,
+                MessagingParticipantTypes.Client,
+                StringComparison.Ordinal))
         {
-            return MobileFinancialResult.Unavailable(
-                "MOBILE_FINANCIAL_UNAVAILABLE",
-                "Financial intelligence is available from a client mobile identity.");
+            return await GetClientFinancialAsync(actor, cancellationToken);
         }
+
+        if (string.Equals(
+                actor.Actor.ParticipantType,
+                MessagingParticipantTypes.Agent,
+                StringComparison.Ordinal))
+        {
+            return await GetAgentFinancialAsync(actor, cancellationToken);
+        }
+
+        return MobileFinancialResult.Unavailable(
+            "MOBILE_FINANCIAL_UNAVAILABLE",
+            "Financial intelligence is not available for this mobile identity.");
+    }
+
+    private async Task<MobileFinancialResult> GetClientFinancialAsync(
+        MobileResolvedActor actor,
+        CancellationToken cancellationToken)
+    {
 
         var persistedState = await _db.FinanceToolStates
             .AsNoTracking()
@@ -189,6 +208,70 @@ public sealed class MobileHomeService : IMobileHomeService
             upcomingBills,
             operatingSystem,
             presentation));
+    }
+
+    private async Task<MobileFinancialResult> GetAgentFinancialAsync(
+        MobileResolvedActor actor,
+        CancellationToken cancellationToken)
+    {
+        var normalizedAgentUserId = actor.Actor.UserId.Trim().ToLowerInvariant();
+        var persistedState = await _db.AgentFinanceToolStates
+            .AsNoTracking()
+            .Where(state =>
+                state.AgentUserId.ToLower() == normalizedAgentUserId &&
+                state.ToolId == LegendLivingBalanceSheetConstants.ToolId)
+            .OrderByDescending(state => state.UpdatedUtc)
+            .Select(state => new MobilePersistedFinanceState(
+                state.JsonState,
+                state.UpdatedUtc))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        MobileFinancialPosition? position = null;
+        if (persistedState is not null)
+        {
+            var normalizedJson = LegendLivingBalanceSheetCalculator.NormalizeJson(
+                persistedState.JsonState);
+            var state = System.Text.Json.JsonSerializer.Deserialize<
+                LegendLivingBalanceSheetState>(
+                normalizedJson,
+                new System.Text.Json.JsonSerializerOptions(
+                    System.Text.Json.JsonSerializerDefaults.Web));
+            state = LegendLivingBalanceSheetCalculator.Calculate(state);
+            position = new MobileFinancialPosition(
+                state.Summary.HealthScore,
+                state.Summary.AssetsTotal,
+                state.Summary.LiabilitiesTotal,
+                state.Summary.NetWorth,
+                state.CashFlow.Earnings,
+                state.CashFlow.LifestyleRemaining,
+                state.Summary.Taxes,
+                state.Summary.ProtectionGapTotal,
+                state.Summary.PositionStatus,
+                state.Summary.PositionSummary,
+                state.Summary.EstatePlanningStatus,
+                state.Summary.EstatePlanningRiskLevel,
+                persistedState.UpdatedUtc);
+        }
+
+        var operatingSystem = await _financialOperatingSystem.ProjectAgentAsync(
+            actor.Actor.UserId,
+            cancellationToken);
+        var presentation = MobileFinancialPresentationEvaluator.Evaluate(
+            position,
+            intelligence: null,
+            upcomingBills: Array.Empty<MobileUpcomingBill>(),
+            operatingSystem: operatingSystem,
+            assignedAgent: new MobileFinancialAssignedAgentContext(
+                HasAssignedAgent: false,
+                DisplayName: null,
+                FirstName: null));
+
+        return MobileFinancialResult.Success(new MobileFinancialSnapshot(
+            position,
+            Intelligence: null,
+            UpcomingBills: Array.Empty<MobileUpcomingBill>(),
+            OperatingSystem: operatingSystem,
+            Presentation: presentation));
     }
 
     private async Task<MobileFinancialAssignedAgentContext>

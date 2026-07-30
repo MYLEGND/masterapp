@@ -4,8 +4,9 @@ namespace Infrastructure.Mobile;
 
 /// <summary>
 /// The single priority authority for the native Financial Intelligence
-/// dashboard. It ranks read-only facts already calculated by ClientApp's
-/// finance services; it does not perform a second financial calculation.
+/// dashboard. It ranks read-only facts already calculated by the authenticated
+/// account's ClientApp or AgentPortal finance services; it does not perform a
+/// second financial calculation.
 /// </summary>
 public static class MobileFinancialPresentationEvaluator
 {

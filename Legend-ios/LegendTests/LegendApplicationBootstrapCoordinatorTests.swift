@@ -33,7 +33,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(workspaceCalls.leads, 0)
     }
 
-    func testAgentBootstrapLoadsOnlyAgentCoreData() async throws {
+    func testAgentBootstrapLoadsAgentCoreDataAndFinancialProjection() async throws {
         let fixture = try BootstrapFixture()
         let services = BootstrapServices(fixture: fixture)
         let coordinator = makeCoordinator(
@@ -59,7 +59,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(workspaceCalls.clients, 1)
         XCTAssertEqual(workspaceCalls.leads, 1)
         XCTAssertEqual(journeyCalls, 0)
-        XCTAssertEqual(financialCalls, 0)
+        XCTAssertEqual(financialCalls, 1)
     }
 
     func testAgentBootstrapFailsClearlyWithoutItsRequiredWorkspace() async throws {
@@ -227,7 +227,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(socialCalls.profilePosts, 1)
     }
 
-    func testRefreshApplicationUsesTheCurrentRoleScope() async throws {
+    func testAgentRefreshApplicationIncludesFinancialProjection() async throws {
         let fixture = try BootstrapFixture()
         let services = BootstrapServices(fixture: fixture)
         let coordinator = makeCoordinator(
@@ -243,7 +243,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(workspaceCalls.clients, 1)
         XCTAssertEqual(workspaceCalls.leads, 1)
         XCTAssertEqual(journeyCalls, 0)
-        XCTAssertEqual(financialCalls, 0)
+        XCTAssertEqual(financialCalls, 1)
     }
 
     func testRefreshApplicationCoalescesConcurrentRequests() async throws {

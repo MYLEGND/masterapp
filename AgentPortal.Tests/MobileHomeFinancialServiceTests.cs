@@ -123,9 +123,28 @@ public sealed class MobileHomeFinancialServiceTests
     }
 
     [Fact]
-    public async Task GetFinancialAsync_RejectsAgentIdentityBeforeLoadingClientFinancialData()
+    public async Task GetFinancialAsync_UsesOnlyTheAgentsOwnFinancialAuthority()
     {
         await using var db = ControllerTestHelpers.BuildDb();
+        db.AgentFinanceToolStates.Add(new AgentFinanceToolState
+        {
+            AgentUserId = "agent-oid",
+            ToolId = "LegendLivingBalanceSheet",
+            JsonState =
+                """
+                {
+                  "assets": { "savings": 42000 },
+                  "liabilities": { "shortTerm": 2000 },
+                  "cashFlow": {
+                    "earnings": 120000,
+                    "insuranceCosts": 10000,
+                    "annualSavings": 20000,
+                    "debtObligations": 5000
+                  }
+                }
+                """
+        });
+        await db.SaveChangesAsync();
         var service = CreateService(db, OperatingSystem());
 
         var result = await service.GetFinancialAsync(new MobileResolvedActor(
@@ -133,9 +152,16 @@ public sealed class MobileHomeFinancialServiceTests
             Guid.NewGuid(),
             "Agent"));
 
-        Assert.False(result.Succeeded);
-        Assert.Equal("MOBILE_FINANCIAL_UNAVAILABLE", result.ErrorCode);
-        Assert.Null(result.Snapshot);
+        Assert.True(result.Succeeded);
+        var snapshot = Assert.IsType<MobileFinancialSnapshot>(result.Snapshot);
+        var presentation = Assert.IsType<MobileFinancialPresentation>(
+            snapshot.Presentation);
+        Assert.False(presentation.AssignedAgent.HasAssignedAgent);
+        Assert.Equal(40000m, snapshot.Position?.NetWorth);
+        Assert.Equal(120000m, snapshot.Position?.AnnualEarnings);
+        Assert.Contains(
+            presentation.PrioritySections,
+            section => section.Key == "current-outlook");
     }
 
     private static MobileHomeService CreateService(
@@ -152,6 +178,11 @@ public sealed class MobileHomeFinancialServiceTests
         operatingSystemService
             .Setup(service => service.ProjectAsync(
                 It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(operatingSystem);
+        operatingSystemService
+            .Setup(service => service.ProjectAgentAsync(
+                It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(operatingSystem);
 

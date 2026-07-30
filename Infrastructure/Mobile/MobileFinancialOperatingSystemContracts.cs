@@ -1,9 +1,10 @@
 namespace Infrastructure.Mobile;
 
 /// <summary>
-/// Read-only mobile projection of the existing ClientApp financial operating
-/// system. These contracts never own editable financial state and all money
-/// values use integer cents to preserve exact server-authoritative amounts.
+/// Read-only mobile projection of the authenticated account's existing
+/// ClientApp or AgentPortal financial operating system. These contracts never
+/// own editable financial state and all money values use integer cents to
+/// preserve exact server-authoritative amounts.
 /// </summary>
 public sealed record MobileFinancialOperatingSystemSnapshot(
     MobileFinancialProjectionStatus Projection,
@@ -30,7 +31,8 @@ public sealed record MobileFinancialDataFreshness(
     DateTime GeneratedUtc);
 
 /// <summary>
-/// Server-authoritative view of the client's current financial week.
+/// Server-authoritative view of the authenticated account's current financial
+/// week.
 /// </summary>
 public sealed record MobileFinancialWeekAtGlance(
     string WeekKey,
@@ -50,7 +52,8 @@ public sealed record MobileFinancialWeekAtGlance(
     IReadOnlyList<MobileFinancialCashFlowEvent> Events);
 
 /// <summary>
-/// Server-authoritative view of the selected calendar month.
+/// Server-authoritative view of the authenticated account's selected calendar
+/// month.
 /// </summary>
 public sealed record MobileFinancialMonthAtGlance(
     string MonthKey,

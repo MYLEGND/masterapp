@@ -150,4 +150,121 @@ final class MobileFinancialPresentationTests: XCTestCase {
         XCTAssertEqual(savedLabel.title, "Daphne's Salary")
         XCTAssertFalse(savedLabel.title.localizedCaseInsensitiveContains("Partner Income Stream"))
     }
+
+    func testSyncedWeekAndMonthPayloadKeepsEveryModalBreakdownItem() throws {
+        let financial = try JSONDecoder.mobile.decode(
+            MobileFinancialSnapshotResponse.self,
+            from: Data("""
+            {
+              "position": null,
+              "intelligence": null,
+              "upcomingBills": [],
+              "operatingSystem": {
+                "projection": {
+                  "status": "Ready",
+                  "reasonCode": null,
+                  "summary": "Synced from the saved financial projection."
+                },
+                "freshness": {
+                  "financeStateUpdatedUtc": "2026-07-28T23:48:00Z",
+                  "intelligenceEvaluatedUtc": "2026-07-28T23:48:00Z",
+                  "generatedUtc": "2026-07-28T23:48:00Z"
+                },
+                "weekAtGlance": {
+                  "weekKey": "2026-W31",
+                  "startDate": "2026-07-27",
+                  "endDate": "2026-08-02",
+                  "openingCashCents": 307800,
+                  "incomeCents": 380000,
+                  "debitExpenseCents": 215000,
+                  "creditExpenseCents": 107736,
+                  "requiredDebtPaymentCents": 90000,
+                  "extraDebtPaymentCents": 15000,
+                  "endingCashCents": 365064,
+                  "openingDebtCents": 1200000,
+                  "endingDebtCents": 1095000,
+                  "pressureStatus": "Current",
+                  "pressureSummary": "Cash remains positive after scheduled activity.",
+                  "events": [
+                    {
+                      "eventKey": "income:salary:2026-07-29",
+                      "occursOn": "2026-07-29",
+                      "kind": "Income",
+                      "title": "Salary",
+                      "amountCents": 380000,
+                      "sourceToolId": "IncomeTracker",
+                      "sourceItemId": "salary",
+                      "status": "Scheduled"
+                    },
+                    {
+                      "eventKey": "bill:mortgage:2026-08-01",
+                      "occursOn": "2026-08-01",
+                      "kind": "Debit expense",
+                      "title": "Mortgage",
+                      "amountCents": 215000,
+                      "sourceToolId": "ExpenseLens",
+                      "sourceItemId": "mortgage",
+                      "status": "Scheduled"
+                    }
+                  ]
+                },
+                "monthAtGlance": {
+                  "monthKey": "2026-07",
+                  "startDate": "2026-07-01",
+                  "endDate": "2026-07-31",
+                  "openingCashCents": 0,
+                  "incomeCents": 910000,
+                  "debitExpenseCents": 385000,
+                  "creditExpenseCents": 100036,
+                  "requiredDebtPaymentCents": 90000,
+                  "extraDebtPaymentCents": 15000,
+                  "endingCashCents": 409964,
+                  "openingDebtCents": 1200000,
+                  "endingDebtCents": 1095000,
+                  "savingsContributionCents": 75000,
+                  "pressureStatus": "Current",
+                  "pressureSummary": "The monthly projection is on track.",
+                  "largestObligation": {
+                    "title": "Mortgage",
+                    "occursOn": "2026-07-31",
+                    "amountCents": 215000,
+                    "kind": "Debit expense"
+                  },
+                  "weeks": [
+                    {
+                      "weekKey": "2026-W30",
+                      "startDate": "2026-07-20",
+                      "endDate": "2026-07-26",
+                      "incomeCents": 530000,
+                      "outflowCents": 225000,
+                      "endingCashCents": 305000,
+                      "endingDebtCents": 1200000,
+                      "pressureStatus": "Current"
+                    },
+                    {
+                      "weekKey": "2026-W31",
+                      "startDate": "2026-07-27",
+                      "endDate": "2026-08-02",
+                      "incomeCents": 380000,
+                      "outflowCents": 260036,
+                      "endingCashCents": 409964,
+                      "endingDebtCents": 1095000,
+                      "pressureStatus": "Current"
+                    }
+                  ]
+                },
+                "tools": []
+              },
+              "presentation": null
+            }
+            """.utf8))
+
+        let operatingSystem = try XCTUnwrap(financial.operatingSystem)
+        let week = try XCTUnwrap(operatingSystem.weekAtGlance)
+        let month = try XCTUnwrap(operatingSystem.monthAtGlance)
+
+        XCTAssertEqual(week.events.map(\.title), ["Salary", "Mortgage"])
+        XCTAssertEqual(month.weeks.map(\.weekKey), ["2026-W30", "2026-W31"])
+        XCTAssertEqual(month.largestObligation?.title, "Mortgage")
+    }
 }

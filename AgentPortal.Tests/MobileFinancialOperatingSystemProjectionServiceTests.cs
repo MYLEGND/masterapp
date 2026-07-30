@@ -146,6 +146,103 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
     }
 
     [Fact]
+    public async Task ProjectAgentAsync_MapsOnlyTheAuthenticatedAgentsExpenseLensState()
+    {
+        await using var db = CreateDbContext();
+
+        db.FinanceToolStates.Add(new FinanceToolState
+        {
+            ClientProfileId = Guid.NewGuid(),
+            ToolId = "ExpenseLens",
+            JsonState =
+                """
+                {
+                  "mobileWeekProjection": {
+                    "schemaVersion": 1,
+                    "weekId": "client-week",
+                    "weekLabel": "Client week",
+                    "startDate": "2026-07-20",
+                    "endDate": "2026-07-26",
+                    "status": "current",
+                    "openingCashCents": 1,
+                    "incomeCents": 1,
+                    "debitBillsCents": 0,
+                    "creditBillsCents": 0,
+                    "requiredDebtMinimumCents": 0,
+                    "extraDebtPaymentCents": 0,
+                    "closingCashCents": 2,
+                    "openingDebtCents": 0,
+                    "closingDebtCents": 0,
+                    "events": []
+                  }
+                }
+                """
+        });
+        db.AgentFinanceToolStates.Add(new AgentFinanceToolState
+        {
+            AgentUserId = "agent-finance-oid",
+            ToolId = "ExpenseLens",
+            UpdatedUtc = new DateTime(
+                2026,
+                7,
+                28,
+                12,
+                0,
+                0,
+                DateTimeKind.Utc),
+            JsonState =
+                """
+                {
+                  "incomeStreams": {
+                    "primary": [
+                      { "id": "production", "label": "Agent Production" }
+                    ]
+                  },
+                  "mobileWeekProjection": {
+                    "schemaVersion": 1,
+                    "weekId": "agent-week",
+                    "weekLabel": "Agent week",
+                    "startDate": "2026-07-27",
+                    "endDate": "2026-08-02",
+                    "status": "current",
+                    "openingCashCents": 125000,
+                    "incomeCents": 175000,
+                    "debitBillsCents": 25000,
+                    "creditBillsCents": 0,
+                    "requiredDebtMinimumCents": 0,
+                    "extraDebtPaymentCents": 0,
+                    "closingCashCents": 150000,
+                    "openingDebtCents": 0,
+                    "closingDebtCents": 0,
+                    "events": [
+                      {
+                        "key": "income:primary-production:2026-07-29",
+                        "kind": "income",
+                        "label": "Income",
+                        "dateKey": "2026-07-29",
+                        "status": "current",
+                        "amountCents": 175000
+                      }
+                    ]
+                  }
+                }
+                """
+        });
+        await db.SaveChangesAsync();
+
+        var snapshot = await new MobileFinancialOperatingSystemProjectionService(db)
+            .ProjectAgentAsync("AGENT-FINANCE-OID");
+
+        var week = Assert.IsType<MobileFinancialWeekAtGlance>(
+            snapshot.WeekAtGlance);
+        Assert.Equal("agent-week", week.WeekKey);
+        Assert.Equal(150000, week.EndingCashCents);
+        Assert.Equal(
+            "Agent Production",
+            Assert.Single(week.Events).Title);
+    }
+
+    [Fact]
     public async Task ProjectAsync_ReturnsUnavailableWhenExpenseLensStateIsMissing()
     {
         await using var db = CreateDbContext();
@@ -473,8 +570,9 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
                 .Select(method => method.Name)
                 .ToArray();
 
-        Assert.Single(methods);
-        Assert.Equal("ProjectAsync", methods[0]);
+        Assert.Equal(2, methods.Length);
+        Assert.Contains("ProjectAsync", methods);
+        Assert.Contains("ProjectAgentAsync", methods);
     }
 
     private static MasterAppDbContext CreateDbContext()

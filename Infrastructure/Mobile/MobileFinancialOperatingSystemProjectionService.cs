@@ -6,20 +6,26 @@ using Microsoft.EntityFrameworkCore;
 namespace Infrastructure.Mobile;
 
 /// <summary>
-/// Produces the read-only mobile projection of the existing ClientApp finance
-/// authority. This service reads persisted authoritative projection data only
-/// and never owns, edits, schedules, or recalculates financial state.
+/// Produces a read-only mobile projection from the authenticated account's
+/// existing ClientApp or AgentPortal finance authority. This service reads
+/// persisted projection data only and never owns, edits, schedules, or
+/// recalculates financial state.
 /// </summary>
 public interface IMobileFinancialOperatingSystemProjectionService
 {
     Task<MobileFinancialOperatingSystemSnapshot> ProjectAsync(
         Guid clientProfileId,
         CancellationToken cancellationToken = default);
+
+    Task<MobileFinancialOperatingSystemSnapshot> ProjectAgentAsync(
+        string agentUserId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
 /// Reads the authoritative mobile week projection persisted inside the
-/// client's ExpenseLens FinanceToolState.
+/// account's Expense Lens state. Client and agent states remain separately
+/// owned and are never crossed or merged.
 ///
 /// Expense Lens remains the only calculator. This service performs a direct
 /// transport mapping from persisted JSON into immutable mobile contracts.
@@ -58,13 +64,65 @@ public sealed class MobileFinancialOperatingSystemProjectionService
             .Where(row =>
                 row.ClientProfileId == clientProfileId &&
                 row.ToolId == ExpenseLensToolId)
-            .Select(row => new
-            {
+            .Select(row => new MobilePersistedExpenseLensState(
                 row.JsonState,
-                row.UpdatedUtc
-            })
+                row.UpdatedUtc))
             .SingleOrDefaultAsync(cancellationToken);
 
+        return await ProjectPersistedStateAsync(
+            state,
+            generatedUtc,
+            financeStateRoot => ResolveLabelContextAsync(
+                clientProfileId,
+                financeStateRoot,
+                cancellationToken),
+            ownerLabel: "client");
+    }
+
+    public async Task<MobileFinancialOperatingSystemSnapshot> ProjectAgentAsync(
+        string agentUserId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedAgentUserId = agentUserId.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalizedAgentUserId))
+        {
+            throw new ArgumentException(
+                "A valid agent user identifier is required.",
+                nameof(agentUserId));
+        }
+
+        var generatedUtc = DateTime.UtcNow;
+        var state = await _db.AgentFinanceToolStates
+            .AsNoTracking()
+            .Where(row =>
+                row.AgentUserId.ToLower() == normalizedAgentUserId &&
+                row.ToolId == ExpenseLensToolId)
+            .Select(row => new MobilePersistedExpenseLensState(
+                row.JsonState,
+                row.UpdatedUtc))
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return await ProjectPersistedStateAsync(
+            state,
+            generatedUtc,
+            financeStateRoot => Task.FromResult(
+                new MobileFinancialLabelContext(
+                    ClientFirstName: null,
+                    HouseholdFirstName: null,
+                    IncomeLabels: ReadSavedIncomeLabels(financeStateRoot))),
+            ownerLabel: "agent");
+    }
+
+    private async Task<MobileFinancialOperatingSystemSnapshot>
+        ProjectPersistedStateAsync(
+            MobilePersistedExpenseLensState? state,
+            DateTime generatedUtc,
+            Func<JsonElement, Task<MobileFinancialLabelContext>>
+                resolveLabelContext,
+            string ownerLabel)
+    {
         if (state is null)
         {
             return BuildUnavailable(
@@ -72,7 +130,7 @@ public sealed class MobileFinancialOperatingSystemProjectionService
                 financeStateUpdatedUtc: null,
                 reasonCode: "EXPENSE_LENS_STATE_NOT_FOUND",
                 summary:
-                    "Expense Lens has not been saved for this client.");
+                    $"Expense Lens has not been saved for this {ownerLabel}.");
         }
 
         if (string.IsNullOrWhiteSpace(state.JsonState))
@@ -133,10 +191,7 @@ public sealed class MobileFinancialOperatingSystemProjectionService
                     $"Mobile week projection schema {schemaVersion} is not supported.");
             }
 
-            var labelContext = await ResolveLabelContextAsync(
-                clientProfileId,
-                document.RootElement,
-                cancellationToken);
+            var labelContext = await resolveLabelContext(document.RootElement);
             var week = PersonalizeWeek(
                 MapWeek(weekElement),
                 labelContext);
@@ -470,6 +525,10 @@ public sealed class MobileFinancialOperatingSystemProjectionService
         string? ClientUserId,
         string? FirstName,
         string? SignificantOtherFirstName);
+
+    private sealed record MobilePersistedExpenseLensState(
+        string JsonState,
+        DateTime UpdatedUtc);
 
     private sealed record MobileFinancialLabelContext(
         string? ClientFirstName,

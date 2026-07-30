@@ -146,7 +146,17 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
             async let messaging = stores.messaging.refresh()
             async let clients = agentWorkspace.refreshClients()
             async let leads = agentWorkspace.refreshLeads()
-            _ = await (home, social, profilePosts, account, messaging, clients, leads)
+            async let financial = stores.financial.refresh()
+            _ = await (
+                home,
+                social,
+                profilePosts,
+                account,
+                messaging,
+                clients,
+                leads,
+                financial
+            )
         } else {
             async let home = stores.home.refresh()
             async let social = stores.social.refresh()
@@ -220,7 +230,17 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
             async let messaging = stores.messaging.loadIfNeeded()
             async let clients = agentWorkspace.loadClientsIfNeeded()
             async let leads = agentWorkspace.loadLeadsIfNeeded()
-            let values = await (home, social, profilePosts, account, messaging, clients, leads)
+            async let financial = stores.financial.loadIfNeeded()
+            let values = await (
+                home,
+                social,
+                profilePosts,
+                account,
+                messaging,
+                clients,
+                leads,
+                financial
+            )
             results = [
                 (.home, values.0),
                 (.social, values.1),
@@ -228,7 +248,8 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
                 (.account, values.3),
                 (.messaging, values.4),
                 (.clients, values.5),
-                (.leads, values.6)
+                (.leads, values.6),
+                (.financial, values.7)
             ]
         } else {
             async let home = stores.home.loadIfNeeded()
