@@ -58,10 +58,11 @@ document.addEventListener("DOMContentLoaded", async function () {
     const disableLocalForDP = enableDistributionPlanner; // Distribution Planner stays server-backed only when enabled for this app.
     const storageSet = (key, value) => localStorage.setItem(scopeKey(key), value);
     const storageRemove = (key) => localStorage.removeItem(scopeKey(key));
-    // Standalone AgentPortal /Finance should not revive agent-scoped finance tool rows.
-    // Those snapshots drift from the shared client finance state and can surface stale
-    // Expense Lens bills, income hits, and percentages after the calculation fixes.
-    const canUseServerState = hasClientFinanceContext;
+    // Client and agent workspaces have separate, server-backed financial authorities.
+    // The native agent experience reads AgentFinanceToolStates, so standalone AgentPortal
+    // must persist the agent's own Expense Lens state there. Client context remains scoped
+    // to the selected client's FinanceToolStates row and is never crossed into agent state.
+    const canUseServerState = hasClientFinanceContext || financeApp === "agent";
     const toolStateIds = new Set([
         "WealthForecast",
         "SavingsAccelerator",
