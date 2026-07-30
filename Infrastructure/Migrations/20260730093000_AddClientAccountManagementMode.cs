@@ -1,3 +1,5 @@
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -5,6 +7,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(MasterAppDbContext))]
+    [Migration("20260730093000_AddClientAccountManagementMode")]
     public partial class AddClientAccountManagementMode : Migration
     {
         /// <inheritdoc />
