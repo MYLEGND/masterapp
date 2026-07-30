@@ -5,6 +5,30 @@ import Foundation
 struct MobileSession: Equatable, Sendable {
     let actor: MobileActor
     let capabilities: Set<String>
+    let permittedParticipantTypes: [ParticipantType]
+
+    init(
+        actor: MobileActor,
+        capabilities: Set<String>,
+        permittedParticipantTypes: [ParticipantType]? = nil
+    ) {
+        self.actor = actor
+        self.capabilities = capabilities
+
+        var permitted: [ParticipantType] = []
+        for participantType in (permittedParticipantTypes ?? []) + [actor.identity.participantType] {
+            if !permitted.contains(participantType) {
+                permitted.append(participantType)
+            }
+        }
+        self.permittedParticipantTypes = permitted
+    }
+
+    var alternateParticipantTypes: [ParticipantType] {
+        permittedParticipantTypes.filter {
+            $0 != actor.identity.participantType
+        }
+    }
 }
 
 struct MobileRoleSelection: Equatable, Sendable {
@@ -172,13 +196,26 @@ final class MobileSessionCoordinator: ObservableObject {
                     .selectRole(participantType, accessToken: tokens.accessToken)
                 transition(to: .authenticated(MobileSession(
                     actor: response.actor,
-                    capabilities: ["messaging"]
+                    capabilities: ["messaging"],
+                    permittedParticipantTypes: response.permittedParticipantTypes
                 )), reason: "Mobile role selection completed")
             } catch {
                 transition(to: .failed(failure(for: error, defaultTitle: "Role selection unavailable")), reason: "Mobile role selection did not complete")
                 diagnostics.record(category: .authentication, summary: "Native mobile role selection did not complete. Failure category: \(failureCategory(for: error)).", correlationID: (error as? MobileAPIError)?.correlationID)
             }
         }
+    }
+
+    /// Switches only between typed roles already authorized for the current
+    /// Entra bearer token. The server independently verifies the requested
+    /// role before the application is rebuilt for the selected account.
+    func switchToRole(_ participantType: ParticipantType) {
+        guard case .authenticated(let currentSession) = state,
+              currentSession.alternateParticipantTypes.contains(participantType) else {
+            return
+        }
+
+        selectRole(participantType)
     }
 
     func makeMessagingStore() -> MessagingStore {
@@ -337,7 +374,8 @@ final class MobileSessionCoordinator: ObservableObject {
         }
         transition(to: .authenticated(MobileSession(
             actor: actor,
-            capabilities: response.capabilities.messaging ? ["messaging"] : []
+            capabilities: response.capabilities.messaging ? ["messaging"] : [],
+            permittedParticipantTypes: response.permittedParticipantTypes
         )), reason: "Authenticated mobile session decoded")
     }
 

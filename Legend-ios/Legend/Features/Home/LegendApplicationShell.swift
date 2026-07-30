@@ -88,7 +88,11 @@ struct LegendApplicationShell: View {
                         ),
                         accountAvatar: currentSession.actor.avatar,
                         accountDisplayName: currentSession.actor.displayName,
-                        unreadMessageCount: unreadMessageCount
+                        unreadMessageCount: unreadMessageCount,
+                        alternateAccountTypes: currentSession.alternateParticipantTypes,
+                        switchAccount: { participantType in
+                            coordinator.switchToRole(participantType)
+                        }
                     )
                 }
             }
@@ -214,6 +218,8 @@ private struct LegendNextTabBar: View {
     let accountAvatar: ProfileAvatar?
     let accountDisplayName: String
     let unreadMessageCount: Int
+    let alternateAccountTypes: [ParticipantType]
+    let switchAccount: (ParticipantType) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -231,7 +237,33 @@ private struct LegendNextTabBar: View {
         .padding(.bottom, 4)
     }
 
+    @ViewBuilder
     private func tabButton(
+        _ tab: LegendAppTab
+    ) -> some View {
+        if tab == .account,
+           !alternateAccountTypes.isEmpty {
+            tabButtonContent(tab)
+                .contextMenu {
+                    Section("Switch account") {
+                        ForEach(alternateAccountTypes, id: \.self) { participantType in
+                            Button {
+                                switchAccount(participantType)
+                            } label: {
+                                Label(
+                                    "Switch to \(participantType.accountLabel)",
+                                    systemImage: participantType.accountSystemImage
+                                )
+                            }
+                        }
+                    }
+                }
+        } else {
+            tabButtonContent(tab)
+        }
+    }
+
+    private func tabButtonContent(
         _ tab: LegendAppTab
     ) -> some View {
         Button {
@@ -266,6 +298,11 @@ private struct LegendNextTabBar: View {
         .accessibilityLabel(tab.title)
         .accessibilityValue(
             selection == tab ? "Selected" : ""
+        )
+        .accessibilityHint(
+            tab == .account && !alternateAccountTypes.isEmpty
+                ? "Long press to switch accounts."
+                : ""
         )
         .accessibilityAddTraits(
             selection == tab ? .isSelected : []
@@ -348,6 +385,22 @@ private struct LegendNextTabBar: View {
         unreadMessageCount > 99
             ? "99+"
             : "\(unreadMessageCount)"
+    }
+}
+
+private extension ParticipantType {
+    var accountLabel: String {
+        switch self {
+        case .agent: "Agent"
+        case .client: "Client"
+        }
+    }
+
+    var accountSystemImage: String {
+        switch self {
+        case .agent: "briefcase.fill"
+        case .client: "person.fill"
+        }
     }
 }
 
@@ -3744,7 +3797,7 @@ private struct LegendFinancialOutlookSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                LegendNextGradient.hero
+                LegendNextGradient.financialSheet
                     .ignoresSafeArea()
 
                 ScrollView {
@@ -3782,7 +3835,7 @@ private struct LegendFinancialOutlookSheet: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(34)
-        .presentationBackground(LegendNextColor.midnight)
+        .presentationBackground(LegendNextGradient.financialSheet)
     }
 
     private var premiumModalHeader: some View {

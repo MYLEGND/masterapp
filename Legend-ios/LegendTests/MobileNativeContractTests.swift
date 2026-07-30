@@ -276,6 +276,44 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(coordinator.state, .signedOut)
     }
 
+    func testAuthorizedDualRoleSwitchReusesTheCurrentBearerWithoutSigningOut() async throws {
+        let store = InMemoryTokenStore(
+            storedTokens: OAuthTokenSet(
+                accessToken: "stored-access-token",
+                refreshToken: "stored-refresh-token",
+                expiresAt: .distantFuture))
+        let service = try DualRoleSessionService()
+        let coordinator = MobileSessionCoordinator(
+            configuration: completeConfiguration(),
+            tokenStore: store,
+            authorizer: TestAuthorizer(),
+            tokenExchanger: TestTokenExchanger(),
+            sessionService: service)
+
+        coordinator.restore()
+        try await waitForState(
+            coordinator,
+            matching: { state in
+                if case .roleSelection = state { return true }
+                return false
+            })
+
+        coordinator.selectRole(.agent)
+        let agentSession = try await waitForAuthenticatedSession(
+            coordinator,
+            participantType: .agent)
+        XCTAssertEqual(agentSession.alternateParticipantTypes, [.client])
+
+        coordinator.switchToRole(.client)
+        let clientSession = try await waitForAuthenticatedSession(
+            coordinator,
+            participantType: .client)
+        XCTAssertEqual(clientSession.alternateParticipantTypes, [.agent])
+        XCTAssertFalse(store.didClear)
+        let requestedRoles = await service.requestedRoles()
+        XCTAssertEqual(requestedRoles, [.agent, .client])
+    }
+
     func testMessagingStoreTransitionsFromLoadingToLoaded() async {
         let store = MessagingStore(
             api: StubMessagingAPI(),
@@ -451,6 +489,35 @@ final class MobileNativeContractTests: XCTestCase {
             audience: "api://legend")
     }
 
+    private func waitForState(
+        _ coordinator: MobileSessionCoordinator,
+        matching predicate: (MobileSessionState) -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+        while !predicate(coordinator.state),
+              ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(predicate(coordinator.state), "The expected session state was not reached.")
+    }
+
+    private func waitForAuthenticatedSession(
+        _ coordinator: MobileSessionCoordinator,
+        participantType: ParticipantType
+    ) async throws -> MobileSession {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+        while ContinuousClock.now < deadline {
+            if case .authenticated(let session) = coordinator.state,
+               session.actor.identity.participantType == participantType {
+                return session
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTFail("The expected authenticated role was not reached.")
+        throw SessionSwitchTestError.expectedSessionWasNotReached
+    }
+
     private func stubSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
@@ -500,11 +567,78 @@ private final class StubURLProtocol: URLProtocol {
 }
 
 private final class InMemoryTokenStore: SecureTokenStoring, @unchecked Sendable {
+    var storedTokens: OAuthTokenSet?
     var didClear = false
 
-    func read() throws -> OAuthTokenSet? { nil }
-    func save(_ tokens: OAuthTokenSet) throws {}
-    func clear() throws { didClear = true }
+    init(storedTokens: OAuthTokenSet? = nil) {
+        self.storedTokens = storedTokens
+    }
+
+    func read() throws -> OAuthTokenSet? { storedTokens }
+    func save(_ tokens: OAuthTokenSet) throws { storedTokens = tokens }
+    func clear() throws {
+        storedTokens = nil
+        didClear = true
+    }
+}
+
+private enum SessionSwitchTestError: Error {
+    case expectedSessionWasNotReached
+}
+
+private actor DualRoleSessionService: MobileSessionServicing {
+    private let permittedParticipantTypes: [ParticipantType] = [.agent, .client]
+    private let agent: MobileActor
+    private let client: MobileActor
+    private var roles: [ParticipantType] = []
+
+    init() throws {
+        let agentIdentity = try LogicalParticipantIdentity(
+            userID: "shared-entra-oid",
+            participantType: .agent)
+        let clientIdentity = try LogicalParticipantIdentity(
+            userID: "shared-entra-oid",
+            participantType: .client)
+        agent = try MobileActor(
+            identity: agentIdentity,
+            profileID: "00000000-0000-0000-0000-000000000001",
+            displayName: "Agent Account",
+            avatar: nil)
+        client = try MobileActor(
+            identity: clientIdentity,
+            profileID: "00000000-0000-0000-0000-000000000002",
+            displayName: "Client Account",
+            avatar: nil)
+    }
+
+    func bootstrap(accessToken: String) async throws -> MobileBootstrapResponse {
+        MobileBootstrapResponse(
+            authenticated: true,
+            actor: nil,
+            permittedParticipantTypes: permittedParticipantTypes,
+            requiresParticipantSelection: true,
+            capabilities: MobileCapabilities(messaging: true),
+            correlationID: "dual-role-bootstrap")
+    }
+
+    func selectRole(
+        _ participantType: ParticipantType,
+        accessToken: String
+    ) async throws -> MobileRoleSelectionResponse {
+        roles.append(participantType)
+        let selectedActor = switch participantType {
+        case .agent: agent
+        case .client: client
+        }
+        return MobileRoleSelectionResponse(
+            actor: selectedActor,
+            permittedParticipantTypes: permittedParticipantTypes,
+            correlationID: "dual-role-selection")
+    }
+
+    func requestedRoles() -> [ParticipantType] {
+        roles
+    }
 }
 
 private final class TestAuthorizer: OAuthAuthorizing {

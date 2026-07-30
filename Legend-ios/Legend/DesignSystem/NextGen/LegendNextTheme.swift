@@ -187,6 +187,19 @@ enum LegendNextGradient {
         endPoint: .bottomTrailing
     )
 
+    /// The host and content background for a full-screen financial sheet.
+    /// Keeping this here prevents client and agent financial views from
+    /// drifting into separate modal treatments.
+    static let financialSheet = LinearGradient(
+        colors: [
+            LegendNextColor.navy,
+            LegendNextColor.midnight,
+            LegendNextColor.midnight
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
     static let success = LinearGradient(
         colors: [
             LegendNextColor.success.opacity(0.96),
