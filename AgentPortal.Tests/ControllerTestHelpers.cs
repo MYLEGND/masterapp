@@ -118,7 +118,11 @@ internal static class ControllerTestHelpers
                 new KeyValuePair<string,string?>("GraphProvisioning:ClientSecret","secret")
             })
             .Build();
-        var provisioning = new ClientProvisioningService(config, NullLogger<ClientProvisioningService>.Instance, db);
+        var provisioning = new ClientProvisioningService(
+            config,
+            NullLogger<ClientProvisioningService>.Instance,
+            db,
+            Mock.Of<IClientEntraLifecycleService>());
         timeResolver ??= Mock.Of<IAgentTimeZoneResolver>();
         var azureClientEmailSync = new Mock<IAzureClientEmailSyncService>();
         azureClientEmailSync

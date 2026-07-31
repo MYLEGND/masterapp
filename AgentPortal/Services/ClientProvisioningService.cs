@@ -16,6 +16,7 @@ public class ClientProvisioningService
     private readonly IConfiguration _config;
     private readonly ILogger<ClientProvisioningService> _logger;
     private readonly MasterAppDbContext _db;
+    private readonly Infrastructure.Identity.IClientEntraLifecycleService _entraLifecycle;
     private readonly string _tenantId;
     private readonly string _clientId;
     private readonly string _clientSecret;
@@ -24,11 +25,13 @@ public class ClientProvisioningService
     public ClientProvisioningService(
         IConfiguration config,
         ILogger<ClientProvisioningService> logger,
-        MasterAppDbContext db)
+        MasterAppDbContext db,
+        Infrastructure.Identity.IClientEntraLifecycleService entraLifecycle)
     {
         _config = config;
         _logger = logger;
         _db = db;
+        _entraLifecycle = entraLifecycle;
 
         _tenantId =
             GetSetting(
@@ -286,30 +289,12 @@ public class ClientProvisioningService
         // ✅ For guests, tempPassword is NOT used. Keep parameter to avoid breaking callers.
         // tempPassword = tempPassword ?? "";
 
-        // 1) If a user already exists for this email, reuse it
-        var existing = await FindUserByPersonalEmailAsync(personalEmail);
-        if (existing?.Id != null)
-        {
-            // For your app + welcome email, the "username" is always their personal email.
-            return (existing.Id, personalEmail);
-        }
+        var ensured = await _entraLifecycle.EnsureExternalIdentityAsync(
+            firstName,
+            lastName,
+            personalEmail);
 
-        // 2) Invite guest
-        var clientPortalBaseUrl =
-            GetSetting("ClientPortal:BaseUrl", "ClientPortal__BaseUrl",
-                       "GraphProvisioning:InviteRedirectUrl", "GraphProvisioning__InviteRedirectUrl")
-            ?? "https://client.mylegnd.com";
-
-        // We generally keep SendInvitationMessage=false so your own email controls messaging.
-        var invited = await InviteGuestUserAsync(
-            firstName: firstName,
-            lastName: lastName,
-            personalEmail: personalEmail,
-            inviteRedirectUrl: clientPortalBaseUrl,
-            sendMicrosoftInviteEmail: false
-        );
-
-        return (invited.objectId, invited.loginEmail);
+        return (ensured.ObjectId, ensured.LoginEmail);
     }
 
     // ✅ Ensure DB rows exist so ClientApp won't say "Client profile not found."
@@ -714,28 +699,9 @@ public class ClientProvisioningService
         if (string.IsNullOrWhiteSpace(objectId))
             throw new Exception("Missing user objectId for deletion.");
 
-        try
-        {
-            await GetGraphClient().Users[objectId].DeleteAsync();
-        }
-        catch (ODataError ex)
-        {
-            var msg = ex.Error?.Message ?? "Microsoft Graph request failed.";
-
-            if (msg.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
-                msg.Contains("resourcenotfound", StringComparison.OrdinalIgnoreCase) ||
-                msg.Contains("not found", StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            throw new Exception(msg);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "DeleteTenantUserAsync failed. ObjectId={ObjectId}", objectId);
-            throw;
-        }
+        await _entraLifecycle.DeleteExternalIdentityAsync(
+            objectId,
+            email: null);
     }
 
     public async Task DeleteTenantUserByEmailAsync(string email)

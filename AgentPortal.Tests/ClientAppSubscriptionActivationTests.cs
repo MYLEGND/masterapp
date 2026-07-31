@@ -714,7 +714,8 @@ public class ClientAppSubscriptionActivationTests
                 Environment = BillingProviderEnvironment.Sandbox
             },
             BuildContinuationService(db),
-            new ClientAppReturnUrlNormalizer());
+            new ClientAppReturnUrlNormalizer(),
+            Mock.Of<IClientEntraLifecycleService>());
     }
 
     private static ClaimsPrincipal BuildPrincipal(string oid, string email)

@@ -41,6 +41,7 @@ public sealed class SubscriptionActivationService
     private readonly SquareBillingOptions _squareOptions;
     private readonly ClientIdentityContinuationService _continuationService;
     private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
+    private readonly global::Infrastructure.Identity.IClientEntraLifecycleService _entraLifecycle;
 
     public SubscriptionActivationService(
         MasterAppDbContext db,
@@ -48,7 +49,8 @@ public sealed class SubscriptionActivationService
         IClientSubscriptionActivationPolicyService activationPolicyService,
         SquareBillingOptions squareOptions,
         ClientIdentityContinuationService continuationService,
-        ClientAppReturnUrlNormalizer returnUrlNormalizer)
+        ClientAppReturnUrlNormalizer returnUrlNormalizer,
+        global::Infrastructure.Identity.IClientEntraLifecycleService entraLifecycle)
     {
         _db = db;
         _billingOrchestrator = billingOrchestrator;
@@ -56,6 +58,7 @@ public sealed class SubscriptionActivationService
         _squareOptions = squareOptions;
         _continuationService = continuationService;
         _returnUrlNormalizer = returnUrlNormalizer;
+        _entraLifecycle = entraLifecycle;
     }
 
     public bool BrowserPaymentReady => _squareOptions.HasBrowserCredentials();
@@ -170,6 +173,21 @@ public sealed class SubscriptionActivationService
                 activationResult.SafeErrorCode,
                 activationResult.SanitizedSummary ?? "The subscription could not be activated yet.",
                 context);
+        }
+
+        try
+        {
+            await _entraLifecycle.EnsureClientIdentityAsync(
+                context.Client.Id,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return new SubscriptionActivationExecutionResult(
+                false,
+                "ENTRA_PROVISIONING_FAILED",
+                $"The subscription is active, but identity provisioning could not complete: {ex.Message}",
+                context with { Subscription = activationResult.Subscription });
         }
 
         var continuation = await _continuationService.CreateProtectedStateAsync(

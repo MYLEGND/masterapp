@@ -56,6 +56,7 @@ builder.Services.AddHostedService<ClientProfileImageLegacyBackfillHostedService>
 builder.Services.AddScoped<IMessagingActorContextResolver, ClientAppMessagingActorContextResolver>();
 builder.Services.AddSingleton<ClientAppReturnUrlNormalizer>();
 builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
+builder.Services.AddScoped<IClientEntraLifecycleService, ClientEntraLifecycleService>();
 builder.Services.AddScoped<IClientSubscriptionIdentitySyncService, ClientSubscriptionIdentitySyncService>();
 builder.Services.AddScoped<IAzureUserUpdater, AzureUserUpdaterAdapter>();
 builder.Services.AddScoped<ClientIdentityContinuationService>();

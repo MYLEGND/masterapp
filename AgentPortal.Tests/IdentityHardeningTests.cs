@@ -8,6 +8,7 @@ using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -62,7 +63,11 @@ public class IdentityHardeningTests
                 new KeyValuePair<string, string?>("GraphProvisioning:ClientSecret", "test-secret")
             })
             .Build();
-        return new ClientProvisioningService(config, NullLogger<ClientProvisioningService>.Instance, db);
+        return new ClientProvisioningService(
+            config,
+            NullLogger<ClientProvisioningService>.Instance,
+            db,
+            Mock.Of<IClientEntraLifecycleService>());
     }
 
     private static ClaimsPrincipal BuildUserWithEmail(string oid, string email)
@@ -85,7 +90,11 @@ public class IdentityHardeningTests
                 new KeyValuePair<string, string?>("GraphProvisioning:ClientSecret", "test-secret")
             })
             .Build();
-        var provisioning = new ClientProvisioningService(config, NullLogger<ClientProvisioningService>.Instance, db);
+        var provisioning = new ClientProvisioningService(
+            config,
+            NullLogger<ClientProvisioningService>.Instance,
+            db,
+            Mock.Of<IClientEntraLifecycleService>());
         var http = new DefaultHttpContext();
         http.Items["EffectiveAgentOid"] = agentOid;
         var tempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>());
