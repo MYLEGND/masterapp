@@ -185,7 +185,6 @@ struct LegendSocialComposer: View {
     @State private var accessibilityText = ""
     @State private var tagsAndMentions = ""
     @State private var shareLocation = ""
-    @State private var shareAudience: MobileSocialAudience = .authorizedNetwork
     @State private var commentsEnabled = true
     @State private var mediaSelectionError: String?
     @State private var stage: LegendSocialCreationStage = .library
@@ -1102,11 +1101,6 @@ struct LegendSocialComposer: View {
                     Divider()
                         .padding(.leading, 56)
 
-                    audienceRow
-
-                    Divider()
-                        .padding(.leading, 56)
-
                     accessibilityRow
 
                     Divider()
@@ -1373,68 +1367,6 @@ struct LegendSocialComposer: View {
         )
     }
 
-    private var audienceRow: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "person.2")
-                .font(.system(size: 20))
-                .frame(width: 26)
-                .foregroundStyle(
-                    LegendNextColor.textPrimary
-                )
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Audience")
-                    .font(.system(size: 15))
-                    .foregroundStyle(
-                        LegendNextColor.textPrimary
-                    )
-
-                Text(shareAudience.detail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(
-                        LegendNextColor.textSecondary
-                    )
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 8)
-
-            Menu {
-                // Only audiences the server can enforce are offered. "Close Friends"
-                // was removed because Legend has no close-friends list to back it.
-                Picker("Audience", selection: $shareAudience) {
-                    ForEach(MobileSocialAudience.allCases) { audience in
-                        Text(audience.title).tag(audience)
-                    }
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Text(shareAudience.title)
-                        .font(.system(size: 14))
-                        .foregroundStyle(
-                            LegendNextColor.textSecondary
-                        )
-
-                    Image(systemName: "chevron.right")
-                        .font(
-                            .system(
-                                size: 13,
-                                weight: .semibold
-                            )
-                        )
-                        .foregroundStyle(
-                            LegendNextColor.textSecondary.opacity(0.55)
-                        )
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .frame(minHeight: 54)
-        .background(LegendNextColor.surface)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Audience: \(shareAudience.title). \(shareAudience.detail)")
-    }
-
     private var accessibilityRow: some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: "accessibility")
@@ -1637,7 +1569,7 @@ struct LegendSocialComposer: View {
             files: selectedMedia.map(\.multipartFile),
             accessibilityText: normalizedAccessibilityText,
             music: selectedMusic?.selection,
-            audience: shareAudience,
+            audience: .authorizedNetwork,
             location: normalizedLocation,
             commentsEnabled: commentsEnabled)
 

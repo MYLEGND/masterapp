@@ -24,6 +24,8 @@ protocol MobileSocialAPI: Sendable {
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult
     func currentProfileFollowList(kind: MobileSocialFollowListKind, accessToken: String) async throws -> [MobileSocialFollowListEntry]
+    func incomingFollowRequests(accessToken: String) async throws -> [MobileSocialFollowRequest]
+    func decideFollowRequest(id: UUID, approve: Bool, accessToken: String) async throws -> MobileSocialFollowResult
     func profileMetrics(for profile: MobileSocialAuthor, accessToken: String) async throws -> MobileSocialProfileMetrics
     func toggleSave(postID: UUID, accessToken: String) async throws -> MobileSocialShareState
     func toggleRepost(postID: UUID, accessToken: String) async throws -> MobileSocialShareState
@@ -56,6 +58,14 @@ extension MobileSocialAPI {
     ) async throws -> [MobileSocialPost] {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
+
+    func incomingFollowRequests(accessToken: String) async throws -> [MobileSocialFollowRequest] {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func decideFollowRequest(id: UUID, approve: Bool, accessToken: String) async throws -> MobileSocialFollowResult {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
 }
 
 struct MobileUnavailableSocialAPI: MobileSocialAPI {
@@ -86,6 +96,8 @@ struct MobileUnavailableSocialAPI: MobileSocialAPI {
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment { throw MobileAPIError.unauthorized(correlationID: nil) }
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult { throw MobileAPIError.unauthorized(correlationID: nil) }
     func currentProfileFollowList(kind: MobileSocialFollowListKind, accessToken: String) async throws -> [MobileSocialFollowListEntry] { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func incomingFollowRequests(accessToken: String) async throws -> [MobileSocialFollowRequest] { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func decideFollowRequest(id: UUID, approve: Bool, accessToken: String) async throws -> MobileSocialFollowResult { throw MobileAPIError.unauthorized(correlationID: nil) }
     func profileMetrics(for profile: MobileSocialAuthor, accessToken: String) async throws -> MobileSocialProfileMetrics { throw MobileAPIError.unauthorized(correlationID: nil) }
     func toggleSave(postID: UUID, accessToken: String) async throws -> MobileSocialShareState { throw MobileAPIError.unauthorized(correlationID: nil) }
     func toggleRepost(postID: UUID, accessToken: String) async throws -> MobileSocialShareState { throw MobileAPIError.unauthorized(correlationID: nil) }
@@ -225,6 +237,23 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
             queryItems: [URLQueryItem(name: "list", value: kind.rawValue)],
             headers: participantHeader,
             response: [MobileSocialFollowListEntry].self)
+    }
+
+    func incomingFollowRequests(accessToken: String) async throws -> [MobileSocialFollowRequest] {
+        try await client.get(
+            "/api/v1/mobile/social/profile/follow-requests",
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: [MobileSocialFollowRequest].self)
+    }
+
+    func decideFollowRequest(id: UUID, approve: Bool, accessToken: String) async throws -> MobileSocialFollowResult {
+        try await client.post(
+            "/api/v1/mobile/social/profile/follow-requests/\(id.uuidString)/decision",
+            body: MobileSocialFollowRequestDecision(approve: approve),
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: MobileSocialFollowResult.self)
     }
 
     func profileMetrics(
@@ -656,7 +685,10 @@ final class MobileSocialStore: ObservableObject {
                     followedParticipantType: author.identity.participantType,
                     sourcePostID: sourcePostID),
                 accessToken: token)
-            self.updateFollow(author: author, isFollowing: result.isFollowing)
+            self.updateFollow(
+                author: author,
+                isFollowing: result.isFollowing,
+                isPending: result.hasPendingRequest)
             guard result.isFollowing != wasFollowing else { return }
             self.adjustCurrentProfileMetrics(
                 followingCountBy: result.isFollowing ? 1 : -1
@@ -664,8 +696,9 @@ final class MobileSocialStore: ObservableObject {
         }
     }
 
-    /// Follows or unfollows a participant who may not be in the loaded feed, and
-    /// returns the follow state the server confirmed (nil when the call failed).
+    /// Follows, requests, or removes a relationship for a participant who may
+    /// not be in the loaded feed. The server response is the only source of
+    /// truth for accepted versus pending state.
     ///
     /// Discover needs this because a discovered member usually has no post in the
     /// current feed, so the feed-driven `toggleFollow` has nothing to act on.
@@ -673,7 +706,7 @@ final class MobileSocialStore: ObservableObject {
         userID: String,
         participantType: ParticipantType,
         isFollowing: Bool
-    ) async -> Bool? {
+    ) async -> MobileSocialFollowResult? {
         actionFailure = nil
         do {
             let token = try await accessTokenProvider()
@@ -689,14 +722,17 @@ final class MobileSocialStore: ObservableObject {
             transformPosts(
                 matching: { $0.author.identity.userID == userID
                     && $0.author.identity.participantType == participantType },
-                transform: { $0.replacing(followedByCurrentActor: result.isFollowing) })
+                transform: {
+                    $0.replacing(
+                        followedByCurrentActor: result.isFollowing,
+                        followRequestPending: result.hasPendingRequest)
+                })
 
-            if result.isFollowing != isFollowing {
-                return result.isFollowing
+            let wasFollowing = !isFollowing
+            if result.isFollowing != wasFollowing {
+                adjustCurrentProfileMetrics(followingCountBy: result.isFollowing ? 1 : -1)
             }
-
-            adjustCurrentProfileMetrics(followingCountBy: result.isFollowing ? 1 : -1)
-            return result.isFollowing
+            return result
         } catch {
             actionFailure = failure(for: error, title: "Could not update your connection")
             return nil
@@ -718,6 +754,30 @@ final class MobileSocialStore: ObservableObject {
             return .unavailable(failure(
                 for: error,
                 title: "\(kind.title) unavailable"))
+        }
+    }
+
+    func incomingFollowRequests() async -> MobileDataLoadState<[MobileSocialFollowRequest]> {
+        do {
+            let token = try await accessTokenProvider()
+            return .loaded(try await api.incomingFollowRequests(accessToken: token))
+        } catch {
+            return .unavailable(failure(for: error, title: "Follow requests unavailable"))
+        }
+    }
+
+    func decideFollowRequest(id: UUID, approve: Bool) async -> Bool {
+        actionFailure = nil
+        do {
+            let token = try await accessTokenProvider()
+            _ = try await api.decideFollowRequest(id: id, approve: approve, accessToken: token)
+            if approve {
+                adjustCurrentProfileMetrics(followerCountBy: 1)
+            }
+            return true
+        } catch {
+            actionFailure = failure(for: error, title: "Could not update this follow request")
+            return false
         }
     }
 
@@ -1017,10 +1077,14 @@ final class MobileSocialStore: ObservableObject {
         }
     }
 
-    private func updateFollow(author: MobileSocialAuthor, isFollowing: Bool) {
+    private func updateFollow(author: MobileSocialAuthor, isFollowing: Bool, isPending: Bool) {
         transformPosts(
             matching: { $0.author.identity == author.identity },
-            transform: { $0.replacing(followedByCurrentActor: isFollowing) })
+            transform: {
+                $0.replacing(
+                    followedByCurrentActor: isFollowing,
+                    followRequestPending: isPending)
+            })
     }
 
     private func follows(_ author: MobileSocialAuthor) -> Bool {
@@ -1030,7 +1094,10 @@ final class MobileSocialStore: ObservableObject {
             .followedByCurrentActor ?? false
     }
 
-    private func adjustCurrentProfileMetrics(followingCountBy: Int) {
+    private func adjustCurrentProfileMetrics(
+        followingCountBy: Int = 0,
+        followerCountBy: Int = 0
+    ) {
         guard case .loaded(let snapshot) = state else { return }
         state = .loaded(MobileSocialSnapshot(
             stories: snapshot.stories,
@@ -1038,7 +1105,8 @@ final class MobileSocialStore: ObservableObject {
             activity: snapshot.activity,
             activityCount: snapshot.activityCount,
             currentProfileMetrics: snapshot.currentProfileMetrics.adjusting(
-                followingCountBy: followingCountBy
+                followingCountBy: followingCountBy,
+                followerCountBy: followerCountBy
             ),
             creatorInsights: snapshot.creatorInsights
         ))

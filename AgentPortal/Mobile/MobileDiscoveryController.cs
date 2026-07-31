@@ -168,6 +168,7 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
             result.MatchExplanation,
             new MobileDiscoveryRelationshipDto(
                 result.Relationship.FollowedByCurrentActor,
+                result.Relationship.FollowRequestPending,
                 result.Relationship.FollowsCurrentActor,
                 result.Relationship.ConnectionStatus,
                 result.Relationship.ConnectionId,
@@ -177,7 +178,8 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
             result.Username,
             result.Bio,
             result.Website,
-            result.PublicEmail);
+            result.PublicEmail,
+            result.IsPrivate);
     }
 
     private IActionResult DiscoveryFailure(string? errorCode, string? errorMessage)
@@ -199,6 +201,7 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
 
 public sealed record MobileDiscoveryRelationshipDto(
     bool FollowedByCurrentActor,
+    bool FollowRequestPending,
     bool FollowsCurrentActor,
     string ConnectionStatus,
     Guid? ConnectionId,
@@ -221,7 +224,8 @@ public sealed record MobileDiscoveryResultDto(
     string? Username = null,
     string? Bio = null,
     string? Website = null,
-    string? PublicEmail = null);
+    string? PublicEmail = null,
+    bool IsPrivate = false);
 
 public sealed record MobileDiscoveryPageDto(
     IReadOnlyList<MobileDiscoveryResultDto> Results,

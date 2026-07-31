@@ -17,7 +17,6 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
 
     @State private var creationRoute: LegendSocialCreationRoute?
     @State private var isPresentingActivity = false
-    @State private var isPresentingCreatorInsights = false
     @State private var commentTarget: MobileSocialPost?
     @State private var postInsight: MobileSocialPostInsight?
     @State private var storyCollection: MobileSocialStoryCollection?
@@ -57,13 +56,6 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         .sheet(isPresented: $isPresentingActivity) {
             LegendActivitySheet(activity: activity)
         }
-        .sheet(isPresented: $isPresentingCreatorInsights) {
-            if case .loaded(let snapshot) = social.state {
-                LegendCreatorInsightsSheet(
-                    insights: snapshot.creatorInsights,
-                    profileMetrics: snapshot.currentProfileMetrics)
-            }
-        }
         .sheet(item: $postInsight) { insight in
             LegendPostInsightsSheet(insight: insight)
         }
@@ -73,7 +65,8 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                     profile: route.profile,
                     currentIdentity: session.actor.identity,
                     social: social,
-                    isFollowing: route.isFollowing)
+                    isFollowing: route.isFollowing,
+                    isFollowRequestPending: route.isFollowRequestPending)
             }
         }
 .sheet(item: $commentTarget) { post in
@@ -288,19 +281,11 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                         openProfile: {
                             publicProfile = LegendPublicProfileRoute(
                                 profile: post.author,
-                                isFollowing: post.followedByCurrentActor)
+                                isFollowing: post.followedByCurrentActor,
+                                isFollowRequestPending: post.followRequestPending ?? false)
                         }
                     )
                 }
-
-                Button {
-                    isPresentingCreatorInsights = true
-                } label: {
-                    Label("Creator insights", systemImage: "chart.line.uptrend.xyaxis")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(LegendNextButtonStyle(kind: .secondary))
-                .accessibilityLabel("Open your server-authoritative creator insights")
             }
         }
     }
@@ -1307,7 +1292,8 @@ struct LegendForYouView: View {
                     profile: route.profile,
                     currentIdentity: currentIdentity,
                     social: social,
-                    isFollowing: route.isFollowing)
+                    isFollowing: route.isFollowing,
+                    isFollowRequestPending: route.isFollowRequestPending)
             }
         }
         .sheet(item: $editingPost) { post in
@@ -1396,7 +1382,8 @@ struct LegendForYouView: View {
                             openProfile: {
                                 publicProfile = LegendPublicProfileRoute(
                                     profile: post.author,
-                                    isFollowing: post.followedByCurrentActor)
+                                    isFollowing: post.followedByCurrentActor,
+                                    isFollowRequestPending: post.followRequestPending ?? false)
                             }
                         )
                         .padding(.bottom, LegendNextSpacing.xl)
@@ -2350,7 +2337,7 @@ private struct LegendActivitySheet: View {
 
 }
 
-private struct LegendCreatorInsightsSheet: View {
+struct LegendCreatorInsightsSheet: View {
     let insights: MobileSocialCreatorInsights
     let profileMetrics: MobileSocialProfileMetrics
     @Environment(\.dismiss) private var dismiss
@@ -2412,6 +2399,111 @@ private struct LegendCreatorInsightsSheet: View {
         }
         .legendNextSheetChrome()
         .accessibilityLabel("Creator insights generated from your Legend activity")
+    }
+}
+
+struct LegendFollowRequestsSheet: View {
+    @ObservedObject var social: MobileSocialStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var state: MobileDataLoadState<[MobileSocialFollowRequest]> = .idle
+    @State private var updatingRequestIDs: Set<UUID> = []
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Account privacy",
+                        title: "Follow requests",
+                        detail: "Choose who can see updates from your private Legend account.",
+                        dismiss: { dismiss() })
+
+                    content
+                }
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.md)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .legendNextSheetChrome()
+        .task { await loadRequests() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch state {
+        case .idle, .loading:
+            ProgressView("Loading follow requests")
+                .frame(maxWidth: .infinity, minHeight: 160)
+
+        case .unavailable(let failure):
+            LegendNextErrorState(
+                title: failure.title,
+                message: failure.message,
+                retryTitle: "Try again",
+                retry: { Task { await loadRequests() } })
+
+        case .loaded(let requests):
+            if requests.isEmpty {
+                LegendNextEmptyState(
+                    title: "No follow requests",
+                    message: "New requests to your private account will appear here.",
+                    systemImage: "person.badge.clock")
+                    .frame(maxWidth: .infinity, minHeight: 180)
+            } else {
+                ForEach(requests) { request in
+                    LegendNextSurface(style: .brandBlue, padding: LegendNextSpacing.xs) {
+                        HStack(spacing: LegendNextSpacing.sm) {
+                            LegendProfileAvatar(
+                                avatar: request.profile.avatar,
+                                displayName: request.profile.displayName,
+                                size: 44)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(request.profile.displayName)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(LegendNextColor.textPrimary)
+                                if let username = request.profile.username, !username.isEmpty {
+                                    Text("@\(username)")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(LegendNextColor.gold)
+                                }
+                                Text("Requested \(request.requestedUTC.formatted(date: .abbreviated, time: .omitted))")
+                                    .font(LegendNextTypography.caption)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                            }
+
+                            Spacer(minLength: 0)
+
+                            VStack(spacing: 6) {
+                                Button("Approve") { decide(request, approve: true) }
+                                    .buttonStyle(LegendNextButtonStyle(kind: .primary, isFullWidth: false, controlHeight: 30))
+                                Button("Decline") { decide(request, approve: false) }
+                                    .buttonStyle(LegendNextButtonStyle(kind: .secondary, isFullWidth: false, controlHeight: 30))
+                            }
+                            .disabled(updatingRequestIDs.contains(request.id))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func loadRequests() async {
+        state = .loading
+        state = await social.incomingFollowRequests()
+    }
+
+    private func decide(_ request: MobileSocialFollowRequest, approve: Bool) {
+        guard !updatingRequestIDs.contains(request.id) else { return }
+        updatingRequestIDs.insert(request.id)
+        Task {
+            defer { updatingRequestIDs.remove(request.id) }
+            guard await social.decideFollowRequest(id: request.id, approve: approve) else { return }
+            guard case .loaded(let requests) = state else { return }
+            state = .loaded(requests.filter { $0.id != request.id })
+        }
     }
 }
 

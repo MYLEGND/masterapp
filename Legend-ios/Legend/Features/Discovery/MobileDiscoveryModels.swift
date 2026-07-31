@@ -27,6 +27,7 @@ enum MobileDiscoveryConnectionStatus: String, Codable, Sendable {
 
 struct MobileDiscoveryRelationship: Codable, Equatable, Sendable {
     let followedByCurrentActor: Bool
+    let followRequestPending: Bool? = nil
     let followsCurrentActor: Bool
     let connectionStatus: MobileDiscoveryConnectionStatus
     let connectionID: UUID?
@@ -34,7 +35,7 @@ struct MobileDiscoveryRelationship: Codable, Equatable, Sendable {
     let canFollow: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case followedByCurrentActor, followsCurrentActor, connectionStatus, canRequestConnection, canFollow
+        case followedByCurrentActor, followRequestPending, followsCurrentActor, connectionStatus, canRequestConnection, canFollow
         case connectionID = "connectionId"
     }
 }
@@ -56,12 +57,13 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
     let bio: String?
     let website: String?
     let publicEmail: String?
+    let isPrivate: Bool?
 
     var id: UUID { clientProfileID }
 
     private enum CodingKeys: String, CodingKey {
         case identity, displayName, headline, location, goals, interests, circleCodes
-        case compatibilityScore, matchExplanation, relationship, avatar, username, bio, website, publicEmail
+        case compatibilityScore, matchExplanation, relationship, avatar, username, bio, website, publicEmail, isPrivate
         case clientProfileID = "clientProfileId"
     }
 
@@ -81,7 +83,8 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
         username: String? = nil,
         bio: String? = nil,
         website: String? = nil,
-        publicEmail: String? = nil
+        publicEmail: String? = nil,
+        isPrivate: Bool? = nil
     ) {
         self.clientProfileID = clientProfileID
         self.identity = identity
@@ -99,6 +102,7 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
         self.bio = bio
         self.website = website
         self.publicEmail = publicEmail
+        self.isPrivate = isPrivate
     }
 
     /// A short, human line for the card: the strongest available context.
@@ -125,14 +129,16 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
             username: username,
             bio: bio,
             website: website,
-            publicEmail: publicEmail)
+            publicEmail: publicEmail,
+            isPrivate: isPrivate)
     }
 }
 
 extension MobileDiscoveryRelationship {
-    func replacing(followedByCurrentActor: Bool) -> MobileDiscoveryRelationship {
+    func replacing(followedByCurrentActor: Bool, followRequestPending: Bool? = nil) -> MobileDiscoveryRelationship {
         MobileDiscoveryRelationship(
             followedByCurrentActor: followedByCurrentActor,
+            followRequestPending: followRequestPending ?? self.followRequestPending,
             followsCurrentActor: followsCurrentActor,
             connectionStatus: connectionStatus,
             connectionID: connectionID,
@@ -143,6 +149,7 @@ extension MobileDiscoveryRelationship {
     func replacing(connectionStatus: MobileDiscoveryConnectionStatus) -> MobileDiscoveryRelationship {
         MobileDiscoveryRelationship(
             followedByCurrentActor: followedByCurrentActor,
+            followRequestPending: followRequestPending,
             followsCurrentActor: followsCurrentActor,
             connectionStatus: connectionStatus,
             connectionID: connectionID,

@@ -5593,6 +5593,8 @@ private struct LegendAccountView: View {
     @State private var selectedContent: LegendProfileContentFilter = .posts
     @State private var isEditing = false
     @State private var isShowingSettings = false
+    @State private var isPresentingCreatorInsights = false
+    @State private var isPresentingFollowRequests = false
     @State private var isConfirmingSignOut = false
     @State private var creationRoute: LegendSocialCreationRoute?
     @State private var selectedPost: MobileSocialPost?
@@ -5652,7 +5654,7 @@ private struct LegendAccountView: View {
                 Button {
                     isShowingSettings = true
                 } label: {
-                    Image(systemName: "line.3.horizontal")
+                    Image(systemName: "gearshape.fill")
                 }
                 .buttonStyle(LegendNextIconButtonStyle(tone: .navy, size: 38))
                 .accessibilityLabel("Open profile settings")
@@ -6071,7 +6073,7 @@ private struct LegendAccountView: View {
     private var profileSettingsSheet: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
                         eyebrow: "Member experience",
                         title: "Profile settings",
@@ -6096,6 +6098,19 @@ private struct LegendAccountView: View {
                             LegendProfileSettingsDivider()
 
                             Button {
+                                isPresentingCreatorInsights = true
+                            } label: {
+                                LegendProfileSettingsRow(
+                                    title: "Creator insights",
+                                    detail: "Review reach and engagement",
+                                    systemImage: "chart.line.uptrend.xyaxis",
+                                    showsChevron: true)
+                            }
+                            .buttonStyle(.plain)
+
+                            LegendProfileSettingsDivider()
+
+                            Button {
                                 Task { await bootstrap.refreshProfile() }
                                 isShowingSettings = false
                             } label: {
@@ -6110,11 +6125,36 @@ private struct LegendAccountView: View {
                     }
 
                     LegendProfileSettingsSection(title: "Privacy") {
-                        LegendProfileSettingsRow(
-                            title: "Profile email",
-                            detail: "Shown only when you enable it",
-                            systemImage: "lock.shield",
-                            showsChevron: false)
+                        VStack(spacing: 0) {
+                            LegendProfileSettingsRow(
+                                title: "Profile email",
+                                detail: "Shown only when you enable it",
+                                systemImage: "lock.shield",
+                                showsChevron: false)
+
+                            LegendProfileSettingsDivider()
+
+                            LegendProfileSettingsToggleRow(
+                                title: "Private account",
+                                detail: "Only approved followers can view your posts",
+                                systemImage: "lock.fill",
+                                isOn: privateAccountBinding)
+
+                            if privateAccountBinding.wrappedValue {
+                                LegendProfileSettingsDivider()
+
+                                Button {
+                                    isPresentingFollowRequests = true
+                                } label: {
+                                    LegendProfileSettingsRow(
+                                        title: "Follow requests",
+                                        detail: "Approve or decline people waiting to follow you",
+                                        systemImage: "person.badge.clock",
+                                        showsChevron: true)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
                     }
 
                     LegendProfileSettingsSection(title: "Security") {
@@ -6148,14 +6188,34 @@ private struct LegendAccountView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(LegendNextSpacing.sm)
-                .padding(.bottom, LegendNextSpacing.xl)
+                .padding(.horizontal, LegendNextSpacing.sm)
+                .padding(.top, LegendNextSpacing.xs)
+                .padding(.bottom, LegendNextSpacing.md)
             }
             .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
         }
         .tint(LegendNextColor.navy)
         .legendNextSheetChrome()
+        .sheet(isPresented: $isPresentingCreatorInsights) {
+            if case .loaded(let snapshot) = social.state {
+                LegendCreatorInsightsSheet(
+                    insights: snapshot.creatorInsights,
+                    profileMetrics: snapshot.currentProfileMetrics)
+            }
+        }
+        .sheet(isPresented: $isPresentingFollowRequests) {
+            LegendFollowRequestsSheet(social: social)
+        }
+    }
+
+    private var privateAccountBinding: Binding<Bool> {
+        Binding(
+            get: {
+                guard case .loaded(let profile) = account.state else { return false }
+                return profile.isPrivate
+            },
+            set: { account.setPrivateAccount($0) })
     }
 
     private var selectedProfileItems: [MobileSocialPost] {
@@ -6385,18 +6445,21 @@ struct LegendPublicProfileView: View {
     @State private var metricsState: MobileDataLoadState<MobileSocialProfileMetrics> = .idle
     @State private var postsState: MobileDataLoadState<[MobileSocialPost]> = .idle
     @State private var isFollowing: Bool
+    @State private var isFollowRequestPending: Bool
     @State private var isUpdatingFollow = false
 
     init(
         profile: MobileSocialAuthor,
         currentIdentity: LogicalParticipantIdentity,
         social: MobileSocialStore,
-        isFollowing: Bool
+        isFollowing: Bool,
+        isFollowRequestPending: Bool = false
     ) {
         self.profile = profile
         self.currentIdentity = currentIdentity
         _social = ObservedObject(wrappedValue: social)
         _isFollowing = State(initialValue: isFollowing)
+        _isFollowRequestPending = State(initialValue: isFollowRequestPending)
     }
 
     var body: some View {
@@ -6408,14 +6471,16 @@ struct LegendPublicProfileView: View {
                     Button {
                         Task { await toggleFollow() }
                     } label: {
-                        Text(isFollowing ? "Following" : "Follow")
+                        Text(followTitle)
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(LegendProfileActionButtonStyle())
                     .disabled(isUpdatingFollow)
                     .accessibilityHint(isFollowing
                         ? "Stop following \(displayedProfile.displayName)"
-                        : "Follow \(displayedProfile.displayName)")
+                        : isFollowRequestPending
+                            ? "Cancel your follow request to \(displayedProfile.displayName)"
+                            : "Follow \(displayedProfile.displayName)")
                 }
 
                 aboutSection
@@ -6440,6 +6505,12 @@ struct LegendPublicProfileView: View {
             return metrics.profile
         }
         return profile
+    }
+
+    private var followTitle: String {
+        if isFollowing { return "Following" }
+        if isFollowRequestPending { return "Requested" }
+        return displayedProfile.isPrivate == true ? "Request to follow" : "Follow"
     }
 
     private var identityHeader: some View {
@@ -6636,7 +6707,8 @@ struct LegendPublicProfileView: View {
             return
         }
 
-        isFollowing = confirmed
+        isFollowing = confirmed.isFollowing
+        isFollowRequestPending = confirmed.hasPendingRequest
         await refresh()
     }
 }
@@ -6985,13 +7057,12 @@ private struct LegendProfileSettingsSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
             Text(title.uppercased())
                 .font(LegendNextTypography.eyebrow)
                 .foregroundStyle(LegendNextColor.navy)
-                .padding(.horizontal, LegendNextSpacing.xs)
 
-            LegendNextSurface(style: .brandBlue, padding: LegendNextSpacing.sm) {
+            LegendNextSurface(style: .brandBlue, padding: LegendNextSpacing.xs) {
                 content
             }
         }
@@ -7032,8 +7103,40 @@ private struct LegendProfileSettingsRow: View {
                     .foregroundStyle(LegendNextColor.navy)
             }
         }
-        .padding(.vertical, LegendNextSpacing.tiny)
+        .padding(.vertical, LegendNextSpacing.micro)
         .contentShape(Rectangle())
+    }
+}
+
+private struct LegendProfileSettingsToggleRow: View {
+    let title: String
+    let detail: String
+    let systemImage: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(LegendNextColor.navy)
+                .frame(width: 26)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                Text(detail)
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            }
+
+            Spacer(minLength: LegendNextSpacing.xs)
+
+            Toggle(title, isOn: $isOn)
+                .labelsHidden()
+                .tint(LegendNextColor.navy)
+        }
+        .padding(.vertical, LegendNextSpacing.micro)
     }
 }
 

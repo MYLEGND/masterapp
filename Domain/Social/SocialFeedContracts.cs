@@ -11,8 +11,9 @@ public static class SocialPostContentTypes
 }
 
 /// <summary>
-/// Audience narrows who inside the already-authorized network sees a post. It never
-/// widens reach: the messaging recipient authority remains the outer boundary.
+/// Retained for post-level preferences and legacy data. Account privacy is the
+/// outer visibility authority: public posts reach active members, while private
+/// posts reach their owner and approved followers.
 /// </summary>
 public static class SocialPostAudiences
 {
@@ -58,6 +59,19 @@ public static class SocialFollowListKinds
     };
 }
 
+public static class SocialFollowStatuses
+{
+    public const string Pending = "Pending";
+    public const string Accepted = "Accepted";
+
+    public static string? Normalize(string? value) => value?.Trim() switch
+    {
+        Pending => Pending,
+        Accepted => Accepted,
+        _ => null
+    };
+}
+
 public static class SocialStoryInteractionTypes
 {
     public const string Exit = "Exit";
@@ -76,7 +90,8 @@ public sealed record SocialAuthor(
     string? Bio = null,
     string? Website = null,
     string? Location = null,
-    string? PublicEmail = null);
+    string? PublicEmail = null,
+    bool IsPrivate = false);
 
 public sealed record SocialCommentView(Guid Id, SocialAuthor Author, Guid? ParentCommentId, string Body, DateTime CreatedUtc);
 
@@ -136,6 +151,7 @@ public sealed record SocialPostView(
     int CommentCount,
     bool ReactedByCurrentActor,
     bool FollowedByCurrentActor,
+    bool FollowRequestPending,
     bool SavedByCurrentActor,
     bool RepostedByCurrentActor,
     SocialPostMetrics Metrics,
@@ -186,6 +202,7 @@ public sealed record SocialPostMutationCommand(SocialFeedActor Actor, Guid PostI
 public sealed record UpdateSocialPostCommand(SocialFeedActor Actor, Guid PostId, string Body);
 public sealed record CreateSocialCommentCommand(SocialFeedActor Actor, Guid PostId, string Body, Guid? ParentCommentId = null);
 public sealed record SocialFollowCommand(SocialFeedActor Actor, string FollowedUserId, string FollowedParticipantType, Guid? SourcePostId = null);
+public sealed record SocialFollowRequestDecisionCommand(SocialFeedActor Actor, Guid FollowRequestId, bool Approve);
 public sealed record RecordSocialPostViewCommand(
     SocialFeedActor Actor,
     Guid PostId,
@@ -235,6 +252,13 @@ public sealed record SocialFollowListEntry(
     SocialAuthor Profile,
     bool FollowedByCurrentActor);
 
+public sealed record SocialFollowResult(bool IsFollowing, bool IsPending);
+
+public sealed record SocialFollowRequestView(
+    Guid Id,
+    SocialAuthor Profile,
+    DateTime RequestedUtc);
+
 public sealed record SocialCreatorInsights(
     DateTime GeneratedUtc,
     int TotalViews,
@@ -279,13 +303,15 @@ public interface ISocialFeedService
     Task<SocialOperationResult<SocialMediaStream>> GetMediaAsync(SocialFeedActor actor, Guid mediaAssetId, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostView>> ToggleReactionAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialCommentView>> AddCommentAsync(CreateSocialCommentCommand command, CancellationToken cancellationToken = default);
-    Task<SocialOperationResult<bool>> ToggleFollowAsync(SocialFollowCommand command, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<SocialFollowResult>> ToggleFollowAsync(SocialFollowCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<bool>> ToggleSaveAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<bool>> ToggleRepostAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<bool>> RecordShareAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostMetrics>> RecordViewAsync(RecordSocialPostViewCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialProfileMetrics>> GetProfileMetricsAsync(SocialFeedActor actor, SocialAuthor? profile = null, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>> GetCurrentProfileFollowListAsync(SocialFeedActor actor, string listKind, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<IReadOnlyList<SocialFollowRequestView>>> GetIncomingFollowRequestsAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<SocialFollowResult>> DecideFollowRequestAsync(SocialFollowRequestDecisionCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialCreatorInsights>> GetCreatorInsightsAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostInsight>> GetPostInsightsAsync(SocialFeedActor actor, Guid postId, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<bool>> RecordProfileVisitAsync(SocialProfileVisitCommand command, CancellationToken cancellationToken = default);

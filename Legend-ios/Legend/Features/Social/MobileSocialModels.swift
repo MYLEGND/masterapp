@@ -56,6 +56,7 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
     let website: String?
     let location: String?
     let publicEmail: String?
+    let isPrivate: Bool?
 
     init(
         identity: LogicalParticipantIdentity,
@@ -66,7 +67,8 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
         bio: String? = nil,
         website: String? = nil,
         location: String? = nil,
-        publicEmail: String? = nil
+        publicEmail: String? = nil,
+        isPrivate: Bool? = nil
     ) {
         self.identity = identity
         self.profileID = profileID
@@ -77,12 +79,13 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
         self.website = website
         self.location = location
         self.publicEmail = publicEmail
+        self.isPrivate = isPrivate
     }
 
     private enum CodingKeys: String, CodingKey {
         case identity
         case profileID = "profileId"
-        case displayName, avatar, username, bio, website, location, publicEmail
+        case displayName, avatar, username, bio, website, location, publicEmail, isPrivate
     }
 }
 
@@ -92,18 +95,20 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
 struct LegendPublicProfileRoute: Identifiable, Hashable {
     let profile: MobileSocialAuthor
     let isFollowing: Bool
+    let isFollowRequestPending: Bool = false
 
     var id: String {
         "\(profile.identity.participantType.rawValue):\(profile.identity.userID)"
     }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.id == rhs.id && lhs.isFollowing == rhs.isFollowing
+        lhs.id == rhs.id && lhs.isFollowing == rhs.isFollowing && lhs.isFollowRequestPending == rhs.isFollowRequestPending
     }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
         hasher.combine(isFollowing)
+        hasher.combine(isFollowRequestPending)
     }
 }
 
@@ -144,6 +149,17 @@ struct MobileSocialFollowListEntry: Codable, Equatable, Identifiable, Sendable {
     var id: LogicalParticipantIdentity { profile.identity }
 }
 
+struct MobileSocialFollowRequest: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let profile: MobileSocialAuthor
+    let requestedUTC: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case id, profile
+        case requestedUTC = "requestedUtc"
+    }
+}
+
 struct MobileSocialComment: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     let author: MobileSocialAuthor
@@ -172,6 +188,7 @@ struct MobileSocialPost: Codable, Equatable, Identifiable, Sendable {
     let commentCount: Int
     let reactedByCurrentActor: Bool
     let followedByCurrentActor: Bool
+    let followRequestPending: Bool? = nil
     let savedByCurrentActor: Bool
     let repostedByCurrentActor: Bool
     let metrics: MobileSocialPostMetrics
@@ -180,7 +197,7 @@ struct MobileSocialPost: Codable, Equatable, Identifiable, Sendable {
     let comments: [MobileSocialComment]
 
     private enum CodingKeys: String, CodingKey {
-        case id, author, contentType, body, audience, location, commentsEnabled, reactionCount, commentCount, reactedByCurrentActor, followedByCurrentActor, savedByCurrentActor, repostedByCurrentActor, metrics, music, media, comments
+        case id, author, contentType, body, audience, location, commentsEnabled, reactionCount, commentCount, reactedByCurrentActor, followedByCurrentActor, followRequestPending, savedByCurrentActor, repostedByCurrentActor, metrics, music, media, comments
         case postedUTC = "postedUtc"
         case expiresUTC = "expiresUtc"
     }
@@ -214,6 +231,7 @@ extension MobileSocialPost {
         commentCount: Int? = nil,
         reactedByCurrentActor: Bool? = nil,
         followedByCurrentActor: Bool? = nil,
+        followRequestPending: Bool? = nil,
         savedByCurrentActor: Bool? = nil,
         repostedByCurrentActor: Bool? = nil,
         metrics: MobileSocialPostMetrics? = nil,
@@ -233,6 +251,7 @@ extension MobileSocialPost {
             commentCount: commentCount ?? self.commentCount,
             reactedByCurrentActor: reactedByCurrentActor ?? self.reactedByCurrentActor,
             followedByCurrentActor: followedByCurrentActor ?? self.followedByCurrentActor,
+            followRequestPending: followRequestPending ?? self.followRequestPending,
             savedByCurrentActor: savedByCurrentActor ?? self.savedByCurrentActor,
             repostedByCurrentActor: repostedByCurrentActor ?? self.repostedByCurrentActor,
             metrics: metrics ?? self.metrics,
@@ -369,6 +388,7 @@ extension MobileSocialProfileMetrics {
         postCountBy: Int = 0,
         videoCountBy: Int = 0,
         storyCountBy: Int = 0,
+        followerCountBy: Int = 0,
         followingCountBy: Int = 0
     ) -> MobileSocialProfileMetrics {
         MobileSocialProfileMetrics(
@@ -376,7 +396,7 @@ extension MobileSocialProfileMetrics {
             postCount: max(0, postCount + postCountBy),
             videoCount: max(0, videoCount + videoCountBy),
             storyCount: max(0, storyCount + storyCountBy),
-            followerCount: followerCount,
+            followerCount: max(0, followerCount + followerCountBy),
             followingCount: max(0, followingCount + followingCountBy),
             totalReactionCount: totalReactionCount,
             totalContentViewCount: totalContentViewCount,
@@ -470,34 +490,14 @@ struct MobileCreateSocialComment: Codable, Sendable {
     }
 }
 
-/// Who, inside the author's already-authorized network, is allowed to see a post.
-/// These raw values are the server's audience vocabulary; only audiences the server
-/// can actually enforce are offered here.
+/// Publishing always uses the account-level privacy policy. This transport value
+/// is retained for existing create-post callers; the server normalizes it.
 enum MobileSocialAudience: String, CaseIterable, Identifiable, Sendable {
     case authorizedNetwork = "AuthorizedNetwork"
     case followers = "Followers"
     case mutualConnections = "MutualConnections"
 
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .authorizedNetwork: return "Your network"
-        case .followers: return "Followers"
-        case .mutualConnections: return "Mutual connections"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .authorizedNetwork:
-            return "Everyone you are authorized to reach on Legend."
-        case .followers:
-            return "Only people who follow you."
-        case .mutualConnections:
-            return "Only people you follow who also follow you."
-        }
-    }
 }
 
 struct MobileSocialPublishRequest: Sendable {
@@ -601,6 +601,13 @@ struct MobileToggleSocialFollow: Codable, Sendable {
 
 struct MobileSocialFollowResult: Codable, Equatable, Sendable {
     let isFollowing: Bool
+    let isPending: Bool? = nil
+
+    var hasPendingRequest: Bool { isPending ?? false }
+}
+
+struct MobileSocialFollowRequestDecision: Codable, Sendable {
+    let approve: Bool
 }
 
 enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {

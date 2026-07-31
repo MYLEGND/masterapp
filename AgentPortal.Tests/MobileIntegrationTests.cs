@@ -1478,6 +1478,7 @@ public sealed class MobileIntegrationTests
         false,
         false,
         false,
+        false,
         new SocialPostMetrics(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, 0, 0),
         null,
         Array.Empty<SocialMediaAssetView>(),

@@ -16,10 +16,11 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
     let bio: String?
     let website: String?
     let location: String?
+    let isPrivate: Bool
     let avatar: ProfileAvatar?
 
     private enum CodingKeys: String, CodingKey {
-        case participantType, displayName, email, phone, title, shortBio, profileEmail, isEmailVisible, username, bio, website, location, avatar
+        case participantType, displayName, email, phone, title, shortBio, profileEmail, isEmailVisible, username, bio, website, location, isPrivate, avatar
         case profileID = "profileId"
     }
 
@@ -37,6 +38,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         bio: String? = nil,
         website: String? = nil,
         location: String? = nil,
+        isPrivate: Bool = false,
         avatar: ProfileAvatar?
     ) {
         self.participantType = participantType
@@ -52,6 +54,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         self.bio = bio
         self.website = website
         self.location = location
+        self.isPrivate = isPrivate
         self.avatar = avatar
     }
 
@@ -71,6 +74,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
             bio: try container.decodeIfPresent(String.self, forKey: .bio),
             website: try container.decodeIfPresent(String.self, forKey: .website),
             location: try container.decodeIfPresent(String.self, forKey: .location),
+            isPrivate: try container.decodeIfPresent(Bool.self, forKey: .isPrivate) ?? false,
             avatar: try container.decodeIfPresent(ProfileAvatar.self, forKey: .avatar))
     }
 }
@@ -86,6 +90,7 @@ struct MobileAccountUpdate: Encodable, Sendable {
     let location: String?
     let publicEmail: String?
     let isEmailVisible: Bool
+    let isPrivate: Bool?
 
     init(
         displayName: String,
@@ -97,7 +102,8 @@ struct MobileAccountUpdate: Encodable, Sendable {
         website: String? = nil,
         location: String? = nil,
         publicEmail: String? = nil,
-        isEmailVisible: Bool = false
+        isEmailVisible: Bool = false,
+        isPrivate: Bool? = nil
     ) {
         self.displayName = displayName
         self.phone = phone
@@ -109,6 +115,7 @@ struct MobileAccountUpdate: Encodable, Sendable {
         self.location = location
         self.publicEmail = publicEmail
         self.isEmailVisible = isEmailVisible
+        self.isPrivate = isPrivate
     }
 }
 
@@ -117,10 +124,21 @@ struct MobileUsernameAvailability: Codable, Equatable, Sendable {
     let message: String?
 }
 
+private struct MobileAccountPrivacyUpdate: Encodable, Sendable {
+    let isPrivate: Bool
+}
+
 protocol MobileAccountAPI: Sendable {
     func profile(accessToken: String) async throws -> MobileAccountProfile
     func update(_ update: MobileAccountUpdate, accessToken: String) async throws
+    func updatePrivacy(isPrivate: Bool, accessToken: String) async throws -> MobileAccountProfile
     func usernameAvailability(username: String, accessToken: String) async throws -> MobileUsernameAvailability
+}
+
+extension MobileAccountAPI {
+    func updatePrivacy(isPrivate: Bool, accessToken: String) async throws -> MobileAccountProfile {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
 }
 
 struct MobileUnavailableAccountAPI: MobileAccountAPI {
@@ -129,6 +147,10 @@ struct MobileUnavailableAccountAPI: MobileAccountAPI {
     }
 
     func update(_ update: MobileAccountUpdate, accessToken: String) async throws {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func updatePrivacy(isPrivate: Bool, accessToken: String) async throws -> MobileAccountProfile {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
 
@@ -155,6 +177,15 @@ struct URLSessionMobileAccountAPI: MobileAccountAPI {
             body: update,
             accessToken: accessToken,
             headers: participantHeader)
+    }
+
+    func updatePrivacy(isPrivate: Bool, accessToken: String) async throws -> MobileAccountProfile {
+        try await client.put(
+            "/api/v1/mobile/account/privacy",
+            body: MobileAccountPrivacyUpdate(isPrivate: isPrivate),
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: MobileAccountProfile.self)
     }
 
     func usernameAvailability(username: String, accessToken: String) async throws -> MobileUsernameAvailability {
@@ -234,6 +265,22 @@ final class MobileAccountStore: ObservableObject {
 
     func dismissActionFailure() {
         actionFailure = nil
+    }
+
+    func setPrivateAccount(_ isPrivate: Bool) {
+        guard !isSaving else { return }
+        isSaving = true
+        actionFailure = nil
+        Task {
+            defer { isSaving = false }
+            do {
+                let accessToken = try await accessTokenProvider()
+                state = .loaded(try await api.updatePrivacy(isPrivate: isPrivate, accessToken: accessToken))
+                refreshFailure = nil
+            } catch {
+                actionFailure = failure(for: error, title: "Account privacy unavailable")
+            }
+        }
     }
 
     var isUsernameUnavailable: Bool {

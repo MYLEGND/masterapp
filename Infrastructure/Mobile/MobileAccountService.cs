@@ -20,6 +20,11 @@ public interface IMobileAccountService
         MobileResolvedActor actor,
         string? username,
         CancellationToken cancellationToken = default);
+
+    Task<MobileAccountResult> UpdatePrivacyAsync(
+        MobileResolvedActor actor,
+        bool isPrivate,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record MobileAccountUpdate(
@@ -32,7 +37,8 @@ public sealed record MobileAccountUpdate(
     string? Website = null,
     string? Location = null,
     string? PublicEmail = null,
-    bool IsEmailVisible = false);
+    bool IsEmailVisible = false,
+    bool? IsPrivate = null);
 
 public sealed record MobileAccountSnapshot(
     string ParticipantType,
@@ -47,7 +53,8 @@ public sealed record MobileAccountSnapshot(
     string? Website = null,
     string? Location = null,
     string? ProfileEmail = null,
-    bool IsEmailVisible = false);
+    bool IsEmailVisible = false,
+    bool IsPrivate = false);
 
 public sealed record MobileAccountResult(
     bool Succeeded,
@@ -249,21 +256,7 @@ public sealed class MobileAccountService : IMobileAccountService
                 "The selected mobile account type is not supported.");
         }
 
-        var mobileSettings = await _db.MobileProfileSettings.SingleOrDefaultAsync(
-            candidate => candidate.ProfileId == actor.ProfileId &&
-                         candidate.ParticipantType == actor.Actor.ParticipantType,
-            cancellationToken);
-        if (mobileSettings is null)
-        {
-            mobileSettings = new MobileProfileSettings
-            {
-                Id = Guid.NewGuid(),
-                ProfileId = actor.ProfileId,
-                ParticipantType = actor.Actor.ParticipantType,
-                CreatedUtc = now
-            };
-            _db.MobileProfileSettings.Add(mobileSettings);
-        }
+        var mobileSettings = await GetOrCreateMobileSettingsAsync(actor, now, cancellationToken);
 
         mobileSettings.Username = DisplayUsername(update.Username);
         mobileSettings.NormalizedUsername = NormalizeUsername(update.Username);
@@ -272,6 +265,8 @@ public sealed class MobileAccountService : IMobileAccountService
         mobileSettings.Location = TrimOptional(update.Location);
         mobileSettings.PublicEmail = TrimOptional(update.PublicEmail);
         mobileSettings.IsEmailVisible = update.IsEmailVisible;
+        if (update.IsPrivate.HasValue)
+            mobileSettings.IsPrivate = update.IsPrivate.Value;
         mobileSettings.UpdatedUtc = now;
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -287,6 +282,24 @@ public sealed class MobileAccountService : IMobileAccountService
         return validationError is null
             ? new MobileUsernameAvailability(true, null)
             : new MobileUsernameAvailability(false, validationError);
+    }
+
+    public async Task<MobileAccountResult> UpdatePrivacyAsync(
+        MobileResolvedActor actor,
+        bool isPrivate,
+        CancellationToken cancellationToken = default)
+    {
+        var account = await GetAsync(actor, cancellationToken);
+        if (!account.Succeeded || account.Account is null)
+            return account;
+
+        var now = DateTime.UtcNow;
+        var settings = await GetOrCreateMobileSettingsAsync(actor, now, cancellationToken);
+        settings.IsPrivate = isPrivate;
+        settings.UpdatedUtc = now;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return await GetAsync(actor, cancellationToken);
     }
 
     private async Task<MobileAccountResult> ApplyMobileSettingsAsync(
@@ -313,8 +326,33 @@ public sealed class MobileAccountService : IMobileAccountService
             Website = TrimOptional(settings.Website),
             Location = TrimOptional(settings.Location),
             ProfileEmail = profileEmail,
-            IsEmailVisible = settings.IsEmailVisible
+            IsEmailVisible = settings.IsEmailVisible,
+            IsPrivate = settings.IsPrivate
         });
+    }
+
+    private async Task<MobileProfileSettings> GetOrCreateMobileSettingsAsync(
+        MobileResolvedActor actor,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var settings = await _db.MobileProfileSettings.SingleOrDefaultAsync(
+            candidate => candidate.ProfileId == actor.ProfileId &&
+                         candidate.ParticipantType == actor.Actor.ParticipantType,
+            cancellationToken);
+        if (settings is not null)
+            return settings;
+
+        settings = new MobileProfileSettings
+        {
+            Id = Guid.NewGuid(),
+            ProfileId = actor.ProfileId,
+            ParticipantType = actor.Actor.ParticipantType,
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
+        _db.MobileProfileSettings.Add(settings);
+        return settings;
     }
 
     private static string? Validate(

@@ -43,7 +43,8 @@ struct LegendDiscoverView: View {
                     profile: route.profile,
                     currentIdentity: currentSession.actor.identity,
                     social: social,
-                    isFollowing: route.isFollowing)
+                    isFollowing: route.isFollowing,
+                    isFollowRequestPending: route.isFollowRequestPending)
             }
             .alert(
                 store.actionFailure?.title ?? "Discover unavailable",
@@ -273,8 +274,10 @@ struct LegendDiscoverView: View {
                 bio: result.bio,
                 website: result.website,
                 location: result.location,
-                publicEmail: result.publicEmail),
-            isFollowing: result.relationship.followedByCurrentActor)
+                publicEmail: result.publicEmail,
+                isPrivate: result.isPrivate),
+            isFollowing: result.relationship.followedByCurrentActor,
+            isFollowRequestPending: result.relationship.followRequestPending ?? false)
     }
 }
 
@@ -388,23 +391,31 @@ private struct LegendDiscoverResultCard: View {
             if result.relationship.canFollow {
                 Button(action: toggleFollow) {
                     Label(
-                        result.relationship.followedByCurrentActor ? "Following" : "Follow",
+                        followTitle,
                         systemImage: result.relationship.followedByCurrentActor
                             ? "checkmark"
-                            : "plus")
+                            : result.relationship.followRequestPending == true ? "clock" : "plus")
                 }
                 .buttonStyle(LegendNextButtonStyle(
-                    kind: result.relationship.followedByCurrentActor ? .secondary : .primary,
+                    kind: result.relationship.followedByCurrentActor || result.relationship.followRequestPending == true ? .secondary : .primary,
                     isFullWidth: false,
                     controlHeight: 34))
                 .disabled(isBusy)
                 .accessibilityLabel(result.relationship.followedByCurrentActor
                     ? "Unfollow \(result.displayName)"
-                    : "Follow \(result.displayName)")
+                    : result.relationship.followRequestPending == true
+                        ? "Cancel your follow request to \(result.displayName)"
+                        : "Follow \(result.displayName)")
             }
 
             connectionControl
         }
+    }
+
+    private var followTitle: String {
+        if result.relationship.followedByCurrentActor { return "Following" }
+        if result.relationship.followRequestPending == true { return "Requested" }
+        return result.isPrivate == true ? "Request" : "Follow"
     }
 
     @ViewBuilder

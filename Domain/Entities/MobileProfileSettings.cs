@@ -24,6 +24,10 @@ public sealed class MobileProfileSettings
     public string? PublicEmail { get; set; }
     public bool IsEmailVisible { get; set; }
 
+    // Public is the default. A private profile keeps its public identity
+    // discoverable, but its social content is limited to approved followers.
+    public bool IsPrivate { get; set; }
+
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

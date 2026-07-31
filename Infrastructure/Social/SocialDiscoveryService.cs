@@ -417,14 +417,23 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         var followingRows = await _db.SocialFollows.AsNoTracking()
             .Where(follow => follow.FollowerUserId == actorKey.UserId
                              && follow.FollowerParticipantType == actorKey.ParticipantType
+                             && follow.Status == SocialFollowStatuses.Accepted
                              && userIds.Contains(follow.FollowedUserId))
             .Select(follow => new { follow.FollowedUserId, follow.FollowedParticipantType })
             .ToArrayAsync(cancellationToken);
         var followerRows = await _db.SocialFollows.AsNoTracking()
             .Where(follow => follow.FollowedUserId == actorKey.UserId
                              && follow.FollowedParticipantType == actorKey.ParticipantType
+                             && follow.Status == SocialFollowStatuses.Accepted
                              && userIds.Contains(follow.FollowerUserId))
             .Select(follow => new { follow.FollowerUserId, follow.FollowerParticipantType })
+            .ToArrayAsync(cancellationToken);
+        var pendingRows = await _db.SocialFollows.AsNoTracking()
+            .Where(follow => follow.FollowerUserId == actorKey.UserId
+                             && follow.FollowerParticipantType == actorKey.ParticipantType
+                             && follow.Status == SocialFollowStatuses.Pending
+                             && userIds.Contains(follow.FollowedUserId))
+            .Select(follow => new { follow.FollowedUserId, follow.FollowedParticipantType })
             .ToArrayAsync(cancellationToken);
         var following = followingRows
             .Select(row => new DirectoryIdentity(row.FollowedUserId, row.FollowedParticipantType))
@@ -432,6 +441,10 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             .ToHashSet();
         var followers = followerRows
             .Select(row => new DirectoryIdentity(row.FollowerUserId, row.FollowerParticipantType))
+            .Where(targetKeys.Contains)
+            .ToHashSet();
+        var pending = pendingRows
+            .Select(row => new DirectoryIdentity(row.FollowedUserId, row.FollowedParticipantType))
             .Where(targetKeys.Contains)
             .ToHashSet();
 
@@ -477,6 +490,7 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                 null,
                 new SocialDiscoveryRelationship(
                     following.Contains(key),
+                    pending.Contains(key),
                     followers.Contains(key),
                     connectionStatus,
                     connection?.Id,
@@ -488,7 +502,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                 candidate.Presentation?.Username,
                 candidate.Presentation?.Bio,
                 candidate.Presentation?.Website,
-                candidate.Presentation?.PublicEmail);
+                candidate.Presentation?.PublicEmail,
+                candidate.Presentation?.IsPrivate ?? false);
         }).ToArray();
     }
 
@@ -545,6 +560,17 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             .AsNoTracking()
             .Where(follow => follow.FollowerUserId == actorUserId
                              && follow.FollowerParticipantType == actorParticipantType
+                             && follow.Status == SocialFollowStatuses.Accepted
+                             && follow.FollowedParticipantType == MessagingParticipantTypes.Client
+                             && targetUserIds.Contains(follow.FollowedUserId))
+            .Select(follow => follow.FollowedUserId)
+            .ToHashSetAsync(StringComparer.Ordinal, cancellationToken);
+
+        var pending = await _db.SocialFollows
+            .AsNoTracking()
+            .Where(follow => follow.FollowerUserId == actorUserId
+                             && follow.FollowerParticipantType == actorParticipantType
+                             && follow.Status == SocialFollowStatuses.Pending
                              && follow.FollowedParticipantType == MessagingParticipantTypes.Client
                              && targetUserIds.Contains(follow.FollowedUserId))
             .Select(follow => follow.FollowedUserId)
@@ -554,6 +580,7 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             .AsNoTracking()
             .Where(follow => follow.FollowedUserId == actorUserId
                              && follow.FollowedParticipantType == actorParticipantType
+                             && follow.Status == SocialFollowStatuses.Accepted
                              && follow.FollowerParticipantType == MessagingParticipantTypes.Client
                              && targetUserIds.Contains(follow.FollowerUserId))
             .Select(follow => follow.FollowerUserId)
@@ -611,6 +638,7 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                 entry.Compatibility.DiscoveryExplanation,
                 new SocialDiscoveryRelationship(
                     following.Contains(userId),
+                    pending.Contains(userId),
                     followers.Contains(userId),
                     connectionStatus,
                     connection?.Id,
@@ -621,7 +649,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                 presentation?.Username,
                 presentation?.Bio,
                 presentation?.Website,
-                presentation?.PublicEmail);
+                presentation?.PublicEmail,
+                presentation?.IsPrivate ?? false);
         }).ToArray();
     }
 
@@ -647,7 +676,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                     TrimOptional(setting.Username),
                     TrimOptional(setting.Bio),
                     TrimOptional(setting.Website),
-                    setting.IsEmailVisible ? TrimOptional(setting.PublicEmail) : null)
+                    setting.IsEmailVisible ? TrimOptional(setting.PublicEmail) : null,
+                    setting.IsPrivate)
             })
             .Where(entry => requestedKeys.Contains(entry.Key))
             .ToDictionary(entry => entry.Key, entry => entry.Presentation);
@@ -793,7 +823,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         string? Username,
         string? Bio,
         string? Website,
-        string? PublicEmail);
+        string? PublicEmail,
+        bool IsPrivate);
 
     private sealed record ClientDirectoryRow(ClientProfile Client, JourneyCircleProfile? Journey);
 

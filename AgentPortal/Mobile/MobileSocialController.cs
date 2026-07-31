@@ -97,6 +97,19 @@ public sealed class MobileSocialController : MobileApiControllerBase
             : SocialFailure(result.ErrorCode, result.ErrorMessage);
     }
 
+    [HttpGet("profile/follow-requests")]
+    public async Task<IActionResult> IncomingFollowRequests(CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.GetIncomingFollowRequestsAsync(resolved.Actor!, cancellationToken);
+        return result.Succeeded && result.Value is not null
+            ? Ok(await ToFollowRequestDtosAsync(result.Value, cancellationToken))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
     [HttpPost("posts")]
     public async Task<IActionResult> CreatePost(
         [FromBody] MobileCreateSocialPostRequest? request,
@@ -290,8 +303,28 @@ public sealed class MobileSocialController : MobileApiControllerBase
         var result = await _social.ToggleFollowAsync(
             new SocialFollowCommand(resolved.Actor!, request?.FollowedUserId ?? string.Empty, request?.FollowedParticipantType ?? string.Empty, request?.SourcePostId),
             cancellationToken);
-        return result.Succeeded
-            ? Ok(new MobileSocialFollowResultDto(result.Value))
+        return result.Succeeded && result.Value is not null
+            ? Ok(new MobileSocialFollowResultDto(result.Value.IsFollowing, result.Value.IsPending))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpPost("profile/follow-requests/{requestId:guid}/decision")]
+    public async Task<IActionResult> DecideFollowRequest(
+        Guid requestId,
+        [FromBody] MobileSocialFollowRequestDecisionRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+        if (request is null)
+            return SocialFailure("social_follow_request_invalid", "Choose whether to approve or decline this request.");
+
+        var result = await _social.DecideFollowRequestAsync(
+            new SocialFollowRequestDecisionCommand(resolved.Actor!, requestId, request.Approve),
+            cancellationToken);
+        return result.Succeeded && result.Value is not null
+            ? Ok(new MobileSocialFollowResultDto(result.Value.IsFollowing, result.Value.IsPending))
             : SocialFailure(result.ErrorCode, result.ErrorMessage);
     }
 
@@ -492,6 +525,19 @@ public sealed class MobileSocialController : MobileApiControllerBase
         return result;
     }
 
+    private async Task<IReadOnlyList<MobileSocialFollowRequestDto>> ToFollowRequestDtosAsync(
+        IEnumerable<SocialFollowRequestView> requests,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<MobileSocialFollowRequestDto>();
+        foreach (var request in requests)
+            result.Add(new MobileSocialFollowRequestDto(
+                request.Id,
+                await ToAuthorDtoAsync(request.Profile, cancellationToken),
+                request.RequestedUtc));
+        return result;
+    }
+
     private async Task<MobileSocialPostDto> ToPostDtoAsync(SocialPostView post, CancellationToken cancellationToken) => new(
         post.Id,
         await ToAuthorDtoAsync(post.Author, cancellationToken),
@@ -506,6 +552,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
         post.CommentCount,
         post.ReactedByCurrentActor,
         post.FollowedByCurrentActor,
+        post.FollowRequestPending,
         post.SavedByCurrentActor,
         post.RepostedByCurrentActor,
         ToMetricsDto(post.Metrics),
@@ -567,7 +614,8 @@ public sealed class MobileSocialController : MobileApiControllerBase
             author.Bio,
             author.Website,
             author.Location,
-            author.PublicEmail);
+            author.PublicEmail,
+            author.IsPrivate);
     }
 
     private async Task<MobileSocialProfileMetricsDto> ToProfileMetricsDtoAsync(
@@ -674,6 +722,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
             "social_follow_invalid" or
             "social_follow_source_invalid" or
             "social_follow_list_invalid" or
+            "social_follow_request_invalid" or
             "social_view_invalid" or
             "social_music_invalid" or
             "social_music_query_invalid" or
@@ -726,9 +775,10 @@ public sealed class MobileCreateSocialMediaPostRequest
 
 public sealed record MobileCreateSocialCommentRequest(string? Body, Guid? ParentCommentId);
 public sealed record MobileToggleSocialFollowRequest(string? FollowedUserId, string? FollowedParticipantType, Guid? SourcePostId);
+public sealed record MobileSocialFollowRequestDecisionRequest(bool Approve);
 public sealed record MobileRecordSocialViewRequest(decimal? WatchDurationSeconds, decimal? WatchCompletionPercentage, string? StoryInteractionType);
 public sealed record MobileRecordProfileVisitRequest(string? TargetUserId, string? TargetParticipantType, Guid? SourcePostId);
-public sealed record MobileSocialFollowResultDto(bool IsFollowing);
+public sealed record MobileSocialFollowResultDto(bool IsFollowing, bool IsPending);
 public sealed record MobileSocialStateResultDto(bool IsActive);
 public sealed record MobileSocialAuthorDto(
     MobileLogicalIdentityDto Identity,
@@ -739,8 +789,10 @@ public sealed record MobileSocialAuthorDto(
     string? Bio = null,
     string? Website = null,
     string? Location = null,
-    string? PublicEmail = null);
+    string? PublicEmail = null,
+    bool IsPrivate = false);
 public sealed record MobileSocialFollowListEntryDto(MobileSocialAuthorDto Profile, bool FollowedByCurrentActor);
+public sealed record MobileSocialFollowRequestDto(Guid Id, MobileSocialAuthorDto Profile, DateTime RequestedUtc);
 public sealed record MobileSocialCommentDto(Guid Id, MobileSocialAuthorDto Author, Guid? ParentCommentId, string Body, DateTime CreatedUtc);
 
 public sealed record MobileSocialMediaDto(
@@ -770,6 +822,7 @@ public sealed record MobileSocialPostDto(
     int CommentCount,
     bool ReactedByCurrentActor,
     bool FollowedByCurrentActor,
+    bool FollowRequestPending,
     bool SavedByCurrentActor,
     bool RepostedByCurrentActor,
     MobileSocialPostMetricsDto Metrics,

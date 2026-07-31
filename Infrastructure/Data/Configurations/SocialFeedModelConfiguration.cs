@@ -121,6 +121,7 @@ internal static class SocialFeedModelConfiguration
             entity.Property(follow => follow.FollowerParticipantType).HasMaxLength(40).IsRequired();
             entity.Property(follow => follow.FollowedUserId).HasMaxLength(450).IsRequired();
             entity.Property(follow => follow.FollowedParticipantType).HasMaxLength(40).IsRequired();
+            entity.Property(follow => follow.Status).HasMaxLength(24).IsRequired();
             entity.HasIndex(follow => new
             {
                 follow.FollowerUserId,
@@ -129,6 +130,7 @@ internal static class SocialFeedModelConfiguration
                 follow.FollowedParticipantType
             }).IsUnique();
             entity.HasIndex(follow => new { follow.FollowedUserId, follow.FollowedParticipantType });
+            entity.HasIndex(follow => new { follow.FollowedUserId, follow.FollowedParticipantType, follow.Status });
             entity.HasIndex(follow => follow.SourceSocialPostId);
         });
 

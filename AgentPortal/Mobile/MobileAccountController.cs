@@ -81,7 +81,8 @@ public sealed class MobileAccountController : MobileApiControllerBase
                 request.Website,
                 request.Location,
                 request.PublicEmail,
-                request.IsEmailVisible),
+                request.IsEmailVisible,
+                request.IsPrivate),
             cancellationToken);
 
         return result.Succeeded && result.Account is not null
@@ -89,6 +90,24 @@ public sealed class MobileAccountController : MobileApiControllerBase
                 resolved.Actor!,
                 result.Account,
                 cancellationToken))
+            : AccountFailure(result);
+    }
+
+    [HttpPut("privacy")]
+    public async Task<IActionResult> UpdatePrivacy(
+        [FromBody] MobileAccountPrivacyUpdateRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        if (request is null)
+            return Error(StatusCodes.Status400BadRequest, "mobile_account_privacy_required", "Account privacy is required.");
+
+        var result = await _accounts.UpdatePrivacyAsync(resolved.Actor!, request.IsPrivate, cancellationToken);
+        return result.Succeeded && result.Account is not null
+            ? Ok(await ProjectAsync(resolved.Actor!, result.Account, cancellationToken))
             : AccountFailure(result);
     }
 
@@ -135,6 +154,7 @@ public sealed class MobileAccountController : MobileApiControllerBase
             account.Location,
             account.ProfileEmail,
             account.IsEmailVisible,
+            account.IsPrivate,
             avatar);
     }
 
@@ -171,7 +191,10 @@ public sealed record MobileAccountUpdateRequest(
     string? Website = null,
     string? Location = null,
     string? PublicEmail = null,
-    bool IsEmailVisible = false);
+    bool IsEmailVisible = false,
+    bool? IsPrivate = null);
+
+public sealed record MobileAccountPrivacyUpdateRequest(bool IsPrivate);
 
 public sealed record MobileAccountProfile(
     string ParticipantType,
@@ -187,4 +210,5 @@ public sealed record MobileAccountProfile(
     string? Location,
     string? ProfileEmail,
     bool IsEmailVisible,
+    bool IsPrivate,
     MobileAvatarDto? Avatar);

@@ -185,7 +185,11 @@ final class MobileDiscoveryStore: ObservableObject {
 
             self.applyRelationship(
                 profileID: result.id,
-                transform: { $0.replacing(followedByCurrentActor: confirmed) })
+                transform: {
+                    $0.replacing(
+                        followedByCurrentActor: confirmed.isFollowing,
+                        followRequestPending: confirmed.hasPendingRequest)
+                })
         }
     }
 

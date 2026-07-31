@@ -239,10 +239,14 @@ public sealed class SocialFeedServiceTests
             publicPost.Value!.Author);
 
         Assert.True(beforeFollowing.Succeeded);
-        var initiallyVisible = Assert.Single(beforeFollowing.Value!);
-        Assert.Equal(publicPost.Value.Id, initiallyVisible.Id);
-        Assert.Equal(owner.ClientUserId, initiallyVisible.Author.UserId);
-        Assert.Equal(MessagingParticipantTypes.Client, initiallyVisible.Author.ParticipantType);
+        Assert.Equal(
+            new[] { followersOnlyPost.Value!.Id, publicPost.Value.Id },
+            beforeFollowing.Value!.Select(post => post.Id));
+        Assert.All(beforeFollowing.Value!, item =>
+        {
+            Assert.Equal(owner.ClientUserId, item.Author.UserId);
+            Assert.Equal(MessagingParticipantTypes.Client, item.Author.ParticipantType);
+        });
 
         var follow = await service.ToggleFollowAsync(new SocialFollowCommand(
             ClientActor(viewer),
@@ -779,7 +783,7 @@ public sealed class SocialFeedServiceTests
             agentActor,
             author.ClientUserId,
             MessagingParticipantTypes.Client,
-            post.Value.Id))).Value);
+            post.Value.Id))).Value!.IsFollowing);
 
         var ownerInsight = await service.GetPostInsightsAsync(authorActor, post.Value.Id);
         Assert.True(ownerInsight.Succeeded);
@@ -946,7 +950,7 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
-    public async Task FollowersAudience_HidesThePostUntilTheViewerFollowsTheAuthor()
+    public async Task PublicAccountPosts_AreVisibleToEveryActiveMember()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var agent = new AgentProfile
@@ -978,15 +982,14 @@ public sealed class SocialFeedServiceTests
         var restricted = await service.CreatePostAsync(new CreateSocialPostCommand(
             agentActor,
             SocialPostContentTypes.Post,
-            "Followers only",
+            "Visible across Legend",
             new SocialPostDetails(Audience: SocialPostAudiences.Followers)));
         Assert.True(restricted.Succeeded);
-        Assert.Equal(SocialPostAudiences.Followers, restricted.Value!.Audience);
+        Assert.Equal(SocialPostAudiences.AuthorizedNetwork, restricted.Value!.Audience);
 
-        // The client is authorized to reach the agent but does not follow them yet.
         var beforeFollow = await service.GetFeedAsync(clientActor);
         Assert.True(beforeFollow.Succeeded);
-        Assert.DoesNotContain(beforeFollow.Value!.Posts, post => post.Id == restricted.Value.Id);
+        Assert.Contains(beforeFollow.Value!.Posts, post => post.Id == restricted.Value.Id);
 
         var follow = await service.ToggleFollowAsync(new SocialFollowCommand(
             clientActor,
@@ -1002,6 +1005,59 @@ public sealed class SocialFeedServiceTests
         var authorFeed = await service.GetFeedAsync(agentActor);
         Assert.True(authorFeed.Succeeded);
         Assert.Contains(authorFeed.Value!.Posts, post => post.Id == restricted.Value.Id);
+    }
+
+    [Fact]
+    public async Task PrivateAccountPosts_RequireAnApprovedFollowRequest()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = Client("private-owner", "Private", "Owner");
+        var viewer = Client("private-viewer", "Private", "Viewer");
+        db.ClientProfiles.AddRange(owner, viewer);
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            Id = Guid.NewGuid(),
+            ProfileId = owner.Id,
+            ParticipantType = MessagingParticipantTypes.Client,
+            IsPrivate = true
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var ownerActor = ClientActor(owner);
+        var viewerActor = ClientActor(viewer);
+        var post = await service.CreatePostAsync(new CreateSocialPostCommand(
+            ownerActor,
+            SocialPostContentTypes.Post,
+            "Approved followers only."));
+        Assert.True(post.Succeeded);
+
+        var beforeApproval = await service.GetFeedAsync(viewerActor);
+        Assert.True(beforeApproval.Succeeded);
+        Assert.DoesNotContain(beforeApproval.Value!.Posts, item => item.Id == post.Value!.Id);
+
+        var request = await service.ToggleFollowAsync(new SocialFollowCommand(
+            viewerActor,
+            owner.ClientUserId,
+            MessagingParticipantTypes.Client));
+        Assert.True(request.Succeeded);
+        Assert.False(request.Value!.IsFollowing);
+        Assert.True(request.Value.IsPending);
+
+        var incoming = await service.GetIncomingFollowRequestsAsync(ownerActor);
+        var pendingRequest = Assert.Single(incoming.Value!);
+        Assert.Equal(viewer.ClientUserId, pendingRequest.Profile.UserId);
+
+        var approval = await service.DecideFollowRequestAsync(new SocialFollowRequestDecisionCommand(
+            ownerActor,
+            pendingRequest.Id,
+            Approve: true));
+        Assert.True(approval.Succeeded);
+        Assert.True(approval.Value!.IsFollowing);
+
+        var afterApproval = await service.GetFeedAsync(viewerActor);
+        Assert.True(afterApproval.Succeeded);
+        Assert.Contains(afterApproval.Value!.Posts, item => item.Id == post.Value!.Id);
     }
 
     [Fact]
@@ -1045,7 +1101,7 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
-    public async Task UnsupportedAudience_IsRejectedRatherThanSilentlyWidened()
+    public async Task PostAudience_IsNormalizedToAccountPrivacyPolicy()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var client = Client("audience-guard-client", "Guard", "Client");
@@ -1058,8 +1114,8 @@ public sealed class SocialFeedServiceTests
             "Unsupported audience",
             new SocialPostDetails(Audience: "CloseFriends")));
 
-        Assert.False(created.Succeeded);
-        Assert.Equal("social_post_invalid", created.ErrorCode);
+        Assert.True(created.Succeeded);
+        Assert.Equal(SocialPostAudiences.AuthorizedNetwork, created.Value!.Audience);
     }
 
     private static SocialFeedService CreateService(
@@ -1067,15 +1123,10 @@ public sealed class SocialFeedServiceTests
         ISocialMediaStorage? mediaStorage = null,
         ISocialMusicCatalog? musicCatalog = null)
     {
-        var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
-        var images = new MessagingProfileImageResolver(db, NullLogger<MessagingProfileImageResolver>.Instance);
-        var messaging = new MessagingService(db, NullLogger<MessagingService>.Instance, moderation, images);
         return new SocialFeedService(
             db,
-            messaging,
             mediaStorage ?? new UnavailableTestSocialMediaStorage(),
-            musicCatalog ?? new UnavailableSocialMusicCatalog(),
-            new SocialDiscoveryService(db));
+            musicCatalog ?? new UnavailableSocialMusicCatalog());
     }
 
     private sealed class UnavailableTestSocialMediaStorage

@@ -36,6 +36,7 @@ public static class SocialDiscoveryScopes
 /// </summary>
 public sealed record SocialDiscoveryRelationship(
     bool FollowedByCurrentActor,
+    bool FollowRequestPending,
     bool FollowsCurrentActor,
     string ConnectionStatus,
     Guid? ConnectionId,
@@ -58,7 +59,8 @@ public sealed record SocialDiscoveryResult(
     string? Username = null,
     string? Bio = null,
     string? Website = null,
-    string? PublicEmail = null);
+    string? PublicEmail = null,
+    bool IsPrivate = false);
 
 public sealed record SocialDiscoveryPage(
     IReadOnlyList<SocialDiscoveryResult> Results,
