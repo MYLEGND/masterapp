@@ -54,7 +54,6 @@
 		BB01D15C0000000000000001 /* MobileDiscoveryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01D15C0000000000000001 /* MobileDiscoveryModels.swift */; };
 		BB01D15C0000000000000002 /* MobileDiscoveryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01D15C0000000000000002 /* MobileDiscoveryStore.swift */; };
 		BB01D15C0000000000000003 /* LegendDiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01D15C0000000000000003 /* LegendDiscoverView.swift */; };
-		BB01D15C0000000000000004 /* LegendDiscoverProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01D15C0000000000000004 /* LegendDiscoverProfileView.swift */; };
 		DD0CC6EE761E59591FAE8ACA /* MobileSocialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28C1D977C634FEC8B8B83B87 /* MobileSocialStore.swift */; };
 		DF44B6B8A2DC0CABCA2850B7 /* MobileConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */; };
 		ED6F8CA9B2F56B434459B527 /* MobileSocialModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */; };
@@ -87,7 +86,6 @@
 		AA01D15C0000000000000001 /* MobileDiscoveryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDiscoveryModels.swift; sourceTree = "<group>"; };
 		AA01D15C0000000000000002 /* MobileDiscoveryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDiscoveryStore.swift; sourceTree = "<group>"; };
 		AA01D15C0000000000000003 /* LegendDiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiscoverView.swift; sourceTree = "<group>"; };
-		AA01D15C0000000000000004 /* LegendDiscoverProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiscoverProfileView.swift; sourceTree = "<group>"; };
 		28C1D977C634FEC8B8B83B87 /* MobileSocialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialStore.swift; sourceTree = "<group>"; };
 		2B58FFC163E4FC3D9A4C4EA3 /* Legend-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Legend-Debug.xcconfig"; sourceTree = "<group>"; };
 		AA01D15C0000000000000040 /* LegendSkeleton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendSkeleton.swift; sourceTree = "<group>"; };
@@ -348,7 +346,6 @@
 				AA01D15C0000000000000001 /* MobileDiscoveryModels.swift */,
 				AA01D15C0000000000000002 /* MobileDiscoveryStore.swift */,
 				AA01D15C0000000000000003 /* LegendDiscoverView.swift */,
-				AA01D15C0000000000000004 /* LegendDiscoverProfileView.swift */,
 			);
 			path = Discovery;
 			sourceTree = "<group>";
@@ -540,7 +537,6 @@
 				BB01D15C0000000000000001 /* MobileDiscoveryModels.swift in Sources */,
 				BB01D15C0000000000000002 /* MobileDiscoveryStore.swift in Sources */,
 				BB01D15C0000000000000003 /* LegendDiscoverView.swift in Sources */,
-				BB01D15C0000000000000004 /* LegendDiscoverProfileView.swift in Sources */,
 				DD0CC6EE761E59591FAE8ACA /* MobileSocialStore.swift in Sources */,
 				CC6840D2860AC65AFA33B712 /* NativeUnreadBadge.swift in Sources */,
 				2692416782F3407695B9CDEA /* OAuthPKCE.swift in Sources */,

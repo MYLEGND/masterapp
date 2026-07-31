@@ -890,6 +890,76 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileSocialPublicProfilePosts_UsesTheRequestedTypedProfile()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var viewer = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "public-profile-viewer",
+            FirstName = "Profile",
+            LastName = "Viewer",
+            Email = "viewer@example.test"
+        };
+        var owner = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "public-profile-owner",
+            FirstName = "Profile",
+            LastName = "Owner",
+            Email = "owner@example.test"
+        };
+        db.ClientProfiles.AddRange(viewer, owner);
+        await db.SaveChangesAsync();
+
+        var author = new SocialAuthor(
+            owner.ClientUserId,
+            MessagingParticipantTypes.Client,
+            owner.Id,
+            "Profile Owner");
+        var social = new Mock<ISocialFeedService>(MockBehavior.Strict);
+        social
+            .Setup(service => service.GetPublicProfilePostsAsync(
+                It.Is<SocialFeedActor>(actor =>
+                    actor.Identity.UserId == viewer.ClientUserId &&
+                    actor.Identity.ParticipantType == MessagingParticipantTypes.Client &&
+                    actor.ProfileId == viewer.Id),
+                It.Is<SocialAuthor>(requested =>
+                    requested.UserId == owner.ClientUserId &&
+                    requested.ParticipantType == MessagingParticipantTypes.Client &&
+                    requested.ProfileId == owner.Id),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SocialOperationResult<IReadOnlyList<SocialPostView>>.Success(
+                [CreateSocialPostView(author)]));
+        var images = new Mock<IMessagingProfileImageResolver>(MockBehavior.Strict);
+        images
+            .Setup(service => service.ResolveAsync(
+                It.Is<MessagingParticipantIdentity>(identity =>
+                    identity.UserId == owner.ClientUserId &&
+                    identity.ParticipantType == MessagingParticipantTypes.Client &&
+                    identity.ProfileId == owner.Id),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MessagingProfileImage([1, 2, 3], "image/png"));
+        var controller = CreateSocialController(db, social.Object, Principal(viewer.ClientUserId), images.Object);
+
+        var result = await controller.PublicProfilePosts(
+            owner.ClientUserId,
+            MessagingParticipantTypes.Client,
+            owner.Id,
+            CancellationToken.None);
+
+        var response = Assert.IsType<OkObjectResult>(result);
+        var posts = Assert.IsAssignableFrom<IReadOnlyList<MobileSocialPostDto>>(response.Value);
+        var post = Assert.Single(posts);
+        Assert.Equal(owner.ClientUserId, post.Author.Identity.UserId);
+        Assert.Equal(MessagingParticipantTypes.Client, post.Author.Identity.ParticipantType);
+        Assert.Equal(owner.Id.ToString(), post.Author.ProfileId);
+        Assert.NotNull(post.Author.Avatar);
+        social.VerifyAll();
+        images.VerifyAll();
+    }
+
+    [Fact]
     public async Task MobileSocialProfileFollows_ProjectsEveryRelationshipEntry()
     {
         await using var db = ControllerTestHelpers.BuildDb();

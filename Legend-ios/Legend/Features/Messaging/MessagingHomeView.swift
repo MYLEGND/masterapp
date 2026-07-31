@@ -70,8 +70,7 @@ struct MessagingHomeView: View {
 
     var body: some View {
         ZStack {
-            LegendNextGradient.pageWash(for: colorScheme)
-                .ignoresSafeArea()
+            LegendNextCanvas()
 
             content
         }
@@ -87,8 +86,7 @@ struct MessagingHomeView: View {
                     isPresentingNewConversation = false
                 }
             )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
+            .legendNextSheetChrome(detents: [.large])
         }
         .refreshable {
             _ = await store.refresh()
@@ -156,15 +154,26 @@ struct MessagingHomeView: View {
     }
 
     private var inboxHeader: some View {
-        VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.intermediate) {
             HStack(alignment: .center, spacing: LegendNextSpacing.md) {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.tiny) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                    HStack(spacing: LegendNextSpacing.xs) {
+                        Capsule()
+                            .fill(LegendNextGradient.gold)
+                            .frame(width: 22, height: 3)
+
+                        Text("LEGEND PRIVATE")
+                            .font(LegendNextTypography.eyebrow)
+                            .tracking(1.1)
+                            .foregroundStyle(LegendNextColor.goldBright)
+                    }
+
                     Text("Messages")
-                        .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                        .font(LegendNextTypography.hero)
                         .foregroundStyle(.white)
 
-                    Text("Private conversations within your Legend network.")
-                        .font(.subheadline)
+                    Text("Conversations with the people in your Legend network.")
+                        .font(LegendNextTypography.supporting)
                         .foregroundStyle(.white.opacity(0.76))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -195,19 +204,26 @@ struct MessagingHomeView: View {
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-        .padding(.top, LegendNextSpacing.md)
-        .padding(.bottom, LegendNextSpacing.lg)
+        .padding(.top, LegendNextSpacing.xl)
+        .padding(.bottom, LegendNextSpacing.xxl)
         .background {
             ZStack {
                 LegendNextGradient.hero
 
                 LegendNextGradient.heroGlow
                     .allowsHitTesting(false)
+
+                Circle()
+                    .fill(LegendNextColor.goldBright.opacity(0.12))
+                    .frame(width: 150, height: 150)
+                    .blur(radius: 28)
+                    .offset(x: 150, y: -76)
+                    .allowsHitTesting(false)
             }
             .clipShape(
                 UnevenRoundedRectangle(
-                    bottomLeadingRadius: 28,
-                    bottomTrailingRadius: 28
+                    bottomLeadingRadius: LegendNextRadius.hero,
+                    bottomTrailingRadius: LegendNextRadius.hero
                 )
             )
             .ignoresSafeArea(edges: .top)
@@ -328,8 +344,7 @@ private struct LegendRecipientPicker: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                LegendNextGradient.pageWash(for: colorScheme)
-                    .ignoresSafeArea()
+                LegendNextCanvas()
 
                 VStack(spacing: 0) {
                     recipientHeader
@@ -617,8 +632,7 @@ struct ConversationThreadView: View {
 
     var body: some View {
         ZStack {
-            LegendNextGradient.pageWash(for: colorScheme)
-                .ignoresSafeArea()
+            LegendNextCanvas()
 
             threadContent
         }

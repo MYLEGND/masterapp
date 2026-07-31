@@ -25,6 +25,15 @@ struct LegendNextButtonStyle: ButtonStyle {
             .overlay {
                 shape.strokeBorder(border, lineWidth: 1)
             }
+            .shadow(
+                color: shadowColor(configuration),
+                radius: isFullWidth
+                    ? LegendNextElevation.subtleRadius
+                    : LegendNextElevation.subtleRadius - 2,
+                y: isFullWidth
+                    ? LegendNextElevation.subtleY
+                    : LegendNextElevation.subtleY - 1
+            )
             .contentShape(shape)
             .opacity(isEnabled ? pressedOpacity(configuration) : 0.48)
             .scaleEffect(pressedScale(configuration))
@@ -48,7 +57,7 @@ struct LegendNextButtonStyle: ButtonStyle {
             LegendNextGradient.hero
 
         case .secondary:
-            LegendNextColor.surfaceElevated
+            LegendNextGradient.finance
 
         case .gold:
             LegendNextGradient.gold
@@ -68,7 +77,10 @@ struct LegendNextButtonStyle: ButtonStyle {
         case .primary:
             return .white
 
-        case .secondary, .ghost:
+        case .secondary:
+            return .white
+
+        case .ghost:
             return LegendNextColor.textPrimary
 
         case .gold:
@@ -85,7 +97,7 @@ struct LegendNextButtonStyle: ButtonStyle {
             return Color.white.opacity(0.10)
 
         case .secondary:
-            return LegendNextColor.premiumBorder(for: colorScheme)
+            return Color.white.opacity(0.16)
 
         case .gold:
             return LegendNextColor.goldBright.opacity(0.42)
@@ -109,6 +121,22 @@ struct LegendNextButtonStyle: ButtonStyle {
 
         return configuration.isPressed ? 0.975 : 1
     }
+
+    private func shadowColor(_ configuration: Configuration) -> Color {
+        let opacity = configuration.isPressed ? 0.08 : 0.16
+        switch kind {
+        case .primary:
+            return LegendNextColor.navy.opacity(opacity)
+        case .gold:
+            return LegendNextColor.gold.opacity(opacity)
+        case .secondary:
+            return LegendNextColor.navy.opacity(opacity)
+        case .ghost:
+            return LegendNextColor.navy.opacity(opacity * 0.45)
+        case .destructive:
+            return LegendNextColor.danger.opacity(opacity * 0.55)
+        }
+    }
 }
 
 struct LegendNextIconButtonStyle: ButtonStyle {
@@ -131,6 +159,13 @@ struct LegendNextIconButtonStyle: ButtonStyle {
                     lineWidth: 1
                 )
             }
+            .shadow(
+                color: LegendNextColor.navy.opacity(
+                    colorScheme == .dark ? 0.15 : 0.09
+                ),
+                radius: LegendNextElevation.subtleRadius,
+                y: LegendNextElevation.subtleY
+            )
             .contentShape(Circle())
             .opacity(isEnabled ? (configuration.isPressed ? 0.78 : 1) : 0.42)
             .scaleEffect(
@@ -143,11 +178,37 @@ struct LegendNextIconButtonStyle: ButtonStyle {
     }
 
     private var foreground: Color {
-        tone == .neutral ? LegendNextColor.textPrimary : tone.color
+        tone == .navy
+            ? .white
+            : tone == .neutral ? LegendNextColor.textPrimary : tone.color
     }
 
     private var background: Color {
-        foreground.opacity(colorScheme == .dark ? 0.16 : 0.09)
+        tone == .navy
+            ? LegendNextColor.navy
+            : foreground.opacity(colorScheme == .dark ? 0.16 : 0.09)
+    }
+}
+
+/// Use for content rows that need the same elevated interaction language as
+/// primary screens without pretending to be a primary action button.
+struct LegendNextSurfaceButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        LegendNextSurface(style: .elevated, padding: LegendNextSpacing.md) {
+            configuration.label
+        }
+        .contentShape(RoundedRectangle(
+            cornerRadius: LegendNextRadius.card,
+            style: .continuous
+        ))
+        .opacity(configuration.isPressed ? 0.86 : 1)
+        .scaleEffect(reduceMotion || !configuration.isPressed ? 1 : 0.985)
+        .animation(
+            reduceMotion ? nil : LegendNextMotion.quick,
+            value: configuration.isPressed
+        )
     }
 }
 

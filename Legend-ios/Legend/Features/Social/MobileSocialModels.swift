@@ -86,6 +86,27 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
     }
 }
 
+/// One typed destination for a member's real Legend profile. Keeping this
+/// route next to the server DTO prevents Discover, feed, and follow lists from
+/// inventing separate profile representations.
+struct LegendPublicProfileRoute: Identifiable, Hashable {
+    let profile: MobileSocialAuthor
+    let isFollowing: Bool
+
+    var id: String {
+        "\(profile.identity.participantType.rawValue):\(profile.identity.userID)"
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id && lhs.isFollowing == rhs.isFollowing
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(isFollowing)
+    }
+}
+
 /// The two relationship lists available from a Legend profile. Their raw values
 /// are transport selectors; the app owns the member-facing labels.
 enum MobileSocialFollowListKind: String, Codable, CaseIterable, Identifiable, Sendable {

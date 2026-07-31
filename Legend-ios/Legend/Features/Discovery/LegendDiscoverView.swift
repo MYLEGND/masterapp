@@ -10,9 +10,10 @@ struct LegendDiscoverView: View {
     let currentSession: MobileSession
     @ObservedObject var store: MobileDiscoveryStore
     @ObservedObject var journeyCircles: MobileJourneyCirclesStore
+    @ObservedObject var social: MobileSocialStore
 
     @State private var isEditingJourneyProfile = false
-    @State private var openProfileID: UUID?
+    @State private var publicProfile: LegendPublicProfileRoute?
 
     var body: some View {
         content
@@ -37,10 +38,12 @@ struct LegendDiscoverView: View {
                     LegendJourneyProfileEditor(dashboard: dashboard, store: journeyCircles)
                 }
             }
-            .navigationDestination(item: $openProfileID) { profileID in
-                LegendDiscoverProfileView(
-                    clientProfileID: profileID,
-                    store: store)
+            .navigationDestination(item: $publicProfile) { route in
+                LegendPublicProfileView(
+                    profile: route.profile,
+                    currentIdentity: currentSession.actor.identity,
+                    social: social,
+                    isFollowing: route.isFollowing)
             }
             .alert(
                 store.actionFailure?.title ?? "Discover unavailable",
@@ -98,7 +101,7 @@ struct LegendDiscoverView: View {
             }
 
         case .unavailable(let failure):
-            LegendErrorCard(
+            LegendNextErrorState(
                 title: failure.title,
                 message: failure.message,
                 retryTitle: "Retry",
@@ -204,10 +207,10 @@ struct LegendDiscoverView: View {
     }
 
     private var emptyState: some View {
-        LegendEmptyState(
+        LegendNextEmptyState(
             title: store.searchText.isEmpty ? "No members yet" : "No members found",
             message: emptyMessage,
-            symbolName: store.searchText.isEmpty ? "person.3" : "magnifyingglass")
+            systemImage: store.searchText.isEmpty ? "person.3" : "magnifyingglass")
     }
 
     private var emptyMessage: String {
@@ -247,7 +250,7 @@ struct LegendDiscoverView: View {
         LegendDiscoverResultCard(
             result: result,
             isBusy: store.pendingRelationshipProfileIDs.contains(result.id),
-            open: { openProfileID = result.id },
+            open: { publicProfile = publicRoute(for: result) },
             toggleFollow: { store.toggleFollow(result) },
             requestConnection: { store.requestConnection(result) })
             .onAppear {
@@ -255,6 +258,23 @@ struct LegendDiscoverView: View {
                     store.loadMoreIfNeeded(currentItem: result)
                 }
             }
+    }
+
+    private func publicRoute(
+        for result: MobileDiscoveryResult
+    ) -> LegendPublicProfileRoute {
+        LegendPublicProfileRoute(
+            profile: MobileSocialAuthor(
+                identity: result.identity,
+                profileID: result.clientProfileID.uuidString,
+                displayName: result.displayName,
+                avatar: result.avatar,
+                username: result.username,
+                bio: result.bio,
+                website: result.website,
+                location: result.location,
+                publicEmail: result.publicEmail),
+            isFollowing: result.relationship.followedByCurrentActor)
     }
 }
 
@@ -373,8 +393,10 @@ private struct LegendDiscoverResultCard: View {
                             ? "checkmark"
                             : "plus")
                 }
-                .buttonStyle(LegendInlineButtonStyle(
-                    kind: result.relationship.followedByCurrentActor ? .secondary : .primary))
+                .buttonStyle(LegendNextButtonStyle(
+                    kind: result.relationship.followedByCurrentActor ? .secondary : .primary,
+                    isFullWidth: false,
+                    controlHeight: 34))
                 .disabled(isBusy)
                 .accessibilityLabel(result.relationship.followedByCurrentActor
                     ? "Unfollow \(result.displayName)"
@@ -392,7 +414,10 @@ private struct LegendDiscoverResultCard: View {
             Button(action: requestConnection) {
                 Label("Connect", systemImage: "person.badge.plus")
             }
-            .buttonStyle(LegendInlineButtonStyle(kind: .secondary))
+            .buttonStyle(LegendNextButtonStyle(
+                kind: .secondary,
+                isFullWidth: false,
+                controlHeight: 34))
             .disabled(isBusy)
             .accessibilityLabel("Request a connection with \(result.displayName)")
 

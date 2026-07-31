@@ -3,6 +3,7 @@ import Foundation
 protocol MobileSocialAPI: Sendable {
     func feed(accessToken: String) async throws -> MobileSocialSnapshot
     func currentProfilePosts(accessToken: String) async throws -> [MobileSocialPost]
+    func publicProfilePosts(for profile: MobileSocialAuthor, accessToken: String) async throws -> [MobileSocialPost]
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost
 
     func createMediaPost(
@@ -48,11 +49,19 @@ extension MobileSocialAPI {
     ) async throws -> MobileSocialProfileMetrics {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
+
+    func publicProfilePosts(
+        for profile: MobileSocialAuthor,
+        accessToken: String
+    ) async throws -> [MobileSocialPost] {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
 }
 
 struct MobileUnavailableSocialAPI: MobileSocialAPI {
     func feed(accessToken: String) async throws -> MobileSocialSnapshot { throw MobileAPIError.unauthorized(correlationID: nil) }
     func currentProfilePosts(accessToken: String) async throws -> [MobileSocialPost] { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func publicProfilePosts(for profile: MobileSocialAuthor, accessToken: String) async throws -> [MobileSocialPost] { throw MobileAPIError.unauthorized(correlationID: nil) }
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost { throw MobileAPIError.unauthorized(correlationID: nil) }
     func createMediaPost(
         type: MobileSocialContentType,
@@ -102,6 +111,22 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
         try await client.get(
             "/api/v1/mobile/social/profile/posts",
             accessToken: accessToken,
+            headers: participantHeader,
+            response: [MobileSocialPost].self)
+    }
+
+    func publicProfilePosts(
+        for profile: MobileSocialAuthor,
+        accessToken: String
+    ) async throws -> [MobileSocialPost] {
+        try await client.get(
+            "/api/v1/mobile/social/profiles/posts",
+            accessToken: accessToken,
+            queryItems: [
+                URLQueryItem(name: "userId", value: profile.identity.userID),
+                URLQueryItem(name: "participantType", value: profile.identity.participantType.rawValue),
+                URLQueryItem(name: "profileId", value: profile.profileID)
+            ],
             headers: participantHeader,
             response: [MobileSocialPost].self)
     }
@@ -711,6 +736,24 @@ final class MobileSocialStore: ObservableObject {
             return .unavailable(failure(
                 for: error,
                 title: "Profile unavailable"))
+        }
+    }
+
+    /// Loads the selected member's authorized posts from the same social
+    /// authority that owns the feed. Public profiles never synthesize activity
+    /// from discovery metadata.
+    func publicProfilePosts(
+        for profile: MobileSocialAuthor
+    ) async -> MobileDataLoadState<[MobileSocialPost]> {
+        do {
+            let token = try await accessTokenProvider()
+            return .loaded(try await api.publicProfilePosts(
+                for: profile,
+                accessToken: token))
+        } catch {
+            return .unavailable(failure(
+                for: error,
+                title: "Profile updates unavailable"))
         }
     }
 

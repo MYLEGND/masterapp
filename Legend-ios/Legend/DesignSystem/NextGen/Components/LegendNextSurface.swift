@@ -49,10 +49,45 @@ struct LegendNextSurface<Content: View>: View {
     private var background: some View {
         switch style {
         case .plain:
-            LegendNextColor.surface
+            LinearGradient(
+                colors: [
+                    LegendNextColor.surface,
+                    LegendNextColor.surfaceElevated.opacity(0.35)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
 
         case .elevated:
-            LegendNextColor.surfaceElevated
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        LegendNextColor.surface,
+                        LegendNextColor.surfaceElevated
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(colorScheme == .dark ? 0.05 : 0.68),
+                        .clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .center
+                )
+            }
+
+        case .brandBlue:
+            LinearGradient(
+                colors: [
+                    LegendNextColor.surface,
+                    LegendNextColor.brandBlueSurface.opacity(0.38)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
 
         case .glass:
             Rectangle()
@@ -83,6 +118,10 @@ struct LegendNextSurface<Content: View>: View {
             return AnyShapeStyle(
                 LegendNextColor.premiumBorder(for: colorScheme)
             )
+        case .brandBlue:
+            return AnyShapeStyle(
+                LegendNextColor.navy.opacity(colorScheme == .dark ? 0.45 : 0.18)
+            )
         case .plain, .elevated:
             return AnyShapeStyle(
                 LegendNextColor.subtleBorder(for: colorScheme)
@@ -91,39 +130,39 @@ struct LegendNextSurface<Content: View>: View {
     }
 
     private var borderWidth: CGFloat {
-        style == .navy ? 1.15 : 1
+        style == .navy ? 1.15 : 1.05
     }
 
     private var shadowColor: Color {
         switch style {
         case .plain:
-            return .clear
+            return LegendNextColor.ambientShadow(for: colorScheme).opacity(0.72)
         case .glass:
             return LegendNextColor.ambientShadow(for: colorScheme)
-        case .elevated, .navy, .gold, .success:
-            return LegendNextColor.elevatedShadow(for: colorScheme)
+        case .elevated, .brandBlue, .navy, .gold, .success:
+            return LegendNextColor.elevatedShadow(for: colorScheme).opacity(0.86)
         }
     }
 
     private var shadowRadius: CGFloat {
         switch style {
         case .plain:
-            return 0
+            return LegendNextElevation.subtleRadius - 2
         case .glass:
             return LegendNextElevation.subtleRadius
-        case .elevated, .navy, .gold, .success:
-            return LegendNextElevation.cardRadius
+        case .elevated, .brandBlue, .navy, .gold, .success:
+            return LegendNextElevation.cardRadius - 4
         }
     }
 
     private var shadowY: CGFloat {
         switch style {
         case .plain:
-            return 0
+            return LegendNextElevation.subtleY - 2
         case .glass:
             return LegendNextElevation.subtleY
-        case .elevated, .navy, .gold, .success:
-            return LegendNextElevation.cardY
+        case .elevated, .brandBlue, .navy, .gold, .success:
+            return LegendNextElevation.cardY - 3
         }
     }
 }
@@ -131,9 +170,14 @@ struct LegendNextSurface<Content: View>: View {
 struct LegendNextInsetSurface<Content: View>: View {
     @Environment(\.colorScheme) private var colorScheme
 
+    private let style: LegendNextInsetStyle
     private let content: Content
 
-    init(@ViewBuilder content: () -> Content) {
+    init(
+        style: LegendNextInsetStyle = .standard,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.style = style
         self.content = content()
     }
 
@@ -142,7 +186,7 @@ struct LegendNextInsetSurface<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(LegendNextSpacing.md)
             .background(
-                LegendNextColor.fillSecondary,
+                background,
                 in: RoundedRectangle(
                     cornerRadius: LegendNextRadius.control,
                     style: .continuous
@@ -154,10 +198,39 @@ struct LegendNextInsetSurface<Content: View>: View {
                     style: .continuous
                 )
                 .strokeBorder(
-                    LegendNextColor.subtleBorder(for: colorScheme),
+                    border,
                     lineWidth: 1
                 )
             }
+            .shadow(
+                color: LegendNextColor.navy.opacity(
+                    colorScheme == .dark ? 0.14 : 0.045
+                ),
+                radius: LegendNextElevation.subtleRadius,
+                y: LegendNextElevation.subtleY
+            )
+    }
+
+    private var background: AnyShapeStyle {
+        switch style {
+        case .standard:
+            return AnyShapeStyle(LegendNextColor.surfaceInset)
+        case .brandBlue:
+            return AnyShapeStyle(LinearGradient(
+                colors: [
+                    LegendNextColor.surface,
+                    LegendNextColor.brandBlueSurface.opacity(0.32)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ))
+        }
+    }
+
+    private var border: Color {
+        style == .brandBlue
+            ? LegendNextColor.navy.opacity(colorScheme == .dark ? 0.48 : 0.18)
+            : LegendNextColor.subtleBorder(for: colorScheme)
     }
 }
 

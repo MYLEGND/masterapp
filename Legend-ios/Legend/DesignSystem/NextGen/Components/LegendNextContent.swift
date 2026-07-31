@@ -135,6 +135,129 @@ extension LegendNextHero where Accessory == EmptyView {
     }
 }
 
+/// A shared title treatment for white Legend screens. It keeps navigation
+/// hierarchy, editorial spacing, and the brand accent consistent without
+/// forcing a dark full-page treatment onto ordinary content views.
+struct LegendNextScreenHeader<Accessory: View>: View {
+    let eyebrow: String?
+    let title: String
+    let detail: String?
+    private let accessory: Accessory
+
+    init(
+        eyebrow: String? = nil,
+        title: String,
+        detail: String? = nil,
+        @ViewBuilder accessory: () -> Accessory
+    ) {
+        self.eyebrow = eyebrow
+        self.title = title
+        self.detail = detail
+        self.accessory = accessory()
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: LegendNextSpacing.md) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                if let eyebrow, !eyebrow.isEmpty {
+                    HStack(spacing: LegendNextSpacing.xs) {
+                        Capsule()
+                            .fill(LegendNextGradient.gold)
+                            .frame(width: 22, height: 3)
+
+                        Text(eyebrow.uppercased())
+                            .font(LegendNextTypography.eyebrow)
+                            .tracking(1.05)
+                            .foregroundStyle(LegendNextColor.gold)
+                    }
+                }
+
+                Text(title)
+                    .font(LegendNextTypography.hero)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: LegendNextSpacing.sm)
+            accessory
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+extension LegendNextScreenHeader where Accessory == EmptyView {
+    init(
+        eyebrow: String? = nil,
+        title: String,
+        detail: String? = nil
+    ) {
+        self.init(eyebrow: eyebrow, title: title, detail: detail) {
+            EmptyView()
+        }
+    }
+}
+
+/// Purpose-built sheet chrome keeps social and account sheets recognizably
+/// Legend instead of inheriting a generic system-modal header.
+struct LegendNextSheetHeader: View {
+    let eyebrow: String
+    let title: String
+    let detail: String?
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: LegendNextSpacing.md) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                HStack(spacing: LegendNextSpacing.xs) {
+                    Capsule()
+                        .fill(LegendNextGradient.gold)
+                        .frame(width: 20, height: 3)
+                    Text(eyebrow.uppercased())
+                        .font(LegendNextTypography.eyebrow)
+                        .tracking(1)
+                        .foregroundStyle(LegendNextColor.gold)
+                }
+
+                Text(title)
+                    .font(LegendNextTypography.title)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+
+                if let detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(LegendNextTypography.caption)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .lineLimit(3)
+                }
+            }
+
+            Spacer(minLength: LegendNextSpacing.xs)
+
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(LegendNextGradient.finance, in: Circle())
+                    .overlay {
+                        Circle().strokeBorder(
+                            Color.white.opacity(0.16),
+                            lineWidth: 1
+                        )
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close")
+        }
+    }
+}
+
 struct LegendNextBadge: View {
     let title: String
     let tone: LegendNextTone
@@ -166,6 +289,14 @@ struct LegendNextBadge: View {
         .padding(.horizontal, LegendNextSpacing.xs)
         .padding(.vertical, LegendNextSpacing.tiny)
         .background(tone.color.opacity(0.11), in: Capsule())
+        .overlay {
+            Capsule().strokeBorder(tone.color.opacity(0.19), lineWidth: 1)
+        }
+        .shadow(
+            color: tone.color.opacity(0.12),
+            radius: LegendNextElevation.subtleRadius - 3,
+            y: 2
+        )
         .accessibilityLabel(title)
     }
 
@@ -231,6 +362,30 @@ struct LegendNextMetricTile: View {
         .accessibilityElement(children: .combine)
     }
 
+}
+
+/// Shared analytical row used anywhere Legend presents a protected metric.
+/// Keeping it here prevents sheets and dashboards from drifting into their own
+/// competing label/value layouts.
+struct LegendNextKeyValueRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: LegendNextSpacing.sm) {
+            Text(label)
+                .font(LegendNextTypography.supporting)
+                .foregroundStyle(LegendNextColor.textSecondary)
+
+            Spacer(minLength: LegendNextSpacing.sm)
+
+            Text(value)
+                .font(LegendNextTypography.bodyEmphasis)
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .multilineTextAlignment(.trailing)
+        }
+        .accessibilityElement(children: .combine)
+    }
 }
 
 struct LegendNextQuickAction: View {
@@ -347,4 +502,31 @@ struct LegendNextStatusBanner: View {
         .accessibilityElement(children: .combine)
     }
 
+}
+
+private struct LegendNextSheetChrome: ViewModifier {
+    let detents: Set<PresentationDetent>
+    let showsDragIndicator: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .presentationDetents(detents)
+            .presentationDragIndicator(showsDragIndicator ? .visible : .hidden)
+            .presentationCornerRadius(LegendNextRadius.sheet)
+            .presentationBackground(LegendNextColor.canvas)
+    }
+}
+
+extension View {
+    func legendNextSheetChrome(
+        detents: Set<PresentationDetent> = [.medium, .large],
+        showsDragIndicator: Bool = true
+    ) -> some View {
+        modifier(
+            LegendNextSheetChrome(
+                detents: detents,
+                showsDragIndicator: showsDragIndicator
+            )
+        )
+    }
 }

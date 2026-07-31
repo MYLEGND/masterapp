@@ -22,6 +22,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     @State private var postInsight: MobileSocialPostInsight?
     @State private var storyCollection: MobileSocialStoryCollection?
     @State private var selectedForYouPost: MobileSocialPost?
+    @State private var publicProfile: LegendPublicProfileRoute?
 
     init(
         session: MobileSession,
@@ -65,6 +66,15 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         }
         .sheet(item: $postInsight) { insight in
             LegendPostInsightsSheet(insight: insight)
+        }
+        .sheet(item: $publicProfile) { route in
+            NavigationStack {
+                LegendPublicProfileView(
+                    profile: route.profile,
+                    currentIdentity: session.actor.identity,
+                    social: social,
+                    isFollowing: route.isFollowing)
+            }
         }
 .sheet(item: $commentTarget) { post in
             LegendCommentComposer(
@@ -124,12 +134,8 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 creationRoute = .menu
             } label: {
                 Image(systemName: "plus")
-                    .font(.title3.weight(.semibold))
-                    .frame(width: 42, height: 42)
-                    .background(LegendNextColor.surfaceElevated, in: Circle())
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(LegendNextColor.textPrimary)
+            .buttonStyle(LegendNextIconButtonStyle(tone: .navy))
             .accessibilityLabel("Create a Legend update")
 
             Spacer(minLength: LegendNextSpacing.sm)
@@ -151,9 +157,6 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
             Button { isPresentingActivity = true } label: {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: "heart")
-                        .font(.title3.weight(.semibold))
-                        .frame(width: 42, height: 42)
-                        .background(LegendNextColor.surfaceElevated, in: Circle())
                     if activityCount > 0 {
                         Text("\(min(activityCount, 99))")
                             .font(.caption2.weight(.bold))
@@ -164,8 +167,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                     }
                 }
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(LegendNextColor.textPrimary)
+            .buttonStyle(LegendNextIconButtonStyle(tone: .navy))
             .accessibilityLabel("Open activity, \(activityCount) recent interactions")
         }
         .padding(.top, LegendNextSpacing.xs)
@@ -174,18 +176,20 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     @ViewBuilder
     private var storyContent: some View {
         if case .loaded(let snapshot) = social.state {
-            LegendStoryRail(
-                currentActor: session.actor,
-                collections: MobileSocialStoryCollection.grouped(
-                    from: snapshot.stories
-                ),
-                createStory: {
-                    creationRoute = .composer(.story)
-                },
-                selectStory: { collection in
-                    storyCollection = collection
-                }
-            )
+            LegendNextSurface(style: .plain, padding: LegendNextSpacing.sm) {
+                LegendStoryRail(
+                    currentActor: session.actor,
+                    collections: MobileSocialStoryCollection.grouped(
+                        from: snapshot.stories
+                    ),
+                    createStory: {
+                        creationRoute = .composer(.story)
+                    },
+                    selectStory: { collection in
+                        storyCollection = collection
+                    }
+                )
+            }
         }
     }
 
@@ -196,7 +200,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
             LegendSocialLoadingSection()
 
         case .unavailable(let failure):
-            LegendErrorCard(
+            LegendNextErrorState(
                 title: failure.title,
                 message: failure.message,
                 retryTitle: "Retry",
@@ -228,16 +232,9 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                                 LegendNextColor.textSecondary
                             )
                     }
-                    .padding(LegendNextSpacing.sm)
-                    .background(
-                        LegendNextColor.surfaceElevated,
-                        in: RoundedRectangle(
-                            cornerRadius: LegendNextRadius.control,
-                            style: .continuous
-                        )
-                    )
+                    .padding(.vertical, LegendNextSpacing.tiny)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(LegendNextSurfaceButtonStyle())
                 .accessibilityLabel(
                     "Open Journey Circles. \(journey.connectedPeerCount) connected profiles"
                 )
@@ -287,6 +284,11 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                         presentation: .preview,
                         open: {
                             selectedForYouPost = post
+                        },
+                        openProfile: {
+                            publicProfile = LegendPublicProfileRoute(
+                                profile: post.author,
+                                isFollowing: post.followedByCurrentActor)
                         }
                     )
                 }
@@ -297,7 +299,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                     Label("Creator insights", systemImage: "chart.line.uptrend.xyaxis")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(LegendButtonStyle(kind: .secondary))
+                .buttonStyle(LegendNextButtonStyle(kind: .secondary))
                 .accessibilityLabel("Open your server-authoritative creator insights")
             }
         }
@@ -488,7 +490,7 @@ private struct LegendStoryViewer: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                Color.black.ignoresSafeArea()
+                LegendNextColor.midnight.ignoresSafeArea()
 
                 LegendStoryMedia(
                     story: item,
@@ -505,7 +507,7 @@ private struct LegendStoryViewer: View {
                     .frame(
                         width: geometry.size.width,
                         height: geometry.size.height)
-                    .background(Color.black)
+                    .background(LegendNextColor.midnight)
 
                 HStack(spacing: 0) {
                     Color.clear
@@ -612,7 +614,7 @@ private struct LegendStoryViewer: View {
                 Image(systemName: "xmark")
                     .font(.subheadline.weight(.bold))
                     .frame(width: 36, height: 36)
-                    .background(.black.opacity(0.42), in: Circle())
+                    .background(LegendNextColor.midnight.opacity(0.42), in: Circle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(.white)
@@ -627,7 +629,7 @@ private struct LegendStoryViewer: View {
                     .font(.body.weight(.medium))
                     .foregroundStyle(.white)
                     .lineLimit(4)
-                    .shadow(color: .black.opacity(0.45), radius: 4)
+                    .shadow(color: LegendNextColor.midnight.opacity(0.45), radius: 4)
             }
 
             HStack(spacing: LegendNextSpacing.sm) {
@@ -635,7 +637,7 @@ private struct LegendStoryViewer: View {
                     .textFieldStyle(.plain)
                     .padding(.horizontal, LegendNextSpacing.sm)
                     .padding(.vertical, 11)
-                    .background(.black.opacity(0.46), in: Capsule())
+                    .background(LegendNextColor.midnight.opacity(0.46), in: Capsule())
                     .foregroundStyle(.white)
                     .accessibilityLabel("Reply to story")
 
@@ -654,7 +656,7 @@ private struct LegendStoryViewer: View {
                 } label: {
                     Image(systemName: item.reactedByCurrentActor ? "heart.fill" : "heart")
                         .frame(width: 40, height: 40)
-                        .background(.black.opacity(0.46), in: Circle())
+                        .background(LegendNextColor.midnight.opacity(0.46), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(item.reactedByCurrentActor ? LegendNextColor.danger : .white)
@@ -663,7 +665,7 @@ private struct LegendStoryViewer: View {
                 ShareLink(item: "Legend story: \(item.body)") {
                     Image(systemName: "square.and.arrow.up")
                         .frame(width: 40, height: 40)
-                        .background(.black.opacity(0.46), in: Circle())
+                        .background(LegendNextColor.midnight.opacity(0.46), in: Circle())
                 }
                 .simultaneousGesture(TapGesture().onEnded {
                     social.recordShare(postID: item.id)
@@ -751,7 +753,7 @@ private struct LegendStoryMedia: View {
                     placeholderHeight: 520,
                     usesRoundedCorners: false)
             } else {
-                Color.black.overlay {
+                LegendNextColor.midnight.overlay {
                     Text(story.body)
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(.white)
@@ -787,7 +789,7 @@ private struct LegendStoryMedia: View {
                     playbackFinished()
                 }
         } else {
-            Color.black.overlay { LegendSkeletonShape(cornerRadius: 0).opacity(0.35) }
+            LegendNextColor.midnight.overlay { LegendSkeletonShape(cornerRadius: 0).opacity(0.35) }
                 .task(id: media.id) {
                     guard let fileURL = await social.mediaFile(for: media) else { return }
                     let createdPlayer = AVPlayer(url: fileURL)
@@ -860,6 +862,9 @@ private struct LegendSocialPostCard: View {
     let insights: () -> Void
     let presentation: LegendSocialPostPresentation
     let open: () -> Void
+    let openProfile: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -868,6 +873,13 @@ private struct LegendSocialPostCard: View {
                 .padding(.vertical, LegendNextSpacing.sm)
 
             mediaPresentation
+                .padding(.horizontal, LegendNextSpacing.xs)
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: LegendNextRadius.control,
+                        style: .continuous
+                    )
+                )
 
             VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                 actionBar
@@ -876,12 +888,37 @@ private struct LegendSocialPostCard: View {
             .padding(.horizontal, LegendNextSpacing.md)
             .padding(.vertical, LegendNextSpacing.sm)
         }
-        .background(LegendNextColor.canvas)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(LegendNextColor.separator)
-                .frame(height: 0.5)
+        .background {
+            LinearGradient(
+                colors: [
+                    LegendNextColor.surface,
+                    LegendNextColor.surfaceElevated.opacity(0.82)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.card,
+                style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.card,
+                style: .continuous)
+            .strokeBorder(
+                LegendNextColor.premiumBorder(for: colorScheme),
+                lineWidth: 1
+            )
+        }
+        .shadow(
+            color: LegendNextColor.elevatedShadow(for: colorScheme),
+            radius: LegendNextElevation.cardRadius - 4,
+            y: LegendNextElevation.cardY - 3
+        )
+        .padding(.horizontal, presentation == .immersive ? LegendNextSpacing.sm : 0)
+        .padding(.vertical, LegendNextSpacing.micro)
         .task(id: post.id) {
             guard !post.media.contains(where: \.isVideo) else { return }
             social.recordView(postID: post.id)
@@ -890,31 +927,50 @@ private struct LegendSocialPostCard: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
-            LegendProfileAvatar(
-                avatar: post.author.avatar,
-                displayName: post.author.displayName,
-                size: 42)
+            Button(action: openProfile) {
+                HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+                    LegendProfileAvatar(
+                        avatar: post.author.avatar,
+                        displayName: post.author.displayName,
+                        size: 42)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(post.author.displayName)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(LegendNextColor.textPrimary)
-                    .lineLimit(1)
-                Text(metadata)
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(LegendNextColor.textSecondary)
-                    .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(post.author.displayName)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(LegendNextColor.textPrimary)
+                            .lineLimit(1)
+                        Text(metadata)
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open \(post.author.displayName)'s profile")
 
             Spacer(minLength: LegendNextSpacing.xs)
 
             if post.author.identity != currentIdentity {
                 Button(post.followedByCurrentActor ? "Following" : "Follow", action: follow)
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(post.followedByCurrentActor ? LegendNextColor.textSecondary : LegendNextColor.navy)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
-                    .background(LegendNextColor.surfaceInset, in: Capsule())
+                    .foregroundStyle(post.followedByCurrentActor ? LegendNextColor.textSecondary : .white)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 7)
+                    .background(
+                        post.followedByCurrentActor
+                            ? LegendNextColor.surfaceInset
+                            : LegendNextColor.navy,
+                        in: Capsule()
+                    )
+                    .overlay {
+                        Capsule().strokeBorder(
+                            post.followedByCurrentActor
+                                ? LegendNextColor.premiumBorder(for: colorScheme)
+                                : Color.white.opacity(0.12),
+                            lineWidth: 1
+                        )
+                    }
                     .buttonStyle(.plain)
             } else {
                 Button(action: insights) {
@@ -1161,6 +1217,7 @@ struct LegendForYouView: View {
     @State private var postInsight: MobileSocialPostInsight?
     @State private var editingPost: MobileSocialPost?
     @State private var deletionTarget: MobileSocialPost?
+    @State private var publicProfile: LegendPublicProfileRoute?
 
     init(
         currentIdentity: LogicalParticipantIdentity,
@@ -1184,7 +1241,7 @@ struct LegendForYouView: View {
                 }
 
             case .unavailable(let failure):
-                LegendErrorCard(
+                LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
                     retryTitle: "Retry",
@@ -1196,7 +1253,7 @@ struct LegendForYouView: View {
                 feed(snapshot.posts)
             }
         }
-        .background(LegendNextColor.canvas.ignoresSafeArea())
+        .background(LegendNextCanvas())
         .navigationTitle("For You")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -1243,6 +1300,15 @@ struct LegendForYouView: View {
         }
         .sheet(item: $postInsight) { insight in
             LegendPostInsightsSheet(insight: insight)
+        }
+        .sheet(item: $publicProfile) { route in
+            NavigationStack {
+                LegendPublicProfileView(
+                    profile: route.profile,
+                    currentIdentity: currentIdentity,
+                    social: social,
+                    isFollowing: route.isFollowing)
+            }
         }
         .sheet(item: $editingPost) { post in
             LegendSocialPostEditor(
@@ -1295,10 +1361,10 @@ struct LegendForYouView: View {
     @ViewBuilder
     private func feed(_ posts: [MobileSocialPost]) -> some View {
         if posts.isEmpty {
-            LegendEmptyState(
+            LegendNextEmptyState(
                 title: "No updates yet",
                 message: "New posts and Hacs from your Legend network will appear here.",
-                symbolName: "play.rectangle.on.rectangle"
+                systemImage: "play.rectangle.on.rectangle"
             )
         } else {
             TabView(selection: $selectedPostID) {
@@ -1326,7 +1392,12 @@ struct LegendForYouView: View {
                                 }
                             },
                             presentation: .immersive,
-                            open: {}
+                            open: {},
+                            openProfile: {
+                                publicProfile = LegendPublicProfileRoute(
+                                    profile: post.author,
+                                    isFollowing: post.followedByCurrentActor)
+                            }
                         )
                         .padding(.bottom, LegendNextSpacing.xl)
                     }
@@ -1439,8 +1510,7 @@ struct LegendSocialPostEditor: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .legendNextSheetChrome()
     }
 }
 
@@ -1506,7 +1576,7 @@ struct LegendSocialMediaVideo: View {
                 }
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
-                .background(.black.opacity(0.48), in: Capsule())
+                .background(LegendNextColor.midnight.opacity(0.48), in: Capsule())
                 .padding(LegendNextSpacing.sm)
             }
 
@@ -1620,7 +1690,7 @@ private struct LegendSocialEmptyFeed: View {
                     .font(LegendNextTypography.supporting)
                     .foregroundStyle(LegendNextColor.textSecondary)
                 Button("Create update", action: createPost)
-                    .buttonStyle(LegendButtonStyle(kind: .primary))
+                    .buttonStyle(LegendNextButtonStyle(kind: .primary))
             }
         }
     }
@@ -1860,12 +1930,22 @@ private struct LegendCommentComposer: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if let post {
-                    postPreview(post)
+                LegendNextSheetHeader(
+                    eyebrow: "Legend network",
+                    title: "Conversation",
+                    detail: post.map { "Discussing \($0.author.displayName)'s update" },
+                    dismiss: cancel
+                )
+                .padding(.horizontal, LegendNextSpacing.md)
+                .padding(.top, LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.md)
 
-                    Rectangle()
-                        .fill(LegendNextColor.separator)
-                        .frame(height: 0.5)
+                if let post {
+                    LegendNextInsetSurface {
+                        postPreview(post)
+                    }
+                    .padding(.horizontal, LegendNextSpacing.md)
+                    .padding(.bottom, LegendNextSpacing.sm)
 
                     commentsSection
                 } else {
@@ -1878,34 +1958,16 @@ private struct LegendCommentComposer: View {
                 composer
             }
             .background(
-                LegendNextColor.canvas
-                    .ignoresSafeArea()
+                LegendNextCanvas()
             )
-            .navigationTitle("Comments")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(action: cancel) {
-                        Image(systemName: "xmark")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(LegendNextColor.textPrimary)
-                            .frame(width: 34, height: 34)
-                            .background(
-                                LegendNextColor.surfaceInset,
-                                in: Circle()
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Close comments")
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
         }
         .presentationDetents(
             [.medium, .large],
             selection: $selectedDetent
         )
         .presentationDragIndicator(.visible)
-        .presentationCornerRadius(28)
+        .presentationCornerRadius(LegendNextRadius.sheet)
         .presentationBackground(LegendNextColor.canvas)
     }
 
@@ -1970,9 +2032,6 @@ private struct LegendCommentComposer: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.horizontal, LegendNextSpacing.md)
-        .padding(.vertical, LegendNextSpacing.sm)
-        .background(LegendNextColor.surfaceElevated)
     }
 
     @ViewBuilder
@@ -2240,39 +2299,53 @@ private struct LegendCommentComposer: View {
 
 private struct LegendActivitySheet: View {
     let activity: [MobileSocialActivity]
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            Group {
+            ScrollView {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Legend network",
+                        title: "Activity",
+                        detail: "Recent interactions across your Legend updates.",
+                        dismiss: { dismiss() }
+                    )
+
                 if activity.isEmpty {
-                    LegendEmptyState(
+                    LegendNextEmptyState(
                         title: "No activity yet",
                         message: "Appreciations, comments, and follows on your Legend updates appear here.",
-                        symbolName: "heart")
+                        systemImage: "heart")
                 } else {
-                    List(activity) { item in
-                        HStack(spacing: LegendNextSpacing.sm) {
-                            LegendProfileAvatar(avatar: item.actor.avatar, displayName: item.actor.displayName, size: 38)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.actor.displayName)
-                                    .font(.subheadline.weight(.semibold))
-                                Text(item.summary)
-                                    .font(LegendNextTypography.supporting)
+                    ForEach(activity) { item in
+                        LegendNextSurface(style: .brandBlue, padding: LegendNextSpacing.sm) {
+                            HStack(spacing: LegendNextSpacing.sm) {
+                                LegendProfileAvatar(avatar: item.actor.avatar, displayName: item.actor.displayName, size: 38)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.actor.displayName)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(LegendNextColor.textPrimary)
+                                    Text(item.summary)
+                                        .font(LegendNextTypography.supporting)
+                                        .foregroundStyle(LegendNextColor.textSecondary)
+                                }
+                                Spacer()
+                                Text(item.occurredUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
+                                    .font(.caption2)
                                     .foregroundStyle(LegendNextColor.textSecondary)
                             }
-                            Spacer()
-                            Text(item.occurredUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
-                                .font(.caption2)
-                                .foregroundStyle(LegendNextColor.textSecondary)
                         }
                     }
-                    .listStyle(.plain)
                 }
             }
-            .background(LegendNextColor.canvas.ignoresSafeArea())
-            .navigationTitle("Activity")
-            .navigationBarTitleDisplayMode(.inline)
+            .padding(LegendNextSpacing.md)
+            .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
         }
+        .legendNextSheetChrome()
     }
 
 }
@@ -2280,21 +2353,21 @@ private struct LegendActivitySheet: View {
 private struct LegendCreatorInsightsSheet: View {
     let insights: MobileSocialCreatorInsights
     let profileMetrics: MobileSocialProfileMetrics
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
-                    LegendNextSectionHeader(
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
                         eyebrow: "Creator intelligence",
-                        title: "Your Legend impact")
+                        title: "Your Legend impact",
+                        detail: "Reach and engagement generated from protected Legend activity.",
+                        dismiss: { dismiss() }
+                    )
 
-                    LegendNextSurface(style: .elevated) {
+                    LegendNextSurface(style: .brandBlue) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                            Text("Reach and engagement are generated from protected Legend activity.")
-                                .font(LegendNextTypography.supporting)
-                                .foregroundStyle(LegendNextColor.textSecondary)
-
                             LazyVGrid(
                                 columns: [GridItem(.flexible()), GridItem(.flexible())],
                                 spacing: LegendNextSpacing.sm
@@ -2307,15 +2380,15 @@ private struct LegendCreatorInsightsSheet: View {
                         }
                     }
 
-                    LegendNextSurface {
+                    LegendNextSurface(style: .brandBlue) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                             LegendNextSectionHeader(eyebrow: "Profile", title: "Content and community")
-                            LegendSocialInsightRow(label: "Posts", value: "\(profileMetrics.postCount)")
-                            LegendSocialInsightRow(label: "Hacs", value: "\(profileMetrics.videoCount)")
-                            LegendSocialInsightRow(label: "Stories", value: "\(profileMetrics.storyCount)")
-                            LegendSocialInsightRow(label: "Following", value: "\(profileMetrics.followingCount)")
-                            LegendSocialInsightRow(label: "Profile visits", value: "\(insights.profileVisits)")
-                            LegendSocialInsightRow(label: "Followers gained this week", value: "\(insights.followersGained)")
+                            LegendNextKeyValueRow(label: "Posts", value: "\(profileMetrics.postCount)")
+                            LegendNextKeyValueRow(label: "Hacs", value: "\(profileMetrics.videoCount)")
+                            LegendNextKeyValueRow(label: "Stories", value: "\(profileMetrics.storyCount)")
+                            LegendNextKeyValueRow(label: "Following", value: "\(profileMetrics.followingCount)")
+                            LegendNextKeyValueRow(label: "Profile visits", value: "\(insights.profileVisits)")
+                            LegendNextKeyValueRow(label: "Followers gained this week", value: "\(insights.followersGained)")
                         }
                     }
 
@@ -2334,69 +2407,84 @@ private struct LegendCreatorInsightsSheet: View {
                 }
                 .padding(LegendNextSpacing.md)
             }
-            .background(LegendNextColor.canvas.ignoresSafeArea())
-            .navigationTitle("Creator insights")
-            .navigationBarTitleDisplayMode(.inline)
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
         }
+        .legendNextSheetChrome()
         .accessibilityLabel("Creator insights generated from your Legend activity")
     }
 }
 
 private struct LegendPostInsightsSheet: View {
     let insight: MobileSocialPostInsight
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
-                    LegendNextSectionHeader(
-                        eyebrow: insight.displayContentType,
-                        title: "\(insight.displayContentType) insights")
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Legend performance",
+                        title: "\(insight.displayContentType) insights",
+                        detail: "Published \(insight.postedUTC.formatted(date: .abbreviated, time: .omitted))",
+                        dismiss: { dismiss() }
+                    )
 
-                    LegendNextSurface(style: .elevated) {
+                    LegendNextSurface(style: .navy, padding: LegendNextSpacing.md) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                            Text("Published \(insight.postedUTC, style: .date)")
+                            Text("AUDIENCE REACH")
+                                .font(LegendNextTypography.eyebrow)
+                                .tracking(0.9)
+                                .foregroundStyle(LegendNextColor.goldBright)
+
+                            Text("\(insight.metrics.uniqueViewerCount) reached")
+                                .font(LegendNextTypography.title)
+                                .foregroundStyle(.white)
+
+                            Text("\(socialPercentage(insight.engagementRatePercentage)) engagement")
                                 .font(LegendNextTypography.supporting)
-                                .foregroundStyle(LegendNextColor.textSecondary)
-                            Text("\(insight.metrics.uniqueViewerCount) reached · \(socialPercentage(insight.engagementRatePercentage)) engagement")
-                                .font(LegendNextTypography.bodyEmphasis)
-                                .foregroundStyle(LegendNextColor.textPrimary)
+                                .foregroundStyle(.white.opacity(0.74))
                         }
                     }
 
-                    LegendNextSurface {
+                    LegendNextSurface(style: .brandBlue) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                            LegendSocialInsightRow(label: "Views", value: "\(insight.metrics.viewCount)")
-                            LegendSocialInsightRow(label: "Unique viewers", value: "\(insight.metrics.uniqueViewerCount)")
-                            LegendSocialInsightRow(label: "Appreciations", value: "\(insight.metrics.reactionCount)")
-                            LegendSocialInsightRow(label: "Comments", value: "\(insight.metrics.commentCount)")
-                            LegendSocialInsightRow(label: "Replies", value: "\(insight.metrics.replyCount)")
-                            LegendSocialInsightRow(label: "Reposts", value: "\(insight.metrics.repostCount)")
-                            LegendSocialInsightRow(label: "Saves", value: "\(insight.metrics.saveCount)")
-                            LegendSocialInsightRow(label: "Shares", value: "\(insight.metrics.shareCount)")
-                            LegendSocialInsightRow(label: "Profile visits", value: "\(insight.metrics.profileVisitCount)")
-                            LegendSocialInsightRow(label: "Follows generated", value: "\(insight.metrics.followsGenerated)")
+                            LegendNextSectionHeader(
+                                eyebrow: "Legend analytics",
+                                title: "Engagement detail"
+                            )
+                            LegendNextKeyValueRow(label: "Views", value: "\(insight.metrics.viewCount)")
+                            LegendNextKeyValueRow(label: "Unique viewers", value: "\(insight.metrics.uniqueViewerCount)")
+                            LegendNextKeyValueRow(label: "Appreciations", value: "\(insight.metrics.reactionCount)")
+                            LegendNextKeyValueRow(label: "Comments", value: "\(insight.metrics.commentCount)")
+                            LegendNextKeyValueRow(label: "Replies", value: "\(insight.metrics.replyCount)")
+                            LegendNextKeyValueRow(label: "Reposts", value: "\(insight.metrics.repostCount)")
+                            LegendNextKeyValueRow(label: "Saves", value: "\(insight.metrics.saveCount)")
+                            LegendNextKeyValueRow(label: "Shares", value: "\(insight.metrics.shareCount)")
+                            LegendNextKeyValueRow(label: "Profile visits", value: "\(insight.metrics.profileVisitCount)")
+                            LegendNextKeyValueRow(label: "Follows generated", value: "\(insight.metrics.followsGenerated)")
 
                             if let averageWatchDuration = insight.metrics.averageWatchDurationSeconds {
-                                LegendSocialInsightRow(label: "Average watch time", value: "\(socialNumber(averageWatchDuration)) sec")
+                                LegendNextKeyValueRow(label: "Average watch time", value: "\(socialNumber(averageWatchDuration)) sec")
                             }
                             if let averageWatchCompletion = insight.metrics.averageWatchCompletionPercentage {
-                                LegendSocialInsightRow(label: "Average completion", value: socialPercentage(averageWatchCompletion))
+                                LegendNextKeyValueRow(label: "Average completion", value: socialPercentage(averageWatchCompletion))
                             }
                             if insight.contentType == MobileSocialContentType.story.rawValue {
-                                LegendSocialInsightRow(label: "Story exits", value: "\(insight.metrics.storyExitCount)")
-                                LegendSocialInsightRow(label: "Taps forward", value: "\(insight.metrics.storyTapForwardCount)")
-                                LegendSocialInsightRow(label: "Taps backward", value: "\(insight.metrics.storyTapBackwardCount)")
+                                LegendNextKeyValueRow(label: "Story exits", value: "\(insight.metrics.storyExitCount)")
+                                LegendNextKeyValueRow(label: "Taps forward", value: "\(insight.metrics.storyTapForwardCount)")
+                                LegendNextKeyValueRow(label: "Taps backward", value: "\(insight.metrics.storyTapBackwardCount)")
                             }
                         }
                     }
                 }
                 .padding(LegendNextSpacing.md)
+                .padding(.bottom, LegendNextSpacing.xl)
             }
-            .background(LegendNextColor.canvas.ignoresSafeArea())
-            .navigationTitle("\(insight.displayContentType) insights")
-            .navigationBarTitleDisplayMode(.inline)
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
         }
+        .legendNextSheetChrome()
         .accessibilityLabel("Private \(insight.displayContentType) insights")
     }
 }
@@ -2408,41 +2496,22 @@ private struct LegendSocialInsightMetric: View {
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-            Image(systemName: symbol)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(color)
-            Text(value)
-                .font(.title3.weight(.bold))
-                .foregroundStyle(LegendNextColor.textPrimary)
-                .lineLimit(1)
-            Text(label)
-                .font(LegendNextTypography.caption)
-                .foregroundStyle(LegendNextColor.textSecondary)
-                .lineLimit(1)
+        LegendNextInsetSurface(style: .brandBlue) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                Image(systemName: symbol)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(color)
+                Text(value)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .lineLimit(1)
+                Text(label)
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .lineLimit(1)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(LegendNextSpacing.sm)
-        .background(LegendNextColor.surfaceInset, in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct LegendSocialInsightRow: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label)
-                .font(LegendNextTypography.supporting)
-                .foregroundStyle(LegendNextColor.textSecondary)
-            Spacer()
-            Text(value)
-                .font(LegendNextTypography.bodyEmphasis)
-                .foregroundStyle(LegendNextColor.textPrimary)
-                .multilineTextAlignment(.trailing)
-        }
     }
 }
 

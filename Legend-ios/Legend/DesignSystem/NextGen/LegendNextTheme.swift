@@ -9,22 +9,22 @@ import UIKit
 
 enum LegendNextColor {
     // Brand foundation
-    // ClientApp Home premium-blue authority
-    // #0A162E — exact deep stop from rgba(10, 22, 46, 0.995)
+    // Legend premium-blue authority. This is the shared source for the only
+    // deep-color treatments used by the app, including Discover.
     static let midnight = Color(
         red: 10.0 / 255.0,
         green: 22.0 / 255.0,
         blue: 46.0 / 255.0
     )
 
-    // #10254C — exact top stop from rgba(16, 37, 76, 0.98)
+    // #10254C — the elevated premium-blue brand stop.
     static let navy = Color(
         red: 16.0 / 255.0,
         green: 37.0 / 255.0,
         blue: 76.0 / 255.0
     )
 
-    // #3159BF — exact ClientApp blue illumination source
+    // #3159BF — premium blue illumination.
     static let navyElevated = Color(
         red: 49.0 / 255.0,
         green: 89.0 / 255.0,
@@ -62,7 +62,7 @@ enum LegendNextColor {
         dark: UIColor(red: 5 / 255, green: 10 / 255, blue: 23 / 255, alpha: 1)
     )
     static let canvasSecondary = adaptiveColor(
-        light: .white,
+        light: UIColor(red: 246 / 255, green: 249 / 255, blue: 255 / 255, alpha: 1),
         dark: UIColor(red: 8 / 255, green: 16 / 255, blue: 34 / 255, alpha: 1)
     )
     static let surface = adaptiveColor(
@@ -70,12 +70,20 @@ enum LegendNextColor {
         dark: UIColor(red: 10 / 255, green: 22 / 255, blue: 46 / 255, alpha: 1)
     )
     static let surfaceElevated = adaptiveColor(
-        light: UIColor(red: 248 / 255, green: 250 / 255, blue: 253 / 255, alpha: 1),
+        light: UIColor(red: 246 / 255, green: 249 / 255, blue: 255 / 255, alpha: 1),
         dark: UIColor(red: 16 / 255, green: 37 / 255, blue: 76 / 255, alpha: 1)
     )
     static let surfaceInset = adaptiveColor(
-        light: UIColor(red: 241 / 255, green: 245 / 255, blue: 249 / 255, alpha: 1),
+        light: UIColor(red: 237 / 255, green: 243 / 255, blue: 253 / 255, alpha: 1),
         dark: UIColor(red: 7 / 255, green: 18 / 255, blue: 40 / 255, alpha: 1)
+    )
+    static let brandBlueSurface = adaptiveColor(
+        light: UIColor(red: 224 / 255, green: 235 / 255, blue: 255 / 255, alpha: 1),
+        dark: UIColor(red: 26 / 255, green: 56 / 255, blue: 112 / 255, alpha: 1)
+    )
+    static let brandBlueInset = adaptiveColor(
+        light: UIColor(red: 207 / 255, green: 224 / 255, blue: 252 / 255, alpha: 1),
+        dark: UIColor(red: 20 / 255, green: 45 / 255, blue: 92 / 255, alpha: 1)
     )
 
     // Branded adaptive content
@@ -92,7 +100,7 @@ enum LegendNextColor {
         dark: UIColor(red: 148 / 255, green: 163 / 255, blue: 184 / 255, alpha: 1)
     )
     static let separator = adaptiveColor(
-        light: UIColor(red: 16 / 255, green: 37 / 255, blue: 76 / 255, alpha: 0.09),
+        light: UIColor(red: 16 / 255, green: 37 / 255, blue: 76 / 255, alpha: 0.10),
         dark: UIColor(white: 1, alpha: 0.10)
     )
     static let fill = adaptiveColor(
@@ -120,7 +128,7 @@ enum LegendNextColor {
     static func subtleBorder(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark
             ? Color.white.opacity(0.08)
-            : Color.black.opacity(0.06)
+            : midnight.opacity(0.06)
     }
 
     static func glassTint(for colorScheme: ColorScheme) -> Color {
@@ -131,13 +139,13 @@ enum LegendNextColor {
 
     static func elevatedShadow(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark
-            ? Color.black.opacity(0.22)
+            ? midnight.opacity(0.22)
             : navy.opacity(0.065)
     }
 
     static func ambientShadow(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark
-            ? Color.black.opacity(0.15)
+            ? midnight.opacity(0.15)
             : navy.opacity(0.035)
     }
 
@@ -224,7 +232,7 @@ enum LegendNextGradient {
             return LinearGradient(
                 colors: [
                     LegendNextColor.midnight,
-                    Color.black
+                    LegendNextColor.navy
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -233,9 +241,8 @@ enum LegendNextGradient {
 
         return LinearGradient(
             colors: [
-                LegendNextColor.canvas,
-                LegendNextColor.surfaceElevated.opacity(0.22),
-                LegendNextColor.canvas
+                .white,
+                .white
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -265,12 +272,12 @@ enum LegendNextSpacing {
 }
 
 enum LegendNextRadius {
-    static let compact: CGFloat = 8
-    static let control: CGFloat = 11
-    static let card: CGFloat = 16
-    static let prominentCard: CGFloat = 20
-    static let hero: CGFloat = 22
-    static let sheet: CGFloat = 24
+    static let compact: CGFloat = 10
+    static let control: CGFloat = 16
+    static let card: CGFloat = 20
+    static let prominentCard: CGFloat = 24
+    static let hero: CGFloat = 28
+    static let sheet: CGFloat = 28
     static let capsule: CGFloat = 999
 }
 
@@ -394,23 +401,29 @@ enum LegendNextMotion {
 }
 
 enum LegendNextElevation {
-    static let subtleRadius: CGFloat = 8
-    static let subtleY: CGFloat = 3
+    static let subtleRadius: CGFloat = 10
+    static let subtleY: CGFloat = 4
 
-    static let cardRadius: CGFloat = 18
-    static let cardY: CGFloat = 8
+    static let cardRadius: CGFloat = 22
+    static let cardY: CGFloat = 10
 
-    static let floatingRadius: CGFloat = 24
-    static let floatingY: CGFloat = 12
+    static let floatingRadius: CGFloat = 28
+    static let floatingY: CGFloat = 14
 }
 
 enum LegendNextSurfaceStyle: Equatable {
     case plain
     case elevated
+    case brandBlue
     case glass
     case navy
     case gold
     case success
+}
+
+enum LegendNextInsetStyle: Equatable {
+    case standard
+    case brandBlue
 }
 
 enum LegendNextButtonKind: Equatable {
@@ -469,13 +482,45 @@ extension View {
     }
 }
 
-private struct LegendNextPageBackgroundModifier: ViewModifier {
+/// The only standard application canvas. Light screens stay white, while the
+/// restrained blue and gold illumination gives the entire product a shared
+/// Legend depth without turning each screen into a separate treatment.
+struct LegendNextCanvas: View {
     @Environment(\.colorScheme) private var colorScheme
 
+    var body: some View {
+        ZStack {
+            LegendNextGradient.pageWash(for: colorScheme)
+
+            if colorScheme == .light {
+                Circle()
+                    .fill(LegendNextColor.navyElevated.opacity(0.055))
+                    .frame(width: 360, height: 360)
+                    .blur(radius: 54)
+                    .offset(x: 150, y: -330)
+
+                Circle()
+                    .fill(LegendNextColor.goldBright.opacity(0.045))
+                    .frame(width: 300, height: 300)
+                    .blur(radius: 58)
+                    .offset(x: -145, y: 390)
+            } else {
+                Circle()
+                    .fill(LegendNextColor.navyElevated.opacity(0.20))
+                    .frame(width: 360, height: 360)
+                    .blur(radius: 64)
+                    .offset(x: 130, y: -300)
+            }
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+    }
+}
+
+private struct LegendNextPageBackgroundModifier: ViewModifier {
     func body(content: Content) -> some View {
         content.background {
-            LegendNextGradient.pageWash(for: colorScheme)
-                .ignoresSafeArea()
+            LegendNextCanvas()
         }
     }
 }

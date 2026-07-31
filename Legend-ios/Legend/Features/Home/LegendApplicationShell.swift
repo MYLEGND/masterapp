@@ -154,7 +154,8 @@ struct LegendApplicationShell: View {
                 LegendDiscoverView(
                     currentSession: currentSession,
                     store: bootstrap.stores.discovery,
-                    journeyCircles: bootstrap.stores.journeyCircles
+                    journeyCircles: bootstrap.stores.journeyCircles,
+                    social: bootstrap.stores.social
                 )
             }
 
@@ -193,10 +194,10 @@ struct LegendApplicationShell: View {
 
     private var unavailableTab: some View {
         NavigationStack {
-            LegendEmptyState(
+            LegendNextEmptyState(
                 title: "Page unavailable",
                 message: "This page is not available for the current account.",
-                symbolName: "exclamationmark.triangle"
+                systemImage: "exclamationmark.triangle"
             )
             .padding(LegendNextSpacing.sm)
         }
@@ -1334,9 +1335,26 @@ private struct LegendHomeView: View {
         LegendNextSurface(
             style: .navy,
             cornerRadius: LegendNextRadius.prominentCard,
-            padding: LegendNextSpacing.sm
+            padding: LegendNextSpacing.intermediate
         ) {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                HStack(spacing: LegendNextSpacing.xs) {
+                    Capsule()
+                        .fill(LegendNextGradient.gold)
+                        .frame(width: 22, height: 3)
+
+                    Text("TODAY'S WORD")
+                        .font(LegendNextTypography.eyebrow)
+                        .tracking(1.05)
+                        .foregroundStyle(LegendNextColor.goldBright)
+
+                    Spacer()
+
+                    Image(systemName: "sparkles")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.66))
+                }
+
                 HStack(alignment: .firstTextBaseline, spacing: LegendNextSpacing.xs) {
                     Text(greetingEyebrow.capitalized)
                         .font(LegendNextTypography.title)
@@ -2823,11 +2841,11 @@ private struct LegendAgentClientsView: View {
             case .loaded(let clients):
                 clientContent(clients)
             case .unavailable(let failure):
-                LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: { Task { await bootstrap.refreshClients() } })
+                LegendNextErrorState(title: failure.title, message: failure.message, retryTitle: "Retry", retry: { Task { await bootstrap.refreshClients() } })
                     .padding(LegendNextSpacing.sm)
             }
         }
-        .background(LegendNextColor.canvas.ignoresSafeArea())
+        .background(LegendNextCanvas())
         .navigationTitle("Clients")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await bootstrap.refreshClients() }
@@ -2836,35 +2854,59 @@ private struct LegendAgentClientsView: View {
     @ViewBuilder
     private func clientContent(_ clients: [MobileAgentClientSummary]) -> some View {
         if clients.isEmpty {
-            LegendEmptyState(
+            LegendNextEmptyState(
                 title: "No active clients",
                 message: "Your active Client and Business Client CRM records will appear here.",
-                symbolName: "person.2")
+                systemImage: "person.2")
         } else {
-            List(clients) { client in
-                VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                    HStack(spacing: LegendNextSpacing.xs) {
-                        LegendProfileAvatar(avatar: client.avatar, displayName: client.displayName, size: 42)
-                        VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                            Text(client.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
-                            Text(client.email).font(LegendNextTypography.supporting).foregroundStyle(LegendNextColor.textSecondary).lineLimit(1)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                    LegendNextSectionHeader(
+                        eyebrow: "CRM",
+                        title: "Active clients",
+                        detail: "(clients.count) live records"
+                    )
+
+                    ForEach(clients) { client in
+                        LegendNextSurface {
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                                HStack(spacing: LegendNextSpacing.xs) {
+                                    LegendProfileAvatar(avatar: client.avatar, displayName: client.displayName, size: 46)
+                                    VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                                        Text(client.displayName)
+                                            .font(LegendNextTypography.bodyEmphasis)
+                                            .foregroundStyle(LegendNextColor.textPrimary)
+                                            .lineLimit(1)
+                                        Text(client.email)
+                                            .font(LegendNextTypography.supporting)
+                                            .foregroundStyle(LegendNextColor.textSecondary)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer(minLength: LegendNextSpacing.sm)
+                                    LegendNextBadge(client.crmStatus, tone: .success)
+                                }
+
+                                Button {
+                                    messages.startConversation(forClientProfileID: client.profileID) { _ in
+                                        openMessages()
+                                    }
+                                } label: {
+                                    Label("Message", systemImage: "message.fill")
+                                }
+                                .buttonStyle(LegendNextButtonStyle(
+                                    kind: .primary,
+                                    isFullWidth: false,
+                                    controlHeight: 34
+                                ))
+                                .disabled(messages.isStartingConversation)
+                            }
                         }
-                        Spacer(minLength: LegendNextSpacing.sm)
-                        LegendBadge(title: client.crmStatus, tone: .success)
                     }
-                    Button {
-                        messages.startConversation(forClientProfileID: client.profileID) { _ in
-                            openMessages()
-                        }
-                    } label: {
-                        Label("Message", systemImage: "message.fill")
-                    }
-                    .buttonStyle(LegendInlineButtonStyle(kind: .primary))
-                    .disabled(messages.isStartingConversation)
                 }
-                .padding(.vertical, LegendNextSpacing.micro)
+                .padding(.horizontal, LegendNextSpacing.sm)
+                .padding(.vertical, LegendNextSpacing.md)
             }
-            .listStyle(.plain)
+            .scrollIndicators(.hidden)
         }
     }
 }
@@ -2891,11 +2933,11 @@ private struct LegendAgentLeadsView: View {
             case .loaded(let leads):
                 leadContent(leads)
             case .unavailable(let failure):
-                LegendErrorCard(title: failure.title, message: failure.message, retryTitle: "Retry", retry: { Task { await bootstrap.refreshLeads() } })
+                LegendNextErrorState(title: failure.title, message: failure.message, retryTitle: "Retry", retry: { Task { await bootstrap.refreshLeads() } })
                     .padding(LegendNextSpacing.sm)
             }
         }
-        .background(LegendNextColor.canvas.ignoresSafeArea())
+        .background(LegendNextCanvas())
         .navigationTitle("Leads")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await bootstrap.refreshLeads() }
@@ -2904,28 +2946,48 @@ private struct LegendAgentLeadsView: View {
     @ViewBuilder
     private func leadContent(_ leads: [MobileAgentLeadSummary]) -> some View {
         if leads.isEmpty {
-            LegendEmptyState(
+            LegendNextEmptyState(
                 title: "No active leads",
                 message: "Your active workstation lead records will appear here.",
-                symbolName: "person.crop.circle.badge.plus")
+                systemImage: "person.crop.circle.badge.plus")
         } else {
-            List(leads) { lead in
-                HStack(spacing: LegendNextSpacing.xs) {
-                    Image(systemName: "person.crop.circle")
-                        .font(.title2)
-                        .foregroundStyle(LegendNextColor.gold)
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                        Text(lead.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
-                        Text("Updated \(lead.updatedUTC, format: .dateTime.month(.abbreviated).day().hour().minute())")
-                            .font(LegendNextTypography.supporting)
-                            .foregroundStyle(LegendNextColor.textSecondary)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                    LegendNextSectionHeader(
+                        eyebrow: "Pipeline",
+                        title: "Active leads",
+                        detail: "(leads.count) current opportunities"
+                    )
+
+                    ForEach(leads) { lead in
+                        LegendNextSurface {
+                            HStack(spacing: LegendNextSpacing.sm) {
+                                Image(systemName: "person.crop.circle")
+                                    .font(.title2)
+                                    .foregroundStyle(LegendNextColor.gold)
+                                    .frame(width: 46, height: 46)
+                                    .background(
+                                        LegendNextColor.gold.opacity(0.12),
+                                        in: Circle())
+                                VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                                    Text(lead.displayName)
+                                        .font(LegendNextTypography.bodyEmphasis)
+                                        .foregroundStyle(LegendNextColor.textPrimary)
+                                        .lineLimit(1)
+                                    Text("Updated \(lead.updatedUTC, format: .dateTime.month(.abbreviated).day().hour().minute())")
+                                        .font(LegendNextTypography.supporting)
+                                        .foregroundStyle(LegendNextColor.textSecondary)
+                                }
+                                Spacer(minLength: LegendNextSpacing.sm)
+                                LegendNextBadge(lead.crmStage, tone: .neutral)
+                            }
+                        }
                     }
-                    Spacer(minLength: LegendNextSpacing.sm)
-                    LegendBadge(title: lead.crmStage, tone: .neutral)
                 }
-                .padding(.vertical, LegendNextSpacing.micro)
+                .padding(.horizontal, LegendNextSpacing.sm)
+                .padding(.vertical, LegendNextSpacing.md)
             }
-            .listStyle(.plain)
+            .scrollIndicators(.hidden)
         }
     }
 }
@@ -3073,7 +3135,11 @@ struct JourneyMultiSelectSection: View {
                         } label: {
                             Label(option, systemImage: selections.contains(option) ? "checkmark.circle.fill" : "circle")
                         }
-                        .buttonStyle(LegendInlineButtonStyle(kind: selections.contains(option) ? .gold : .secondary))
+                        .buttonStyle(LegendNextButtonStyle(
+                            kind: selections.contains(option) ? .gold : .secondary,
+                            isFullWidth: false,
+                            controlHeight: 34
+                        ))
                         .accessibilityValue(selections.contains(option) ? "Selected" : "Not selected")
                     }
                 }
@@ -4287,7 +4353,7 @@ private struct LegendFinanceView: View {
                 )
 
             case .authenticationRequired(let failure):
-                LegendErrorCard(
+                LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
                     retryTitle: "Sign in again",
@@ -4296,7 +4362,7 @@ private struct LegendFinanceView: View {
                 .padding(LegendNextSpacing.sm)
 
             case .retryableFailure(let failure):
-                LegendErrorCard(
+                LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
                     retryTitle: "Retry",
@@ -4330,11 +4396,11 @@ private struct LegendFinanceView: View {
                     financialHealth(position)
                     positionMetrics(position)
                 } else {
-                    LegendEmptyState(
+                    LegendNextEmptyState(
                         title: "Financial snapshot incomplete",
                         message:
                             "Your saved financial health data will appear here after it is completed in your account workspace.",
-                        symbolName:
+                        systemImage:
                             "chart.line.uptrend.xyaxis"
                     )
                 }
@@ -4692,19 +4758,19 @@ private struct LegendFinanceView: View {
                         financialHealth(position)
                         positionMetrics(position)
                     } else {
-                        LegendEmptyState(
+                        LegendNextEmptyState(
                             title: "Financial snapshot incomplete",
                             message: "Saved balance-sheet details are not available yet.",
-                            symbolName: "building.columns"
+                            systemImage: "building.columns"
                         )
                     }
 
                 case .upcomingActivity:
                     if financial.upcomingBills.isEmpty {
-                        LegendEmptyState(
+                        LegendNextEmptyState(
                             title: "No upcoming activity",
                             message: "No saved recurring financial items are currently scheduled.",
-                            symbolName: "calendar"
+                            systemImage: "calendar"
                         )
                     } else {
                         upcomingBills(financial.upcomingBills)
@@ -4715,10 +4781,10 @@ private struct LegendFinanceView: View {
                         financialHealth(position)
                         positionMetrics(position)
                     } else {
-                        LegendEmptyState(
+                        LegendNextEmptyState(
                             title: "Protection information unavailable",
                             message: "Saved financial health information is not available yet.",
-                            symbolName: "shield.lefthalf.filled"
+                            systemImage: "shield.lefthalf.filled"
                         )
                     }
 
@@ -5532,9 +5598,9 @@ private struct LegendAccountView: View {
     @State private var selectedPost: MobileSocialPost?
 
     private let profileColumns = [
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2)
+        GridItem(.flexible(), spacing: LegendNextSpacing.tiny),
+        GridItem(.flexible(), spacing: LegendNextSpacing.tiny),
+        GridItem(.flexible(), spacing: LegendNextSpacing.tiny)
     ]
 
     init(
@@ -5563,7 +5629,7 @@ private struct LegendAccountView: View {
                 profileContent(profile)
 
             case .unavailable(let failure):
-                LegendErrorCard(
+                LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
                     retryTitle: "Retry",
@@ -5572,12 +5638,13 @@ private struct LegendAccountView: View {
                 .padding(LegendNextSpacing.sm)
             }
         }
-        .background(LegendNextColor.canvas.ignoresSafeArea())
+        .background(LegendNextCanvas())
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text("Profile")
-                    .font(.headline.weight(.bold))
+                Text("PROFILE")
+                    .font(LegendNextTypography.label)
+                    .tracking(1.35)
                     .foregroundStyle(LegendNextColor.textPrimary)
             }
 
@@ -5586,11 +5653,8 @@ private struct LegendAccountView: View {
                     isShowingSettings = true
                 } label: {
                     Image(systemName: "line.3.horizontal")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.textPrimary)
-                        .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
                 }
+                .buttonStyle(LegendNextIconButtonStyle(tone: .navy, size: 38))
                 .accessibilityLabel("Open profile settings")
             }
         }
@@ -5686,24 +5750,17 @@ private struct LegendAccountView: View {
         _ profile: MobileAccountProfile
     ) -> some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
+            LazyVStack(spacing: LegendNextSpacing.sm) {
                 profileIdentityHeader(profile)
-                    .padding(.horizontal, LegendNextSpacing.sm)
-                    .padding(.top, LegendNextSpacing.sm)
-
-                profileBiography(profile)
-                    .padding(.horizontal, LegendNextSpacing.sm)
-                    .padding(.top, LegendNextSpacing.sm)
 
                 profileActions
-                    .padding(.horizontal, LegendNextSpacing.sm)
-                    .padding(.top, LegendNextSpacing.sm)
 
                 profileContentSelector
-                    .padding(.top, LegendNextSpacing.sm)
 
                 profileGrid()
             }
+            .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+            .padding(.top, LegendNextSpacing.xs)
             .padding(.bottom, 116)
         }
         .scrollIndicators(.hidden)
@@ -5712,107 +5769,113 @@ private struct LegendAccountView: View {
     private func profileIdentityHeader(
         _ profile: MobileAccountProfile
     ) -> some View {
-        HStack(alignment: .center, spacing: LegendNextSpacing.xs) {
-            LegendProfileAvatar(
-                avatar: profile.avatar,
-                displayName: profile.displayName,
-                size: 92
-            )
-            .overlay(alignment: .bottomTrailing) {
-                Button {
-                    isEditing = true
-                } label: {
-                    Image(systemName: "plus")
+        LegendNextSurface(
+            style: .elevated,
+            cornerRadius: LegendNextRadius.prominentCard,
+            padding: LegendNextSpacing.md
+        ) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+                    LegendProfileAvatar(
+                        avatar: profile.avatar,
+                        displayName: profile.displayName,
+                        size: 72
+                    )
+                    .overlay(alignment: .bottomTrailing) {
+                        Button {
+                            isEditing = true
+                        } label: {
+                            Image(systemName: "pencil")
                         .font(.caption.weight(.black))
                         .foregroundStyle(LegendNextColor.navy)
-                        .frame(width: 26, height: 26)
-                        .background(LegendNextColor.gold, in: Circle())
-                        .overlay {
-                            Circle()
-                                .stroke(
-                                    LegendNextColor.canvas,
-                                    lineWidth: 3
-                                )
+                                .frame(width: 28, height: 28)
+                                .background(LegendNextGradient.gold, in: Circle())
+                                .overlay {
+                                    Circle().stroke(
+                                        LegendNextColor.surface,
+                                        lineWidth: 3
+                                    )
+                                }
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit profile")
+                    }
+
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.tiny) {
+                        Text("YOUR LEGEND")
+                            .font(LegendNextTypography.eyebrow)
+                            .tracking(1)
+                            .foregroundStyle(LegendNextColor.gold)
+
+                        Text(profile.displayName)
+                            .font(LegendNextTypography.title)
+                            .foregroundStyle(LegendNextColor.textPrimary)
+                            .lineLimit(2)
+
+                        if let username = normalized(profile.username) {
+                            Text("@\(username)")
+                                .font(LegendNextTypography.supporting.weight(.semibold))
+                                .foregroundStyle(LegendNextColor.gold)
+                        }
+
+                        if profile.participantType == .agent {
+                            LegendNextBadge("Legend Agent", tone: .gold, systemImage: "shield.checkered")
+                        }
+                    }
+
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Edit profile")
+
+                profileDetails(profile)
+
+                LegendNextDivider()
+
+                HStack(spacing: LegendNextSpacing.tiny) {
+                    Button {
+                        selectedContent = .hacs
+                    } label: {
+                        profileMetric(value: hacCount, title: "Hacs")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Show your Hacs")
+
+                    NavigationLink {
+                        LegendFollowListView(
+                            kind: .follows,
+                            currentIdentity: currentSession.actor.identity,
+                            social: social)
+                    } label: {
+                        profileMetric(
+                            value: currentProfileMetrics?.followingCount ?? 0,
+                            title: "Following"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Show people you follow")
+
+                    NavigationLink {
+                        LegendFollowListView(
+                            kind: .followers,
+                            currentIdentity: currentSession.actor.identity,
+                            social: social)
+                    } label: {
+                        profileMetric(
+                            value: currentProfileMetrics?.followerCount ?? 0,
+                            title: "Followers"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Show people who follow you")
+                }
+                .frame(maxWidth: .infinity)
             }
-
-            HStack(spacing: LegendNextSpacing.xs) {
-                Button {
-                    selectedContent = .hacs
-                } label: {
-                    profileMetric(
-                        value: hacCount,
-                        title: "Hacs"
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint("Show your Hacs")
-
-                NavigationLink {
-                    LegendFollowListView(
-                        kind: .follows,
-                        currentIdentity: currentSession.actor.identity,
-                        social: social)
-                } label: {
-                    profileMetric(
-                        value: currentProfileMetrics?.followingCount ?? 0,
-                        title: "Following"
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint("Show people you follow")
-
-                NavigationLink {
-                    LegendFollowListView(
-                        kind: .followers,
-                        currentIdentity: currentSession.actor.identity,
-                        social: social)
-                } label: {
-                    profileMetric(
-                        value: currentProfileMetrics?.followerCount ?? 0,
-                        title: "Followers"
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint("Show people who follow you")
-            }
-            .frame(maxWidth: .infinity)
         }
     }
 
-    private func profileBiography(
-        _ profile: MobileAccountProfile
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: LegendNextSpacing.xs) {
-                Text(profile.displayName)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(LegendNextColor.textPrimary)
-
-                if profile.participantType == .agent {
-                    Text("Legend Agent")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(LegendNextColor.navy)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            LegendNextColor.gold.opacity(0.22),
-                            in: Capsule()
-                        )
-                }
-            }
-
-            if let username = normalized(profile.username) {
-                Text("@\(username)")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.gold)
-            }
-
-            if let title = normalized(profile.title),
-               profile.participantType == .agent {
+    @ViewBuilder
+    private func profileDetails(_ profile: MobileAccountProfile) -> some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            if let title = normalized(profile.title), profile.participantType == .agent {
                 Text(title)
                     .font(LegendNextTypography.supporting)
                     .foregroundStyle(LegendNextColor.textSecondary)
@@ -5820,28 +5883,29 @@ private struct LegendAccountView: View {
 
             if let bio = normalized(profile.bio) ?? normalized(profile.shortBio) {
                 Text(bio)
-                    .font(.subheadline)
+                    .font(LegendNextTypography.supporting)
                     .foregroundStyle(LegendNextColor.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             if let location = normalized(profile.location) {
                 Label(location, systemImage: "mappin.and.ellipse")
-                    .font(LegendNextTypography.supporting)
+                    .font(LegendNextTypography.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
             }
 
             if let website = normalized(profile.website) {
-                Text(website)
-                    .font(.subheadline.weight(.semibold))
+                Label(website, systemImage: "link")
+                    .font(LegendNextTypography.caption.weight(.semibold))
                     .foregroundStyle(LegendNextColor.gold)
                     .textSelection(.enabled)
             }
 
-            if let email = normalized(profile.email) {
-                Text(email)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.navy)
+            if profile.isEmailVisible,
+               let email = normalized(profile.profileEmail) {
+                Label(email, systemImage: "envelope")
+                    .font(LegendNextTypography.caption.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.textSecondary)
                     .textSelection(.enabled)
             }
         }
@@ -5856,7 +5920,10 @@ private struct LegendAccountView: View {
                 Text("Edit profile")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(LegendProfileActionButtonStyle())
+            .buttonStyle(LegendNextButtonStyle(
+                kind: .secondary,
+                controlHeight: 42
+            ))
 
             Button {
                 isShowingSettings = true
@@ -5864,72 +5931,80 @@ private struct LegendAccountView: View {
                 Text("Profile settings")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(LegendProfileActionButtonStyle())
+            .buttonStyle(LegendNextButtonStyle(
+                kind: .secondary,
+                controlHeight: 42
+            ))
         }
     }
 
     private var profileContentSelector: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: LegendNextSpacing.xs) {
             ForEach(LegendProfileContentFilter.allCases) { filter in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        selectedContent = filter
-                    }
-                } label: {
-                    VStack(spacing: 10) {
-                        Image(systemName: filter.symbolName)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(
-                                selectedContent == filter
-                                ? LegendNextColor.textPrimary
-                                : LegendNextColor.textSecondary
-                            )
-
-                        Rectangle()
-                            .fill(
-                                selectedContent == filter
-                                ? LegendNextColor.navy
-                                : Color.clear
-                            )
-                            .frame(height: 1.5)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(filter.accessibilityTitle)
-                .accessibilityAddTraits(
-                    selectedContent == filter
-                    ? .isSelected
-                    : []
-                )
+                profileContentButton(filter)
             }
         }
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(LegendNextColor.separator)
-                .frame(height: 0.5)
+        .padding(LegendNextSpacing.tiny)
+        .background(LegendNextColor.brandBlueSurface, in: RoundedRectangle(
+            cornerRadius: LegendNextRadius.control,
+            style: .continuous
+        ))
+        .overlay {
+            RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous)
+                .strokeBorder(LegendNextColor.navy.opacity(0.22), lineWidth: 1)
         }
+    }
+
+    private func profileContentButton(
+        _ filter: LegendProfileContentFilter
+    ) -> some View {
+        let isSelected = selectedContent == filter
+
+        return Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                selectedContent = filter
+            }
+        } label: {
+            Label(filter.accessibilityTitle, systemImage: filter.symbolName)
+                .font(LegendNextTypography.caption.weight(.bold))
+                .foregroundStyle(isSelected ? Color.white : LegendNextColor.navy)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .background {
+                    RoundedRectangle(
+                        cornerRadius: LegendNextRadius.compact,
+                        style: .continuous
+                    )
+                    .fill(isSelected
+                        ? AnyShapeStyle(LegendNextGradient.finance)
+                        : AnyShapeStyle(Color.clear)
+                    )
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(filter.accessibilityTitle)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     @ViewBuilder
     private func profileGrid() -> some View {
         switch social.profileContentState {
         case .idle, .loading:
-            LazyVGrid(
-                columns: profileColumns,
-                spacing: 2
-            ) {
+            LazyVGrid(columns: profileColumns, spacing: LegendNextSpacing.tiny) {
                 ForEach(0..<9, id: \.self) { _ in
                     Rectangle()
-                        .fill(LegendNextColor.surfaceElevated)
+                        .fill(LegendNextColor.brandBlueSurface)
                         .aspectRatio(1, contentMode: .fit)
+                        .clipShape(RoundedRectangle(
+                            cornerRadius: LegendNextRadius.compact,
+                            style: .continuous
+                        ))
                         .legendNextShimmer()
                 }
             }
 
         case .unavailable(let failure):
-            LegendErrorCard(
+            LegendNextErrorState(
                 title: failure.title,
                 message: failure.message,
                 retryTitle: "Retry",
@@ -5943,17 +6018,13 @@ private struct LegendAccountView: View {
             if items.isEmpty {
                 profileEmptyState()
             } else {
-                LazyVGrid(
-                    columns: profileColumns,
-                    spacing: 2
-                ) {
+                LazyVGrid(columns: profileColumns, spacing: LegendNextSpacing.tiny) {
                     ForEach(items) { post in
                         Button {
                             selectedPost = post
                         } label: {
-                            LegendProfileGridTile(
-                                post: post,
-                                social: social)
+                            LegendProfileGridTile(post: post, social: social)
+                                .aspectRatio(1, contentMode: .fit)
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint("Open post options")
@@ -5990,7 +6061,7 @@ private struct LegendAccountView: View {
             Button("Make Your First Move.") {
                 creationRoute = .menu
             }
-            .buttonStyle(LegendButtonStyle(kind: .primary))
+            .buttonStyle(LegendNextButtonStyle(kind: .primary))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 54)
@@ -6000,17 +6071,13 @@ private struct LegendAccountView: View {
     private var profileSettingsSheet: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.xl) {
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                        Text("Your Legend profile")
-                            .font(LegendNextTypography.section)
-                            .foregroundStyle(LegendNextColor.textPrimary)
-
-                        Text("Personalize the details people see here. These settings are private to the Legend mobile app and do not change your web account.")
-                            .font(LegendNextTypography.supporting)
-                            .foregroundStyle(LegendNextColor.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Member experience",
+                        title: "Profile settings",
+                        detail: "Personalize the details people see here. These settings are private to the Legend mobile app.",
+                        dismiss: { isShowingSettings = false }
+                    )
 
                     LegendProfileSettingsSection(title: "Profile") {
                         VStack(spacing: 0) {
@@ -6081,29 +6148,14 @@ private struct LegendAccountView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(LegendNextSpacing.md)
-                .padding(.bottom, LegendNextSpacing.xxl)
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.xl)
             }
-            .background(LegendNextColor.midnight.ignoresSafeArea())
-            .navigationTitle("Profile settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(LegendNextColor.midnight, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        isShowingSettings = false
-                    }
-                    .foregroundStyle(LegendNextColor.gold)
-                }
-            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
         }
-        .tint(LegendNextColor.gold)
-        .preferredColorScheme(.dark)
-        .presentationBackground(LegendNextColor.midnight)
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .tint(LegendNextColor.navy)
+        .legendNextSheetChrome()
     }
 
     private var selectedProfileItems: [MobileSocialPost] {
@@ -6202,8 +6254,8 @@ private struct LegendAccountView: View {
 }
 
 /// The shared, server-backed relationship-list presentation for a profile. It
-/// intentionally has no page cap: SwiftUI's List supplies the scrolling while
-/// the social service supplies every authorized follow edge.
+/// intentionally has no page cap: the social service supplies every authorized
+/// follow edge, while this shared elevated directory supplies the scrolling.
 private struct LegendFollowListView: View {
     let kind: MobileSocialFollowListKind
     let currentIdentity: LogicalParticipantIdentity
@@ -6235,23 +6287,38 @@ private struct LegendFollowListView: View {
                         systemImage: kind == .follows ? "person.2" : "person.2.fill",
                         description: Text(kind.emptyMessage))
                 } else {
-                    List(entries) { entry in
-                        NavigationLink {
-                            LegendSocialProfileView(
-                                entry: entry,
-                                currentIdentity: currentIdentity,
-                                social: social)
-                        } label: {
-                            followRow(entry)
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            LegendNextSectionHeader(
+                                eyebrow: "Legend network",
+                                title: kind.title,
+                                detail: "(entries.count) member\(entries.count == 1 ? "" : "s")"
+                            )
+
+                            ForEach(entries) { entry in
+                                NavigationLink {
+                                    LegendPublicProfileView(
+                                        profile: entry.profile,
+                                        currentIdentity: currentIdentity,
+                                        social: social,
+                                        isFollowing: entry.followedByCurrentActor)
+                                } label: {
+                                    LegendNextSurface {
+                                        followRow(entry)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityHint("Visit \(entry.profile.displayName)'s profile")
+                            }
                         }
-                        .accessibilityHint("Visit \(entry.profile.displayName)'s profile")
+                        .padding(.horizontal, LegendNextSpacing.sm)
+                        .padding(.vertical, LegendNextSpacing.md)
                     }
-                    .listStyle(.plain)
-                    .scrollIndicators(.visible)
+                    .scrollIndicators(.hidden)
                 }
 
             case .unavailable(let failure):
-                LegendErrorCard(
+                LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
                     retryTitle: "Retry",
@@ -6259,7 +6326,7 @@ private struct LegendFollowListView: View {
                 .padding(LegendNextSpacing.sm)
             }
         }
-        .background(LegendNextColor.canvas.ignoresSafeArea())
+        .background(LegendNextCanvas())
         .navigationTitle(kind.title)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -6306,129 +6373,59 @@ private struct LegendFollowListView: View {
     }
 }
 
-/// A profile destination used by both Follows and Followers. Its counts are
-/// loaded from the server when opened, rather than inferred from list state.
-private struct LegendSocialProfileView: View {
-    let entry: MobileSocialFollowListEntry
+/// The single public profile route for Discover, feed posts, Follows, and
+/// Followers. Identity, counters, and updates are independently fetched from
+/// the social authority; this view never turns directory metadata into a
+/// profile mockup.
+struct LegendPublicProfileView: View {
+    let profile: MobileSocialAuthor
     let currentIdentity: LogicalParticipantIdentity
 
     @ObservedObject private var social: MobileSocialStore
     @State private var metricsState: MobileDataLoadState<MobileSocialProfileMetrics> = .idle
+    @State private var postsState: MobileDataLoadState<[MobileSocialPost]> = .idle
     @State private var isFollowing: Bool
     @State private var isUpdatingFollow = false
 
     init(
-        entry: MobileSocialFollowListEntry,
+        profile: MobileSocialAuthor,
         currentIdentity: LogicalParticipantIdentity,
-        social: MobileSocialStore
+        social: MobileSocialStore,
+        isFollowing: Bool
     ) {
-        self.entry = entry
+        self.profile = profile
         self.currentIdentity = currentIdentity
         _social = ObservedObject(wrappedValue: social)
-        _isFollowing = State(initialValue: entry.followedByCurrentActor)
+        _isFollowing = State(initialValue: isFollowing)
     }
 
     var body: some View {
-        Group {
-            switch metricsState {
-            case .idle, .loading:
-                ProgressView("Loading profile")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ScrollView {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
+                profileHero
 
-            case .loaded(let metrics):
-                ScrollView {
-                    VStack(spacing: LegendNextSpacing.md) {
-                        LegendProfileAvatar(
-                            avatar: metrics.profile.avatar,
-                            displayName: metrics.profile.displayName,
-                            size: 100)
-
-                        VStack(spacing: 4) {
-                            Text(metrics.profile.displayName)
-                                .font(.title3.weight(.bold))
-                                .foregroundStyle(LegendNextColor.textPrimary)
-
-                            if metrics.profile.identity.participantType == .agent {
-                                Text("Legend Agent")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(LegendNextColor.navy)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        LegendNextColor.gold.opacity(0.22),
-                                        in: Capsule())
-                            }
-
-                            if let username = normalized(metrics.profile.username) {
-                                Text("@\(username)")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(LegendNextColor.gold)
-                            }
-
-                            if let bio = normalized(metrics.profile.bio) {
-                                Text(bio)
-                                    .font(.subheadline)
-                                    .foregroundStyle(LegendNextColor.textPrimary)
-                                    .multilineTextAlignment(.center)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-
-                            if let location = normalized(metrics.profile.location) {
-                                Label(location, systemImage: "mappin.and.ellipse")
-                                    .font(LegendNextTypography.supporting)
-                                    .foregroundStyle(LegendNextColor.textSecondary)
-                            }
-
-                            if let website = normalized(metrics.profile.website) {
-                                Text(website)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(LegendNextColor.gold)
-                                    .textSelection(.enabled)
-                            }
-
-                            if let publicEmail = normalized(metrics.profile.publicEmail) {
-                                Label(publicEmail, systemImage: "envelope")
-                                    .font(LegendNextTypography.supporting)
-                                    .foregroundStyle(LegendNextColor.textSecondary)
-                                    .textSelection(.enabled)
-                            }
-                        }
-
-                        HStack(spacing: LegendNextSpacing.md) {
-                            metric(value: metrics.videoCount, title: "Hacs")
-                            metric(value: metrics.followingCount, title: "Following")
-                            metric(value: metrics.followerCount, title: "Followers")
-                        }
-
-                        if metrics.profile.identity != currentIdentity {
-                            Button {
-                                Task { await toggleFollow() }
-                            } label: {
-                                Text(isFollowing ? "Following" : "Follow")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(LegendProfileActionButtonStyle())
-                            .disabled(isUpdatingFollow)
-                            .accessibilityHint(isFollowing
-                                ? "Stop following \(metrics.profile.displayName)"
-                                : "Follow \(metrics.profile.displayName)")
-                        }
+                if profile.identity != currentIdentity {
+                    Button {
+                        Task { await toggleFollow() }
+                    } label: {
+                        Text(isFollowing ? "Following" : "Follow")
+                            .frame(maxWidth: .infinity)
                     }
-                    .padding(LegendNextSpacing.md)
-                    .frame(maxWidth: .infinity)
+                    .buttonStyle(LegendProfileActionButtonStyle())
+                    .disabled(isUpdatingFollow)
+                    .accessibilityHint(isFollowing
+                        ? "Stop following \(displayedProfile.displayName)"
+                        : "Follow \(displayedProfile.displayName)")
                 }
 
-            case .unavailable(let failure):
-                LegendErrorCard(
-                    title: failure.title,
-                    message: failure.message,
-                    retryTitle: "Retry",
-                    retry: { Task { await refresh() } })
-                .padding(LegendNextSpacing.sm)
+                aboutSection
+                updatesSection
             }
+            .padding(LegendNextSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(LegendNextColor.canvas.ignoresSafeArea())
-        .navigationTitle("Profile")
+        .background(LegendNextCanvas())
+        .navigationTitle(displayedProfile.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             Task { await refresh() }
@@ -6438,9 +6435,165 @@ private struct LegendSocialProfileView: View {
         }
     }
 
-    private func metric(value: Int, title: String) -> some View {
+    private var displayedProfile: MobileSocialAuthor {
+        if case .loaded(let metrics) = metricsState {
+            return metrics.profile
+        }
+        return profile
+    }
+
+    private var identityHeader: some View {
+        HStack(alignment: .top, spacing: LegendNextSpacing.md) {
+            LegendProfileAvatar(
+                avatar: displayedProfile.avatar,
+                displayName: displayedProfile.displayName,
+                size: 92)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(displayedProfile.displayName)
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+
+                if displayedProfile.identity.participantType == .agent {
+                    Text("Legend Agent")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(LegendNextColor.navy)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(LegendNextColor.gold.opacity(0.22), in: Capsule())
+                }
+
+                if let username = normalized(displayedProfile.username) {
+                    Text("@\(username)")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.gold)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var profileHero: some View {
+        LegendNextSurface(
+            style: .elevated,
+            cornerRadius: LegendNextRadius.prominentCard,
+            padding: LegendNextSpacing.intermediate
+        ) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                identityHeader
+                LegendNextDivider()
+                metricRow
+            }
+        }
+    }
+
+    private var metricRow: some View {
+            HStack(spacing: LegendNextSpacing.md) {
+                metric(value: loadedMetrics?.videoCount, title: "Hacs")
+                metric(value: loadedMetrics?.followingCount, title: "Following")
+                metric(value: loadedMetrics?.followerCount, title: "Followers")
+            }
+            .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var aboutSection: some View {
+        let bio = normalized(displayedProfile.bio)
+        let location = normalized(displayedProfile.location)
+        let website = normalized(displayedProfile.website)
+        let publicEmail = normalized(displayedProfile.publicEmail)
+        if bio != nil || location != nil || website != nil || publicEmail != nil {
+            LegendNextSurface(style: .plain) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                    Text("About")
+                        .font(LegendNextTypography.section)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+
+                    if let bio {
+                        Text(bio)
+                            .font(LegendNextTypography.body)
+                            .foregroundStyle(LegendNextColor.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if let location {
+                        Label(location, systemImage: "mappin.and.ellipse")
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                    }
+
+                    if let website {
+                        Label(website, systemImage: "link")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.gold)
+                            .textSelection(.enabled)
+                    }
+
+                    // Public contact is deliberately last, and only appears when the
+                    // member explicitly enabled it in mobile profile settings.
+                    if let publicEmail {
+                        Label(publicEmail, systemImage: "envelope")
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                            .textSelection(.enabled)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var updatesSection: some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+            Text("Updates")
+                .font(LegendNextTypography.section)
+                .foregroundStyle(LegendNextColor.textPrimary)
+
+            switch postsState {
+            case .idle, .loading:
+                ProgressView("Loading updates")
+                    .frame(maxWidth: .infinity, minHeight: 90)
+
+            case .loaded(let posts):
+                if posts.isEmpty {
+                    LegendNextEmptyState(
+                        title: "No updates yet",
+                        message: "This member has not shared a public Legend update.",
+                        systemImage: "rectangle.stack")
+                } else {
+                    ForEach(posts) { post in
+                        LegendPublicProfilePost(post: post, social: social)
+                    }
+                }
+
+            case .unavailable(let failure):
+                LegendNextInsetSurface {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Updates unavailable")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.textPrimary)
+                        Text(failure.message)
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    private var loadedMetrics: MobileSocialProfileMetrics? {
+        if case .loaded(let metrics) = metricsState {
+            return metrics
+        }
+        return nil
+    }
+
+    private func metric(value: Int?, title: String) -> some View {
         VStack(spacing: 2) {
-            Text(value.formatted())
+            Text(value?.formatted() ?? "—")
                 .font(.headline.weight(.bold))
                 .foregroundStyle(LegendNextColor.textPrimary)
                 .contentTransition(.numericText())
@@ -6464,10 +6617,11 @@ private struct LegendSocialProfileView: View {
 
     private func refresh() async {
         metricsState = .loading
-        async let profileRefresh = social.refresh()
-        let metrics = await social.profileMetrics(for: entry.profile)
-        _ = await profileRefresh
-        metricsState = metrics
+        postsState = .loading
+        async let metrics = social.profileMetrics(for: profile)
+        async let posts = social.publicProfilePosts(for: profile)
+        metricsState = await metrics
+        postsState = await posts
     }
 
     private func toggleFollow() async {
@@ -6476,8 +6630,8 @@ private struct LegendSocialProfileView: View {
         defer { isUpdatingFollow = false }
 
         guard let confirmed = await social.setFollow(
-            userID: entry.profile.identity.userID,
-            participantType: entry.profile.identity.participantType,
+            userID: profile.identity.userID,
+            participantType: profile.identity.participantType,
             isFollowing: !isFollowing) else {
             return
         }
@@ -6487,34 +6641,62 @@ private struct LegendSocialProfileView: View {
     }
 }
 
+/// Renders the actual post DTO returned by the profile endpoint. It deliberately
+/// shares the feed's canonical image and video loaders rather than duplicating
+/// remote-media handling for profile pages.
+private struct LegendPublicProfilePost: View {
+    let post: MobileSocialPost
+    @ObservedObject var social: MobileSocialStore
+
+    var body: some View {
+        LegendNextSurface {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                if let media = post.media.first {
+                    if media.isImage {
+                        LegendSocialMediaImage(
+                            media: media,
+                            social: social,
+                            contentMode: .fit,
+                            placeholderHeight: 220)
+                    } else if media.isVideo {
+                        LegendSocialMediaVideo(
+                            postID: post.id,
+                            media: media,
+                            music: post.music,
+                            social: social)
+                    }
+                }
+
+                if !post.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(post.body)
+                        .font(LegendNextTypography.body)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack(spacing: LegendNextSpacing.sm) {
+                    Text(post.displayContentType)
+                    Text(post.postedUTC.formatted(date: .abbreviated, time: .omitted))
+                    Spacer(minLength: 0)
+                    Label(post.reactionCount.formatted(), systemImage: "heart")
+                    Label(post.commentCount.formatted(), systemImage: "bubble.right")
+                }
+                .font(LegendNextTypography.caption)
+                .foregroundStyle(LegendNextColor.textSecondary)
+            }
+        }
+    }
+}
+
 private struct LegendProfileActionButtonStyle: ButtonStyle {
     func makeBody(
         configuration: Configuration
     ) -> some View {
-        configuration.label
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(LegendNextColor.textPrimary)
-            .padding(.horizontal, LegendNextSpacing.sm)
-            .frame(height: 36)
-            .background(
-                LegendNextColor.surfaceElevated.opacity(
-                    configuration.isPressed ? 0.65 : 1
-                ),
-                in: RoundedRectangle(
-                    cornerRadius: 8,
-                    style: .continuous
-                )
-            )
-            .overlay {
-                RoundedRectangle(
-                    cornerRadius: 8,
-                    style: .continuous
-                )
-                .stroke(
-                    LegendNextColor.separator,
-                    lineWidth: 0.75
-                )
-            }
+        LegendNextButtonStyle(
+            kind: .secondary,
+            controlHeight: 40
+        )
+        .makeBody(configuration: configuration)
     }
 }
 
@@ -6580,7 +6762,22 @@ private struct LegendProfileGridTile: View {
             }
         }
         .aspectRatio(1, contentMode: .fit)
-        .clipped()
+        .clipShape(RoundedRectangle(
+            cornerRadius: LegendNextRadius.compact,
+            style: .continuous
+        ))
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.compact,
+                style: .continuous
+            )
+            .strokeBorder(LegendNextColor.navy.opacity(0.20), lineWidth: 1)
+        }
+        .shadow(
+            color: LegendNextColor.navy.opacity(0.10),
+            radius: 5,
+            y: 2
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             "\(post.displayContentType) by \(post.author.displayName): \(post.body)"
@@ -6621,17 +6818,13 @@ private struct LegendAccountEditor: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.xl) {
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                        Text("Shape your Legend")
-                            .font(LegendNextTypography.section)
-                            .foregroundStyle(LegendNextColor.textPrimary)
-
-                        Text("These profile details are specific to the mobile Legend experience. Your secure account email is never shown here automatically.")
-                            .font(LegendNextTypography.supporting)
-                            .foregroundStyle(LegendNextColor.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Your identity",
+                        title: "Shape your Legend",
+                        detail: "These details are specific to the mobile Legend experience. Your secure account email is never shown automatically.",
+                        dismiss: { dismiss() }
+                    )
 
                     LegendProfileSettingsSection(title: "Identity") {
                         VStack(spacing: LegendNextSpacing.md) {
@@ -6707,7 +6900,7 @@ private struct LegendAccountEditor: View {
                                         .foregroundStyle(LegendNextColor.textSecondary)
                                 }
                             }
-                            .tint(LegendNextColor.gold)
+                            .tint(LegendNextColor.navy)
                         }
                     }
 
@@ -6734,54 +6927,47 @@ private struct LegendAccountEditor: View {
                             }
                         }
                     }
-                }
-                .padding(LegendNextSpacing.md)
-                .padding(.bottom, LegendNextSpacing.xxl)
-            }
-            .background(LegendNextColor.midnight.ignoresSafeArea())
-            .navigationTitle("Edit profile")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(LegendNextColor.midnight, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(store.isSaving ? "Saving…" : "Save") {
-                        Task {
-                            let didSave = await store.save(MobileAccountUpdate(
-                                displayName: displayName,
-                                phone: phone,
-                                title: profile.participantType == .agent ? title : nil,
-                                shortBio: profile.participantType == .agent ? shortBio : nil,
-                                username: username,
-                                bio: bio,
-                                website: website,
-                                location: location,
-                                publicEmail: profileEmail,
-                                isEmailVisible: isEmailVisible))
-                            if didSave {
-                                dismiss()
-                            }
-                        }
+
+                    Button(store.isSaving ? "Saving changes…" : "Save changes") {
+                        saveChanges()
                     }
+                    .buttonStyle(LegendNextButtonStyle(kind: .primary))
                     .disabled(
                         store.isSaving
                             || store.isCheckingUsername
                             || store.isUsernameUnavailable
-                            || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .foregroundStyle(LegendNextColor.gold)
+                            || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
                 }
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.xl)
             }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
         }
-        .tint(LegendNextColor.gold)
-        .preferredColorScheme(.dark)
-        .presentationBackground(LegendNextColor.midnight)
+        .tint(LegendNextColor.navy)
+        .legendNextSheetChrome(detents: [.large])
         .onChange(of: username) { _, newUsername in
             store.checkUsernameAvailability(newUsername)
+        }
+    }
+
+    private func saveChanges() {
+        Task {
+            let didSave = await store.save(MobileAccountUpdate(
+                displayName: displayName,
+                phone: phone,
+                title: profile.participantType == .agent ? title : nil,
+                shortBio: profile.participantType == .agent ? shortBio : nil,
+                username: username,
+                bio: bio,
+                website: website,
+                location: location,
+                publicEmail: profileEmail,
+                isEmailVisible: isEmailVisible))
+            if didSave {
+                dismiss()
+            }
         }
     }
 }
@@ -6802,23 +6988,12 @@ private struct LegendProfileSettingsSection<Content: View>: View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
             Text(title.uppercased())
                 .font(LegendNextTypography.eyebrow)
-                .foregroundStyle(LegendNextColor.gold)
+                .foregroundStyle(LegendNextColor.navy)
                 .padding(.horizontal, LegendNextSpacing.xs)
 
-            content
-                .padding(LegendNextSpacing.md)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    LegendNextColor.surface,
-                    in: RoundedRectangle(
-                        cornerRadius: LegendNextRadius.card,
-                        style: .continuous))
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: LegendNextRadius.card,
-                        style: .continuous)
-                    .stroke(LegendNextColor.separator, lineWidth: 1)
-                }
+            LegendNextSurface(style: .brandBlue, padding: LegendNextSpacing.sm) {
+                content
+            }
         }
     }
 }
@@ -6834,7 +7009,7 @@ private struct LegendProfileSettingsRow: View {
         HStack(spacing: LegendNextSpacing.sm) {
             Image(systemName: systemImage)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(isDestructive ? LegendNextColor.danger : LegendNextColor.gold)
+                .foregroundStyle(isDestructive ? LegendNextColor.danger : LegendNextColor.navy)
                 .frame(width: 26)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -6854,7 +7029,7 @@ private struct LegendProfileSettingsRow: View {
             if showsChevron {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(LegendNextColor.gold)
+                    .foregroundStyle(LegendNextColor.navy)
             }
         }
         .padding(.vertical, LegendNextSpacing.tiny)
@@ -6887,32 +7062,21 @@ private struct LegendProfileEditorField: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(LegendNextColor.textSecondary)
 
-            Group {
-                if isMultiline {
-                    TextField(prompt, text: $text, axis: .vertical)
-                        .lineLimit(3...6)
-                } else {
-                    TextField(prompt, text: $text)
+            LegendNextInsetSurface(style: .brandBlue) {
+                Group {
+                    if isMultiline {
+                        TextField(prompt, text: $text, axis: .vertical)
+                            .lineLimit(3...6)
+                    } else {
+                        TextField(prompt, text: $text)
+                    }
                 }
-            }
-            .font(.subheadline)
-            .foregroundStyle(LegendNextColor.textPrimary)
-            .textInputAutocapitalization(autocapitalization)
-            .autocorrectionDisabled(autocorrectionDisabled)
-            .keyboardType(keyboardType)
-            .textContentType(contentType)
-            .padding(.horizontal, LegendNextSpacing.sm)
-            .padding(.vertical, LegendNextSpacing.sm)
-            .background(
-                LegendNextColor.surfaceInset,
-                in: RoundedRectangle(
-                    cornerRadius: LegendNextRadius.control,
-                    style: .continuous))
-            .overlay {
-                RoundedRectangle(
-                    cornerRadius: LegendNextRadius.control,
-                    style: .continuous)
-                .stroke(LegendNextColor.separator, lineWidth: 1)
+                .font(.subheadline)
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .textInputAutocapitalization(autocapitalization)
+                .autocorrectionDisabled(autocorrectionDisabled)
+                .keyboardType(keyboardType)
+                .textContentType(contentType)
             }
         }
     }

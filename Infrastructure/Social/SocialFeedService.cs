@@ -161,6 +161,44 @@ public sealed class SocialFeedService : ISocialFeedService
             await BuildPostViewsAsync(posts, actor, cancellationToken));
     }
 
+    /// <summary>
+    /// Returns a member's actual published profile content. The same network and
+    /// audience checks that guard the feed are applied before a post is projected.
+    /// </summary>
+    public async Task<SocialOperationResult<IReadOnlyList<SocialPostView>>> GetPublicProfilePostsAsync(
+        SocialFeedActor actor,
+        SocialAuthor profile,
+        CancellationToken cancellationToken = default)
+    {
+        var resolved = await ResolveNetworkProfileAsync(actor, profile, cancellationToken);
+        if (!resolved.Succeeded || resolved.Value is null)
+        {
+            return SocialOperationResult<IReadOnlyList<SocialPostView>>.Failure(
+                resolved.ErrorCode ?? "social_profile_unavailable",
+                resolved.ErrorMessage ?? "This Legend profile is not available.");
+        }
+
+        var targetUserIds = await AuthorUserIdFormsAsync(resolved.Value.TargetKey, cancellationToken);
+        var now = DateTime.UtcNow;
+        var candidates = await _db.SocialPosts
+            .AsNoTracking()
+            .Where(post => targetUserIds.Contains(post.AuthorUserId)
+                           && post.AuthorParticipantType == resolved.Value.TargetKey.ParticipantType
+                           && post.ContentType != SocialPostContentTypes.Story
+                           && post.DeletedUtc == null
+                           && (post.ExpiresUtc == null || post.ExpiresUtc > now))
+            .OrderByDescending(post => post.PostedUtc)
+            .ToArrayAsync(cancellationToken);
+        var audience = await LoadAudienceGraphAsync(resolved.Value.ActorKey, cancellationToken);
+        var posts = candidates
+            .Where(post => IsAudiencePermitted(post, resolved.Value.ActorKey, audience))
+            .Take(MaximumProfilePosts)
+            .ToArray();
+
+        return SocialOperationResult<IReadOnlyList<SocialPostView>>.Success(
+            await BuildPostViewsAsync(posts, actor, cancellationToken));
+    }
+
     public async Task<SocialOperationResult<SocialPostView>> CreatePostAsync(
         CreateSocialPostCommand command,
         CancellationToken cancellationToken = default)
@@ -869,54 +907,17 @@ public sealed class SocialFeedService : ISocialFeedService
         SocialAuthor? profile = null,
         CancellationToken cancellationToken = default)
     {
-        if (!await IsValidActorAsync(actor, cancellationToken))
-            return SocialOperationResult<SocialProfileMetrics>.Failure("social_actor_invalid", "Your mobile identity is not available for Legend updates.");
-
-        var requested = profile ?? ToAuthor(actor);
-        var targetKey = AuthorKey.From(requested.UserId, requested.ParticipantType);
-        var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
-        if (targetKey != actorKey)
-        {
-            var visible = await GetVisibleAuthorsAsync(actor, cancellationToken);
-            if (!visible.Contains(targetKey) &&
-                !await HasDirectFollowRelationshipAsync(actorKey, targetKey, cancellationToken))
-            {
-                return SocialOperationResult<SocialProfileMetrics>.Failure(
-                    "social_profile_forbidden",
-                    "This Legend profile is not available to your mobile identity.");
-            }
-        }
-
-        var resolved = await ResolveAuthorsAsync([new AuthorReference(targetKey.UserId, targetKey.ParticipantType, requested.ProfileId)], cancellationToken);
-        var author = resolved.GetValueOrDefault(targetKey);
-        if (author is null)
+        var resolved = await ResolveNetworkProfileAsync(actor, profile, cancellationToken);
+        if (!resolved.Succeeded || resolved.Value is null)
         {
             return SocialOperationResult<SocialProfileMetrics>.Failure(
-                "social_profile_unavailable",
-                "This Legend profile is not available.");
+                resolved.ErrorCode ?? "social_profile_unavailable",
+                resolved.ErrorMessage ?? "This Legend profile is not available.");
         }
 
-        // Mobile profile details are intentionally separate from the synced web
-        // account. They are returned only for the full social-profile destination,
-        // and the optional email is returned only when its owner enabled visibility.
-        var mobileProfile = await _db.MobileProfileSettings.AsNoTracking()
-            .SingleOrDefaultAsync(setting =>
-                setting.ProfileId == author.ProfileId &&
-                setting.ParticipantType == author.ParticipantType,
-                cancellationToken);
-        if (mobileProfile is not null)
-        {
-            author = author with
-            {
-                Username = mobileProfile.Username,
-                Bio = mobileProfile.Bio,
-                Website = mobileProfile.Website,
-                Location = mobileProfile.Location,
-                PublicEmail = mobileProfile.IsEmailVisible
-                    ? mobileProfile.PublicEmail
-                    : null
-            };
-        }
+        var targetKey = resolved.Value.TargetKey;
+        var actorKey = resolved.Value.ActorKey;
+        var author = resolved.Value.Author;
 
         var targetUserIds = await AuthorUserIdFormsAsync(targetKey, cancellationToken);
         var now = DateTime.UtcNow;
@@ -954,6 +955,78 @@ public sealed class SocialFeedService : ISocialFeedService
             metrics.Values.Sum(metric => metric.UniqueViewerCount),
             privateVisits));
     }
+
+    private async Task<SocialOperationResult<NetworkProfileResolution>> ResolveNetworkProfileAsync(
+        SocialFeedActor actor,
+        SocialAuthor? profile,
+        CancellationToken cancellationToken)
+    {
+        if (!await IsValidActorAsync(actor, cancellationToken))
+        {
+            return SocialOperationResult<NetworkProfileResolution>.Failure(
+                "social_actor_invalid",
+                "Your mobile identity is not available for Legend updates.");
+        }
+
+        var requested = profile ?? ToAuthor(actor);
+        var targetKey = AuthorKey.From(requested.UserId, requested.ParticipantType);
+        var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+        if (targetKey != actorKey)
+        {
+            var visible = await GetVisibleAuthorsAsync(actor, cancellationToken);
+            if (!visible.Contains(targetKey)
+                && !await HasDirectFollowRelationshipAsync(actorKey, targetKey, cancellationToken))
+            {
+                return SocialOperationResult<NetworkProfileResolution>.Failure(
+                    "social_profile_forbidden",
+                    "This Legend profile is not available to your mobile identity.");
+            }
+        }
+
+        var authors = await ResolveAuthorsAsync(
+            [new AuthorReference(targetKey.UserId, targetKey.ParticipantType, requested.ProfileId)],
+            cancellationToken);
+        var author = authors.GetValueOrDefault(targetKey);
+        if (author is null)
+        {
+            return SocialOperationResult<NetworkProfileResolution>.Failure(
+                "social_profile_unavailable",
+                "This Legend profile is not available.");
+        }
+
+        author = await ApplyMobileProfileDetailsAsync(author, cancellationToken);
+        return SocialOperationResult<NetworkProfileResolution>.Success(
+            new NetworkProfileResolution(targetKey, actorKey, author));
+    }
+
+    private async Task<SocialAuthor> ApplyMobileProfileDetailsAsync(
+        SocialAuthor author,
+        CancellationToken cancellationToken)
+    {
+        var mobileProfile = await _db.MobileProfileSettings.AsNoTracking()
+            .SingleOrDefaultAsync(setting =>
+                setting.ProfileId == author.ProfileId
+                && setting.ParticipantType == author.ParticipantType,
+                cancellationToken);
+        if (mobileProfile is null)
+            return author;
+
+        return author with
+        {
+            Username = mobileProfile.Username,
+            Bio = mobileProfile.Bio,
+            Website = mobileProfile.Website,
+            Location = mobileProfile.Location,
+            PublicEmail = mobileProfile.IsEmailVisible
+                ? mobileProfile.PublicEmail
+                : null
+        };
+    }
+
+    private sealed record NetworkProfileResolution(
+        AuthorKey TargetKey,
+        AuthorKey ActorKey,
+        SocialAuthor Author);
 
     public async Task<SocialOperationResult<SocialCreatorInsights>> GetCreatorInsightsAsync(
         SocialFeedActor actor,

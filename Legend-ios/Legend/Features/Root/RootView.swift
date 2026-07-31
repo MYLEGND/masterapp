@@ -31,6 +31,10 @@ struct RootView: View {
         .onChange(of: session.state.diagnosticName) { _, _ in
             recordSelectedBranch()
         }
+        // Legend's standard canvas is white. Discover opts into its blue
+        // treatment locally, making that choice explicit rather than allowing
+        // each individual page to choose a competing color scheme.
+        .preferredColorScheme(.light)
     }
 
     private func recordSelectedBranch() {
@@ -49,94 +53,88 @@ private struct RoleSelectionView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: LegendSpacing.lg) {
-                    LegendBrandLogo(maximumWidth: 150)
-                        .accessibilityLabel("Legend")
-
-                    VStack(spacing: LegendSpacing.xs) {
-                        Text("Choose your Legend role")
-                            .font(LegendTypography.hero)
-                            .foregroundStyle(LegendPalette.label)
-                            .multilineTextAlignment(.center)
-
-                        Text("Your account includes both Legend experiences.")
-                            .font(LegendTypography.body)
-                            .foregroundStyle(LegendPalette.secondaryLabel)
-                            .multilineTextAlignment(.center)
+                VStack(spacing: LegendNextSpacing.lg) {
+                    LegendNextHero(
+                        eyebrow: "Legend membership",
+                        title: "Choose your experience",
+                        detail: "Your account includes every authorized Legend workspace."
+                    ) {
+                        LegendBrandLogo(maximumWidth: 86)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .accessibilityLabel("Legend")
                     }
 
-                    VStack(spacing: LegendSpacing.sm) {
-                        ForEach(selection.permittedParticipantTypes, id: \.self) { role in
-                            Button {
-                                session.selectRole(role)
-                            } label: {
-                                HStack(spacing: LegendSpacing.sm) {
-                                    Image(
-                                        systemName: role == .agent
-                                            ? "briefcase.fill"
-                                            : "person.fill"
+                    LegendNextSurface(style: .elevated) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            Text("Available workspaces")
+                                .font(LegendNextTypography.section)
+                                .foregroundStyle(LegendNextColor.textPrimary)
+
+                            ForEach(selection.permittedParticipantTypes, id: \.self) { role in
+                                Button {
+                                    session.selectRole(role)
+                                } label: {
+                                    HStack(spacing: LegendNextSpacing.sm) {
+                                        Image(
+                                            systemName: role == .agent
+                                                ? "briefcase.fill"
+                                                : "person.fill"
+                                        )
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundStyle(LegendNextColor.gold)
+                                        .frame(width: 30)
+
+                                        Text(
+                                            role == .agent
+                                                ? "Continue as Agent"
+                                                : "Continue as Client"
+                                        )
+                                        .font(LegendNextTypography.cardTitle)
+                                        .foregroundStyle(LegendNextColor.textPrimary)
+
+                                        Spacer()
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.bold))
+                                            .foregroundStyle(LegendNextColor.gold)
+                                    }
+                                    .padding(.horizontal, LegendNextSpacing.md)
+                                    .frame(maxWidth: .infinity, minHeight: 56)
+                                    .background(LegendNextColor.surfaceInset)
+                                    .overlay {
+                                        RoundedRectangle(
+                                            cornerRadius: LegendNextRadius.control,
+                                            style: .continuous
+                                        )
+                                        .stroke(
+                                            LegendNextColor.gold.opacity(0.42),
+                                            lineWidth: 1
+                                        )
+                                    }
+                                    .clipShape(
+                                        RoundedRectangle(
+                                            cornerRadius: LegendNextRadius.control,
+                                            style: .continuous
+                                        )
                                     )
-                                    .font(.system(size: 19, weight: .semibold))
-                                    .foregroundStyle(LegendPalette.gold)
-                                    .frame(width: 28)
-
-                                    Text(
-                                        role == .agent
-                                            ? "Continue as Agent"
-                                            : "Continue as Client"
-                                    )
-                                    .font(LegendTypography.section)
-                                    .foregroundStyle(LegendPalette.label)
-
-                                    Spacer()
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 15, weight: .bold))
-                                        .foregroundStyle(LegendPalette.gold)
                                 }
-                                .padding(.horizontal, LegendSpacing.md)
-                                .frame(maxWidth: .infinity)
-                                .frame(minHeight: 58)
-                                .background(LegendNextColor.surface)
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .stroke(LegendPalette.gold, lineWidth: 1.5)
-                                }
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
 
-                    Button {
+                    Button("Sign out") {
                         session.signOut()
-                    } label: {
-                        Text("Sign out")
-                            .font(LegendTypography.section)
-                            .foregroundStyle(Color.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 54)
-                            .background(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.50, green: 0.10, blue: 0.14),
-                                        Color(red: 0.38, green: 0.07, blue: 0.10)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(LegendNextButtonStyle(kind: .destructive))
                 }
                 .frame(maxWidth: 520)
-                .padding(.horizontal, LegendSpacing.md)
-                .padding(.top, LegendSpacing.xl)
-                .padding(.bottom, LegendSpacing.lg)
+                .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+                .padding(.top, LegendNextSpacing.xxl)
+                .padding(.bottom, LegendNextSpacing.xxl)
                 .frame(maxWidth: .infinity)
             }
-            .background(LegendNextColor.canvas.ignoresSafeArea())
+            .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
         }
     }
@@ -149,42 +147,42 @@ private struct ConfigurationStateView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: LegendSpacing.lg) {
-                    VStack(spacing: LegendSpacing.xs) {
+                VStack(spacing: LegendNextSpacing.lg) {
+                    VStack(spacing: LegendNextSpacing.xs) {
                         LegendBrandLogo(maximumWidth: 96)
                             .accessibilityHidden(true)
                         Text("Legend")
                             .font(.system(.title2, design: .rounded).weight(.bold))
-                            .foregroundStyle(LegendPalette.label)
+                            .foregroundStyle(LegendNextColor.textPrimary)
                     }
 
-                    VStack(spacing: LegendSpacing.sm) {
+                    VStack(spacing: LegendNextSpacing.sm) {
                         Text("Native Mobile Configuration Required")
                             .font(.system(.title, design: .rounded).weight(.bold))
                             .multilineTextAlignment(.center)
-                            .foregroundStyle(LegendPalette.label)
+                            .foregroundStyle(LegendNextColor.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
                         Text("This build is waiting for administrator configuration before secure sign-in can begin.")
-                            .font(LegendTypography.body)
-                            .foregroundStyle(LegendPalette.secondaryLabel)
+                            .font(LegendNextTypography.body)
+                            .foregroundStyle(LegendNextColor.textSecondary)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    LegendCard {
-                        VStack(alignment: .leading, spacing: LegendSpacing.sm) {
+                    LegendNextSurface {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                             Label("Required configuration", systemImage: "checklist")
-                                .font(LegendTypography.section)
-                                .foregroundStyle(LegendPalette.label)
+                                .font(LegendNextTypography.section)
+                                .foregroundStyle(LegendNextColor.textPrimary)
                             Text(validation.summary)
-                                .font(LegendTypography.metadata)
-                                .foregroundStyle(LegendPalette.secondaryLabel)
+                                .font(LegendNextTypography.supporting)
+                                .foregroundStyle(LegendNextColor.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)
                             Divider()
                             ForEach(validation.missingKeys) { key in
                                 Label(key.buildSetting, systemImage: "exclamationmark.circle")
                                     .font(.footnote.monospaced().weight(.medium))
-                                    .foregroundStyle(LegendPalette.label)
+                                    .foregroundStyle(LegendNextColor.textPrimary)
                                     .accessibilityLabel("Missing administrator configuration: \(key.buildSetting)")
                             }
                         }
@@ -193,15 +191,15 @@ private struct ConfigurationStateView: View {
                     Button("Check configuration") {
                         session.restore()
                     }
-                    .buttonStyle(LegendButtonStyle(kind: .primary))
+                    .buttonStyle(LegendNextButtonStyle(kind: .primary))
                     .accessibilityHint("Checks whether the required administrator configuration is now available.")
                 }
                 .frame(maxWidth: 520)
-                .padding(.horizontal, LegendSpacing.md)
-                .padding(.vertical, LegendSpacing.xl)
+                .padding(.horizontal, LegendNextSpacing.md)
+                .padding(.vertical, LegendNextSpacing.xl)
                 .frame(maxWidth: .infinity)
             }
-            .background(LegendNextColor.canvas.ignoresSafeArea())
+            .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
         }
     }
@@ -213,42 +211,71 @@ private struct SignInView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: LegendSpacing.xl) {
-                    Spacer(minLength: LegendSpacing.xl)
+                VStack(spacing: LegendNextSpacing.lg) {
+                    Spacer(minLength: LegendNextSpacing.section)
 
-                    Image("LegendLogo")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: 220)
-                        .accessibilityLabel("Legend")
+                    LegendNextSurface(
+                        style: .navy,
+                        cornerRadius: LegendNextRadius.hero,
+                        padding: LegendNextSpacing.xxl
+                    ) {
+                        VStack(spacing: LegendNextSpacing.md) {
+                            Text("LEGEND")
+                                .font(.system(size: 13, weight: .bold, design: .default))
+                                .tracking(4.2)
+                                .foregroundStyle(LegendNextColor.goldBright)
 
-                    VStack(spacing: LegendSpacing.sm) {
-                        Text("Welcome to Legend")
-                            .font(LegendTypography.hero)
-                            .foregroundStyle(LegendPalette.label)
-                            .multilineTextAlignment(.center)
+                            Image("LegendLogo")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: 154)
+                                .accessibilityLabel("Legend")
 
-                        Text("Life, finances, protection, and community—connected in one place.")
-                            .font(LegendTypography.body)
-                            .foregroundStyle(LegendPalette.secondaryLabel)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
+                            Text("Your legacy, in motion.")
+                                .font(LegendNextTypography.hero)
+                                .foregroundStyle(.white)
+                                .multilineTextAlignment(.center)
+
+                            Text("Life, finances, protection, and community—elevated in one secure experience.")
+                                .font(LegendNextTypography.supporting)
+                                .foregroundStyle(.white.opacity(0.74))
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity)
                     }
 
-                    Button("Continue") {
-                        session.signIn()
-                    }
-                    .buttonStyle(LegendButtonStyle(kind: .primary))
-                    .accessibilityHint("Opens sign-in.")
+                    LegendNextSurface(style: .elevated) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                            Label("Private member access", systemImage: "lock.shield.fill")
+                                .font(LegendNextTypography.label)
+                                .foregroundStyle(LegendNextColor.gold)
 
-                    Spacer(minLength: LegendSpacing.xl)
+                            Text("Continue securely to your personalized Legend workspace.")
+                                .font(LegendNextTypography.supporting)
+                                .foregroundStyle(LegendNextColor.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Button("Continue securely") {
+                                session.signIn()
+                            }
+                            .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                            .accessibilityHint("Opens secure sign-in.")
+                        }
+                    }
+
+                    Text("Built for the life you are leading and the legacy you are building.")
+                        .font(LegendNextTypography.caption)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, LegendNextSpacing.xl)
                 }
                 .frame(maxWidth: 520)
-                .padding(.horizontal, LegendSpacing.md)
-                .padding(.vertical, LegendSpacing.lg)
+                .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+                .padding(.vertical, LegendNextSpacing.xxl)
                 .frame(maxWidth: .infinity, minHeight: 640)
             }
-            .background(LegendNextColor.canvas.ignoresSafeArea())
+            .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
         }
     }
@@ -261,15 +288,15 @@ private struct SessionFailureView: View {
     var body: some View {
         NavigationStack {
             VStack {
-                LegendErrorCard(
+                LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
                     retryTitle: "Try again",
                     retry: session.retrySessionEntry)
             }
-            .padding(LegendSpacing.md)
+            .padding(LegendNextSpacing.md)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(LegendNextColor.canvas.ignoresSafeArea())
+            .background(LegendNextCanvas())
             .navigationTitle("Secure access")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -301,16 +328,16 @@ private struct AuthenticatedHomeView: View {
                     bootstrap: bootstrap)
             case .failed(let failure):
                 NavigationStack {
-                    LegendErrorCard(
+                    LegendNextErrorState(
                         title: failure.title,
                         message: failure.message,
                         retryTitle: "Try again",
                         retry: {
                             Task { await bootstrap.retryBootstrap() }
                         })
-                    .padding(LegendSpacing.md)
+                    .padding(LegendNextSpacing.md)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(LegendNextColor.canvas.ignoresSafeArea())
+                    .background(LegendNextCanvas())
                     .navigationTitle("Legend")
                     .navigationBarTitleDisplayMode(.inline)
                 }

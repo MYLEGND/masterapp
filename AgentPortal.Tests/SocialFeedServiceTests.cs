@@ -211,6 +211,56 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task PublicProfilePosts_ReturnTheSelectedMembersLiveAuthorizedPosts()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var viewer = Client("public-profile-viewer", "Profile", "Viewer");
+        var owner = Client("public-profile-owner", "Profile", "Owner");
+        db.ClientProfiles.AddRange(viewer, owner);
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var ownerActor = ClientActor(owner);
+        var publicPost = await service.CreatePostAsync(new CreateSocialPostCommand(
+            ownerActor,
+            SocialPostContentTypes.Post,
+            "This is the owner's live update."));
+        var followersOnlyPost = await service.CreatePostAsync(new CreateSocialPostCommand(
+            ownerActor,
+            SocialPostContentTypes.Reel,
+            "Visible after following.",
+            new SocialPostDetails(Audience: SocialPostAudiences.Followers)));
+
+        Assert.True(publicPost.Succeeded);
+        Assert.True(followersOnlyPost.Succeeded);
+
+        var beforeFollowing = await service.GetPublicProfilePostsAsync(
+            ClientActor(viewer),
+            publicPost.Value!.Author);
+
+        Assert.True(beforeFollowing.Succeeded);
+        var initiallyVisible = Assert.Single(beforeFollowing.Value!);
+        Assert.Equal(publicPost.Value.Id, initiallyVisible.Id);
+        Assert.Equal(owner.ClientUserId, initiallyVisible.Author.UserId);
+        Assert.Equal(MessagingParticipantTypes.Client, initiallyVisible.Author.ParticipantType);
+
+        var follow = await service.ToggleFollowAsync(new SocialFollowCommand(
+            ClientActor(viewer),
+            owner.ClientUserId,
+            MessagingParticipantTypes.Client));
+        Assert.True(follow.Succeeded);
+
+        var afterFollowing = await service.GetPublicProfilePostsAsync(
+            ClientActor(viewer),
+            publicPost.Value.Author);
+
+        Assert.True(afterFollowing.Succeeded);
+        Assert.Equal(
+            new[] { followersOnlyPost.Value!.Id, publicPost.Value.Id },
+            afterFollowing.Value!.Select(post => post.Id));
+    }
+
+    [Fact]
     public async Task CurrentProfileFollowLists_ReturnEveryRelationshipAndMatchProfileCounts()
     {
         await using var db = ControllerTestHelpers.BuildDb();

@@ -102,8 +102,7 @@ private struct LegendSocialCreationModeMenu: View {
             }
             .toolbar(.hidden, for: .navigationBar)
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.hidden)
+        .legendNextSheetChrome(detents: [.large], showsDragIndicator: false)
     }
 
     private func creationOption(_ type: MobileSocialContentType) -> some View {
@@ -234,8 +233,7 @@ struct LegendSocialComposer: View {
             }
             .toolbar(.hidden, for: .navigationBar)
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.hidden)
+        .legendNextSheetChrome(detents: [.large], showsDragIndicator: false)
         .sheet(isPresented: musicPickerPresented) {
             LegendSocialMusicSelectionSheet(
                 social: social,
@@ -750,7 +748,7 @@ struct LegendSocialComposer: View {
 
     private var immersiveEditingContent: some View {
         ZStack {
-            Color.black
+            LegendNextColor.midnight
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -889,7 +887,7 @@ struct LegendSocialComposer: View {
             }
         } else {
             ZStack {
-                Color.black
+                LegendNextColor.midnight
 
                 if let primaryMedia = selectedMedia.first {
                     LegendSocialMediaPreview(
@@ -921,7 +919,7 @@ struct LegendSocialComposer: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
                         .background(
-                            Color.black.opacity(0.55),
+                            LegendNextColor.midnight.opacity(0.55),
                             in: Capsule()
                         )
                         .padding(.bottom, 12)
@@ -975,7 +973,7 @@ struct LegendSocialComposer: View {
                 .background(
                     activeStoryTool == tool
                         ? LegendNextColor.goldBright
-                        : Color.black.opacity(0.56),
+                        : LegendNextColor.midnight.opacity(0.56),
                     in: Circle()
                 )
                 .overlay {
@@ -1053,7 +1051,7 @@ struct LegendSocialComposer: View {
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(
-                LegendButtonStyle(kind: .primary)
+                LegendNextButtonStyle(kind: .primary)
             )
             .disabled(!canContinue)
             .accessibilityLabel(
@@ -1066,8 +1064,8 @@ struct LegendSocialComposer: View {
         .background(
             LinearGradient(
                 colors: [
-                    Color.black.opacity(0),
-                    Color.black.opacity(0.96)
+                    LegendNextColor.midnight.opacity(0),
+                    LegendNextColor.midnight.opacity(0.96)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -2121,11 +2119,11 @@ private struct LegendSocialMediaPreview: View {
                     maxHeight: .infinity
                 )
                 .clipped()
-                .background(Color.black.opacity(0.16))
+                .background(LegendNextColor.midnight.opacity(0.16))
 
             if presentation == .companion {
                 LinearGradient(
-                    colors: [.clear, Color.black.opacity(0.68)],
+                colors: [.clear, LegendNextColor.midnight.opacity(0.68)],
                     startPoint: .center,
                     endPoint: .bottom)
 
@@ -2151,7 +2149,7 @@ private struct LegendSocialMediaPreview: View {
                     .foregroundStyle(.white)
                     .padding(LegendNextSpacing.sm)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .background(Color.black.opacity(0.38), in: Capsule())
+                    .background(LegendNextColor.midnight.opacity(0.38), in: Capsule())
                     .padding(LegendNextSpacing.md)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .accessibilityLabel("Story text: \(overlayText)")
@@ -2432,7 +2430,7 @@ private final class LegendSocialCameraViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .black
+        view.backgroundColor = UIColor(LegendNextColor.midnight)
         previewLayer.videoGravity = .resizeAspectFill
         view.layer.insertSublayer(previewLayer, at: 0)
         configureControls()
@@ -2458,7 +2456,7 @@ private final class LegendSocialCameraViewController: UIViewController {
 
     private func configureControls() {
         let controlTint = UIColor.white
-        let chrome = UIColor.black.withAlphaComponent(0.42)
+        let chrome = UIColor(LegendNextColor.midnight).withAlphaComponent(0.42)
 
         configureIconButton(closeButton, symbol: "xmark", tint: controlTint, background: chrome)
         configureIconButton(flashButton, symbol: "bolt.slash.fill", tint: controlTint, background: chrome)
@@ -2832,7 +2830,7 @@ private struct LegendPhotoLibraryThumbnail: View {
                 thumbnail
                     .overlay {
                         if !isEligible {
-                            Color.black.opacity(0.45)
+                            LegendNextColor.midnight.opacity(0.45)
                         }
                     }
 
@@ -2846,7 +2844,7 @@ private struct LegendPhotoLibraryThumbnail: View {
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 3)
                                 .foregroundStyle(.white)
-                                .background(.black.opacity(0.7), in: Capsule())
+                                .background(LegendNextColor.midnight.opacity(0.7), in: Capsule())
                         }
                     }
                     .padding(6)
@@ -2907,7 +2905,7 @@ private struct LegendPhotoLibraryThumbnail: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.title3)
                 .foregroundStyle(LegendNextColor.gold)
-                .background(Color.black.opacity(0.62), in: Circle())
+                .background(LegendNextColor.midnight.opacity(0.62), in: Circle())
         }
     }
 
@@ -2965,7 +2963,7 @@ private struct LegendPhotoLibraryAssetPreview: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            LegendNextColor.midnight.ignoresSafeArea()
 
             if let image {
                 Image(uiImage: image)
@@ -2983,7 +2981,7 @@ private struct LegendPhotoLibraryAssetPreview: View {
                         Image(systemName: "xmark")
                             .font(.title3.weight(.semibold))
                             .frame(width: 44, height: 44)
-                            .background(Color.black.opacity(0.55), in: Circle())
+                            .background(LegendNextColor.midnight.opacity(0.55), in: Circle())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.white)
@@ -2997,7 +2995,7 @@ private struct LegendPhotoLibraryAssetPreview: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .foregroundStyle(.white)
-                            .background(Color.black.opacity(0.55), in: Capsule())
+                            .background(LegendNextColor.midnight.opacity(0.55), in: Capsule())
                     }
                 }
                 .padding(LegendNextSpacing.md)
@@ -3010,7 +3008,7 @@ private struct LegendPhotoLibraryAssetPreview: View {
                         systemImage: isSelected ? "minus.circle" : "checkmark.circle")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(LegendButtonStyle(kind: .primary))
+                .buttonStyle(LegendNextButtonStyle(kind: .primary))
                 .padding(LegendNextSpacing.md)
             }
         }

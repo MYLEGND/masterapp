@@ -271,6 +271,7 @@ public interface ISocialFeedService
 {
     Task<SocialOperationResult<SocialFeedSnapshot>> GetFeedAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<IReadOnlyList<SocialPostView>>> GetCurrentProfilePostsAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<IReadOnlyList<SocialPostView>>> GetPublicProfilePostsAsync(SocialFeedActor actor, SocialAuthor profile, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostView>> CreatePostAsync(CreateSocialPostCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostView>> CreateMediaPostAsync(CreateSocialMediaPostCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostView>> UpdatePostAsync(UpdateSocialPostCommand command, CancellationToken cancellationToken = default);
