@@ -211,6 +211,82 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task CurrentProfileFollowLists_ReturnEveryRelationshipAndMatchProfileCounts()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = Client("profile-owner", "Profile", "Owner");
+        var firstFollow = Client("first-follow", "First", "Follow");
+        var secondFollow = Client("second-follow", "Second", "Follow");
+        var firstFollower = Client("first-follower", "First", "Follower");
+        var secondFollower = Client("second-follower", "Second", "Follower");
+        db.ClientProfiles.AddRange(owner, firstFollow, secondFollow, firstFollower, secondFollower);
+        db.SocialFollows.AddRange(
+            new SocialFollow
+            {
+                Id = Guid.NewGuid(),
+                FollowerUserId = owner.ClientUserId,
+                FollowerParticipantType = MessagingParticipantTypes.Client,
+                FollowedUserId = firstFollow.ClientUserId,
+                FollowedParticipantType = MessagingParticipantTypes.Client,
+                CreatedUtc = DateTime.UtcNow.AddMinutes(-1)
+            },
+            new SocialFollow
+            {
+                Id = Guid.NewGuid(),
+                FollowerUserId = owner.ClientUserId,
+                FollowerParticipantType = MessagingParticipantTypes.Client,
+                FollowedUserId = secondFollow.ClientUserId,
+                FollowedParticipantType = MessagingParticipantTypes.Client,
+                CreatedUtc = DateTime.UtcNow
+            },
+            new SocialFollow
+            {
+                Id = Guid.NewGuid(),
+                FollowerUserId = firstFollower.ClientUserId,
+                FollowerParticipantType = MessagingParticipantTypes.Client,
+                FollowedUserId = owner.ClientUserId,
+                FollowedParticipantType = MessagingParticipantTypes.Client,
+                CreatedUtc = DateTime.UtcNow.AddMinutes(-2)
+            },
+            new SocialFollow
+            {
+                Id = Guid.NewGuid(),
+                FollowerUserId = secondFollower.ClientUserId,
+                FollowerParticipantType = MessagingParticipantTypes.Client,
+                FollowedUserId = owner.ClientUserId,
+                FollowedParticipantType = MessagingParticipantTypes.Client,
+                CreatedUtc = DateTime.UtcNow.AddMinutes(-3)
+            });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var actor = ClientActor(owner);
+
+        var follows = await service.GetCurrentProfileFollowListAsync(
+            actor,
+            SocialFollowListKinds.Follows);
+        var followers = await service.GetCurrentProfileFollowListAsync(
+            actor,
+            SocialFollowListKinds.Followers);
+        var metrics = await service.GetProfileMetricsAsync(actor);
+
+        Assert.True(follows.Succeeded);
+        Assert.True(followers.Succeeded);
+        Assert.True(metrics.Succeeded);
+        var followEntries = follows.Value ?? throw new InvalidOperationException("Follows list was missing.");
+        var followerEntries = followers.Value ?? throw new InvalidOperationException("Followers list was missing.");
+        var profileMetrics = metrics.Value ?? throw new InvalidOperationException("Profile metrics were missing.");
+        Assert.Equal(new[] { secondFollow.ClientUserId, firstFollow.ClientUserId },
+            followEntries.Select(entry => entry.Profile.UserId));
+        Assert.All(followEntries, entry => Assert.True(entry.FollowedByCurrentActor));
+        Assert.Equal(new[] { firstFollower.ClientUserId, secondFollower.ClientUserId },
+            followerEntries.Select(entry => entry.Profile.UserId));
+        Assert.All(followerEntries, entry => Assert.False(entry.FollowedByCurrentActor));
+        Assert.Equal(followEntries.Count, profileMetrics.FollowingCount);
+        Assert.Equal(followerEntries.Count, profileMetrics.FollowerCount);
+    }
+
+    [Fact]
     public async Task EditAndDelete_RequireTheExactOwnerAndRemoveThePostFromTheProfile()
     {
         await using var db = ControllerTestHelpers.BuildDb();

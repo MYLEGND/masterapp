@@ -59,6 +59,43 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
     }
 }
 
+/// The two relationship lists available from a Legend profile. Their raw values
+/// are transport selectors; the app owns the member-facing labels.
+enum MobileSocialFollowListKind: String, Codable, CaseIterable, Identifiable, Sendable {
+    case follows
+    case followers
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .follows:
+            return "Follows"
+        case .followers:
+            return "Followers"
+        }
+    }
+
+    var emptyMessage: String {
+        switch self {
+        case .follows:
+            return "When you follow people in Legend, they will appear here."
+        case .followers:
+            return "People who follow you in Legend will appear here."
+        }
+    }
+}
+
+/// A person in the current profile's Follows or Followers list. The identifier
+/// is the server's typed identity, so an agent and client with the same user ID
+/// are still distinct people in the interface.
+struct MobileSocialFollowListEntry: Codable, Equatable, Identifiable, Sendable {
+    let profile: MobileSocialAuthor
+    let followedByCurrentActor: Bool
+
+    var id: LogicalParticipantIdentity { profile.identity }
+}
+
 struct MobileSocialComment: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     let author: MobileSocialAuthor

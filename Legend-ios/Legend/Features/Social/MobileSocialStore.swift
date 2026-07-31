@@ -22,12 +22,32 @@ protocol MobileSocialAPI: Sendable {
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult
+    func currentProfileFollowList(kind: MobileSocialFollowListKind, accessToken: String) async throws -> [MobileSocialFollowListEntry]
+    func profileMetrics(for profile: MobileSocialAuthor, accessToken: String) async throws -> MobileSocialProfileMetrics
     func toggleSave(postID: UUID, accessToken: String) async throws -> MobileSocialShareState
     func toggleRepost(postID: UUID, accessToken: String) async throws -> MobileSocialShareState
     func recordShare(postID: UUID, accessToken: String) async throws -> MobileSocialShareState
     func recordView(postID: UUID, request: MobileRecordSocialView, accessToken: String) async throws -> MobileSocialPostMetrics
     func postInsights(postID: UUID, accessToken: String) async throws -> MobileSocialPostInsight
     func searchMusic(query: String, accessToken: String) async throws -> [MobileSocialMusicTrack]
+}
+
+extension MobileSocialAPI {
+    /// Optional for API doubles that do not exercise profile relationships. The
+    /// production client below provides the real server-backed implementation.
+    func currentProfileFollowList(
+        kind: MobileSocialFollowListKind,
+        accessToken: String
+    ) async throws -> [MobileSocialFollowListEntry] {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func profileMetrics(
+        for profile: MobileSocialAuthor,
+        accessToken: String
+    ) async throws -> MobileSocialProfileMetrics {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
 }
 
 struct MobileUnavailableSocialAPI: MobileSocialAPI {
@@ -56,6 +76,8 @@ struct MobileUnavailableSocialAPI: MobileSocialAPI {
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost { throw MobileAPIError.unauthorized(correlationID: nil) }
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment { throw MobileAPIError.unauthorized(correlationID: nil) }
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func currentProfileFollowList(kind: MobileSocialFollowListKind, accessToken: String) async throws -> [MobileSocialFollowListEntry] { throw MobileAPIError.unauthorized(correlationID: nil) }
+    func profileMetrics(for profile: MobileSocialAuthor, accessToken: String) async throws -> MobileSocialProfileMetrics { throw MobileAPIError.unauthorized(correlationID: nil) }
     func toggleSave(postID: UUID, accessToken: String) async throws -> MobileSocialShareState { throw MobileAPIError.unauthorized(correlationID: nil) }
     func toggleRepost(postID: UUID, accessToken: String) async throws -> MobileSocialShareState { throw MobileAPIError.unauthorized(correlationID: nil) }
     func recordShare(postID: UUID, accessToken: String) async throws -> MobileSocialShareState { throw MobileAPIError.unauthorized(correlationID: nil) }
@@ -166,6 +188,34 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
 
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult {
         try await client.post("/api/v1/mobile/social/follows/toggle", body: request, accessToken: accessToken, headers: participantHeader, response: MobileSocialFollowResult.self)
+    }
+
+    func currentProfileFollowList(
+        kind: MobileSocialFollowListKind,
+        accessToken: String
+    ) async throws -> [MobileSocialFollowListEntry] {
+        try await client.get(
+            "/api/v1/mobile/social/profile/follows",
+            accessToken: accessToken,
+            queryItems: [URLQueryItem(name: "list", value: kind.rawValue)],
+            headers: participantHeader,
+            response: [MobileSocialFollowListEntry].self)
+    }
+
+    func profileMetrics(
+        for profile: MobileSocialAuthor,
+        accessToken: String
+    ) async throws -> MobileSocialProfileMetrics {
+        try await client.get(
+            "/api/v1/mobile/social/profiles/metrics",
+            accessToken: accessToken,
+            queryItems: [
+                URLQueryItem(name: "userId", value: profile.identity.userID),
+                URLQueryItem(name: "participantType", value: profile.identity.participantType.rawValue),
+                URLQueryItem(name: "profileId", value: profile.profileID)
+            ],
+            headers: participantHeader,
+            response: MobileSocialProfileMetrics.self)
     }
 
     func toggleSave(postID: UUID, accessToken: String) async throws -> MobileSocialShareState {
@@ -625,6 +675,42 @@ final class MobileSocialStore: ObservableObject {
         } catch {
             actionFailure = failure(for: error, title: "Could not update your connection")
             return nil
+        }
+    }
+
+    /// Loads one complete, server-authoritative relationship list. The view owns
+    /// this short-lived state so opening Follows and Followers in separate
+    /// navigation paths can never overwrite one another.
+    func followList(
+        kind: MobileSocialFollowListKind
+    ) async -> MobileDataLoadState<[MobileSocialFollowListEntry]> {
+        do {
+            let token = try await accessTokenProvider()
+            return .loaded(try await api.currentProfileFollowList(
+                kind: kind,
+                accessToken: token))
+        } catch {
+            return .unavailable(failure(
+                for: error,
+                title: "\(kind.title) unavailable"))
+        }
+    }
+
+    /// Gets current counts for a profile opened from a relationship list. The
+    /// server validates that the member is either authorized in the network or
+    /// directly connected by a follow edge.
+    func profileMetrics(
+        for profile: MobileSocialAuthor
+    ) async -> MobileDataLoadState<MobileSocialProfileMetrics> {
+        do {
+            let token = try await accessTokenProvider()
+            return .loaded(try await api.profileMetrics(
+                for: profile,
+                accessToken: token))
+        } catch {
+            return .unavailable(failure(
+                for: error,
+                title: "Profile unavailable"))
         }
     }
 

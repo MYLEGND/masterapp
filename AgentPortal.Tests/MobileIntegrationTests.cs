@@ -772,6 +772,69 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileSocialProfileFollows_ProjectsEveryRelationshipEntry()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "client-social-follows",
+            FirstName = "Client",
+            LastName = "Follows",
+            Email = "client-social-follows@example.test"
+        };
+        var followed = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "followed-client",
+            FirstName = "Followed",
+            LastName = "Client",
+            Email = "followed-client@example.test"
+        };
+        db.ClientProfiles.AddRange(client, followed);
+        await db.SaveChangesAsync();
+
+        var followedAuthor = new SocialAuthor(
+            followed.ClientUserId,
+            MessagingParticipantTypes.Client,
+            followed.Id,
+            "Followed Client");
+        var social = new Mock<ISocialFeedService>(MockBehavior.Strict);
+        social
+            .Setup(service => service.GetCurrentProfileFollowListAsync(
+                It.Is<SocialFeedActor>(actor =>
+                    actor.Identity.UserId == client.ClientUserId &&
+                    actor.Identity.ParticipantType == MessagingParticipantTypes.Client &&
+                    actor.ProfileId == client.Id),
+                SocialFollowListKinds.Follows,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>.Success(
+                [new SocialFollowListEntry(followedAuthor, true)]));
+
+        var images = new Mock<IMessagingProfileImageResolver>(MockBehavior.Strict);
+        images
+            .Setup(service => service.ResolveAsync(
+                It.Is<MessagingParticipantIdentity>(identity =>
+                    identity.UserId == followed.ClientUserId &&
+                    identity.ParticipantType == MessagingParticipantTypes.Client &&
+                    identity.ProfileId == followed.Id),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MessagingProfileImage([1, 2, 3], "image/png"));
+        var controller = CreateSocialController(db, social.Object, Principal(client.ClientUserId), images.Object);
+
+        var result = await controller.CurrentProfileFollows(SocialFollowListKinds.Follows, CancellationToken.None);
+
+        var response = Assert.IsType<OkObjectResult>(result);
+        var entries = Assert.IsAssignableFrom<IReadOnlyList<MobileSocialFollowListEntryDto>>(response.Value);
+        var entry = Assert.Single(entries);
+        Assert.Equal("Followed Client", entry.Profile.DisplayName);
+        Assert.True(entry.FollowedByCurrentActor);
+        Assert.NotNull(entry.Profile.Avatar);
+        social.VerifyAll();
+        images.VerifyAll();
+    }
+
+    [Fact]
     public async Task MobileSocialFeed_ProjectsStoriesPostsAndActivitySequentially()
     {
         await using var db = ControllerTestHelpers.BuildDb();

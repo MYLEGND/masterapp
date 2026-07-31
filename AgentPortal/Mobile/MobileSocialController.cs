@@ -53,6 +53,24 @@ public sealed class MobileSocialController : MobileApiControllerBase
             : SocialFailure(result.ErrorCode, result.ErrorMessage);
     }
 
+    [HttpGet("profile/follows")]
+    public async Task<IActionResult> CurrentProfileFollows(
+        [FromQuery] string? list,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.GetCurrentProfileFollowListAsync(
+            resolved.Actor!,
+            list ?? string.Empty,
+            cancellationToken);
+        return result.Succeeded && result.Value is not null
+            ? Ok(await ToFollowListDtosAsync(result.Value, cancellationToken))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
     [HttpPost("posts")]
     public async Task<IActionResult> CreatePost(
         [FromBody] MobileCreateSocialPostRequest? request,
@@ -433,6 +451,21 @@ public sealed class MobileSocialController : MobileApiControllerBase
         return result;
     }
 
+    private async Task<IReadOnlyList<MobileSocialFollowListEntryDto>> ToFollowListDtosAsync(
+        IEnumerable<SocialFollowListEntry> entries,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<MobileSocialFollowListEntryDto>();
+        foreach (var entry in entries)
+        {
+            result.Add(new MobileSocialFollowListEntryDto(
+                await ToAuthorDtoAsync(entry.Profile, cancellationToken),
+                entry.FollowedByCurrentActor));
+        }
+
+        return result;
+    }
+
     private async Task<MobileSocialPostDto> ToPostDtoAsync(SocialPostView post, CancellationToken cancellationToken) => new(
         post.Id,
         await ToAuthorDtoAsync(post.Author, cancellationToken),
@@ -609,6 +642,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
             "social_comments_disabled" or
             "social_follow_invalid" or
             "social_follow_source_invalid" or
+            "social_follow_list_invalid" or
             "social_view_invalid" or
             "social_music_invalid" or
             "social_music_query_invalid" or
@@ -666,6 +700,7 @@ public sealed record MobileRecordProfileVisitRequest(string? TargetUserId, strin
 public sealed record MobileSocialFollowResultDto(bool IsFollowing);
 public sealed record MobileSocialStateResultDto(bool IsActive);
 public sealed record MobileSocialAuthorDto(MobileLogicalIdentityDto Identity, string ProfileId, string DisplayName, MobileAvatarDto? Avatar);
+public sealed record MobileSocialFollowListEntryDto(MobileSocialAuthorDto Profile, bool FollowedByCurrentActor);
 public sealed record MobileSocialCommentDto(Guid Id, MobileSocialAuthorDto Author, Guid? ParentCommentId, string Body, DateTime CreatedUtc);
 
 public sealed record MobileSocialMediaDto(

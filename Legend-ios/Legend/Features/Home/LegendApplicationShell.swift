@@ -5740,20 +5740,44 @@ private struct LegendAccountView: View {
             }
 
             HStack(spacing: LegendNextSpacing.xs) {
-                profileMetric(
-                    value: hacCount,
-                    title: "Hacs"
-                )
+                Button {
+                    selectedContent = .hacs
+                } label: {
+                    profileMetric(
+                        value: hacCount,
+                        title: "Hacs"
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Show your Hacs")
 
-                profileMetric(
-                    value: currentProfileMetrics?.followingCount ?? 0,
-                    title: "Following"
-                )
+                NavigationLink {
+                    LegendFollowListView(
+                        kind: .follows,
+                        currentIdentity: currentSession.actor.identity,
+                        social: social)
+                } label: {
+                    profileMetric(
+                        value: currentProfileMetrics?.followingCount ?? 0,
+                        title: "Follows"
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Show people you follow")
 
-                profileMetric(
-                    value: currentProfileMetrics?.followerCount ?? 0,
-                    title: "Followers"
-                )
+                NavigationLink {
+                    LegendFollowListView(
+                        kind: .followers,
+                        currentIdentity: currentSession.actor.identity,
+                        social: social)
+                } label: {
+                    profileMetric(
+                        value: currentProfileMetrics?.followerCount ?? 0,
+                        title: "Followers"
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Show people who follow you")
             }
             .frame(maxWidth: .infinity)
         }
@@ -6091,8 +6115,7 @@ private struct LegendAccountView: View {
             }
         }
 
-        return (currentProfileMetrics?.postCount ?? 0)
-            + (currentProfileMetrics?.videoCount ?? 0)
+        return currentProfileMetrics?.videoCount ?? 0
     }
 
     private func profileMetric(
@@ -6130,6 +6153,244 @@ private struct LegendAccountView: View {
         }
 
         return normalized
+    }
+}
+
+/// The shared, server-backed relationship-list presentation for a profile. It
+/// intentionally has no page cap: SwiftUI's List supplies the scrolling while
+/// the social service supplies every authorized follow edge.
+private struct LegendFollowListView: View {
+    let kind: MobileSocialFollowListKind
+    let currentIdentity: LogicalParticipantIdentity
+
+    @ObservedObject private var social: MobileSocialStore
+    @State private var state: MobileDataLoadState<[MobileSocialFollowListEntry]> = .idle
+
+    init(
+        kind: MobileSocialFollowListKind,
+        currentIdentity: LogicalParticipantIdentity,
+        social: MobileSocialStore
+    ) {
+        self.kind = kind
+        self.currentIdentity = currentIdentity
+        _social = ObservedObject(wrappedValue: social)
+    }
+
+    var body: some View {
+        Group {
+            switch state {
+            case .idle, .loading:
+                ProgressView("Loading \(kind.title.lowercased())")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            case .loaded(let entries):
+                if entries.isEmpty {
+                    ContentUnavailableView(
+                        kind.title,
+                        systemImage: kind == .follows ? "person.2" : "person.2.fill",
+                        description: Text(kind.emptyMessage))
+                } else {
+                    List(entries) { entry in
+                        NavigationLink {
+                            LegendSocialProfileView(
+                                entry: entry,
+                                currentIdentity: currentIdentity,
+                                social: social)
+                        } label: {
+                            followRow(entry)
+                        }
+                        .accessibilityHint("Visit \(entry.profile.displayName)'s profile")
+                    }
+                    .listStyle(.plain)
+                    .scrollIndicators(.visible)
+                }
+
+            case .unavailable(let failure):
+                LegendErrorCard(
+                    title: failure.title,
+                    message: failure.message,
+                    retryTitle: "Retry",
+                    retry: { Task { await refresh() } })
+                .padding(LegendNextSpacing.sm)
+            }
+        }
+        .background(LegendNextColor.canvas.ignoresSafeArea())
+        .navigationTitle(kind.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            Task { await refresh() }
+        }
+        .refreshable {
+            await refresh()
+        }
+    }
+
+    private func followRow(
+        _ entry: MobileSocialFollowListEntry
+    ) -> some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            LegendProfileAvatar(
+                avatar: entry.profile.avatar,
+                displayName: entry.profile.displayName,
+                size: 48)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.profile.displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+
+                Text(entry.profile.identity.participantType.rawValue)
+                    .font(.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            }
+
+            Spacer(minLength: LegendNextSpacing.xs)
+
+            if entry.followedByCurrentActor && kind == .followers {
+                Text("Following")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private func refresh() async {
+        state = .loading
+        async let profileRefresh = social.refresh()
+        let list = await social.followList(kind: kind)
+        _ = await profileRefresh
+        state = list
+    }
+}
+
+/// A profile destination used by both Follows and Followers. Its counts are
+/// loaded from the server when opened, rather than inferred from list state.
+private struct LegendSocialProfileView: View {
+    let entry: MobileSocialFollowListEntry
+    let currentIdentity: LogicalParticipantIdentity
+
+    @ObservedObject private var social: MobileSocialStore
+    @State private var metricsState: MobileDataLoadState<MobileSocialProfileMetrics> = .idle
+    @State private var isFollowing: Bool
+    @State private var isUpdatingFollow = false
+
+    init(
+        entry: MobileSocialFollowListEntry,
+        currentIdentity: LogicalParticipantIdentity,
+        social: MobileSocialStore
+    ) {
+        self.entry = entry
+        self.currentIdentity = currentIdentity
+        _social = ObservedObject(wrappedValue: social)
+        _isFollowing = State(initialValue: entry.followedByCurrentActor)
+    }
+
+    var body: some View {
+        Group {
+            switch metricsState {
+            case .idle, .loading:
+                ProgressView("Loading profile")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            case .loaded(let metrics):
+                ScrollView {
+                    VStack(spacing: LegendNextSpacing.md) {
+                        LegendProfileAvatar(
+                            avatar: metrics.profile.avatar,
+                            displayName: metrics.profile.displayName,
+                            size: 100)
+
+                        VStack(spacing: 4) {
+                            Text(metrics.profile.displayName)
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(LegendNextColor.textPrimary)
+
+                            Text(metrics.profile.identity.participantType.rawValue)
+                                .font(.subheadline)
+                                .foregroundStyle(LegendNextColor.textSecondary)
+                        }
+
+                        HStack(spacing: LegendNextSpacing.md) {
+                            metric(value: metrics.videoCount, title: "Hacs")
+                            metric(value: metrics.followingCount, title: "Follows")
+                            metric(value: metrics.followerCount, title: "Followers")
+                        }
+
+                        if metrics.profile.identity != currentIdentity {
+                            Button {
+                                Task { await toggleFollow() }
+                            } label: {
+                                Text(isFollowing ? "Following" : "Follow")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(LegendProfileActionButtonStyle())
+                            .disabled(isUpdatingFollow)
+                            .accessibilityHint(isFollowing
+                                ? "Stop following \(metrics.profile.displayName)"
+                                : "Follow \(metrics.profile.displayName)")
+                        }
+                    }
+                    .padding(LegendNextSpacing.md)
+                    .frame(maxWidth: .infinity)
+                }
+
+            case .unavailable(let failure):
+                LegendErrorCard(
+                    title: failure.title,
+                    message: failure.message,
+                    retryTitle: "Retry",
+                    retry: { Task { await refresh() } })
+                .padding(LegendNextSpacing.sm)
+            }
+        }
+        .background(LegendNextColor.canvas.ignoresSafeArea())
+        .navigationTitle("Profile")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            Task { await refresh() }
+        }
+        .refreshable {
+            await refresh()
+        }
+    }
+
+    private func metric(value: Int, title: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value.formatted())
+                .font(.headline.weight(.bold))
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .contentTransition(.numericText())
+
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(LegendNextColor.textSecondary)
+        }
+        .frame(minWidth: 64)
+    }
+
+    private func refresh() async {
+        metricsState = .loading
+        async let profileRefresh = social.refresh()
+        let metrics = await social.profileMetrics(for: entry.profile)
+        _ = await profileRefresh
+        metricsState = metrics
+    }
+
+    private func toggleFollow() async {
+        guard !isUpdatingFollow else { return }
+        isUpdatingFollow = true
+        defer { isUpdatingFollow = false }
+
+        guard let confirmed = await social.setFollow(
+            userID: entry.profile.identity.userID,
+            participantType: entry.profile.identity.participantType,
+            isFollowing: !isFollowing) else {
+            return
+        }
+
+        isFollowing = confirmed
+        await refresh()
     }
 }
 
