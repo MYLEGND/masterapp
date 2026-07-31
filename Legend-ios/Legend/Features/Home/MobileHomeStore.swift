@@ -569,6 +569,26 @@ final class MobileJourneyCirclesStore: ObservableObject {
         }
     }
 
+    /// Sends a connection request and reports whether the server accepted it, so a
+    /// caller such as Discover can update one row instead of reloading a dashboard.
+    func requestConnectionConfirmed(to profileID: UUID) async -> Bool {
+        actionFailure = nil
+        do {
+            try await api.requestConnection(
+                MobileJourneyConnectionRequestBody(
+                    targetClientProfileID: profileID,
+                    connectionReason: nil,
+                    introduction: nil),
+                accessToken: try await accessTokenProvider())
+            // Keep the Journey Circles dashboard consistent with the new request.
+            _ = await refresh()
+            return true
+        } catch {
+            actionFailure = failure(for: error, title: "Could not send the request")
+            return false
+        }
+    }
+
     func saveProfile(_ profile: MobileJourneyProfileInput) {
         performAction {
             try await self.api.saveProfile(

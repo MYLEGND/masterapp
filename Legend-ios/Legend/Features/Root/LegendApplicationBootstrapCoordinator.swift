@@ -26,6 +26,7 @@ final class LegendApplicationStores {
     let financial: MobileFinancialStore
     let social: MobileSocialStore
     let journeyCircles: MobileJourneyCirclesStore
+    let discovery: MobileDiscoveryStore
     let account: MobileAccountStore
     let messaging: MessagingStore
     let agentWorkspace: MobileAgentWorkspaceStore?
@@ -36,8 +37,13 @@ final class LegendApplicationStores {
     ) {
         home = coordinator.makeHomeStore()
         financial = coordinator.makeFinancialStore()
-        social = coordinator.makeSocialStore()
-        journeyCircles = coordinator.makeJourneyCirclesStore()
+        let social = coordinator.makeSocialStore()
+        let journeyCircles = coordinator.makeJourneyCirclesStore()
+        self.social = social
+        self.journeyCircles = journeyCircles
+        discovery = coordinator.makeDiscoveryStore(
+            social: social,
+            journeyCircles: journeyCircles)
         account = coordinator.makeAccountStore()
         messaging = coordinator.makeMessagingStore()
         agentWorkspace = currentSession.actor.identity.participantType == .agent
@@ -50,6 +56,7 @@ final class LegendApplicationStores {
         financial: MobileFinancialStore,
         social: MobileSocialStore,
         journeyCircles: MobileJourneyCirclesStore,
+        discovery: MobileDiscoveryStore,
         account: MobileAccountStore,
         messaging: MessagingStore,
         agentWorkspace: MobileAgentWorkspaceStore?
@@ -58,6 +65,7 @@ final class LegendApplicationStores {
         self.financial = financial
         self.social = social
         self.journeyCircles = journeyCircles
+        self.discovery = discovery
         self.account = account
         self.messaging = messaging
         self.agentWorkspace = agentWorkspace

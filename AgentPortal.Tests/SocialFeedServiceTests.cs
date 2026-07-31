@@ -903,7 +903,8 @@ public sealed class SocialFeedServiceTests
             db,
             messaging,
             mediaStorage ?? new UnavailableTestSocialMediaStorage(),
-            musicCatalog ?? new UnavailableSocialMusicCatalog());
+            musicCatalog ?? new UnavailableSocialMusicCatalog(),
+            new SocialDiscoveryService(db));
     }
 
     private sealed class UnavailableTestSocialMediaStorage

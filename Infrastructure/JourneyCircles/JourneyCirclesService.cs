@@ -230,33 +230,6 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
-        static double DiceSimilarity(
-            HashSet<string> first,
-            HashSet<string> second)
-        {
-            if (first.Count == 0 || second.Count == 0)
-                return 0d;
-
-            var sharedCount = first.Count(second.Contains);
-
-            return (2d * sharedCount) /
-                   (first.Count + second.Count);
-        }
-
-        static bool IsComparable(
-            HashSet<string> first,
-            HashSet<string> second)
-        {
-            return first.Count > 0 && second.Count > 0;
-        }
-
-        static string? FirstShared(
-            HashSet<string> first,
-            HashSet<string> second)
-        {
-            return first.FirstOrDefault(second.Contains);
-        }
-
         static ulong StableRotationKey(
             Guid viewerId,
             Guid candidateId,
@@ -369,205 +342,38 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
 
         if (includeRecommendations)
         {
+            var sourceTraits = new JourneyCircleTraits
+            {
+                Goals = sourceGoals,
+                Interests = sourceInterests,
+                Circles = sourceCircles,
+                LifeStages = sourceStages,
+                Locations = sourceLocations,
+                ConnectionTypes = sourceConnectionTypes,
+                CommunicationStyles = sourceCommunicationStyles,
+                AccountabilityFrequencies = sourceFrequencies
+            };
+
             foreach (var candidate in eligibleCandidates)
             {
-                var candidateGoals =
-                    Normalize(FromJson(candidate.GoalsJson));
+                // Scoring lives in JourneyCircleCompatibilityScorer so the suggestion
+                // feed and Discover rank members identically. The thresholds below stay
+                // here because they are suggestion-feed policy, not scoring.
+                var compatibility = JourneyCircleCompatibilityScorer.Evaluate(
+                    sourceTraits,
+                    JourneyCircleCompatibilityScorer.Traits(candidate));
 
-                var candidateInterests =
-                    Normalize(FromJson(candidate.InterestsJson));
-
-                var candidateCircles =
-                    Normalize(FromJson(candidate.CircleCodesJson));
-
-                var candidateStages =
-                    Normalize(FromDelimited(candidate.LifeStage));
-
-                var candidateLocations =
-                    Normalize(FromDelimited(candidate.LocationLabel));
-
-                var candidateConnectionTypes =
-                    Normalize(FromJson(candidate.ConnectionTypesJson));
-
-                var candidateCommunicationStyles =
-                    Normalize(FromDelimited(candidate.CommunicationStyle));
-
-                var candidateFrequencies =
-                    Normalize(
-                        FromDelimited(candidate.AccountabilityFrequency));
-
-                var comparableCategoryCount =
-                    (IsComparable(sourceGoals, candidateGoals) ? 1 : 0) +
-                    (IsComparable(
-                        sourceConnectionTypes,
-                        candidateConnectionTypes) ? 1 : 0) +
-                    (IsComparable(sourceCircles, candidateCircles) ? 1 : 0) +
-                    (IsComparable(sourceStages, candidateStages) ? 1 : 0) +
-                    (IsComparable(
-                        sourceInterests,
-                        candidateInterests) ? 1 : 0) +
-                    (IsComparable(
-                        sourceCommunicationStyles,
-                        candidateCommunicationStyles) ? 1 : 0) +
-                    (IsComparable(
-                        sourceFrequencies,
-                        candidateFrequencies) ? 1 : 0) +
-                    (IsComparable(
-                        sourceLocations,
-                        candidateLocations) ? 1 : 0);
-
-                if (comparableCategoryCount <
-                    minimumComparableCategories)
-                {
-                    continue;
-                }
-
-                var sharedGoal =
-                    FirstShared(sourceGoals, candidateGoals);
-
-                var sharedConnectionType =
-                    FirstShared(
-                        sourceConnectionTypes,
-                        candidateConnectionTypes);
-
-                var sharedCircle =
-                    FirstShared(sourceCircles, candidateCircles);
-
-                var hasMeaningfulAnchor =
-                    sharedGoal is not null ||
-                    sharedConnectionType is not null ||
-                    sharedCircle is not null;
-
-                if (!hasMeaningfulAnchor)
+                if (compatibility.ComparableCategoryCount < minimumComparableCategories)
                     continue;
 
-                double earnedWeight = 0d;
-                double availableWeight = 0d;
-
-                void ScoreCategory(
-                    HashSet<string> first,
-                    HashSet<string> second,
-                    double weight)
-                {
-                    if (!IsComparable(first, second))
-                        return;
-
-                    availableWeight += weight;
-
-                    earnedWeight +=
-                        DiceSimilarity(first, second) * weight;
-                }
-
-                ScoreCategory(sourceGoals, candidateGoals, 25d);
-
-                ScoreCategory(
-                    sourceConnectionTypes,
-                    candidateConnectionTypes,
-                    15d);
-
-                ScoreCategory(sourceCircles, candidateCircles, 15d);
-                ScoreCategory(sourceStages, candidateStages, 10d);
-                ScoreCategory(sourceInterests, candidateInterests, 10d);
-
-                ScoreCategory(
-                    sourceCommunicationStyles,
-                    candidateCommunicationStyles,
-                    10d);
-
-                ScoreCategory(
-                    sourceFrequencies,
-                    candidateFrequencies,
-                    10d);
-
-                ScoreCategory(sourceLocations, candidateLocations, 5d);
-
-                if (availableWeight <= 0d)
+                if (!compatibility.HasMeaningfulAnchor)
                     continue;
 
-                var score = (int)Math.Round(
-                    earnedWeight / availableWeight * 100d,
-                    MidpointRounding.AwayFromZero);
-
+                var score = compatibility.Score;
                 if (score < minimumCompatibilityScore)
                     continue;
 
-                var matchStrength =
-                    score >= 85
-                        ? "Exceptional match"
-                        : score >= 70
-                            ? "Excellent match"
-                            : score >= 60
-                                ? "Strong match"
-                                : "Good match";
-
-                var reasons = new List<string>();
-
-                if (sharedGoal is not null)
-                    reasons.Add($"shared goal: {sharedGoal}");
-
-                if (sharedConnectionType is not null)
-                {
-                    reasons.Add(
-                        "shared connection preference: " +
-                        sharedConnectionType);
-                }
-
-                if (sharedCircle is not null)
-                {
-                    reasons.Add(
-                        $"shared Journey Circle: {sharedCircle}");
-                }
-
-                var sharedStage =
-                    FirstShared(sourceStages, candidateStages);
-
-                if (sharedStage is not null)
-                    reasons.Add($"shared life stage: {sharedStage}");
-
-                var sharedInterest =
-                    FirstShared(sourceInterests, candidateInterests);
-
-                if (sharedInterest is not null)
-                    reasons.Add($"shared interest: {sharedInterest}");
-
-                var sharedCommunicationStyle =
-                    FirstShared(
-                        sourceCommunicationStyles,
-                        candidateCommunicationStyles);
-
-                if (sharedCommunicationStyle is not null)
-                {
-                    reasons.Add(
-                        "shared communication style: " +
-                        sharedCommunicationStyle);
-                }
-
-                var sharedFrequency =
-                    FirstShared(
-                        sourceFrequencies,
-                        candidateFrequencies);
-
-                if (sharedFrequency is not null)
-                {
-                    reasons.Add(
-                        "shared accountability preference: " +
-                        sharedFrequency);
-                }
-
-                var sharedLocation =
-                    FirstShared(sourceLocations, candidateLocations);
-
-                if (sharedLocation is not null)
-                    reasons.Add($"shared location: {sharedLocation}");
-
-                var explanation =
-                    reasons.Count == 0
-                        ? $"Recommended for you. {matchStrength}."
-                        : "Recommended for you. " +
-                          matchStrength +
-                          ". " +
-                          string.Join("; ", reasons.Take(3)) +
-                          ".";
+                var explanation = compatibility.RecommendationExplanation;
 
                 rankedRecommendations.Add(
                     (candidate, score, explanation));

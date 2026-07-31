@@ -15,6 +15,7 @@ public static class SocialServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configuration);
 
         services.AddScoped<ISocialFeedService, SocialFeedService>();
+        services.AddScoped<ISocialDiscoveryService, SocialDiscoveryService>();
         services.AddSingleton<ISocialMediaStorage, SocialMediaStorage>();
         services.Configure<SpotifySocialMusicOptions>(
             configuration.GetSection(SpotifySocialMusicOptions.SectionName));

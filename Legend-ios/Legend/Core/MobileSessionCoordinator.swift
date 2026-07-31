@@ -330,6 +330,35 @@ final class MobileSessionCoordinator: ObservableObject {
             diagnostics: diagnostics)
     }
 
+    /// Discover composes the social and Journey Circles stores so following and
+    /// connection requests keep flowing through their existing owners.
+    func makeDiscoveryStore(
+        social: MobileSocialStore,
+        journeyCircles: MobileJourneyCirclesStore
+    ) -> MobileDiscoveryStore {
+        guard let apiBaseURL = configuration.apiBaseURL,
+              case .authenticated(let currentSession) = state else {
+            return MobileDiscoveryStore(
+                api: MobileUnavailableDiscoveryAPI(),
+                social: social,
+                journeyCircles: journeyCircles,
+                accessTokenProvider: { throw MobileAPIError.unauthorized(correlationID: nil) },
+                diagnostics: diagnostics)
+        }
+
+        return MobileDiscoveryStore(
+            api: URLSessionMobileDiscoveryAPI(
+                client: MobileHTTPClient(baseURL: apiBaseURL),
+                participantType: currentSession.actor.identity.participantType),
+            social: social,
+            journeyCircles: journeyCircles,
+            accessTokenProvider: { [weak self] in
+                guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
+                return try await self.accessTokenForRequest()
+            },
+            diagnostics: diagnostics)
+    }
+
     func makeAccountStore() -> MobileAccountStore {
         guard let apiBaseURL = configuration.apiBaseURL,
               case .authenticated(let currentSession) = state else {

@@ -2,6 +2,8 @@ namespace Domain.JourneyCircles;
 
 public static class JourneyCircleConnectionStatuses
 {
+    /// <summary>No connection record exists between the two members.</summary>
+    public const string None = "None";
     public const string Pending = "Pending";
     public const string Accepted = "Accepted";
     public const string Declined = "Declined";

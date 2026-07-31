@@ -281,6 +281,15 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
     ) -> LegendApplicationBootstrapCoordinator {
         let tokenProvider: () async throws -> String = { "token" }
         let diagnostics = LegendDiagnostics()
+        // Discover composes these two, so they are built once and shared.
+        let socialStore = MobileSocialStore(
+            api: services.social,
+            accessTokenProvider: tokenProvider,
+            diagnostics: diagnostics)
+        let journeyStore = MobileJourneyCirclesStore(
+            api: services.journey,
+            accessTokenProvider: tokenProvider,
+            diagnostics: diagnostics)
         let stores = LegendApplicationStores(
             home: MobileHomeStore(
                 api: services.home,
@@ -290,12 +299,12 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
                 api: services.financial,
                 accessTokenProvider: tokenProvider,
                 diagnostics: diagnostics),
-            social: MobileSocialStore(
-                api: services.social,
-                accessTokenProvider: tokenProvider,
-                diagnostics: diagnostics),
-            journeyCircles: MobileJourneyCirclesStore(
-                api: services.journey,
+            social: socialStore,
+            journeyCircles: journeyStore,
+            discovery: MobileDiscoveryStore(
+                api: MobileUnavailableDiscoveryAPI(),
+                social: socialStore,
+                journeyCircles: journeyStore,
                 accessTokenProvider: tokenProvider,
                 diagnostics: diagnostics),
             account: MobileAccountStore(

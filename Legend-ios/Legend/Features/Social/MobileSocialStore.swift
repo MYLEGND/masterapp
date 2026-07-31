@@ -580,6 +580,45 @@ final class MobileSocialStore: ObservableObject {
         }
     }
 
+    /// Follows or unfollows a participant who may not be in the loaded feed, and
+    /// returns the follow state the server confirmed (nil when the call failed).
+    ///
+    /// Discover needs this because a discovered member usually has no post in the
+    /// current feed, so the feed-driven `toggleFollow` has nothing to act on.
+    func setFollow(
+        userID: String,
+        participantType: ParticipantType,
+        isFollowing: Bool
+    ) async -> Bool? {
+        actionFailure = nil
+        do {
+            let token = try await accessTokenProvider()
+            let result = try await api.toggleFollow(
+                MobileToggleSocialFollow(
+                    followedUserID: userID,
+                    followedParticipantType: participantType,
+                    sourcePostID: nil),
+                accessToken: token)
+
+            // The server owns the outcome. If it disagrees with the requested
+            // direction, its answer wins.
+            transformPosts(
+                matching: { $0.author.identity.userID == userID
+                    && $0.author.identity.participantType == participantType },
+                transform: { $0.replacing(followedByCurrentActor: result.isFollowing) })
+
+            if result.isFollowing != isFollowing {
+                return result.isFollowing
+            }
+
+            adjustCurrentProfileMetrics(followingCountBy: result.isFollowing ? 1 : -1)
+            return result.isFollowing
+        } catch {
+            actionFailure = failure(for: error, title: "Could not update your connection")
+            return nil
+        }
+    }
+
     func dismissActionFailure() {
         actionFailure = nil
     }

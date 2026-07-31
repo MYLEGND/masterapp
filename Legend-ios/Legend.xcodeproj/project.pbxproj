@@ -46,7 +46,12 @@
 		CEA324C22EB521222C0E457B /* README-NEXTGEN.md in Resources */ = {isa = PBXBuildFile; fileRef = 1B1EEE02B5210AA94A3A78FA /* README-NEXTGEN.md */; };
 		D16AC0B59523AF8ABC1611C3 /* MessagingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5528EEB1AE65FCB262CDEB12 /* MessagingStore.swift */; };
 		D26F0D3763F4892CDB762AA3 /* MessagingHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AAA5690855BD6C5B4132AB3 /* MessagingHomeView.swift */; };
+		BB01D15C0000000000000010 /* MobileDiscoveryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01D15C0000000000000010 /* MobileDiscoveryStoreTests.swift */; };
 		DBBEB1BAE8F2ADBDF7A37DE1 /* MobileSocialContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */; };
+		BB01D15C0000000000000001 /* MobileDiscoveryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01D15C0000000000000001 /* MobileDiscoveryModels.swift */; };
+		BB01D15C0000000000000002 /* MobileDiscoveryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01D15C0000000000000002 /* MobileDiscoveryStore.swift */; };
+		BB01D15C0000000000000003 /* LegendDiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01D15C0000000000000003 /* LegendDiscoverView.swift */; };
+		BB01D15C0000000000000004 /* LegendDiscoverProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01D15C0000000000000004 /* LegendDiscoverProfileView.swift */; };
 		DD0CC6EE761E59591FAE8ACA /* MobileSocialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28C1D977C634FEC8B8B83B87 /* MobileSocialStore.swift */; };
 		DF44B6B8A2DC0CABCA2850B7 /* MobileConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */; };
 		ED6F8CA9B2F56B434459B527 /* MobileSocialModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */; };
@@ -76,6 +81,10 @@
 		1AAA5690855BD6C5B4132AB3 /* MessagingHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingHomeView.swift; sourceTree = "<group>"; };
 		1B1EEE02B5210AA94A3A78FA /* README-NEXTGEN.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "README-NEXTGEN.md"; sourceTree = "<group>"; };
 		20D35703BC894AC8E986DFF8 /* MessagingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingModels.swift; sourceTree = "<group>"; };
+		AA01D15C0000000000000001 /* MobileDiscoveryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDiscoveryModels.swift; sourceTree = "<group>"; };
+		AA01D15C0000000000000002 /* MobileDiscoveryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDiscoveryStore.swift; sourceTree = "<group>"; };
+		AA01D15C0000000000000003 /* LegendDiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiscoverView.swift; sourceTree = "<group>"; };
+		AA01D15C0000000000000004 /* LegendDiscoverProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiscoverProfileView.swift; sourceTree = "<group>"; };
 		28C1D977C634FEC8B8B83B87 /* MobileSocialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialStore.swift; sourceTree = "<group>"; };
 		2B58FFC163E4FC3D9A4C4EA3 /* Legend-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Legend-Debug.xcconfig"; sourceTree = "<group>"; };
 		2DBFA05778BCF03C185381BE /* LegendComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendComponents.swift; sourceTree = "<group>"; };
@@ -95,6 +104,7 @@
 		5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialModels.swift; sourceTree = "<group>"; };
 		62C14045B2834CC0689DBE37 /* LegendUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LegendUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		69E4615791E4EA673C5A3513 /* LegendApplicationBootstrapCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApplicationBootstrapCoordinator.swift; sourceTree = "<group>"; };
+		AA01D15C0000000000000010 /* MobileDiscoveryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDiscoveryStoreTests.swift; sourceTree = "<group>"; };
 		6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialContractTests.swift; sourceTree = "<group>"; };
 		72C9D00CE99AA225824D8CEC /* LegendNextTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextTheme.swift; sourceTree = "<group>"; };
 		78035FC866AB942A4F9F45F0 /* LegendNextButtons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextButtons.swift; sourceTree = "<group>"; };
@@ -159,6 +169,7 @@
 			children = (
 				5E4CB6C71DBCEFB14173C686 /* Account */,
 				A755B3EB80D2CE3BCC2FAF9B /* Home */,
+				CC01D15C0000000000000000 /* Discovery */,
 				128626838CEBC7A7A5F44724 /* Messaging */,
 				9787A23BF1358EAA054012DD /* Root */,
 				7DA31C48C755041A1D83D7AB /* Settings */,
@@ -298,6 +309,7 @@
 				E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */,
 				AAF72005DCAF3102C478179D /* MobileFinancialPresentationTests.swift */,
 				4EB710453BF121B567C8AEBD /* MobileNativeContractTests.swift */,
+				AA01D15C0000000000000010 /* MobileDiscoveryStoreTests.swift */,
 				6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */,
 			);
 			path = LegendTests;
@@ -319,6 +331,17 @@
 				4A52D7BC1E8F6D8222D84B96 /* LegendUITests.swift */,
 			);
 			path = LegendUITests;
+			sourceTree = "<group>";
+		};
+		CC01D15C0000000000000000 /* Discovery */ = {
+			isa = PBXGroup;
+			children = (
+				AA01D15C0000000000000001 /* MobileDiscoveryModels.swift */,
+				AA01D15C0000000000000002 /* MobileDiscoveryStore.swift */,
+				AA01D15C0000000000000003 /* LegendDiscoverView.swift */,
+				AA01D15C0000000000000004 /* LegendDiscoverProfileView.swift */,
+			);
+			path = Discovery;
 			sourceTree = "<group>";
 		};
 		E628A2A6B5C97C3B84186B36 /* Social */ = {
@@ -467,6 +490,7 @@
 				DF44B6B8A2DC0CABCA2850B7 /* MobileConfigurationTests.swift in Sources */,
 				CCA4377F5A22AB95FB1925F4 /* MobileFinancialPresentationTests.swift in Sources */,
 				890AF69681C5B2FC1D1BB100 /* MobileNativeContractTests.swift in Sources */,
+				BB01D15C0000000000000010 /* MobileDiscoveryStoreTests.swift in Sources */,
 				DBBEB1BAE8F2ADBDF7A37DE1 /* MobileSocialContractTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -502,6 +526,10 @@
 				2477AEB96C0233C061948794 /* MobileHomeStore.swift in Sources */,
 				A6D192A9E5A5D1D51224F3F5 /* MobileSessionCoordinator.swift in Sources */,
 				ED6F8CA9B2F56B434459B527 /* MobileSocialModels.swift in Sources */,
+				BB01D15C0000000000000001 /* MobileDiscoveryModels.swift in Sources */,
+				BB01D15C0000000000000002 /* MobileDiscoveryStore.swift in Sources */,
+				BB01D15C0000000000000003 /* LegendDiscoverView.swift in Sources */,
+				BB01D15C0000000000000004 /* LegendDiscoverProfileView.swift in Sources */,
 				DD0CC6EE761E59591FAE8ACA /* MobileSocialStore.swift in Sources */,
 				CC6840D2860AC65AFA33B712 /* NativeUnreadBadge.swift in Sources */,
 				2692416782F3407695B9CDEA /* OAuthPKCE.swift in Sources */,

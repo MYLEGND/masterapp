@@ -32,17 +32,20 @@ public sealed class SocialFeedService : ISocialFeedService
     private readonly IMessagingService _messaging;
     private readonly ISocialMediaStorage _mediaStorage;
     private readonly ISocialMusicCatalog _musicCatalog;
+    private readonly ISocialDiscoveryService _discovery;
 
     public SocialFeedService(
         MasterAppDbContext db,
         IMessagingService messaging,
         ISocialMediaStorage mediaStorage,
-        ISocialMusicCatalog musicCatalog)
+        ISocialMusicCatalog musicCatalog,
+        ISocialDiscoveryService discovery)
     {
         _db = db;
         _messaging = messaging;
         _mediaStorage = mediaStorage;
         _musicCatalog = musicCatalog;
+        _discovery = discovery;
     }
 
     public async Task<SocialOperationResult<SocialFeedSnapshot>> GetFeedAsync(
@@ -626,9 +629,15 @@ public sealed class SocialFeedService : ISocialFeedService
             return SocialOperationResult<bool>.Failure("social_follow_invalid", "Choose another profile in your Legend network to follow.");
         }
 
+        // A follow target must be reachable either through the messaging recipient
+        // authority or through the caller's Discover scope. Without the second path a
+        // member found in Discover could be opened but never followed.
         var visibleAuthors = await GetVisibleAuthorsAsync(command.Actor, cancellationToken);
-        if (!visibleAuthors.Contains(AuthorKey.From(followedUserId, followedType)))
+        if (!visibleAuthors.Contains(AuthorKey.From(followedUserId, followedType)) &&
+            !await _discovery.IsDiscoverableByAsync(command.Actor, followedUserId, followedType, cancellationToken))
+        {
             return SocialOperationResult<bool>.Failure("social_follow_forbidden", "You can follow only profiles available in your Legend network.");
+        }
 
         var followerUserId = Normalize(command.Actor.Identity.UserId);
         var sourcePostId = command.SourcePostId;
