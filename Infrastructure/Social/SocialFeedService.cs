@@ -680,6 +680,31 @@ public sealed class SocialFeedService : ISocialFeedService
         return SocialOperationResult<bool>.Success(false);
     }
 
+    public async Task<SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>> GetCurrentProfileFollowListAsync(
+        SocialFeedActor actor,
+        string listKind,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(actor, cancellationToken))
+        {
+            return SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>.Failure(
+                "social_actor_invalid",
+                "Your mobile identity is not available for Legend updates.");
+        }
+
+        var normalizedKind = SocialFollowListKinds.Normalize(listKind);
+        if (normalizedKind is null)
+        {
+            return SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>.Failure(
+                "social_follow_list_invalid",
+                "Choose either the Follows or Followers list.");
+        }
+
+        var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+        var entries = await GetFollowListAsync(actorKey, actorKey, normalizedKind, cancellationToken);
+        return SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>.Success(entries);
+    }
+
     public async Task<SocialOperationResult<bool>> ToggleSaveAsync(
         SocialPostMutationCommand command,
         CancellationToken cancellationToken = default)
@@ -853,7 +878,8 @@ public sealed class SocialFeedService : ISocialFeedService
         if (targetKey != actorKey)
         {
             var visible = await GetVisibleAuthorsAsync(actor, cancellationToken);
-            if (!visible.Contains(targetKey))
+            if (!visible.Contains(targetKey) &&
+                !await HasDirectFollowRelationshipAsync(actorKey, targetKey, cancellationToken))
             {
                 return SocialOperationResult<SocialProfileMetrics>.Failure(
                     "social_profile_forbidden",
@@ -880,14 +906,13 @@ public sealed class SocialFeedService : ISocialFeedService
             .Select(post => new { post.Id, post.ContentType })
             .ToArrayAsync(cancellationToken);
         var metrics = await LoadPostMetricsAsync(posts.Select(post => post.Id).ToArray(), cancellationToken);
-        var followerCount = await _db.SocialFollows.AsNoTracking().CountAsync(follow =>
-            follow.FollowedUserId == targetKey.UserId &&
-            follow.FollowedParticipantType == targetKey.ParticipantType,
-            cancellationToken);
-        var followingCount = await _db.SocialFollows.AsNoTracking().CountAsync(follow =>
-            follow.FollowerUserId == targetKey.UserId &&
-            follow.FollowerParticipantType == targetKey.ParticipantType,
-            cancellationToken);
+        // Count the exact lists we return to the native profile. This keeps Hacs,
+        // Follows, and Followers coherent even when a client has legacy and Entra
+        // identity forms stored in historical relationship rows.
+        var followers = await GetFollowListAsync(targetKey, actorKey, SocialFollowListKinds.Followers, cancellationToken);
+        var follows = await GetFollowListAsync(targetKey, actorKey, SocialFollowListKinds.Follows, cancellationToken);
+        var followerCount = followers.Count;
+        var followingCount = follows.Count;
         int? privateVisits = targetKey == actorKey
             ? await _db.SocialProfileVisits.AsNoTracking().CountAsync(visit =>
                 visit.TargetUserId == targetKey.UserId &&
@@ -996,7 +1021,8 @@ public sealed class SocialFeedService : ISocialFeedService
             return SocialOperationResult<bool>.Failure("social_profile_visit_invalid", "Profile visits must target another profile in your Legend network.");
 
         var visible = await GetVisibleAuthorsAsync(command.Actor, cancellationToken);
-        if (!visible.Contains(targetKey))
+        if (!visible.Contains(targetKey) &&
+            !await HasDirectFollowRelationshipAsync(actorKey, targetKey, cancellationToken))
             return SocialOperationResult<bool>.Failure("social_profile_forbidden", "This Legend profile is not available to your mobile identity.");
 
         var sourcePostId = command.SourcePostId.GetValueOrDefault();
@@ -1543,6 +1569,103 @@ public sealed class SocialFeedService : ISocialFeedService
             : ClientIdentityForms(profile.ClientUserId, profile.ExternalIdentityObjectId).ToArray();
     }
 
+    /// <summary>
+    /// Builds an unpaged relationship list from the same follow edges used by the
+    /// profile totals. Returning every edge is deliberate: the native client owns
+    /// scrolling, while the server remains the single source of truth for who is
+    /// present in Follows and Followers.
+    /// </summary>
+    private async Task<IReadOnlyList<SocialFollowListEntry>> GetFollowListAsync(
+        AuthorKey profileKey,
+        AuthorKey viewerKey,
+        string listKind,
+        CancellationToken cancellationToken)
+    {
+        var profileUserIds = await AuthorUserIdFormsAsync(profileKey, cancellationToken);
+        var rawEntries = listKind == SocialFollowListKinds.Follows
+            ? await _db.SocialFollows
+                .AsNoTracking()
+                .Where(follow => profileUserIds.Contains(follow.FollowerUserId) &&
+                                 follow.FollowerParticipantType == profileKey.ParticipantType)
+                .OrderByDescending(follow => follow.CreatedUtc)
+                .Select(follow => new FollowListReference(
+                    follow.FollowedUserId,
+                    follow.FollowedParticipantType,
+                    follow.CreatedUtc))
+                .ToArrayAsync(cancellationToken)
+            : await _db.SocialFollows
+                .AsNoTracking()
+                .Where(follow => profileUserIds.Contains(follow.FollowedUserId) &&
+                                 follow.FollowedParticipantType == profileKey.ParticipantType)
+                .OrderByDescending(follow => follow.CreatedUtc)
+                .Select(follow => new FollowListReference(
+                    follow.FollowerUserId,
+                    follow.FollowerParticipantType,
+                    follow.CreatedUtc))
+                .ToArrayAsync(cancellationToken);
+
+        if (rawEntries.Length == 0)
+            return Array.Empty<SocialFollowListEntry>();
+
+        var viewerUserIds = await AuthorUserIdFormsAsync(viewerKey, cancellationToken);
+        var viewerFollowing = await _db.SocialFollows
+            .AsNoTracking()
+            .Where(follow => viewerUserIds.Contains(follow.FollowerUserId) &&
+                             follow.FollowerParticipantType == viewerKey.ParticipantType)
+            .Select(follow => new AuthorReference(
+                follow.FollowedUserId,
+                follow.FollowedParticipantType,
+                Guid.Empty))
+            .ToArrayAsync(cancellationToken);
+        var authors = await ResolveAuthorsAsync(
+            rawEntries
+                .Select(entry => new AuthorReference(entry.UserId, entry.ParticipantType, Guid.Empty))
+                .Concat(viewerFollowing),
+            cancellationToken);
+        var followedByViewer = viewerFollowing
+            .Select(reference => CanonicalAuthorKey(reference, authors))
+            .ToHashSet();
+
+        return rawEntries.Select(entry =>
+        {
+            var reference = new AuthorReference(entry.UserId, entry.ParticipantType, Guid.Empty);
+            var author = authors.GetValueOrDefault(AuthorKey.From(entry.UserId, entry.ParticipantType))
+                         ?? ToUnknownAuthor(entry.UserId, entry.ParticipantType, Guid.Empty);
+            return new SocialFollowListEntry(
+                author,
+                followedByViewer.Contains(CanonicalAuthorKey(reference, authors)));
+        }).ToArray();
+    }
+
+    private async Task<bool> HasDirectFollowRelationshipAsync(
+        AuthorKey first,
+        AuthorKey second,
+        CancellationToken cancellationToken)
+    {
+        var firstUserIds = await AuthorUserIdFormsAsync(first, cancellationToken);
+        var secondUserIds = await AuthorUserIdFormsAsync(second, cancellationToken);
+        return await _db.SocialFollows.AsNoTracking().AnyAsync(follow =>
+            (firstUserIds.Contains(follow.FollowerUserId) &&
+             follow.FollowerParticipantType == first.ParticipantType &&
+             secondUserIds.Contains(follow.FollowedUserId) &&
+             follow.FollowedParticipantType == second.ParticipantType) ||
+            (secondUserIds.Contains(follow.FollowerUserId) &&
+             follow.FollowerParticipantType == second.ParticipantType &&
+             firstUserIds.Contains(follow.FollowedUserId) &&
+             follow.FollowedParticipantType == first.ParticipantType),
+            cancellationToken);
+    }
+
+    private static AuthorKey CanonicalAuthorKey(
+        AuthorReference reference,
+        IReadOnlyDictionary<AuthorKey, SocialAuthor> authors)
+    {
+        var raw = AuthorKey.From(reference.UserId, reference.ParticipantType);
+        return authors.TryGetValue(raw, out var author)
+            ? AuthorKey.From(author.UserId, author.ParticipantType)
+            : raw;
+    }
+
     private async Task<HashSet<AuthorKey>> GetVisibleAuthorsAsync(SocialFeedActor actor, CancellationToken cancellationToken)
     {
         var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
@@ -1765,4 +1888,9 @@ public sealed class SocialFeedService : ISocialFeedService
     }
 
     private readonly record struct AuthorReference(string UserId, string ParticipantType, Guid ProfileId);
+
+    private readonly record struct FollowListReference(
+        string UserId,
+        string ParticipantType,
+        DateTime CreatedUtc);
 }
