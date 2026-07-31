@@ -5,6 +5,22 @@ namespace AgentPortal.Mobile;
 
 internal static class MobileAvatarProjection
 {
+    public static Task<MobileAvatarDto?> ResolveAsync(
+        IMessagingProfileImageResolver profiles,
+        string participantType,
+        Guid profileId,
+        CancellationToken cancellationToken) =>
+        ResolveAsync(
+            profiles,
+            new MessagingParticipantIdentity(
+                string.Empty,
+                participantType,
+                profileId,
+                string.Empty,
+                null,
+                string.Empty),
+            cancellationToken);
+
     public static async Task<MobileAvatarDto?> ResolveAsync(
         IMessagingProfileImageResolver profiles,
         MessagingParticipantIdentity identity,

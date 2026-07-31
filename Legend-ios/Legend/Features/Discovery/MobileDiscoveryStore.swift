@@ -90,12 +90,14 @@ final class MobileDiscoveryStore: ObservableObject {
     @Published private(set) var hasMore = false
     @Published private(set) var scope: MobileDiscoveryScope?
     @Published private(set) var sortMode: MobileDiscoverySortMode = .recommended
+    @Published private(set) var recommendations: [MobileDiscoveryResult] = []
     @Published private(set) var actionFailure: UserFacingFailure?
     @Published private(set) var pendingRelationshipProfileIDs: Set<UUID> = []
 
     /// How long to wait after the last keystroke before asking the server.
     private static let searchDebounce = Duration.milliseconds(300)
     private static let pageSize = 20
+    private static let recommendationPageSize = 6
 
     private let api: any MobileDiscoveryAPI
     private let social: MobileSocialStore
@@ -275,18 +277,41 @@ final class MobileDiscoveryStore: ObservableObject {
             let page = try await api.search(
                 query: query,
                 offset: 0,
-                pageSize: Self.pageSize,
+                pageSize: query == nil && sort == .recommended
+                    ? Self.recommendationPageSize
+                    : Self.pageSize,
                 sort: sort,
                 accessToken: token)
 
             // A newer keystroke already superseded this request.
             guard generation == requestGeneration else { return }
 
-            state = .loaded(page.results)
-            totalCount = page.totalCount
-            hasMore = page.hasMore
-            scope = page.scope
-            sortMode = page.sortMode
+            // Clients see the concise recommendation set first, followed by the
+            // active Legend directory. Both are server-authoritative queries over
+            // the same endpoint; no device-side mirror or ranking is introduced.
+            if query == nil, sort == .recommended, page.scope == .community {
+                let directory = try await api.search(
+                    query: nil,
+                    offset: 0,
+                    pageSize: Self.pageSize,
+                    sort: .directory,
+                    accessToken: token)
+                guard generation == requestGeneration else { return }
+
+                recommendations = Array(page.results.prefix(Self.recommendationPageSize))
+                state = .loaded(directory.results)
+                totalCount = directory.totalCount
+                hasMore = directory.hasMore
+                scope = directory.scope
+                sortMode = directory.sortMode
+            } else {
+                recommendations = []
+                state = .loaded(page.results)
+                totalCount = page.totalCount
+                hasMore = page.hasMore
+                scope = page.scope
+                sortMode = page.sortMode
+            }
         } catch {
             guard generation == requestGeneration else { return }
             let presentation = failure(for: error, title: "Discover unavailable")
@@ -341,6 +366,12 @@ final class MobileDiscoveryStore: ObservableObject {
         profileID: UUID,
         transform: (MobileDiscoveryRelationship) -> MobileDiscoveryRelationship
     ) {
+        recommendations = recommendations.map { result in
+            result.id == profileID
+                ? result.replacing(relationship: transform(result.relationship))
+                : result
+        }
+
         guard case .loaded(let current) = state else { return }
         state = .loaded(current.map { result in
             result.id == profileID

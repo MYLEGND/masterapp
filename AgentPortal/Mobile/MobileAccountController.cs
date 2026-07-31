@@ -98,23 +98,14 @@ public sealed class MobileAccountController : MobileApiControllerBase
         MobileAccountSnapshot account,
         CancellationToken cancellationToken)
     {
-        var identities = await _profiles.ResolveIdentitiesAsync(
-            [
-                new MessagingParticipantReference(
-                    actor.Actor.UserId,
-                    actor.Actor.ParticipantType)
-            ],
+        // The resolved actor already carries the authoritative typed profile ID.
+        // Resolve from that ID directly so an agent's own image never depends on a
+        // second identity lookup with a potentially different user-ID spelling.
+        var avatar = await MobileAvatarProjection.ResolveAsync(
+            _profiles,
+            actor.Actor.ParticipantType,
+            actor.ProfileId,
             cancellationToken);
-
-        var avatar =
-            !identities.TryGetValue(
-                (actor.Actor.UserId, actor.Actor.ParticipantType),
-                out var identity)
-                ? null
-                : await MobileAvatarProjection.ResolveAsync(
-                    _profiles,
-                    identity,
-                    cancellationToken);
 
         return new MobileAccountProfile(
             account.ParticipantType,

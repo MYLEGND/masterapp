@@ -1,4 +1,5 @@
 using Infrastructure.Mobile;
+using Infrastructure.Messaging;
 using Domain.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -13,11 +14,16 @@ namespace AgentPortal.Mobile;
 public sealed class MobileHomeController : MobileApiControllerBase
 {
     private readonly IMobileHomeService _home;
+    private readonly IMessagingProfileImageResolver _profiles;
 
-    public MobileHomeController(IMobileActorResolver actorResolver, IMobileHomeService home)
+    public MobileHomeController(
+        IMobileActorResolver actorResolver,
+        IMobileHomeService home,
+        IMessagingProfileImageResolver profiles)
         : base(actorResolver)
     {
         _home = home;
+        _profiles = profiles;
     }
 
     [HttpGet("home")]
@@ -63,12 +69,7 @@ public sealed class MobileHomeController : MobileApiControllerBase
 
         var result = await _home.GetAgentClientsAsync(resolved.Actor, cancellationToken);
         return result.Succeeded
-            ? Ok(result.Clients.Select(client => new MobileAgentClientDto(
-                client.ProfileId,
-                client.DisplayName,
-                client.Email,
-                client.CrmStatus,
-                ToAvatar(client.ProfileImageContent, client.ProfileImageContentType))))
+            ? Ok(await ToAgentClientDtosAsync(result.Clients, cancellationToken))
             : Error(
                 StatusCodes.Status403Forbidden,
                 result.ErrorCode ?? "mobile_agent_clients_unavailable",
@@ -97,10 +98,27 @@ public sealed class MobileHomeController : MobileApiControllerBase
                 result.ErrorMessage ?? "Your lead CRM is not available.");
     }
 
-    private static MobileAvatarDto? ToAvatar(byte[]? content, string? contentType) =>
-        content is { Length: > 0 } && !string.IsNullOrWhiteSpace(contentType)
-            ? new MobileAvatarDto("inline", contentType, Convert.ToBase64String(content))
-            : null;
+    private async Task<IReadOnlyList<MobileAgentClientDto>> ToAgentClientDtosAsync(
+        IEnumerable<MobileAgentClient> clients,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<MobileAgentClientDto>();
+        foreach (var client in clients)
+        {
+            result.Add(new MobileAgentClientDto(
+                client.ProfileId,
+                client.DisplayName,
+                client.Email,
+                client.CrmStatus,
+                await MobileAvatarProjection.ResolveAsync(
+                    _profiles,
+                    MessagingParticipantTypes.Client,
+                    client.ProfileId,
+                    cancellationToken)));
+        }
+
+        return result;
+    }
 }
 
 public sealed record MobileAgentClientDto(Guid ProfileId, string DisplayName, string Email, string CrmStatus, MobileAvatarDto? Avatar);

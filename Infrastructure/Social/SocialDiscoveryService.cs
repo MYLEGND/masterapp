@@ -68,8 +68,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         var participantType = query.Actor.Identity.ParticipantType;
         if (participantType == MessagingParticipantTypes.Agent)
         {
-            return await SearchOwnedClientsAsync(
-                query.Actor, searchText, offset, pageSize, cancellationToken);
+            return await SearchActiveDirectoryAsync(
+                query.Actor, searchText, offset, pageSize, SocialDiscoveryScopes.OwnedClients, cancellationToken);
         }
 
         if (participantType == MessagingParticipantTypes.Client)
@@ -112,7 +112,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
 
         return sortMode == SocialDiscoverySortModes.Recommended
             ? await RecommendedPageAsync(actor, viewer, candidates, offset, pageSize, cancellationToken)
-            : await OrderedPageAsync(actor, viewer, candidates, offset, pageSize, sortMode, searchText, cancellationToken);
+            : await SearchActiveDirectoryAsync(
+                actor, searchText, offset, pageSize, SocialDiscoveryScopes.Community, cancellationToken);
     }
 
     /// <summary>
@@ -232,169 +233,266 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
     }
 
     /// <summary>
-    /// Fully server-side paging across the entire consented directory.
+    /// The browse/search directory is deliberately broader than recommendations.
+    /// Recommendations honor Journey Circles preferences; this directory exposes
+    /// active mobile clients and active agents from their authoritative profiles.
+    /// It is the single source for client secondary results and agent-to-agent search.
     /// </summary>
-    private async Task<SocialOperationResult<SocialDiscoveryPage>> OrderedPageAsync(
-        SocialFeedActor actor,
-        ClientProfile viewer,
-        IQueryable<CommunityCandidate> candidates,
-        int offset,
-        int pageSize,
-        string sortMode,
-        string? searchText,
-        CancellationToken cancellationToken)
-    {
-        var totalCount = await candidates.CountAsync(cancellationToken);
-
-        IOrderedQueryable<CommunityCandidate> ordered;
-        if (sortMode == SocialDiscoverySortModes.Relevance && searchText is not null)
-        {
-            var lowered = EscapeLike(searchText).ToLowerInvariant();
-            var prefix = $"{lowered}%";
-            var contains = $"%{lowered}%";
-            // Name matches outrank bio and tag matches; a display name that starts with
-            // the query outranks one that merely contains it.
-            ordered = candidates
-                .OrderBy(candidate =>
-                    EF.Functions.Like(candidate.Journey.DisplayName.ToLower(), prefix) ? 0
-                    : EF.Functions.Like(candidate.Journey.DisplayName.ToLower(), contains) ? 1
-                    : 2)
-                .ThenBy(candidate => candidate.Journey.DisplayName)
-                .ThenBy(candidate => candidate.ClientProfileId);
-        }
-        else
-        {
-            ordered = candidates
-                .OrderBy(candidate => candidate.Journey.DisplayName)
-                .ThenBy(candidate => candidate.ClientProfileId);
-        }
-
-        var page = await ordered
-            .Skip(offset)
-            .Take(pageSize)
-            .ToArrayAsync(cancellationToken);
-
-        var viewerJourney = await _db.JourneyCircleProfiles
-            .AsNoTracking()
-            .FirstOrDefaultAsync(profile => profile.ClientProfileId == viewer.Id, cancellationToken);
-        var viewerTraits = viewerJourney is null
-            ? null
-            : JourneyCircleCompatibilityScorer.Traits(viewerJourney);
-
-        // Scoring the returned page only: it annotates results, it does not order them.
-        var scoredPage = page
-            .Select(candidate => (
-                Candidate: candidate,
-                Compatibility: viewerTraits is null
-                    ? JourneyCircleCompatibility.None
-                    : JourneyCircleCompatibilityScorer.Evaluate(
-                        viewerTraits,
-                        JourneyCircleCompatibilityScorer.Traits(candidate.Journey))))
-            .ToArray();
-
-        var results = await ProjectAsync(actor, viewer, scoredPage, cancellationToken);
-
-        return SocialOperationResult<SocialDiscoveryPage>.Success(new SocialDiscoveryPage(
-            results,
-            totalCount,
-            offset,
-            pageSize,
-            offset + page.Length < totalCount,
-            sortMode,
-            SocialDiscoveryScopes.Community));
-    }
-
-    // ------------------------------------------------------------- agent scope
-
-    /// <summary>
-    /// An agent searches the clients they already own through the AgentClient
-    /// relationship. Community members who are not this agent's clients are never
-    /// returned: those people consented to peer discovery, not to agent discovery.
-    /// </summary>
-    private async Task<SocialOperationResult<SocialDiscoveryPage>> SearchOwnedClientsAsync(
+    private async Task<SocialOperationResult<SocialDiscoveryPage>> SearchActiveDirectoryAsync(
         SocialFeedActor actor,
         string? searchText,
         int offset,
         int pageSize,
+        string scope,
         CancellationToken cancellationToken)
     {
-        var agentUserId = Normalize(actor.Identity.UserId);
-
-        var owned = from link in _db.AgentClients.AsNoTracking()
-                    join client in _db.ClientProfiles.AsNoTracking()
-                        on link.ClientUserId.ToLower() equals client.ClientUserId.ToLower()
-                    where link.AgentUserId.ToLower() == agentUserId
-                    select client;
-
-        if (searchText is not null)
-        {
-            var pattern = $"%{EscapeLike(searchText).ToLowerInvariant()}%";
-            // The agent already holds this CRM record, so name and email are in scope here.
-            owned = owned.Where(client =>
-                EF.Functions.Like(client.FirstName.ToLower(), pattern)
-                || EF.Functions.Like(client.LastName.ToLower(), pattern)
-                || EF.Functions.Like(client.Email.ToLower(), pattern));
-        }
-
-        var totalCount = await owned
-            .Select(client => client.Id)
-            .Distinct()
-            .CountAsync(cancellationToken);
-
-        var page = await owned
-            .Distinct()
-            .OrderBy(client => client.LastName)
-            .ThenBy(client => client.FirstName)
-            .ThenBy(client => client.Id)
-            .Skip(offset)
-            .Take(pageSize)
-            .ToArrayAsync(cancellationToken);
-
-        var pageIds = page.Select(client => client.Id).ToArray();
-        var journeyByProfileId = await _db.JourneyCircleProfiles
-            .AsNoTracking()
-            .Where(profile => pageIds.Contains(profile.ClientProfileId))
-            .ToDictionaryAsync(profile => profile.ClientProfileId, cancellationToken);
-
-        var candidates = page
-            .Select(client => (
-                Candidate: new CommunityCandidate
-                {
-                    Journey = journeyByProfileId.GetValueOrDefault(client.Id)
-                        ?? PlaceholderJourney(client),
-                    ClientProfileId = client.Id,
-                    ClientUserId = client.ClientUserId,
-                    ExternalIdentityObjectId = client.ExternalIdentityObjectId
-                },
-                Compatibility: JourneyCircleCompatibility.None))
+        var candidates = await ActiveDirectoryCandidatesAsync(actor, cancellationToken);
+        var matching = searchText is null
+            ? candidates
+            : candidates.Where(candidate => MatchesDirectorySearch(candidate, searchText)).ToArray();
+        var ordered = matching
+            .OrderBy(candidate => DirectoryMatchRank(candidate, searchText))
+            .ThenBy(candidate => candidate.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(candidate => candidate.ParticipantType, StringComparer.Ordinal)
+            .ThenBy(candidate => candidate.ProfileId)
             .ToArray();
-
-        var results = await ProjectAsync(actor, viewer: null, candidates, cancellationToken);
+        var page = ordered.Skip(offset).Take(pageSize).ToArray();
+        var viewer = actor.Identity.ParticipantType == MessagingParticipantTypes.Client
+            ? await FindClientProfileAsync(actor.Identity.UserId, cancellationToken)
+            : null;
+        var results = await ProjectDirectoryAsync(actor, viewer, page, cancellationToken);
 
         return SocialOperationResult<SocialDiscoveryPage>.Success(new SocialDiscoveryPage(
             results,
-            totalCount,
+            ordered.Length,
             offset,
             pageSize,
-            offset + page.Length < totalCount,
-            SocialDiscoverySortModes.Directory,
-            SocialDiscoveryScopes.OwnedClients));
+            offset + page.Length < ordered.Length,
+            searchText is null ? SocialDiscoverySortModes.Directory : SocialDiscoverySortModes.Relevance,
+            scope));
     }
 
-    /// <summary>
-    /// A client of this agent who never joined Journey Circles still needs a name to
-    /// render. This stands in for the community profile they do not have; it is never
-    /// persisted and never leaves the agent's own scope.
-    /// </summary>
-    private static JourneyCircleProfile PlaceholderJourney(ClientProfile client) => new()
+    private async Task<DirectoryCandidate[]> ActiveDirectoryCandidatesAsync(
+        SocialFeedActor actor,
+        CancellationToken cancellationToken)
     {
-        ClientProfileId = client.Id,
-        DisplayName = string.IsNullOrWhiteSpace($"{client.FirstName} {client.LastName}".Trim())
-            ? client.Email
-            : $"{client.FirstName} {client.LastName}".Trim(),
-        IsOptedIn = false,
-        IsDiscoverable = false
-    };
+        var isClient = actor.Identity.ParticipantType == MessagingParticipantTypes.Client;
+        var blockedIds = isClient
+            ? await BlockedProfileIdsAsync(actor.ProfileId, cancellationToken)
+            : [];
+
+        var clientRows = isClient
+            ? await ActiveClientDirectoryRowsAsync(actor.ProfileId, blockedIds, cancellationToken)
+            : await OwnedClientDirectoryRowsAsync(actor.Identity.UserId, cancellationToken);
+        var clients = clientRows
+            .GroupBy(row => row.Client.Id)
+            .Select(group => ToDirectoryCandidate(group.First()))
+            .ToArray();
+        var agents = await _db.AgentProfiles
+            .AsNoTracking()
+            .Where(profile => profile.IsActive && profile.Id != actor.ProfileId)
+            .Select(profile => new AgentDirectoryRow(
+                profile.Id,
+                profile.AgentUserId,
+                profile.FullName,
+                profile.AgentUpn,
+                profile.Title,
+                profile.ShortBio))
+            .ToArrayAsync(cancellationToken);
+
+        return clients
+            .Concat(agents.Select(ToDirectoryCandidate))
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate.UserId))
+            .ToArray();
+    }
+
+    private Task<ClientDirectoryRow[]> ActiveClientDirectoryRowsAsync(
+        Guid viewerProfileId,
+        IReadOnlyCollection<Guid> blockedIds,
+        CancellationToken cancellationToken) =>
+        (from client in _db.ClientProfiles.AsNoTracking()
+         join journey in _db.JourneyCircleProfiles.AsNoTracking()
+             on client.Id equals journey.ClientProfileId into journeys
+         from journey in journeys.DefaultIfEmpty()
+         where client.Id != viewerProfileId
+               && !blockedIds.Contains(client.Id)
+               && (client.CrmStatus == null || client.CrmStatus == "Active")
+               && _db.ClientEntitlements.Any(entitlement =>
+                   entitlement.ClientProfileId == client.Id
+                   && entitlement.EntitlementKey == BillingEntitlementKeys.ClientAppFullAccess
+                   && (entitlement.Status == ClientEntitlementStatus.Active
+                       || entitlement.Status == ClientEntitlementStatus.GracePeriod))
+         select new ClientDirectoryRow(client, journey))
+            .ToArrayAsync(cancellationToken);
+
+    private Task<ClientDirectoryRow[]> OwnedClientDirectoryRowsAsync(
+        string agentUserId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedAgentId = Normalize(agentUserId);
+        return (from link in _db.AgentClients.AsNoTracking()
+                join client in _db.ClientProfiles.AsNoTracking()
+                    on link.ClientUserId.ToLower() equals client.ClientUserId.ToLower()
+                join journey in _db.JourneyCircleProfiles.AsNoTracking()
+                    on client.Id equals journey.ClientProfileId into journeys
+                from journey in journeys.DefaultIfEmpty()
+                where link.AgentUserId.ToLower() == normalizedAgentId
+                select new ClientDirectoryRow(client, journey))
+            .ToArrayAsync(cancellationToken);
+    }
+
+    private static DirectoryCandidate ToDirectoryCandidate(ClientDirectoryRow row)
+    {
+        var journey = row.Journey;
+        var displayName = FirstNonEmpty(
+            journey?.DisplayName,
+            $"{row.Client.FirstName} {row.Client.LastName}".Trim(),
+            "Legend member");
+        return new DirectoryCandidate(
+            row.Client.Id,
+            CanonicalUserId(row.Client),
+            MessagingParticipantTypes.Client,
+            displayName,
+            journey?.Introduction,
+            journey?.LocationLabel,
+            JourneyCircleCompatibilityScorer.FromJson(journey?.GoalsJson),
+            JourneyCircleCompatibilityScorer.FromJson(journey?.InterestsJson),
+            JourneyCircleCompatibilityScorer.FromJson(journey?.CircleCodesJson),
+            journey?.AllowConnectionRequests == true,
+            journey?.Introduction,
+            JourneyCircleCompatibilityScorer.FromDelimited(journey?.LifeStage),
+            JourneyCircleCompatibilityScorer.FromJson(journey?.ConnectionTypesJson));
+    }
+
+    private static DirectoryCandidate ToDirectoryCandidate(AgentDirectoryRow agent)
+    {
+        var displayName = FirstNonEmpty(agent.FullName, agent.AgentUpn, "Legend Agent");
+        return new DirectoryCandidate(
+            agent.Id,
+            Normalize(agent.AgentUserId),
+            MessagingParticipantTypes.Agent,
+            displayName,
+            agent.Title,
+            null,
+            [],
+            [],
+            [],
+            false,
+            agent.ShortBio,
+            [],
+            []);
+    }
+
+    private async Task<IReadOnlyList<SocialDiscoveryResult>> ProjectDirectoryAsync(
+        SocialFeedActor actor,
+        ClientProfile? viewer,
+        IReadOnlyList<DirectoryCandidate> candidates,
+        CancellationToken cancellationToken)
+    {
+        if (candidates.Count == 0)
+            return Array.Empty<SocialDiscoveryResult>();
+
+        var actorKey = new DirectoryIdentity(actor.Identity.UserId, actor.Identity.ParticipantType);
+        var userIds = candidates.Select(candidate => candidate.UserId).Distinct(StringComparer.Ordinal).ToArray();
+        var targetKeys = candidates
+            .Select(candidate => new DirectoryIdentity(candidate.UserId, candidate.ParticipantType))
+            .ToHashSet();
+        var followingRows = await _db.SocialFollows.AsNoTracking()
+            .Where(follow => follow.FollowerUserId == actorKey.UserId
+                             && follow.FollowerParticipantType == actorKey.ParticipantType
+                             && userIds.Contains(follow.FollowedUserId))
+            .Select(follow => new { follow.FollowedUserId, follow.FollowedParticipantType })
+            .ToArrayAsync(cancellationToken);
+        var followerRows = await _db.SocialFollows.AsNoTracking()
+            .Where(follow => follow.FollowedUserId == actorKey.UserId
+                             && follow.FollowedParticipantType == actorKey.ParticipantType
+                             && userIds.Contains(follow.FollowerUserId))
+            .Select(follow => new { follow.FollowerUserId, follow.FollowerParticipantType })
+            .ToArrayAsync(cancellationToken);
+        var following = followingRows
+            .Select(row => new DirectoryIdentity(row.FollowedUserId, row.FollowedParticipantType))
+            .Where(targetKeys.Contains)
+            .ToHashSet();
+        var followers = followerRows
+            .Select(row => new DirectoryIdentity(row.FollowerUserId, row.FollowerParticipantType))
+            .Where(targetKeys.Contains)
+            .ToHashSet();
+
+        var connections = new Dictionary<Guid, JourneyCircleConnection>();
+        if (viewer is not null)
+        {
+            var clientProfileIds = candidates
+                .Where(candidate => candidate.ParticipantType == MessagingParticipantTypes.Client)
+                .Select(candidate => candidate.ProfileId)
+                .ToArray();
+            var rows = await _db.JourneyCircleConnections.AsNoTracking()
+                .Where(connection =>
+                    (connection.RequesterClientProfileId == viewer.Id
+                     && clientProfileIds.Contains(connection.RecipientClientProfileId))
+                    || (connection.RecipientClientProfileId == viewer.Id
+                        && clientProfileIds.Contains(connection.RequesterClientProfileId)))
+                .ToArrayAsync(cancellationToken);
+            foreach (var row in rows)
+            {
+                var otherId = row.RequesterClientProfileId == viewer.Id
+                    ? row.RecipientClientProfileId
+                    : row.RequesterClientProfileId;
+                connections[otherId] = row;
+            }
+        }
+
+        return candidates.Select(candidate =>
+        {
+            var key = new DirectoryIdentity(candidate.UserId, candidate.ParticipantType);
+            var connection = connections.GetValueOrDefault(candidate.ProfileId);
+            var connectionStatus = connection?.Status ?? JourneyCircleConnectionStatuses.None;
+            return new SocialDiscoveryResult(
+                candidate.ProfileId,
+                candidate.UserId,
+                candidate.ParticipantType,
+                candidate.DisplayName,
+                candidate.Headline,
+                candidate.Location,
+                candidate.Goals,
+                candidate.Interests,
+                candidate.CircleCodes,
+                0,
+                null,
+                new SocialDiscoveryRelationship(
+                    following.Contains(key),
+                    followers.Contains(key),
+                    connectionStatus,
+                    connection?.Id,
+                    viewer is not null
+                        && candidate.ParticipantType == MessagingParticipantTypes.Client
+                        && candidate.AllowsConnectionRequests
+                        && connectionStatus == JourneyCircleConnectionStatuses.None,
+                    key != actorKey));
+        }).ToArray();
+    }
+
+    private static bool MatchesDirectorySearch(DirectoryCandidate candidate, string searchText)
+    {
+        var normalized = searchText.Trim().ToLowerInvariant();
+        return new[]
+        {
+            candidate.DisplayName,
+            candidate.Headline,
+            candidate.Location,
+            string.Join(" ", candidate.Goals),
+            string.Join(" ", candidate.Interests),
+            string.Join(" ", candidate.CircleCodes)
+        }
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Any(value => value!.Contains(normalized, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static int DirectoryMatchRank(DirectoryCandidate candidate, string? searchText) =>
+        searchText is not null && candidate.DisplayName.StartsWith(searchText, StringComparison.OrdinalIgnoreCase)
+            ? 0
+            : searchText is not null && candidate.DisplayName.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+                ? 1
+                : 2;
 
     // ------------------------------------------------------------- projection
 
@@ -500,40 +598,27 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                 "Choose a Legend member to open.");
         }
 
-        // Reachability is decided by the same scope the search uses, so a profile can
-        // never be opened by URL guessing.
-        var reachable = await ReachableCandidateAsync(actor, clientProfileId, cancellationToken);
-        if (reachable is null)
+        // Reachability is decided by the same active directory that search returns,
+        // so a profile can never be opened by URL guessing.
+        var candidate = (await ActiveDirectoryCandidatesAsync(actor, cancellationToken))
+            .SingleOrDefault(entry => entry.ProfileId == clientProfileId);
+        if (candidate is null)
         {
             return SocialOperationResult<SocialDiscoveryProfile>.Failure(
                 "social_discovery_profile_unavailable",
                 "This Legend member is not available from your Discover scope.");
         }
 
-        var (candidate, viewer) = reachable.Value;
-        var viewerJourney = viewer is null
-            ? null
-            : await _db.JourneyCircleProfiles
-                .AsNoTracking()
-                .FirstOrDefaultAsync(profile => profile.ClientProfileId == viewer.Id, cancellationToken);
-
-        var compatibility = viewerJourney is null
-            ? JourneyCircleCompatibility.None
-            : JourneyCircleCompatibilityScorer.Evaluate(
-                JourneyCircleCompatibilityScorer.Traits(viewerJourney),
-                JourneyCircleCompatibilityScorer.Traits(candidate.Journey));
-
-        var summaries = await ProjectAsync(
-            actor,
-            viewer,
-            [(candidate, compatibility)],
-            cancellationToken);
+        var viewer = actor.Identity.ParticipantType == MessagingParticipantTypes.Client
+            ? await FindClientProfileAsync(actor.Identity.UserId, cancellationToken)
+            : null;
+        var summary = (await ProjectDirectoryAsync(actor, viewer, [candidate], cancellationToken))[0];
 
         return SocialOperationResult<SocialDiscoveryProfile>.Success(new SocialDiscoveryProfile(
-            summaries[0],
-            candidate.Journey.Introduction,
-            JourneyCircleCompatibilityScorer.FromDelimited(candidate.Journey.LifeStage),
-            JourneyCircleCompatibilityScorer.FromJson(candidate.Journey.ConnectionTypesJson)));
+            summary,
+            candidate.Introduction,
+            candidate.LifeStages,
+            candidate.ConnectionTypes));
     }
 
     public async Task<bool> IsDiscoverableByAsync(
@@ -542,64 +627,13 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         string targetParticipantType,
         CancellationToken cancellationToken = default)
     {
-        if (targetParticipantType != MessagingParticipantTypes.Client)
-            return false;
-
         var normalized = Normalize(targetUserId);
         if (string.IsNullOrWhiteSpace(normalized))
             return false;
 
-        var target = await FindClientProfileAsync(normalized, cancellationToken);
-        if (target is null)
-            return false;
-
-        var reachable = await ReachableCandidateAsync(actor, target.Id, cancellationToken);
-        return reachable is not null;
-    }
-
-    private async Task<(CommunityCandidate Candidate, ClientProfile? Viewer)?> ReachableCandidateAsync(
-        SocialFeedActor actor,
-        Guid clientProfileId,
-        CancellationToken cancellationToken)
-    {
-        if (actor.Identity.ParticipantType == MessagingParticipantTypes.Agent)
-        {
-            var agentUserId = Normalize(actor.Identity.UserId);
-            var owned = await (from link in _db.AgentClients.AsNoTracking()
-                               join client in _db.ClientProfiles.AsNoTracking()
-                                   on link.ClientUserId.ToLower() equals client.ClientUserId.ToLower()
-                               where link.AgentUserId.ToLower() == agentUserId && client.Id == clientProfileId
-                               select client)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (owned is null)
-                return null;
-
-            var journey = await _db.JourneyCircleProfiles
-                .AsNoTracking()
-                .FirstOrDefaultAsync(profile => profile.ClientProfileId == owned.Id, cancellationToken);
-
-            return (new CommunityCandidate
-            {
-                Journey = journey ?? PlaceholderJourney(owned),
-                ClientProfileId = owned.Id,
-                ClientUserId = owned.ClientUserId,
-                ExternalIdentityObjectId = owned.ExternalIdentityObjectId
-            }, null);
-        }
-
-        if (actor.Identity.ParticipantType != MessagingParticipantTypes.Client)
-            return null;
-
-        var viewer = await FindClientProfileAsync(actor.Identity.UserId, cancellationToken);
-        if (viewer is null)
-            return null;
-
-        var blockedIds = await BlockedProfileIdsAsync(viewer.Id, cancellationToken);
-        var candidate = await DiscoverableCommunityProfiles(viewer.Id, blockedIds)
-            .FirstOrDefaultAsync(entry => entry.ClientProfileId == clientProfileId, cancellationToken);
-
-        return candidate is null ? null : (candidate, viewer);
+        var targetIdentity = new DirectoryIdentity(normalized, targetParticipantType);
+        return (await ActiveDirectoryCandidatesAsync(actor, cancellationToken))
+            .Any(candidate => new DirectoryIdentity(candidate.UserId, candidate.ParticipantType) == targetIdentity);
     }
 
     // ---------------------------------------------------------------- helpers
@@ -636,6 +670,11 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             ? candidate.ClientUserId
             : candidate.ExternalIdentityObjectId);
 
+    private static string CanonicalUserId(ClientProfile profile) =>
+        Normalize(string.IsNullOrWhiteSpace(profile.ExternalIdentityObjectId)
+            ? profile.ClientUserId
+            : profile.ExternalIdentityObjectId);
+
     private static string ResolveSortMode(string? requested, string? searchText)
     {
         if (searchText is not null)
@@ -660,6 +699,46 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         .Replace("_", "[_]");
 
     private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;
+
+    private static string FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+
+    private readonly record struct DirectoryIdentity
+    {
+        public DirectoryIdentity(string? userId, string? participantType)
+        {
+            UserId = Normalize(userId);
+            ParticipantType = participantType?.Trim() ?? string.Empty;
+        }
+
+        public string UserId { get; }
+        public string ParticipantType { get; }
+    }
+
+    private sealed record ClientDirectoryRow(ClientProfile Client, JourneyCircleProfile? Journey);
+
+    private sealed record AgentDirectoryRow(
+        Guid Id,
+        string AgentUserId,
+        string? FullName,
+        string? AgentUpn,
+        string? Title,
+        string? ShortBio);
+
+    private sealed record DirectoryCandidate(
+        Guid ProfileId,
+        string UserId,
+        string ParticipantType,
+        string DisplayName,
+        string? Headline,
+        string? Location,
+        IReadOnlyList<string> Goals,
+        IReadOnlyList<string> Interests,
+        IReadOnlyList<string> CircleCodes,
+        bool AllowsConnectionRequests,
+        string? Introduction,
+        IReadOnlyList<string> LifeStages,
+        IReadOnlyList<string> ConnectionTypes);
 
     private sealed class CommunityCandidate
     {

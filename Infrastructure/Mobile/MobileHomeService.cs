@@ -357,9 +357,7 @@ public sealed class MobileHomeService : IMobileHomeService
                 profile.LastName,
                 profile.Email,
                 profile.CrmStatus,
-                profile.CrmNotes,
-                profile.ProfileImageContent,
-                profile.ProfileImageContentType))
+                profile.CrmNotes))
             .ToListAsync(cancellationToken);
 
         var clients = profileRows
@@ -368,9 +366,7 @@ public sealed class MobileHomeService : IMobileHomeService
                 profile.Id,
                 string.Join(" ", new[] { profile.FirstName, profile.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim(),
                 profile.Email,
-                profile.CrmStatus ?? "Active",
-                profile.ProfileImageContent,
-                profile.ProfileImageContentType))
+                profile.CrmStatus ?? "Active"))
             .OrderBy(profile => profile.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -576,9 +572,7 @@ public sealed class MobileHomeService : IMobileHomeService
         string LastName,
         string Email,
         string? CrmStatus,
-        string? CrmNotes,
-        byte[]? ProfileImageContent,
-        string? ProfileImageContentType);
+        string? CrmNotes);
 
     private sealed record MobileAgentLeadProfileRow(
         string LeadId,
@@ -652,5 +646,5 @@ public sealed record MobileFinancialPosition(int HealthScore, decimal AssetsTota
 public sealed record MobileFinancialIntelligenceSummary(string Status, decimal DataCompletenessScore, string CurrentRiskSummary, string CurrentOpportunitySummary, string CurrentLeakageSummary, DateTime? LastEvaluatedUtc, IReadOnlyList<MobileFinancialFinding> Findings);
 public sealed record MobileFinancialFinding(Guid Id, string Category, string Title, string Explanation, decimal? EstimatedImpact, string? ImpactUnit, string Urgency, string Status, DateTime LastDetectedUtc);
 public sealed record MobileUpcomingBill(Guid Id, string DisplayName, long AverageAmountCents, string Cadence, DateTime NextExpectedDateUtc, string Status);
-public sealed record MobileAgentClient(Guid ProfileId, string DisplayName, string Email, string CrmStatus, byte[]? ProfileImageContent, string? ProfileImageContentType);
+public sealed record MobileAgentClient(Guid ProfileId, string DisplayName, string Email, string CrmStatus);
 public sealed record MobileAgentLead(string LeadId, string DisplayName, string CrmStage, DateTime UpdatedUtc);

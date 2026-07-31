@@ -6090,11 +6090,12 @@ private struct LegendAccountView: View {
                 .padding(LegendNextSpacing.md)
                 .padding(.bottom, LegendNextSpacing.xxl)
             }
-            .background(LegendNextColor.canvas.ignoresSafeArea())
+            .background(LegendNextColor.midnight.ignoresSafeArea())
             .navigationTitle("Profile settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(LegendNextColor.canvas, for: .navigationBar)
+            .toolbarBackground(LegendNextColor.midnight, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
@@ -6105,7 +6106,8 @@ private struct LegendAccountView: View {
             }
         }
         .tint(LegendNextColor.gold)
-        .presentationBackground(LegendNextColor.canvas)
+        .preferredColorScheme(.dark)
+        .presentationBackground(LegendNextColor.midnight)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
@@ -6738,11 +6740,12 @@ private struct LegendAccountEditor: View {
                 .padding(LegendNextSpacing.md)
                 .padding(.bottom, LegendNextSpacing.xxl)
             }
-            .background(LegendNextColor.canvas.ignoresSafeArea())
+            .background(LegendNextColor.midnight.ignoresSafeArea())
             .navigationTitle("Edit profile")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(LegendNextColor.canvas, for: .navigationBar)
+            .toolbarBackground(LegendNextColor.midnight, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -6774,7 +6777,8 @@ private struct LegendAccountEditor: View {
             }
         }
         .tint(LegendNextColor.gold)
-        .presentationBackground(LegendNextColor.canvas)
+        .preferredColorScheme(.dark)
+        .presentationBackground(LegendNextColor.midnight)
     }
 }
 
