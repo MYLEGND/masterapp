@@ -67,7 +67,17 @@ public static class SocialStoryInteractionTypes
 
 public sealed record SocialFeedActor(MessagingActor Identity, Guid ProfileId, string DisplayName);
 
-public sealed record SocialAuthor(string UserId, string ParticipantType, Guid ProfileId, string DisplayName);
+public sealed record SocialAuthor(
+    string UserId,
+    string ParticipantType,
+    Guid ProfileId,
+    string DisplayName,
+    string? Username = null,
+    string? Bio = null,
+    string? Website = null,
+    string? Location = null,
+    string? Pronouns = null,
+    string? PublicEmail = null);
 
 public sealed record SocialCommentView(Guid Id, SocialAuthor Author, Guid? ParentCommentId, string Body, DateTime CreatedUtc);
 

@@ -8,11 +8,74 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
     let phone: String?
     let title: String?
     let shortBio: String?
+    /// A member-entered mobile-profile email. `email` is only populated when
+    /// the member has chosen to make this address visible on their profile.
+    let profileEmail: String?
+    let isEmailVisible: Bool
+    let username: String?
+    let bio: String?
+    let website: String?
+    let location: String?
+    let pronouns: String?
     let avatar: ProfileAvatar?
 
     private enum CodingKeys: String, CodingKey {
-        case participantType, displayName, email, phone, title, shortBio, avatar
+        case participantType, displayName, email, phone, title, shortBio, profileEmail, isEmailVisible, username, bio, website, location, pronouns, avatar
         case profileID = "profileId"
+    }
+
+    init(
+        participantType: ParticipantType,
+        profileID: UUID,
+        displayName: String,
+        email: String?,
+        phone: String?,
+        title: String?,
+        shortBio: String?,
+        profileEmail: String? = nil,
+        isEmailVisible: Bool = false,
+        username: String? = nil,
+        bio: String? = nil,
+        website: String? = nil,
+        location: String? = nil,
+        pronouns: String? = nil,
+        avatar: ProfileAvatar?
+    ) {
+        self.participantType = participantType
+        self.profileID = profileID
+        self.displayName = displayName
+        self.email = email
+        self.phone = phone
+        self.title = title
+        self.shortBio = shortBio
+        self.profileEmail = profileEmail
+        self.isEmailVisible = isEmailVisible
+        self.username = username
+        self.bio = bio
+        self.website = website
+        self.location = location
+        self.pronouns = pronouns
+        self.avatar = avatar
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            participantType: try container.decode(ParticipantType.self, forKey: .participantType),
+            profileID: try container.decode(UUID.self, forKey: .profileID),
+            displayName: try container.decode(String.self, forKey: .displayName),
+            email: try container.decodeIfPresent(String.self, forKey: .email),
+            phone: try container.decodeIfPresent(String.self, forKey: .phone),
+            title: try container.decodeIfPresent(String.self, forKey: .title),
+            shortBio: try container.decodeIfPresent(String.self, forKey: .shortBio),
+            profileEmail: try container.decodeIfPresent(String.self, forKey: .profileEmail),
+            isEmailVisible: try container.decodeIfPresent(Bool.self, forKey: .isEmailVisible) ?? false,
+            username: try container.decodeIfPresent(String.self, forKey: .username),
+            bio: try container.decodeIfPresent(String.self, forKey: .bio),
+            website: try container.decodeIfPresent(String.self, forKey: .website),
+            location: try container.decodeIfPresent(String.self, forKey: .location),
+            pronouns: try container.decodeIfPresent(String.self, forKey: .pronouns),
+            avatar: try container.decodeIfPresent(ProfileAvatar.self, forKey: .avatar))
     }
 }
 
@@ -21,6 +84,39 @@ struct MobileAccountUpdate: Encodable, Sendable {
     let phone: String?
     let title: String?
     let shortBio: String?
+    let username: String?
+    let bio: String?
+    let website: String?
+    let location: String?
+    let pronouns: String?
+    let publicEmail: String?
+    let isEmailVisible: Bool
+
+    init(
+        displayName: String,
+        phone: String?,
+        title: String?,
+        shortBio: String?,
+        username: String? = nil,
+        bio: String? = nil,
+        website: String? = nil,
+        location: String? = nil,
+        pronouns: String? = nil,
+        publicEmail: String? = nil,
+        isEmailVisible: Bool = false
+    ) {
+        self.displayName = displayName
+        self.phone = phone
+        self.title = title
+        self.shortBio = shortBio
+        self.username = username
+        self.bio = bio
+        self.website = website
+        self.location = location
+        self.pronouns = pronouns
+        self.publicEmail = publicEmail
+        self.isEmailVisible = isEmailVisible
+    }
 }
 
 protocol MobileAccountAPI: Sendable {
@@ -102,20 +198,21 @@ final class MobileAccountStore: ObservableObject {
         await request(preservingCachedValue: hasCachedValue)
     }
 
-    func save(_ update: MobileAccountUpdate) {
-        guard !isSaving else { return }
+    @discardableResult
+    func save(_ update: MobileAccountUpdate) async -> Bool {
+        guard !isSaving else { return false }
         isSaving = true
         actionFailure = nil
-        Task {
-            defer { isSaving = false }
-            do {
-                let accessToken = try await accessTokenProvider()
-                try await api.update(update, accessToken: accessToken)
-                state = .loaded(try await api.profile(accessToken: accessToken))
-                refreshFailure = nil
-            } catch {
-                actionFailure = failure(for: error, title: "Account update unavailable")
-            }
+        defer { isSaving = false }
+        do {
+            let accessToken = try await accessTokenProvider()
+            try await api.update(update, accessToken: accessToken)
+            state = .loaded(try await api.profile(accessToken: accessToken))
+            refreshFailure = nil
+            return true
+        } catch {
+            actionFailure = failure(for: error, title: "Account update unavailable")
+            return false
         }
     }
 

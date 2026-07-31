@@ -194,16 +194,43 @@ final class MobileNativeContractTests: XCTestCase {
           "participantType": "Client",
           "profileId": "00000000-0000-0000-0000-000000000123",
           "displayName": "Client Identity",
-          "email": "client@example.test",
+          "email": "hello@example.test",
           "phone": "555-0100",
           "title": null,
           "shortBio": null,
+          "profileEmail": "hello@example.test",
+          "isEmailVisible": true,
+          "username": "client.legend",
+          "bio": "Building a legacy.",
+          "website": "https://legend.example.test",
+          "location": "Phoenix, Arizona",
+          "pronouns": "they/them",
           "avatar": { "kind": "inline", "contentType": "image/png", "base64Content": "Y2xpZW50" }
         }
         """.utf8)
         let account = try JSONDecoder.mobile.decode(MobileAccountProfile.self, from: accountData)
         XCTAssertEqual(account.participantType, .client)
+        XCTAssertEqual(account.profileEmail, "hello@example.test")
+        XCTAssertTrue(account.isEmailVisible)
+        XCTAssertEqual(account.username, "client.legend")
         XCTAssertEqual(account.avatar?.imageData, Data("client".utf8))
+
+        let accountUpdate = MobileAccountUpdate(
+            displayName: "Client Identity",
+            phone: "555-0100",
+            title: nil,
+            shortBio: nil,
+            username: "client.legend",
+            bio: "Building a legacy.",
+            website: "https://legend.example.test",
+            location: "Phoenix, Arizona",
+            pronouns: "they/them",
+            publicEmail: "hello@example.test",
+            isEmailVisible: true)
+        let accountUpdateObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder.mobile.encode(accountUpdate)) as? [String: Any])
+        XCTAssertEqual(accountUpdateObject["publicEmail"] as? String, "hello@example.test")
+        XCTAssertEqual(accountUpdateObject["isEmailVisible"] as? Bool, true)
 
         let input = MobileJourneyProfileInput(
             consentAffirmed: true,

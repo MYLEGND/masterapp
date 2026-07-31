@@ -896,6 +896,29 @@ public sealed class SocialFeedService : ISocialFeedService
                 "This Legend profile is not available.");
         }
 
+        // Mobile profile details are intentionally separate from the synced web
+        // account. They are returned only for the full social-profile destination,
+        // and the optional email is returned only when its owner enabled visibility.
+        var mobileProfile = await _db.MobileProfileSettings.AsNoTracking()
+            .SingleOrDefaultAsync(setting =>
+                setting.ProfileId == author.ProfileId &&
+                setting.ParticipantType == author.ParticipantType,
+                cancellationToken);
+        if (mobileProfile is not null)
+        {
+            author = author with
+            {
+                Username = mobileProfile.Username,
+                Bio = mobileProfile.Bio,
+                Website = mobileProfile.Website,
+                Location = mobileProfile.Location,
+                Pronouns = mobileProfile.Pronouns,
+                PublicEmail = mobileProfile.IsEmailVisible
+                    ? mobileProfile.PublicEmail
+                    : null
+            };
+        }
+
         var targetUserIds = await AuthorUserIdFormsAsync(targetKey, cancellationToken);
         var now = DateTime.UtcNow;
         var posts = await _db.SocialPosts.AsNoTracking()

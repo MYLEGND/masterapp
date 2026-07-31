@@ -1123,7 +1123,7 @@ struct LegendSocialComposer: View {
             }
             .scrollIndicators(.hidden)
         }
-        .background(Color.white)
+        .background(LegendNextColor.canvas)
     }
 
     private var shareHeader: some View {
@@ -1167,7 +1167,7 @@ struct LegendSocialComposer: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 52)
-        .background(Color.white)
+        .background(LegendNextColor.surface)
     }
 
     private var captionComposer: some View {
@@ -1279,7 +1279,7 @@ struct LegendSocialComposer: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 54)
-        .background(Color.white)
+        .background(LegendNextColor.surface)
         .accessibilityElement(children: .contain)
     }
 
@@ -1309,7 +1309,7 @@ struct LegendSocialComposer: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 54)
-        .background(Color.white)
+        .background(LegendNextColor.surface)
     }
 
     private var musicRow: some View {
@@ -1367,7 +1367,7 @@ struct LegendSocialComposer: View {
         }
         .buttonStyle(.plain)
         .disabled(selectedMedia.isEmpty)
-        .background(Color.white)
+        .background(LegendNextColor.surface)
         .accessibilityLabel(
             selectedMusic == nil
                 ? "Add music"
@@ -1432,7 +1432,7 @@ struct LegendSocialComposer: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 54)
-        .background(Color.white)
+        .background(LegendNextColor.surface)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Audience: \(shareAudience.title). \(shareAudience.detail)")
     }
@@ -1468,7 +1468,7 @@ struct LegendSocialComposer: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 54)
-        .background(Color.white)
+        .background(LegendNextColor.surface)
     }
 
     private var commentsRow: some View {
@@ -1508,7 +1508,7 @@ struct LegendSocialComposer: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 58)
-        .background(Color.white)
+        .background(LegendNextColor.surface)
     }
 
     @ViewBuilder

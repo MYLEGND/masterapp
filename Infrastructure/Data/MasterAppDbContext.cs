@@ -36,6 +36,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<OnboardingInvite> OnboardingInvites => Set<OnboardingInvite>();
     public DbSet<OnboardingSubmission> OnboardingSubmissions => Set<OnboardingSubmission>();
     public DbSet<AgentProfile> AgentProfiles => Set<AgentProfile>();
+    public DbSet<MobileProfileSettings> MobileProfileSettings => Set<MobileProfileSettings>();
     public DbSet<ProductionRecord> ProductionRecords => Set<ProductionRecord>();
     public DbSet<WebsiteLead> WebsiteLeads => Set<WebsiteLead>();
     public DbSet<WebsiteLeadIntakeLink> WebsiteLeadIntakeLinks => Set<WebsiteLeadIntakeLink>();
@@ -719,6 +720,26 @@ public class MasterAppDbContext : DbContext
                 e.HasIndex(x => x.AgentUserId).IsUnique().HasFilter("[AgentUserId] IS NOT NULL");
             else
                 e.HasIndex(x => x.AgentUserId).IsUnique();
+        });
+
+        modelBuilder.Entity<MobileProfileSettings>(e =>
+        {
+            e.ToTable("MobileProfileSettings");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ParticipantType).IsRequired().HasMaxLength(40);
+            e.Property(x => x.Username).HasMaxLength(64);
+            e.Property(x => x.NormalizedUsername).HasMaxLength(64);
+            e.Property(x => x.Bio).HasMaxLength(1_000);
+            e.Property(x => x.Website).HasMaxLength(2_048);
+            e.Property(x => x.Location).HasMaxLength(120);
+            e.Property(x => x.Pronouns).HasMaxLength(80);
+            e.Property(x => x.PublicEmail).HasMaxLength(320);
+            e.HasIndex(x => new { x.ProfileId, x.ParticipantType }).IsUnique();
+
+            if (isSqlServer)
+                e.HasIndex(x => x.NormalizedUsername).IsUnique().HasFilter("[NormalizedUsername] IS NOT NULL");
+            else
+                e.HasIndex(x => x.NormalizedUsername).IsUnique();
         });
 
         modelBuilder.Entity<AgentAssistant>(e =>

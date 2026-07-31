@@ -619,6 +619,80 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileAccount_MobileProfileSettingsKeepDirectoryEmailPrivateUntilTheMemberSharesAnotherAddress()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "mobile-profile-client",
+            FirstName = "Private",
+            LastName = "Member",
+            Email = "directory@example.test",
+            Phone = "555-0100"
+        };
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var controller = CreateAccountController(db, Principal(client.ClientUserId));
+        controller.HttpContext.Request.Headers[MobileApiAuthorization.ParticipantTypeHeader] = MessagingParticipantTypes.Client;
+
+        var initialResult = await controller.Get(CancellationToken.None);
+        var initialProfile = Assert.IsType<OkObjectResult>(initialResult).Value as MobileAccountProfile;
+        Assert.NotNull(initialProfile);
+        Assert.Null(initialProfile!.Email);
+        Assert.Null(initialProfile.ProfileEmail);
+
+        var updateResult = await controller.Update(
+            new MobileAccountUpdateRequest(
+                "Private Member",
+                "555-0100",
+                null,
+                null,
+                Username: "Private.Member",
+                Bio: "Building a legacy.",
+                Website: "https://legend.example.test/member",
+                Location: "Phoenix, Arizona",
+                Pronouns: "they/them",
+                PublicEmail: "hello@example.test",
+                IsEmailVisible: true),
+            CancellationToken.None);
+        var updatedProfile = Assert.IsType<OkObjectResult>(updateResult).Value as MobileAccountProfile;
+        Assert.NotNull(updatedProfile);
+        Assert.Equal("hello@example.test", updatedProfile!.Email);
+        Assert.Equal("hello@example.test", updatedProfile.ProfileEmail);
+        Assert.True(updatedProfile.IsEmailVisible);
+        Assert.Equal("Private.Member", updatedProfile.Username);
+        Assert.Equal("Building a legacy.", updatedProfile.Bio);
+
+        await db.Entry(client).ReloadAsync();
+        Assert.Equal("directory@example.test", client.Email);
+        var settings = Assert.Single(db.MobileProfileSettings);
+        Assert.Equal("private.member", settings.NormalizedUsername);
+        Assert.Equal("hello@example.test", settings.PublicEmail);
+
+        var hideResult = await controller.Update(
+            new MobileAccountUpdateRequest(
+                "Private Member",
+                "555-0100",
+                null,
+                null,
+                Username: "Private.Member",
+                Bio: "Building a legacy.",
+                Website: "https://legend.example.test/member",
+                Location: "Phoenix, Arizona",
+                Pronouns: "they/them",
+                PublicEmail: "hello@example.test",
+                IsEmailVisible: false),
+            CancellationToken.None);
+        var hiddenProfile = Assert.IsType<OkObjectResult>(hideResult).Value as MobileAccountProfile;
+        Assert.NotNull(hiddenProfile);
+        Assert.Null(hiddenProfile!.Email);
+        Assert.Equal("hello@example.test", hiddenProfile.ProfileEmail);
+        Assert.False(hiddenProfile.IsEmailVisible);
+    }
+
+    [Fact]
     public async Task MobileJourneyCircles_ProjectsAClientAvatarOnlyFromTheTypedClientProfile()
     {
         await using var db = ControllerTestHelpers.BuildDb();

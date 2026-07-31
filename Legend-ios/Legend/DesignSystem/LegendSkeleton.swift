@@ -151,7 +151,7 @@ struct LegendLaunchSkeleton: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white.ignoresSafeArea())
+        .background(LegendNextColor.canvas.ignoresSafeArea())
     }
 }
 

@@ -51,11 +51,41 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
     let profileID: String
     let displayName: String
     let avatar: ProfileAvatar?
+    let username: String?
+    let bio: String?
+    let website: String?
+    let location: String?
+    let pronouns: String?
+    let publicEmail: String?
+
+    init(
+        identity: LogicalParticipantIdentity,
+        profileID: String,
+        displayName: String,
+        avatar: ProfileAvatar?,
+        username: String? = nil,
+        bio: String? = nil,
+        website: String? = nil,
+        location: String? = nil,
+        pronouns: String? = nil,
+        publicEmail: String? = nil
+    ) {
+        self.identity = identity
+        self.profileID = profileID
+        self.displayName = displayName
+        self.avatar = avatar
+        self.username = username
+        self.bio = bio
+        self.website = website
+        self.location = location
+        self.pronouns = pronouns
+        self.publicEmail = publicEmail
+    }
 
     private enum CodingKeys: String, CodingKey {
         case identity
         case profileID = "profileId"
-        case displayName, avatar
+        case displayName, avatar, username, bio, website, location, pronouns, publicEmail
     }
 }
 
@@ -70,7 +100,7 @@ enum MobileSocialFollowListKind: String, Codable, CaseIterable, Identifiable, Se
     var title: String {
         switch self {
         case .follows:
-            return "Follows"
+            return "Following"
         case .followers:
             return "Followers"
         }

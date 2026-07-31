@@ -75,7 +75,14 @@ public sealed class MobileAccountController : MobileApiControllerBase
                 request.DisplayName,
                 request.Phone,
                 request.Title,
-                request.ShortBio),
+                request.ShortBio,
+                request.Username,
+                request.Bio,
+                request.Website,
+                request.Location,
+                request.Pronouns,
+                request.PublicEmail,
+                request.IsEmailVisible),
             cancellationToken);
 
         return result.Succeeded && result.Account is not null
@@ -117,6 +124,13 @@ public sealed class MobileAccountController : MobileApiControllerBase
             account.Phone,
             account.Title,
             account.ShortBio,
+            account.Username,
+            account.Bio,
+            account.Website,
+            account.Location,
+            account.Pronouns,
+            account.ProfileEmail,
+            account.IsEmailVisible,
             avatar);
     }
 
@@ -147,7 +161,14 @@ public sealed record MobileAccountUpdateRequest(
     string DisplayName,
     string? Phone,
     string? Title,
-    string? ShortBio);
+    string? ShortBio,
+    string? Username = null,
+    string? Bio = null,
+    string? Website = null,
+    string? Location = null,
+    string? Pronouns = null,
+    string? PublicEmail = null,
+    bool IsEmailVisible = false);
 
 public sealed record MobileAccountProfile(
     string ParticipantType,
@@ -157,4 +178,11 @@ public sealed record MobileAccountProfile(
     string? Phone,
     string? Title,
     string? ShortBio,
+    string? Username,
+    string? Bio,
+    string? Website,
+    string? Location,
+    string? Pronouns,
+    string? ProfileEmail,
+    bool IsEmailVisible,
     MobileAvatarDto? Avatar);

@@ -1,4 +1,5 @@
 using Domain.Messaging;
+using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,7 +21,14 @@ public sealed record MobileAccountUpdate(
     string DisplayName,
     string? Phone,
     string? Title,
-    string? ShortBio);
+    string? ShortBio,
+    string? Username = null,
+    string? Bio = null,
+    string? Website = null,
+    string? Location = null,
+    string? Pronouns = null,
+    string? PublicEmail = null,
+    bool IsEmailVisible = false);
 
 public sealed record MobileAccountSnapshot(
     string ParticipantType,
@@ -29,7 +37,14 @@ public sealed record MobileAccountSnapshot(
     string? Email,
     string? Phone,
     string? Title,
-    string? ShortBio);
+    string? ShortBio,
+    string? Username = null,
+    string? Bio = null,
+    string? Website = null,
+    string? Location = null,
+    string? Pronouns = null,
+    string? ProfileEmail = null,
+    bool IsEmailVisible = false);
 
 public sealed record MobileAccountResult(
     bool Succeeded,
@@ -47,9 +62,9 @@ public sealed record MobileAccountResult(
 /// <summary>
 /// Canonical mobile account projection and mutation service.
 ///
-/// This service reads and updates the existing AgentProfiles and ClientProfiles
-/// authorities. It does not create mobile profile entities, mirrored persistence,
-/// fallback identity matching, or a competing account store.
+/// This service keeps account-owned details with the existing AgentProfiles and
+/// ClientProfiles authorities, while MobileProfileSettings stores the mobile-only
+/// social fields without mirroring or overwriting the synced web account.
 /// </summary>
 public sealed class MobileAccountService : IMobileAccountService
 {
@@ -57,6 +72,11 @@ public sealed class MobileAccountService : IMobileAccountService
     private const int TitleMaximumLength = 160;
     private const int PhoneMaximumLength = 80;
     private const int ShortBioMaximumLength = 1_000;
+    private const int UsernameMaximumLength = 64;
+    private const int WebsiteMaximumLength = 2_048;
+    private const int LocationMaximumLength = 120;
+    private const int PronounsMaximumLength = 80;
+    private const int EmailMaximumLength = 320;
 
     private readonly MasterAppDbContext _db;
 
@@ -91,14 +111,20 @@ public sealed class MobileAccountService : IMobileAccountService
                     candidate.ShortBio))
                 .SingleOrDefaultAsync(cancellationToken);
 
-            return profile is null
-                ? MobileAccountResult.Failure(
+            if (profile is null)
+            {
+                return MobileAccountResult.Failure(
                     "MOBILE_ACCOUNT_UNAVAILABLE",
-                    "Your agent account is not available.")
-                : MobileAccountResult.Success(profile with
-                {
-                    DisplayName = NormalizeDisplayName(profile.DisplayName, actor.DisplayName)
-                });
+                    "Your agent account is not available.");
+            }
+
+            return await ApplyMobileSettingsAsync(profile with
+            {
+                DisplayName = NormalizeDisplayName(profile.DisplayName, actor.DisplayName),
+                // A directory or web-account email is never implicitly published
+                // in the native profile.
+                Email = null
+            }, actor, cancellationToken);
         }
 
         if (string.Equals(
@@ -119,14 +145,20 @@ public sealed class MobileAccountService : IMobileAccountService
                     null))
                 .SingleOrDefaultAsync(cancellationToken);
 
-            return profile is null
-                ? MobileAccountResult.Failure(
+            if (profile is null)
+            {
+                return MobileAccountResult.Failure(
                     "MOBILE_ACCOUNT_UNAVAILABLE",
-                    "Your client account is not available.")
-                : MobileAccountResult.Success(profile with
-                {
-                    DisplayName = NormalizeDisplayName(profile.DisplayName, actor.DisplayName)
-                });
+                    "Your client account is not available.");
+            }
+
+            return await ApplyMobileSettingsAsync(profile with
+            {
+                DisplayName = NormalizeDisplayName(profile.DisplayName, actor.DisplayName),
+                // Client directory email is private unless the member explicitly
+                // creates and enables a mobile-profile contact address.
+                Email = null
+            }, actor, cancellationToken);
         }
 
         return MobileAccountResult.Failure(
@@ -145,6 +177,17 @@ public sealed class MobileAccountService : IMobileAccountService
             return MobileAccountResult.Failure(
                 "MOBILE_ACCOUNT_INPUT_INVALID",
                 validationError);
+        }
+
+        var mobileSettingsValidationError = await ValidateMobileSettingsAsync(
+            actor,
+            update,
+            cancellationToken);
+        if (mobileSettingsValidationError is not null)
+        {
+            return MobileAccountResult.Failure(
+                "MOBILE_ACCOUNT_INPUT_INVALID",
+                mobileSettingsValidationError);
         }
 
         var now = DateTime.UtcNow;
@@ -202,8 +245,63 @@ public sealed class MobileAccountService : IMobileAccountService
                 "The selected mobile account type is not supported.");
         }
 
+        var mobileSettings = await _db.MobileProfileSettings.SingleOrDefaultAsync(
+            candidate => candidate.ProfileId == actor.ProfileId &&
+                         candidate.ParticipantType == actor.Actor.ParticipantType,
+            cancellationToken);
+        if (mobileSettings is null)
+        {
+            mobileSettings = new MobileProfileSettings
+            {
+                Id = Guid.NewGuid(),
+                ProfileId = actor.ProfileId,
+                ParticipantType = actor.Actor.ParticipantType,
+                CreatedUtc = now
+            };
+            _db.MobileProfileSettings.Add(mobileSettings);
+        }
+
+        mobileSettings.Username = DisplayUsername(update.Username);
+        mobileSettings.NormalizedUsername = NormalizeUsername(update.Username);
+        mobileSettings.Bio = TrimOptional(update.Bio);
+        mobileSettings.Website = TrimOptional(update.Website);
+        mobileSettings.Location = TrimOptional(update.Location);
+        mobileSettings.Pronouns = TrimOptional(update.Pronouns);
+        mobileSettings.PublicEmail = TrimOptional(update.PublicEmail);
+        mobileSettings.IsEmailVisible = update.IsEmailVisible;
+        mobileSettings.UpdatedUtc = now;
+
         await _db.SaveChangesAsync(cancellationToken);
         return await GetAsync(actor, cancellationToken);
+    }
+
+    private async Task<MobileAccountResult> ApplyMobileSettingsAsync(
+        MobileAccountSnapshot account,
+        MobileResolvedActor actor,
+        CancellationToken cancellationToken)
+    {
+        var settings = await _db.MobileProfileSettings
+            .AsNoTracking()
+            .SingleOrDefaultAsync(candidate =>
+                candidate.ProfileId == actor.ProfileId &&
+                candidate.ParticipantType == actor.Actor.ParticipantType,
+                cancellationToken);
+
+        if (settings is null)
+            return MobileAccountResult.Success(account);
+
+        var profileEmail = TrimOptional(settings.PublicEmail);
+        return MobileAccountResult.Success(account with
+        {
+            Email = settings.IsEmailVisible ? profileEmail : null,
+            Username = TrimOptional(settings.Username),
+            Bio = TrimOptional(settings.Bio) ?? account.ShortBio,
+            Website = TrimOptional(settings.Website),
+            Location = TrimOptional(settings.Location),
+            Pronouns = TrimOptional(settings.Pronouns),
+            ProfileEmail = profileEmail,
+            IsEmailVisible = settings.IsEmailVisible
+        });
     }
 
     private static string? Validate(
@@ -225,6 +323,27 @@ public sealed class MobileAccountService : IMobileAccountService
         if (update.ShortBio?.Trim().Length > ShortBioMaximumLength)
             return "Your introduction is too long.";
 
+        if (update.Username?.Trim().Length > UsernameMaximumLength)
+            return "Your username is too long.";
+
+        if (update.Bio?.Trim().Length > ShortBioMaximumLength)
+            return "Your mobile profile bio is too long.";
+
+        if (update.Website?.Trim().Length > WebsiteMaximumLength)
+            return "Your website link is too long.";
+
+        if (update.Location?.Trim().Length > LocationMaximumLength)
+            return "Your location is too long.";
+
+        if (update.Pronouns?.Trim().Length > PronounsMaximumLength)
+            return "Your pronouns are too long.";
+
+        if (update.PublicEmail?.Trim().Length > EmailMaximumLength)
+            return "Your profile email is too long.";
+
+        if (update.IsEmailVisible && string.IsNullOrWhiteSpace(update.PublicEmail))
+            return "Add the email you want to show before enabling it on your profile.";
+
         if (string.Equals(
                 actor.Actor.ParticipantType,
                 MessagingParticipantTypes.Client,
@@ -244,6 +363,29 @@ public sealed class MobileAccountService : IMobileAccountService
         }
 
         return null;
+    }
+
+    private async Task<string?> ValidateMobileSettingsAsync(
+        MobileResolvedActor actor,
+        MobileAccountUpdate update,
+        CancellationToken cancellationToken)
+    {
+        var username = NormalizeUsername(update.Username);
+        if (username is null)
+            return null;
+
+        if (username.Any(character =>
+                !char.IsLetterOrDigit(character) && character is not '_' and not '.'))
+        {
+            return "Usernames can use letters, numbers, underscores, and periods.";
+        }
+
+        var isTaken = await _db.MobileProfileSettings.AsNoTracking().AnyAsync(
+            candidate => candidate.NormalizedUsername == username &&
+                         (candidate.ProfileId != actor.ProfileId ||
+                          candidate.ParticipantType != actor.Actor.ParticipantType),
+            cancellationToken);
+        return isTaken ? "That username is already in use." : null;
     }
 
     private static (string FirstName, string LastName) SplitDisplayName(
@@ -268,6 +410,15 @@ public sealed class MobileAccountService : IMobileAccountService
 
     private static string? TrimOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? NormalizeUsername(string? value)
+    {
+        var normalized = DisplayUsername(value)?.ToLowerInvariant();
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    private static string? DisplayUsername(string? value) =>
+        TrimOptional(TrimOptional(value)?.TrimStart('@'));
 
     private static string NormalizeDisplayName(
         string? displayName,

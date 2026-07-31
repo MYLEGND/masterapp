@@ -97,7 +97,7 @@ private struct RoleSelectionView: View {
                                 .padding(.horizontal, LegendSpacing.md)
                                 .frame(maxWidth: .infinity)
                                 .frame(minHeight: 58)
-                                .background(Color.white)
+                                .background(LegendNextColor.surface)
                                 .overlay {
                                     RoundedRectangle(cornerRadius: 14)
                                         .stroke(LegendPalette.gold, lineWidth: 1.5)
@@ -136,7 +136,7 @@ private struct RoleSelectionView: View {
                 .padding(.bottom, LegendSpacing.lg)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color.white.ignoresSafeArea())
+            .background(LegendNextColor.canvas.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
         }
     }
@@ -201,7 +201,7 @@ private struct ConfigurationStateView: View {
                 .padding(.vertical, LegendSpacing.xl)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color.white.ignoresSafeArea())
+            .background(LegendNextColor.canvas.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
         }
     }
@@ -248,7 +248,7 @@ private struct SignInView: View {
                 .padding(.vertical, LegendSpacing.lg)
                 .frame(maxWidth: .infinity, minHeight: 640)
             }
-            .background(Color.white.ignoresSafeArea())
+            .background(LegendNextColor.canvas.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
         }
     }
@@ -269,7 +269,7 @@ private struct SessionFailureView: View {
             }
             .padding(LegendSpacing.md)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.white.ignoresSafeArea())
+            .background(LegendNextColor.canvas.ignoresSafeArea())
             .navigationTitle("Secure access")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -310,7 +310,7 @@ private struct AuthenticatedHomeView: View {
                         })
                     .padding(LegendSpacing.md)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.white.ignoresSafeArea())
+                    .background(LegendNextColor.canvas.ignoresSafeArea())
                     .navigationTitle("Legend")
                     .navigationBarTitleDisplayMode(.inline)
                 }

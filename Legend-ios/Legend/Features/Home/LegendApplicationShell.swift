@@ -828,7 +828,7 @@ private extension ParticipantType {
     var accountLabel: String {
         switch self {
         case .agent: "Agent"
-        case .client: "Client"
+        case .client: "Member"
         }
     }
 
@@ -5759,7 +5759,7 @@ private struct LegendAccountView: View {
                 } label: {
                     profileMetric(
                         value: currentProfileMetrics?.followingCount ?? 0,
-                        title: "Follows"
+                        title: "Following"
                     )
                 }
                 .buttonStyle(.plain)
@@ -5792,15 +5792,29 @@ private struct LegendAccountView: View {
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(LegendNextColor.textPrimary)
 
-                Text(profile.participantType.rawValue)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(LegendNextColor.navy)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        LegendNextColor.gold.opacity(0.22),
-                        in: Capsule()
-                    )
+                if profile.participantType == .agent {
+                    Text("Legend Agent")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(LegendNextColor.navy)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            LegendNextColor.gold.opacity(0.22),
+                            in: Capsule()
+                        )
+                }
+            }
+
+            if let username = normalized(profile.username) {
+                Text("@\(username)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.gold)
+            }
+
+            if let pronouns = normalized(profile.pronouns) {
+                Text(pronouns)
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.textSecondary)
             }
 
             if let title = normalized(profile.title),
@@ -5810,11 +5824,24 @@ private struct LegendAccountView: View {
                     .foregroundStyle(LegendNextColor.textSecondary)
             }
 
-            if let shortBio = normalized(profile.shortBio) {
-                Text(shortBio)
+            if let bio = normalized(profile.bio) ?? normalized(profile.shortBio) {
+                Text(bio)
                     .font(.subheadline)
                     .foregroundStyle(LegendNextColor.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let location = normalized(profile.location) {
+                Label(location, systemImage: "mappin.and.ellipse")
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            }
+
+            if let website = normalized(profile.website) {
+                Text(website)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.gold)
+                    .textSelection(.enabled)
             }
 
             if let email = normalized(profile.email) {
@@ -5978,85 +6005,107 @@ private struct LegendAccountView: View {
 
     private var profileSettingsSheet: some View {
         NavigationStack {
-            List {
-                Section {
-                    Button {
-                        isShowingSettings = false
-                        isEditing = true
-                    } label: {
-                        Label(
-                            "Edit profile",
-                            systemImage: "person.crop.circle"
-                        )
+            ScrollView {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.xl) {
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                        Text("Your Legend profile")
+                            .font(LegendNextTypography.section)
+                            .foregroundStyle(LegendNextColor.textPrimary)
+
+                        Text("Personalize the details people see here. These settings are private to the Legend mobile app and do not change your web account.")
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    LegendProfileSettingsSection(title: "Profile") {
+                        VStack(spacing: 0) {
+                            Button {
+                                isShowingSettings = false
+                                isEditing = true
+                            } label: {
+                                LegendProfileSettingsRow(
+                                    title: "Edit profile",
+                                    detail: "Name, bio, links, and privacy",
+                                    systemImage: "person.crop.circle",
+                                    showsChevron: true)
+                            }
+                            .buttonStyle(.plain)
+
+                            LegendProfileSettingsDivider()
+
+                            Button {
+                                Task { await bootstrap.refreshProfile() }
+                                isShowingSettings = false
+                            } label: {
+                                LegendProfileSettingsRow(
+                                    title: "Refresh profile",
+                                    detail: "Check for the latest account details",
+                                    systemImage: "arrow.clockwise",
+                                    showsChevron: false)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    LegendProfileSettingsSection(title: "Privacy") {
+                        LegendProfileSettingsRow(
+                            title: "Profile email",
+                            detail: "Shown only when you enable it",
+                            systemImage: "lock.shield",
+                            showsChevron: false)
+                    }
+
+                    LegendProfileSettingsSection(title: "Security") {
+                        VStack(spacing: 0) {
+                            LegendProfileSettingsRow(
+                                title: "Secure session",
+                                detail: "Protected",
+                                systemImage: "lock.shield.fill",
+                                showsChevron: false)
+
+                            LegendProfileSettingsDivider()
+
+                            LegendProfileSettingsRow(
+                                title: "Token storage",
+                                detail: "iOS Keychain",
+                                systemImage: "key.fill",
+                                showsChevron: false)
+                        }
                     }
 
                     Button {
-                        Task { await bootstrap.refreshProfile() }
-                        isShowingSettings = false
-                    } label: {
-                        Label(
-                            "Refresh profile",
-                            systemImage: "arrow.clockwise"
-                        )
-                    }
-                } header: {
-                    Text("Profile")
-                }
-
-                Section {
-                    HStack {
-                        Label(
-                            "Secure session",
-                            systemImage: "lock.shield"
-                        )
-
-                        Spacer()
-
-                        Text("Protected")
-                            .foregroundStyle(
-                                LegendNextColor.textSecondary
-                            )
-                    }
-
-                    HStack {
-                        Label(
-                            "Token storage",
-                            systemImage: "key"
-                        )
-
-                        Spacer()
-
-                        Text("iOS Keychain")
-                            .foregroundStyle(
-                                LegendNextColor.textSecondary
-                            )
-                    }
-                } header: {
-                    Text("Security")
-                }
-
-                Section {
-                    Button(role: .destructive) {
                         isShowingSettings = false
                         isConfirmingSignOut = true
                     } label: {
-                        Label(
-                            "Sign out",
-                            systemImage: "rectangle.portrait.and.arrow.right"
-                        )
+                        LegendProfileSettingsRow(
+                            title: "Sign out",
+                            detail: nil,
+                            systemImage: "rectangle.portrait.and.arrow.right",
+                            showsChevron: false,
+                            isDestructive: true)
                     }
+                    .buttonStyle(.plain)
                 }
+                .padding(LegendNextSpacing.md)
+                .padding(.bottom, LegendNextSpacing.xxl)
             }
+            .background(LegendNextColor.canvas.ignoresSafeArea())
             .navigationTitle("Profile settings")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(LegendNextColor.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         isShowingSettings = false
                     }
+                    .foregroundStyle(LegendNextColor.gold)
                 }
             }
         }
+        .tint(LegendNextColor.gold)
+        .presentationBackground(LegendNextColor.canvas)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
@@ -6239,9 +6288,6 @@ private struct LegendFollowListView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(LegendNextColor.textPrimary)
 
-                Text(entry.profile.identity.participantType.rawValue)
-                    .font(.caption)
-                    .foregroundStyle(LegendNextColor.textSecondary)
             }
 
             Spacer(minLength: LegendNextSpacing.xs)
@@ -6306,14 +6352,61 @@ private struct LegendSocialProfileView: View {
                                 .font(.title3.weight(.bold))
                                 .foregroundStyle(LegendNextColor.textPrimary)
 
-                            Text(metrics.profile.identity.participantType.rawValue)
-                                .font(.subheadline)
-                                .foregroundStyle(LegendNextColor.textSecondary)
+                            if metrics.profile.identity.participantType == .agent {
+                                Text("Legend Agent")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(LegendNextColor.navy)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        LegendNextColor.gold.opacity(0.22),
+                                        in: Capsule())
+                            }
+
+                            if let username = normalized(metrics.profile.username) {
+                                Text("@\(username)")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(LegendNextColor.gold)
+                            }
+
+                            if let pronouns = normalized(metrics.profile.pronouns) {
+                                Text(pronouns)
+                                    .font(LegendNextTypography.supporting)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                            }
+
+                            if let bio = normalized(metrics.profile.bio) {
+                                Text(bio)
+                                    .font(.subheadline)
+                                    .foregroundStyle(LegendNextColor.textPrimary)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            if let location = normalized(metrics.profile.location) {
+                                Label(location, systemImage: "mappin.and.ellipse")
+                                    .font(LegendNextTypography.supporting)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                            }
+
+                            if let website = normalized(metrics.profile.website) {
+                                Text(website)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(LegendNextColor.gold)
+                                    .textSelection(.enabled)
+                            }
+
+                            if let publicEmail = normalized(metrics.profile.publicEmail) {
+                                Label(publicEmail, systemImage: "envelope")
+                                    .font(LegendNextTypography.supporting)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                                    .textSelection(.enabled)
+                            }
                         }
 
                         HStack(spacing: LegendNextSpacing.md) {
                             metric(value: metrics.videoCount, title: "Hacs")
-                            metric(value: metrics.followingCount, title: "Follows")
+                            metric(value: metrics.followingCount, title: "Following")
                             metric(value: metrics.followerCount, title: "Followers")
                         }
 
@@ -6367,6 +6460,16 @@ private struct LegendSocialProfileView: View {
                 .foregroundStyle(LegendNextColor.textSecondary)
         }
         .frame(minWidth: 64)
+    }
+
+    private func normalized(_ value: String?) -> String? {
+        guard let normalized = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalized.isEmpty else {
+            return nil
+        }
+
+        return normalized
     }
 
     private func refresh() async {
@@ -6503,6 +6606,13 @@ private struct LegendAccountEditor: View {
     @State private var phone: String
     @State private var title: String
     @State private var shortBio: String
+    @State private var username: String
+    @State private var bio: String
+    @State private var website: String
+    @State private var location: String
+    @State private var pronouns: String
+    @State private var profileEmail: String
+    @State private var isEmailVisible: Bool
 
     init(profile: MobileAccountProfile, store: MobileAccountStore) {
         self.profile = profile
@@ -6511,51 +6621,290 @@ private struct LegendAccountEditor: View {
         _phone = State(initialValue: profile.phone ?? "")
         _title = State(initialValue: profile.title ?? "")
         _shortBio = State(initialValue: profile.shortBio ?? "")
+        _username = State(initialValue: profile.username ?? "")
+        _bio = State(initialValue: profile.bio ?? "")
+        _website = State(initialValue: profile.website ?? "")
+        _location = State(initialValue: profile.location ?? "")
+        _pronouns = State(initialValue: profile.pronouns ?? "")
+        _profileEmail = State(initialValue: profile.profileEmail ?? "")
+        _isEmailVisible = State(initialValue: profile.isEmailVisible)
     }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Your profile") {
-                    TextField("Name", text: $displayName)
-                        .textContentType(.name)
-                    TextField("Phone", text: $phone)
-                        .textContentType(.telephoneNumber)
-                        .keyboardType(.phonePad)
-                    if profile.participantType == .agent {
-                        TextField("Title", text: $title)
-                            .textContentType(.jobTitle)
-                        TextField("Introduction", text: $shortBio, axis: .vertical)
-                            .lineLimit(3...6)
+            ScrollView {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.xl) {
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                        Text("Shape your Legend")
+                            .font(LegendNextTypography.section)
+                            .foregroundStyle(LegendNextColor.textPrimary)
+
+                        Text("These profile details are specific to the mobile Legend experience. Your secure account email is never shown here automatically.")
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    LegendProfileSettingsSection(title: "Identity") {
+                        VStack(spacing: LegendNextSpacing.md) {
+                            LegendProfileEditorField(
+                                title: "Display name",
+                                prompt: "How people know you",
+                                text: $displayName,
+                                contentType: .name)
+                            LegendProfileEditorField(
+                                title: "Username",
+                                prompt: "your.legend",
+                                text: $username,
+                                autocapitalization: .never,
+                                autocorrectionDisabled: true)
+                            LegendProfileEditorField(
+                                title: "Pronouns",
+                                prompt: "Optional",
+                                text: $pronouns)
+                        }
+                    }
+
+                    LegendProfileSettingsSection(title: "About") {
+                        VStack(spacing: LegendNextSpacing.md) {
+                            LegendProfileEditorField(
+                                title: "Bio",
+                                prompt: "Tell your story",
+                                text: $bio,
+                                isMultiline: true)
+                            LegendProfileEditorField(
+                                title: "Website",
+                                prompt: "https://example.com",
+                                text: $website,
+                                keyboardType: .URL,
+                                autocapitalization: .never,
+                                autocorrectionDisabled: true)
+                            LegendProfileEditorField(
+                                title: "Location",
+                                prompt: "City, state, or region",
+                                text: $location)
+                        }
+                    }
+
+                    LegendProfileSettingsSection(title: "Contact privacy") {
+                        VStack(spacing: LegendNextSpacing.md) {
+                            LegendProfileEditorField(
+                                title: "Profile email",
+                                prompt: "The email you want to share",
+                                text: $profileEmail,
+                                keyboardType: .emailAddress,
+                                contentType: .emailAddress,
+                                autocapitalization: .never,
+                                autocorrectionDisabled: true)
+
+                            Toggle(isOn: $isEmailVisible) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Show email on profile")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(LegendNextColor.textPrimary)
+                                    Text("Only this member-entered address is shown. Your account email remains private.")
+                                        .font(LegendNextTypography.caption)
+                                        .foregroundStyle(LegendNextColor.textSecondary)
+                                }
+                            }
+                            .tint(LegendNextColor.gold)
+                        }
+                    }
+
+                    LegendProfileSettingsSection(title: "Account details") {
+                        VStack(spacing: LegendNextSpacing.md) {
+                            LegendProfileEditorField(
+                                title: "Phone",
+                                prompt: "Phone number",
+                                text: $phone,
+                                keyboardType: .phonePad,
+                                contentType: .telephoneNumber)
+
+                            if profile.participantType == .agent {
+                                LegendProfileEditorField(
+                                    title: "Professional title",
+                                    prompt: "Advisor, coach, or specialist",
+                                    text: $title,
+                                    contentType: .jobTitle)
+                                LegendProfileEditorField(
+                                    title: "Professional introduction",
+                                    prompt: "Optional",
+                                    text: $shortBio,
+                                    isMultiline: true)
+                            }
+                        }
                     }
                 }
-
-                Section {
-                    Text(profile.email ?? "Not available")
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                } header: {
-                    Text("Directory email")
-                } footer: {
-                    Text("Email remains managed by the secure directory.")
-                }
+                .padding(LegendNextSpacing.md)
+                .padding(.bottom, LegendNextSpacing.xxl)
             }
-            .navigationTitle("Edit account")
+            .background(LegendNextColor.canvas.ignoresSafeArea())
+            .navigationTitle("Edit profile")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(LegendNextColor.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .foregroundStyle(LegendNextColor.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(store.isSaving ? "Saving…" : "Save") {
-                        store.save(MobileAccountUpdate(
-                            displayName: displayName,
-                            phone: phone,
-                            title: profile.participantType == .agent ? title : nil,
-                            shortBio: profile.participantType == .agent ? shortBio : nil))
-                        dismiss()
+                        Task {
+                            let didSave = await store.save(MobileAccountUpdate(
+                                displayName: displayName,
+                                phone: phone,
+                                title: profile.participantType == .agent ? title : nil,
+                                shortBio: profile.participantType == .agent ? shortBio : nil,
+                                username: username,
+                                bio: bio,
+                                website: website,
+                                location: location,
+                                pronouns: pronouns,
+                                publicEmail: profileEmail,
+                                isEmailVisible: isEmailVisible))
+                            if didSave {
+                                dismiss()
+                            }
+                        }
                     }
                     .disabled(store.isSaving || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .foregroundStyle(LegendNextColor.gold)
                 }
+            }
+        }
+        .tint(LegendNextColor.gold)
+        .presentationBackground(LegendNextColor.canvas)
+    }
+}
+
+private struct LegendProfileSettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    init(
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            Text(title.uppercased())
+                .font(LegendNextTypography.eyebrow)
+                .foregroundStyle(LegendNextColor.gold)
+                .padding(.horizontal, LegendNextSpacing.xs)
+
+            content
+                .padding(LegendNextSpacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    LegendNextColor.surface,
+                    in: RoundedRectangle(
+                        cornerRadius: LegendNextRadius.card,
+                        style: .continuous))
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius: LegendNextRadius.card,
+                        style: .continuous)
+                    .stroke(LegendNextColor.separator, lineWidth: 1)
+                }
+        }
+    }
+}
+
+private struct LegendProfileSettingsRow: View {
+    let title: String
+    let detail: String?
+    let systemImage: String
+    let showsChevron: Bool
+    var isDestructive = false
+
+    var body: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(isDestructive ? LegendNextColor.danger : LegendNextColor.gold)
+                .frame(width: 26)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(isDestructive ? LegendNextColor.danger : LegendNextColor.textPrimary)
+
+                if let detail {
+                    Text(detail)
+                        .font(LegendNextTypography.caption)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                }
+            }
+
+            Spacer(minLength: LegendNextSpacing.sm)
+
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(LegendNextColor.gold)
+            }
+        }
+        .padding(.vertical, LegendNextSpacing.tiny)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct LegendProfileSettingsDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(LegendNextColor.separator)
+            .frame(height: 1)
+            .padding(.leading, 36)
+    }
+}
+
+private struct LegendProfileEditorField: View {
+    let title: String
+    let prompt: String
+    @Binding var text: String
+    var keyboardType: UIKeyboardType = .default
+    var contentType: UITextContentType? = nil
+    var autocapitalization: TextInputAutocapitalization? = .sentences
+    var autocorrectionDisabled = false
+    var isMultiline = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.tiny) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(LegendNextColor.textSecondary)
+
+            Group {
+                if isMultiline {
+                    TextField(prompt, text: $text, axis: .vertical)
+                        .lineLimit(3...6)
+                } else {
+                    TextField(prompt, text: $text)
+                }
+            }
+            .font(.subheadline)
+            .foregroundStyle(LegendNextColor.textPrimary)
+            .textInputAutocapitalization(autocapitalization)
+            .autocorrectionDisabled(autocorrectionDisabled)
+            .keyboardType(keyboardType)
+            .textContentType(contentType)
+            .padding(.horizontal, LegendNextSpacing.sm)
+            .padding(.vertical, LegendNextSpacing.sm)
+            .background(
+                LegendNextColor.surfaceInset,
+                in: RoundedRectangle(
+                    cornerRadius: LegendNextRadius.control,
+                    style: .continuous))
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: LegendNextRadius.control,
+                    style: .continuous)
+                .stroke(LegendNextColor.separator, lineWidth: 1)
             }
         }
     }

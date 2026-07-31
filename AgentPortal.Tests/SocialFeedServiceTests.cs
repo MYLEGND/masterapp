@@ -287,6 +287,53 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task ProfileMetrics_UsesMobileOnlyDetails_AndOnlyReturnsAnEmailWhenItsOwnerEnabledIt()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("mobile-social-profile", "Mobile", "Profile");
+        db.ClientProfiles.Add(client);
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            Id = Guid.NewGuid(),
+            ProfileId = client.Id,
+            ParticipantType = MessagingParticipantTypes.Client,
+            Username = "mobile.profile",
+            NormalizedUsername = "mobile.profile",
+            Bio = "A mobile-only Legend bio.",
+            Website = "https://legend.example/profile",
+            Location = "Phoenix, AZ",
+            Pronouns = "they/them",
+            PublicEmail = "shareable@example.test",
+            IsEmailVisible = false,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var hidden = await service.GetProfileMetricsAsync(ClientActor(client));
+
+        Assert.True(hidden.Succeeded);
+        Assert.Equal("mobile.profile", hidden.Value!.Profile.Username);
+        Assert.Equal("A mobile-only Legend bio.", hidden.Value.Profile.Bio);
+        Assert.Equal("https://legend.example/profile", hidden.Value.Profile.Website);
+        Assert.Equal("Phoenix, AZ", hidden.Value.Profile.Location);
+        Assert.Equal("they/them", hidden.Value.Profile.Pronouns);
+        Assert.Null(hidden.Value.Profile.PublicEmail);
+
+        var settings = await db.MobileProfileSettings.SingleAsync();
+        settings.IsEmailVisible = true;
+        settings.UpdatedUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var visible = await service.GetProfileMetricsAsync(ClientActor(client));
+
+        Assert.True(visible.Succeeded);
+        Assert.Equal("shareable@example.test", visible.Value!.Profile.PublicEmail);
+        Assert.Equal(client.Email, (await db.ClientProfiles.SingleAsync()).Email);
+    }
+
+    [Fact]
     public async Task EditAndDelete_RequireTheExactOwnerAndRemoveThePostFromTheProfile()
     {
         await using var db = ControllerTestHelpers.BuildDb();
