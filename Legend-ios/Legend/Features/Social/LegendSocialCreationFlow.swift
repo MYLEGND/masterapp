@@ -635,8 +635,7 @@ struct LegendSocialComposer: View {
             }
 
             if photoLibrary.canLoadMore {
-                ProgressView()
-                    .tint(LegendNextColor.goldBright)
+                LegendSkeletonShape(cornerRadius: 2)
                     .frame(maxWidth: .infinity)
                     .aspectRatio(
                         type == .post ? 1 : selectionAspectRatio,
@@ -1742,8 +1741,6 @@ private struct LegendSocialMusicSelectionSheet: View {
 
                             if isSearching {
                                 HStack(spacing: LegendNextSpacing.xs) {
-                                    ProgressView()
-                                        .tint(LegendNextColor.goldBright)
                                     Text("Finding music")
                                         .font(LegendNextTypography.supporting)
                                         .foregroundStyle(Color.white.opacity(0.70))
@@ -2944,9 +2941,7 @@ private struct LegendPhotoLibraryThumbnail: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
         } else {
-            Rectangle()
-                .fill(LegendNextColor.surfaceInset)
-                .overlay { ProgressView().tint(LegendNextColor.gold) }
+            LegendSkeletonShape(cornerRadius: 0)
         }
     }
 
@@ -2978,7 +2973,8 @@ private struct LegendPhotoLibraryAssetPreview: View {
                     .scaledToFit()
                     .ignoresSafeArea()
             } else {
-                ProgressView().tint(LegendNextColor.goldBright)
+                LegendSkeletonShape(cornerRadius: 0)
+                    .ignoresSafeArea()
             }
 
             VStack {

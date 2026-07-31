@@ -70,9 +70,8 @@ struct LegendNextAvatar: View {
                 case .empty:
                     fallback
                         .overlay {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.white.opacity(0.78))
+                            LegendSkeletonShape(cornerRadius: 999)
+                                .opacity(0.55)
                         }
 
                 case .failure:

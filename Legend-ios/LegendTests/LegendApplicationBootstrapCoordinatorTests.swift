@@ -13,6 +13,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
             includesAgentWorkspace: true)
 
         await coordinator.bootstrapIfNeeded()
+        await coordinator.awaitStartupCompletion()
 
         XCTAssertEqual(coordinator.state, .ready)
         let homeCalls = await services.home.calls()
@@ -33,6 +34,56 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(workspaceCalls.leads, 0)
     }
 
+    /// The shell must be interactive as soon as authentication succeeds. Startup does
+    /// no awaiting of network work, so `bootstrapIfNeeded` returns `.ready` before any
+    /// feature request has completed.
+    func testShellIsReadyBeforeAnyStartupRequestCompletes() async throws {
+        let fixture = try BootstrapFixture()
+        let services = BootstrapServices(fixture: fixture)
+        // Every startup request hangs long enough that a blocking bootstrap could not
+        // possibly have returned.
+        await services.home.setResponseDelay(.milliseconds(400))
+        let coordinator = makeCoordinator(
+            participantType: .client,
+            services: services,
+            includesAgentWorkspace: false)
+
+        await coordinator.bootstrapIfNeeded()
+
+        XCTAssertEqual(coordinator.state, .ready, "The shell must open without waiting on startup data")
+        let homeCalls = await services.home.calls()
+        XCTAssertEqual(homeCalls, 0, "Startup must not block on a completed home request")
+
+        await coordinator.awaitStartupCompletion()
+        let settledHomeCalls = await services.home.calls()
+        XCTAssertEqual(settledHomeCalls, 1, "Home still loads, just progressively")
+    }
+
+    /// Data for tabs the user has not opened must not be requested on the critical
+    /// path ahead of what Home renders.
+    func testDeferredTabDataIsNotRequestedBeforeHomeData() async throws {
+        let fixture = try BootstrapFixture()
+        let services = BootstrapServices(fixture: fixture)
+        await services.home.setResponseDelay(.milliseconds(250))
+        let coordinator = makeCoordinator(
+            participantType: .client,
+            services: services,
+            includesAgentWorkspace: false)
+
+        await coordinator.bootstrapIfNeeded()
+        try await Task.sleep(for: .milliseconds(80))
+
+        // Home is in flight; messaging and Journey Circles belong to the second pass.
+        let messagingCalls = await services.messaging.calls()
+        let journeyCalls = await services.journey.calls()
+        XCTAssertEqual(messagingCalls, 0)
+        XCTAssertEqual(journeyCalls, 0)
+
+        await coordinator.awaitStartupCompletion()
+        let settledMessaging = await services.messaging.calls()
+        XCTAssertEqual(settledMessaging, 1)
+    }
+
     func testAgentBootstrapLoadsAgentCoreDataAndFinancialProjection() async throws {
         let fixture = try BootstrapFixture()
         let services = BootstrapServices(fixture: fixture)
@@ -42,6 +93,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
             includesAgentWorkspace: true)
 
         await coordinator.bootstrapIfNeeded()
+        await coordinator.awaitStartupCompletion()
 
         XCTAssertEqual(coordinator.state, .ready)
         let homeCalls = await services.home.calls()
@@ -71,6 +123,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
             includesAgentWorkspace: false)
 
         await coordinator.bootstrapIfNeeded()
+        await coordinator.awaitStartupCompletion()
 
         guard case .failed(let failure) = coordinator.state else {
             return XCTFail("Expected agent bootstrap to require its workspace")
@@ -91,6 +144,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         async let first: Void = coordinator.bootstrapIfNeeded()
         async let second: Void = coordinator.bootstrapIfNeeded()
         _ = await (first, second)
+        await coordinator.awaitStartupCompletion()
 
         XCTAssertEqual(coordinator.state, .ready)
         let homeCalls = await services.home.calls()
@@ -118,6 +172,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
             includesAgentWorkspace: false)
 
         await coordinator.bootstrapIfNeeded()
+        await coordinator.awaitStartupCompletion()
 
         guard case .partiallyReady(let failures) = coordinator.state else {
             return XCTFail("Expected a partially ready application shell")
@@ -137,6 +192,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
             authenticationFailureHandler: { handledFailure = $0 })
 
         await coordinator.bootstrapIfNeeded()
+        await coordinator.awaitStartupCompletion()
 
         guard case .failed(let failure) = coordinator.state else {
             return XCTFail("Expected authentication to leave application bootstrap")
@@ -200,8 +256,10 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
             includesAgentWorkspace: false)
 
         await coordinator.bootstrapIfNeeded()
+        await coordinator.awaitStartupCompletion()
         await services.financial.setNetworkFailure(false)
         await coordinator.retryBootstrap()
+        await coordinator.awaitStartupCompletion()
 
         XCTAssertEqual(coordinator.state, .ready)
         let homeCalls = await services.home.calls()
@@ -477,15 +535,24 @@ private final class BootstrapServices {
 
 private actor HomeBootstrapAPI: MobileHomeAPI {
     let response: MobileHomeResponse
+    /// Counts *completed* calls, so a test can distinguish "in flight" from "done".
     var callCount = 0
     var failWithNetworkError = false
     var failWithAuthenticationError = false
+    private var responseDelay: Duration = .zero
 
     init(response: MobileHomeResponse) {
         self.response = response
     }
 
+    func setResponseDelay(_ delay: Duration) {
+        responseDelay = delay
+    }
+
     func home(accessToken: String) async throws -> MobileHomeResponse {
+        if responseDelay > .zero {
+            try? await Task.sleep(for: responseDelay)
+        }
         callCount += 1
         if failWithAuthenticationError {
             throw MobileAPIError.apiUnauthorized(

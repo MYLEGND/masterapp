@@ -63,7 +63,7 @@ All new types begin with `LegendNext` to prevent collisions with the existing sy
 - `LegendNextMetricTile`
 - `LegendNextQuickAction`
 - `LegendNextAvatar`
-- `LegendNextLoadingState`
+- `LegendSkeletonShape` / `LegendHomeSkeleton` / `LegendListSkeleton` / `LegendFeedPostSkeleton` (loading placeholders; Legend never shows a spinner while waiting for first content)
 - `LegendNextEmptyState`
 - `LegendNextErrorState`
 - `LegendNextSkeletonCard`

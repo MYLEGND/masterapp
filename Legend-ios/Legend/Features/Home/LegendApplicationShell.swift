@@ -114,6 +114,10 @@ struct LegendApplicationShell: View {
                     selectedTab: $selectedTab
                 )
             }
+            .task {
+                bootstrap.stores.home.load()
+                social.load()
+            }
 
         case .clients:
             if let agentWorkspace = bootstrap.stores.agentWorkspace {
@@ -127,6 +131,7 @@ struct LegendApplicationShell: View {
                         }
                     )
                 }
+                .task { agentWorkspace.loadClients() }
             } else {
                 unavailableTab
             }
@@ -139,6 +144,7 @@ struct LegendApplicationShell: View {
                         bootstrap: bootstrap
                     )
                 }
+                .task { agentWorkspace.loadLeads() }
             } else {
                 unavailableTab
             }
@@ -159,12 +165,14 @@ struct LegendApplicationShell: View {
                     social: social
                 )
             }
+            .task { social.load() }
 
         case .messages:
             LegendMessagesTab(
                 isThreadActive: $isMessageThreadActive,
                 messages: messages
             )
+            .task { messages.load() }
 
         case .account:
             NavigationStack {
@@ -175,6 +183,10 @@ struct LegendApplicationShell: View {
                     social: social,
                     bootstrap: bootstrap
                 )
+            }
+            .task {
+                bootstrap.stores.account.load()
+                social.loadProfilePosts()
             }
         }
     }
@@ -1222,10 +1234,9 @@ private struct LegendHomeView: View {
         Group {
             switch store.state {
             case .idle, .loading:
-                LegendNextLoadingState(
-                    "Preparing your Legend home",
-                    detail: "Bringing your priorities, progress, and community together."
-                )
+                LegendScreenSkeleton(accessibilityMessage: "Preparing your Legend home") {
+                    LegendHomeSkeleton()
+                }
 
             case .loaded(let home):
                 financialHomeContent(home)
@@ -2806,7 +2817,9 @@ private struct LegendAgentClientsView: View {
         Group {
             switch store.clientsState {
             case .idle, .loading:
-                LegendLoadingView("Loading your client CRM…")
+                LegendScreenSkeleton(accessibilityMessage: "Loading your client CRM") {
+                    LegendListSkeleton(rows: 8)
+                }
             case .loaded(let clients):
                 clientContent(clients)
             case .unavailable(let failure):
@@ -2872,7 +2885,9 @@ private struct LegendAgentLeadsView: View {
         Group {
             switch store.leadsState {
             case .idle, .loading:
-                LegendLoadingView("Loading your lead CRM…")
+                LegendScreenSkeleton(accessibilityMessage: "Loading your lead CRM") {
+                    LegendListSkeleton(rows: 8)
+                }
             case .loaded(let leads):
                 leadContent(leads)
             case .unavailable(let failure):
@@ -3150,10 +3165,8 @@ private struct LegendFinancialHomePanel: View {
         Group {
             switch store.state {
             case .idle, .loading:
-                LegendNextLoadingState(
-                    "Preparing your financial outlook",
-                    detail: "Bringing your cash-flow plan together."
-                )
+                LegendHomeSkeleton()
+                    .accessibilityLabel("Preparing your financial outlook")
 
             case .available(let financial):
                 financialPanel(financial)
@@ -4249,9 +4262,8 @@ private struct LegendFinanceView: View {
         Group {
             switch store.state {
             case .idle, .loading:
-                LegendLoadingView(
-                    "Loading financial intelligence…"
-                )
+                LegendHomeSkeleton()
+                    .accessibilityLabel("Loading financial intelligence")
 
             case .available(let financial):
                 financialContent(financial)
@@ -5543,7 +5555,9 @@ private struct LegendAccountView: View {
         Group {
             switch account.state {
             case .idle, .loading:
-                LegendLoadingView("Loading your profile…")
+                LegendScreenSkeleton(accessibilityMessage: "Loading your profile") {
+                    LegendListSkeleton(rows: 5)
+                }
 
             case .loaded(let profile):
                 profileContent(profile)

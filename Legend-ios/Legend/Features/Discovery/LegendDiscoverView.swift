@@ -89,7 +89,9 @@ struct LegendDiscoverView: View {
     private var content: some View {
         switch store.state {
         case .idle, .loading:
-            LegendLoadingView("Loading Discover…")
+            LegendScreenSkeleton(accessibilityMessage: "Loading Discover") {
+                LegendListSkeleton(rows: 7)
+            }
 
         case .unavailable(let failure):
             LegendErrorCard(
@@ -124,12 +126,8 @@ struct LegendDiscoverView: View {
                     }
 
                     if store.isLoadingMore {
-                        HStack {
-                            Spacer()
-                            ProgressView().tint(LegendNextColor.gold)
-                            Spacer()
-                        }
-                        .padding(.vertical, LegendNextSpacing.sm)
+                        LegendListSkeleton(rows: 2)
+                            .padding(.top, LegendNextSpacing.xs)
                     }
                 }
                 .padding(.horizontal, LegendNextSpacing.sm)
@@ -149,9 +147,12 @@ struct LegendDiscoverView: View {
                 Spacer(minLength: LegendNextSpacing.xs)
 
                 if store.isSearching {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(LegendNextColor.gold)
+                    // A quiet, non-spinning hint: results are already on screen and
+                    // are being replaced, not awaited.
+                    Text("Updating…")
+                        .font(.caption2)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .transition(.opacity)
                 }
             }
 

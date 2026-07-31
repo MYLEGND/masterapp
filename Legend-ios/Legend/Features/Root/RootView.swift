@@ -8,15 +8,13 @@ struct RootView: View {
         Group {
             switch session.state {
             case .loading:
-                LegendLoadingView("Preparing secure access…")
-                    .background(Color.white.ignoresSafeArea())
+                LegendLaunchSkeleton()
             case .contractUnavailable(let validation):
                 ConfigurationStateView(validation: validation)
             case .signedOut:
                 SignInView()
             case .authenticating:
-                LegendLoadingView("Opening secure sign-in…")
-                    .background(Color.white.ignoresSafeArea())
+                LegendLaunchSkeleton()
             case .roleSelection(let selection):
                 RoleSelectionView(selection: selection)
             case .authenticated(let currentSession):
@@ -267,7 +265,7 @@ private struct SessionFailureView: View {
                     title: failure.title,
                     message: failure.message,
                     retryTitle: "Try again",
-                    retry: session.signIn)
+                    retry: session.retrySessionEntry)
             }
             .padding(LegendSpacing.md)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -295,8 +293,7 @@ private struct AuthenticatedHomeView: View {
         Group {
             switch bootstrap.state {
             case .idle, .loading:
-                LegendLoadingView("Preparing your Legend…")
-                    .background(Color.white.ignoresSafeArea())
+                LegendLaunchSkeleton()
             case .ready, .partiallyReady:
                 LegendApplicationShell(
                     currentSession: currentSession,

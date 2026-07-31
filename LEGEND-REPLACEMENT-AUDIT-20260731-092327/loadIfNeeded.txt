@@ -1,0 +1,20 @@
+Legend-ios/Legend/Features/Home/MobileHomeStore.swift:225:        Task { _ = await loadIfNeeded() }
+Legend-ios/Legend/Features/Home/MobileHomeStore.swift:228:    func loadIfNeeded() async -> MobileStoreLoadResult {
+Legend-ios/Legend/Features/Home/MobileHomeStore.swift:342:        Task { _ = await loadIfNeeded() }
+Legend-ios/Legend/Features/Home/MobileHomeStore.swift:345:    func loadIfNeeded() async -> MobileStoreLoadResult {
+Legend-ios/Legend/Features/Home/MobileHomeStore.swift:513:        Task { _ = await loadIfNeeded() }
+Legend-ios/Legend/Features/Home/MobileHomeStore.swift:516:    func loadIfNeeded() async -> MobileStoreLoadResult {
+Legend-ios/Legend/Features/Social/MobileSocialStore.swift:255:        Task { _ = await loadIfNeeded() }
+Legend-ios/Legend/Features/Social/MobileSocialStore.swift:266:    func loadIfNeeded() async -> MobileStoreLoadResult {
+Legend-ios/Legend/Features/Root/LegendApplicationBootstrapCoordinator.swift:269:        async let home = stores.home.loadIfNeeded()
+Legend-ios/Legend/Features/Root/LegendApplicationBootstrapCoordinator.swift:270:        async let social = stores.social.loadIfNeeded()
+Legend-ios/Legend/Features/Root/LegendApplicationBootstrapCoordinator.swift:271:        async let financial = stores.financial.loadIfNeeded()
+Legend-ios/Legend/Features/Root/LegendApplicationBootstrapCoordinator.swift:281:            async let account = stores.account.loadIfNeeded()
+Legend-ios/Legend/Features/Root/LegendApplicationBootstrapCoordinator.swift:282:            async let messaging = stores.messaging.loadIfNeeded()
+Legend-ios/Legend/Features/Root/LegendApplicationBootstrapCoordinator.swift:296:        async let account = stores.account.loadIfNeeded()
+Legend-ios/Legend/Features/Root/LegendApplicationBootstrapCoordinator.swift:297:        async let messaging = stores.messaging.loadIfNeeded()
+Legend-ios/Legend/Features/Root/LegendApplicationBootstrapCoordinator.swift:298:        async let journey = stores.journeyCircles.loadIfNeeded()
+Legend-ios/Legend/Features/Account/MobileAccountStore.swift:94:        Task { _ = await loadIfNeeded() }
+Legend-ios/Legend/Features/Account/MobileAccountStore.swift:97:    func loadIfNeeded() async -> MobileStoreLoadResult {
+Legend-ios/Legend/Features/Messaging/MessagingStore.swift:71:        Task { _ = await loadIfNeeded() }
+Legend-ios/Legend/Features/Messaging/MessagingStore.swift:74:    func loadIfNeeded() async -> MobileStoreLoadResult {

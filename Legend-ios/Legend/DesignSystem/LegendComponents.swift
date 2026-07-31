@@ -258,27 +258,6 @@ struct LegendNavigationBar: View {
     }
 }
 
-struct LegendLoadingView: View {
-    let title: String
-
-    init(_ title: String = "Loading…") {
-        self.title = title
-    }
-
-    var body: some View {
-        VStack(spacing: LegendSpacing.sm) {
-            ProgressView()
-                .controlSize(.regular)
-            Text(title)
-                .font(LegendTypography.metadata)
-                .foregroundStyle(LegendPalette.secondaryLabel)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(LegendSpacing.lg)
-        .accessibilityElement(children: .combine)
-    }
-}
-
 struct LegendEmptyState: View {
     let title: String
     let message: String

@@ -1,42 +1,5 @@
 import SwiftUI
 
-struct LegendNextLoadingState: View {
-    let title: String
-    let detail: String?
-
-    init(
-        _ title: String = "Loading",
-        detail: String? = nil
-    ) {
-        self.title = title
-        self.detail = detail
-    }
-
-    var body: some View {
-        VStack(spacing: LegendNextSpacing.md) {
-            ProgressView()
-                .controlSize(.regular)
-                .tint(LegendNextColor.gold)
-
-            VStack(spacing: LegendNextSpacing.micro) {
-                Text(title)
-                    .font(LegendNextTypography.cardTitle)
-                    .foregroundStyle(LegendNextColor.textPrimary)
-
-                if let detail, !detail.isEmpty {
-                    Text(detail)
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                        .multilineTextAlignment(.center)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(LegendNextSpacing.xl)
-        .accessibilityElement(children: .combine)
-    }
-}
-
 struct LegendNextEmptyState<Action: View>: View {
     let title: String
     let message: String

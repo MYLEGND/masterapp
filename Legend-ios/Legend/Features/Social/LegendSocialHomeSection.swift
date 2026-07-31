@@ -787,7 +787,7 @@ private struct LegendStoryMedia: View {
                     playbackFinished()
                 }
         } else {
-            Color.black.overlay { ProgressView().tint(.white) }
+            Color.black.overlay { LegendSkeletonShape(cornerRadius: 0).opacity(0.35) }
                 .task(id: media.id) {
                     guard let fileURL = await social.mediaFile(for: media) else { return }
                     let createdPlayer = AVPlayer(url: fileURL)
@@ -1179,7 +1179,9 @@ struct LegendForYouView: View {
         Group {
             switch social.state {
             case .idle, .loading:
-                LegendLoadingView("Loading your For You feed…")
+                LegendScreenSkeleton(accessibilityMessage: "Loading your For You feed") {
+                    LegendFeedPostSkeleton()
+                }
 
             case .unavailable(let failure):
                 LegendErrorCard(
@@ -1475,7 +1477,7 @@ struct LegendSocialMediaVideo: View {
                             cornerRadius: LegendNextRadius.control,
                             style: .continuous)
                         .fill(LegendNextColor.surfaceInset)
-                        .overlay { ProgressView() }
+                        .overlay { LegendSkeletonShape(cornerRadius: LegendNextRadius.control) }
                     }
                 }
                 .frame(minHeight: 220)
@@ -1591,7 +1593,6 @@ private struct LegendSocialLoadingSection: View {
             }
             LegendNextSurface {
                 HStack(spacing: LegendNextSpacing.sm) {
-                    ProgressView()
                     Text("Loading your secure feed…")
                         .font(LegendNextTypography.supporting)
                         .foregroundStyle(LegendNextColor.textSecondary)
@@ -1658,7 +1659,7 @@ struct LegendSocialMediaImage: View {
                 .fill(LegendNextColor.surfaceInset)
                 .frame(height: placeholderHeight)
                 .overlay {
-                    ProgressView()
+                    LegendSkeletonShape(cornerRadius: LegendNextRadius.control)
                 }
             case .unavailable:
                 RoundedRectangle(
@@ -1864,7 +1865,9 @@ private struct LegendCommentComposer: View {
 
                     commentsSection
                 } else {
-                    LegendLoadingView("Loading comments…")
+                    LegendListSkeleton(rows: 4)
+                        .padding(LegendNextSpacing.sm)
+                        .accessibilityLabel("Loading comments")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 

@@ -264,7 +264,7 @@ final class MobileSocialStore: ObservableObject {
     }
 
     func loadIfNeeded() async -> MobileStoreLoadResult {
-        await requestFeed(preservingCachedValue: hasFeedValue)
+        hasFeedValue ? .loaded : await requestFeed(preservingCachedValue: false)
     }
 
     func refresh() async -> MobileStoreLoadResult {

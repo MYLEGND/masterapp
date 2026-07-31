@@ -23,7 +23,9 @@ struct LegendDiscoverProfileView: View {
                     message: "This Legend member is not available from your Discover scope.",
                     symbolName: "person.crop.circle.badge.exclamationmark")
             } else {
-                LegendLoadingView("Loading profile…")
+                LegendScreenSkeleton(accessibilityMessage: "Loading profile") {
+                    LegendListSkeleton(rows: 4)
+                }
             }
         }
         .background(LegendNextColor.canvas.ignoresSafeArea())

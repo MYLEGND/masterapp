@@ -226,7 +226,7 @@ final class MobileHomeStore: ObservableObject {
     }
 
     func loadIfNeeded() async -> MobileStoreLoadResult {
-        await request(preservingCachedValue: hasCachedValue)
+        hasCachedValue ? .loaded : await request(preservingCachedValue: false)
     }
 
     func refresh() async -> MobileStoreLoadResult {
@@ -343,7 +343,7 @@ final class MobileFinancialStore: ObservableObject {
     }
 
     func loadIfNeeded() async -> MobileStoreLoadResult {
-        await request(preservingCachedValue: hasCachedValue)
+        hasCachedValue ? .loaded : await request(preservingCachedValue: false)
     }
 
     func refresh() async -> MobileStoreLoadResult {
@@ -514,7 +514,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
     }
 
     func loadIfNeeded() async -> MobileStoreLoadResult {
-        await request(preservingCachedValue: hasCachedValue)
+        hasCachedValue ? .loaded : await request(preservingCachedValue: false)
     }
 
     func refresh() async -> MobileStoreLoadResult {

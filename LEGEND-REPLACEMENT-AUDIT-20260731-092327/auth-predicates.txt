@@ -1,0 +1,4 @@
+Legend-ios/Legend/Core/MobileHTTPClient.swift:482:    var provesInvalidBearerCredential: Bool {
+Legend-ios/Legend/Core/MobileSessionCoordinator.swift:129:                if apiError?.provesInvalidBearerCredential == true || isRefreshCredentialRejected(error) {
+Legend-ios/Legend/Core/MobileSessionCoordinator.swift:289:            if isRefreshCredentialRejected(error) {
+Legend-ios/Legend/Core/MobileSessionCoordinator.swift:305:    private func isRefreshCredentialRejected(_ error: Error) -> Bool {
