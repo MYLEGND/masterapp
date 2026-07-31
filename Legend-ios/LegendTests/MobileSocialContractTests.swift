@@ -34,6 +34,9 @@ final class MobileSocialContractTests: XCTestCase {
               },
               "contentType": "Post",
               "body": "Agent update",
+              "audience": "AuthorizedNetwork",
+              "location": null,
+              "commentsEnabled": true,
               "postedUtc": "2026-07-26T12:00:00Z",
               "expiresUtc": null,
               "reactionCount": 1,
@@ -69,6 +72,9 @@ final class MobileSocialContractTests: XCTestCase {
               },
               "contentType": "Post",
               "body": "Client update",
+              "audience": "AuthorizedNetwork",
+              "location": null,
+              "commentsEnabled": true,
               "postedUtc": "2026-07-26T12:01:00Z",
               "expiresUtc": null,
               "reactionCount": 0,
@@ -125,6 +131,9 @@ final class MobileSocialContractTests: XCTestCase {
             author: author,
             contentType: MobileSocialContentType.post.rawValue,
             body: "Build the plan.",
+            audience: MobileSocialAudience.authorizedNetwork.rawValue,
+            location: nil,
+            commentsEnabled: true,
             postedUTC: .now,
             expiresUTC: nil,
             reactionCount: 0,
@@ -258,6 +267,9 @@ final class MobileSocialContractTests: XCTestCase {
             author: author,
             contentType: MobileSocialContentType.reel.rawValue,
             body: "A focused reel.",
+            audience: MobileSocialAudience.authorizedNetwork.rawValue,
+            location: nil,
+            commentsEnabled: true,
             postedUTC: .now,
             expiresUTC: nil,
             reactionCount: 0,
@@ -285,11 +297,110 @@ final class MobileSocialContractTests: XCTestCase {
                 mimeType: "video/mp4",
                 data: Data([0, 1, 2, 3]))],
             accessibilityText: "A Legend reel",
-            music: nil))
+            music: nil,
+            audience: .authorizedNetwork,
+            location: nil,
+            commentsEnabled: true))
 
         XCTAssertTrue(published)
         let contentTypes = await api.mediaContentTypes()
         XCTAssertEqual(contentTypes, [.reel])
+    }
+
+    /// Audience, location, and the comment switch are collected in the share sheet.
+    /// They previously stopped at the view layer and never reached the server.
+    @MainActor
+    func testShareDetailsReachTheMediaPublishRequest() async throws {
+        let author = MobileSocialAuthor(
+            identity: try LogicalParticipantIdentity(
+                userID: "client-one",
+                participantType: .client),
+            profileID: "00000000-0000-0000-0000-000000000002",
+            displayName: "Client One",
+            avatar: nil)
+        let post = MobileSocialPost(
+            id: UUID(),
+            author: author,
+            contentType: MobileSocialContentType.post.rawValue,
+            body: "Detailed update.",
+            audience: MobileSocialAudience.followers.rawValue,
+            location: "Nashville, TN",
+            commentsEnabled: false,
+            postedUTC: .now,
+            expiresUTC: nil,
+            reactionCount: 0,
+            commentCount: 0,
+            reactedByCurrentActor: false,
+            followedByCurrentActor: false,
+            savedByCurrentActor: false,
+            repostedByCurrentActor: false,
+            metrics: testSocialMetrics,
+            music: nil,
+            media: [],
+            comments: [])
+        let api = RecordingSocialAPI(post: post)
+        let store = MobileSocialStore(
+            api: api,
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics())
+
+        let published = await store.publish(MobileSocialPublishRequest(
+            contentType: .post,
+            body: "Detailed update.",
+            files: [MultipartFormFile(
+                fieldName: "files",
+                fileName: "legend-post.jpg",
+                mimeType: "image/jpeg",
+                data: Data([0, 1, 2, 3]))],
+            accessibilityText: nil,
+            music: nil,
+            audience: .followers,
+            location: "Nashville, TN",
+            commentsEnabled: false))
+
+        XCTAssertTrue(published)
+        let details = await api.lastMediaPostDetails()
+        XCTAssertEqual(details.audience, .followers)
+        XCTAssertEqual(details.location, "Nashville, TN")
+        XCTAssertEqual(details.commentsEnabled, false)
+    }
+
+    /// A failed upload used to hold the publication slot forever, which disabled the
+    /// composer's Next and Share controls for the rest of the session.
+    @MainActor
+    func testAFailedPublicationDoesNotPermanentlyBlockTheComposer() async throws {
+        let store = MobileSocialStore(
+            api: MobileUnavailableSocialAPI(),
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics())
+
+        let request = MobileSocialPublishRequest(
+            contentType: .post,
+            body: "This upload will fail.",
+            files: [],
+            accessibilityText: nil,
+            music: nil,
+            audience: .authorizedNetwork,
+            location: nil,
+            commentsEnabled: true)
+
+        XCTAssertTrue(store.beginPublication(request))
+
+        // Let the failing upload settle.
+        for _ in 0..<200 where store.publication?.stage != .failed {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(store.publication?.stage, .failed)
+
+        // A failed publication is not "in flight", so the composer stays usable.
+        XCTAssertFalse(store.isPublishing)
+
+        // And a new publication can start without first clearing the old one by hand.
+        XCTAssertTrue(store.beginPublication(request))
+
+        store.discardPendingPublication()
+        XCTAssertNil(store.publication)
+        XCTAssertFalse(store.isPublishing)
     }
 
     func testProfileCatalogAndPostMutationsUseConfirmedServerResponses() async throws {
@@ -305,6 +416,9 @@ final class MobileSocialContractTests: XCTestCase {
             author: author,
             contentType: MobileSocialContentType.post.rawValue,
             body: "Original move.",
+            audience: MobileSocialAudience.authorizedNetwork.rawValue,
+            location: nil,
+            commentsEnabled: true,
             postedUTC: .now,
             expiresUTC: nil,
             reactionCount: 0,
@@ -368,6 +482,9 @@ final class MobileSocialContractTests: XCTestCase {
             author: author,
             contentType: MobileSocialContentType.post.rawValue,
             body: "An image post.",
+            audience: MobileSocialAudience.authorizedNetwork.rawValue,
+            location: nil,
+            commentsEnabled: true,
             postedUTC: .now,
             expiresUTC: nil,
             reactionCount: 0,
@@ -431,6 +548,9 @@ final class MobileSocialContractTests: XCTestCase {
             author: author,
             contentType: MobileSocialContentType.reel.rawValue,
             body: "A measured reel.",
+            audience: MobileSocialAudience.authorizedNetwork.rawValue,
+            location: nil,
+            commentsEnabled: true,
             postedUTC: .now,
             expiresUTC: nil,
             reactionCount: 0,
@@ -472,7 +592,7 @@ private struct StubSocialAPI: MobileSocialAPI {
     func currentProfilePosts(accessToken: String) async throws -> [MobileSocialPost] { [post] }
 
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost { post }
-    func createMediaPost(type: MobileSocialContentType, body: String, files: [MultipartFormFile], accessibilityText: String?, music: MobileSocialMusicSelection?, accessToken: String) async throws -> MobileSocialPost { post }
+    func createMediaPost(type: MobileSocialContentType, body: String, files: [MultipartFormFile], accessibilityText: String?, music: MobileSocialMusicSelection?, audience: MobileSocialAudience, location: String?, commentsEnabled: Bool, accessToken: String) async throws -> MobileSocialPost { post }
     func updatePost(postID: UUID, request: MobileUpdateSocialPost, accessToken: String) async throws -> MobileSocialPost { updatedSocialPost(post, body: request.body) }
     func deletePost(postID: UUID, accessToken: String) async throws {}
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data { Data() }
@@ -499,6 +619,9 @@ private actor RecordingSocialAPI: MobileSocialAPI {
     private var recordedUpdateRequest: MobileUpdateSocialPost?
     private var recordedDeletedPostID: UUID?
     private var recordedMediaDataCallCount = 0
+    private var recordedMediaAudience: MobileSocialAudience?
+    private var recordedMediaLocation: String?
+    private var recordedMediaCommentsEnabled: Bool?
 
     init(post: MobileSocialPost) {
         self.post = post
@@ -525,9 +648,15 @@ private actor RecordingSocialAPI: MobileSocialAPI {
         files: [MultipartFormFile],
         accessibilityText: String?,
         music: MobileSocialMusicSelection?,
+        audience: MobileSocialAudience,
+        location: String?,
+        commentsEnabled: Bool,
         accessToken: String
     ) async throws -> MobileSocialPost {
         recordedMediaContentTypes.append(type)
+        recordedMediaAudience = audience
+        recordedMediaLocation = location
+        recordedMediaCommentsEnabled = commentsEnabled
         return post
     }
 
@@ -593,6 +722,14 @@ private actor RecordingSocialAPI: MobileSocialAPI {
         recordedMediaContentTypes
     }
 
+    func lastMediaPostDetails() -> (
+        audience: MobileSocialAudience?,
+        location: String?,
+        commentsEnabled: Bool?
+    ) {
+        (recordedMediaAudience, recordedMediaLocation, recordedMediaCommentsEnabled)
+    }
+
     func lastFollowRequest() -> MobileToggleSocialFollow? {
         recordedFollowRequest
     }
@@ -619,6 +756,9 @@ private func updatedSocialPost(
         author: post.author,
         contentType: post.contentType,
         body: body,
+        audience: MobileSocialAudience.authorizedNetwork.rawValue,
+        location: nil,
+        commentsEnabled: true,
         postedUTC: post.postedUTC,
         expiresUTC: post.expiresUTC,
         reactionCount: post.reactionCount,
@@ -643,6 +783,9 @@ private func socialPost(
         author: author,
         contentType: contentType.rawValue,
         body: "A focused Legend update.",
+        audience: MobileSocialAudience.authorizedNetwork.rawValue,
+        location: nil,
+        commentsEnabled: true,
         postedUTC: postedUTC,
         expiresUTC: contentType == .story ? postedUTC.addingTimeInterval(86_400) : nil,
         reactionCount: 0,

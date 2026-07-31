@@ -5267,6 +5267,11 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("CommentsEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -5277,6 +5282,10 @@ namespace Infrastructure.Migrations
 
                     b.Property<DateTime?>("ExpiresUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<DateTime>("PostedUtc")
                         .HasColumnType("datetime2");

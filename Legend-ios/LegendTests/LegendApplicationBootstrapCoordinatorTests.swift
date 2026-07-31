@@ -615,7 +615,7 @@ private actor SocialBootstrapAPI: MobileSocialAPI {
     }
 
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost { fatalError("Not used by bootstrap") }
-    func createMediaPost(type: MobileSocialContentType, body: String, files: [MultipartFormFile], accessibilityText: String?, music: MobileSocialMusicSelection?, accessToken: String) async throws -> MobileSocialPost { fatalError("Not used by bootstrap") }
+    func createMediaPost(type: MobileSocialContentType, body: String, files: [MultipartFormFile], accessibilityText: String?, music: MobileSocialMusicSelection?, audience: MobileSocialAudience, location: String?, commentsEnabled: Bool, accessToken: String) async throws -> MobileSocialPost { fatalError("Not used by bootstrap") }
     func updatePost(postID: UUID, request: MobileUpdateSocialPost, accessToken: String) async throws -> MobileSocialPost { fatalError("Not used by bootstrap") }
     func deletePost(postID: UUID, accessToken: String) async throws {}
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data { Data() }

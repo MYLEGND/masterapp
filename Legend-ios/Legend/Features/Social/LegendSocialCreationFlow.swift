@@ -186,7 +186,7 @@ struct LegendSocialComposer: View {
     @State private var accessibilityText = ""
     @State private var tagsAndMentions = ""
     @State private var shareLocation = ""
-    @State private var shareAudience = "Followers"
+    @State private var shareAudience: MobileSocialAudience = .authorizedNetwork
     @State private var commentsEnabled = true
     @State private var mediaSelectionError: String?
     @State private var stage: LegendSocialCreationStage = .library
@@ -294,8 +294,9 @@ struct LegendSocialComposer: View {
             return hasValidSelection || type == .post
 
         case .metadata, .share:
-            return canPublish &&
-                social.publication == nil
+            // A failed publication no longer counts as in-flight, so a recoverable
+            // upload failure cannot permanently disable Next and Share.
+            return canPublish && !social.isPublishing
 
         case .music, .handedOff, .failed:
             return false
@@ -446,15 +447,6 @@ struct LegendSocialComposer: View {
         }
     }
 
-    private var libraryTileHeight: CGFloat {
-        switch type {
-        case .post:
-            112
-        case .story, .reel:
-            196
-        }
-    }
-
     @ViewBuilder
     private func selectionPreview(isDark: Bool) -> some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
@@ -599,91 +591,71 @@ struct LegendSocialComposer: View {
         }
     }
 
+    /// The full eligible library, laid out inline so the enclosing ScrollView owns the
+    /// scrolling. The grid previously lived inside a GeometryReader with a fixed
+    /// minHeight, which collapsed it to roughly two rows and made every asset past the
+    /// sixth unreachable no matter how large the library was.
     private var mediaGrid: some View {
-        GeometryReader { proxy in
-            let spacing: CGFloat = 2
-            let columnsCount = 3
-            let availableWidth =
-                proxy.size.width -
-                (spacing * CGFloat(columnsCount - 1))
-            let tileWidth = floor(
-                availableWidth / CGFloat(columnsCount)
-            )
-            let tileHeight: CGFloat = {
-                switch type {
-                case .post:
-                    return tileWidth
-                case .story, .reel:
-                    return tileWidth / selectionAspectRatio
-                }
-            }()
-
-            let columns = Array(
-                repeating: GridItem(
-                    .fixed(tileWidth),
-                    spacing: spacing
-                ),
-                count: columnsCount
-            )
-
-            LazyVGrid(
-                columns: columns,
-                alignment: .center,
+        let spacing: CGFloat = 2
+        let columnsCount = 3
+        let columns = Array(
+            repeating: GridItem(
+                .flexible(),
                 spacing: spacing
-            ) {
-                ForEach(eligibleLibraryAssets) { asset in
-                    LegendPhotoLibraryThumbnail(
-                        asset: asset,
-                        photoLibrary: photoLibrary,
-                        isSelected:
-                            selectedAssetIdentifiers.contains(asset.id),
-                        isEligible: true,
-                        select: { select(asset) }
-                    )
-                    .frame(
-                        width: tileWidth,
-                        height: tileHeight
-                    )
-                    .clipped()
-                }
+            ),
+            count: columnsCount
+        )
 
-                if photoLibrary.canLoadMore {
-                    Button {
+        return LazyVGrid(
+            columns: columns,
+            alignment: .center,
+            spacing: spacing
+        ) {
+            ForEach(eligibleLibraryAssets) { asset in
+                LegendPhotoLibraryThumbnail(
+                    asset: asset,
+                    photoLibrary: photoLibrary,
+                    isSelected:
+                        selectedAssetIdentifiers.contains(asset.id),
+                    selectionIndex: selectionIndex(of: asset),
+                    isEligible: true,
+                    select: { select(asset) }
+                )
+                .aspectRatio(
+                    type == .post ? 1 : selectionAspectRatio,
+                    contentMode: .fit
+                )
+                .clipped()
+                .onAppear {
+                    // Page in the next batch as the tail of the grid comes into view.
+                    if asset.id == eligibleLibraryAssets.last?.id {
                         photoLibrary.loadNextPage()
-                    } label: {
-                        VStack(spacing: LegendNextSpacing.xs) {
-                            Image(systemName: "plus")
-                                .font(.title3.weight(.bold))
-
-                            Text("More")
-                                .font(LegendNextTypography.label)
-                        }
-                        .foregroundStyle(LegendNextColor.goldBright)
-                        .frame(
-                            width: tileWidth,
-                            height: tileHeight
-                        )
-                        .background(
-                            Color.white.opacity(0.08),
-                            in: RoundedRectangle(
-                                cornerRadius: LegendNextRadius.control,
-                                style: .continuous
-                            )
-                        )
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                        "Show more recent \(type.displayName.lowercased()) media"
-                    )
                 }
             }
+
+            if photoLibrary.canLoadMore {
+                ProgressView()
+                    .tint(LegendNextColor.goldBright)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(
+                        type == .post ? 1 : selectionAspectRatio,
+                        contentMode: .fit
+                    )
+                    .accessibilityLabel("Loading more media")
+                    .onAppear { photoLibrary.loadNextPage() }
+            }
         }
-        .frame(
-            minHeight:
-                type == .post
-                    ? 226
-                    : libraryTileHeight * 2 + 2
-        )
+    }
+
+    /// One-based position of an asset in the current selection, for ordered badges.
+    private func selectionIndex(of asset: LegendPhotoLibraryAsset) -> Int? {
+        guard let index = selectedMedia.firstIndex(where: {
+            $0.sourceAssetIdentifier == asset.id
+        }) else {
+            return nil
+        }
+        return index + 1
     }
 
     @ViewBuilder
@@ -976,25 +948,9 @@ struct LegendSocialComposer: View {
 
     private var immersiveToolRail: some View {
         VStack(spacing: LegendNextSpacing.xs) {
-            editorToolButton(
-                tool: .text
-            )
-
-            editorToolButton(
-                tool: .audio
-            )
-
-            editorToolButton(
-                tool: .overlay
-            )
-
-            editorToolButton(
-                tool: .filter
-            )
-
-            editorToolButton(
-                tool: .edit
-            )
+            ForEach(LegendSocialStoryEditingTool.allCases) { tool in
+                editorToolButton(tool: tool)
+            }
         }
     }
 
@@ -1046,7 +1002,7 @@ struct LegendSocialComposer: View {
         case .audio:
             EmptyView()
 
-        case .text, .overlay:
+        case .text:
             TextField(
                 type == .story
                     ? "Add text..."
@@ -1077,27 +1033,7 @@ struct LegendSocialComposer: View {
                     : "\(type.displayName) caption"
             )
 
-        case .filter:
-            Label(
-                "Original presentation",
-                systemImage: "camera.filters"
-            )
-            .font(LegendNextTypography.supporting)
-            .foregroundStyle(
-                Color.white.opacity(0.80)
-            )
-            .frame(maxWidth: .infinity)
-            .padding(LegendNextSpacing.sm)
-            .background(
-                Color.white.opacity(0.10),
-                in: RoundedRectangle(
-                    cornerRadius:
-                        LegendNextRadius.control,
-                    style: .continuous
-                )
-            )
-
-        case .edit:
+        case .describe:
             accessibilityEditor(isDark: true)
         }
     }
@@ -1221,14 +1157,11 @@ struct LegendSocialComposer: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(
-                canPublish && social.publication == nil
+                canPublish && !social.isPublishing
                     ? LegendNextColor.goldBright
                     : LegendNextColor.textSecondary.opacity(0.45)
             )
-            .disabled(
-                !canPublish ||
-                social.publication != nil
-            )
+            .disabled(!canPublish || social.isPublishing)
             .accessibilityLabel(
                 "Publish \(type.displayName)"
             )
@@ -1452,29 +1385,34 @@ struct LegendSocialComposer: View {
                     LegendNextColor.textPrimary
                 )
 
-            Text("Audience")
-                .font(.system(size: 15))
-                .foregroundStyle(
-                    LegendNextColor.textPrimary
-                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Audience")
+                    .font(.system(size: 15))
+                    .foregroundStyle(
+                        LegendNextColor.textPrimary
+                    )
+
+                Text(shareAudience.detail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(
+                        LegendNextColor.textSecondary
+                    )
+                    .lineLimit(1)
+            }
 
             Spacer(minLength: 8)
 
             Menu {
-                Button("Followers") {
-                    shareAudience = "Followers"
-                }
-
-                Button("Close Friends") {
-                    shareAudience = "Close Friends"
-                }
-
-                Button("Connections") {
-                    shareAudience = "Connections"
+                // Only audiences the server can enforce are offered. "Close Friends"
+                // was removed because Legend has no close-friends list to back it.
+                Picker("Audience", selection: $shareAudience) {
+                    ForEach(MobileSocialAudience.allCases) { audience in
+                        Text(audience.title).tag(audience)
+                    }
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Text(shareAudience)
+                    Text(shareAudience.title)
                         .font(.system(size: 14))
                         .foregroundStyle(
                             LegendNextColor.textSecondary
@@ -1494,8 +1432,10 @@ struct LegendSocialComposer: View {
             }
         }
         .padding(.horizontal, 16)
-        .frame(height: 54)
+        .frame(minHeight: 54)
         .background(Color.white)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Audience: \(shareAudience.title). \(shareAudience.detail)")
     }
 
     private var instagramAccessibilityRow: some View {
@@ -1572,30 +1512,6 @@ struct LegendSocialComposer: View {
         .background(Color.white)
     }
 
-    private func captionEditor(isDark: Bool) -> some View {
-        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-            Text(type == .story ? "Add text" : "Write a caption")
-                .font(LegendNextTypography.section)
-                .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
-            TextEditor(text: $caption)
-                .font(LegendNextTypography.body)
-                .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: type == .story ? 150 : 118)
-                .padding(LegendNextSpacing.xs)
-                .background(
-                    isDark ? Color.white.opacity(0.10) : LegendNextColor.surfaceInset,
-                    in: RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous)
-                        .strokeBorder(
-                            isDark ? Color.white.opacity(0.14) : LegendNextColor.separator,
-                            lineWidth: 1)
-                }
-                .accessibilityLabel("\(type.displayName) caption")
-        }
-    }
-
     @ViewBuilder
     private func accessibilityEditor(isDark: Bool) -> some View {
         if !selectedMedia.isEmpty {
@@ -1618,16 +1534,6 @@ struct LegendSocialComposer: View {
         }
     }
 
-    private var shareControl: some View {
-        Button(action: primaryAction) {
-            Label("Share \(type.displayName)", systemImage: "arrow.up.circle.fill")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(LegendButtonStyle(kind: .primary))
-        .disabled(!canContinue)
-        .accessibilityLabel("Share \(type.displayName)")
-    }
-
     @ViewBuilder
     private var publicationFailure: some View {
         if let failure = social.actionFailure {
@@ -1635,35 +1541,6 @@ struct LegendSocialComposer: View {
                 .font(LegendNextTypography.supporting)
                 .foregroundStyle(LegendNextColor.danger)
         }
-    }
-
-    private func musicSelection(isDark: Bool) -> some View {
-        Button {
-            stage = .music
-        } label: {
-            HStack(spacing: LegendNextSpacing.sm) {
-                LegendSocialMusicArtwork(
-                    artistName: selectedMusic?.track.artistName ?? "Legend")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(selectedMusic?.track.trackTitle ?? "Add licensed music")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
-                    Text(selectedMusic.map { "\($0.track.artistName) · \($0.track.trackTitle)" } ?? "Browse Christian music or search for a song.")
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(isDark ? Color.white.opacity(0.68) : LegendNextColor.textSecondary)
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(isDark ? Color.white.opacity(0.68) : LegendNextColor.textSecondary)
-            }
-            .padding(LegendNextSpacing.sm)
-            .background(
-                isDark ? Color.white.opacity(0.10) : LegendNextColor.surfaceElevated,
-                in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(selectedMedia.isEmpty)
     }
 
     private var selectedAssetIdentifiers: Set<String> {
@@ -1762,7 +1639,10 @@ struct LegendSocialComposer: View {
             body: normalizedPublicationBody,
             files: selectedMedia.map(\.multipartFile),
             accessibilityText: normalizedAccessibilityText,
-            music: selectedMusic?.selection)
+            music: selectedMusic?.selection,
+            audience: shareAudience,
+            location: normalizedLocation,
+            commentsEnabled: commentsEnabled)
 
         if social.beginPublication(request) {
             ownsMediaAfterDismissal = true
@@ -1789,6 +1669,12 @@ struct LegendSocialComposer: View {
         let value = accessibilityText.trimmingCharacters(
             in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
+    }
+
+    private var normalizedLocation: String? {
+        let value = shareLocation.trimmingCharacters(
+            in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : String(value.prefix(200))
     }
 
     private func discardTemporaryMedia() {
@@ -1878,6 +1764,8 @@ private struct LegendSocialMusicSelectionSheet: View {
                                         musicResultRow(track)
                                     }
                                 }
+
+                                previewAvailabilityNotice
                             }
 
                             if let selectedTrack {
@@ -1985,6 +1873,22 @@ private struct LegendSocialMusicSelectionSheet: View {
         .overlay {
             RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+        }
+    }
+
+    /// The catalog provider does not return preview audio for every track, so no play
+    /// control is offered for those. Say so plainly rather than leaving the absence of
+    /// a button unexplained.
+    @ViewBuilder
+    private var previewAvailabilityNotice: some View {
+        if tracks.allSatisfy({ $0.previewURL == nil }) {
+            Label(
+                "These tracks link to the provider's catalog. In-app preview is not available for them, but your selection is attached to the post.",
+                systemImage: "info.circle")
+                .font(LegendNextTypography.supporting)
+                .foregroundStyle(Color.white.opacity(0.66))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, LegendNextSpacing.micro)
         }
     }
 
@@ -2159,12 +2063,16 @@ private struct LegendSocialMusicArtwork: View {
     }
 }
 
+/// Editing tools that are actually wired to behaviour.
+///
+/// `overlay` and `filter` were removed rather than left on screen: `overlay` bound to
+/// the same caption field as `text`, and `filter` rendered a fixed "Original
+/// presentation" label with no filter pipeline behind it. Adjustment, crop, and filter
+/// tooling returns when the rendering pipeline that backs it exists.
 private enum LegendSocialStoryEditingTool: CaseIterable, Identifiable {
     case audio
     case text
-    case overlay
-    case filter
-    case edit
+    case describe
 
     var id: Self { self }
 
@@ -2172,9 +2080,7 @@ private enum LegendSocialStoryEditingTool: CaseIterable, Identifiable {
         switch self {
         case .audio: "Audio"
         case .text: "Text"
-        case .overlay: "Overlay"
-        case .filter: "Filter"
-        case .edit: "Edit"
+        case .describe: "Alt text"
         }
     }
 
@@ -2182,9 +2088,7 @@ private enum LegendSocialStoryEditingTool: CaseIterable, Identifiable {
         switch self {
         case .audio: "music.note"
         case .text: "textformat"
-        case .overlay: "square.3.layers.3d.top.filled"
-        case .filter: "camera.filters"
-        case .edit: "slider.horizontal.3"
+        case .describe: "text.below.photo"
         }
     }
 }
@@ -2917,11 +2821,13 @@ private struct LegendPhotoLibraryThumbnail: View {
     let asset: LegendPhotoLibraryAsset
     @ObservedObject var photoLibrary: LegendPhotoLibraryAccess
     let isSelected: Bool
+    let selectionIndex: Int?
     let isEligible: Bool
     let select: () -> Void
 
     @State private var image: UIImage?
     @State private var requestID: PHImageRequestID = PHInvalidImageRequestID
+    @State private var isPreviewing = false
 
     var body: some View {
         Button(action: select) {
@@ -2934,28 +2840,49 @@ private struct LegendPhotoLibraryThumbnail: View {
                     }
 
                 if asset.isVideo {
-                    Text(durationLabel)
-                        .font(.caption2.monospacedDigit().weight(.bold))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 3)
-                        .foregroundStyle(.white)
-                        .background(.black.opacity(0.7), in: Capsule())
-                        .padding(6)
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Text(durationLabel)
+                                .font(.caption2.monospacedDigit().weight(.bold))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 3)
+                                .foregroundStyle(.white)
+                                .background(.black.opacity(0.7), in: Capsule())
+                        }
+                    }
+                    .padding(6)
                 }
 
                 if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(LegendNextColor.gold)
-                        .background(Color.black.opacity(0.62), in: Circle())
+                    selectionBadge
                         .padding(6)
                 }
             }
         }
         .buttonStyle(.plain)
         .disabled(!isEligible)
-        .accessibilityLabel("\(asset.isVideo ? "Video" : "Photo")\(isSelected ? ", selected" : "")")
-        .accessibilityHint(isEligible ? "Double tap to select." : "Not available for this format.")
+        .onLongPressGesture(minimumDuration: 0.35) {
+            guard isEligible else { return }
+            isPreviewing = true
+        }
+        .fullScreenCover(isPresented: $isPreviewing) {
+            LegendPhotoLibraryAssetPreview(
+                asset: asset,
+                photoLibrary: photoLibrary,
+                isSelected: isSelected,
+                toggleSelection: {
+                    isPreviewing = false
+                    select()
+                },
+                dismiss: { isPreviewing = false })
+        }
+        .accessibilityLabel(accessibilityDescription)
+        .accessibilityHint(
+            isEligible
+                ? "Double tap to select. Touch and hold to preview."
+                : "Not available for this format.")
         .task(id: "\(asset.id)-\(typeThumbnailKey)") {
             requestID = photoLibrary.thumbnailRequest(
                 for: asset.id,
@@ -2967,6 +2894,37 @@ private struct LegendPhotoLibraryThumbnail: View {
         .onDisappear {
             photoLibrary.cancelThumbnailRequest(requestID)
         }
+    }
+
+    /// A numbered badge when the selection is ordered, a check when it is single-pick.
+    @ViewBuilder
+    private var selectionBadge: some View {
+        if let selectionIndex {
+            Text("\(selectionIndex)")
+                .font(.caption.weight(.black))
+                .foregroundStyle(LegendNextColor.midnight)
+                .frame(width: 24, height: 24)
+                .background(LegendNextColor.goldBright, in: Circle())
+                .overlay { Circle().strokeBorder(.white, lineWidth: 1.5) }
+        } else {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title3)
+                .foregroundStyle(LegendNextColor.gold)
+                .background(Color.black.opacity(0.62), in: Circle())
+        }
+    }
+
+    private var accessibilityDescription: String {
+        var description = asset.isVideo ? "Video" : "Photo"
+        if asset.isVideo {
+            description += ", \(durationLabel)"
+        }
+        if let selectionIndex {
+            description += ", selected, position \(selectionIndex)"
+        } else if isSelected {
+            description += ", selected"
+        }
+        return description
     }
 
     private var typeThumbnailKey: String {
@@ -2990,6 +2948,85 @@ private struct LegendPhotoLibraryThumbnail: View {
                 .fill(LegendNextColor.surfaceInset)
                 .overlay { ProgressView().tint(LegendNextColor.gold) }
         }
+    }
+
+    private var durationLabel: String {
+        let total = max(0, Int(asset.duration.rounded()))
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// Full-screen preview shown on a long press in the media grid, matching the
+/// peek behaviour people expect from a native picker.
+private struct LegendPhotoLibraryAssetPreview: View {
+    let asset: LegendPhotoLibraryAsset
+    @ObservedObject var photoLibrary: LegendPhotoLibraryAccess
+    let isSelected: Bool
+    let toggleSelection: () -> Void
+    let dismiss: () -> Void
+
+    @State private var image: UIImage?
+    @State private var requestID: PHImageRequestID = PHInvalidImageRequestID
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .ignoresSafeArea()
+            } else {
+                ProgressView().tint(LegendNextColor.goldBright)
+            }
+
+            VStack {
+                HStack {
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark")
+                            .font(.title3.weight(.semibold))
+                            .frame(width: 44, height: 44)
+                            .background(Color.black.opacity(0.55), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white)
+                    .accessibilityLabel("Close preview")
+
+                    Spacer()
+
+                    if asset.isVideo {
+                        Label(durationLabel, systemImage: "video.fill")
+                            .font(.caption.weight(.bold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .foregroundStyle(.white)
+                            .background(Color.black.opacity(0.55), in: Capsule())
+                    }
+                }
+                .padding(LegendNextSpacing.md)
+
+                Spacer()
+
+                Button(action: toggleSelection) {
+                    Label(
+                        isSelected ? "Remove from selection" : "Add to selection",
+                        systemImage: isSelected ? "minus.circle" : "checkmark.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(LegendButtonStyle(kind: .primary))
+                .padding(LegendNextSpacing.md)
+            }
+        }
+        .task {
+            requestID = photoLibrary.thumbnailRequest(
+                for: asset.id,
+                targetSize: CGSize(width: 1_440, height: 1_440)
+            ) { image in
+                self.image = image
+            }
+        }
+        .onDisappear { photoLibrary.cancelThumbnailRequest(requestID) }
     }
 
     private var durationLabel: String {
@@ -3024,19 +3061,31 @@ enum LegendPhotoLibraryAuthorization: Equatable {
 }
 
 @MainActor
-final class LegendPhotoLibraryAccess: ObservableObject {
+final class LegendPhotoLibraryAccess: NSObject, ObservableObject {
     @Published private(set) var status: LegendPhotoLibraryAuthorization
     @Published private(set) var visibleAssets: [LegendPhotoLibraryAsset] = []
     @Published private(set) var canLoadMore = false
 
     private let imageManager = PHCachingImageManager()
     private var allAssets: [LegendPhotoLibraryAsset] = []
+    /// Retained so a thumbnail request resolves its PHAsset by index instead of
+    /// re-running a fetch for every visible cell.
+    private var fetchResult: PHFetchResult<PHAsset>?
+    private var assetIndexByIdentifier: [String: Int] = [:]
     private var loadedAssetCount = 0
+    private var isObservingLibrary = false
     private let pageSize = 60
 
-    init() {
+    override init() {
         status = LegendPhotoLibraryAuthorization(
             PHPhotoLibrary.authorizationStatus(for: .readWrite))
+        super.init()
+    }
+
+    deinit {
+        if isObservingLibrary {
+            PHPhotoLibrary.shared().unregisterChangeObserver(self)
+        }
     }
 
     func refresh() {
@@ -3046,21 +3095,55 @@ final class LegendPhotoLibraryAccess: ObservableObject {
         guard status == .authorized || status == .limited else {
             allAssets = []
             visibleAssets = []
+            fetchResult = nil
+            assetIndexByIdentifier = [:]
             loadedAssetCount = 0
             canLoadMore = false
             return
         }
+
+        startObservingLibraryIfNeeded()
 
         Task { [weak self] in
             let loaded = await Task.detached(priority: .userInitiated) {
                 Self.fetchAssets()
             }.value
             guard let self else { return }
-            allAssets = loaded
-            loadedAssetCount = min(pageSize, loaded.count)
-            visibleAssets = Array(loaded.prefix(loadedAssetCount))
-            canLoadMore = loadedAssetCount < loaded.count
+            apply(loaded, preservingLoadedCount: true)
         }
+    }
+
+    private func apply(
+        _ loaded: PHFetchResult<PHAsset>,
+        preservingLoadedCount: Bool
+    ) {
+        fetchResult = loaded
+
+        var descriptors: [LegendPhotoLibraryAsset] = []
+        var indexByIdentifier: [String: Int] = [:]
+        descriptors.reserveCapacity(loaded.count)
+        indexByIdentifier.reserveCapacity(loaded.count)
+        loaded.enumerateObjects { asset, index, _ in
+            descriptors.append(LegendPhotoLibraryAsset(asset))
+            indexByIdentifier[asset.localIdentifier] = index
+        }
+
+        allAssets = descriptors
+        assetIndexByIdentifier = indexByIdentifier
+
+        // Keep the user's scroll depth across a library change or a re-entry.
+        let desired = preservingLoadedCount
+            ? max(loadedAssetCount, min(pageSize, descriptors.count))
+            : min(pageSize, descriptors.count)
+        loadedAssetCount = min(desired, descriptors.count)
+        visibleAssets = Array(descriptors.prefix(loadedAssetCount))
+        canLoadMore = loadedAssetCount < descriptors.count
+    }
+
+    private func startObservingLibraryIfNeeded() {
+        guard !isObservingLibrary else { return }
+        PHPhotoLibrary.shared().register(self)
+        isObservingLibrary = true
     }
 
     func requestAccess() {
@@ -3177,8 +3260,17 @@ final class LegendPhotoLibraryAccess: ObservableObject {
         return controller
     }
 
+    /// Resolves through the retained fetch result. The previous implementation ran a
+    /// fresh `fetchAssets(withLocalIdentifiers:)` for every thumbnail request, which
+    /// made scrolling a large library progressively more expensive.
     private func asset(for identifier: String) -> PHAsset? {
-        PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
+        if let fetchResult,
+           let index = assetIndexByIdentifier[identifier],
+           index < fetchResult.count {
+            return fetchResult.object(at: index)
+        }
+
+        return PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
             .firstObject
     }
 
@@ -3227,7 +3319,7 @@ final class LegendPhotoLibraryAccess: ObservableObject {
         }
     }
 
-    nonisolated private static func fetchAssets() -> [LegendPhotoLibraryAsset] {
+    nonisolated private static func fetchAssets() -> PHFetchResult<PHAsset> {
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         options.predicate = NSPredicate(
@@ -3235,12 +3327,18 @@ final class LegendPhotoLibraryAccess: ObservableObject {
             PHAssetMediaType.image.rawValue,
             PHAssetMediaType.video.rawValue)
 
-        let result = PHAsset.fetchAssets(with: options)
-        var assets: [LegendPhotoLibraryAsset] = []
-        assets.reserveCapacity(result.count)
-        result.enumerateObjects { asset, _, _ in
-            assets.append(LegendPhotoLibraryAsset(asset))
+        return PHAsset.fetchAssets(with: options)
+    }
+}
+
+extension LegendPhotoLibraryAccess: PHPhotoLibraryChangeObserver {
+    /// Keeps the grid honest when the user captures, deletes, or changes their
+    /// Selected Photos set while the composer is open.
+    nonisolated func photoLibraryDidChange(_ changeInstance: PHChange) {
+        Task { @MainActor [weak self] in
+            guard let self, let current = self.fetchResult else { return }
+            guard let details = changeInstance.changeDetails(for: current) else { return }
+            self.apply(details.fetchResultAfterChanges, preservingLoadedCount: true)
         }
-        return assets
     }
 }

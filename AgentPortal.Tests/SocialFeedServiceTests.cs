@@ -670,6 +670,227 @@ public sealed class SocialFeedServiceTests
         Assert.Equal("social_music_unknown", rejected.ErrorCode);
     }
 
+    [Fact]
+    public async Task BothStoredIdentityForms_ForOneClient_CollapseToASingleStoryAuthor()
+    {
+        // A client whose Entra object ID differs from the legacy ClientUserId. Content
+        // authored under either form belongs to the same person and must render as one
+        // story owner, not two.
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("legacy-client-id", "Dual", "Identity");
+        client.ExternalIdentityObjectId = "entra-object-id";
+        db.ClientProfiles.Add(client);
+
+        var now = DateTime.UtcNow;
+        foreach (var (authorUserId, body) in new[]
+                 {
+                     (client.ClientUserId, "Story authored under the legacy identity"),
+                     (client.ExternalIdentityObjectId!, "Story authored under the Entra identity")
+                 })
+        {
+            db.SocialPosts.Add(new SocialPost
+            {
+                Id = Guid.NewGuid(),
+                AuthorUserId = authorUserId,
+                AuthorParticipantType = MessagingParticipantTypes.Client,
+                AuthorProfileId = client.Id,
+                ContentType = SocialPostContentTypes.Story,
+                Audience = SocialPostAudiences.AuthorizedNetwork,
+                Body = body,
+                PostedUtc = now,
+                ExpiresUtc = now.AddHours(24)
+            });
+        }
+
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        // The mobile actor resolver always presents the Entra object ID.
+        var actor = new SocialFeedActor(
+            new MessagingActor(client.ExternalIdentityObjectId!, MessagingParticipantTypes.Client),
+            client.Id,
+            "Dual Identity");
+
+        var feed = await service.GetFeedAsync(actor);
+
+        Assert.True(feed.Succeeded);
+        Assert.Equal(2, feed.Value!.Stories.Count);
+
+        // One logical owner: a single distinct author identity across both stories, and
+        // never the "Client" placeholder that the unresolved fallback used to mint.
+        var distinctAuthors = feed.Value.Stories
+            .Select(story => (story.Author.UserId, story.Author.ParticipantType))
+            .Distinct()
+            .ToArray();
+        Assert.Single(distinctAuthors);
+        Assert.All(feed.Value.Stories, story => Assert.Equal("Dual Identity", story.Author.DisplayName));
+        Assert.All(feed.Value.Stories, story => Assert.Equal(client.Id, story.Author.ProfileId));
+    }
+
+    [Fact]
+    public async Task StoryRail_SurvivesABurstOfFeedPostsThatWouldFillACombinedPage()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("burst-author", "Busy", "Poster");
+        db.ClientProfiles.Add(client);
+
+        var storyPostedUtc = DateTime.UtcNow.AddHours(-1);
+        db.SocialPosts.Add(new SocialPost
+        {
+            Id = Guid.NewGuid(),
+            AuthorUserId = client.ClientUserId,
+            AuthorParticipantType = MessagingParticipantTypes.Client,
+            AuthorProfileId = client.Id,
+            ContentType = SocialPostContentTypes.Story,
+            Audience = SocialPostAudiences.AuthorizedNetwork,
+            Body = "The only story",
+            PostedUtc = storyPostedUtc,
+            ExpiresUtc = DateTime.UtcNow.AddHours(23)
+        });
+
+        // More recent feed items than a single combined story+feed page can hold.
+        for (var index = 0; index < 120; index++)
+        {
+            db.SocialPosts.Add(new SocialPost
+            {
+                Id = Guid.NewGuid(),
+                AuthorUserId = client.ClientUserId,
+                AuthorParticipantType = MessagingParticipantTypes.Client,
+                AuthorProfileId = client.Id,
+                ContentType = SocialPostContentTypes.Post,
+                Audience = SocialPostAudiences.AuthorizedNetwork,
+                Body = $"Feed update {index}",
+                PostedUtc = storyPostedUtc.AddMinutes(index + 1)
+            });
+        }
+
+        await db.SaveChangesAsync();
+
+        var feed = await CreateService(db).GetFeedAsync(ClientActor(client));
+
+        Assert.True(feed.Succeeded);
+        var story = Assert.Single(feed.Value!.Stories);
+        Assert.Equal("The only story", story.Body);
+        Assert.NotEmpty(feed.Value.Posts);
+    }
+
+    [Fact]
+    public async Task FollowersAudience_HidesThePostUntilTheViewerFollowsTheAuthor()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "audience-agent",
+            AgentUpn = "audience-agent@example.test",
+            FullName = "Audience Agent",
+            IsActive = true
+        };
+        var client = Client("audience-client", "Audience", "Client");
+        db.AgentProfiles.Add(agent);
+        db.ClientProfiles.Add(client);
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = agent.AgentUserId,
+            AgentUpn = agent.AgentUpn,
+            ClientUserId = client.ClientUserId
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var agentActor = new SocialFeedActor(
+            new MessagingActor(agent.AgentUserId, MessagingParticipantTypes.Agent),
+            agent.Id,
+            agent.FullName!);
+        var clientActor = ClientActor(client);
+
+        var restricted = await service.CreatePostAsync(new CreateSocialPostCommand(
+            agentActor,
+            SocialPostContentTypes.Post,
+            "Followers only",
+            new SocialPostDetails(Audience: SocialPostAudiences.Followers)));
+        Assert.True(restricted.Succeeded);
+        Assert.Equal(SocialPostAudiences.Followers, restricted.Value!.Audience);
+
+        // The client is authorized to reach the agent but does not follow them yet.
+        var beforeFollow = await service.GetFeedAsync(clientActor);
+        Assert.True(beforeFollow.Succeeded);
+        Assert.DoesNotContain(beforeFollow.Value!.Posts, post => post.Id == restricted.Value.Id);
+
+        var follow = await service.ToggleFollowAsync(new SocialFollowCommand(
+            clientActor,
+            agent.AgentUserId,
+            MessagingParticipantTypes.Agent));
+        Assert.True(follow.Succeeded);
+
+        var afterFollow = await service.GetFeedAsync(clientActor);
+        Assert.True(afterFollow.Succeeded);
+        Assert.Contains(afterFollow.Value!.Posts, post => post.Id == restricted.Value.Id);
+
+        // The author always sees their own restricted post.
+        var authorFeed = await service.GetFeedAsync(agentActor);
+        Assert.True(authorFeed.Succeeded);
+        Assert.Contains(authorFeed.Value!.Posts, post => post.Id == restricted.Value.Id);
+    }
+
+    [Fact]
+    public async Task PostDetails_RoundTripAndDisabledCommentsAreRejected()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("details-client", "Details", "Client");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var actor = ClientActor(client);
+
+        var created = await service.CreatePostAsync(new CreateSocialPostCommand(
+            actor,
+            SocialPostContentTypes.Post,
+            "An update with details",
+            new SocialPostDetails(
+                Audience: SocialPostAudiences.AuthorizedNetwork,
+                Location: "Nashville, TN",
+                CommentsEnabled: false)));
+
+        Assert.True(created.Succeeded);
+        Assert.Equal("Nashville, TN", created.Value!.Location);
+        Assert.False(created.Value.CommentsEnabled);
+
+        var comment = await service.AddCommentAsync(new CreateSocialCommentCommand(
+            actor,
+            created.Value.Id,
+            "This should be refused"));
+
+        Assert.False(comment.Succeeded);
+        Assert.Equal("social_comments_disabled", comment.ErrorCode);
+
+        // The stored detail survives a feed round trip.
+        var feed = await service.GetFeedAsync(actor);
+        Assert.True(feed.Succeeded);
+        var projected = Assert.Single(feed.Value!.Posts, post => post.Id == created.Value.Id);
+        Assert.Equal("Nashville, TN", projected.Location);
+        Assert.False(projected.CommentsEnabled);
+    }
+
+    [Fact]
+    public async Task UnsupportedAudience_IsRejectedRatherThanSilentlyWidened()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("audience-guard-client", "Guard", "Client");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var created = await CreateService(db).CreatePostAsync(new CreateSocialPostCommand(
+            ClientActor(client),
+            SocialPostContentTypes.Post,
+            "Unsupported audience",
+            new SocialPostDetails(Audience: "CloseFriends")));
+
+        Assert.False(created.Succeeded);
+        Assert.Equal("social_post_invalid", created.ErrorCode);
+    }
+
     private static SocialFeedService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
         ISocialMediaStorage? mediaStorage = null,

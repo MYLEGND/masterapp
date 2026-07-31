@@ -11,6 +11,9 @@ protocol MobileSocialAPI: Sendable {
         files: [MultipartFormFile],
         accessibilityText: String?,
         music: MobileSocialMusicSelection?,
+        audience: MobileSocialAudience,
+        location: String?,
+        commentsEnabled: Bool,
         accessToken: String
     ) async throws -> MobileSocialPost
     func updatePost(postID: UUID, request: MobileUpdateSocialPost, accessToken: String) async throws -> MobileSocialPost
@@ -37,6 +40,9 @@ struct MobileUnavailableSocialAPI: MobileSocialAPI {
         files: [MultipartFormFile],
         accessibilityText: String?,
         music: MobileSocialMusicSelection?,
+        audience: MobileSocialAudience,
+        location: String?,
+        commentsEnabled: Bool,
         accessToken: String
     ) async throws -> MobileSocialPost {
         throw MobileAPIError.unauthorized(correlationID: nil)
@@ -108,13 +114,19 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
         files: [MultipartFormFile],
         accessibilityText: String?,
         music: MobileSocialMusicSelection?,
+        audience: MobileSocialAudience,
+        location: String?,
+        commentsEnabled: Bool,
         accessToken: String
     ) async throws -> MobileSocialPost {
 
         var fields = [
             "contentType": type.rawValue,
             "body": body,
-            "accessibilityText": accessibilityText ?? ""
+            "accessibilityText": accessibilityText ?? "",
+            "audience": audience.rawValue,
+            "location": location ?? "",
+            "commentsEnabled": commentsEnabled ? "true" : "false"
         ]
         if let music {
             fields["musicProviderId"] = music.providerID
@@ -278,6 +290,11 @@ final class MobileSocialStore: ObservableObject {
     /// the user retries a recoverable failure.
     @discardableResult
     func beginPublication(_ request: MobileSocialPublishRequest) -> Bool {
+        // A previously failed publication must not block a new one. Replace it.
+        if publication?.stage == .failed {
+            discardPendingPublication()
+        }
+
         guard publication == nil, validatePublication(request) else { return false }
 
         let identifier = UUID()
@@ -307,9 +324,35 @@ final class MobileSocialStore: ObservableObject {
         Task { await runPublication(identifier: publication.id, request: request) }
     }
 
+    /// Clears a finished publication. A failed upload is also finished: leaving it
+    /// parked indefinitely used to block `beginPublication` and disable the composer's
+    /// Next and Share controls for the rest of the session with no way back.
     func dismissPublication() {
-        guard publication?.stage == .published else { return }
+        switch publication?.stage {
+        case .published:
+            publication = nil
+        case .failed:
+            discardPendingPublication()
+        default:
+            break
+        }
+    }
+
+    /// Abandons a failed upload and releases its staged files.
+    func discardPendingPublication() {
+        if let request = pendingPublicationRequest {
+            discardStagedFiles(in: request)
+        }
+        pendingPublicationRequest = nil
         publication = nil
+        actionFailure = nil
+    }
+
+    /// True when a publication currently owns the upload slot. A failed publication
+    /// does not: the user can discard it and start a new one.
+    var isPublishing: Bool {
+        guard let publication else { return false }
+        return publication.stage != .failed
     }
 
     @discardableResult
@@ -565,7 +608,10 @@ final class MobileSocialStore: ObservableObject {
             return try await api.createPost(
                 MobileCreateSocialPost(
                     contentType: request.contentType.rawValue,
-                    body: body),
+                    body: body,
+                    audience: request.audience.rawValue,
+                    location: request.location,
+                    commentsEnabled: request.commentsEnabled),
                 accessToken: token)
         }
 
@@ -575,6 +621,9 @@ final class MobileSocialStore: ObservableObject {
             files: request.files,
             accessibilityText: request.accessibilityText,
             music: request.music,
+            audience: request.audience,
+            location: request.location,
+            commentsEnabled: request.commentsEnabled,
             accessToken: token)
     }
 

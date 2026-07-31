@@ -9,9 +9,29 @@ public static class SocialPostContentTypes
     public const string Reel = "Reel";
 }
 
+/// <summary>
+/// Audience narrows who inside the already-authorized network sees a post. It never
+/// widens reach: the messaging recipient authority remains the outer boundary.
+/// </summary>
 public static class SocialPostAudiences
 {
+    /// <summary>Everyone the author is authorized to reach.</summary>
     public const string AuthorizedNetwork = "AuthorizedNetwork";
+
+    /// <summary>Authorized participants who follow the author.</summary>
+    public const string Followers = "Followers";
+
+    /// <summary>Authorized participants the author and viewer both follow.</summary>
+    public const string MutualConnections = "MutualConnections";
+
+    public static string? Normalize(string? value) => value?.Trim() switch
+    {
+        null or "" => AuthorizedNetwork,
+        AuthorizedNetwork => AuthorizedNetwork,
+        Followers => Followers,
+        MutualConnections => MutualConnections,
+        _ => null
+    };
 }
 
 public static class SocialReactionTypes
@@ -79,6 +99,9 @@ public sealed record SocialPostView(
     SocialAuthor Author,
     string ContentType,
     string Body,
+    string Audience,
+    string? Location,
+    bool CommentsEnabled,
     DateTime PostedUtc,
     DateTime? ExpiresUtc,
     int ReactionCount,
@@ -102,7 +125,16 @@ public sealed record SocialFeedSnapshot(
     SocialProfileMetrics CurrentProfileMetrics,
     SocialCreatorInsights CreatorInsights);
 
-public sealed record CreateSocialPostCommand(SocialFeedActor Actor, string ContentType, string Body);
+public sealed record SocialPostDetails(
+    string? Audience = null,
+    string? Location = null,
+    bool CommentsEnabled = true);
+
+public sealed record CreateSocialPostCommand(
+    SocialFeedActor Actor,
+    string ContentType,
+    string Body,
+    SocialPostDetails? Details = null);
 
 public sealed record SocialMediaUpload(
     string OriginalFileName,
@@ -115,7 +147,8 @@ public sealed record CreateSocialMediaPostCommand(
     string ContentType,
     string Body,
     IReadOnlyList<SocialMediaUpload> Media,
-    SocialMusicSelection? Music = null);
+    SocialMusicSelection? Music = null,
+    SocialPostDetails? Details = null);
 
 public sealed record SocialMediaStream(
     Stream Content,

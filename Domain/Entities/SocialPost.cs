@@ -14,6 +14,13 @@ public sealed class SocialPost
     public string Audience { get; set; } = string.Empty;
     public Guid? RepostOfSocialPostId { get; set; }
     public string Body { get; set; } = string.Empty;
+
+    /// <summary>Author-supplied place label. Never a resolved coordinate.</summary>
+    public string? Location { get; set; }
+
+    /// <summary>When false, the server rejects new comments on this post.</summary>
+    public bool CommentsEnabled { get; set; } = true;
+
     public DateTime PostedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiresUtc { get; set; }
     public DateTime? DeletedUtc { get; set; }

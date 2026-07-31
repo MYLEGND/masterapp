@@ -1758,10 +1758,20 @@ private struct LegendSocialPublicationBanner: View {
             Spacer(minLength: LegendNextSpacing.xs)
 
             if publication.stage == .failed {
-                Button("Retry", action: retry)
-                    .font(.caption.weight(.bold))
-                    .buttonStyle(.borderedProminent)
-                    .tint(LegendNextColor.navy)
+                // Discard must be reachable: a parked failure used to hold the upload
+                // slot and disable the composer with no way to clear it.
+                HStack(spacing: LegendNextSpacing.xs) {
+                    Button("Discard", action: dismiss)
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.bordered)
+                        .tint(LegendNextColor.textSecondary)
+                        .accessibilityLabel("Discard this failed upload")
+
+                    Button("Retry", action: retry)
+                        .font(.caption.weight(.bold))
+                        .buttonStyle(.borderedProminent)
+                        .tint(LegendNextColor.navy)
+                }
             } else if publication.stage == .published {
                 Button(action: dismiss) {
                     Image(systemName: "xmark")

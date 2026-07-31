@@ -19,6 +19,8 @@ internal static class SocialFeedModelConfiguration
             entity.Property(post => post.AuthorParticipantType).HasMaxLength(40).IsRequired();
             entity.Property(post => post.ContentType).HasMaxLength(40).IsRequired();
             entity.Property(post => post.Audience).HasMaxLength(40).IsRequired();
+            entity.Property(post => post.Location).HasMaxLength(200);
+            entity.Property(post => post.CommentsEnabled).HasDefaultValue(true);
             entity.Property(post => post.Body).HasColumnType(textType).IsRequired();
             entity.HasIndex(post => new { post.AuthorUserId, post.AuthorParticipantType, post.PostedUtc });
             entity.HasIndex(post => new { post.DeletedUtc, post.ExpiresUtc, post.PostedUtc });

@@ -63,7 +63,14 @@ public sealed class MobileSocialController : MobileApiControllerBase
             return resolved.Error;
 
         var result = await _social.CreatePostAsync(
-            new CreateSocialPostCommand(resolved.Actor!, request?.ContentType ?? string.Empty, request?.Body ?? string.Empty),
+            new CreateSocialPostCommand(
+                resolved.Actor!,
+                request?.ContentType ?? string.Empty,
+                request?.Body ?? string.Empty,
+                new SocialPostDetails(
+                    request?.Audience,
+                    request?.Location,
+                    request?.CommentsEnabled ?? true)),
             cancellationToken);
         return result.Succeeded && result.Value is not null
             ? Ok(await ToPostDtoAsync(result.Value, cancellationToken))
@@ -151,7 +158,11 @@ public sealed class MobileSocialController : MobileApiControllerBase
                     request?.ContentType ?? string.Empty,
                     request?.Body ?? string.Empty,
                     uploads,
-                    ToMusicSelection(request)),
+                    ToMusicSelection(request),
+                    new SocialPostDetails(
+                        request?.Audience,
+                        request?.Location,
+                        request?.CommentsEnabled ?? true)),
                 cancellationToken);
 
             return result.Succeeded && result.Value is not null
@@ -427,6 +438,9 @@ public sealed class MobileSocialController : MobileApiControllerBase
         await ToAuthorDtoAsync(post.Author, cancellationToken),
         post.ContentType,
         post.Body,
+        post.Audience,
+        post.Location,
+        post.CommentsEnabled,
         post.PostedUtc,
         post.ExpiresUtc,
         post.ReactionCount,
@@ -592,6 +606,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
             "social_media_post_invalid" or
             "social_comment_invalid" or
             "social_comment_parent_unavailable" or
+            "social_comments_disabled" or
             "social_follow_invalid" or
             "social_follow_source_invalid" or
             "social_view_invalid" or
@@ -619,7 +634,12 @@ public sealed class MobileSocialController : MobileApiControllerBase
     }
 }
 
-public sealed record MobileCreateSocialPostRequest(string? ContentType, string? Body);
+public sealed record MobileCreateSocialPostRequest(
+    string? ContentType,
+    string? Body,
+    string? Audience = null,
+    string? Location = null,
+    bool? CommentsEnabled = null);
 public sealed record MobileUpdateSocialPostRequest(string? Body);
 
 public sealed class MobileCreateSocialMediaPostRequest
@@ -627,6 +647,9 @@ public sealed class MobileCreateSocialMediaPostRequest
     public string? ContentType { get; init; }
     public string? Body { get; init; }
     public string? AccessibilityText { get; init; }
+    public string? Audience { get; init; }
+    public string? Location { get; init; }
+    public bool? CommentsEnabled { get; init; }
     public string? MusicProviderId { get; init; }
     public string? MusicTrackId { get; init; }
     public decimal? MusicTrimStartSeconds { get; init; }
@@ -663,6 +686,9 @@ public sealed record MobileSocialPostDto(
     MobileSocialAuthorDto Author,
     string ContentType,
     string Body,
+    string Audience,
+    string? Location,
+    bool CommentsEnabled,
     DateTime PostedUtc,
     DateTime? ExpiresUtc,
     int ReactionCount,

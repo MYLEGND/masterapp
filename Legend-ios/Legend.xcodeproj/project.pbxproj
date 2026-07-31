@@ -93,7 +93,7 @@
 		5528EEB1AE65FCB262CDEB12 /* MessagingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingStore.swift; sourceTree = "<group>"; };
 		55FB2460CFBD95299E4F7590 /* MobileConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileConfiguration.swift; sourceTree = "<group>"; };
 		5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialModels.swift; sourceTree = "<group>"; };
-		62C14045B2834CC0689DBE37 /* LegendUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LegendUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		62C14045B2834CC0689DBE37 /* LegendUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LegendUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		69E4615791E4EA673C5A3513 /* LegendApplicationBootstrapCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApplicationBootstrapCoordinator.swift; sourceTree = "<group>"; };
 		6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialContractTests.swift; sourceTree = "<group>"; };
 		72C9D00CE99AA225824D8CEC /* LegendNextTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextTheme.swift; sourceTree = "<group>"; };
@@ -112,8 +112,8 @@
 		B3449DC74CA91AA0CDAAC840 /* LegendDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiagnosticsTests.swift; sourceTree = "<group>"; };
 		CB26E12CD661DE7C441F7218 /* LogicalParticipantIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicalParticipantIdentity.swift; sourceTree = "<group>"; };
 		D4B6F16BA0A01123E7CABB7F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		D62E96A9291858D31BE2BE3A /* LegendTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LegendTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		D7D88FC1403F3F593CF31A82 /* Legend.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Legend.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D62E96A9291858D31BE2BE3A /* LegendTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LegendTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D7D88FC1403F3F593CF31A82 /* LEGND.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LEGND.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E18DF8C5550EB16730C4F99C /* LegendApplicationBootstrapCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApplicationBootstrapCoordinatorTests.swift; sourceTree = "<group>"; };
 		E5C1BFF90DD76D5A09D0E3C1 /* LegendNextSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextSurface.swift; sourceTree = "<group>"; };
 		E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApplicationShell.swift; sourceTree = "<group>"; };
@@ -306,7 +306,7 @@
 		DA02266B909234E5C3D00DB6 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				D7D88FC1403F3F593CF31A82 /* Legend.app */,
+				D7D88FC1403F3F593CF31A82 /* LEGND.app */,
 				D62E96A9291858D31BE2BE3A /* LegendTests.xctest */,
 				62C14045B2834CC0689DBE37 /* LegendUITests.xctest */,
 			);
@@ -376,7 +376,7 @@
 			packageProductDependencies = (
 			);
 			productName = Legend;
-			productReference = D7D88FC1403F3F593CF31A82 /* Legend.app */;
+			productReference = D7D88FC1403F3F593CF31A82 /* LEGND.app */;
 			productType = "com.apple.product-type.application";
 		};
 		EA4A0637A0F2AB3926966269 /* LegendTests */ = {
@@ -549,7 +549,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Legend.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Legend";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LEGND.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LEGND";
 			};
 			name = Release;
 		};
@@ -567,7 +567,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.mylegnd.legend;
 				PRODUCT_MODULE_NAME = Legend;
-				PRODUCT_NAME = Legend;
+				PRODUCT_NAME = LEGND;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -653,7 +653,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Legend.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Legend";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LEGND.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LEGND";
 			};
 			name = Debug;
 		};
@@ -826,7 +826,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Legend.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Legend";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LEGND.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/LEGND";
 			};
 			name = Staging;
 		};
@@ -864,7 +864,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.mylegnd.legend;
 				PRODUCT_MODULE_NAME = Legend;
-				PRODUCT_NAME = Legend;
+				PRODUCT_NAME = LEGND;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -905,7 +905,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.mylegnd.legend;
 				PRODUCT_MODULE_NAME = Legend;
-				PRODUCT_NAME = Legend;
+				PRODUCT_NAME = LEGND;
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				TARGETED_DEVICE_FAMILY = "1,2";

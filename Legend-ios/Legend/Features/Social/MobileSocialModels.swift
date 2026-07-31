@@ -78,6 +78,9 @@ struct MobileSocialPost: Codable, Equatable, Identifiable, Sendable {
     let author: MobileSocialAuthor
     let contentType: String
     let body: String
+    let audience: String
+    let location: String?
+    let commentsEnabled: Bool
     let postedUTC: Date
     let expiresUTC: Date?
     let reactionCount: Int
@@ -92,7 +95,7 @@ struct MobileSocialPost: Codable, Equatable, Identifiable, Sendable {
     let comments: [MobileSocialComment]
 
     private enum CodingKeys: String, CodingKey {
-        case id, author, contentType, body, reactionCount, commentCount, reactedByCurrentActor, followedByCurrentActor, savedByCurrentActor, repostedByCurrentActor, metrics, music, media, comments
+        case id, author, contentType, body, audience, location, commentsEnabled, reactionCount, commentCount, reactedByCurrentActor, followedByCurrentActor, savedByCurrentActor, repostedByCurrentActor, metrics, music, media, comments
         case postedUTC = "postedUtc"
         case expiresUTC = "expiresUtc"
     }
@@ -132,6 +135,9 @@ extension MobileSocialPost {
             author: author,
             contentType: contentType,
             body: body,
+            audience: audience,
+            location: location,
+            commentsEnabled: commentsEnabled,
             postedUTC: postedUTC,
             expiresUTC: expiresUTC,
             reactionCount: reactionCount ?? self.reactionCount,
@@ -352,6 +358,9 @@ struct MobileSocialActivity: Codable, Equatable, Identifiable, Sendable {
 struct MobileCreateSocialPost: Codable, Sendable {
     let contentType: String
     let body: String
+    let audience: String
+    let location: String?
+    let commentsEnabled: Bool
 }
 
 struct MobileUpdateSocialPost: Codable, Sendable {
@@ -368,12 +377,45 @@ struct MobileCreateSocialComment: Codable, Sendable {
     }
 }
 
+/// Who, inside the author's already-authorized network, is allowed to see a post.
+/// These raw values are the server's audience vocabulary; only audiences the server
+/// can actually enforce are offered here.
+enum MobileSocialAudience: String, CaseIterable, Identifiable, Sendable {
+    case authorizedNetwork = "AuthorizedNetwork"
+    case followers = "Followers"
+    case mutualConnections = "MutualConnections"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .authorizedNetwork: return "Your network"
+        case .followers: return "Followers"
+        case .mutualConnections: return "Mutual connections"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .authorizedNetwork:
+            return "Everyone you are authorized to reach on Legend."
+        case .followers:
+            return "Only people who follow you."
+        case .mutualConnections:
+            return "Only people you follow who also follow you."
+        }
+    }
+}
+
 struct MobileSocialPublishRequest: Sendable {
     let contentType: MobileSocialContentType
     let body: String
     let files: [MultipartFormFile]
     let accessibilityText: String?
     let music: MobileSocialMusicSelection?
+    let audience: MobileSocialAudience
+    let location: String?
+    let commentsEnabled: Bool
 }
 
 /// The creation surface has one explicit progression.  Media, captions, and
