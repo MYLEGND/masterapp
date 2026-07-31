@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -40,6 +42,11 @@ jobs:
 
       - name: Test (full suite incl. all security regression suites)
         run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Debug --no-build
+
+      - name: Database migration validation
+        env:
+          DB_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: ./scripts/db.sh validate
 
       - name: No skipped security tests
         run: |

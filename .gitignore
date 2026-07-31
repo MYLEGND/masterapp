@@ -74,6 +74,7 @@ delete_candidates.csv
 .vscode/
 .idea/
 dotnet-tools.json
+!.config/dotnet-tools.json
 
 # =========================
 # MSAL / auth caches
