@@ -100,63 +100,78 @@ final class MobileSessionCoordinator: ObservableObject {
 
     func restore() {
         guard configuration.validation.isReady else {
-            transition(to: .contractUnavailable(configuration.validation), reason: "Configuration unavailable during restore")
-            diagnostics.record(category: .configuration, summary: "Native mobile contract configuration is incomplete.")
+            transition(
+                to: .contractUnavailable(configuration.validation),
+                reason: "Configuration unavailable during restore")
+            diagnostics.record(
+                category: .configuration,
+                summary: "Native mobile contract configuration is incomplete.")
             return
         }
 
-        let storedTokens = try? tokenStore.read()
-        guard let storedTokens else {
-            transition(to: .signedOut, reason: "No stored mobile credential")
+        // Authentication restoration remains server-authoritative. Cached launch data
+        // may improve presentation, but it must never open an authenticated shell before
+        // the API confirms the bearer credential and current participant identity.
+        switch state {
+        case .loading, .failed:
+            break
+        case .contractUnavailable, .signedOut, .authenticating,
+             .roleSelection, .authenticated:
             return
         }
 
-        // A returning user opens straight into their own shell. The cached identity is
-        // only a rendering hint; the revalidation below still runs on every launch and
-        // corrects or signs out if the server disagrees.
-        let restoredFromCache = restoreCachedSessionIfPossible()
+        let storedTokens: OAuthTokenSet
+        do {
+            guard let tokens = try tokenStore.read() else {
+                transition(to: .signedOut, reason: "No stored mobile credential")
+                return
+            }
+
+            storedTokens = tokens
+        } catch {
+            endSessionForRejectedCredential(
+                reason: "Stored credential could not be decoded")
+            diagnostics.record(
+                category: .authentication,
+                summary: "Stored mobile credential could not be read and was cleared.")
+            return
+        }
+
+        transition(to: .loading, reason: "Stored session validation started")
 
         Task {
             do {
-                diagnostics.record(category: .authentication, summary: "Stored mobile credential found; session bootstrap started.")
+                diagnostics.record(
+                    category: .authentication,
+                    summary: "Stored mobile credential found; server session validation started.")
+
                 let tokens = try await usableTokens(from: storedTokens)
                 try await establishSession(using: tokens)
             } catch {
                 let apiError = error as? MobileAPIError
 
-                // Signing in again is only correct when the credential itself is dead.
-                // Everything else is transient and must not cost the user their session.
-                if apiError?.provesInvalidBearerCredential == true || isRefreshCredentialRejected(error) {
-                    endSessionForRejectedCredential(reason: "Stored credential rejected during restore")
-                    diagnostics.record(category: .authentication, summary: "Stored mobile credential was rejected; sign-in is required again.", correlationID: apiError?.correlationID)
-                } else if restoredFromCache {
-                    // The shell is already open on cached identity. A transient network
-                    // failure must not tear it down; the stores surface their own
-                    // offline state instead.
-                    diagnostics.record(category: .authentication, summary: "Session revalidation deferred; continuing on cached identity.", correlationID: apiError?.correlationID)
-                } else {
-                    // No cached shell to fall back to. The credential is still good, so
-                    // this is a retryable connectivity problem, not a sign-out.
-                    transition(to: .failed(failure(for: error)), reason: "Stored session could not be revalidated")
-                    diagnostics.record(category: .authentication, summary: "Stored native session could not be restored; the stored credential was kept for retry.", correlationID: apiError?.correlationID)
+                if apiError?.provesInvalidBearerCredential == true ||
+                    isRefreshCredentialRejected(error) {
+                    endSessionForRejectedCredential(
+                        reason: "Stored credential rejected during restore")
+                    diagnostics.record(
+                        category: .authentication,
+                        summary: "Stored mobile credential was rejected; sign-in is required again.",
+                        correlationID: apiError?.correlationID)
+                    return
                 }
+
+                // Preserve the secure credential for an explicit retry, but never
+                // manufacture an authenticated actor from cached identity data.
+                transition(
+                    to: .failed(failure(for: error)),
+                    reason: "Stored session could not be validated")
+                diagnostics.record(
+                    category: .authentication,
+                    summary: "Server session validation could not complete; the credential was retained for retry.",
+                    correlationID: apiError?.correlationID)
             }
         }
-    }
-
-    /// Opens the shell from the last confirmed identity, with no network involved.
-    @discardableResult
-    private func restoreCachedSessionIfPossible() -> Bool {
-        guard case .loading = state,
-              let entry = launchCache.readSession() else {
-            return false
-        }
-
-        transition(to: .authenticated(entry.session), reason: "Restored cached mobile session")
-        diagnostics.record(
-            category: .authentication,
-            summary: "Opened the Legend shell from a cached session while revalidating.")
-        return true
     }
 
 
@@ -204,18 +219,38 @@ final class MobileSessionCoordinator: ObservableObject {
                     pkceVerifier: pkce.verifier,
                     configuration: configuration
                 )
-                diagnostics.record(category: .authentication, summary: "OAuth token response decoded successfully.")
-                try tokenStore.save(tokens)
+                diagnostics.record(
+                    category: .authentication,
+                    summary: "OAuth token response decoded successfully.")
+
+                // The identity-provider token remains provisional until the mobile API
+                // confirms an authorized Legend actor or authorized role selection.
                 activeTokens = tokens
-                diagnostics.record(category: .authentication, summary: "OAuth access token stored successfully.")
                 try await establishSession(using: tokens)
+                try tokenStore.save(tokens)
+
+                diagnostics.record(
+                    category: .authentication,
+                    summary: "Server-confirmed OAuth credential stored successfully.")
             } catch {
+                activeTokens = nil
+
                 if let authorizationError = error as? ASWebAuthenticationSessionError,
                    authorizationError.code == .canceledLogin {
-                    transition(to: .signedOut, reason: "Authorization session cancelled")
+                    transition(
+                        to: .signedOut,
+                        reason: "Authorization session cancelled")
                     return
                 }
-                transition(to: .failed(failure(for: error)), reason: "Native sign-in did not complete")
+
+                if (error as? MobileAPIError)?.provesInvalidBearerCredential == true {
+                    try? tokenStore.clear()
+                    launchCache.clear()
+                }
+
+                transition(
+                    to: .failed(failure(for: error)),
+                    reason: "Native sign-in did not complete")
                 diagnostics.record(category: .authentication, summary: "Native sign-in did not complete. Failure category: \(failureCategory(for: error)).", correlationID: (error as? MobileAPIError)?.correlationID)
             }
         }

@@ -42,6 +42,11 @@ struct OAuthAuthorizationRequest: Sendable {
             URLQueryItem(name: "redirect_uri", value: "\(redirectScheme)://oauth/callback"),
             URLQueryItem(name: "scope", value: scope),
             URLQueryItem(name: "state", value: state),
+
+            // Microsoft must explicitly display its account chooser. Without this,
+            // an existing browser session may silently lock Legend to the last account.
+            URLQueryItem(name: "prompt", value: "select_account"),
+
             URLQueryItem(name: "code_challenge", value: pkce.challenge),
             URLQueryItem(name: "code_challenge_method", value: "S256")
         ])
@@ -75,7 +80,10 @@ final class SystemBrowserAuthorizer: NSObject, OAuthAuthorizing, ASWebAuthentica
                 }
             }
             session.presentationContextProvider = self
-            session.prefersEphemeralWebBrowserSession = false
+            // Do not reuse Microsoft browser cookies from a previous Legend sign-in.
+            // This preserves the existing OAuth/PKCE authority while allowing the user
+            // to authenticate with a different Microsoft account.
+            session.prefersEphemeralWebBrowserSession = true
             self.session = session
 
             guard session.start() else {
