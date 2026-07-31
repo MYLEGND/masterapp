@@ -844,7 +844,7 @@ enum LegendSocialPostMetadata {
         authorParticipantType: ParticipantType,
         viewerParticipantType: ParticipantType
     ) -> String {
-        let kind = contentType == MobileSocialContentType.reel.rawValue ? "Reel" : contentType
+        let kind = MobileSocialContentType.displayName(for: contentType)
         guard viewerParticipantType == .agent else { return kind }
         return "\(kind) · \(authorParticipantType.rawValue)"
     }
@@ -925,7 +925,7 @@ private struct LegendSocialPostCard: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(LegendNextColor.information)
-                .accessibilityLabel("View post insights")
+                .accessibilityLabel("View \(post.displayContentType) insights")
             }
         }
     }
@@ -1036,7 +1036,7 @@ private struct LegendSocialPostCard: View {
 
             ShareLink(
                 item: post.body.isEmpty
-                    ? "Legend post by \(post.author.displayName)"
+                    ? "Legend \(post.displayContentType) by \(post.author.displayName)"
                     : post.body
             ) {
                 actionMetricLabel(
@@ -1132,7 +1132,7 @@ private struct LegendSocialPostCard: View {
 
     private var mediaAspectRatio: CGFloat {
         if post.contentType == MobileSocialContentType.story.rawValue ||
-            post.contentType == MobileSocialContentType.reel.rawValue {
+            post.contentType == MobileSocialContentType.hac.rawValue {
             return 9 / 16
         }
 
@@ -1218,19 +1218,19 @@ struct LegendForYouView: View {
                         Button {
                             editingPost = selectedPost
                         } label: {
-                            Label("Edit caption", systemImage: "pencil")
+                            Label("Edit \(selectedPost.displayContentType)", systemImage: "pencil")
                         }
 
                         Button(role: .destructive) {
                             deletionTarget = selectedPost
                         } label: {
-                            Label("Delete post", systemImage: "trash")
+                            Label("Delete \(selectedPost.displayContentType)", systemImage: "trash")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.body.weight(.semibold))
                     }
-                    .accessibilityLabel("Post options")
+                    .accessibilityLabel("\(selectedPost.displayContentType) options")
                 }
             }
         }
@@ -1252,7 +1252,7 @@ struct LegendForYouView: View {
             )
         }
         .confirmationDialog(
-            "Delete this post?",
+            "Delete this \(deletionTargetDisplayName)?",
             isPresented: Binding(
                 get: { deletionTarget != nil },
                 set: { if !$0 { deletionTarget = nil } }
@@ -1260,7 +1260,7 @@ struct LegendForYouView: View {
             titleVisibility: .visible
         ) {
             if let post = deletionTarget {
-                Button("Delete post", role: .destructive) {
+                Button("Delete \(post.displayContentType)", role: .destructive) {
                     Task {
                         if await social.deletePost(postID: post.id) {
                             deletionTarget = nil
@@ -1273,7 +1273,7 @@ struct LegendForYouView: View {
                 deletionTarget = nil
             }
         } message: {
-            Text("This removes the post from your Legend profile and feed.")
+            Text("This removes the \(deletionTargetDisplayName) from your Legend profile and feed.")
         }
         .alert(
             social.actionFailure?.title ?? "Legend update unavailable",
@@ -1297,7 +1297,7 @@ struct LegendForYouView: View {
         if posts.isEmpty {
             LegendEmptyState(
                 title: "No updates yet",
-                message: "New posts and reels from your Legend network will appear here.",
+                message: "New posts and Hacs from your Legend network will appear here.",
                 symbolName: "play.rectangle.on.rectangle"
             )
         } else {
@@ -1358,6 +1358,10 @@ struct LegendForYouView: View {
         return snapshot.posts.first { $0.id == selectedPostID }
     }
 
+    private var deletionTargetDisplayName: String {
+        deletionTarget?.displayContentType ?? "Post"
+    }
+
 }
 
 struct LegendSocialPostEditor: View {
@@ -1394,7 +1398,7 @@ struct LegendSocialPostEditor: View {
                             style: .continuous
                         )
                     )
-                    .accessibilityLabel("Post caption")
+                    .accessibilityLabel("\(post.displayContentType) caption")
 
                 if post.media.isEmpty {
                     Text("A text post needs a caption.")
@@ -1406,7 +1410,7 @@ struct LegendSocialPostEditor: View {
             }
             .padding(LegendNextSpacing.sm)
             .background(LegendNextColor.canvas)
-            .navigationTitle("Edit post")
+            .navigationTitle("Edit \(post.displayContentType)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -2307,7 +2311,7 @@ private struct LegendCreatorInsightsSheet: View {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                             LegendNextSectionHeader(eyebrow: "Profile", title: "Content and community")
                             LegendSocialInsightRow(label: "Posts", value: "\(profileMetrics.postCount)")
-                            LegendSocialInsightRow(label: "Videos", value: "\(profileMetrics.videoCount)")
+                            LegendSocialInsightRow(label: "Hacs", value: "\(profileMetrics.videoCount)")
                             LegendSocialInsightRow(label: "Stories", value: "\(profileMetrics.storyCount)")
                             LegendSocialInsightRow(label: "Following", value: "\(profileMetrics.followingCount)")
                             LegendSocialInsightRow(label: "Profile visits", value: "\(insights.profileVisits)")
@@ -2320,8 +2324,8 @@ private struct LegendCreatorInsightsSheet: View {
                         emptyMessage: "Publish a post to begin building performance history.",
                         insights: insights.topPosts)
                     LegendSocialInsightList(
-                        title: "Top videos",
-                        emptyMessage: "Publish a video to begin building video performance history.",
+                        title: "Top Hacs",
+                        emptyMessage: "Publish a Hac to begin building Hac performance history.",
                         insights: insights.topVideos)
                     LegendSocialInsightList(
                         title: "Top stories",
@@ -2346,8 +2350,8 @@ private struct LegendPostInsightsSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
                     LegendNextSectionHeader(
-                        eyebrow: insight.contentType,
-                        title: "Post insights")
+                        eyebrow: insight.displayContentType,
+                        title: "\(insight.displayContentType) insights")
 
                     LegendNextSurface(style: .elevated) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
@@ -2390,10 +2394,10 @@ private struct LegendPostInsightsSheet: View {
                 .padding(LegendNextSpacing.md)
             }
             .background(LegendNextColor.canvas.ignoresSafeArea())
-            .navigationTitle("Post insights")
+            .navigationTitle("\(insight.displayContentType) insights")
             .navigationBarTitleDisplayMode(.inline)
         }
-        .accessibilityLabel("Private server-authoritative insights for this post")
+        .accessibilityLabel("Private \(insight.displayContentType) insights")
     }
 }
 

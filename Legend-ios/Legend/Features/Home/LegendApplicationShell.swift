@@ -5477,7 +5477,7 @@ private struct LegendFinanceView: View {
 
 private enum LegendProfileContentFilter: String, CaseIterable, Identifiable {
     case posts
-    case reels
+    case hacs
     case stories
 
     var id: Self { self }
@@ -5486,7 +5486,7 @@ private enum LegendProfileContentFilter: String, CaseIterable, Identifiable {
         switch self {
         case .posts:
             return "square.grid.3x3"
-        case .reels:
+        case .hacs:
             return "play.rectangle"
         case .stories:
             return "circle.dashed"
@@ -5497,8 +5497,8 @@ private enum LegendProfileContentFilter: String, CaseIterable, Identifiable {
         switch self {
         case .posts:
             return "Posts"
-        case .reels:
-            return "Reels"
+        case .hacs:
+            return "Hacs"
         case .stories:
             return "Stories"
         }
@@ -5508,8 +5508,8 @@ private enum LegendProfileContentFilter: String, CaseIterable, Identifiable {
         switch self {
         case .posts:
             return .post
-        case .reels:
-            return .reel
+        case .hacs:
+            return .hac
         case .stories:
             return .story
         }
@@ -5741,8 +5741,8 @@ private struct LegendAccountView: View {
 
             HStack(spacing: LegendNextSpacing.xs) {
                 profileMetric(
-                    value: postsAndReelsCount,
-                    title: "Posts + Reels"
+                    value: hacCount,
+                    title: "Hacs"
                 )
 
                 profileMetric(
@@ -6041,8 +6041,8 @@ private struct LegendAccountView: View {
         switch selectedContent {
         case .posts:
             return profilePosts
-        case .reels:
-            return profileReels
+        case .hacs:
+            return profileHacs
         case .stories:
             return profileStories
         }
@@ -6052,8 +6052,8 @@ private struct LegendAccountView: View {
         profileItems(for: .post)
     }
 
-    private var profileReels: [MobileSocialPost] {
-        profileItems(for: .reel)
+    private var profileHacs: [MobileSocialPost] {
+        profileItems(for: .hac)
     }
 
     private var profileStories: [MobileSocialPost] {
@@ -6084,11 +6084,10 @@ private struct LegendAccountView: View {
         return snapshot.currentProfileMetrics
     }
 
-    private var postsAndReelsCount: Int {
+    private var hacCount: Int {
         if case .loaded = social.profileContentState {
             return currentProfilePosts.count {
-                $0.contentType == MobileSocialContentType.post.rawValue
-                    || $0.contentType == MobileSocialContentType.reel.rawValue
+                $0.contentType == MobileSocialContentType.hac.rawValue
             }
         }
 
@@ -6193,7 +6192,7 @@ private struct LegendProfileGridTile: View {
                     )
 
                     VStack(spacing: LegendNextSpacing.xs) {
-                        Image(systemName: post.contentType == MobileSocialContentType.reel.rawValue
+                        Image(systemName: post.contentType == MobileSocialContentType.hac.rawValue
                               ? "play.rectangle.fill"
                               : "quote.bubble.fill")
                             .font(.title3.weight(.semibold))
@@ -6209,7 +6208,7 @@ private struct LegendProfileGridTile: View {
                     .padding(10)
                 }
 
-                if post.contentType == MobileSocialContentType.reel.rawValue {
+                if post.contentType == MobileSocialContentType.hac.rawValue {
                     Image(systemName: "play.rectangle.fill")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.white)
@@ -6230,7 +6229,7 @@ private struct LegendProfileGridTile: View {
         .clipped()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(post.contentType) by \(post.author.displayName): \(post.body)"
+            "\(post.displayContentType) by \(post.author.displayName): \(post.body)"
         )
     }
 }

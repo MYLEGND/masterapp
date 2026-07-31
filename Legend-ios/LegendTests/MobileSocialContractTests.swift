@@ -13,10 +13,10 @@ final class MobileSocialContractTests: XCTestCase {
             MobileSocialContentType.post.rawValue)
         XCTAssertEqual(
             LegendSocialPostMetadata.summary(
-                contentType: MobileSocialContentType.reel.rawValue,
+                contentType: MobileSocialContentType.hac.rawValue,
                 authorParticipantType: .client,
                 viewerParticipantType: .agent),
-            "Reel · Client")
+            "Hac · Client")
     }
 
     func testSocialSnapshotDecodesTypedAuthorsWithIndependentProfileImages() throws {
@@ -189,10 +189,10 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertTrue(MobileSocialContentType.story.acceptsVideos)
         XCTAssertFalse(MobileSocialContentType.story.requiresVideo)
 
-        XCTAssertEqual(MobileSocialContentType.reel.maximumMediaItems, 1)
-        XCTAssertFalse(MobileSocialContentType.reel.acceptsImages)
-        XCTAssertTrue(MobileSocialContentType.reel.acceptsVideos)
-        XCTAssertTrue(MobileSocialContentType.reel.requiresVideo)
+        XCTAssertEqual(MobileSocialContentType.hac.maximumMediaItems, 1)
+        XCTAssertFalse(MobileSocialContentType.hac.acceptsImages)
+        XCTAssertTrue(MobileSocialContentType.hac.acceptsVideos)
+        XCTAssertTrue(MobileSocialContentType.hac.requiresVideo)
     }
 
     func testStoryCollectionsUseTheCompleteLogicalOwnerIdentity() throws {
@@ -265,8 +265,8 @@ final class MobileSocialContractTests: XCTestCase {
         let post = MobileSocialPost(
             id: UUID(),
             author: author,
-            contentType: MobileSocialContentType.reel.rawValue,
-            body: "A focused reel.",
+            contentType: MobileSocialContentType.hac.rawValue,
+            body: "A focused Hac.",
             audience: MobileSocialAudience.authorizedNetwork.rawValue,
             location: nil,
             commentsEnabled: true,
@@ -289,14 +289,14 @@ final class MobileSocialContractTests: XCTestCase {
             diagnostics: LegendDiagnostics())
 
         let published = await store.publish(MobileSocialPublishRequest(
-            contentType: .reel,
-            body: "A focused reel.",
+            contentType: .hac,
+            body: "A focused Hac.",
             files: [MultipartFormFile(
                 fieldName: "files",
-                fileName: "legend-reel.mp4",
+                fileName: "legend-hac.mp4",
                 mimeType: "video/mp4",
                 data: Data([0, 1, 2, 3]))],
-            accessibilityText: "A Legend reel",
+            accessibilityText: "A Legend Hac",
             music: nil,
             audience: .authorizedNetwork,
             location: nil,
@@ -304,7 +304,7 @@ final class MobileSocialContractTests: XCTestCase {
 
         XCTAssertTrue(published)
         let contentTypes = await api.mediaContentTypes()
-        XCTAssertEqual(contentTypes, [.reel])
+        XCTAssertEqual(contentTypes, [.hac])
     }
 
     /// Audience, location, and the comment switch are collected in the share sheet.
@@ -546,8 +546,8 @@ final class MobileSocialContractTests: XCTestCase {
         let post = MobileSocialPost(
             id: UUID(),
             author: author,
-            contentType: MobileSocialContentType.reel.rawValue,
-            body: "A measured reel.",
+            contentType: MobileSocialContentType.hac.rawValue,
+            body: "A measured Hac.",
             audience: MobileSocialAudience.authorizedNetwork.rawValue,
             location: nil,
             commentsEnabled: true,

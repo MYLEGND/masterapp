@@ -381,7 +381,7 @@ struct LegendSocialComposer: View {
 
             Spacer()
 
-            Text("New \(type.displayName.lowercased())")
+            Text(type.newContentTitle)
                 .font(LegendNextTypography.section)
                 .foregroundStyle(.white)
 
@@ -415,7 +415,7 @@ struct LegendSocialComposer: View {
         switch type {
         case .post:
             1
-        case .story, .reel:
+        case .story, .hac:
             9 / 16
         }
     }
@@ -424,7 +424,7 @@ struct LegendSocialComposer: View {
         switch type {
         case .post:
             286
-        case .story, .reel:
+        case .story, .hac:
             440
         }
     }
@@ -433,7 +433,7 @@ struct LegendSocialComposer: View {
         switch type {
         case .post:
             CGSize(width: 286, height: 286)
-        case .story, .reel:
+        case .story, .hac:
             CGSize(width: 248, height: 440)
         }
     }
@@ -442,7 +442,7 @@ struct LegendSocialComposer: View {
         switch type {
         case .post:
             CGSize(width: 132, height: 132)
-        case .story, .reel:
+        case .story, .hac:
             CGSize(width: 124, height: 220)
         }
     }
@@ -471,7 +471,7 @@ struct LegendSocialComposer: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(LegendNextColor.midnight)
                 .background(LegendNextColor.goldBright, in: Circle())
-                .accessibilityLabel("Open camera for \(type.displayName.lowercased())")
+                .accessibilityLabel("Open camera for \(type.displayName)")
             }
 
             if selectedMedia.isEmpty {
@@ -734,7 +734,7 @@ struct LegendSocialComposer: View {
         switch type {
         case .post:
             1
-        case .story, .reel:
+        case .story, .hac:
             9 / 16
         }
     }
@@ -743,7 +743,7 @@ struct LegendSocialComposer: View {
         switch type {
         case .post:
             390
-        case .story, .reel:
+        case .story, .hac:
             350
         }
     }
@@ -847,7 +847,7 @@ struct LegendSocialComposer: View {
 
             Spacer(minLength: 0)
 
-            Text("Edit \(type.displayName.lowercased())")
+            Text(type.editingTitle)
                 .font(LegendNextTypography.section)
                 .foregroundStyle(.white)
 
@@ -1077,44 +1077,44 @@ struct LegendSocialComposer: View {
 
     private var shareDetailsContent: some View {
         VStack(spacing: 0) {
-            instagramShareHeader
+            shareHeader
 
             Divider()
                 .overlay(LegendNextColor.separator)
 
             ScrollView {
                 VStack(spacing: 0) {
-                    instagramCaptionComposer
+                    captionComposer
 
                     Divider()
                         .padding(.leading, 96)
 
-                    instagramTagsRow
+                    tagsRow
 
                     Divider()
                         .padding(.leading, 56)
 
-                    instagramLocationRow
+                    locationRow
 
                     Divider()
                         .padding(.leading, 56)
 
-                    instagramMusicRow
+                    musicRow
 
                     Divider()
                         .padding(.leading, 56)
 
-                    instagramAudienceRow
+                    audienceRow
 
                     Divider()
                         .padding(.leading, 56)
 
-                    instagramAccessibilityRow
+                    accessibilityRow
 
                     Divider()
                         .padding(.leading, 56)
 
-                    instagramCommentsRow
+                    commentsRow
 
                     publicationFailure
                         .padding(.horizontal, 16)
@@ -1126,7 +1126,7 @@ struct LegendSocialComposer: View {
         .background(Color.white)
     }
 
-    private var instagramShareHeader: some View {
+    private var shareHeader: some View {
         HStack(spacing: 12) {
             Button {
                 stage = .metadata
@@ -1142,7 +1142,7 @@ struct LegendSocialComposer: View {
 
             Spacer(minLength: 0)
 
-            Text("New \(type.displayName.lowercased())")
+            Text(type.newContentTitle)
                 .font(.headline)
                 .foregroundStyle(LegendNextColor.textPrimary)
 
@@ -1170,9 +1170,9 @@ struct LegendSocialComposer: View {
         .background(Color.white)
     }
 
-    private var instagramCaptionComposer: some View {
+    private var captionComposer: some View {
         HStack(alignment: .top, spacing: 12) {
-            instagramShareThumbnail
+            shareThumbnail
 
             ZStack(alignment: .topLeading) {
                 if caption.isEmpty {
@@ -1211,7 +1211,7 @@ struct LegendSocialComposer: View {
     }
 
     @ViewBuilder
-    private var instagramShareThumbnail: some View {
+    private var shareThumbnail: some View {
         if let primaryMedia = selectedMedia.first {
             LegendSocialMediaPreview(
                 media: primaryMedia,
@@ -1249,7 +1249,7 @@ struct LegendSocialComposer: View {
         }
     }
 
-    private var instagramTagsRow: some View {
+    private var tagsRow: some View {
         HStack(spacing: 14) {
             Image(systemName: "person.crop.circle.badge.plus")
                 .font(.system(size: 20))
@@ -1283,7 +1283,7 @@ struct LegendSocialComposer: View {
         .accessibilityElement(children: .contain)
     }
 
-    private var instagramLocationRow: some View {
+    private var locationRow: some View {
         HStack(spacing: 14) {
             Image(systemName: "mappin.and.ellipse")
                 .font(.system(size: 20))
@@ -1312,7 +1312,7 @@ struct LegendSocialComposer: View {
         .background(Color.white)
     }
 
-    private var instagramMusicRow: some View {
+    private var musicRow: some View {
         Button {
             musicReturnStage = .share
             stage = .music
@@ -1375,7 +1375,7 @@ struct LegendSocialComposer: View {
         )
     }
 
-    private var instagramAudienceRow: some View {
+    private var audienceRow: some View {
         HStack(spacing: 14) {
             Image(systemName: "person.2")
                 .font(.system(size: 20))
@@ -1437,7 +1437,7 @@ struct LegendSocialComposer: View {
         .accessibilityLabel("Audience: \(shareAudience.title). \(shareAudience.detail)")
     }
 
-    private var instagramAccessibilityRow: some View {
+    private var accessibilityRow: some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: "accessibility")
                 .font(.system(size: 20))
@@ -1471,7 +1471,7 @@ struct LegendSocialComposer: View {
         .background(Color.white)
     }
 
-    private var instagramCommentsRow: some View {
+    private var commentsRow: some View {
         HStack(spacing: 14) {
             Image(systemName: "ellipsis.bubble")
                 .font(.system(size: 20))
@@ -1571,7 +1571,7 @@ struct LegendSocialComposer: View {
     private func select(_ asset: LegendPhotoLibraryAsset) {
         guard type.accepts(asset) else {
             mediaSelectionError = type.requiresVideo
-                ? "Reels use one video. Choose a video to continue."
+                ? "Hacs use one video. Choose a video to continue."
                 : "This media is not available for the selected format."
             return
         }
@@ -1618,7 +1618,7 @@ struct LegendSocialComposer: View {
             guard type.accepts(media) else {
                 media.discardTemporaryFile()
                 mediaSelectionError = type.requiresVideo
-                    ? "A reel can only contain a video."
+                    ? "A Hac can only contain a video."
                     : "The captured media is not available for this update."
                 return
             }

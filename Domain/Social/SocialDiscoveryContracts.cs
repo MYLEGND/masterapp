@@ -75,7 +75,7 @@ public sealed record SocialDiscoveryQuery(
 /// <summary>
 /// The community profile a discovery result opens into.
 ///
-/// Post, reel, story and follower counts are deliberately absent: those belong to the
+/// Post, short-form video, story and follower counts are deliberately absent: those belong to the
 /// social feed authority, which applies its own visibility rules. The caller composes
 /// the two so Discover never keeps a second copy of content statistics.
 /// </summary>

@@ -164,7 +164,7 @@ struct LegendDiscoverProfileView: View {
     private func statsRow(_ profile: MobileDiscoveryProfile) -> some View {
         HStack(spacing: 0) {
             stat("Posts", profile.postCount)
-            stat("Reels", profile.reelCount)
+            stat("Hacs", profile.reelCount)
             stat("Stories", profile.storyCount)
             stat("Followers", profile.followerCount)
             stat("Following", profile.followingCount)

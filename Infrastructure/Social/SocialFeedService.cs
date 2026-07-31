@@ -1718,7 +1718,7 @@ public sealed class SocialFeedService : ISocialFeedService
             SocialPostContentTypes.Story =>
                 "Stories require exactly one supported image or video.",
             SocialPostContentTypes.Reel =>
-                "Reels require exactly one supported video.",
+                "Hacs require exactly one supported video.",
             _ =>
                 $"Posts require between 1 and {MaximumMediaItemsPerPost} supported media files."
         };

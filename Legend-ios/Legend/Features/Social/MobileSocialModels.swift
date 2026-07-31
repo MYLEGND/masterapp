@@ -120,6 +120,10 @@ struct MobileSocialPostMetrics: Codable, Equatable, Sendable {
 }
 
 extension MobileSocialPost {
+    var displayContentType: String {
+        MobileSocialContentType.displayName(for: contentType)
+    }
+
     func replacing(
         reactionCount: Int? = nil,
         commentCount: Int? = nil,
@@ -225,6 +229,10 @@ struct MobileSocialPostInsight: Codable, Equatable, Identifiable, Sendable {
     let engagementRatePercentage: Decimal
 
     var id: UUID { postID }
+
+    var displayContentType: String {
+        MobileSocialContentType.displayName(for: contentType)
+    }
 
     private enum CodingKeys: String, CodingKey {
         case postID = "postId"
@@ -513,23 +521,36 @@ struct MobileSocialFollowResult: Codable, Equatable, Sendable {
 enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
     case post = "Post"
     case story = "Story"
-    case reel = "Reel"
+    // The raw value remains server-compatible with existing persisted content.
+    case hac = "Reel"
 
     var id: String { rawValue }
+
+    static func displayName(for rawValue: String) -> String {
+        Self(rawValue: rawValue)?.displayName ?? rawValue
+    }
 
     var displayName: String {
         switch self {
         case .post: "Post"
         case .story: "Story"
-        case .reel: "Reel"
+        case .hac: "Hac"
         }
     }
 
-    var creationTitle: String {
+    var newContentTitle: String {
         switch self {
-        case .post: "Share a post"
-        case .story: "Create a story"
-        case .reel: "Create a reel"
+        case .post: "New post"
+        case .story: "New story"
+        case .hac: "New Hac"
+        }
+    }
+
+    var editingTitle: String {
+        switch self {
+        case .post: "Edit post"
+        case .story: "Edit story"
+        case .hac: "Edit Hac"
         }
     }
 
@@ -539,8 +560,8 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
             "Share a focused update with your Legend network."
         case .story:
             "Share a 24-hour moment with your Legend network."
-        case .reel:
-            "Share a video moment with your Legend network."
+        case .hac:
+            "Share a practical insight with your Legend network."
         }
     }
 
@@ -548,13 +569,13 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .post:
             10
-        case .story, .reel:
+        case .story, .hac:
             1
         }
     }
 
     var acceptsImages: Bool {
-        self != .reel
+        self != .hac
     }
 
     var acceptsVideos: Bool {
@@ -562,7 +583,7 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
     }
 
     var requiresVideo: Bool {
-        self == .reel
+        self == .hac
     }
 
     var mediaSelectionTitle: String {
@@ -571,7 +592,7 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
             "Add photos or video"
         case .story:
             "Add a photo or video"
-        case .reel:
+        case .hac:
             "Add a video"
         }
     }
@@ -582,8 +603,8 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
             "Choose up to 10 photos or videos from your library, or capture a new moment."
         case .story:
             "Share one visual moment that disappears after 24 hours."
-        case .reel:
-            "Choose one video from your library, or record one with your camera."
+        case .hac:
+            "Choose one video for your Hac from your library, or record one with your camera."
         }
     }
 
@@ -591,7 +612,7 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .post: "square.and.pencil"
         case .story: "circle.dashed.inset.filled"
-        case .reel: "play.rectangle.fill"
+        case .hac: "play.rectangle.fill"
         }
     }
 }

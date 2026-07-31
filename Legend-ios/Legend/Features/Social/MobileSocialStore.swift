@@ -923,7 +923,7 @@ final class MobileSocialStore: ObservableObject {
         switch post.contentType {
         case MobileSocialContentType.post.rawValue:
             return profileMetrics.adjusting(postCountBy: change)
-        case MobileSocialContentType.reel.rawValue:
+        case MobileSocialContentType.hac.rawValue:
             return profileMetrics.adjusting(videoCountBy: change)
         case MobileSocialContentType.story.rawValue:
             return profileMetrics.adjusting(storyCountBy: change)

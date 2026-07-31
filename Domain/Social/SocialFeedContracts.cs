@@ -6,6 +6,7 @@ public static class SocialPostContentTypes
 {
     public const string Post = "Post";
     public const string Story = "Story";
+    // Retained only as the persisted and API discriminator for Hacs.
     public const string Reel = "Reel";
 }
 
@@ -37,6 +38,24 @@ public static class SocialPostAudiences
 public static class SocialReactionTypes
 {
     public const string Appreciate = "Appreciate";
+}
+
+/// <summary>
+/// Relationship-list selectors used by the mobile profile. These are API values,
+/// not presentation labels, so the app can evolve its wording without changing
+/// the server contract.
+/// </summary>
+public static class SocialFollowListKinds
+{
+    public const string Follows = "follows";
+    public const string Followers = "followers";
+
+    public static string? Normalize(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        Follows => Follows,
+        Followers => Followers,
+        _ => null
+    };
 }
 
 public static class SocialStoryInteractionTypes
@@ -198,6 +217,15 @@ public sealed record SocialProfileMetrics(
     int TotalReachCount,
     int? PrivateProfileVisitCount);
 
+/// <summary>
+/// One server-authoritative relationship row for the current member's profile.
+/// <paramref name="FollowedByCurrentActor"/> lets a Followers list render the
+/// correct follow-back state without guessing from the feed.
+/// </summary>
+public sealed record SocialFollowListEntry(
+    SocialAuthor Profile,
+    bool FollowedByCurrentActor);
+
 public sealed record SocialCreatorInsights(
     DateTime GeneratedUtc,
     int TotalViews,
@@ -247,6 +275,7 @@ public interface ISocialFeedService
     Task<SocialOperationResult<bool>> RecordShareAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostMetrics>> RecordViewAsync(RecordSocialPostViewCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialProfileMetrics>> GetProfileMetricsAsync(SocialFeedActor actor, SocialAuthor? profile = null, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>> GetCurrentProfileFollowListAsync(SocialFeedActor actor, string listKind, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialCreatorInsights>> GetCreatorInsightsAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostInsight>> GetPostInsightsAsync(SocialFeedActor actor, Guid postId, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<bool>> RecordProfileVisitAsync(SocialProfileVisitCommand command, CancellationToken cancellationToken = default);

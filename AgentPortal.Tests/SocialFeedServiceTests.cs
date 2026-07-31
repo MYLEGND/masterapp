@@ -427,7 +427,7 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
-    public async Task VideoReel_IsStoredAndReadThroughTheAuthorizedMediaPath()
+    public async Task VideoHac_IsStoredAndReadThroughTheAuthorizedMediaPath()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var client = Client("video-client", "Video", "Client");
@@ -443,19 +443,19 @@ public sealed class SocialFeedServiceTests
             new CreateSocialMediaPostCommand(
                 ClientActor(client),
                 SocialPostContentTypes.Reel,
-                "A secure video reel",
+                "A secure video Hac",
                 [new SocialMediaUpload(
-                    "legend-reel.mp4",
+                    "legend-hac.mp4",
                     content.Length,
                     uploadStream,
-                    "A Legend video reel")]));
+                    "A Legend video Hac")]));
 
         Assert.True(created.Succeeded);
         Assert.Equal(SocialPostContentTypes.Reel, created.Value!.ContentType);
         var media = Assert.Single(created.Value.Media);
         Assert.Equal("Video", media.MediaKind);
         Assert.Equal("video/mp4", media.MimeType);
-        Assert.Equal("A Legend video reel", media.AccessibilityText);
+        Assert.Equal("A Legend video Hac", media.AccessibilityText);
 
         var retrieved = await service.GetMediaAsync(ClientActor(client), media.Id);
 
@@ -468,7 +468,7 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
-    public async Task MediaPost_EnforcesStoryAndReelMediaRules_AndCleansRejectedUploads()
+    public async Task MediaPost_EnforcesStoryAndHacMediaRules_AndCleansRejectedUploads()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var client = Client("media-rules-client", "Media", "Rules");
@@ -490,24 +490,24 @@ public sealed class SocialFeedServiceTests
                     new SocialMediaUpload("second.jpg", 1, secondStoryImage, null)
                 ]));
 
-        await using var reelImage = new MemoryStream([3]);
-        var invalidReel = await service.CreateMediaPostAsync(
+        await using var hacImage = new MemoryStream([3]);
+        var invalidHac = await service.CreateMediaPostAsync(
             new CreateSocialMediaPostCommand(
                 ClientActor(client),
                 SocialPostContentTypes.Reel,
-                "An invalid image reel",
-                [new SocialMediaUpload("reel.jpg", 1, reelImage, null)]));
+                "An invalid image Hac",
+                [new SocialMediaUpload("hac.jpg", 1, hacImage, null)]));
 
         Assert.False(invalidStory.Succeeded);
         Assert.Equal("social_media_post_invalid", invalidStory.ErrorCode);
         Assert.Equal(
             "Stories require exactly one supported image or video.",
             invalidStory.ErrorMessage);
-        Assert.False(invalidReel.Succeeded);
-        Assert.Equal("social_media_post_invalid", invalidReel.ErrorCode);
+        Assert.False(invalidHac.Succeeded);
+        Assert.Equal("social_media_post_invalid", invalidHac.ErrorCode);
         Assert.Equal(
-            "Reels require exactly one supported video.",
-            invalidReel.ErrorMessage);
+            "Hacs require exactly one supported video.",
+            invalidHac.ErrorMessage);
         Assert.Empty(db.SocialPosts);
         Assert.Equal(0, storage.StoredMediaCount);
     }
@@ -574,7 +574,7 @@ public sealed class SocialFeedServiceTests
         var post = await service.CreatePostAsync(new CreateSocialPostCommand(
             authorActor,
             SocialPostContentTypes.Reel,
-            "A measured Legend reel"));
+            "A measured Legend Hac"));
         Assert.True(post.Succeeded);
 
         var firstView = await service.RecordViewAsync(new RecordSocialPostViewCommand(
