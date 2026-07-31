@@ -17,7 +17,6 @@ public sealed class MobileProfileSettings
     public string? Bio { get; set; }
     public string? Website { get; set; }
     public string? Location { get; set; }
-    public string? Pronouns { get; set; }
 
     // This is a member-entered mobile-profile address, never their authenticated
     // account email. It is returned to the owner for editing and only shown on a

@@ -5811,12 +5811,6 @@ private struct LegendAccountView: View {
                     .foregroundStyle(LegendNextColor.gold)
             }
 
-            if let pronouns = normalized(profile.pronouns) {
-                Text(pronouns)
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(LegendNextColor.textSecondary)
-            }
-
             if let title = normalized(profile.title),
                profile.participantType == .agent {
                 Text(title)
@@ -6371,12 +6365,6 @@ private struct LegendSocialProfileView: View {
                                     .foregroundStyle(LegendNextColor.gold)
                             }
 
-                            if let pronouns = normalized(metrics.profile.pronouns) {
-                                Text(pronouns)
-                                    .font(LegendNextTypography.supporting)
-                                    .foregroundStyle(LegendNextColor.textSecondary)
-                            }
-
                             if let bio = normalized(metrics.profile.bio) {
                                 Text(bio)
                                     .font(.subheadline)
@@ -6612,7 +6600,6 @@ private struct LegendAccountEditor: View {
     @State private var bio: String
     @State private var website: String
     @State private var location: String
-    @State private var pronouns: String
     @State private var profileEmail: String
     @State private var isEmailVisible: Bool
 
@@ -6627,7 +6614,6 @@ private struct LegendAccountEditor: View {
         _bio = State(initialValue: profile.bio ?? "")
         _website = State(initialValue: profile.website ?? "")
         _location = State(initialValue: profile.location ?? "")
-        _pronouns = State(initialValue: profile.pronouns ?? "")
         _profileEmail = State(initialValue: profile.profileEmail ?? "")
         _isEmailVisible = State(initialValue: profile.isEmailVisible)
     }
@@ -6660,10 +6646,22 @@ private struct LegendAccountEditor: View {
                                 text: $username,
                                 autocapitalization: .never,
                                 autocorrectionDisabled: true)
-                            LegendProfileEditorField(
-                                title: "Pronouns",
-                                prompt: "Optional",
-                                text: $pronouns)
+
+                            if store.isCheckingUsername {
+                                Label("Checking username…", systemImage: "clock")
+                                    .font(LegendNextTypography.caption)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                            } else if let availability = store.usernameAvailability {
+                                Label(
+                                    availability.message ?? "Username available",
+                                    systemImage: availability.isAvailable
+                                        ? "checkmark.circle"
+                                        : "exclamationmark.circle")
+                                    .font(LegendNextTypography.caption.weight(.semibold))
+                                    .foregroundStyle(availability.isAvailable
+                                        ? LegendNextColor.success
+                                        : .red)
+                            }
                         }
                     }
 
@@ -6763,7 +6761,6 @@ private struct LegendAccountEditor: View {
                                 bio: bio,
                                 website: website,
                                 location: location,
-                                pronouns: pronouns,
                                 publicEmail: profileEmail,
                                 isEmailVisible: isEmailVisible))
                             if didSave {
@@ -6771,7 +6768,11 @@ private struct LegendAccountEditor: View {
                             }
                         }
                     }
-                    .disabled(store.isSaving || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(
+                        store.isSaving
+                            || store.isCheckingUsername
+                            || store.isUsernameUnavailable
+                            || displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .foregroundStyle(LegendNextColor.gold)
                 }
             }
@@ -6779,6 +6780,9 @@ private struct LegendAccountEditor: View {
         .tint(LegendNextColor.gold)
         .preferredColorScheme(.dark)
         .presentationBackground(LegendNextColor.midnight)
+        .onChange(of: username) { _, newUsername in
+            store.checkUsernameAvailability(newUsername)
+        }
     }
 }
 

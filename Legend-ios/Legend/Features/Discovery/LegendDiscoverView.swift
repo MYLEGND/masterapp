@@ -16,9 +16,12 @@ struct LegendDiscoverView: View {
 
     var body: some View {
         content
-            .background(LegendNextColor.canvas.ignoresSafeArea())
+            .background(LegendNextColor.midnight.ignoresSafeArea())
             .navigationTitle("Discover")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(LegendNextColor.midnight, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar { toolbarContent }
             .searchable(
                 text: $store.searchText,
@@ -28,6 +31,7 @@ struct LegendDiscoverView: View {
             .textInputAutocapitalization(.never)
             .refreshable { await store.refresh() }
             .task { store.load() }
+            .preferredColorScheme(.dark)
             .sheet(isPresented: $isEditingJourneyProfile) {
                 if case .loaded(let dashboard) = journeyCircles.state {
                     LegendJourneyProfileEditor(dashboard: dashboard, store: journeyCircles)
@@ -53,7 +57,7 @@ struct LegendDiscoverView: View {
 
     private var searchPrompt: String {
         store.scope == .ownedClients
-            ? "Search your clients"
+            ? "Search clients and agents"
             : "Search people, goals, interests"
     }
 
@@ -108,21 +112,48 @@ struct LegendDiscoverView: View {
 
     @ViewBuilder
     private func resultsList(_ results: [MobileDiscoveryResult]) -> some View {
-        if results.isEmpty {
+        if results.isEmpty && store.recommendations.isEmpty {
             emptyState
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                     header
 
-                    ForEach(results) { result in
-                        LegendDiscoverResultCard(
-                            result: result,
-                            isBusy: store.pendingRelationshipProfileIDs.contains(result.id),
-                            open: { openProfileID = result.id },
-                            toggleFollow: { store.toggleFollow(result) },
-                            requestConnection: { store.requestConnection(result) })
-                            .onAppear { store.loadMoreIfNeeded(currentItem: result) }
+                    if !store.recommendations.isEmpty {
+                        directorySectionHeader("Recommended for you", detail: "Selected for your Legend")
+                        ForEach(store.recommendations) { result in
+                            resultCard(result, loadsMore: false)
+                        }
+                    }
+
+                    if !directoryResults.isEmpty {
+                        if store.scope == .ownedClients {
+                            let clients = directoryResults.filter {
+                                $0.identity.participantType == .client
+                            }
+                            let agents = directoryResults.filter {
+                                $0.identity.participantType == .agent
+                            }
+
+                            if !clients.isEmpty {
+                                directorySectionHeader("Your clients", detail: nil)
+                                ForEach(clients) { result in
+                                    resultCard(result, loadsMore: true)
+                                }
+                            }
+
+                            if !agents.isEmpty {
+                                directorySectionHeader("Legend agents", detail: "Search and follow your professional peers")
+                                ForEach(agents) { result in
+                                    resultCard(result, loadsMore: true)
+                                }
+                            }
+                        } else {
+                            directorySectionHeader("Explore Legend", detail: "Active member and agent profiles")
+                            ForEach(directoryResults) { result in
+                                resultCard(result, loadsMore: true)
+                            }
+                        }
                     }
 
                     if store.isLoadingMore {
@@ -156,24 +187,6 @@ struct LegendDiscoverView: View {
                 }
             }
 
-            // Compatibility ordering is a convenience, not a gate. This makes the full
-            // directory reachable in one tap.
-            if store.scope == .community && store.searchText.isEmpty {
-                Button {
-                    store.showDirectory(!store.isBrowsingEveryone)
-                } label: {
-                    Label(
-                        store.isBrowsingEveryone
-                            ? "Show suggested first"
-                            : "Browse everyone A–Z",
-                        systemImage: store.isBrowsingEveryone
-                            ? "sparkles"
-                            : "list.bullet")
-                        .font(.caption.weight(.semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(LegendNextColor.gold)
-            }
         }
         .padding(.top, LegendNextSpacing.xs)
         .padding(.bottom, LegendNextSpacing.micro)
@@ -186,7 +199,7 @@ struct LegendDiscoverView: View {
             return "\(count) \(noun) matching your search"
         }
         return store.scope == .ownedClients
-            ? "\(count) \(noun) in your book of business"
+            ? "\(count) \(noun) across your clients and Legend agents"
             : "\(count) \(noun) in your Legend community"
     }
 
@@ -202,8 +215,46 @@ struct LegendDiscoverView: View {
             return "Try another name, goal, interest, or location."
         }
         return store.scope == .ownedClients
-            ? "Clients you own will appear here."
-            : "Members appear here once they join the Legend community and make themselves discoverable."
+            ? "Your clients and active Legend agents will appear here."
+            : "Active Legend members and agents will appear here."
+    }
+
+    private var directoryResults: [MobileDiscoveryResult] {
+        let recommendationIDs = Set(store.recommendations.map(\.id))
+        return store.results.filter { !recommendationIDs.contains($0.id) }
+    }
+
+    private func directorySectionHeader(_ title: String, detail: String?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(LegendNextColor.textPrimary)
+
+            if let detail {
+                Text(detail)
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            }
+        }
+        .padding(.top, LegendNextSpacing.sm)
+        .padding(.bottom, LegendNextSpacing.micro)
+    }
+
+    private func resultCard(
+        _ result: MobileDiscoveryResult,
+        loadsMore: Bool
+    ) -> some View {
+        LegendDiscoverResultCard(
+            result: result,
+            isBusy: store.pendingRelationshipProfileIDs.contains(result.id),
+            open: { openProfileID = result.id },
+            toggleFollow: { store.toggleFollow(result) },
+            requestConnection: { store.requestConnection(result) })
+            .onAppear {
+                if loadsMore {
+                    store.loadMoreIfNeeded(currentItem: result)
+                }
+            }
     }
 }
 
@@ -231,6 +282,18 @@ private struct LegendDiscoverResultCard: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(LegendNextColor.textPrimary)
                                 .lineLimit(1)
+
+                            if let username = result.username, !username.isEmpty {
+                                Text("@\(username)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(LegendNextColor.gold)
+                            }
+
+                            if result.identity.participantType == .agent {
+                                Text("Legend Agent")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(LegendNextColor.gold)
+                            }
 
                             if let supporting = result.supportingLine {
                                 Text(supporting)
@@ -300,6 +363,8 @@ private struct LegendDiscoverResultCard: View {
     @ViewBuilder
     private var actionRow: some View {
         HStack(spacing: LegendNextSpacing.xs) {
+            Spacer(minLength: 0)
+
             if result.relationship.canFollow {
                 Button(action: toggleFollow) {
                     Label(
@@ -307,7 +372,6 @@ private struct LegendDiscoverResultCard: View {
                         systemImage: result.relationship.followedByCurrentActor
                             ? "checkmark"
                             : "plus")
-                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(LegendInlineButtonStyle(
                     kind: result.relationship.followedByCurrentActor ? .secondary : .primary))
@@ -327,7 +391,6 @@ private struct LegendDiscoverResultCard: View {
         case .none where result.relationship.canRequestConnection:
             Button(action: requestConnection) {
                 Label("Connect", systemImage: "person.badge.plus")
-                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(LegendInlineButtonStyle(kind: .secondary))
             .disabled(isBusy)
@@ -337,13 +400,11 @@ private struct LegendDiscoverResultCard: View {
             Label("Request sent", systemImage: "clock")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(LegendNextColor.textSecondary)
-                .frame(maxWidth: .infinity)
 
         case .accepted:
             Label("Connected", systemImage: "checkmark.seal.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(LegendNextColor.success)
-                .frame(maxWidth: .infinity)
 
         default:
             EmptyView()

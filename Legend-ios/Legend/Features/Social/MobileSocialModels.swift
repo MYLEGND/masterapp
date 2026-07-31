@@ -55,7 +55,6 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
     let bio: String?
     let website: String?
     let location: String?
-    let pronouns: String?
     let publicEmail: String?
 
     init(
@@ -67,7 +66,6 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
         bio: String? = nil,
         website: String? = nil,
         location: String? = nil,
-        pronouns: String? = nil,
         publicEmail: String? = nil
     ) {
         self.identity = identity
@@ -78,14 +76,13 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
         self.bio = bio
         self.website = website
         self.location = location
-        self.pronouns = pronouns
         self.publicEmail = publicEmail
     }
 
     private enum CodingKeys: String, CodingKey {
         case identity
         case profileID = "profileId"
-        case displayName, avatar, username, bio, website, location, pronouns, publicEmail
+        case displayName, avatar, username, bio, website, location, publicEmail
     }
 }
 

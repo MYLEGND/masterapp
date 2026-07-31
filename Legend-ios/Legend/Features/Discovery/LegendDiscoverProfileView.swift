@@ -62,12 +62,40 @@ struct LegendDiscoverProfileView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if let introduction = profile.introduction, !introduction.isEmpty {
+                if profile.introduction?.isEmpty == false
+                    || profile.summary.bio?.isEmpty == false
+                    || profile.summary.website?.isEmpty == false
+                    || profile.summary.publicEmail?.isEmpty == false {
                     section("About") {
-                        Text(introduction)
-                            .font(LegendNextTypography.body)
-                            .foregroundStyle(LegendNextColor.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                            if let introduction = profile.introduction, !introduction.isEmpty {
+                                Text(introduction)
+                                    .font(LegendNextTypography.body)
+                                    .foregroundStyle(LegendNextColor.textPrimary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            if let bio = profile.summary.bio, !bio.isEmpty {
+                                Text(bio)
+                                    .font(LegendNextTypography.body)
+                                    .foregroundStyle(LegendNextColor.textPrimary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            if let website = profile.summary.website, !website.isEmpty {
+                                Text(website)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(LegendNextColor.gold)
+                                    .textSelection(.enabled)
+                            }
+
+                            if let email = profile.summary.publicEmail, !email.isEmpty {
+                                Label(email, systemImage: "envelope")
+                                    .font(LegendNextTypography.supporting)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                                    .textSelection(.enabled)
+                            }
+                        }
                     }
                 }
 
@@ -94,6 +122,12 @@ struct LegendDiscoverProfileView: View {
                     Text(profile.summary.displayName)
                         .font(.title3.weight(.bold))
                         .foregroundStyle(LegendNextColor.textPrimary)
+
+                    if let username = profile.summary.username, !username.isEmpty {
+                        Text("@\(username)")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.gold)
+                    }
 
                     if let location = profile.summary.location, !location.isEmpty {
                         Label(location, systemImage: "mappin.and.ellipse")

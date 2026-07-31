@@ -536,7 +536,12 @@ public sealed class MobileSocialController : MobileApiControllerBase
             new MobileLogicalIdentityDto(author.UserId, author.ParticipantType),
             author.ProfileId.ToString("D"),
             author.DisplayName,
-            await MobileAvatarProjection.ResolveAsync(_profiles, identity, cancellationToken));
+            await MobileAvatarProjection.ResolveAsync(_profiles, identity, cancellationToken),
+            author.Username,
+            author.Bio,
+            author.Website,
+            author.Location,
+            author.PublicEmail);
     }
 
     private async Task<MobileSocialProfileMetricsDto> ToProfileMetricsDtoAsync(
@@ -699,7 +704,16 @@ public sealed record MobileRecordSocialViewRequest(decimal? WatchDurationSeconds
 public sealed record MobileRecordProfileVisitRequest(string? TargetUserId, string? TargetParticipantType, Guid? SourcePostId);
 public sealed record MobileSocialFollowResultDto(bool IsFollowing);
 public sealed record MobileSocialStateResultDto(bool IsActive);
-public sealed record MobileSocialAuthorDto(MobileLogicalIdentityDto Identity, string ProfileId, string DisplayName, MobileAvatarDto? Avatar);
+public sealed record MobileSocialAuthorDto(
+    MobileLogicalIdentityDto Identity,
+    string ProfileId,
+    string DisplayName,
+    MobileAvatarDto? Avatar,
+    string? Username = null,
+    string? Bio = null,
+    string? Website = null,
+    string? Location = null,
+    string? PublicEmail = null);
 public sealed record MobileSocialFollowListEntryDto(MobileSocialAuthorDto Profile, bool FollowedByCurrentActor);
 public sealed record MobileSocialCommentDto(Guid Id, MobileSocialAuthorDto Author, Guid? ParentCommentId, string Body, DateTime CreatedUtc);
 

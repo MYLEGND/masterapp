@@ -52,13 +52,53 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
     let matchExplanation: String?
     let relationship: MobileDiscoveryRelationship
     let avatar: ProfileAvatar?
+    let username: String?
+    let bio: String?
+    let website: String?
+    let publicEmail: String?
 
     var id: UUID { clientProfileID }
 
     private enum CodingKeys: String, CodingKey {
         case identity, displayName, headline, location, goals, interests, circleCodes
-        case compatibilityScore, matchExplanation, relationship, avatar
+        case compatibilityScore, matchExplanation, relationship, avatar, username, bio, website, publicEmail
         case clientProfileID = "clientProfileId"
+    }
+
+    init(
+        clientProfileID: UUID,
+        identity: LogicalParticipantIdentity,
+        displayName: String,
+        headline: String?,
+        location: String?,
+        goals: [String],
+        interests: [String],
+        circleCodes: [String],
+        compatibilityScore: Int,
+        matchExplanation: String?,
+        relationship: MobileDiscoveryRelationship,
+        avatar: ProfileAvatar?,
+        username: String? = nil,
+        bio: String? = nil,
+        website: String? = nil,
+        publicEmail: String? = nil
+    ) {
+        self.clientProfileID = clientProfileID
+        self.identity = identity
+        self.displayName = displayName
+        self.headline = headline
+        self.location = location
+        self.goals = goals
+        self.interests = interests
+        self.circleCodes = circleCodes
+        self.compatibilityScore = compatibilityScore
+        self.matchExplanation = matchExplanation
+        self.relationship = relationship
+        self.avatar = avatar
+        self.username = username
+        self.bio = bio
+        self.website = website
+        self.publicEmail = publicEmail
     }
 
     /// A short, human line for the card: the strongest available context.
@@ -81,7 +121,11 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
             compatibilityScore: compatibilityScore,
             matchExplanation: matchExplanation,
             relationship: relationship,
-            avatar: avatar)
+            avatar: avatar,
+            username: username,
+            bio: bio,
+            website: website,
+            publicEmail: publicEmail)
     }
 }
 

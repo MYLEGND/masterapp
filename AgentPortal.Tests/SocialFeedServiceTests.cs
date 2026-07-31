@@ -302,7 +302,6 @@ public sealed class SocialFeedServiceTests
             Bio = "A mobile-only Legend bio.",
             Website = "https://legend.example/profile",
             Location = "Phoenix, AZ",
-            Pronouns = "they/them",
             PublicEmail = "shareable@example.test",
             IsEmailVisible = false,
             CreatedUtc = DateTime.UtcNow,
@@ -318,7 +317,6 @@ public sealed class SocialFeedServiceTests
         Assert.Equal("A mobile-only Legend bio.", hidden.Value.Profile.Bio);
         Assert.Equal("https://legend.example/profile", hidden.Value.Profile.Website);
         Assert.Equal("Phoenix, AZ", hidden.Value.Profile.Location);
-        Assert.Equal("they/them", hidden.Value.Profile.Pronouns);
         Assert.Null(hidden.Value.Profile.PublicEmail);
 
         var settings = await db.MobileProfileSettings.SingleAsync();

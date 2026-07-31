@@ -627,6 +627,10 @@ private actor AccountBootstrapAPI: MobileAccountAPI {
     func calls() -> Int { callCount }
 
     func update(_ update: MobileAccountUpdate, accessToken: String) async throws {}
+
+    func usernameAvailability(username: String, accessToken: String) async throws -> MobileUsernameAvailability {
+        MobileUsernameAvailability(isAvailable: true, message: nil)
+    }
 }
 
 private actor AgentWorkspaceBootstrapAPI: MobileAgentWorkspaceAPI {

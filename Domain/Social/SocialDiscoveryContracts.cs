@@ -54,7 +54,11 @@ public sealed record SocialDiscoveryResult(
     IReadOnlyList<string> CircleCodes,
     int CompatibilityScore,
     string? MatchExplanation,
-    SocialDiscoveryRelationship Relationship);
+    SocialDiscoveryRelationship Relationship,
+    string? Username = null,
+    string? Bio = null,
+    string? Website = null,
+    string? PublicEmail = null);
 
 public sealed record SocialDiscoveryPage(
     IReadOnlyList<SocialDiscoveryResult> Results,

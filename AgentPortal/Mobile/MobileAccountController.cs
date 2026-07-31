@@ -80,7 +80,6 @@ public sealed class MobileAccountController : MobileApiControllerBase
                 request.Bio,
                 request.Website,
                 request.Location,
-                request.Pronouns,
                 request.PublicEmail,
                 request.IsEmailVisible),
             cancellationToken);
@@ -91,6 +90,21 @@ public sealed class MobileAccountController : MobileApiControllerBase
                 result.Account,
                 cancellationToken))
             : AccountFailure(result);
+    }
+
+    [HttpGet("username-availability")]
+    public async Task<IActionResult> UsernameAvailability(
+        [FromQuery] string? username,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        return Ok(await _accounts.CheckUsernameAvailabilityAsync(
+            resolved.Actor!,
+            username,
+            cancellationToken));
     }
 
     private async Task<MobileAccountProfile> ProjectAsync(
@@ -119,7 +133,6 @@ public sealed class MobileAccountController : MobileApiControllerBase
             account.Bio,
             account.Website,
             account.Location,
-            account.Pronouns,
             account.ProfileEmail,
             account.IsEmailVisible,
             avatar);
@@ -157,7 +170,6 @@ public sealed record MobileAccountUpdateRequest(
     string? Bio = null,
     string? Website = null,
     string? Location = null,
-    string? Pronouns = null,
     string? PublicEmail = null,
     bool IsEmailVisible = false);
 
@@ -173,7 +185,6 @@ public sealed record MobileAccountProfile(
     string? Bio,
     string? Website,
     string? Location,
-    string? Pronouns,
     string? ProfileEmail,
     bool IsEmailVisible,
     MobileAvatarDto? Avatar);

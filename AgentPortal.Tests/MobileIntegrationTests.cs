@@ -653,7 +653,6 @@ public sealed class MobileIntegrationTests
                 Bio: "Building a legacy.",
                 Website: "https://legend.example.test/member",
                 Location: "Phoenix, Arizona",
-                Pronouns: "they/them",
                 PublicEmail: "hello@example.test",
                 IsEmailVisible: true),
             CancellationToken.None);
@@ -681,7 +680,6 @@ public sealed class MobileIntegrationTests
                 Bio: "Building a legacy.",
                 Website: "https://legend.example.test/member",
                 Location: "Phoenix, Arizona",
-                Pronouns: "they/them",
                 PublicEmail: "hello@example.test",
                 IsEmailVisible: false),
             CancellationToken.None);
@@ -690,6 +688,52 @@ public sealed class MobileIntegrationTests
         Assert.Null(hiddenProfile!.Email);
         Assert.Equal("hello@example.test", hiddenProfile.ProfileEmail);
         Assert.False(hiddenProfile.IsEmailVisible);
+    }
+
+    [Fact]
+    public async Task MobileAccount_UsernameAvailabilityRejectsAUsernameOwnedByAnotherProfile()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "username-owner",
+            FirstName = "Legend",
+            LastName = "Owner",
+            Email = "owner@example.test",
+            Phone = "555-0100"
+        };
+        var candidate = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "username-candidate",
+            FirstName = "Legend",
+            LastName = "Candidate",
+            Email = "candidate@example.test",
+            Phone = "555-0101"
+        };
+        db.ClientProfiles.AddRange(owner, candidate);
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            Id = Guid.NewGuid(),
+            ProfileId = owner.Id,
+            ParticipantType = MessagingParticipantTypes.Client,
+            Username = "legend.owner",
+            NormalizedUsername = "legend.owner",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateAccountController(db, Principal(candidate.ClientUserId));
+        controller.HttpContext.Request.Headers[MobileApiAuthorization.ParticipantTypeHeader] = MessagingParticipantTypes.Client;
+
+        var result = await controller.UsernameAvailability("@Legend.Owner", CancellationToken.None);
+
+        var availability = Assert.IsType<OkObjectResult>(result).Value as MobileUsernameAvailability;
+        Assert.NotNull(availability);
+        Assert.False(availability!.IsAvailable);
+        Assert.Equal("That username is already in use.", availability.Message);
     }
 
     [Fact]
@@ -1116,7 +1160,7 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
-    public async Task MobileAgentClients_UsesTheServerResolvedAgentAndProjectsOnlyClientOwnedImageData()
+    public async Task MobileAgentClients_UsesTheCentralTypedProfileImageResolver()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         db.AgentProfiles.Add(new AgentProfile
@@ -1130,6 +1174,13 @@ public sealed class MobileIntegrationTests
         await db.SaveChangesAsync();
 
         var clientProfileId = Guid.NewGuid();
+        var profiles = new Mock<IMessagingProfileImageResolver>(MockBehavior.Strict);
+        profiles.Setup(resolver => resolver.ResolveAsync(
+                It.Is<MessagingParticipantIdentity>(identity =>
+                    identity.ParticipantType == MessagingParticipantTypes.Client &&
+                    identity.ProfileId == clientProfileId),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MessagingProfileImage([1, 2, 3], "image/png"));
         var home = new Mock<IMobileHomeService>(MockBehavior.Strict);
         home.Setup(service => service.GetAgentClientsAsync(
                 It.Is<MobileResolvedActor>(actor =>
@@ -1142,11 +1193,13 @@ public sealed class MobileIntegrationTests
                     clientProfileId,
                     "Client Identity",
                     "client@example.test",
-                    "Active",
-                    [1, 2, 3],
-                    "image/png")
+                    "Active")
             ]));
-        var controller = CreateHomeController(db, home.Object, Principal("agent-oid"));
+        var controller = CreateHomeController(
+            db,
+            home.Object,
+            Principal("agent-oid"),
+            profiles.Object);
 
         var result = await controller.AgentClients(CancellationToken.None);
 
@@ -1158,6 +1211,7 @@ public sealed class MobileIntegrationTests
         Assert.Equal("image/png", client.Avatar!.ContentType);
         Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2, 3 }), client.Avatar.Base64Content);
         home.VerifyAll();
+        profiles.VerifyAll();
     }
 
     [Fact]
@@ -1253,9 +1307,13 @@ public sealed class MobileIntegrationTests
     private static MobileHomeController CreateHomeController(
         Infrastructure.Data.MasterAppDbContext db,
         IMobileHomeService home,
-        ClaimsPrincipal principal)
+        ClaimsPrincipal principal,
+        IMessagingProfileImageResolver? providedProfiles = null)
     {
-        return new MobileHomeController(CreateResolver(db), home)
+        return new MobileHomeController(
+            CreateResolver(db),
+            home,
+            providedProfiles ?? CreateEmptyProfileResolver())
         {
             ControllerContext = new ControllerContext
             {

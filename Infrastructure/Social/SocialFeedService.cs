@@ -912,7 +912,6 @@ public sealed class SocialFeedService : ISocialFeedService
                 Bio = mobileProfile.Bio,
                 Website = mobileProfile.Website,
                 Location = mobileProfile.Location,
-                Pronouns = mobileProfile.Pronouns,
                 PublicEmail = mobileProfile.IsEmailVisible
                     ? mobileProfile.PublicEmail
                     : null

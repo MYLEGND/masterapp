@@ -76,7 +76,6 @@ public sealed record SocialAuthor(
     string? Bio = null,
     string? Website = null,
     string? Location = null,
-    string? Pronouns = null,
     string? PublicEmail = null);
 
 public sealed record SocialCommentView(Guid Id, SocialAuthor Author, Guid? ParentCommentId, string Body, DateTime CreatedUtc);

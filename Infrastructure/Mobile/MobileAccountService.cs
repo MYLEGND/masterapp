@@ -15,6 +15,11 @@ public interface IMobileAccountService
         MobileResolvedActor actor,
         MobileAccountUpdate update,
         CancellationToken cancellationToken = default);
+
+    Task<MobileUsernameAvailability> CheckUsernameAvailabilityAsync(
+        MobileResolvedActor actor,
+        string? username,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record MobileAccountUpdate(
@@ -26,7 +31,6 @@ public sealed record MobileAccountUpdate(
     string? Bio = null,
     string? Website = null,
     string? Location = null,
-    string? Pronouns = null,
     string? PublicEmail = null,
     bool IsEmailVisible = false);
 
@@ -42,7 +46,6 @@ public sealed record MobileAccountSnapshot(
     string? Bio = null,
     string? Website = null,
     string? Location = null,
-    string? Pronouns = null,
     string? ProfileEmail = null,
     bool IsEmailVisible = false);
 
@@ -58,6 +61,8 @@ public sealed record MobileAccountResult(
     public static MobileAccountResult Failure(string errorCode, string errorMessage) =>
         new(false, errorCode, errorMessage, null);
 }
+
+public sealed record MobileUsernameAvailability(bool IsAvailable, string? Message);
 
 /// <summary>
 /// Canonical mobile account projection and mutation service.
@@ -75,7 +80,6 @@ public sealed class MobileAccountService : IMobileAccountService
     private const int UsernameMaximumLength = 64;
     private const int WebsiteMaximumLength = 2_048;
     private const int LocationMaximumLength = 120;
-    private const int PronounsMaximumLength = 80;
     private const int EmailMaximumLength = 320;
 
     private readonly MasterAppDbContext _db;
@@ -179,9 +183,9 @@ public sealed class MobileAccountService : IMobileAccountService
                 validationError);
         }
 
-        var mobileSettingsValidationError = await ValidateMobileSettingsAsync(
+        var mobileSettingsValidationError = await ValidateUsernameAsync(
             actor,
-            update,
+            update.Username,
             cancellationToken);
         if (mobileSettingsValidationError is not null)
         {
@@ -266,13 +270,23 @@ public sealed class MobileAccountService : IMobileAccountService
         mobileSettings.Bio = TrimOptional(update.Bio);
         mobileSettings.Website = TrimOptional(update.Website);
         mobileSettings.Location = TrimOptional(update.Location);
-        mobileSettings.Pronouns = TrimOptional(update.Pronouns);
         mobileSettings.PublicEmail = TrimOptional(update.PublicEmail);
         mobileSettings.IsEmailVisible = update.IsEmailVisible;
         mobileSettings.UpdatedUtc = now;
 
         await _db.SaveChangesAsync(cancellationToken);
         return await GetAsync(actor, cancellationToken);
+    }
+
+    public async Task<MobileUsernameAvailability> CheckUsernameAvailabilityAsync(
+        MobileResolvedActor actor,
+        string? username,
+        CancellationToken cancellationToken = default)
+    {
+        var validationError = await ValidateUsernameAsync(actor, username, cancellationToken);
+        return validationError is null
+            ? new MobileUsernameAvailability(true, null)
+            : new MobileUsernameAvailability(false, validationError);
     }
 
     private async Task<MobileAccountResult> ApplyMobileSettingsAsync(
@@ -298,7 +312,6 @@ public sealed class MobileAccountService : IMobileAccountService
             Bio = TrimOptional(settings.Bio) ?? account.ShortBio,
             Website = TrimOptional(settings.Website),
             Location = TrimOptional(settings.Location),
-            Pronouns = TrimOptional(settings.Pronouns),
             ProfileEmail = profileEmail,
             IsEmailVisible = settings.IsEmailVisible
         });
@@ -323,9 +336,6 @@ public sealed class MobileAccountService : IMobileAccountService
         if (update.ShortBio?.Trim().Length > ShortBioMaximumLength)
             return "Your introduction is too long.";
 
-        if (update.Username?.Trim().Length > UsernameMaximumLength)
-            return "Your username is too long.";
-
         if (update.Bio?.Trim().Length > ShortBioMaximumLength)
             return "Your mobile profile bio is too long.";
 
@@ -334,9 +344,6 @@ public sealed class MobileAccountService : IMobileAccountService
 
         if (update.Location?.Trim().Length > LocationMaximumLength)
             return "Your location is too long.";
-
-        if (update.Pronouns?.Trim().Length > PronounsMaximumLength)
-            return "Your pronouns are too long.";
 
         if (update.PublicEmail?.Trim().Length > EmailMaximumLength)
             return "Your profile email is too long.";
@@ -365,14 +372,17 @@ public sealed class MobileAccountService : IMobileAccountService
         return null;
     }
 
-    private async Task<string?> ValidateMobileSettingsAsync(
+    private async Task<string?> ValidateUsernameAsync(
         MobileResolvedActor actor,
-        MobileAccountUpdate update,
+        string? requestedUsername,
         CancellationToken cancellationToken)
     {
-        var username = NormalizeUsername(update.Username);
+        var username = NormalizeUsername(requestedUsername);
         if (username is null)
             return null;
+
+        if (username.Length > UsernameMaximumLength)
+            return "Your username is too long.";
 
         if (username.Any(character =>
                 !char.IsLetterOrDigit(character) && character is not '_' and not '.'))

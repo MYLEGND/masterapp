@@ -14,16 +14,17 @@ namespace Infrastructure.Social;
 /// Discovery reads the same ClientProfile, ClientEntitlement, JourneyCircleProfile and
 /// SocialFollow tables the rest of the platform uses. It owns no directory of its own.
 ///
-/// Two rules shape everything here:
+/// Two rules shape the two Discovery surfaces:
 ///
 /// 1. Compatibility ranks, it never restricts. The Journey Circles suggestion feed
 ///    applies a minimum score and returns a dozen people; Discover applies no score
 ///    floor at all, so every consented member stays reachable through search and
 ///    directory browsing.
 ///
-/// 2. Consent is the outer boundary. Only members who affirmed the Journey Circles
-///    consent and left themselves discoverable appear in the community scope. A client
-///    who never opted into community discovery is never listed, no matter who searches.
+/// 2. Consent governs recommendations. Only members who affirmed the Journey Circles
+///    consent and left themselves discoverable are eligible for the recommendation
+///    feed. The secondary directory instead comes directly from active mobile client
+///    and agent profiles, so it remains complete without inventing a second store.
 /// </summary>
 public sealed class SocialDiscoveryService : ISocialDiscoveryService
 {
@@ -300,9 +301,23 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                 profile.ShortBio))
             .ToArrayAsync(cancellationToken);
 
-        return clients
+        var candidates = clients
             .Concat(agents.Select(ToDirectoryCandidate))
             .Where(candidate => !string.IsNullOrWhiteSpace(candidate.UserId))
+            .ToArray();
+        var presentations = await MobileProfilePresentationsAsync(
+            candidates.Select(candidate => new DirectoryProfileKey(
+                candidate.ProfileId,
+                candidate.ParticipantType)),
+            cancellationToken);
+
+        return candidates
+            .Select(candidate => candidate with
+            {
+                Presentation = presentations.GetValueOrDefault(new DirectoryProfileKey(
+                    candidate.ProfileId,
+                    candidate.ParticipantType))
+            })
             .ToArray();
     }
 
@@ -361,7 +376,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             journey?.AllowConnectionRequests == true,
             journey?.Introduction,
             JourneyCircleCompatibilityScorer.FromDelimited(journey?.LifeStage),
-            JourneyCircleCompatibilityScorer.FromJson(journey?.ConnectionTypesJson));
+            JourneyCircleCompatibilityScorer.FromJson(journey?.ConnectionTypesJson),
+            null);
     }
 
     private static DirectoryCandidate ToDirectoryCandidate(AgentDirectoryRow agent)
@@ -380,7 +396,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             false,
             agent.ShortBio,
             [],
-            []);
+            [],
+            null);
     }
 
     private async Task<IReadOnlyList<SocialDiscoveryResult>> ProjectDirectoryAsync(
@@ -467,7 +484,11 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                         && candidate.ParticipantType == MessagingParticipantTypes.Client
                         && candidate.AllowsConnectionRequests
                         && connectionStatus == JourneyCircleConnectionStatuses.None,
-                    key != actorKey));
+                    key != actorKey),
+                candidate.Presentation?.Username,
+                candidate.Presentation?.Bio,
+                candidate.Presentation?.Website,
+                candidate.Presentation?.PublicEmail);
         }).ToArray();
     }
 
@@ -479,6 +500,7 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             candidate.DisplayName,
             candidate.Headline,
             candidate.Location,
+            candidate.Presentation?.Username,
             string.Join(" ", candidate.Goals),
             string.Join(" ", candidate.Interests),
             string.Join(" ", candidate.CircleCodes)
@@ -488,11 +510,17 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
     }
 
     private static int DirectoryMatchRank(DirectoryCandidate candidate, string? searchText) =>
-        searchText is not null && candidate.DisplayName.StartsWith(searchText, StringComparison.OrdinalIgnoreCase)
+        searchText is not null
+        && string.Equals(candidate.Presentation?.Username, searchText, StringComparison.OrdinalIgnoreCase)
             ? 0
-            : searchText is not null && candidate.DisplayName.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+            : searchText is not null
+              && candidate.Presentation?.Username?.StartsWith(searchText, StringComparison.OrdinalIgnoreCase) == true
                 ? 1
-                : 2;
+                : searchText is not null && candidate.DisplayName.StartsWith(searchText, StringComparison.OrdinalIgnoreCase)
+                    ? 2
+                    : searchText is not null && candidate.DisplayName.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+                        ? 3
+                        : 4;
 
     // ------------------------------------------------------------- projection
 
@@ -553,10 +581,19 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             }
         }
 
+        var presentations = await MobileProfilePresentationsAsync(
+            page.Select(entry => new DirectoryProfileKey(
+                entry.Candidate.ClientProfileId,
+                MessagingParticipantTypes.Client)),
+            cancellationToken);
+
         return page.Select(entry =>
         {
             var candidate = entry.Candidate;
             var userId = CanonicalUserId(candidate);
+            var presentation = presentations.GetValueOrDefault(new DirectoryProfileKey(
+                candidate.ClientProfileId,
+                MessagingParticipantTypes.Client));
             var connection = connectionsByProfileId.GetValueOrDefault(candidate.ClientProfileId);
             var connectionStatus = connection?.Status ?? JourneyCircleConnectionStatuses.None;
 
@@ -580,8 +617,40 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                     viewer is not null
                         && candidate.Journey.AllowConnectionRequests
                         && connectionStatus == JourneyCircleConnectionStatuses.None,
-                    !string.IsNullOrWhiteSpace(userId)));
+                    !string.IsNullOrWhiteSpace(userId)),
+                presentation?.Username,
+                presentation?.Bio,
+                presentation?.Website,
+                presentation?.PublicEmail);
         }).ToArray();
+    }
+
+    private async Task<Dictionary<DirectoryProfileKey, MobileProfilePresentation>> MobileProfilePresentationsAsync(
+        IEnumerable<DirectoryProfileKey> keys,
+        CancellationToken cancellationToken)
+    {
+        var requestedKeys = keys.ToHashSet();
+        if (requestedKeys.Count == 0)
+            return [];
+
+        var profileIds = requestedKeys.Select(key => key.ProfileId).ToArray();
+        var settings = await _db.MobileProfileSettings
+            .AsNoTracking()
+            .Where(setting => profileIds.Contains(setting.ProfileId))
+            .ToArrayAsync(cancellationToken);
+
+        return settings
+            .Select(setting => new
+            {
+                Key = new DirectoryProfileKey(setting.ProfileId, setting.ParticipantType),
+                Presentation = new MobileProfilePresentation(
+                    TrimOptional(setting.Username),
+                    TrimOptional(setting.Bio),
+                    TrimOptional(setting.Website),
+                    setting.IsEmailVisible ? TrimOptional(setting.PublicEmail) : null)
+            })
+            .Where(entry => requestedKeys.Contains(entry.Key))
+            .ToDictionary(entry => entry.Key, entry => entry.Presentation);
     }
 
     // ---------------------------------------------------------------- profile
@@ -689,7 +758,7 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
 
     private static string? NormalizeSearchText(string? value)
     {
-        var trimmed = value?.Trim();
+        var trimmed = value?.Trim().TrimStart('@');
         return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
     }
 
@@ -703,6 +772,9 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
 
+    private static string? TrimOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
     private readonly record struct DirectoryIdentity
     {
         public DirectoryIdentity(string? userId, string? participantType)
@@ -714,6 +786,14 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         public string UserId { get; }
         public string ParticipantType { get; }
     }
+
+    private readonly record struct DirectoryProfileKey(Guid ProfileId, string ParticipantType);
+
+    private sealed record MobileProfilePresentation(
+        string? Username,
+        string? Bio,
+        string? Website,
+        string? PublicEmail);
 
     private sealed record ClientDirectoryRow(ClientProfile Client, JourneyCircleProfile? Journey);
 
@@ -738,7 +818,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         bool AllowsConnectionRequests,
         string? Introduction,
         IReadOnlyList<string> LifeStages,
-        IReadOnlyList<string> ConnectionTypes);
+        IReadOnlyList<string> ConnectionTypes,
+        MobileProfilePresentation? Presentation);
 
     private sealed class CommunityCandidate
     {

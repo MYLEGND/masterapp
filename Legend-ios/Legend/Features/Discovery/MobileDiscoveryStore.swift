@@ -129,10 +129,6 @@ final class MobileDiscoveryStore: ObservableObject {
         return []
     }
 
-    var isBrowsingEveryone: Bool {
-        sortMode == .directory
-    }
-
     func load() {
         guard case .idle = state else { return }
         Task { await refresh() }
@@ -140,13 +136,6 @@ final class MobileDiscoveryStore: ObservableObject {
 
     func refresh() async {
         await runSearch(resetting: true, sort: preferredSort)
-    }
-
-    /// Switches between compatibility-ranked suggestions and the full alphabetical
-    /// directory. Both reach the same set of members; only the order changes.
-    func showDirectory(_ enabled: Bool) {
-        guard searchText.isEmpty else { return }
-        Task { await runSearch(resetting: true, sort: enabled ? .directory : .recommended) }
     }
 
     func loadMoreIfNeeded(currentItem: MobileDiscoveryResult) {
@@ -245,7 +234,7 @@ final class MobileDiscoveryStore: ObservableObject {
         if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .relevance
         }
-        return sortMode == .directory ? .directory : .recommended
+        return .recommended
     }
 
     private func scheduleSearch() {
@@ -298,7 +287,10 @@ final class MobileDiscoveryStore: ObservableObject {
                     accessToken: token)
                 guard generation == requestGeneration else { return }
 
-                recommendations = Array(page.results.prefix(Self.recommendationPageSize))
+                recommendations = Array(
+                    page.results
+                        .filter { $0.compatibilityScore > 0 }
+                        .prefix(Self.recommendationPageSize))
                 state = .loaded(directory.results)
                 totalCount = directory.totalCount
                 hasMore = directory.hasMore

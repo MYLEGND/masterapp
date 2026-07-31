@@ -204,7 +204,6 @@ final class MobileNativeContractTests: XCTestCase {
           "bio": "Building a legacy.",
           "website": "https://legend.example.test",
           "location": "Phoenix, Arizona",
-          "pronouns": "they/them",
           "avatar": { "kind": "inline", "contentType": "image/png", "base64Content": "Y2xpZW50" }
         }
         """.utf8)
@@ -224,7 +223,6 @@ final class MobileNativeContractTests: XCTestCase {
             bio: "Building a legacy.",
             website: "https://legend.example.test",
             location: "Phoenix, Arizona",
-            pronouns: "they/them",
             publicEmail: "hello@example.test",
             isEmailVisible: true)
         let accountUpdateObject = try XCTUnwrap(

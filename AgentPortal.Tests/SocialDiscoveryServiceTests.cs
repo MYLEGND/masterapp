@@ -176,7 +176,7 @@ public sealed class SocialDiscoveryServiceTests
     }
 
     [Fact]
-    public async Task AgentScope_ReturnsOwnedClientsOnly_AndNeverTheCommunityDirectory()
+    public async Task AgentScope_ReturnsOwnedClientsAndActivePeerAgents()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var agent = new AgentProfile
@@ -188,6 +188,15 @@ public sealed class SocialDiscoveryServiceTests
             IsActive = true
         };
         db.AgentProfiles.Add(agent);
+        var peerAgent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "agent-peer",
+            AgentUpn = "peer@example.test",
+            FullName = "Peer Agent",
+            IsActive = true
+        };
+        db.AgentProfiles.Add(peerAgent);
 
         var ownedClient = Member(db, "owned", "Owned Olivia");
         var someoneElsesClient = Member(db, "stranger", "Stranger Steve");
@@ -210,8 +219,11 @@ public sealed class SocialDiscoveryServiceTests
 
         Assert.True(page.Succeeded);
         Assert.Equal(SocialDiscoveryScopes.OwnedClients, page.Value!.Scope);
-        var result = Assert.Single(page.Value.Results);
-        Assert.Equal(ownedClient.Id, result.ClientProfileId);
+        var ownedResult = Assert.Single(page.Value.Results, result => result.ClientProfileId == ownedClient.Id);
+        Assert.Equal(MessagingParticipantTypes.Client, ownedResult.ParticipantType);
+        var peerResult = Assert.Single(page.Value.Results, result => result.ClientProfileId == peerAgent.Id);
+        Assert.Equal(MessagingParticipantTypes.Agent, peerResult.ParticipantType);
+        Assert.True(peerResult.Relationship.CanFollow);
 
         // The community member who is not this agent's client stays invisible: they
         // consented to peer discovery, not to agent discovery.
@@ -219,7 +231,83 @@ public sealed class SocialDiscoveryServiceTests
     }
 
     [Fact]
-    public async Task ProfileOpen_IsRefusedForMembersOutsideTheCallersScope()
+    public async Task DirectorySearch_IncludesActiveMobileProfilesWithoutJourneyRecommendations()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var viewer = Member(db, "viewer", "Vera");
+        var directoryOnly = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "directory-only",
+            ExternalIdentityObjectId = "directory-only",
+            FirstName = "Casey",
+            LastName = "Directory",
+            Email = "casey@example.test",
+            CrmStatus = "Active",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        };
+        db.ClientProfiles.Add(directoryOnly);
+        db.ClientEntitlements.Add(new ClientEntitlement
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = directoryOnly.Id,
+            EntitlementKey = BillingEntitlementKeys.ClientAppFullAccess,
+            Status = ClientEntitlementStatus.Active,
+            SourceType = ClientEntitlementSourceType.Subscription,
+            SourceId = Guid.NewGuid().ToString(),
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "directory-agent",
+            AgentUpn = "directory-agent@example.test",
+            FullName = "Directory Agent",
+            IsActive = true
+        };
+        db.AgentProfiles.Add(agent);
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            Id = Guid.NewGuid(),
+            ProfileId = agent.Id,
+            ParticipantType = MessagingParticipantTypes.Agent,
+            Username = "directory.legend",
+            NormalizedUsername = "directory.legend",
+            Bio = "Serving the Legend community.",
+            Website = "https://legend.example/directory",
+            PublicEmail = "directory@example.test",
+            IsEmailVisible = true,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var discovery = new SocialDiscoveryService(db);
+        var page = await discovery.SearchAsync(new SocialDiscoveryQuery(
+            Actor(viewer), null, 0, 20, SocialDiscoverySortModes.Directory));
+
+        Assert.True(page.Succeeded);
+        Assert.Contains(page.Value!.Results, result =>
+            result.ClientProfileId == directoryOnly.Id &&
+            result.ParticipantType == MessagingParticipantTypes.Client);
+        Assert.Contains(page.Value.Results, result =>
+            result.ClientProfileId == agent.Id &&
+            result.ParticipantType == MessagingParticipantTypes.Agent);
+        Assert.True(await discovery.IsDiscoverableByAsync(
+            Actor(viewer), agent.AgentUserId, MessagingParticipantTypes.Agent));
+
+        var usernameSearch = await discovery.SearchAsync(new SocialDiscoveryQuery(
+            Actor(viewer), "@directory.legend", 0, 20));
+        var found = Assert.Single(usernameSearch.Value!.Results, result => result.ClientProfileId == agent.Id);
+        Assert.Equal("directory.legend", found.Username);
+        Assert.Equal("Serving the Legend community.", found.Bio);
+        Assert.Equal("https://legend.example/directory", found.Website);
+        Assert.Equal("directory@example.test", found.PublicEmail);
+    }
+
+    [Fact]
+    public async Task ProfileOpen_AllowsAnActiveDirectoryMemberEvenWhenTheyAreNotRecommended()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var viewer = Member(db, "viewer", "Vera");
@@ -230,9 +318,9 @@ public sealed class SocialDiscoveryServiceTests
 
         var service = new SocialDiscoveryService(db);
 
-        var refused = await service.GetProfileAsync(Actor(viewer), hidden.Id);
-        Assert.False(refused.Succeeded);
-        Assert.Equal("social_discovery_profile_unavailable", refused.ErrorCode);
+        var directoryMember = await service.GetProfileAsync(Actor(viewer), hidden.Id);
+        Assert.True(directoryMember.Succeeded);
+        Assert.Equal("Hank", directoryMember.Value!.Summary.DisplayName);
 
         var allowed = await service.GetProfileAsync(Actor(viewer), visible.Id);
         Assert.True(allowed.Succeeded);

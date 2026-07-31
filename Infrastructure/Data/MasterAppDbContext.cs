@@ -732,7 +732,6 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Bio).HasMaxLength(1_000);
             e.Property(x => x.Website).HasMaxLength(2_048);
             e.Property(x => x.Location).HasMaxLength(120);
-            e.Property(x => x.Pronouns).HasMaxLength(80);
             e.Property(x => x.PublicEmail).HasMaxLength(320);
             e.HasIndex(x => new { x.ProfileId, x.ParticipantType }).IsUnique();
 

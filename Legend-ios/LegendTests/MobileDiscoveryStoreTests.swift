@@ -98,18 +98,16 @@ final class MobileDiscoveryStoreTests: XCTestCase {
         XCTAssertEqual(followed?.followedUserID, target.identity.userID)
     }
 
-    func testDirectoryToggleRequestsTheFullAlphabeticalDirectory() async throws {
+    func testClientRefreshLoadsRecommendationsAndTheActiveDirectory() async throws {
         let api = RecordingDiscoveryAPI(total: 5)
         let store = makeStore(api: api)
 
         await store.refresh()
-        XCTAssertEqual(store.sortMode, .recommended)
-
-        store.showDirectory(true)
-        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(store.sortMode, .directory)
+        XCTAssertTrue(store.recommendations.isEmpty)
 
         let sorts = await api.recordedSorts()
-        XCTAssertEqual(sorts.last, .directory)
+        XCTAssertEqual(sorts, [.recommended, .directory])
     }
 
     // ------------------------------------------------------------------ helpers

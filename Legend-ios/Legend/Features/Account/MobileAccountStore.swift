@@ -16,11 +16,10 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
     let bio: String?
     let website: String?
     let location: String?
-    let pronouns: String?
     let avatar: ProfileAvatar?
 
     private enum CodingKeys: String, CodingKey {
-        case participantType, displayName, email, phone, title, shortBio, profileEmail, isEmailVisible, username, bio, website, location, pronouns, avatar
+        case participantType, displayName, email, phone, title, shortBio, profileEmail, isEmailVisible, username, bio, website, location, avatar
         case profileID = "profileId"
     }
 
@@ -38,7 +37,6 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         bio: String? = nil,
         website: String? = nil,
         location: String? = nil,
-        pronouns: String? = nil,
         avatar: ProfileAvatar?
     ) {
         self.participantType = participantType
@@ -54,7 +52,6 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         self.bio = bio
         self.website = website
         self.location = location
-        self.pronouns = pronouns
         self.avatar = avatar
     }
 
@@ -74,7 +71,6 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
             bio: try container.decodeIfPresent(String.self, forKey: .bio),
             website: try container.decodeIfPresent(String.self, forKey: .website),
             location: try container.decodeIfPresent(String.self, forKey: .location),
-            pronouns: try container.decodeIfPresent(String.self, forKey: .pronouns),
             avatar: try container.decodeIfPresent(ProfileAvatar.self, forKey: .avatar))
     }
 }
@@ -88,7 +84,6 @@ struct MobileAccountUpdate: Encodable, Sendable {
     let bio: String?
     let website: String?
     let location: String?
-    let pronouns: String?
     let publicEmail: String?
     let isEmailVisible: Bool
 
@@ -101,7 +96,6 @@ struct MobileAccountUpdate: Encodable, Sendable {
         bio: String? = nil,
         website: String? = nil,
         location: String? = nil,
-        pronouns: String? = nil,
         publicEmail: String? = nil,
         isEmailVisible: Bool = false
     ) {
@@ -113,15 +107,20 @@ struct MobileAccountUpdate: Encodable, Sendable {
         self.bio = bio
         self.website = website
         self.location = location
-        self.pronouns = pronouns
         self.publicEmail = publicEmail
         self.isEmailVisible = isEmailVisible
     }
 }
 
+struct MobileUsernameAvailability: Codable, Equatable, Sendable {
+    let isAvailable: Bool
+    let message: String?
+}
+
 protocol MobileAccountAPI: Sendable {
     func profile(accessToken: String) async throws -> MobileAccountProfile
     func update(_ update: MobileAccountUpdate, accessToken: String) async throws
+    func usernameAvailability(username: String, accessToken: String) async throws -> MobileUsernameAvailability
 }
 
 struct MobileUnavailableAccountAPI: MobileAccountAPI {
@@ -130,6 +129,10 @@ struct MobileUnavailableAccountAPI: MobileAccountAPI {
     }
 
     func update(_ update: MobileAccountUpdate, accessToken: String) async throws {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func usernameAvailability(username: String, accessToken: String) async throws -> MobileUsernameAvailability {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
 }
@@ -154,6 +157,15 @@ struct URLSessionMobileAccountAPI: MobileAccountAPI {
             headers: participantHeader)
     }
 
+    func usernameAvailability(username: String, accessToken: String) async throws -> MobileUsernameAvailability {
+        try await client.get(
+            "/api/v1/mobile/account/username-availability",
+            accessToken: accessToken,
+            queryItems: [URLQueryItem(name: "username", value: username)],
+            headers: participantHeader,
+            response: MobileUsernameAvailability.self)
+    }
+
     private var participantHeader: [String: String] {
         ["X-Legend-Participant-Type": participantType.rawValue]
     }
@@ -164,6 +176,8 @@ final class MobileAccountStore: ObservableObject {
     @Published private(set) var state: MobileDataLoadState<MobileAccountProfile> = .idle
     @Published private(set) var actionFailure: UserFacingFailure?
     @Published private(set) var isSaving = false
+    @Published private(set) var usernameAvailability: MobileUsernameAvailability?
+    @Published private(set) var isCheckingUsername = false
     @Published private(set) var isRefreshing = false
     @Published private(set) var refreshFailure: UserFacingFailure?
 
@@ -171,6 +185,8 @@ final class MobileAccountStore: ObservableObject {
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
     private var loadTask: Task<MobileStoreLoadResult, Never>?
+    private var usernameCheckTask: Task<Void, Never>?
+    private var usernameCheckGeneration = 0
 
     init(
         api: any MobileAccountAPI,
@@ -218,6 +234,49 @@ final class MobileAccountStore: ObservableObject {
 
     func dismissActionFailure() {
         actionFailure = nil
+    }
+
+    var isUsernameUnavailable: Bool {
+        usernameAvailability?.isAvailable == false
+    }
+
+    func checkUsernameAvailability(_ username: String) {
+        usernameCheckTask?.cancel()
+        usernameCheckGeneration += 1
+        let generation = usernameCheckGeneration
+        let requestedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !requestedUsername.isEmpty else {
+            usernameAvailability = nil
+            isCheckingUsername = false
+            return
+        }
+
+        usernameAvailability = nil
+        isCheckingUsername = true
+        usernameCheckTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, let self else { return }
+
+            defer {
+                if generation == self.usernameCheckGeneration {
+                    self.isCheckingUsername = false
+                }
+            }
+            do {
+                let token = try await self.accessTokenProvider()
+                let availability = try await self.api.usernameAvailability(
+                    username: requestedUsername,
+                    accessToken: token)
+                guard !Task.isCancelled,
+                      generation == self.usernameCheckGeneration else {
+                    return
+                }
+                self.usernameAvailability = availability
+            } catch {
+                // Saving remains protected by the same server validation. A transient
+                // availability check should not present a misleading availability state.
+            }
+        }
     }
 
     private var hasCachedValue: Bool {

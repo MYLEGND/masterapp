@@ -11,8 +11,9 @@ namespace AgentPortal.Mobile;
 /// The mobile surface for the centralized discovery engine.
 ///
 /// The scope a caller gets is derived from their resolved participant type on the
-/// server. A client searches the consented community directory; an agent searches the
-/// clients they own. The client app cannot ask for a scope it is not entitled to.
+/// server. Recommendations remain consent-aware; the active directory lets clients
+/// browse Legend members and lets agents browse both their clients and peer agents.
+/// The client app cannot ask for a scope it is not entitled to.
 /// </summary>
 [ApiController]
 [Route("api/v1/mobile/discovery")]
@@ -84,7 +85,7 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
             resolved.Actor!,
             new SocialAuthor(
                 profile.Summary.UserId,
-                MessagingParticipantTypes.Client,
+                profile.Summary.ParticipantType,
                 profile.Summary.ClientProfileId,
                 profile.Summary.DisplayName),
             cancellationToken);
@@ -172,7 +173,11 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
                 result.Relationship.ConnectionId,
                 result.Relationship.CanRequestConnection,
                 result.Relationship.CanFollow),
-            await MobileAvatarProjection.ResolveAsync(_profiles, identity, cancellationToken));
+            await MobileAvatarProjection.ResolveAsync(_profiles, identity, cancellationToken),
+            result.Username,
+            result.Bio,
+            result.Website,
+            result.PublicEmail);
     }
 
     private IActionResult DiscoveryFailure(string? errorCode, string? errorMessage)
@@ -212,7 +217,11 @@ public sealed record MobileDiscoveryResultDto(
     int CompatibilityScore,
     string? MatchExplanation,
     MobileDiscoveryRelationshipDto Relationship,
-    MobileAvatarDto? Avatar);
+    MobileAvatarDto? Avatar,
+    string? Username = null,
+    string? Bio = null,
+    string? Website = null,
+    string? PublicEmail = null);
 
 public sealed record MobileDiscoveryPageDto(
     IReadOnlyList<MobileDiscoveryResultDto> Results,
