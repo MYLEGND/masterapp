@@ -232,6 +232,16 @@ final class MessagingStore: ObservableObject {
         }
     }
 
+    func communicationLanguages() async -> [LegendCommunicationLanguage]? {
+        do {
+            return try await api.communicationLanguages(
+                accessToken: try await accessTokenProvider())
+        } catch {
+            sendFailure = failure(for: error, title: "Languages unavailable")
+            return nil
+        }
+    }
+
     @discardableResult
     func setControlledResourceGrant(
         _ resourceType: ControlledResourceType,

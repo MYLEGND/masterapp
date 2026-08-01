@@ -289,6 +289,16 @@ public sealed record MessagingControlledResourceRequestResult(
         new(false, errorCode, errorMessage, null);
 }
 
+public sealed record MessagingCommunicationLanguageListResult(
+    bool Succeeded,
+    string? ErrorCode,
+    string? ErrorMessage,
+    IReadOnlyList<CommunicationLanguage> Languages)
+{
+    public static MessagingCommunicationLanguageListResult Failure(string errorCode, string errorMessage) =>
+        new(false, errorCode, errorMessage, Array.Empty<CommunicationLanguage>());
+}
+
 public sealed record MessagingControlledResourceRecipientListResult(
     bool Succeeded,
     string? ErrorCode,

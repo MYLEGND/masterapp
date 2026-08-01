@@ -44,6 +44,14 @@ public interface IMessagingService
         StartControlledResourceRequestCommand command,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Returns the server-owned language allowlist only after Language
+    /// Translation Access has been granted to the requesting profile.
+    /// </summary>
+    Task<MessagingCommunicationLanguageListResult> ListCommunicationLanguagesAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default);
+
     Task<MessagingOperationResult> ResolveVerificationReviewRequestAsync(
         ResolveVerificationReviewRequestCommand command,
         CancellationToken cancellationToken = default);

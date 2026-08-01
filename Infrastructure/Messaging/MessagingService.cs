@@ -775,6 +775,36 @@ internal sealed class MessagingService : IMessagingService
         return new MessagingControlledResourceRequestResult(true, null, null, ToReview(request));
     }
 
+    public async Task<MessagingCommunicationLanguageListResult> ListCommunicationLanguagesAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        actor = NormalizeActor(actor);
+        if (!await IsValidActorAsync(actor, cancellationToken))
+        {
+            return MessagingCommunicationLanguageListResult.Failure(
+                "MESSAGING_ACTOR_INVALID",
+                "Messaging is not available for this user.");
+        }
+
+        var access = await _controlledResources.GetAccessAsync(
+            actor,
+            ControlledResourceTypes.LanguageTranslation,
+            cancellationToken);
+        if (access.State != ControlledResourceAccessStates.Granted)
+        {
+            return MessagingCommunicationLanguageListResult.Failure(
+                "MESSAGING_RESOURCE_ACCESS_REQUIRED",
+                "Language Translation Access must be granted before choosing a language.");
+        }
+
+        return new MessagingCommunicationLanguageListResult(
+            true,
+            null,
+            null,
+            CommunicationLanguages.Supported);
+    }
+
     public async Task<MessagingOperationResult> AddGroupParticipantAsync(
         AddMessagingGroupParticipantCommand command,
         CancellationToken cancellationToken = default)

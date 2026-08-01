@@ -427,6 +427,12 @@ public sealed class MessagingServiceTests
             (await new ControlledResourceAccessService(db).GetAccessAsync(
                 requester,
                 ControlledResourceTypes.LanguageTranslation)).State);
+
+        var languages = await service.ListCommunicationLanguagesAsync(requester);
+        Assert.True(languages.Succeeded);
+        var priorityLanguage = languages.Languages.First();
+        Assert.Equal("ht", priorityLanguage.Code);
+        Assert.Equal("Haitian Creole", priorityLanguage.DisplayName);
     }
 
     [Fact]

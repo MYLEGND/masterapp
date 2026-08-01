@@ -5231,6 +5231,7 @@ private struct LegendAccountView: View {
     @State private var isPresentingFollowRequests = false
     @State private var isPresentingTranslationLanguagePicker = false
     @State private var isPresentingTranslationManagement = false
+    @State private var translationLanguageNames: [String: String] = [:]
     @State private var isConfirmingSignOut = false
     @State private var creationRoute: LegendSocialCreationRoute?
     @State private var selectedPost: MobileSocialPost?
@@ -5317,7 +5318,7 @@ private struct LegendAccountView: View {
         }
         .sheet(isPresented: $isPresentingTranslationLanguagePicker) {
             if case .loaded(let profile) = account.state {
-                LegendTranslationLanguagePicker(profile: profile, store: account)
+                LegendTranslationLanguagePicker(profile: profile, store: account, messages: messages)
             }
         }
         .sheet(isPresented: $isPresentingTranslationManagement) {
@@ -5988,6 +5989,14 @@ private struct LegendAccountView: View {
         .sheet(isPresented: $isPresentingFollowRequests) {
             LegendFollowRequestsSheet(social: social)
         }
+        .task {
+            guard profile.translationAccess.isGranted,
+                  let languages = await messages.communicationLanguages() else {
+                return
+            }
+            translationLanguageNames = Dictionary(
+                uniqueKeysWithValues: languages.map { ($0.code, $0.displayName) })
+        }
     }
 
     private var biometricSignInBinding: Binding<Bool> {
@@ -6100,56 +6109,24 @@ private struct LegendAccountView: View {
     }
 
     private func legendLanguageName(_ code: String?) -> String {
-        LegendTranslationLanguage.allCases
-            .first(where: { $0.rawValue == code })?
-            .displayName ?? "Choose a language"
-    }
-}
-
-private enum LegendTranslationLanguage: String, CaseIterable, Identifiable {
-    // Haitian Creole is the first choice by product decision, and its Azure
-    // Translator language identifier is server-owned as `ht`.
-    case haitianCreole = "ht"
-    case english = "en"
-    case spanish = "es"
-    case french = "fr"
-    case portuguese = "pt"
-    case german = "de"
-    case japanese = "ja"
-    case korean = "ko"
-    case chineseSimplified = "zh-Hans"
-    case arabic = "ar"
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .haitianCreole: "Haitian Creole"
-        case .english: "English"
-        case .spanish: "Spanish"
-        case .french: "French"
-        case .portuguese: "Portuguese"
-        case .german: "German"
-        case .japanese: "Japanese"
-        case .korean: "Korean"
-        case .chineseSimplified: "Chinese (Simplified)"
-        case .arabic: "Arabic"
-        }
+        guard let code, !code.isEmpty else { return "Choose a language" }
+        return translationLanguageNames[code] ?? (code == "ht" ? "Haitian Creole" : code)
     }
 }
 
 private struct LegendTranslationLanguagePicker: View {
     let profile: MobileAccountProfile
     @ObservedObject var store: MobileAccountStore
+    @ObservedObject var messages: MessagingStore
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedLanguage: LegendTranslationLanguage
+    @State private var languages: [LegendCommunicationLanguage] = []
+    @State private var selectedLanguageCode: String
 
-    init(profile: MobileAccountProfile, store: MobileAccountStore) {
+    init(profile: MobileAccountProfile, store: MobileAccountStore, messages: MessagingStore) {
         self.profile = profile
         _store = ObservedObject(wrappedValue: store)
-        _selectedLanguage = State(
-            initialValue: LegendTranslationLanguage(rawValue: profile.translationAccess.preferredCommunicationLanguage ?? "")
-                ?? .haitianCreole)
+        _messages = ObservedObject(wrappedValue: messages)
+        _selectedLanguageCode = State(initialValue: profile.translationAccess.preferredCommunicationLanguage ?? "")
     }
 
     var body: some View {
@@ -6164,28 +6141,34 @@ private struct LegendTranslationLanguagePicker: View {
 
                     LegendProfileSettingsSection(title: "Preferred language") {
                         VStack(spacing: 0) {
-                            ForEach(LegendTranslationLanguage.allCases) { language in
-                                Button {
-                                    selectedLanguage = language
-                                } label: {
-                                    HStack(spacing: LegendNextSpacing.sm) {
-                                        Image(systemName: selectedLanguage == language
-                                              ? "checkmark.circle.fill"
-                                              : "circle")
-                                            .foregroundStyle(selectedLanguage == language
-                                                ? LegendNextColor.goldBright
-                                                : .white.opacity(0.74))
-                                        Text(language.displayName)
-                                            .font(.subheadline.weight(.semibold))
-                                            .foregroundStyle(.white)
-                                        Spacer(minLength: 0)
+                            if languages.isEmpty {
+                                ProgressView("Loading available languages")
+                                    .tint(LegendNextColor.goldBright)
+                                    .frame(maxWidth: .infinity, minHeight: 64)
+                            } else {
+                                ForEach(Array(languages.enumerated()), id: \.element.id) { index, language in
+                                    Button {
+                                        selectedLanguageCode = language.code
+                                    } label: {
+                                        HStack(spacing: LegendNextSpacing.sm) {
+                                            Image(systemName: selectedLanguageCode == language.code
+                                                  ? "checkmark.circle.fill"
+                                                  : "circle")
+                                                .foregroundStyle(selectedLanguageCode == language.code
+                                                    ? LegendNextColor.goldBright
+                                                    : .white.opacity(0.74))
+                                            Text(language.displayName)
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundStyle(.white)
+                                            Spacer(minLength: 0)
+                                        }
+                                        .padding(.vertical, LegendNextSpacing.micro)
                                     }
-                                    .padding(.vertical, LegendNextSpacing.micro)
-                                }
-                                .buttonStyle(.plain)
+                                    .buttonStyle(.plain)
 
-                                if language != LegendTranslationLanguage.allCases.last {
-                                    LegendProfileSettingsDivider()
+                                    if index < languages.count - 1 {
+                                        LegendProfileSettingsDivider()
+                                    }
                                 }
                             }
                         }
@@ -6193,13 +6176,13 @@ private struct LegendTranslationLanguagePicker: View {
 
                     Button(store.isSaving ? "Saving language…" : "Save language") {
                         Task {
-                            if await store.savePreferredCommunicationLanguage(selectedLanguage.rawValue) {
+                            if await store.savePreferredCommunicationLanguage(selectedLanguageCode) {
                                 dismiss()
                             }
                         }
                     }
                     .buttonStyle(LegendNextButtonStyle(kind: .primary))
-                    .disabled(store.isSaving)
+                    .disabled(store.isSaving || selectedLanguageCode.isEmpty || languages.isEmpty)
                 }
                 .padding(LegendNextSpacing.sm)
                 .padding(.bottom, LegendNextSpacing.xl)
@@ -6209,6 +6192,13 @@ private struct LegendTranslationLanguagePicker: View {
         }
         .tint(LegendNextColor.gold)
         .legendNextSheetChrome(detents: [.large])
+        .task {
+            guard let serverLanguages = await messages.communicationLanguages() else { return }
+            languages = serverLanguages
+            if !serverLanguages.contains(where: { $0.code == selectedLanguageCode }) {
+                selectedLanguageCode = serverLanguages.first?.code ?? ""
+            }
+        }
     }
 }
 

@@ -286,6 +286,23 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             : MessagingFailure(result.ErrorCode, result.ErrorMessage);
     }
 
+    [HttpGet("messaging/controlled-resources/languages")]
+    public async Task<IActionResult> CommunicationLanguages(CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.ListCommunicationLanguagesAsync(
+            resolved.Actor!.Actor,
+            cancellationToken);
+        return result.Succeeded
+            ? Ok(result.Languages.Select(language => new MobileCommunicationLanguageDto(
+                language.Code,
+                language.DisplayName)))
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
     [HttpGet("messaging/controlled-resources/{resourceType}/recipients")]
     public async Task<IActionResult> ControlledResourceRecipients(
         string resourceType,
@@ -982,6 +999,8 @@ public sealed record MobileControlledResourceGrantRequest(
     string? TargetUserId,
     string? TargetParticipantType,
     bool? IsGranted);
+
+public sealed record MobileCommunicationLanguageDto(string Code, string DisplayName);
 
 public sealed record MobileGroupParticipantRequest(
     string? UserId,

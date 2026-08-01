@@ -22,6 +22,9 @@
 | `AzureAd:ClientSecret` | App setting | Key Vault reference preferred |
 | `AzureAd:Domain` | App setting | e.g. `mylegnd.com` |
 | `Founder__Upn` | App setting | Founder's UPN (e.g. `zac.owen@mylegnd.com`) |
+| `AzureTranslator__Endpoint` | App setting | HTTPS endpoint for the approved Azure Translator resource |
+| `AzureTranslator__Key` | App setting / Key Vault reference | Translator subscription key; never ship this to iOS |
+| `AzureTranslator__Region` | App setting | Required for multi-service/regional Translator resources |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | App setting | App Insights connection string |
 | `SignalR__RedisConnectionString` | App setting | Redis connection string (for multi-instance) |
 | `DataProtection__BlobUri` | App setting | Azure Blob URI for Data Protection keys |

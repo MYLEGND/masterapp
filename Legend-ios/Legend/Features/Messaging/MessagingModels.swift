@@ -303,6 +303,15 @@ enum ControlledResourceType: String, Codable, Sendable {
     }
 }
 
+/// A language choice supplied by the server after the member has been granted
+/// Language Translation Access. The app never invents its own accepted codes.
+struct LegendCommunicationLanguage: Codable, Equatable, Identifiable, Sendable {
+    let code: String
+    let displayName: String
+
+    var id: String { code }
+}
+
 struct MessageReplyPreview: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     let sender: MessagingParticipant
@@ -513,6 +522,7 @@ protocol MessagingAPI: Sendable {
         resourceType: ControlledResourceType,
         accessToken: String
     ) async throws -> VerificationRequestSubmission
+    func communicationLanguages(accessToken: String) async throws -> [LegendCommunicationLanguage]
     func controlledResourceRecipients(
         resourceType: ControlledResourceType,
         search: String?,
@@ -585,6 +595,10 @@ extension MessagingAPI {
         resourceType: ControlledResourceType,
         accessToken: String
     ) async throws -> VerificationRequestSubmission {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func communicationLanguages(accessToken: String) async throws -> [LegendCommunicationLanguage] {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -844,6 +858,14 @@ struct URLSessionMessagingAPI: MessagingAPI {
             idempotencyKey: UUID(),
             headers: participantHeader,
             response: VerificationRequestSubmission.self)
+    }
+
+    func communicationLanguages(accessToken: String) async throws -> [LegendCommunicationLanguage] {
+        try await client.get(
+            "/api/v1/mobile/messaging/controlled-resources/languages",
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: [LegendCommunicationLanguage].self)
     }
 
     func controlledResourceRecipients(
