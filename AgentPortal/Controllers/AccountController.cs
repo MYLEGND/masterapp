@@ -8,47 +8,21 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using AgentPortal.Models;
 using AgentPortal.Security;
+using AgentPortal.Services;
 using Domain.Entities;
+using Shared.Auth;
 
 public class AccountController : Controller
 {
     private readonly MasterAppDbContext _db;
+    private readonly AgentProfileAccessResolver _profileAccessResolver;
 
-    public AccountController(MasterAppDbContext db)
+    public AccountController(
+        MasterAppDbContext db,
+        AgentProfileAccessResolver profileAccessResolver)
     {
         _db = db;
-    }
-
-    private static string? GetCurrentUserId(ClaimsPrincipal user)
-    {
-        // Canonical Entra Object ID only. Must NOT fall back to NameIdentifier or
-        // display name for an authoritative identity key (F19).
-        var value = user.FindFirst("oid")?.Value
-            ?? user.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value;
-        value = value?.Trim();
-        return string.IsNullOrWhiteSpace(value) ? null : value;
-    }
-
-    private static string? GetCurrentUserEmail(ClaimsPrincipal user)
-    {
-        var candidates = new[]
-        {
-            user.FindFirst("preferred_username")?.Value,
-            user.FindFirst(ClaimTypes.Email)?.Value,
-            user.FindFirst("email")?.Value,
-            user.FindFirst("upn")?.Value,
-            user.FindFirst(ClaimTypes.Upn)?.Value,
-            user.Identity?.Name
-        };
-
-        foreach (var candidate in candidates)
-        {
-            var value = candidate?.Trim();
-            if (!string.IsNullOrWhiteSpace(value) && value.Contains("@"))
-                return value;
-        }
-
-        return null;
+        _profileAccessResolver = profileAccessResolver;
     }
 
     private static string? NormalizeEmail(string? email)
@@ -57,23 +31,6 @@ public class AccountController : Controller
         return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
-    private AgentProfile? FindAgentProfile(string userId, string? normalizedEmail)
-    {
-        // Resolve by email first because NormalizedEmail is unique.
-        // Do NOT mutate AgentUserId inside a lookup method. If another profile already owns
-        // this userId, changing it here can cause a duplicate-key crash on SaveChanges().
-        if (!string.IsNullOrWhiteSpace(normalizedEmail))
-        {
-            var byEmail = _db.AgentProfiles.FirstOrDefault(x =>
-                x.NormalizedEmail == normalizedEmail ||
-                (x.NormalizedEmail == null && x.AgentUpn != null && x.AgentUpn.ToLower() == normalizedEmail));
-
-            if (byEmail != null)
-                return byEmail;
-        }
-
-        return _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == userId);
-    }
 
     // GET: /Account/Login
     [HttpGet]
@@ -134,16 +91,19 @@ public class AccountController : Controller
     // ============================================
     [HttpGet]
     [Authorize]
-    public IActionResult ManageProfile()
+    public async Task<IActionResult> ManageProfile()
     {
-        var userId = GetCurrentUserId(User);
+        var userId = User.GetCanonicalUserId();
         if (string.IsNullOrWhiteSpace(userId))
             return Challenge();
 
-        var upn = GetCurrentUserEmail(User) ?? "";
+        var upn = AgentProfileAccessResolver.GetDirectoryEmail(User) ?? "";
         var normalizedUpn = NormalizeEmail(upn);
 
-        var profile = FindAgentProfile(userId, normalizedUpn);
+        var profile = await _profileAccessResolver.ResolveCurrentAsync(
+            User,
+            requireActive: false,
+            HttpContext.RequestAborted);
         if (profile == null)
         {
             profile = new Domain.Entities.AgentProfile
@@ -161,7 +121,7 @@ public class AccountController : Controller
         {
             // GET should be read-only.
             // Do not mutate AgentUpn or NormalizedEmail during page load.
-            // Identity reconciliation is handled by FindAgentProfile() and POST save.
+            // Identity reconciliation is handled by AgentProfileAccessResolver.
         }
 
         var firstName =
@@ -205,13 +165,13 @@ public class AccountController : Controller
     [HttpPost]
     [Authorize]
     [ValidateAntiForgeryToken]
-    public IActionResult ManageProfile(ManageAgentProfileViewModel vm)
+    public async Task<IActionResult> ManageProfile(ManageAgentProfileViewModel vm)
     {
-        var userId = GetCurrentUserId(User);
+        var userId = User.GetCanonicalUserId();
         if (string.IsNullOrWhiteSpace(userId))
             return Challenge();
 
-        var directoryUpn = GetCurrentUserEmail(User) ?? vm.Email ?? "";
+        var directoryUpn = AgentProfileAccessResolver.GetDirectoryEmail(User) ?? vm.Email ?? "";
         var normalizedUpn = NormalizeEmail(directoryUpn);
 
         vm.MetaPixelId = string.IsNullOrWhiteSpace(vm.MetaPixelId) ? null : vm.MetaPixelId.Trim();
@@ -219,7 +179,10 @@ public class AccountController : Controller
         vm.FallbackBookingUrl = string.IsNullOrWhiteSpace(vm.FallbackBookingUrl) ? null : vm.FallbackBookingUrl.Trim();
         vm.BookingPageIdOrMailbox = string.IsNullOrWhiteSpace(vm.BookingPageIdOrMailbox) ? null : vm.BookingPageIdOrMailbox.Trim();
         vm.CalendarEmail = string.IsNullOrWhiteSpace(vm.CalendarEmail) ? null : vm.CalendarEmail.Trim();
-        var existingProfile = FindAgentProfile(userId, normalizedUpn);
+        var existingProfile = await _profileAccessResolver.ResolveCurrentAsync(
+            User,
+            requireActive: false,
+            HttpContext.RequestAborted);
         vm.HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(existingProfile?.MetaCapiAccessToken);
 
         if (!ModelState.IsValid)

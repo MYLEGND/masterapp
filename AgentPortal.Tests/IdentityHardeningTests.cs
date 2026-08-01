@@ -4,6 +4,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
+using AgentPortal.Models;
 using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
 using Domain.Entities;
@@ -242,10 +243,10 @@ public class IdentityHardeningTests
     // 2e. AccountController_ManageProfileCreatesNormalizedEmail
     // -----------------------------------------------------------------------
     [Fact]
-    public void AccountController_ManageProfileCreatesNormalizedEmail()
+    public async Task AccountController_ManageProfileCreatesNormalizedEmail()
     {
         using var db = BuildDb();
-        var controller = new AccountController(db)
+        var controller = new AccountController(db, new AgentProfileAccessResolver(db))
         {
             ControllerContext = new ControllerContext
             {
@@ -256,11 +257,44 @@ public class IdentityHardeningTests
             }
         };
 
-        var result = controller.ManageProfile();
+        var result = await controller.ManageProfile();
 
         Assert.IsType<ViewResult>(result);
         var profile = db.AgentProfiles.Single(x => x.AgentUserId == "oid-agent-3");
         Assert.Equal("zac.owen@mylegnd.com", profile.NormalizedEmail);
+    }
+
+    [Fact]
+    public async Task AccountController_ManageProfileReusesAzureSyncedProfileWhenObjectIdChanges()
+    {
+        using var db = BuildDb();
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "legacy-agent-oid",
+            AgentUpn = "zac.owen@mylegnd.com",
+            NormalizedEmail = "zac.owen@mylegnd.com",
+            FullName = "Zac Owen",
+            Title = "CEO",
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var controller = new AccountController(db, new AgentProfileAccessResolver(db))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = BuildUserWithEmail("current-azure-oid", "zac.owen@mylegnd.com")
+                }
+            }
+        };
+
+        var result = Assert.IsType<ViewResult>(await controller.ManageProfile());
+        var model = Assert.IsType<ManageAgentProfileViewModel>(result.Model);
+
+        Assert.Equal("CEO", model.Title);
+        Assert.Equal(1, await db.AgentProfiles.CountAsync());
     }
 
     // -----------------------------------------------------------------------

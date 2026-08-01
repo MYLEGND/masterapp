@@ -116,6 +116,7 @@ builder.Services.AddScoped<HouseholdReconciliationService>();
 builder.Services.AddScoped<IClientSubscriptionIdentitySyncService, ClientSubscriptionIdentitySyncService>();
 builder.Services.AddScoped<AssistantContextService>();
 builder.Services.AddScoped<AgentRegistryService>();
+builder.Services.AddScoped<AgentProfileAccessResolver>();
 builder.Services.AddScoped<AgencyCommandService>();
 builder.Services.AddScoped<FounderSubscribersService>();
 builder.Services.AddScoped<FounderImpersonationService>();

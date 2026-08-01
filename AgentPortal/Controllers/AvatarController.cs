@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using AgentPortal.Services.Tracking;
+using AgentPortal.Services;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
@@ -20,24 +21,30 @@ public sealed class AvatarController : Controller
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<AvatarController> _logger;
     private readonly AgentTrackingResolver _trackingResolver;
+    private readonly AgentProfileAccessResolver _profileAccessResolver;
 
     public AvatarController(
         MasterAppDbContext db,
         IWebHostEnvironment environment,
         ILogger<AvatarController> logger,
-        AgentTrackingResolver trackingResolver)
+        AgentTrackingResolver trackingResolver,
+        AgentProfileAccessResolver profileAccessResolver)
     {
         _db = db;
         _environment = environment;
         _logger = logger;
         _trackingResolver = trackingResolver;
+        _profileAccessResolver = profileAccessResolver;
     }
 
     [HttpGet]
-    public IActionResult Edit() =>
-        string.IsNullOrWhiteSpace(GetUserId())
+    public async Task<IActionResult> Edit()
+    {
+        var profile = await GetCurrentProfileAsync(HttpContext.RequestAborted);
+        return profile is null
             ? Forbid()
             : RedirectToAction("ManageProfile", "Account");
+    }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -132,12 +139,9 @@ public sealed class AvatarController : Controller
 
     private async Task<Domain.Entities.AgentProfile?> GetCurrentProfileAsync(CancellationToken cancellationToken)
     {
-        var agentUserId = Normalize(GetUserId());
-        if (string.IsNullOrWhiteSpace(agentUserId))
-            return null;
-
-        return await _db.AgentProfiles.SingleOrDefaultAsync(
-            profile => profile.IsActive && profile.AgentUserId.ToLower() == agentUserId,
+        return await _profileAccessResolver.ResolveCurrentAsync(
+            User,
+            requireActive: true,
             cancellationToken);
     }
 
@@ -148,11 +152,6 @@ public sealed class AvatarController : Controller
             ? PhysicalFile(defaultAvatar, "image/png")
             : NotFound();
     }
-
-    private string? GetUserId() =>
-        User.FindFirst("oid")?.Value ??
-        User.FindFirst(ClaimTypes.NameIdentifier)?.Value ??
-        User.Identity?.Name;
 
     private static bool HasImage(Domain.Entities.AgentProfile? profile) =>
         profile?.ProfileImageContent is { Length: > 0 } &&

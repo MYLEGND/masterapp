@@ -307,7 +307,8 @@ public sealed class MessagingProfileImageResolverTests
             NullLogger<AgentAvatarController>.Instance,
             new AgentPortal.Services.Tracking.AgentTrackingResolver(
                 db,
-                NullLogger<AgentPortal.Services.Tracking.AgentTrackingResolver>.Instance))
+                NullLogger<AgentPortal.Services.Tracking.AgentTrackingResolver>.Instance),
+            new AgentProfileAccessResolver(db))
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext },
             TempData = new TempDataDictionary(httpContext, Mock.Of<ITempDataProvider>())
@@ -336,6 +337,55 @@ public sealed class MessagingProfileImageResolverTests
         Assert.NotNull(image);
         Assert.Equal(imageBytes, image!.Content);
         Assert.Equal("image/webp", image.ContentType);
+    }
+
+    [Fact]
+    public async Task AgentAvatarUpload_UsesTheAzureSyncedDirectoryEmailForAnExistingProfile()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "preproduction-oid",
+            AgentUpn = "zac.owen@mylegnd.com",
+            NormalizedEmail = "zac.owen@mylegnd.com",
+            FullName = "Zac Owen",
+            IsActive = true
+        };
+        db.AgentProfiles.Add(agent);
+        await db.SaveChangesAsync();
+
+        var user = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("oid", "azure-production-oid"),
+            new Claim("preferred_username", "zac.owen@mylegnd.com")
+        ], "TestAuth"));
+        var httpContext = new DefaultHttpContext { User = user };
+        var environment = new Mock<IWebHostEnvironment>();
+        environment.SetupGet(value => value.WebRootPath).Returns(AppContext.BaseDirectory);
+        var controller = new AgentAvatarController(
+            db,
+            environment.Object,
+            NullLogger<AgentAvatarController>.Instance,
+            new AgentPortal.Services.Tracking.AgentTrackingResolver(
+                db,
+                NullLogger<AgentPortal.Services.Tracking.AgentTrackingResolver>.Instance),
+            new AgentProfileAccessResolver(db))
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext },
+            TempData = new TempDataDictionary(httpContext, Mock.Of<ITempDataProvider>())
+        };
+        var imageBytes = new byte[] { 0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x00, 0x00 };
+        await using var imageStream = new MemoryStream(imageBytes);
+        var upload = new FormFile(imageStream, 0, imageBytes.Length, "photo", "avatar.webp")
+        {
+            Headers = new HeaderDictionary { ["Content-Type"] = "image/webp" }
+        };
+
+        Assert.IsType<RedirectToActionResult>(await controller.Upload(upload));
+
+        var persisted = await db.AgentProfiles.SingleAsync(profile => profile.Id == agent.Id);
+        Assert.Equal(imageBytes, persisted.ProfileImageContent);
     }
 
     [Fact]
