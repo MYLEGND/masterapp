@@ -41,9 +41,7 @@ final class LegendApplicationStores {
         let journeyCircles = coordinator.makeJourneyCirclesStore()
         self.social = social
         self.journeyCircles = journeyCircles
-        discovery = coordinator.makeDiscoveryStore(
-            social: social,
-            journeyCircles: journeyCircles)
+        discovery = coordinator.makeDiscoveryStore()
         account = coordinator.makeAccountStore()
         messaging = coordinator.makeMessagingStore()
         agentWorkspace = currentSession.actor.identity.participantType == .agent

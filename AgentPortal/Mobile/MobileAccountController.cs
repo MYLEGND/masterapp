@@ -147,6 +147,7 @@ public sealed class MobileAccountController : MobileApiControllerBase
             account.Email,
             account.Phone,
             account.Title,
+            account.RoleLabel,
             account.ShortBio,
             account.Username,
             account.Bio,
@@ -155,7 +156,9 @@ public sealed class MobileAccountController : MobileApiControllerBase
             account.ProfileEmail,
             account.IsEmailVisible,
             account.IsPrivate,
-            avatar);
+            avatar,
+            account.IsVerified,
+            account.UsernameChangesRemaining);
     }
 
     private IActionResult AccountFailure(MobileAccountResult result)
@@ -203,6 +206,7 @@ public sealed record MobileAccountProfile(
     string? Email,
     string? Phone,
     string? Title,
+    string? RoleLabel,
     string? ShortBio,
     string? Username,
     string? Bio,
@@ -211,4 +215,6 @@ public sealed record MobileAccountProfile(
     string? ProfileEmail,
     bool IsEmailVisible,
     bool IsPrivate,
-    MobileAvatarDto? Avatar);
+    MobileAvatarDto? Avatar,
+    bool IsVerified,
+    int UsernameChangesRemaining);

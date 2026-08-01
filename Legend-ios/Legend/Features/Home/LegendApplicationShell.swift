@@ -65,6 +65,7 @@ struct LegendApplicationShell: View {
     @ObservedObject private var messages: MessagingStore
     @ObservedObject private var social: MobileSocialStore
     @State private var isMessageThreadActive = false
+    @State private var pendingMessageConversationID: UUID?
 
     init(
         currentSession: MobileSession,
@@ -171,6 +172,7 @@ struct LegendApplicationShell: View {
         case .messages:
             LegendMessagesTab(
                 isThreadActive: $isMessageThreadActive,
+                pendingConversationID: $pendingMessageConversationID,
                 messages: messages
             )
             .task { messages.load() }
@@ -181,8 +183,13 @@ struct LegendApplicationShell: View {
                     currentSession: currentSession,
                     coordinator: coordinator,
                     account: bootstrap.stores.account,
+                    messages: messages,
                     social: social,
-                    bootstrap: bootstrap
+                    bootstrap: bootstrap,
+                    openMessages: { conversationID in
+                        pendingMessageConversationID = conversationID
+                        select(.messages)
+                    }
                 )
             }
             .task {
@@ -1177,6 +1184,7 @@ extension MobileDailyScripture: Identifiable {
 
 private struct LegendMessagesTab: View {
     @Binding var isThreadActive: Bool
+    @Binding var pendingConversationID: UUID?
     @ObservedObject var messages: MessagingStore
     @State private var navigationPath: [UUID] = []
 
@@ -1201,6 +1209,12 @@ private struct LegendMessagesTab: View {
                 .navigationDestination(for: UUID.self) { conversationID in
                     ConversationThreadView(store: messages, conversationID: conversationID)
                 }
+        }
+        .onChange(of: pendingConversationID) { _, conversationID in
+            guard let conversationID else { return }
+            navigationPath = [conversationID]
+            isThreadActive = true
+            pendingConversationID = nil
         }
     }
 }
@@ -1547,12 +1561,6 @@ private struct LegendHomeView: View {
             alignment: .leading,
             spacing: LegendNextSpacing.xs
         ) {
-            LegendNextSectionHeader(
-                eyebrow: "Focus",
-                title: "Priority today",
-                detail: "Your highest-value next moves."
-            )
-
             LegendNextSurface(
                 style: .elevated,
                 cornerRadius: LegendNextRadius.prominentCard
@@ -2868,24 +2876,17 @@ private struct LegendAgentClientsView: View {
                     )
 
                     ForEach(clients) { client in
-                        LegendNextSurface {
-                            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                                HStack(spacing: LegendNextSpacing.xs) {
-                                    LegendProfileAvatar(avatar: client.avatar, displayName: client.displayName, size: 46)
-                                    VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                                        Text(client.displayName)
-                                            .font(LegendNextTypography.bodyEmphasis)
-                                            .foregroundStyle(LegendNextColor.textPrimary)
-                                            .lineLimit(1)
-                                        Text(client.email)
-                                            .font(LegendNextTypography.supporting)
-                                            .foregroundStyle(LegendNextColor.textSecondary)
-                                            .lineLimit(1)
-                                    }
-                                    Spacer(minLength: LegendNextSpacing.sm)
-                                    LegendNextBadge(client.crmStatus, tone: .success)
-                                }
-
+                        LegendContactCard(
+                            displayName: client.displayName,
+                            subtitle: client.email,
+                            detail: client.crmStatus,
+                            avatar: {
+                                LegendProfileAvatar(
+                                    avatar: client.avatar,
+                                    displayName: client.displayName,
+                                    size: 46)
+                            },
+                            action: {
                                 Button {
                                     messages.startConversation(forClientProfileID: client.profileID) { _ in
                                         openMessages()
@@ -2896,11 +2897,11 @@ private struct LegendAgentClientsView: View {
                                 .buttonStyle(LegendNextButtonStyle(
                                     kind: .primary,
                                     isFullWidth: false,
-                                    controlHeight: 34
+                                    controlHeight: 30
                                 ))
                                 .disabled(messages.isStartingConversation)
                             }
-                        }
+                        )
                     }
                 }
                 .padding(.horizontal, LegendNextSpacing.sm)
@@ -5587,8 +5588,10 @@ private struct LegendAccountView: View {
 
     @ObservedObject private var coordinator: MobileSessionCoordinator
     @ObservedObject private var account: MobileAccountStore
+    @ObservedObject private var messages: MessagingStore
     @ObservedObject private var social: MobileSocialStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
+    private let openMessages: (UUID) -> Void
 
     @State private var selectedContent: LegendProfileContentFilter = .posts
     @State private var isEditing = false
@@ -5609,14 +5612,18 @@ private struct LegendAccountView: View {
         currentSession: MobileSession,
         coordinator: MobileSessionCoordinator,
         account: MobileAccountStore,
+        messages: MessagingStore,
         social: MobileSocialStore,
-        bootstrap: LegendApplicationBootstrapCoordinator
+        bootstrap: LegendApplicationBootstrapCoordinator,
+        openMessages: @escaping (UUID) -> Void
     ) {
         self.currentSession = currentSession
         _coordinator = ObservedObject(wrappedValue: coordinator)
         _account = ObservedObject(wrappedValue: account)
+        _messages = ObservedObject(wrappedValue: messages)
         _social = ObservedObject(wrappedValue: social)
         _bootstrap = ObservedObject(wrappedValue: bootstrap)
+        self.openMessages = openMessages
     }
 
     var body: some View {
@@ -5672,7 +5679,9 @@ private struct LegendAccountView: View {
             }
         }
         .sheet(isPresented: $isShowingSettings) {
-            profileSettingsSheet
+            if case .loaded(let profile) = account.state {
+                profileSettingsSheet(profile)
+            }
         }
         .sheet(item: $creationRoute) { _ in
             LegendSocialCreationSheet(
@@ -5809,10 +5818,11 @@ private struct LegendAccountView: View {
                             .tracking(1)
                             .foregroundStyle(LegendNextColor.gold)
 
-                        Text(profile.displayName)
-                            .font(LegendNextTypography.title)
-                            .foregroundStyle(LegendNextColor.textPrimary)
-                            .lineLimit(2)
+                        LegendVerifiedName(
+                            profile.displayName,
+                            isVerified: profile.isVerified,
+                            font: LegendNextTypography.title
+                        )
 
                         if let username = normalized(profile.username) {
                             Text("@\(username)")
@@ -5820,8 +5830,8 @@ private struct LegendAccountView: View {
                                 .foregroundStyle(LegendNextColor.gold)
                         }
 
-                        if profile.participantType == .agent {
-                            LegendNextBadge("Legend Agent", tone: .gold, systemImage: "shield.checkered")
+                        if let roleLabel = normalized(profile.roleLabel) {
+                            LegendNextBadge(roleLabel, tone: .gold, systemImage: "briefcase.fill")
                         }
                     }
 
@@ -5877,12 +5887,6 @@ private struct LegendAccountView: View {
     @ViewBuilder
     private func profileDetails(_ profile: MobileAccountProfile) -> some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-            if let title = normalized(profile.title), profile.participantType == .agent {
-                Text(title)
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(LegendNextColor.textSecondary)
-            }
-
             if let bio = normalized(profile.bio) ?? normalized(profile.shortBio) {
                 Text(bio)
                     .font(LegendNextTypography.supporting)
@@ -6070,7 +6074,7 @@ private struct LegendAccountView: View {
         .padding(.horizontal, LegendNextSpacing.sm)
     }
 
-    private var profileSettingsSheet: some View {
+    private func profileSettingsSheet(_ profile: MobileAccountProfile) -> some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
@@ -6157,12 +6161,54 @@ private struct LegendAccountView: View {
                         }
                     }
 
+                    if !profile.isVerified {
+                        LegendProfileSettingsSection(title: "Verification") {
+                            Button {
+                                messages.startVerificationRequest { conversationID in
+                                    isShowingSettings = false
+                                    openMessages(conversationID)
+                                }
+                            } label: {
+                                LegendProfileSettingsRow(
+                                    title: messages.isCreatingGroup
+                                        ? "Opening verification review…"
+                                        : "Request verification",
+                                    detail: "Start a private review with Zac Owen and Legend.",
+                                    systemImage: "checkmark.seal",
+                                    showsChevron: true)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(messages.isCreatingGroup)
+                        }
+                    }
+
                     LegendProfileSettingsSection(title: "Security") {
                         VStack(spacing: 0) {
                             LegendProfileSettingsRow(
                                 title: "Secure session",
                                 detail: "Protected",
                                 systemImage: "lock.shield.fill",
+                                showsChevron: false)
+
+                            LegendProfileSettingsDivider()
+
+                            LegendProfileSettingsToggleRow(
+                                title: "Face ID",
+                                detail: coordinator.isBiometricSignInAvailable
+                                    ? "Optional protection for this account on this device"
+                                    : "Face ID is not available on this device",
+                                systemImage: "faceid",
+                                isOn: biometricSignInBinding)
+                            .disabled(
+                                !coordinator.isBiometricSignInAvailable &&
+                                !coordinator.isBiometricSignInEnabled)
+
+                            LegendProfileSettingsDivider()
+
+                            LegendProfileSettingsRow(
+                                title: "Security checkpoint",
+                                detail: "Sign in again every 90 days",
+                                systemImage: "calendar.badge.exclamationmark",
                                 showsChevron: false)
 
                             LegendProfileSettingsDivider()
@@ -6195,7 +6241,7 @@ private struct LegendAccountView: View {
             .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
         }
-        .tint(LegendNextColor.navy)
+        .tint(LegendNextColor.navyElevated)
         .legendNextSheetChrome()
         .sheet(isPresented: $isPresentingCreatorInsights) {
             if case .loaded(let snapshot) = social.state {
@@ -6207,6 +6253,12 @@ private struct LegendAccountView: View {
         .sheet(isPresented: $isPresentingFollowRequests) {
             LegendFollowRequestsSheet(social: social)
         }
+    }
+
+    private var biometricSignInBinding: Binding<Bool> {
+        Binding(
+            get: { coordinator.isBiometricSignInEnabled },
+            set: { coordinator.setBiometricSignInEnabled($0) })
     }
 
     private var privateAccountBinding: Binding<Bool> {
@@ -6363,9 +6415,7 @@ private struct LegendFollowListView: View {
                                         social: social,
                                         isFollowing: entry.followedByCurrentActor)
                                 } label: {
-                                    LegendNextSurface {
-                                        followRow(entry)
-                                    }
+                                    followRow(entry)
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityHint("Visit \(entry.profile.displayName)'s profile")
@@ -6400,28 +6450,27 @@ private struct LegendFollowListView: View {
     private func followRow(
         _ entry: MobileSocialFollowListEntry
     ) -> some View {
-        HStack(spacing: LegendNextSpacing.sm) {
-            LegendProfileAvatar(
-                avatar: entry.profile.avatar,
-                displayName: entry.profile.displayName,
-                size: 48)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(entry.profile.displayName)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.textPrimary)
-
+        LegendContactCard(
+            displayName: entry.profile.displayName,
+            subtitle: entry.profile.identity.participantType == .agent
+                ? entry.profile.roleLabel
+                : entry.profile.username.map { "@\($0)" },
+            detail: entry.followedByCurrentActor && kind == .followers
+                ? "Following"
+                : nil,
+            isVerified: entry.profile.isVerified == true,
+            avatar: {
+                LegendProfileAvatar(
+                    avatar: entry.profile.avatar,
+                    displayName: entry.profile.displayName,
+                    size: 46)
+            },
+            action: {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(LegendNextColor.textTertiary)
             }
-
-            Spacer(minLength: LegendNextSpacing.xs)
-
-            if entry.followedByCurrentActor && kind == .followers {
-                Text("Following")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.textSecondary)
-            }
-        }
-        .padding(.vertical, 3)
+        )
     }
 
     private func refresh() async {
@@ -6447,19 +6496,28 @@ struct LegendPublicProfileView: View {
     @State private var isFollowing: Bool
     @State private var isFollowRequestPending: Bool
     @State private var isUpdatingFollow = false
+    @State private var isConnectionActive: Bool
+    @State private var isRemovingConnection = false
+    private let journeyConnectionID: UUID?
+    private let disconnectConnection: ((UUID) async -> Bool)?
 
     init(
         profile: MobileSocialAuthor,
         currentIdentity: LogicalParticipantIdentity,
         social: MobileSocialStore,
         isFollowing: Bool,
-        isFollowRequestPending: Bool = false
+        isFollowRequestPending: Bool = false,
+        journeyConnectionID: UUID? = nil,
+        disconnectConnection: ((UUID) async -> Bool)? = nil
     ) {
         self.profile = profile
         self.currentIdentity = currentIdentity
         _social = ObservedObject(wrappedValue: social)
         _isFollowing = State(initialValue: isFollowing)
         _isFollowRequestPending = State(initialValue: isFollowRequestPending)
+        _isConnectionActive = State(initialValue: journeyConnectionID != nil)
+        self.journeyConnectionID = journeyConnectionID
+        self.disconnectConnection = disconnectConnection
     }
 
     var body: some View {
@@ -6481,6 +6539,30 @@ struct LegendPublicProfileView: View {
                         : isFollowRequestPending
                             ? "Cancel your follow request to \(displayedProfile.displayName)"
                             : "Follow \(displayedProfile.displayName)")
+                }
+
+                if isConnectionActive,
+                   let journeyConnectionID,
+                   let disconnectConnection {
+                    Button(role: .destructive) {
+                        Task {
+                            isRemovingConnection = true
+                            defer { isRemovingConnection = false }
+                            if await disconnectConnection(journeyConnectionID) {
+                                isConnectionActive = false
+                            }
+                        }
+                    } label: {
+                        if isRemovingConnection {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("Remove connection")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(LegendNextButtonStyle(kind: .destructive, isFullWidth: true))
+                    .disabled(isRemovingConnection)
                 }
 
                 aboutSection
@@ -6521,12 +6603,14 @@ struct LegendPublicProfileView: View {
                 size: 92)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(displayedProfile.displayName)
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(LegendNextColor.textPrimary)
+                LegendVerifiedName(
+                    displayedProfile.displayName,
+                    isVerified: displayedProfile.isVerified == true,
+                    font: .title2.weight(.bold)
+                )
 
-                if displayedProfile.identity.participantType == .agent {
-                    Text("Legend Agent")
+                if let roleLabel = normalized(displayedProfile.roleLabel) {
+                    Text(roleLabel)
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(LegendNextColor.navy)
                         .padding(.horizontal, 8)
@@ -6915,7 +6999,7 @@ private struct LegendAccountEditor: View {
                             if store.isCheckingUsername {
                                 Label("Checking username…", systemImage: "clock")
                                     .font(LegendNextTypography.caption)
-                                    .foregroundStyle(LegendNextColor.textSecondary)
+                                    .foregroundStyle(.white.opacity(0.76))
                             } else if let availability = store.usernameAvailability {
                                 Label(
                                     availability.message ?? "Username available",
@@ -6924,9 +7008,14 @@ private struct LegendAccountEditor: View {
                                         : "exclamationmark.circle")
                                     .font(LegendNextTypography.caption.weight(.semibold))
                                     .foregroundStyle(availability.isAvailable
-                                        ? LegendNextColor.success
+                                        ? LegendNextColor.goldBright
                                         : .red)
                             }
+
+                            Text(usernameChangeLimitDetail)
+                                .font(LegendNextTypography.caption)
+                                .foregroundStyle(.white.opacity(0.78))
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
 
@@ -6966,13 +7055,13 @@ private struct LegendAccountEditor: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text("Show email on profile")
                                         .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(LegendNextColor.textPrimary)
+                                        .foregroundStyle(.white)
                                     Text("Only this member-entered address is shown. Your account email remains private.")
                                         .font(LegendNextTypography.caption)
-                                        .foregroundStyle(LegendNextColor.textSecondary)
+                                        .foregroundStyle(.white.opacity(0.76))
                                 }
                             }
-                            .tint(LegendNextColor.navy)
+                            .tint(LegendNextColor.goldBright)
                         }
                     }
 
@@ -7017,7 +7106,7 @@ private struct LegendAccountEditor: View {
             .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
         }
-        .tint(LegendNextColor.navy)
+        .tint(LegendNextColor.navyElevated)
         .legendNextSheetChrome(detents: [.large])
         .onChange(of: username) { _, newUsername in
             store.checkUsernameAvailability(newUsername)
@@ -7042,6 +7131,14 @@ private struct LegendAccountEditor: View {
             }
         }
     }
+
+    private var usernameChangeLimitDetail: String {
+        let remaining = profile.usernameChangesRemaining
+        let remainingDetail = remaining == 1
+            ? "1 username change remaining this month."
+            : "\(remaining) username changes remaining this month."
+        return "Your username is searchable across Legend. Your first username is a reservation; after that, you can change it twice per calendar month. \(remainingDetail)"
+    }
 }
 
 private struct LegendProfileSettingsSection<Content: View>: View {
@@ -7060,9 +7157,9 @@ private struct LegendProfileSettingsSection<Content: View>: View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
             Text(title.uppercased())
                 .font(LegendNextTypography.eyebrow)
-                .foregroundStyle(LegendNextColor.navy)
+                .foregroundStyle(LegendNextColor.navyElevated)
 
-            LegendNextSurface(style: .brandBlue, padding: LegendNextSpacing.xs) {
+            LegendNextSurface(style: .profileSettings, padding: LegendNextSpacing.xs) {
                 content
             }
         }
@@ -7080,18 +7177,18 @@ private struct LegendProfileSettingsRow: View {
         HStack(spacing: LegendNextSpacing.sm) {
             Image(systemName: systemImage)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(isDestructive ? LegendNextColor.danger : LegendNextColor.navy)
+                .foregroundStyle(isDestructive ? LegendNextColor.danger : LegendNextColor.goldBright)
                 .frame(width: 26)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isDestructive ? LegendNextColor.danger : LegendNextColor.textPrimary)
+                    .foregroundStyle(isDestructive ? LegendNextColor.danger : .white)
 
                 if let detail {
                     Text(detail)
                         .font(LegendNextTypography.caption)
-                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .foregroundStyle(.white.opacity(0.76))
                 }
             }
 
@@ -7100,7 +7197,7 @@ private struct LegendProfileSettingsRow: View {
             if showsChevron {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(LegendNextColor.navy)
+                    .foregroundStyle(.white.opacity(0.82))
             }
         }
         .padding(.vertical, LegendNextSpacing.micro)
@@ -7118,23 +7215,23 @@ private struct LegendProfileSettingsToggleRow: View {
         HStack(spacing: LegendNextSpacing.sm) {
             Image(systemName: systemImage)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(LegendNextColor.navy)
+                .foregroundStyle(LegendNextColor.goldBright)
                 .frame(width: 26)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .foregroundStyle(.white)
                 Text(detail)
                     .font(LegendNextTypography.caption)
-                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .foregroundStyle(.white.opacity(0.76))
             }
 
             Spacer(minLength: LegendNextSpacing.xs)
 
             Toggle(title, isOn: $isOn)
                 .labelsHidden()
-                .tint(LegendNextColor.navy)
+                .tint(LegendNextColor.goldBright)
         }
         .padding(.vertical, LegendNextSpacing.micro)
     }
@@ -7143,7 +7240,7 @@ private struct LegendProfileSettingsToggleRow: View {
 private struct LegendProfileSettingsDivider: View {
     var body: some View {
         Rectangle()
-            .fill(LegendNextColor.separator)
+            .fill(Color.white.opacity(0.22))
             .frame(height: 1)
             .padding(.leading, 36)
     }
@@ -7163,9 +7260,9 @@ private struct LegendProfileEditorField: View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.tiny) {
             Text(title)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(LegendNextColor.textSecondary)
+                .foregroundStyle(.white.opacity(0.84))
 
-            LegendNextInsetSurface(style: .brandBlue) {
+            LegendNextInsetSurface(style: .profileSettings) {
                 Group {
                     if isMultiline {
                         TextField(prompt, text: $text, axis: .vertical)

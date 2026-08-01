@@ -1,11 +1,8 @@
 using Domain.Messaging;
 using Infrastructure.Messaging;
-using Infrastructure.Data;
 using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-
-using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Mobile;
 
@@ -20,22 +17,19 @@ public sealed class MobileMessagingController : MobileApiControllerBase
     private readonly IMessageAttachmentStorage _attachmentStorage;
     private readonly IMessagingRealtimePublisher _realtimePublisher;
     private readonly IMessagingProfileImageResolver _profiles;
-    private readonly MasterAppDbContext _db;
 
     public MobileMessagingController(
         IMobileActorResolver actorResolver,
         IMessagingService messaging,
         IMessageAttachmentStorage attachmentStorage,
         IMessagingRealtimePublisher realtimePublisher,
-        IMessagingProfileImageResolver profiles,
-        MasterAppDbContext db)
+        IMessagingProfileImageResolver profiles)
         : base(actorResolver)
     {
         _messaging = messaging;
         _attachmentStorage = attachmentStorage;
         _realtimePublisher = realtimePublisher;
         _profiles = profiles;
-        _db = db;
     }
 
     [HttpGet("session")]
@@ -93,6 +87,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         {
             response.Add(new MobileConversationSummaryDto(
                 conversation.Id,
+                conversation.ConversationType,
                 conversation.Subject ?? identities.GetDisplayName(conversation.Counterparty) ?? "Conversation",
                 await ToParticipantDtoAsync(conversation.Counterparty, identities, cancellationToken),
                 conversation.LastMessagePreview,
@@ -141,9 +136,8 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 recipient.ExistingConversationId,
                 identity is null ? null : await ToAvatarDtoAsync(identity, cancellationToken))) with
             {
-                Title = await ResolveCanonicalAgentTitleAsync(
-                    identity,
-                    cancellationToken)
+                RoleLabel = identity?.RoleLabel,
+                IsVerified = identity?.IsVerified ?? false
             });
         }
 
@@ -170,6 +164,71 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
 
         return Ok(await ToConversationDtoAsync(result.Conversation, resolved.Actor.Actor, cancellationToken));
+    }
+
+    [HttpPost("messaging/groups")]
+    public async Task<IActionResult> CreateGroup(
+        [FromBody] MobileCreateGroupRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var members = request?.Participants?
+            .Select(member => new MessagingParticipantReference(
+                member.UserId ?? string.Empty,
+                member.ParticipantType ?? string.Empty))
+            .ToArray() ?? Array.Empty<MessagingParticipantReference>();
+        var result = await _messaging.CreateGroupAsync(
+            new CreateMessagingGroupCommand(
+                resolved.Actor!.Actor,
+                members,
+                request?.Subject ?? string.Empty,
+                request?.InitialMessageBody),
+            cancellationToken);
+        if (!result.Succeeded || result.Conversation is null)
+            return MessagingFailure(result.ErrorCode, result.ErrorMessage);
+
+        return Ok(await ToConversationDtoAsync(result.Conversation, resolved.Actor.Actor, cancellationToken));
+    }
+
+    [HttpPost("messaging/verification-requests")]
+    public async Task<IActionResult> StartVerificationRequest(CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.StartVerificationRequestAsync(
+            resolved.Actor!.Actor,
+            cancellationToken);
+        if (!result.Succeeded || result.Conversation is null)
+            return MessagingFailure(result.ErrorCode, result.ErrorMessage);
+
+        return Ok(await ToConversationDtoAsync(result.Conversation, resolved.Actor.Actor, cancellationToken));
+    }
+
+    [HttpPost("messaging/conversations/{conversationId:guid}/participants")]
+    public async Task<IActionResult> AddGroupParticipant(
+        Guid conversationId,
+        [FromBody] MobileGroupParticipantRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.AddGroupParticipantAsync(
+            new AddMessagingGroupParticipantCommand(
+                resolved.Actor!.Actor,
+                conversationId,
+                request?.UserId ?? string.Empty,
+                request?.ParticipantType ?? string.Empty),
+            cancellationToken);
+        return result.Succeeded
+            ? NoContent()
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
     }
 
     [HttpGet("messaging/conversations/{conversationId:guid}")]
@@ -331,11 +390,13 @@ public sealed class MobileMessagingController : MobileApiControllerBase
 
         return new MobileConversationDetailDto(
             conversation.Id,
+            conversation.ConversationType,
             conversation.Subject ?? "Conversation",
             participants,
             messages,
             conversation.IsMuted,
-            conversation.IsClosed);
+            conversation.IsClosed,
+            conversation.CanManageMembers);
     }
 
     private async Task<IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity>> ResolveParticipantIdentitiesAsync(
@@ -375,9 +436,8 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             identity?.DisplayName ?? participant.DisplayName,
             identity is null ? null : await ToAvatarDtoAsync(identity, cancellationToken))) with
         {
-            Title = await ResolveCanonicalAgentTitleAsync(
-                identity,
-                cancellationToken)
+            RoleLabel = identity?.RoleLabel,
+            IsVerified = identity?.IsVerified ?? false
         };
     }
 
@@ -410,30 +470,6 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                     cancellationToken),
                 message.Reply.Body,
                 message.Reply.IsDeleted));
-
-    private async Task<string?> ResolveCanonicalAgentTitleAsync(
-        MessagingParticipantIdentity? identity,
-        CancellationToken cancellationToken)
-    {
-        if (identity is null ||
-            !string.Equals(
-                identity.ParticipantType,
-                MessagingParticipantTypes.Agent,
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        var title = await _db.AgentProfiles
-            .AsNoTracking()
-            .Where(profile => profile.Id == identity.ProfileId)
-            .Select(profile => profile.Title)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        return string.IsNullOrWhiteSpace(title)
-            ? null
-            : title.Trim();
-    }
 
     private async Task<MobileAvatarDto?> ToAvatarDtoAsync(
         MessagingParticipantIdentity identity,
@@ -475,7 +511,8 @@ public sealed record MobileParticipantDto(
     string DisplayName,
     MobileAvatarDto? Avatar)
 {
-    public string? Title { get; init; }
+    public string? RoleLabel { get; init; }
+    public bool IsVerified { get; init; }
 }
 
 public sealed record MobileSessionResponse(
@@ -497,6 +534,7 @@ public sealed record MobileSelectRoleRequest(string? ParticipantType);
 
 public sealed record MobileConversationSummaryDto(
     Guid Id,
+    string ConversationType,
     string Title,
     MobileParticipantDto Counterparty,
     string? LastMessagePreview,
@@ -506,11 +544,13 @@ public sealed record MobileConversationSummaryDto(
 
 public sealed record MobileConversationDetailDto(
     Guid Id,
+    string ConversationType,
     string Title,
     IReadOnlyList<MobileParticipantDto> Participants,
     IReadOnlyList<MobileMessageDto> Messages,
     bool IsMuted,
-    bool IsClosed);
+    bool IsClosed,
+    bool CanManageMembers);
 
 public sealed record MobileMessageDto(
     Guid Id,
@@ -545,6 +585,15 @@ public sealed record MobileStartConversationRequest(
     string? TargetParticipantType,
     string? InitialMessageBody);
 
+public sealed record MobileCreateGroupRequest(
+    string? Subject,
+    IReadOnlyList<MobileGroupParticipantRequest>? Participants,
+    string? InitialMessageBody = null);
+
+public sealed record MobileGroupParticipantRequest(
+    string? UserId,
+    string? ParticipantType);
+
 public sealed record MobileMessagingRecipientDto(
     MobileLogicalIdentityDto Identity,
     string ProfileId,
@@ -554,7 +603,8 @@ public sealed record MobileMessagingRecipientDto(
     Guid? ExistingConversationId,
     MobileAvatarDto? Avatar)
 {
-    public string? Title { get; init; }
+    public string? RoleLabel { get; init; }
+    public bool IsVerified { get; init; }
 }
 
 internal static class MobileParticipantIdentityDictionaryExtensions

@@ -7,6 +7,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
     let email: String?
     let phone: String?
     let title: String?
+    let roleLabel: String?
     let shortBio: String?
     /// A member-entered mobile-profile email. `email` is only populated when
     /// the member has chosen to make this address visible on their profile.
@@ -18,9 +19,11 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
     let location: String?
     let isPrivate: Bool
     let avatar: ProfileAvatar?
+    let isVerified: Bool
+    let usernameChangesRemaining: Int
 
     private enum CodingKeys: String, CodingKey {
-        case participantType, displayName, email, phone, title, shortBio, profileEmail, isEmailVisible, username, bio, website, location, isPrivate, avatar
+        case participantType, displayName, email, phone, title, roleLabel, shortBio, profileEmail, isEmailVisible, username, bio, website, location, isPrivate, avatar, isVerified, usernameChangesRemaining
         case profileID = "profileId"
     }
 
@@ -31,6 +34,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         email: String?,
         phone: String?,
         title: String?,
+        roleLabel: String? = nil,
         shortBio: String?,
         profileEmail: String? = nil,
         isEmailVisible: Bool = false,
@@ -39,7 +43,9 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         website: String? = nil,
         location: String? = nil,
         isPrivate: Bool = false,
-        avatar: ProfileAvatar?
+        avatar: ProfileAvatar?,
+        isVerified: Bool = false,
+        usernameChangesRemaining: Int = 2
     ) {
         self.participantType = participantType
         self.profileID = profileID
@@ -47,6 +53,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         self.email = email
         self.phone = phone
         self.title = title
+        self.roleLabel = roleLabel
         self.shortBio = shortBio
         self.profileEmail = profileEmail
         self.isEmailVisible = isEmailVisible
@@ -56,6 +63,8 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         self.location = location
         self.isPrivate = isPrivate
         self.avatar = avatar
+        self.isVerified = isVerified
+        self.usernameChangesRemaining = usernameChangesRemaining
     }
 
     init(from decoder: Decoder) throws {
@@ -67,6 +76,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
             email: try container.decodeIfPresent(String.self, forKey: .email),
             phone: try container.decodeIfPresent(String.self, forKey: .phone),
             title: try container.decodeIfPresent(String.self, forKey: .title),
+            roleLabel: try container.decodeIfPresent(String.self, forKey: .roleLabel),
             shortBio: try container.decodeIfPresent(String.self, forKey: .shortBio),
             profileEmail: try container.decodeIfPresent(String.self, forKey: .profileEmail),
             isEmailVisible: try container.decodeIfPresent(Bool.self, forKey: .isEmailVisible) ?? false,
@@ -75,7 +85,9 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
             website: try container.decodeIfPresent(String.self, forKey: .website),
             location: try container.decodeIfPresent(String.self, forKey: .location),
             isPrivate: try container.decodeIfPresent(Bool.self, forKey: .isPrivate) ?? false,
-            avatar: try container.decodeIfPresent(ProfileAvatar.self, forKey: .avatar))
+            avatar: try container.decodeIfPresent(ProfileAvatar.self, forKey: .avatar),
+            isVerified: try container.decodeIfPresent(Bool.self, forKey: .isVerified) ?? false,
+            usernameChangesRemaining: try container.decodeIfPresent(Int.self, forKey: .usernameChangesRemaining) ?? 2)
     }
 }
 

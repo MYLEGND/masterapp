@@ -1,9 +1,12 @@
 using Domain.Messaging;
 using Domain.Social;
+using Domain.Entities;
+using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Mobile;
 
@@ -16,15 +19,18 @@ public sealed class MobileSocialController : MobileApiControllerBase
 {
     private readonly ISocialFeedService _social;
     private readonly IMessagingProfileImageResolver _profiles;
+    private readonly MasterAppDbContext? _db;
 
     public MobileSocialController(
         IMobileActorResolver actorResolver,
         ISocialFeedService social,
-        IMessagingProfileImageResolver profiles)
+        IMessagingProfileImageResolver profiles,
+        MasterAppDbContext? db = null)
         : base(actorResolver)
     {
         _social = social;
         _profiles = profiles;
+        _db = db;
     }
 
     [HttpGet("feed")]
@@ -615,7 +621,32 @@ public sealed class MobileSocialController : MobileApiControllerBase
             author.Website,
             author.Location,
             author.PublicEmail,
-            author.IsPrivate);
+            author.IsPrivate,
+            await IsVerifiedAgentProfileAsync(
+                author.ParticipantType,
+                author.ProfileId,
+                cancellationToken),
+            author.RoleLabel);
+    }
+
+    private async Task<bool> IsVerifiedAgentProfileAsync(
+        string participantType,
+        Guid profileId,
+        CancellationToken cancellationToken)
+    {
+        if (_db is null ||
+            profileId == Guid.Empty ||
+            !string.Equals(participantType, MessagingParticipantTypes.Agent, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var email = await _db.AgentProfiles
+            .AsNoTracking()
+            .Where(profile => profile.Id == profileId && profile.IsActive)
+            .Select(profile => profile.NormalizedEmail ?? profile.AgentUpn)
+            .SingleOrDefaultAsync(cancellationToken);
+        return LegendVerifiedIdentity.IsVerifiedAgentEmail(email);
     }
 
     private async Task<MobileSocialProfileMetricsDto> ToProfileMetricsDtoAsync(
@@ -790,7 +821,9 @@ public sealed record MobileSocialAuthorDto(
     string? Website = null,
     string? Location = null,
     string? PublicEmail = null,
-    bool IsPrivate = false);
+    bool IsPrivate = false,
+    bool IsVerified = false,
+    string? RoleLabel = null);
 public sealed record MobileSocialFollowListEntryDto(MobileSocialAuthorDto Profile, bool FollowedByCurrentActor);
 public sealed record MobileSocialFollowRequestDto(Guid Id, MobileSocialAuthorDto Profile, DateTime RequestedUtc);
 public sealed record MobileSocialCommentDto(Guid Id, MobileSocialAuthorDto Author, Guid? ParentCommentId, string Body, DateTime CreatedUtc);

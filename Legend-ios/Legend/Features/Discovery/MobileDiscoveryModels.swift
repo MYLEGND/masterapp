@@ -76,12 +76,14 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
     let website: String?
     let publicEmail: String?
     let isPrivate: Bool?
+    let isVerified: Bool?
+    let roleLabel: String?
 
     var id: UUID { clientProfileID }
 
     private enum CodingKeys: String, CodingKey {
         case identity, displayName, headline, location, goals, interests, circleCodes
-        case compatibilityScore, matchExplanation, relationship, avatar, username, bio, website, publicEmail, isPrivate
+        case compatibilityScore, matchExplanation, relationship, avatar, username, bio, website, publicEmail, isPrivate, isVerified, roleLabel
         case clientProfileID = "clientProfileId"
     }
 
@@ -102,7 +104,9 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
         bio: String? = nil,
         website: String? = nil,
         publicEmail: String? = nil,
-        isPrivate: Bool? = nil
+        isPrivate: Bool? = nil,
+        isVerified: Bool? = nil,
+        roleLabel: String? = nil
     ) {
         self.clientProfileID = clientProfileID
         self.identity = identity
@@ -121,6 +125,8 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
         self.website = website
         self.publicEmail = publicEmail
         self.isPrivate = isPrivate
+        self.isVerified = isVerified
+        self.roleLabel = roleLabel
     }
 
     /// A short, human line for the card: the strongest available context.
@@ -130,50 +136,6 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
         return location
     }
 
-    func replacing(relationship: MobileDiscoveryRelationship) -> MobileDiscoveryResult {
-        MobileDiscoveryResult(
-            clientProfileID: clientProfileID,
-            identity: identity,
-            displayName: displayName,
-            headline: headline,
-            location: location,
-            goals: goals,
-            interests: interests,
-            circleCodes: circleCodes,
-            compatibilityScore: compatibilityScore,
-            matchExplanation: matchExplanation,
-            relationship: relationship,
-            avatar: avatar,
-            username: username,
-            bio: bio,
-            website: website,
-            publicEmail: publicEmail,
-            isPrivate: isPrivate)
-    }
-}
-
-extension MobileDiscoveryRelationship {
-    func replacing(followedByCurrentActor: Bool, followRequestPending: Bool? = nil) -> MobileDiscoveryRelationship {
-        MobileDiscoveryRelationship(
-            followedByCurrentActor: followedByCurrentActor,
-            followRequestPending: followRequestPending ?? self.followRequestPending,
-            followsCurrentActor: followsCurrentActor,
-            connectionStatus: connectionStatus,
-            connectionID: connectionID,
-            canRequestConnection: canRequestConnection,
-            canFollow: canFollow)
-    }
-
-    func replacing(connectionStatus: MobileDiscoveryConnectionStatus) -> MobileDiscoveryRelationship {
-        MobileDiscoveryRelationship(
-            followedByCurrentActor: followedByCurrentActor,
-            followRequestPending: followRequestPending,
-            followsCurrentActor: followsCurrentActor,
-            connectionStatus: connectionStatus,
-            connectionID: connectionID,
-            canRequestConnection: connectionStatus == .none && canRequestConnection,
-            canFollow: canFollow)
-    }
 }
 
 struct MobileDiscoveryPage: Codable, Equatable, Sendable {

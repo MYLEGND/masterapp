@@ -17,6 +17,8 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
 
     @State private var creationRoute: LegendSocialCreationRoute?
     @State private var isPresentingActivity = false
+    @State private var activitySeenThroughUTC: Date?
+    private let activitySeenKey: String
     @State private var commentTarget: MobileSocialPost?
     @State private var postInsight: MobileSocialPostInsight?
     @State private var storyCollection: MobileSocialStoryCollection?
@@ -33,6 +35,20 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         @ViewBuilder dashboardContent: () -> DashboardContent
     ) {
         self.session = session
+
+        let activitySeenKey =
+            "legend.social.activity.seen." +
+            session.actor.identity.participantType.rawValue +
+            "." +
+            session.actor.identity.userID
+
+        self.activitySeenKey = activitySeenKey
+        _activitySeenThroughUTC = State(
+            initialValue: UserDefaults.standard.object(
+                forKey: activitySeenKey
+            ) as? Date
+        )
+
         self.home = home
         _social = ObservedObject(wrappedValue: social)
         self.openMessages = openMessages
@@ -110,9 +126,35 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         return snapshot.activity
     }
 
+    /// Presentation-only unread state.
+    ///
+    /// The social feed remains server-authoritative for which activity exists.
+    /// This marker only records which already-authorized activity this actor
+    /// has viewed on this device.
     private var activityCount: Int {
         guard case .loaded(let snapshot) = social.state else { return 0 }
-        return snapshot.activityCount
+
+        guard let activitySeenThroughUTC else {
+            return snapshot.activityCount
+        }
+
+        return snapshot.activity.reduce(into: 0) { count, item in
+            if item.occurredUTC > activitySeenThroughUTC {
+                count += 1
+            }
+        }
+    }
+
+    private func openActivity() {
+        if let latestActivityUTC = activity.map(\.occurredUTC).max() {
+            activitySeenThroughUTC = latestActivityUTC
+            UserDefaults.standard.set(
+                latestActivityUTC,
+                forKey: activitySeenKey
+            )
+        }
+
+        isPresentingActivity = true
     }
 
     private var failurePresentation: Binding<Bool> {
@@ -147,7 +189,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
 
             Spacer(minLength: LegendNextSpacing.sm)
 
-            Button { isPresentingActivity = true } label: {
+            Button(action: openActivity) {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: "heart")
                     if activityCount > 0 {
@@ -233,11 +275,6 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 )
             }
 
-            if session.actor.identity.participantType == .client,
-               !snapshot.activity.isEmpty {
-                circleActivity(snapshot.activity)
-            }
-
             LegendNextSectionHeader(
                 eyebrow: "Network",
                 title: "Latest from Legend"
@@ -290,65 +327,6 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         }
     }
 
-    private func circleActivity(
-        _ activity: [MobileSocialActivity]
-    ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.xs
-        ) {
-            LegendNextSectionHeader(
-                eyebrow: "Your network",
-                title: "Circle activity"
-            )
-
-            LegendNextSurface(style: .elevated) {
-                VStack(spacing: LegendNextSpacing.xs) {
-                    ForEach(Array(activity.prefix(3))) { item in
-                        HStack(spacing: LegendNextSpacing.xs) {
-                            LegendProfileAvatar(
-                                avatar: item.actor.avatar,
-                                displayName: item.actor.displayName,
-                                size: 34
-                            )
-
-                            VStack(
-                                alignment: .leading,
-                                spacing: LegendNextSpacing.micro
-                            ) {
-                                Text(item.actor.displayName)
-                                    .font(LegendNextTypography.bodyEmphasis)
-                                    .foregroundStyle(LegendNextColor.textPrimary)
-                                    .lineLimit(1)
-
-                                Text(item.summary)
-                                    .font(LegendNextTypography.supporting)
-                                    .foregroundStyle(LegendNextColor.textSecondary)
-                                    .lineLimit(1)
-                            }
-
-                            Spacer(minLength: LegendNextSpacing.xs)
-
-                            VStack(
-                                alignment: .trailing,
-                                spacing: LegendNextSpacing.micro
-                            ) {
-                                Image(systemName: item.systemImage)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(LegendNextColor.information)
-
-                                Text(item.occurredUTC, style: .relative)
-                                    .font(LegendNextTypography.caption)
-                                    .foregroundStyle(LegendNextColor.textSecondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
 }
 
 private struct LegendStoryRail: View {
@@ -374,6 +352,7 @@ private struct LegendStoryRail: View {
                     LegendStoryCircle(
                         collection: collection,
                         title: collection.author.displayName,
+                        showsVerifiedBadge: collection.author.isVerified == true,
                         action: { selectStory(collection) })
                 }
             }
@@ -388,6 +367,7 @@ private struct LegendStoryRail: View {
             LegendStoryCircle(
                 collection: currentActorCollection,
                 title: "Your story",
+                showsVerifiedBadge: false,
                 action: { selectStory(currentActorCollection) })
         } else {
             Button(action: createStory) {
@@ -422,6 +402,7 @@ private struct LegendStoryRail: View {
 private struct LegendStoryCircle: View {
     let collection: MobileSocialStoryCollection
     let title: String
+    let showsVerifiedBadge: Bool
     let action: () -> Void
 
     var body: some View {
@@ -433,10 +414,10 @@ private struct LegendStoryCircle: View {
                     size: 58)
                     .padding(3)
                     .overlay { Circle().stroke(LegendNextColor.gold, lineWidth: 2) }
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.textPrimary)
-                    .lineLimit(1)
+                LegendVerifiedName(
+                    title,
+                    isVerified: showsVerifiedBadge,
+                    font: .caption.weight(.semibold))
             }
             .frame(width: 72)
         }
@@ -576,8 +557,16 @@ private struct LegendStoryViewer: View {
                 displayName: collection.author.displayName,
                 size: 38)
             VStack(alignment: .leading, spacing: 2) {
-                Text(isOwner ? "Your story" : collection.author.displayName)
-                    .font(.subheadline.weight(.bold))
+                if isOwner {
+                    Text("Your story")
+                        .font(.subheadline.weight(.bold))
+                } else {
+                    LegendVerifiedName(
+                        collection.author.displayName,
+                        isVerified: collection.author.isVerified == true,
+                        font: .subheadline.weight(.bold),
+                        textColor: .white)
+                }
                 Text(item.postedUTC, style: .relative)
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.76))
@@ -920,10 +909,11 @@ private struct LegendSocialPostCard: View {
                         size: 42)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(post.author.displayName)
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(LegendNextColor.textPrimary)
-                            .lineLimit(1)
+                        LegendVerifiedName(
+                            post.author.displayName,
+                            isVerified: post.author.isVerified == true,
+                            font: .subheadline.weight(.bold)
+                        )
                         Text(metadata)
                             .font(LegendNextTypography.supporting)
                             .foregroundStyle(LegendNextColor.textSecondary)
@@ -1141,9 +1131,15 @@ private struct LegendSocialPostCard: View {
     @ViewBuilder
     private var metadataContent: some View {
         if !post.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            (Text(post.author.displayName).fontWeight(.bold) + Text(" \(post.body)"))
-                .font(LegendNextTypography.supporting)
-                .foregroundStyle(LegendNextColor.textPrimary)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                LegendVerifiedName(
+                    post.author.displayName,
+                    isVerified: post.author.isVerified == true,
+                    font: LegendNextTypography.supporting.weight(.bold))
+                Text(post.body)
+                    .font(LegendNextTypography.supporting)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+            }
                 .fixedSize(horizontal: false, vertical: true)
         }
 
@@ -1159,10 +1155,16 @@ private struct LegendSocialPostCard: View {
 
         if !post.comments.isEmpty {
             ForEach(post.comments.suffix(2)) { comment in
-                Text("\(comment.author.displayName): \(comment.body)")
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(LegendNextColor.textSecondary)
-                    .lineLimit(2)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    LegendVerifiedName(
+                        comment.author.displayName,
+                        isVerified: comment.author.isVerified == true,
+                        font: LegendNextTypography.supporting.weight(.bold))
+                    Text(comment.body)
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .lineLimit(2)
+                }
             }
         }
 
@@ -1976,10 +1978,11 @@ private struct LegendCommentComposer: View {
                     alignment: .leading,
                     spacing: LegendNextSpacing.micro
                 ) {
-                    Text(post.author.displayName)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(LegendNextColor.textPrimary)
-                        .lineLimit(1)
+                    LegendVerifiedName(
+                        post.author.displayName,
+                        isVerified: post.author.isVerified == true,
+                        font: .subheadline.weight(.bold)
+                    )
 
                     Text(post.postedUTC, style: .relative)
                         .font(LegendNextTypography.caption)
@@ -2007,14 +2010,15 @@ private struct LegendCommentComposer: View {
             )
 
             if !caption.isEmpty {
-                (
-                    Text(post.author.displayName)
-                        .fontWeight(.bold)
-                    +
-                    Text(" \(caption)")
-                )
-                .font(LegendNextTypography.supporting)
-                .foregroundStyle(LegendNextColor.textPrimary)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    LegendVerifiedName(
+                        post.author.displayName,
+                        isVerified: post.author.isVerified == true,
+                        font: LegendNextTypography.supporting.weight(.bold))
+                    Text(caption)
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                }
                 .lineLimit(selectedDetent == .large ? 3 : 2)
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -2125,9 +2129,11 @@ private struct LegendCommentComposer: View {
                     alignment: .firstTextBaseline,
                     spacing: LegendNextSpacing.xs
                 ) {
-                    Text(comment.author.displayName)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(LegendNextColor.textPrimary)
+                    LegendVerifiedName(
+                        comment.author.displayName,
+                        isVerified: comment.author.isVerified == true,
+                        font: .caption.weight(.bold)
+                    )
 
                     Text(comment.createdUTC, style: .relative)
                         .font(.caption2)
@@ -2306,23 +2312,27 @@ private struct LegendActivitySheet: View {
                         systemImage: "heart")
                 } else {
                     ForEach(activity) { item in
-                        LegendNextSurface(style: .brandBlue, padding: LegendNextSpacing.sm) {
-                            HStack(spacing: LegendNextSpacing.sm) {
-                                LegendProfileAvatar(avatar: item.actor.avatar, displayName: item.actor.displayName, size: 38)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.actor.displayName)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(LegendNextColor.textPrimary)
-                                    Text(item.summary)
-                                        .font(LegendNextTypography.supporting)
-                                        .foregroundStyle(LegendNextColor.textSecondary)
-                                }
-                                Spacer()
+                        LegendContactCard(
+                            displayName: item.actor.displayName,
+                            subtitle: item.actor.identity.participantType == .agent
+                                ? item.actor.roleLabel
+                                : item.summary,
+                            detail: item.actor.identity.participantType == .agent
+                                ? item.summary
+                                : nil,
+                            isVerified: item.actor.isVerified == true,
+                            avatar: {
+                                LegendProfileAvatar(
+                                    avatar: item.actor.avatar,
+                                    displayName: item.actor.displayName,
+                                    size: 42)
+                            },
+                            action: {
                                 Text(item.occurredUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
                                     .font(.caption2)
                                     .foregroundStyle(LegendNextColor.textSecondary)
                             }
-                        }
+                        )
                     }
                 }
             }
@@ -2453,29 +2463,20 @@ struct LegendFollowRequestsSheet: View {
                     .frame(maxWidth: .infinity, minHeight: 180)
             } else {
                 ForEach(requests) { request in
-                    LegendNextSurface(style: .brandBlue, padding: LegendNextSpacing.xs) {
-                        HStack(spacing: LegendNextSpacing.sm) {
+                    LegendContactCard(
+                        displayName: request.profile.displayName,
+                        subtitle: request.profile.identity.participantType == .agent
+                            ? request.profile.roleLabel
+                            : request.profile.username.map { "@\($0)" },
+                        detail: "Requested \(request.requestedUTC.formatted(date: .abbreviated, time: .omitted))",
+                        isVerified: request.profile.isVerified == true,
+                        avatar: {
                             LegendProfileAvatar(
                                 avatar: request.profile.avatar,
                                 displayName: request.profile.displayName,
                                 size: 44)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(request.profile.displayName)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(LegendNextColor.textPrimary)
-                                if let username = request.profile.username, !username.isEmpty {
-                                    Text("@\(username)")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(LegendNextColor.gold)
-                                }
-                                Text("Requested \(request.requestedUTC.formatted(date: .abbreviated, time: .omitted))")
-                                    .font(LegendNextTypography.caption)
-                                    .foregroundStyle(LegendNextColor.textSecondary)
-                            }
-
-                            Spacer(minLength: 0)
-
+                        },
+                        action: {
                             VStack(spacing: 6) {
                                 Button("Approve") { decide(request, approve: true) }
                                     .buttonStyle(LegendNextButtonStyle(kind: .primary, isFullWidth: false, controlHeight: 30))
@@ -2484,7 +2485,7 @@ struct LegendFollowRequestsSheet: View {
                             }
                             .disabled(updatingRequestIDs.contains(request.id))
                         }
-                    }
+                    )
                 }
             }
         }

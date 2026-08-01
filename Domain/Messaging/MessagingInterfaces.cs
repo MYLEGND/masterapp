@@ -28,6 +28,18 @@ public interface IMessagingService
         StartMessagingConversationCommand command,
         CancellationToken cancellationToken = default);
 
+    Task<MessagingConversationResult> CreateGroupAsync(
+        CreateMessagingGroupCommand command,
+        CancellationToken cancellationToken = default);
+
+    Task<MessagingConversationResult> StartVerificationRequestAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default);
+
+    Task<MessagingOperationResult> AddGroupParticipantAsync(
+        AddMessagingGroupParticipantCommand command,
+        CancellationToken cancellationToken = default);
+
     Task<MessagingMessageResult> SendMessageAsync(
         SendMessagingMessageCommand command,
         CancellationToken cancellationToken = default);

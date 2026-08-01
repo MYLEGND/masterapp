@@ -81,23 +81,6 @@ final class MobileDiscoveryStoreTests: XCTestCase {
         XCTAssertLessThanOrEqual(store.results.count, 20)
     }
 
-    func testFollowUsesTheServerConfirmedStateRatherThanTheOptimisticGuess() async throws {
-        let api = RecordingDiscoveryAPI(total: 1)
-        let social = RecordingSocialFollowAPI(confirmedFollowing: true)
-        let store = makeStore(api: api, socialAPI: social)
-
-        await store.refresh()
-        guard let target = store.results.first else { return XCTFail("Expected a member") }
-        XCTAssertFalse(target.relationship.followedByCurrentActor)
-
-        store.toggleFollow(target)
-        try await Task.sleep(for: .milliseconds(300))
-
-        XCTAssertTrue(store.results[0].relationship.followedByCurrentActor)
-        let followed = await social.lastRequest()
-        XCTAssertEqual(followed?.followedUserID, target.identity.userID)
-    }
-
     func testClientRefreshLoadsRecommendationsAndTheActiveDirectory() async throws {
         let api = RecordingDiscoveryAPI(total: 5)
         let store = makeStore(api: api)
@@ -112,22 +95,11 @@ final class MobileDiscoveryStoreTests: XCTestCase {
 
     // ------------------------------------------------------------------ helpers
 
-    private func makeStore(
-        api: RecordingDiscoveryAPI,
-        socialAPI: RecordingSocialFollowAPI = RecordingSocialFollowAPI(confirmedFollowing: true)
-    ) -> MobileDiscoveryStore {
+    private func makeStore(api: RecordingDiscoveryAPI) -> MobileDiscoveryStore {
         let diagnostics = LegendDiagnostics()
         let tokenProvider: () async throws -> String = { "token" }
         return MobileDiscoveryStore(
             api: api,
-            social: MobileSocialStore(
-                api: socialAPI,
-                accessTokenProvider: tokenProvider,
-                diagnostics: diagnostics),
-            journeyCircles: MobileJourneyCirclesStore(
-                api: MobileUnavailableJourneyCirclesAPI(),
-                accessTokenProvider: tokenProvider,
-                diagnostics: diagnostics),
             accessTokenProvider: tokenProvider,
             diagnostics: diagnostics)
     }
@@ -212,72 +184,4 @@ private actor RecordingDiscoveryAPI: MobileDiscoveryAPI {
                 canFollow: true),
             avatar: nil)
     }
-}
-
-/// A social API that only implements the follow path Discover exercises.
-private actor RecordingSocialFollowAPI: MobileSocialAPI {
-    private let confirmedFollowing: Bool
-    private var request: MobileToggleSocialFollow?
-
-    init(confirmedFollowing: Bool) {
-        self.confirmedFollowing = confirmedFollowing
-    }
-
-    func lastRequest() -> MobileToggleSocialFollow? { request }
-
-    func toggleFollow(
-        _ request: MobileToggleSocialFollow,
-        accessToken: String
-    ) async throws -> MobileSocialFollowResult {
-        self.request = request
-        return MobileSocialFollowResult(isFollowing: confirmedFollowing)
-    }
-
-    func feed(accessToken: String) async throws -> MobileSocialSnapshot {
-        throw MobileAPIError.unauthorized(correlationID: nil)
-    }
-    func currentProfilePosts(accessToken: String) async throws -> [MobileSocialPost] { [] }
-    func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost {
-        throw MobileAPIError.unauthorized(correlationID: nil)
-    }
-    func createMediaPost(
-        type: MobileSocialContentType,
-        body: String,
-        files: [MultipartFormFile],
-        accessibilityText: String?,
-        music: MobileSocialMusicSelection?,
-        audience: MobileSocialAudience,
-        location: String?,
-        commentsEnabled: Bool,
-        accessToken: String
-    ) async throws -> MobileSocialPost {
-        throw MobileAPIError.unauthorized(correlationID: nil)
-    }
-    func updatePost(postID: UUID, request: MobileUpdateSocialPost, accessToken: String) async throws -> MobileSocialPost {
-        throw MobileAPIError.unauthorized(correlationID: nil)
-    }
-    func deletePost(postID: UUID, accessToken: String) async throws {}
-    func mediaData(assetID: UUID, accessToken: String) async throws -> Data { Data() }
-    func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost {
-        throw MobileAPIError.unauthorized(correlationID: nil)
-    }
-    func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment {
-        throw MobileAPIError.unauthorized(correlationID: nil)
-    }
-    func toggleSave(postID: UUID, accessToken: String) async throws -> MobileSocialShareState {
-        throw MobileAPIError.unauthorized(correlationID: nil)
-    }
-    func toggleRepost(postID: UUID, accessToken: String) async throws -> MobileSocialShareState {
-        throw MobileAPIError.unauthorized(correlationID: nil)
-    }
-    func recordShare(postID: UUID, accessToken: String) async throws -> MobileSocialShareState {
-        throw MobileAPIError.unauthorized(correlationID: nil)
-    }
-    func recordView(postID: UUID, request: MobileRecordSocialView, accessToken: String) async throws -> MobileSocialPostMetrics {
-        throw MobileAPIError.unauthorized(correlationID: nil)
-    }
-    func postInsights(postID: UUID, accessToken: String) async throws -> MobileSocialPostInsight {
-        throw MobileAPIError.unauthorized(correlationID: nil)
-    }
-    func searchMusic(query: String, accessToken: String) async throws -> [MobileSocialMusicTrack] { [] }
 }

@@ -4,36 +4,16 @@ import PhotosUI
 import UniformTypeIdentifiers
 
 
-private func publicParticipantSubtitle(
-    title: String?,
-    participantType: ParticipantType
-) -> String {
-    guard participantType == .agent else {
-        return "Connection"
-    }
-
-    guard let normalizedTitle = title?
+private func publicAgentRoleLabel(
+    roleLabel: String?
+) -> String? {
+    guard let roleLabel = roleLabel?
         .trimmingCharacters(in: .whitespacesAndNewlines),
-          !normalizedTitle.isEmpty else {
-        return "Legend"
+          !roleLabel.isEmpty else {
+        return nil
     }
 
-    let suffix = " - Legend"
-
-    if normalizedTitle.count >= suffix.count {
-        let suffixStart = normalizedTitle.index(
-            normalizedTitle.endIndex,
-            offsetBy: -suffix.count
-        )
-
-        let existingSuffix = String(normalizedTitle[suffixStart...])
-
-        if existingSuffix.localizedCaseInsensitiveCompare(suffix) == .orderedSame {
-            return normalizedTitle
-        }
-    }
-
-    return normalizedTitle + suffix
+    return roleLabel
 }
 
 private func publicRelationshipLabel(
@@ -162,7 +142,6 @@ struct MessagingHomeView: View {
                             .fill(LegendNextGradient.gold)
                             .frame(width: 22, height: 3)
 
-                        Text("LEGEND PRIVATE")
                             .font(LegendNextTypography.eyebrow)
                             .tracking(1.1)
                             .foregroundStyle(LegendNextColor.goldBright)
@@ -172,7 +151,6 @@ struct MessagingHomeView: View {
                         .font(LegendNextTypography.hero)
                         .foregroundStyle(.white)
 
-                    Text("Conversations with the people in your Legend network.")
                         .font(LegendNextTypography.supporting)
                         .foregroundStyle(.white.opacity(0.76))
                         .fixedSize(horizontal: false, vertical: true)
@@ -340,6 +318,9 @@ private struct LegendRecipientPicker: View {
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var searchIsFocused: Bool
     @State private var search = ""
+    @State private var isCreatingGroup = false
+    @State private var groupSubject = ""
+    @State private var groupRecipients: [LogicalParticipantIdentity: MessagingRecipient] = [:]
 
     var body: some View {
         NavigationStack {
@@ -350,6 +331,9 @@ private struct LegendRecipientPicker: View {
                     recipientHeader
                     searchField
                     recipientScopes
+                    if isCreatingGroup {
+                        groupCreationBar
+                    }
                     recipientContent
                 }
             }
@@ -377,20 +361,32 @@ private struct LegendRecipientPicker: View {
                 Spacer()
 
                 VStack(spacing: 2) {
-                    Text("New message")
+                    Text(isCreatingGroup ? "New group" : "New message")
                         .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundStyle(.white)
 
-                    Text("Search your Legend network")
+                    Text(isCreatingGroup
+                         ? "Choose at least two connections"
+                         : "Search your Legend network")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.66))
                 }
 
                 Spacer()
 
-                Color.clear
-                    .frame(width: 68, height: 44)
-                    .accessibilityHidden(true)
+                Button {
+                    isCreatingGroup.toggle()
+                    groupRecipients.removeAll()
+                    groupSubject = ""
+                } label: {
+                    Image(systemName: isCreatingGroup ? "person.fill" : "person.3.fill")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(.white.opacity(0.10), in: Circle())
+                }
+                .buttonStyle(LegendMessagingPressButtonStyle())
+                .accessibilityLabel(isCreatingGroup ? "Create a direct message" : "Create a group chat")
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -459,6 +455,38 @@ private struct LegendRecipientPicker: View {
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
         .padding(.top, LegendNextSpacing.intermediate)
+        .padding(.bottom, LegendNextSpacing.sm)
+    }
+
+    private var groupCreationBar: some View {
+        VStack(spacing: LegendNextSpacing.xs) {
+            TextField("Group name", text: $groupSubject)
+                .textInputAutocapitalization(.words)
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, LegendNextSpacing.sm)
+                .frame(minHeight: 42)
+                .background(
+                    LegendNextColor.surfaceElevated,
+                    in: RoundedRectangle(
+                        cornerRadius: LegendNextRadius.compact,
+                        style: .continuous
+                    )
+                )
+
+            Button(store.isCreatingGroup ? "Creating group…" : "Create group (\(groupRecipients.count))") {
+                let recipients = Array(groupRecipients.values)
+                store.createGroup(subject: groupSubject, recipients: recipients) { conversationID in
+                    selectConversation(conversationID)
+                }
+            }
+            .buttonStyle(LegendNextButtonStyle(kind: .primary, controlHeight: 34))
+            .disabled(
+                store.isCreatingGroup ||
+                groupSubject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                groupRecipients.count < 2
+            )
+        }
+        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
         .padding(.bottom, LegendNextSpacing.sm)
     }
 
@@ -559,24 +587,64 @@ private struct LegendRecipientPicker: View {
                     .padding(.bottom, LegendNextSpacing.tiny)
 
                 ForEach(recipients) { recipient in
-                    LegendRecipientRow(
-                        recipient: recipient,
-                        isStarting: store.isStartingConversation
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        select(recipient)
+                    if isCreatingGroup {
+                        Button {
+                            toggleGroupRecipient(recipient)
+                        } label: {
+                            LegendContactCard(
+                                displayName: recipient.displayName,
+                                subtitle: relationshipLabel(for: recipient),
+                                detail: recipient.email,
+                                isVerified: recipient.isVerified == true,
+                                avatar: {
+                                    LegendMessagingAvatar(
+                                        participant: MessagingParticipant(
+                                            identity: recipient.identity,
+                                            profileID: recipient.profileID,
+                                            displayName: recipient.displayName,
+                                            roleLabel: recipient.roleLabel,
+                                            avatar: recipient.avatar,
+                                            isVerified: recipient.isVerified
+                                        ),
+                                        size: 46,
+                                        showsGoldRing: true)
+                                },
+                                action: {
+                                    Image(systemName: groupRecipients[recipient.identity] == nil
+                                          ? "circle"
+                                          : "checkmark.circle.fill")
+                                        .font(.title3.weight(.semibold))
+                                        .foregroundStyle(groupRecipients[recipient.identity] == nil
+                                                         ? LegendNextColor.textTertiary
+                                                         : LegendNextColor.success)
+                                }
+                            )
+                        }
+                        .buttonStyle(LegendMessagingPressButtonStyle())
+                        .accessibilityLabel(
+                            groupRecipients[recipient.identity] == nil
+                                ? "Add \(recipient.displayName) to the group"
+                                : "Remove \(recipient.displayName) from the group")
+                    } else {
+                        LegendRecipientRow(
+                            recipient: recipient,
+                            isStarting: store.isStartingConversation
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            select(recipient)
+                        }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityHint(
+                            recipient.existingConversationID == nil
+                                ? "Start a conversation"
+                                : "Open the existing conversation"
+                        )
+                        .accessibilityAction {
+                            select(recipient)
+                        }
+                        .allowsHitTesting(!store.isStartingConversation)
                     }
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityHint(
-                        recipient.existingConversationID == nil
-                            ? "Start a conversation"
-                            : "Open the existing conversation"
-                    )
-                    .accessibilityAction {
-                        select(recipient)
-                    }
-                    .allowsHitTesting(!store.isStartingConversation)
                 }
             }
             .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -600,6 +668,21 @@ private struct LegendRecipientPicker: View {
         )
     }
 
+    private func toggleGroupRecipient(_ recipient: MessagingRecipient) {
+        if groupRecipients[recipient.identity] == nil {
+            groupRecipients[recipient.identity] = recipient
+        } else {
+            groupRecipients.removeValue(forKey: recipient.identity)
+        }
+    }
+
+    private func relationshipLabel(for recipient: MessagingRecipient) -> String? {
+        recipient.identity.participantType == .agent
+            ? publicAgentRoleLabel(
+                roleLabel: recipient.roleLabel)
+            : publicRelationshipLabel(recipient.relationshipLabel) ?? "Connection"
+    }
+
     private var recipientLoading: some View {
         ScrollView {
             LazyVStack(spacing: LegendNextSpacing.sm) {
@@ -612,6 +695,172 @@ private struct LegendRecipientPicker: View {
         }
         .scrollIndicators(.hidden)
         .accessibilityLabel("Loading people")
+    }
+}
+
+/// Member additions use the same server-authorized recipient collections as
+/// direct and new-group conversations. The server still confirms ownership
+/// before it accepts the mutation.
+private struct LegendGroupMemberPicker: View {
+    @ObservedObject var store: MessagingStore
+    let conversationID: UUID
+    let dismiss: () -> Void
+
+    @FocusState private var searchIsFocused: Bool
+    @State private var search = ""
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LegendNextCanvas()
+
+                VStack(spacing: 0) {
+                    header
+                    searchField
+                    scopes
+                    content
+                }
+            }
+            .toolbar(.hidden, for: .navigationBar)
+            .task { store.loadRecipients() }
+            .onChange(of: search) { _, value in
+                store.searchRecipients(value)
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            Button("Cancel", action: dismiss)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+
+            Spacer()
+
+            VStack(spacing: 2) {
+                Text("Add group member")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                Text("Choose one of your connections")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.68))
+            }
+
+            Spacer()
+
+            Color.clear.frame(width: 48, height: 1)
+        }
+        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+        .padding(.vertical, LegendNextSpacing.md)
+        .background(LegendNextGradient.hero)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: LegendNextSpacing.xs) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(LegendNextColor.textTertiary)
+
+            TextField("Search connections", text: $search)
+                .focused($searchIsFocused)
+                .autocorrectionDisabled()
+        }
+        .padding(.horizontal, LegendNextSpacing.sm)
+        .frame(minHeight: 44)
+        .background(
+            LegendNextColor.surfaceElevated,
+            in: RoundedRectangle(cornerRadius: LegendNextRadius.compact, style: .continuous)
+        )
+        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+        .padding(.vertical, LegendNextSpacing.sm)
+    }
+
+    private var scopes: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: LegendNextSpacing.xs) {
+                ForEach(store.availableRecipientScopes) { scope in
+                    Button(scope.rawValue) {
+                        search = ""
+                        store.selectRecipientScope(scope)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(store.selectedRecipientScope == scope
+                                     ? LegendNextColor.midnight
+                                     : LegendNextColor.textSecondary)
+                    .padding(.horizontal, 11)
+                    .frame(minHeight: 32)
+                    .background(
+                        store.selectedRecipientScope == scope
+                            ? AnyShapeStyle(LegendNextGradient.gold)
+                            : AnyShapeStyle(LegendNextColor.surfaceElevated),
+                        in: Capsule()
+                    )
+                }
+            }
+            .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+        }
+        .padding(.bottom, LegendNextSpacing.xs)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch store.recipientState {
+        case .idle, .loading:
+            ProgressView("Loading connections")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        case .unavailable(let failure):
+            LegendNextErrorState(
+                title: failure.title,
+                message: failure.message,
+                retryTitle: "Retry",
+                retry: { store.loadRecipients(search: search) }
+            )
+            .padding(LegendNextSpacing.md)
+
+        case .loaded(let recipients):
+            ScrollView {
+                LazyVStack(spacing: LegendNextSpacing.sm) {
+                    ForEach(recipients) { recipient in
+                        Button {
+                            store.addGroupParticipant(recipient, to: conversationID) {
+                                dismiss()
+                            }
+                        } label: {
+                            LegendContactCard(
+                                displayName: recipient.displayName,
+                                subtitle: recipient.identity.participantType == .agent
+                                    ? publicAgentRoleLabel(
+                                        roleLabel: recipient.roleLabel)
+                                    : publicRelationshipLabel(recipient.relationshipLabel) ?? "Connection",
+                                detail: recipient.email,
+                                isVerified: recipient.isVerified == true,
+                                avatar: {
+                                    LegendMessagingAvatar(
+                                        participant: MessagingParticipant(
+                                            identity: recipient.identity,
+                                            profileID: recipient.profileID,
+                                            displayName: recipient.displayName,
+                                            roleLabel: recipient.roleLabel,
+                                            avatar: recipient.avatar,
+                                            isVerified: recipient.isVerified),
+                                        size: 46,
+                                        showsGoldRing: true)
+                                },
+                                action: {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.title3)
+                                        .foregroundStyle(LegendNextColor.gold)
+                                }
+                            )
+                        }
+                        .buttonStyle(LegendMessagingPressButtonStyle())
+                        .disabled(store.isCreatingGroup)
+                    }
+                }
+                .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+                .padding(.bottom, LegendNextSpacing.xxl)
+            }
+        }
     }
 }
 
@@ -629,6 +878,7 @@ struct ConversationThreadView: View {
     @State private var isImportingFile = false
     @State private var messageForStagedAttachments: ConversationMessage?
     @State private var replyingToMessage: ConversationMessage?
+    @State private var isPresentingAddMember = false
 
     var body: some View {
         ZStack {
@@ -641,6 +891,14 @@ struct ConversationThreadView: View {
             if store.selectedConversationID != conversationID {
                 store.openConversation(conversationID)
             }
+        }
+        .sheet(isPresented: $isPresentingAddMember) {
+            LegendGroupMemberPicker(
+                store: store,
+                conversationID: conversationID,
+                dismiss: { isPresentingAddMember = false }
+            )
+            .legendNextSheetChrome(detents: [.large])
         }
     }
 
@@ -676,7 +934,10 @@ struct ConversationThreadView: View {
         _ conversation: ConversationDetail
     ) -> some View {
         VStack(spacing: 0) {
-            LegendConversationHeader(conversation: conversation)
+            LegendConversationHeader(
+                conversation: conversation,
+                addMember: { isPresentingAddMember = true }
+            )
 
             LegendMessageTimeline(
                 messages: conversation.messages,
@@ -1153,182 +1414,72 @@ private struct LegendMessageAttachmentStaging: View {
 private struct LegendConversationRow: View {
     let conversation: ConversationSummary
 
-    @Environment(\.colorScheme) private var colorScheme
-
     private let unreadColor = Color(uiColor: .systemRed)
 
     var body: some View {
-        HStack(spacing: LegendNextSpacing.md) {
-            LegendMessagingAvatar(
-                participant: conversation.counterparty,
-                size: 56,
-                showsGoldRing: conversation.unreadCount > 0
-            )
-
-            VStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.tiny
-            ) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(conversation.counterparty.displayName)
-                        .font(.system(.headline, design: .rounded).weight(
-                            conversation.unreadCount > 0
-                                ? .bold
-                                : .semibold
-                        ))
-                        .foregroundStyle(LegendNextColor.textPrimary)
-                        .lineLimit(1)
-
-                    Spacer(minLength: 4)
-
+        LegendContactCard(
+            displayName: conversation.title,
+            subtitle: conversation.lastMessagePreview ?? "Start your conversation",
+            detail: relationshipTitle,
+            isVerified: !isGroup && conversation.counterparty.isVerified == true,
+            avatar: {
+                if isGroup {
+                    Image(systemName: "person.3.fill")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.midnight)
+                        .frame(width: 46, height: 46)
+                        .background(LegendNextGradient.gold, in: Circle())
+                } else {
+                    LegendMessagingAvatar(
+                        participant: conversation.counterparty,
+                        size: 46,
+                        showsGoldRing: conversation.unreadCount > 0)
+                }
+            },
+            action: {
+                VStack(alignment: .trailing, spacing: 5) {
                     if let date = conversation.lastMessageUTC {
                         Text(LegendMessagingDateFormatter.inbox(date))
-                            .font(.caption2.weight(
-                                conversation.unreadCount > 0
-                                    ? .bold
-                                    : .medium
-                            ))
-                            .foregroundStyle(
-                                conversation.unreadCount > 0
-                                    ? unreadColor
-                                    : LegendNextColor.textTertiary
-                            )
+                            .font(.caption2.weight(conversation.unreadCount > 0 ? .bold : .medium))
+                            .foregroundStyle(conversation.unreadCount > 0 ? unreadColor : LegendNextColor.textTertiary)
                             .lineLimit(1)
                     }
-                }
-
-                HStack(alignment: .center, spacing: LegendNextSpacing.xs) {
-                    Text(
-                        conversation.lastMessagePreview
-                        ?? "Start your conversation"
-                    )
-                    .font(.subheadline.weight(
-                        conversation.unreadCount > 0
-                            ? .semibold
-                            : .regular
-                    ))
-                    .foregroundStyle(
-                        conversation.unreadCount > 0
-                            ? LegendNextColor.textPrimary
-                            : LegendNextColor.textSecondary
-                    )
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-
-                    Spacer(minLength: LegendNextSpacing.xs)
 
                     if conversation.unreadCount > 0 {
                         Text(unreadText)
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(.white)
-                            .frame(minWidth: 22, minHeight: 22)
+                            .frame(minWidth: 21, minHeight: 21)
                             .padding(.horizontal, conversation.unreadCount > 9 ? 4 : 0)
                             .background(unreadColor, in: Capsule())
-                            .accessibilityLabel(
-                                "\(conversation.unreadCount) unread messages"
-                            )
+                            .accessibilityLabel("\(conversation.unreadCount) unread messages")
                     } else {
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(LegendNextColor.textTertiary)
                     }
                 }
-
-                HStack(spacing: LegendNextSpacing.xs) {
-                    Image(systemName: relationshipSymbol)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.gold)
-
-                    Text(relationshipTitle)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.textTertiary)
-
-                    if conversation.isClosed {
-                        Text("Closed")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(LegendNextColor.textSecondary)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(LegendNextColor.fill, in: Capsule())
-                    }
-                }
             }
-        }
-        .padding(LegendNextSpacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            LegendNextColor.surface,
-            in: RoundedRectangle(
-                cornerRadius: LegendNextRadius.card,
-                style: .continuous
-            )
         )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.card,
-                style: .continuous
-            )
-            .stroke(
-                conversation.unreadCount > 0
-                    ? unreadColor.opacity(0.34)
-                    : LegendNextColor.subtleBorder(for: colorScheme),
-                lineWidth: 1
-            )
-        }
-        .shadow(
-            color: LegendNextColor.ambientShadow(for: colorScheme),
-            radius: 12,
-            y: 5
-        )
-        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
 
-    private var relationshipTitle: String {
+    private var relationshipTitle: String? {
+        if isGroup {
+            return "Group chat"
+        }
+
         switch conversation.counterparty.identity.participantType {
         case .agent:
-            return agentPublicTitle(conversation.counterparty.title)
+            return publicAgentRoleLabel(roleLabel: conversation.counterparty.roleLabel)
 
         case .client:
             return "Connection"
         }
     }
 
-    private func agentPublicTitle(
-        _ value: String?
-    ) -> String {
-        guard let title = normalized(value) else {
-            return "Legend"
-        }
-
-        let suffix = " - Legend"
-
-        if title.localizedCaseInsensitiveContains(suffix) {
-            return title
-        }
-
-        return title + suffix
-    }
-
-    private func normalized(
-        _ value: String?
-    ) -> String? {
-        guard let value = value?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else {
-            return nil
-        }
-
-        return value
-    }
-
-    private var relationshipSymbol: String {
-        switch conversation.counterparty.identity.participantType {
-        case .agent:
-            return "shield.checkered"
-        case .client:
-            return "person.fill"
-        }
+    private var isGroup: Bool {
+        conversation.conversationType == "Group"
     }
 
     private var unreadText: String {
@@ -1342,116 +1493,58 @@ private struct LegendRecipientRow: View {
     let recipient: MessagingRecipient
     let isStarting: Bool
 
-    @Environment(\.colorScheme) private var colorScheme
-
     var body: some View {
-        HStack(spacing: LegendNextSpacing.md) {
-            LegendMessagingAvatar(
+        LegendContactCard(
+            displayName: recipient.displayName,
+            subtitle: relationshipLabel,
+            detail: normalized(recipient.email),
+            isVerified: recipient.isVerified == true,
+            avatar: {
+                LegendMessagingAvatar(
                 participant: MessagingParticipant(
                     identity: recipient.identity,
                     profileID: recipient.profileID,
                     displayName: recipient.displayName,
-                    title: recipient.title,
-                    avatar: recipient.avatar
-                ),
-                size: 54,
-                showsGoldRing: true
-            )
+                    roleLabel: recipient.roleLabel,
+                        avatar: recipient.avatar,
+                        isVerified: recipient.isVerified
+                    ),
+                    size: 46,
+                    showsGoldRing: true
+                )
+            },
+            action: {
+                if isStarting {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(LegendNextColor.gold)
+                } else {
+                    HStack(spacing: 5) {
+                        Text(recipient.existingConversationID == nil ? "Message" : "Open")
+                            .font(.caption.weight(.bold))
 
-            VStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.tiny
-            ) {
-                Text(recipient.displayName)
-                    .font(.system(.headline, design: .rounded).weight(.bold))
-                    .foregroundStyle(LegendNextColor.textPrimary)
-                    .lineLimit(1)
-
-                Text(relationshipLabel)
-                    .font(.subheadline)
-                    .foregroundStyle(LegendNextColor.textSecondary)
-                    .lineLimit(1)
-
-                if let email = normalized(recipient.email) {
-                    Text(email)
-                        .font(.caption)
-                        .foregroundStyle(LegendNextColor.textTertiary)
-                        .lineLimit(1)
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .foregroundStyle(LegendNextColor.midnight)
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 30)
+                    .background(LegendNextGradient.gold, in: Capsule())
                 }
             }
-
-            Spacer(minLength: LegendNextSpacing.sm)
-
-            if isStarting {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(LegendNextColor.gold)
-            } else {
-                HStack(spacing: 5) {
-                    Text(
-                        recipient.existingConversationID == nil
-                            ? "Message"
-                            : "Open"
-                    )
-                    .font(.caption.weight(.bold))
-
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption2.weight(.bold))
-                }
-                .foregroundStyle(LegendNextColor.midnight)
-                .padding(.horizontal, 11)
-                .frame(minHeight: 34)
-                .background(LegendNextGradient.gold, in: Capsule())
-            }
-        }
-        .padding(LegendNextSpacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            LegendNextColor.surface,
-            in: RoundedRectangle(
-                cornerRadius: LegendNextRadius.card,
-                style: .continuous
-            )
         )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.card,
-                style: .continuous
-            )
-            .stroke(
-                LegendNextColor.subtleBorder(for: colorScheme),
-                lineWidth: 1
-            )
-        }
-        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
 
-    private var relationshipLabel: String {
+    private var relationshipLabel: String? {
         switch recipient.identity.participantType {
         case .agent:
-            return agentPublicTitle(recipient.title)
+            return publicAgentRoleLabel(roleLabel: recipient.roleLabel)
 
         case .client:
             return publicRelationshipLabel(recipient.relationshipLabel)
                 ?? "Connection"
         }
-    }
-
-    private func agentPublicTitle(
-        _ value: String?
-    ) -> String {
-        guard let title = normalized(value) else {
-            return "Legend"
-        }
-
-        let suffix = " - Legend"
-
-        if title.localizedCaseInsensitiveContains(suffix) {
-            return title
-        }
-
-        return title + suffix
     }
 
     private func publicRelationshipLabel(
@@ -1492,6 +1585,7 @@ private struct LegendRecipientRow: View {
 
 private struct LegendConversationHeader: View {
     let conversation: ConversationDetail
+    let addMember: () -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -1513,7 +1607,13 @@ private struct LegendConversationHeader: View {
             .buttonStyle(LegendMessagingPressButtonStyle())
             .accessibilityLabel("Back")
 
-            if let counterparty {
+            if isGroup {
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(LegendNextColor.midnight)
+                    .frame(width: 46, height: 46)
+                    .background(LegendNextGradient.gold, in: Circle())
+            } else if let counterparty {
                 LegendMessagingAvatar(
                     participant: counterparty,
                     size: 46,
@@ -1528,10 +1628,16 @@ private struct LegendConversationHeader: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(conversation.title)
-                    .font(.system(.headline, design: .rounded).weight(.bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(conversation.title)
+                        .font(.system(.headline, design: .rounded).weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+
+                    if counterparty?.isVerified == true && !isGroup {
+                        LegendVerifiedBadge()
+                    }
+                }
 
                 HStack(spacing: 5) {
                     Image(systemName: "lock.shield.fill")
@@ -1548,6 +1654,18 @@ private struct LegendConversationHeader: View {
             }
 
             Spacer()
+
+            if isGroup && conversation.canManageMembers {
+                Button(action: addMember) {
+                    Image(systemName: "person.badge.plus")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.midnight)
+                        .frame(width: 38, height: 38)
+                        .background(LegendNextGradient.gold, in: Circle())
+                }
+                .buttonStyle(LegendMessagingPressButtonStyle())
+                .accessibilityLabel("Add group member")
+            }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
         .padding(.top, LegendNextSpacing.xs)
@@ -1569,33 +1687,26 @@ private struct LegendConversationHeader: View {
     }
 
     private var relationshipSubtitle: String {
+        if isGroup {
+            return "Private group chat"
+        }
+
         guard let counterparty else {
             return "Private Legend conversation"
         }
 
         switch counterparty.identity.participantType {
         case .agent:
-            return agentPublicTitle(counterparty.title)
+            return publicAgentRoleLabel(roleLabel: counterparty.roleLabel)
+                ?? "Private Legend conversation"
 
         case .client:
             return "Private connection"
         }
     }
 
-    private func agentPublicTitle(
-        _ value: String?
-    ) -> String {
-        guard let title = normalized(value) else {
-            return "Legend"
-        }
-
-        let suffix = " - Legend"
-
-        if title.localizedCaseInsensitiveContains(suffix) {
-            return title
-        }
-
-        return title + suffix
+    private var isGroup: Bool {
+        conversation.conversationType == "Group"
     }
 
     private func normalized(
@@ -1863,9 +1974,11 @@ private struct LegendMessageContextPreview: View {
             alignment: message.isMine ? .trailing : .leading,
             spacing: LegendNextSpacing.xs
         ) {
-            Text(message.sender.displayName)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(LegendNextColor.textSecondary)
+            LegendVerifiedName(
+                message.sender.displayName,
+                isVerified: message.sender.isVerified == true,
+                font: .caption.weight(.semibold),
+                textColor: LegendNextColor.textSecondary)
 
             Text(message.body)
                 .font(.body)

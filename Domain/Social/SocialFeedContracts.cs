@@ -91,7 +91,8 @@ public sealed record SocialAuthor(
     string? Website = null,
     string? Location = null,
     string? PublicEmail = null,
-    bool IsPrivate = false);
+    bool IsPrivate = false,
+    string? RoleLabel = null);
 
 public sealed record SocialCommentView(Guid Id, SocialAuthor Author, Guid? ParentCommentId, string Body, DateTime CreatedUtc);
 

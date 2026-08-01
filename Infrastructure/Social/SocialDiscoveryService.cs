@@ -405,13 +405,13 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
 
     private static DirectoryCandidate ToDirectoryCandidate(AgentDirectoryRow agent)
     {
-        var displayName = FirstNonEmpty(agent.FullName, agent.AgentUpn, "Legend Agent");
+        var displayName = FirstNonEmpty(agent.FullName, agent.AgentUpn, "Legend");
         return new DirectoryCandidate(
             agent.Id,
             Normalize(agent.AgentUserId),
             MessagingParticipantTypes.Agent,
             displayName,
-            agent.Title,
+            AgentProfileIdentity.LegendRoleLabel(agent.Title),
             null,
             [],
             [],
@@ -526,7 +526,10 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                 candidate.Presentation?.Bio,
                 candidate.Presentation?.Website,
                 candidate.Presentation?.PublicEmail,
-                candidate.Presentation?.IsPrivate ?? false);
+                candidate.Presentation?.IsPrivate ?? false,
+                candidate.ParticipantType == MessagingParticipantTypes.Agent
+                    ? candidate.Headline
+                    : null);
         }).ToArray();
     }
 

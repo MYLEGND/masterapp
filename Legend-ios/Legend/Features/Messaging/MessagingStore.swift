@@ -33,6 +33,7 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var recipientState: MobileDataLoadState<[MessagingRecipient]> = .idle
     @Published private(set) var selectedRecipientScope: MessagingRecipientScope
     @Published private(set) var isStartingConversation = false
+    @Published private(set) var isCreatingGroup = false
     @Published private(set) var isRefreshing = false
     @Published private(set) var refreshFailure: UserFacingFailure?
 
@@ -151,6 +152,77 @@ final class MessagingStore: ObservableObject {
         beginConversation(resolveRecipient: { recipient }, completion: completion)
     }
 
+    func createGroup(
+        subject: String,
+        recipients: [MessagingRecipient],
+        completion: @escaping (UUID) -> Void
+    ) {
+        guard !isCreatingGroup else { return }
+        isCreatingGroup = true
+        sendFailure = nil
+        Task {
+            defer { isCreatingGroup = false }
+            do {
+                let conversation = try await api.createGroup(
+                    subject: subject,
+                    recipients: recipients,
+                    accessToken: try await accessTokenProvider())
+                detailState = .loaded(conversation)
+                selectedConversationID = conversation.id
+                _ = await refresh()
+                completion(conversation.id)
+            } catch {
+                sendFailure = failure(for: error, title: "Group not created")
+            }
+        }
+    }
+
+    func startVerificationRequest(completion: @escaping (UUID) -> Void) {
+        guard !isCreatingGroup else { return }
+        isCreatingGroup = true
+        sendFailure = nil
+        Task {
+            defer { isCreatingGroup = false }
+            do {
+                let conversation = try await api.startVerificationRequest(
+                    accessToken: try await accessTokenProvider())
+                detailState = .loaded(conversation)
+                selectedConversationID = conversation.id
+                _ = await refresh()
+                completion(conversation.id)
+            } catch {
+                sendFailure = failure(for: error, title: "Verification request not started")
+            }
+        }
+    }
+
+    func addGroupParticipant(
+        _ recipient: MessagingRecipient,
+        to conversationID: UUID,
+        completion: @escaping () -> Void
+    ) {
+        guard !isCreatingGroup else { return }
+        isCreatingGroup = true
+        sendFailure = nil
+        Task {
+            defer { isCreatingGroup = false }
+            do {
+                try await api.addGroupParticipant(
+                    conversationID: conversationID,
+                    recipient: recipient,
+                    accessToken: try await accessTokenProvider())
+                let conversation = try await api.conversation(
+                    id: conversationID,
+                    accessToken: try await accessTokenProvider())
+                detailState = .loaded(conversation)
+                _ = await refresh()
+                completion()
+            } catch {
+                sendFailure = failure(for: error, title: "Member not added")
+            }
+        }
+    }
+
     /// The agent CRM is allowed to open a conversation only through the same
     /// recipient authority used by the Messages screen. A CRM profile is never
     /// treated as a messaging recipient on the device by itself.
@@ -256,17 +328,20 @@ final class MessagingStore: ObservableObject {
         }
         detailState = .loaded(ConversationDetail(
             id: conversation.id,
+            conversationType: conversation.conversationType,
             title: conversation.title,
             participants: conversation.participants,
             messages: conversation.messages + [message],
             isMuted: conversation.isMuted,
-            isClosed: conversation.isClosed))
+            isClosed: conversation.isClosed,
+            canManageMembers: conversation.canManageMembers))
     }
 
     private func append(attachment: MessagingAttachment, to messageID: UUID) {
         guard case .loaded(let conversation) = detailState else { return }
         detailState = .loaded(ConversationDetail(
             id: conversation.id,
+            conversationType: conversation.conversationType,
             title: conversation.title,
             participants: conversation.participants,
             messages: conversation.messages.map { message in
@@ -282,7 +357,8 @@ final class MessagingStore: ObservableObject {
                     reply: message.reply)
             },
             isMuted: conversation.isMuted,
-            isClosed: conversation.isClosed))
+            isClosed: conversation.isClosed,
+            canManageMembers: conversation.canManageMembers))
     }
 
     private var hasCachedConversations: Bool {
@@ -358,6 +434,7 @@ final class MessagingStore: ObservableObject {
             guard conversation.id == conversationID else { return conversation }
             return ConversationSummary(
                 id: conversation.id,
+                conversationType: conversation.conversationType,
                 counterparty: conversation.counterparty,
                 title: conversation.title,
                 lastMessagePreview: conversation.lastMessagePreview,

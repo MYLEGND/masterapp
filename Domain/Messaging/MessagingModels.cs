@@ -5,6 +5,12 @@ public static class MessagingConversationTypes
     public const string ClientAgent = "ClientAgent";
     public const string AgentDirect = "AgentDirect";
     public const string ClientJourney = "ClientJourney";
+    public const string Group = "Group";
+}
+
+public static class MessagingConversationPurposes
+{
+    public const string VerificationRequest = "VerificationRequest";
 }
 
 public static class MessagingParticipantTypes
@@ -45,6 +51,19 @@ public sealed record StartMessagingConversationCommand(
     string? Subject = null,
     string? InitialMessageBody = null,
     string? ClientMessageId = null);
+
+public sealed record CreateMessagingGroupCommand(
+    MessagingActor Actor,
+    IReadOnlyList<MessagingParticipantReference> Participants,
+    string Subject,
+    string? InitialMessageBody = null,
+    string? ClientMessageId = null);
+
+public sealed record AddMessagingGroupParticipantCommand(
+    MessagingActor Actor,
+    Guid ConversationId,
+    string UserId,
+    string ParticipantType);
 
 public sealed record SendMessagingMessageCommand(
     MessagingActor Actor,
@@ -190,7 +209,8 @@ public sealed record MessagingConversationDetail(
     bool IsArchivedMembership,
     bool IsMuted,
     IReadOnlyList<MessagingParticipantSummary> Participants,
-    IReadOnlyList<MessagingMessageSummary> Messages);
+    IReadOnlyList<MessagingMessageSummary> Messages,
+    bool CanManageMembers = false);
 
 public sealed record MessagingParticipantSummary(
     string UserId,
@@ -215,7 +235,9 @@ public sealed record MessagingParticipantIdentity(
     Guid ProfileId,
     string DisplayName,
     string? Email,
-    string Initials);
+    string Initials,
+    bool IsVerified = false,
+    string? RoleLabel = null);
 
 public sealed record MessagingRecipientSummary(
     string UserId,
@@ -224,7 +246,8 @@ public sealed record MessagingRecipientSummary(
     string? Email,
     string? RelationshipLabel = null,
     Guid? ExistingConversationId = null,
-    string? ContactKey = null);
+    string? ContactKey = null,
+    string? Username = null);
 
 public sealed record MessagingMessageSummary(
     Guid Id,

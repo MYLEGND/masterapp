@@ -732,6 +732,8 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.ParticipantType).IsRequired().HasMaxLength(40);
             e.Property(x => x.Username).HasMaxLength(64);
             e.Property(x => x.NormalizedUsername).HasMaxLength(64);
+            e.Property(x => x.UsernameChangeMonthUtc);
+            e.Property(x => x.UsernameChangeCount).HasDefaultValue(0);
             e.Property(x => x.Bio).HasMaxLength(1_000);
             e.Property(x => x.Website).HasMaxLength(2_048);
             e.Property(x => x.Location).HasMaxLength(120);

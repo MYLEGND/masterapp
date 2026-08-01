@@ -60,7 +60,8 @@ public sealed record SocialDiscoveryResult(
     string? Bio = null,
     string? Website = null,
     string? PublicEmail = null,
-    bool IsPrivate = false);
+    bool IsPrivate = false,
+    string? RoleLabel = null);
 
 public sealed record SocialDiscoveryPage(
     IReadOnlyList<SocialDiscoveryResult> Results,

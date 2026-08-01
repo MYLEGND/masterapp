@@ -89,6 +89,16 @@ struct LegendNextSurface<Content: View>: View {
                 endPoint: .bottomTrailing
             )
 
+        case .profileSettings:
+            LinearGradient(
+                colors: [
+                    LegendNextColor.navyElevated,
+                    LegendNextColor.royal
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
         case .glass:
             Rectangle()
                 .fill(.ultraThinMaterial)
@@ -122,6 +132,8 @@ struct LegendNextSurface<Content: View>: View {
             return AnyShapeStyle(
                 LegendNextColor.navy.opacity(colorScheme == .dark ? 0.45 : 0.18)
             )
+        case .profileSettings:
+            return AnyShapeStyle(Color.white.opacity(0.32))
         case .plain, .elevated:
             return AnyShapeStyle(
                 LegendNextColor.subtleBorder(for: colorScheme)
@@ -139,7 +151,7 @@ struct LegendNextSurface<Content: View>: View {
             return LegendNextColor.ambientShadow(for: colorScheme).opacity(0.72)
         case .glass:
             return LegendNextColor.ambientShadow(for: colorScheme)
-        case .elevated, .brandBlue, .navy, .gold, .success:
+        case .elevated, .brandBlue, .profileSettings, .navy, .gold, .success:
             return LegendNextColor.elevatedShadow(for: colorScheme).opacity(0.86)
         }
     }
@@ -150,7 +162,7 @@ struct LegendNextSurface<Content: View>: View {
             return LegendNextElevation.subtleRadius - 2
         case .glass:
             return LegendNextElevation.subtleRadius
-        case .elevated, .brandBlue, .navy, .gold, .success:
+        case .elevated, .brandBlue, .profileSettings, .navy, .gold, .success:
             return LegendNextElevation.cardRadius - 4
         }
     }
@@ -161,7 +173,7 @@ struct LegendNextSurface<Content: View>: View {
             return LegendNextElevation.subtleY - 2
         case .glass:
             return LegendNextElevation.subtleY
-        case .elevated, .brandBlue, .navy, .gold, .success:
+        case .elevated, .brandBlue, .profileSettings, .navy, .gold, .success:
             return LegendNextElevation.cardY - 3
         }
     }
@@ -224,13 +236,20 @@ struct LegendNextInsetSurface<Content: View>: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ))
+        case .profileSettings:
+            return AnyShapeStyle(Color.white)
         }
     }
 
     private var border: Color {
-        style == .brandBlue
-            ? LegendNextColor.navy.opacity(colorScheme == .dark ? 0.48 : 0.18)
-            : LegendNextColor.subtleBorder(for: colorScheme)
+        switch style {
+        case .brandBlue:
+            LegendNextColor.navy.opacity(colorScheme == .dark ? 0.48 : 0.18)
+        case .profileSettings:
+            LegendNextColor.navy.opacity(0.56)
+        case .standard:
+            LegendNextColor.subtleBorder(for: colorScheme)
+        }
     }
 }
 

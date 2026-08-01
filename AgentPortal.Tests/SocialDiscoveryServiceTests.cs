@@ -329,6 +329,7 @@ public sealed class SocialDiscoveryServiceTests
             AgentUserId = "directory-agent",
             AgentUpn = "directory-agent@example.test",
             FullName = "Directory Agent",
+            Title = "CEO",
             IsActive = true
         };
         db.AgentProfiles.Add(agent);
@@ -366,6 +367,7 @@ public sealed class SocialDiscoveryServiceTests
             Actor(viewer), "@directory.legend", 0, 20));
         var found = Assert.Single(usernameSearch.Value!.Results, result => result.ClientProfileId == agent.Id);
         Assert.Equal("directory.legend", found.Username);
+        Assert.Equal("CEO - LEGEND", found.RoleLabel);
         Assert.Equal("Serving the Legend community.", found.Bio);
         Assert.Equal("https://legend.example/directory", found.Website);
         Assert.Equal("directory@example.test", found.PublicEmail);

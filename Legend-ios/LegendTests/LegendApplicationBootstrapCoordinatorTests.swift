@@ -361,8 +361,6 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
             journeyCircles: journeyStore,
             discovery: MobileDiscoveryStore(
                 api: MobileUnavailableDiscoveryAPI(),
-                social: socialStore,
-                journeyCircles: journeyStore,
                 accessTokenProvider: tokenProvider,
                 diagnostics: diagnostics),
             account: MobileAccountStore(

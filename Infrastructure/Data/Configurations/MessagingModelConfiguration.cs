@@ -49,9 +49,20 @@ internal static class MessagingModelConfiguration
         entity.Property(x => x.Subject)
             .HasMaxLength(240);
 
+        entity.Property(x => x.Purpose)
+            .HasMaxLength(40);
+
         entity.Property(x => x.CreatedByUserId)
             .IsRequired()
             .HasMaxLength(450);
+
+        entity.Property(x => x.OwnerParticipantType)
+            .HasMaxLength(40);
+
+        entity.Property(x => x.OwnerUserId)
+            .HasMaxLength(450);
+
+        entity.HasIndex(x => new { x.Purpose, x.CreatedByUserId, x.OwnerParticipantType });
 
         ConfigureRowVersion(entity.Property(x => x.RowVersion), providerName);
 

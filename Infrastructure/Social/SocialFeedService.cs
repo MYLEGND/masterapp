@@ -1845,13 +1845,17 @@ public sealed class SocialFeedService : ISocialFeedService
             var agents = await _db.AgentProfiles
                 .AsNoTracking()
                 .Where(profile => profile.IsActive && ids.Contains(profile.AgentUserId.ToLower()))
-                .Select(profile => new { profile.Id, profile.AgentUserId, profile.FullName, profile.AgentUpn })
+                .Select(profile => new { profile.Id, profile.AgentUserId, profile.FullName, profile.AgentUpn, profile.Title })
                 .ToListAsync(cancellationToken);
             foreach (var profile in agents)
             {
                 var name = FirstNonEmpty(profile.FullName, profile.AgentUpn, "Agent");
                 result[AuthorKey.From(profile.AgentUserId, MessagingParticipantTypes.Agent)] = new SocialAuthor(
-                    Normalize(profile.AgentUserId), MessagingParticipantTypes.Agent, profile.Id, name);
+                    Normalize(profile.AgentUserId),
+                    MessagingParticipantTypes.Agent,
+                    profile.Id,
+                    name,
+                    RoleLabel: AgentProfileIdentity.LegendRoleLabel(profile.Title));
             }
         }
 

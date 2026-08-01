@@ -88,7 +88,9 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                     profile.Id,
                     profile.AgentUserId,
                     profile.FullName,
-                    profile.AgentUpn))
+                    profile.AgentUpn,
+                    profile.NormalizedEmail,
+                    profile.Title))
                 .ToListAsync(cancellationToken);
 
             foreach (var userId in agentUserIds)
@@ -110,7 +112,10 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                     profile.Id,
                     displayName,
                     profile.Email,
-                    Initials(displayName));
+                    Initials(displayName),
+                    LegendVerifiedIdentity.IsVerifiedAgentEmail(
+                        profile.NormalizedEmail ?? profile.Email),
+                    AgentProfileIdentity.LegendRoleLabel(profile.Title));
             }
         }
 
@@ -312,7 +317,13 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
         return string.IsNullOrWhiteSpace(initials) ? "P" : initials;
     }
 
-    private sealed record AgentIdentityRow(Guid Id, string UserId, string? FullName, string? Email);
+    private sealed record AgentIdentityRow(
+        Guid Id,
+        string UserId,
+        string? FullName,
+        string? Email,
+        string? NormalizedEmail,
+        string? Title);
 
     private sealed record ClientIdentityRow(
         Guid Id,

@@ -57,6 +57,8 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
     let location: String?
     let publicEmail: String?
     let isPrivate: Bool?
+    let isVerified: Bool?
+    let roleLabel: String?
 
     init(
         identity: LogicalParticipantIdentity,
@@ -68,7 +70,9 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
         website: String? = nil,
         location: String? = nil,
         publicEmail: String? = nil,
-        isPrivate: Bool? = nil
+        isPrivate: Bool? = nil,
+        isVerified: Bool? = nil,
+        roleLabel: String? = nil
     ) {
         self.identity = identity
         self.profileID = profileID
@@ -80,12 +84,14 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
         self.location = location
         self.publicEmail = publicEmail
         self.isPrivate = isPrivate
+        self.isVerified = isVerified
+        self.roleLabel = roleLabel
     }
 
     private enum CodingKeys: String, CodingKey {
         case identity
         case profileID = "profileId"
-        case displayName, avatar, username, bio, website, location, publicEmail, isPrivate
+        case displayName, avatar, username, bio, website, location, publicEmail, isPrivate, isVerified, roleLabel
     }
 }
 
@@ -96,19 +102,24 @@ struct LegendPublicProfileRoute: Identifiable, Hashable {
     let profile: MobileSocialAuthor
     let isFollowing: Bool
     let isFollowRequestPending: Bool
+    let journeyConnectionID: UUID? = nil
 
     var id: String {
         "\(profile.identity.participantType.rawValue):\(profile.identity.userID)"
     }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.id == rhs.id && lhs.isFollowing == rhs.isFollowing && lhs.isFollowRequestPending == rhs.isFollowRequestPending
+        lhs.id == rhs.id &&
+            lhs.isFollowing == rhs.isFollowing &&
+            lhs.isFollowRequestPending == rhs.isFollowRequestPending &&
+            lhs.journeyConnectionID == rhs.journeyConnectionID
     }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
         hasher.combine(isFollowing)
         hasher.combine(isFollowRequestPending)
+        hasher.combine(journeyConnectionID)
     }
 }
 
@@ -660,7 +671,15 @@ struct MobileToggleSocialFollow: Codable, Sendable {
 
 struct MobileSocialFollowResult: Codable, Equatable, Sendable {
     let isFollowing: Bool
-    let isPending: Bool? = nil
+    let isPending: Bool?
+
+    init(
+        isFollowing: Bool,
+        isPending: Bool? = nil
+    ) {
+        self.isFollowing = isFollowing
+        self.isPending = isPending
+    }
 
     var hasPendingRequest: Bool { isPending ?? false }
 }

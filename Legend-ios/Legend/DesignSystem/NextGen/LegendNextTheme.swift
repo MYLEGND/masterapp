@@ -119,6 +119,22 @@ enum LegendNextColor {
     static let information = Color(uiColor: .systemBlue)
     static let inactive = Color(uiColor: .systemGray)
 
+    // Contact cards are intentionally distinct from generic surfaces. Keeping
+    // the fill and premium, dark-gold edge here gives every people surface one
+    // authority without changing unrelated cards such as journeys or posts.
+    static let contactFill = Color.white
+
+    static let contactBorder = adaptiveColor(
+        light: UIColor(red: 111 / 255, green: 78 / 255, blue: 20 / 255, alpha: 1),
+        dark: UIColor(red: 196 / 255, green: 155 / 255, blue: 61 / 255, alpha: 1)
+    )
+
+    static let verified = Color(
+        red: 31 / 255,
+        green: 122 / 255,
+        blue: 235 / 255
+    )
+
     static func premiumBorder(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark
             ? Color.white.opacity(0.10)
@@ -415,6 +431,9 @@ enum LegendNextSurfaceStyle: Equatable {
     case plain
     case elevated
     case brandBlue
+    /// The only full-strength blue surface. It is reserved for Profile settings
+    /// so that private account controls read as Legend blue, never a washed tint.
+    case profileSettings
     case glass
     case navy
     case gold
@@ -424,6 +443,7 @@ enum LegendNextSurfaceStyle: Equatable {
 enum LegendNextInsetStyle: Equatable {
     case standard
     case brandBlue
+    case profileSettings
 }
 
 enum LegendNextButtonKind: Equatable {

@@ -140,21 +140,6 @@ struct LegendHomeSkeleton: View {
     }
 }
 
-/// The whole-screen placeholder used before the shell knows who the user is.
-/// Deliberately brand-led rather than a gear: it reads as the app opening.
-struct LegendLaunchSkeleton: View {
-    var body: some View {
-        VStack(spacing: LegendNextSpacing.lg) {
-            Spacer()
-            LegendBrandLogo(maximumWidth: 168)
-                .accessibilityLabel("Legend")
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(LegendNextColor.canvas.ignoresSafeArea())
-    }
-}
-
 /// A skeleton that fills the screen the same way the eventual content will.
 struct LegendScreenSkeleton<Content: View>: View {
     let accessibilityMessage: String

@@ -37,7 +37,10 @@ struct MobileSessionCacheEntry: Codable, Equatable, Sendable {
 
     /// Cached identity is only trusted briefly. Past this the app resolves the session
     /// over the network before showing a shell, so a revoked account cannot linger.
-    private static let maximumAge: TimeInterval = 60 * 60 * 24 * 14
+    // Match the interactive sign-in checkpoint. A returning member can reopen the
+    // exact last account throughout the valid 90-day session, while the coordinator
+    // still revalidates the bearer in the background.
+    private static let maximumAge: TimeInterval = 60 * 60 * 24 * 90
 
     var isFresh: Bool {
         Date().timeIntervalSince(cachedUtc) < Self.maximumAge

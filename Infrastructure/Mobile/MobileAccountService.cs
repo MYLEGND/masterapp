@@ -47,6 +47,7 @@ public sealed record MobileAccountSnapshot(
     string? Email,
     string? Phone,
     string? Title,
+    string? RoleLabel,
     string? ShortBio,
     string? Username = null,
     string? Bio = null,
@@ -54,7 +55,9 @@ public sealed record MobileAccountSnapshot(
     string? Location = null,
     string? ProfileEmail = null,
     bool IsEmailVisible = false,
-    bool IsPrivate = false);
+    bool IsPrivate = false,
+    bool IsVerified = false,
+    int UsernameChangesRemaining = 2);
 
 public sealed record MobileAccountResult(
     bool Succeeded,
@@ -88,6 +91,7 @@ public sealed class MobileAccountService : IMobileAccountService
     private const int WebsiteMaximumLength = 2_048;
     private const int LocationMaximumLength = 120;
     private const int EmailMaximumLength = 320;
+    private const int MaximumUsernameChangesPerCalendarMonth = 2;
 
     private readonly MasterAppDbContext _db;
 
@@ -119,6 +123,7 @@ public sealed class MobileAccountService : IMobileAccountService
                     candidate.AgentUpn,
                     candidate.Phone,
                     candidate.Title,
+                    null,
                     candidate.ShortBio))
                 .SingleOrDefaultAsync(cancellationToken);
 
@@ -128,6 +133,12 @@ public sealed class MobileAccountService : IMobileAccountService
                     "MOBILE_ACCOUNT_UNAVAILABLE",
                     "Your agent account is not available.");
             }
+
+            profile = profile with
+            {
+                IsVerified = LegendVerifiedIdentity.IsVerifiedAgentEmail(profile.Email),
+                RoleLabel = AgentProfileIdentity.LegendRoleLabel(profile.Title)
+            };
 
             return await ApplyMobileSettingsAsync(profile with
             {
@@ -152,6 +163,7 @@ public sealed class MobileAccountService : IMobileAccountService
                     (candidate.FirstName + " " + candidate.LastName).Trim(),
                     candidate.Email,
                     candidate.Phone,
+                    null,
                     null,
                     null))
                 .SingleOrDefaultAsync(cancellationToken);
@@ -257,9 +269,20 @@ public sealed class MobileAccountService : IMobileAccountService
         }
 
         var mobileSettings = await GetOrCreateMobileSettingsAsync(actor, now, cancellationToken);
+        var requestedUsername = NormalizeUsername(update.Username);
+        var usernameChangeError = ApplyUsernameChange(
+            mobileSettings,
+            requestedUsername,
+            now);
+        if (usernameChangeError is not null)
+        {
+            return MobileAccountResult.Failure(
+                "MOBILE_ACCOUNT_INPUT_INVALID",
+                usernameChangeError);
+        }
 
         mobileSettings.Username = DisplayUsername(update.Username);
-        mobileSettings.NormalizedUsername = NormalizeUsername(update.Username);
+        mobileSettings.NormalizedUsername = requestedUsername;
         mobileSettings.Bio = TrimOptional(update.Bio);
         mobileSettings.Website = TrimOptional(update.Website);
         mobileSettings.Location = TrimOptional(update.Location);
@@ -327,7 +350,8 @@ public sealed class MobileAccountService : IMobileAccountService
             Location = TrimOptional(settings.Location),
             ProfileEmail = profileEmail,
             IsEmailVisible = settings.IsEmailVisible,
-            IsPrivate = settings.IsPrivate
+            IsPrivate = settings.IsPrivate,
+            UsernameChangesRemaining = UsernameChangesRemaining(settings)
         });
     }
 
@@ -434,6 +458,49 @@ public sealed class MobileAccountService : IMobileAccountService
                           candidate.ParticipantType != actor.Actor.ParticipantType),
             cancellationToken);
         return isTaken ? "That username is already in use." : null;
+    }
+
+    private static string? ApplyUsernameChange(
+        MobileProfileSettings settings,
+        string? requestedUsername,
+        DateTime now)
+    {
+        if (string.Equals(
+                settings.NormalizedUsername,
+                requestedUsername,
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        // Reserving a username for the first time is not a change. Every later
+        // rename (including clearing a username) counts against the calendar month.
+        if (string.IsNullOrWhiteSpace(settings.NormalizedUsername))
+            return null;
+
+        var currentMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        if (settings.UsernameChangeMonthUtc != currentMonth)
+        {
+            settings.UsernameChangeMonthUtc = currentMonth;
+            settings.UsernameChangeCount = 0;
+        }
+
+        if (settings.UsernameChangeCount >= MaximumUsernameChangesPerCalendarMonth)
+        {
+            return "Your username can be changed only twice per calendar month. You can update it again next month.";
+        }
+
+        settings.UsernameChangeCount += 1;
+        return null;
+    }
+
+    private static int UsernameChangesRemaining(MobileProfileSettings settings)
+    {
+        var currentMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        if (settings.UsernameChangeMonthUtc != currentMonth)
+            return MaximumUsernameChangesPerCalendarMonth;
+
+        return Math.Max(0, MaximumUsernameChangesPerCalendarMonth - settings.UsernameChangeCount);
     }
 
     private static (string FirstName, string LastName) SplitDisplayName(

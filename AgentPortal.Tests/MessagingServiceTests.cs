@@ -84,6 +84,118 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task GroupConversation_UsesAuthorizedRecipientsAndOnlyOwnerCanAddMembers()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        db.ClientProfiles.AddRange(
+            new ClientProfile
+            {
+                ClientUserId = "client-2",
+                ExternalIdentityObjectId = "client-2",
+                FirstName = "Client",
+                LastName = "Two",
+                Email = "client.two@example.test"
+            },
+            new ClientProfile
+            {
+                ClientUserId = "client-3",
+                ExternalIdentityObjectId = "client-3",
+                FirstName = "Client",
+                LastName = "Three",
+                Email = "client.three@example.test"
+            });
+        db.AgentClients.AddRange(
+            new AgentClient { AgentUserId = "agent-1", AgentUpn = "agent.one@mylegnd.com", ClientUserId = "client-2" },
+            new AgentClient { AgentUserId = "agent-1", AgentUpn = "agent.one@mylegnd.com", ClientUserId = "client-3" });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var owner = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var created = await service.CreateGroupAsync(new CreateMessagingGroupCommand(
+            owner,
+            [
+                new MessagingParticipantReference("client-1", MessagingParticipantTypes.Client),
+                new MessagingParticipantReference("client-2", MessagingParticipantTypes.Client)
+            ],
+            "Protection review team",
+            "Welcome to the review."));
+
+        var conversation = Assert.IsType<MessagingConversationDetail>(created.Conversation);
+        Assert.True(created.Succeeded);
+        Assert.Equal(MessagingConversationTypes.Group, conversation.ConversationType);
+        Assert.True(conversation.CanManageMembers);
+        Assert.Equal(3, conversation.Participants.Count);
+
+        var addMember = await service.AddGroupParticipantAsync(
+            new AddMessagingGroupParticipantCommand(
+                owner,
+                conversation.Id,
+                "client-3",
+                MessagingParticipantTypes.Client));
+        Assert.True(addMember.Succeeded);
+        Assert.Equal(4, Assert.IsType<MessagingConversationDetail>(
+            (await service.GetConversationAsync(owner, conversation.Id)).Conversation).Participants.Count);
+
+        var nonOwner = await service.AddGroupParticipantAsync(
+            new AddMessagingGroupParticipantCommand(
+                new MessagingActor("client-1", MessagingParticipantTypes.Client),
+                conversation.Id,
+                "client-3",
+                MessagingParticipantTypes.Client));
+        Assert.False(nonOwner.Succeeded);
+        Assert.Equal("MESSAGING_GROUP_OWNER_REQUIRED", nonOwner.ErrorCode);
+    }
+
+    [Fact]
+    public async Task VerificationRequest_CreatesOneFounderOwnedGroupForTheRequester()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: false, grantClientToAgent: false);
+        db.AgentProfiles.AddRange(
+            new AgentProfile
+            {
+                AgentUserId = "zac-founder-oid",
+                AgentUpn = LegendVerifiedIdentity.FounderEmail,
+                NormalizedEmail = LegendVerifiedIdentity.FounderEmail,
+                FullName = "Zac Owen",
+                IsActive = true
+            },
+            new AgentProfile
+            {
+                AgentUserId = "legend-oid",
+                AgentUpn = LegendVerifiedIdentity.LegendEmail,
+                NormalizedEmail = LegendVerifiedIdentity.LegendEmail,
+                FullName = "Legend™",
+                IsActive = true
+            });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var requester = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var opened = await service.StartVerificationRequestAsync(requester);
+        var conversation = Assert.IsType<MessagingConversationDetail>(opened.Conversation);
+
+        Assert.True(opened.Succeeded);
+        Assert.Equal(MessagingConversationTypes.Group, conversation.ConversationType);
+        Assert.False(conversation.CanManageMembers);
+        Assert.Equal(3, conversation.Participants.Count);
+
+        var persisted = await db.MessageConversations.SingleAsync();
+        Assert.Equal(MessagingConversationPurposes.VerificationRequest, persisted.Purpose);
+        Assert.Equal("zac-founder-oid", persisted.OwnerUserId);
+        Assert.Equal(MessagingParticipantTypes.Agent, persisted.OwnerParticipantType);
+
+        var repeated = await service.StartVerificationRequestAsync(requester);
+        Assert.Equal(conversation.Id, Assert.IsType<MessagingConversationDetail>(repeated.Conversation).Id);
+
+        var founderDetail = await service.GetConversationAsync(
+            new MessagingActor("zac-founder-oid", MessagingParticipantTypes.Agent),
+            conversation.Id);
+        Assert.True(Assert.IsType<MessagingConversationDetail>(founderDetail.Conversation).CanManageMembers);
+    }
+
+    [Fact]
     public async Task AgentAndClient_CompleteConversationFlow_TracksBothUnreadStates()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -972,6 +1084,33 @@ public sealed class MessagingServiceTests
         Assert.Equal("Agent One", participant.Recipient!.DisplayName);
         Assert.True(globalAgent.Succeeded);
         Assert.Equal("Other Agent", globalAgent.Recipient!.DisplayName);
+    }
+
+    [Fact]
+    public async Task RecipientSearch_FindsAnAuthorizedProfileByItsUsername()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var agent = await db.AgentProfiles.SingleAsync(profile => profile.AgentUserId == "agent-1");
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            Id = Guid.NewGuid(),
+            ProfileId = agent.Id,
+            ParticipantType = MessagingParticipantTypes.Agent,
+            Username = "agent.one",
+            NormalizedUsername = "agent.one",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var recipients = await CreateService(db).ListRecipientsAsync(
+            new MessagingActor("client-1", MessagingParticipantTypes.Client),
+            "@agent.one");
+
+        var recipient = Assert.Single(recipients.Recipients);
+        Assert.Equal("agent-1", recipient.UserId);
+        Assert.Equal("agent.one", recipient.Username);
     }
 
     [Fact]

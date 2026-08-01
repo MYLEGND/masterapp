@@ -44,7 +44,11 @@ struct LegendDiscoverView: View {
                     currentIdentity: currentSession.actor.identity,
                     social: social,
                     isFollowing: route.isFollowing,
-                    isFollowRequestPending: route.isFollowRequestPending)
+                    isFollowRequestPending: route.isFollowRequestPending,
+                    journeyConnectionID: route.journeyConnectionID,
+                    disconnectConnection: { connectionID in
+                        await journeyCircles.disconnectConnectionConfirmed(id: connectionID)
+                    })
             }
             .alert(
                 store.actionFailure?.title ?? "Discover unavailable",
@@ -250,10 +254,7 @@ struct LegendDiscoverView: View {
     ) -> some View {
         LegendDiscoverResultCard(
             result: result,
-            isBusy: store.pendingRelationshipProfileIDs.contains(result.id),
-            open: { publicProfile = publicRoute(for: result) },
-            toggleFollow: { store.toggleFollow(result) },
-            requestConnection: { store.requestConnection(result) })
+            open: { publicProfile = publicRoute(for: result) })
             .onAppear {
                 if loadsMore {
                     store.loadMoreIfNeeded(currentItem: result)
@@ -275,175 +276,68 @@ struct LegendDiscoverView: View {
                 website: result.website,
                 location: result.location,
                 publicEmail: result.publicEmail,
-                isPrivate: result.isPrivate),
+                isPrivate: result.isPrivate,
+                isVerified: result.isVerified,
+                roleLabel: result.identity.participantType == .agent
+                    ? result.roleLabel
+                    : nil),
             isFollowing: result.relationship.followedByCurrentActor,
             isFollowRequestPending: result.relationship.followRequestPending ?? false)
     }
 }
 
-/// One directory row: identity, why they are relevant, and the two relationship
-/// actions Legend supports (a one-way follow and a two-way connection request).
+/// One compact directory row. Relationship changes happen from the opened profile,
+/// so this surface stays focused on discovery and never owns a second control path.
 private struct LegendDiscoverResultCard: View {
     let result: MobileDiscoveryResult
-    let isBusy: Bool
     let open: () -> Void
-    let toggleFollow: () -> Void
-    let requestConnection: () -> Void
 
     var body: some View {
-        LegendNextSurface {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                Button(action: open) {
-                    HStack(alignment: .top, spacing: LegendNextSpacing.xs) {
-                        LegendProfileAvatar(
-                            avatar: result.avatar,
-                            displayName: result.displayName,
-                            size: 52)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(result.displayName)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(LegendNextColor.textPrimary)
-                                .lineLimit(1)
-
-                            if let username = result.username, !username.isEmpty {
-                                Text("@\(username)")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(LegendNextColor.gold)
-                            }
-
-                            if result.identity.participantType == .agent {
-                                Text("Legend Agent")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(LegendNextColor.gold)
-                            }
-
-                            if let supporting = result.supportingLine {
-                                Text(supporting)
-                                    .font(LegendNextTypography.supporting)
-                                    .foregroundStyle(LegendNextColor.textSecondary)
-                                    .lineLimit(2)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-
-                            if let location = result.location,
-                               !location.isEmpty,
-                               result.supportingLine != location {
-                                Label(location, systemImage: "mappin.and.ellipse")
-                                    .font(.caption)
-                                    .foregroundStyle(LegendNextColor.textSecondary)
-                                    .lineLimit(1)
-                            }
-
-                            relationshipCaption
-                        }
-
-                        Spacer(minLength: LegendNextSpacing.xs)
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(LegendNextColor.textSecondary.opacity(0.5))
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open \(result.displayName)'s profile")
-
-                if !highlights.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach(highlights, id: \.self) { highlight in
-                                Text(highlight)
-                                    .font(.caption.weight(.medium))
-                                    .padding(.horizontal, 9)
-                                    .padding(.vertical, 5)
-                                    .background(LegendNextColor.surfaceInset, in: Capsule())
-                            }
-                        }
-                    }
-                }
-
-                actionRow
+        LegendContactCard(
+            displayName: result.displayName,
+            nameStatus: result.relationship.connectionStatus == .accepted
+                ? "Connected"
+                : nil,
+            subtitle: subtitle,
+            detail: detail,
+            isVerified: result.isVerified == true,
+            avatar: {
+                LegendProfileAvatar(
+                    avatar: result.avatar,
+                    displayName: result.displayName,
+                    size: 46)
+            },
+            action: {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(LegendNextColor.textTertiary)
             }
-        }
+        )
+        .onTapGesture(perform: open)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Open \(result.displayName)'s profile")
     }
 
-    @ViewBuilder
-    private var relationshipCaption: some View {
+    private var subtitle: String? {
+        if result.identity.participantType == .agent {
+            return result.roleLabel
+        }
+
+        guard let username = result.username?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !username.isEmpty else {
+            return nil
+        }
+        return "@\(username)"
+    }
+
+    private var detail: String? {
         if result.relationship.followsCurrentActor {
-            Text(result.relationship.followedByCurrentActor
+            return result.relationship.followedByCurrentActor
                 ? "You follow each other"
-                : "Follows you")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(LegendNextColor.gold)
+                : "Follows you"
         }
-    }
-
-    private var highlights: [String] {
-        Array((result.goals + result.interests + result.circleCodes).prefix(3))
-    }
-
-    @ViewBuilder
-    private var actionRow: some View {
-        HStack(spacing: LegendNextSpacing.xs) {
-            Spacer(minLength: 0)
-
-            if result.relationship.canFollow {
-                Button(action: toggleFollow) {
-                    Label(
-                        followTitle,
-                        systemImage: result.relationship.followedByCurrentActor
-                            ? "checkmark"
-                            : result.relationship.followRequestPending == true ? "clock" : "plus")
-                }
-                .buttonStyle(LegendNextButtonStyle(
-                    kind: result.relationship.followedByCurrentActor || result.relationship.followRequestPending == true ? .secondary : .primary,
-                    isFullWidth: false,
-                    controlHeight: 34))
-                .disabled(isBusy)
-                .accessibilityLabel(result.relationship.followedByCurrentActor
-                    ? "Unfollow \(result.displayName)"
-                    : result.relationship.followRequestPending == true
-                        ? "Cancel your follow request to \(result.displayName)"
-                        : "Follow \(result.displayName)")
-            }
-
-            connectionControl
-        }
-    }
-
-    private var followTitle: String {
-        if result.relationship.followedByCurrentActor { return "Following" }
-        if result.relationship.followRequestPending == true { return "Requested" }
-        return result.isPrivate == true ? "Request" : "Follow"
-    }
-
-    @ViewBuilder
-    private var connectionControl: some View {
-        switch result.relationship.connectionStatus {
-        case .none where result.relationship.canRequestConnection:
-            Button(action: requestConnection) {
-                Label("Connect", systemImage: "person.badge.plus")
-            }
-            .buttonStyle(LegendNextButtonStyle(
-                kind: .secondary,
-                isFullWidth: false,
-                controlHeight: 34))
-            .disabled(isBusy)
-            .accessibilityLabel("Request a connection with \(result.displayName)")
-
-        case .pending:
-            Label("Request sent", systemImage: "clock")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(LegendNextColor.textSecondary)
-
-        case .accepted:
-            Label("Connected", systemImage: "checkmark.seal.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(LegendNextColor.success)
-
-        default:
-            EmptyView()
-        }
+        return result.identity.participantType == .agent
+            ? nil
+            : result.supportingLine
     }
 }

@@ -71,9 +71,9 @@ struct URLSessionMobileDiscoveryAPI: MobileDiscoveryAPI {
     }
 }
 
-/// Drives the Discover surface: debounced server-side search, infinite scroll, and
-/// relationship actions. Results always come from the server; this store never
-/// filters or ranks locally, so what the user sees is what the directory holds.
+/// Drives the Discover surface: debounced server-side search and infinite scroll.
+/// Relationship changes remain on the opened public profile, which is their single
+/// interaction authority.
 @MainActor
 final class MobileDiscoveryStore: ObservableObject {
     @Published var searchText = "" {
@@ -92,7 +92,6 @@ final class MobileDiscoveryStore: ObservableObject {
     @Published private(set) var sortMode: MobileDiscoverySortMode = .recommended
     @Published private(set) var recommendations: [MobileDiscoveryResult] = []
     @Published private(set) var actionFailure: UserFacingFailure?
-    @Published private(set) var pendingRelationshipProfileIDs: Set<UUID> = []
 
     /// How long to wait after the last keystroke before asking the server.
     private static let searchDebounce = Duration.milliseconds(300)
@@ -100,8 +99,6 @@ final class MobileDiscoveryStore: ObservableObject {
     private static let recommendationPageSize = 6
 
     private let api: any MobileDiscoveryAPI
-    private let social: MobileSocialStore
-    private let journeyCircles: MobileJourneyCirclesStore
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
 
@@ -112,14 +109,10 @@ final class MobileDiscoveryStore: ObservableObject {
 
     init(
         api: any MobileDiscoveryAPI,
-        social: MobileSocialStore,
-        journeyCircles: MobileJourneyCirclesStore,
         accessTokenProvider: @escaping () async throws -> String,
         diagnostics: LegendDiagnostics
     ) {
         self.api = api
-        self.social = social
-        self.journeyCircles = journeyCircles
         self.accessTokenProvider = accessTokenProvider
         self.diagnostics = diagnostics
     }
@@ -150,76 +143,6 @@ final class MobileDiscoveryStore: ObservableObject {
 
     func dismissActionFailure() {
         actionFailure = nil
-    }
-
-    // ------------------------------------------------------------ relationships
-
-    /// Follows or unfollows through the shared social service, then reconciles this
-    /// list with the state the server confirmed.
-    func toggleFollow(_ result: MobileDiscoveryResult) {
-        guard result.relationship.canFollow,
-              !pendingRelationshipProfileIDs.contains(result.id) else {
-            return
-        }
-
-        pendingRelationshipProfileIDs.insert(result.id)
-        let wasFollowing = result.relationship.followedByCurrentActor
-
-        Task { [weak self] in
-            guard let self else { return }
-            defer { self.pendingRelationshipProfileIDs.remove(result.id) }
-
-            let confirmed = await self.social.setFollow(
-                userID: result.identity.userID,
-                participantType: result.identity.participantType,
-                isFollowing: !wasFollowing)
-
-            guard let confirmed else {
-                self.actionFailure = self.social.actionFailure
-                    ?? UserFacingFailure(
-                        title: "Could not update your connection",
-                        message: "Please try again.",
-                        correlationID: nil)
-                return
-            }
-
-            self.applyRelationship(
-                profileID: result.id,
-                transform: {
-                    $0.replacing(
-                        followedByCurrentActor: confirmed.isFollowing,
-                        followRequestPending: confirmed.hasPendingRequest)
-                })
-        }
-    }
-
-    /// Sends a Journey Circles connection request through the existing consented
-    /// two-way flow. Discover does not invent a second relationship primitive.
-    func requestConnection(_ result: MobileDiscoveryResult) {
-        guard result.relationship.canRequestConnection,
-              !pendingRelationshipProfileIDs.contains(result.id) else {
-            return
-        }
-
-        pendingRelationshipProfileIDs.insert(result.id)
-
-        Task { [weak self] in
-            guard let self else { return }
-            defer { self.pendingRelationshipProfileIDs.remove(result.id) }
-
-            let sent = await self.journeyCircles.requestConnectionConfirmed(to: result.id)
-            if sent {
-                self.applyRelationship(
-                    profileID: result.id,
-                    transform: { $0.replacing(connectionStatus: .pending) })
-            } else {
-                self.actionFailure = self.journeyCircles.actionFailure
-                    ?? UserFacingFailure(
-                        title: "Could not send the request",
-                        message: "Please try again.",
-                        correlationID: nil)
-            }
-        }
     }
 
     func profile(for clientProfileID: UUID) async -> MobileDiscoveryProfile? {
@@ -356,24 +279,6 @@ final class MobileDiscoveryStore: ObservableObject {
     private var hasLoadedResults: Bool {
         if case .loaded = state { return true }
         return false
-    }
-
-    private func applyRelationship(
-        profileID: UUID,
-        transform: (MobileDiscoveryRelationship) -> MobileDiscoveryRelationship
-    ) {
-        recommendations = recommendations.map { result in
-            result.id == profileID
-                ? result.replacing(relationship: transform(result.relationship))
-                : result
-        }
-
-        guard case .loaded(let current) = state else { return }
-        state = .loaded(current.map { result in
-            result.id == profileID
-                ? result.replacing(relationship: transform(result.relationship))
-                : result
-        })
     }
 
     private func failure(for error: Error, title: String) -> UserFacingFailure {

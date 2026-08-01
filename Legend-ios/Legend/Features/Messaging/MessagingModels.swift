@@ -4,8 +4,9 @@ struct MessagingParticipant: Codable, Equatable, Identifiable, Sendable {
     let identity: LogicalParticipantIdentity
     let profileID: String
     let displayName: String
-    let title: String?
+    let roleLabel: String?
     let avatar: ProfileAvatar?
+    var isVerified: Bool? = nil
 
     var id: LogicalParticipantIdentity { identity }
 
@@ -13,13 +14,15 @@ struct MessagingParticipant: Codable, Equatable, Identifiable, Sendable {
         case identity
         case profileID = "profileId"
         case displayName
-        case title
+        case roleLabel
         case avatar
+        case isVerified
     }
 }
 
 struct ConversationSummary: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
+    let conversationType: String
     let counterparty: MessagingParticipant
     let title: String
     let lastMessagePreview: String?
@@ -29,6 +32,7 @@ struct ConversationSummary: Codable, Equatable, Identifiable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id
+        case conversationType
         case title
         case counterparty
         case lastMessagePreview
@@ -40,11 +44,13 @@ struct ConversationSummary: Codable, Equatable, Identifiable, Sendable {
 
 struct ConversationDetail: Codable, Equatable, Sendable {
     let id: UUID
+    let conversationType: String
     let title: String
     let participants: [MessagingParticipant]
     let messages: [ConversationMessage]
     let isMuted: Bool
     let isClosed: Bool
+    let canManageMembers: Bool
 }
 
 struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
@@ -139,10 +145,11 @@ struct MessagingRecipient: Codable, Equatable, Identifiable, Sendable {
     let profileID: String
     let displayName: String
     let email: String?
-    let title: String?
+    let roleLabel: String?
     let relationshipLabel: String?
     let existingConversationID: UUID?
     let avatar: ProfileAvatar?
+    var isVerified: Bool? = nil
 
     var id: LogicalParticipantIdentity { identity }
 
@@ -151,9 +158,10 @@ struct MessagingRecipient: Codable, Equatable, Identifiable, Sendable {
         case profileID = "profileId"
         case displayName
         case email
-        case title
+        case roleLabel
         case relationshipLabel
         case avatar
+        case isVerified
         case existingConversationID = "existingConversationId"
     }
 }
@@ -185,6 +193,26 @@ struct StartConversationRequest: Encodable, Sendable {
     }
 }
 
+struct MessagingGroupMemberRequest: Encodable, Sendable {
+    let userID: String
+    let participantType: ParticipantType
+
+    private enum CodingKeys: String, CodingKey {
+        case userID = "userId"
+        case participantType
+    }
+}
+
+struct CreateMessagingGroupRequest: Encodable, Sendable {
+    let subject: String
+    let participants: [MessagingGroupMemberRequest]
+    let initialMessageBody: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case subject, participants, initialMessageBody
+    }
+}
+
 protocol MessagingAPI: Sendable {
     func conversations(accessToken: String) async throws -> [ConversationSummary]
     func recipients(
@@ -193,6 +221,17 @@ protocol MessagingAPI: Sendable {
         accessToken: String
     ) async throws -> [MessagingRecipient]
     func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail
+    func createGroup(
+        subject: String,
+        recipients: [MessagingRecipient],
+        accessToken: String
+    ) async throws -> ConversationDetail
+    func startVerificationRequest(accessToken: String) async throws -> ConversationDetail
+    func addGroupParticipant(
+        conversationID: UUID,
+        recipient: MessagingRecipient,
+        accessToken: String
+    ) async throws
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage]
     func send(
@@ -210,6 +249,28 @@ protocol MessagingAPI: Sendable {
     func markRead(conversationID: UUID, accessToken: String) async throws
 }
 
+extension MessagingAPI {
+    func createGroup(
+        subject: String,
+        recipients: [MessagingRecipient],
+        accessToken: String
+    ) async throws -> ConversationDetail {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func startVerificationRequest(accessToken: String) async throws -> ConversationDetail {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func addGroupParticipant(
+        conversationID: UUID,
+        recipient: MessagingRecipient,
+        accessToken: String
+    ) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+}
+
 struct MobileContractUnavailableMessagingAPI: MessagingAPI {
     func conversations(accessToken: String) async throws -> [ConversationSummary] {
         throw MobileMessagingContractError.unavailable
@@ -224,6 +285,18 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
     }
 
     func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func createGroup(subject: String, recipients: [MessagingRecipient], accessToken: String) async throws -> ConversationDetail {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func startVerificationRequest(accessToken: String) async throws -> ConversationDetail {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func addGroupParticipant(conversationID: UUID, recipient: MessagingRecipient, accessToken: String) async throws {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -309,6 +382,52 @@ struct URLSessionMessagingAPI: MessagingAPI {
             idempotencyKey: UUID(),
             headers: participantHeader,
             response: ConversationDetail.self)
+    }
+
+    func createGroup(
+        subject: String,
+        recipients: [MessagingRecipient],
+        accessToken: String
+    ) async throws -> ConversationDetail {
+        try await client.post(
+            "/api/v1/mobile/messaging/groups",
+            body: CreateMessagingGroupRequest(
+                subject: subject,
+                participants: recipients.map {
+                    MessagingGroupMemberRequest(
+                        userID: $0.identity.userID,
+                        participantType: $0.identity.participantType)
+                },
+                initialMessageBody: nil),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader,
+            response: ConversationDetail.self)
+    }
+
+    func startVerificationRequest(accessToken: String) async throws -> ConversationDetail {
+        try await client.post(
+            "/api/v1/mobile/messaging/verification-requests",
+            body: EmptyMobileRequest(),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader,
+            response: ConversationDetail.self)
+    }
+
+    func addGroupParticipant(
+        conversationID: UUID,
+        recipient: MessagingRecipient,
+        accessToken: String
+    ) async throws {
+        try await client.post(
+            "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/participants",
+            body: MessagingGroupMemberRequest(
+                userID: recipient.identity.userID,
+                participantType: recipient.identity.participantType),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader)
     }
 
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail {

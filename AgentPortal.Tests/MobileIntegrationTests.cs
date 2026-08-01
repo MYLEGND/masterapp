@@ -21,6 +21,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
@@ -737,6 +738,61 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileAccount_UsernameAllowsInitialReservationThenOnlyTwoChangesPerCalendarMonth()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "username-limit-client",
+            FirstName = "Legend",
+            LastName = "Member",
+            Email = "member@example.test",
+            Phone = "555-0100"
+        };
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var controller = CreateAccountController(db, Principal(client.ClientUserId));
+        controller.HttpContext.Request.Headers[MobileApiAuthorization.ParticipantTypeHeader] = MessagingParticipantTypes.Client;
+
+        async Task<MobileAccountProfile> SaveUsername(string username)
+        {
+            var result = await controller.Update(
+                new MobileAccountUpdateRequest(
+                    "Legend Member",
+                    "555-0100",
+                    null,
+                    null,
+                    Username: username),
+                CancellationToken.None);
+            return Assert.IsType<OkObjectResult>(result).Value as MobileAccountProfile
+                ?? throw new Xunit.Sdk.XunitException("Expected the mobile account profile.");
+        }
+
+        var reserved = await SaveUsername("legend.member");
+        var firstRename = await SaveUsername("legend.member.one");
+        var secondRename = await SaveUsername("legend.member.two");
+        var blocked = await controller.Update(
+            new MobileAccountUpdateRequest(
+                "Legend Member",
+                "555-0100",
+                null,
+                null,
+                Username: "legend.member.three"),
+            CancellationToken.None);
+
+        Assert.Equal(2, reserved.UsernameChangesRemaining);
+        Assert.Equal(1, firstRename.UsernameChangesRemaining);
+        Assert.Equal(0, secondRename.UsernameChangesRemaining);
+        Assert.Equal(400, Assert.IsType<ObjectResult>(blocked).StatusCode);
+
+        var settings = await db.MobileProfileSettings.SingleAsync();
+        Assert.Equal("legend.member.two", settings.NormalizedUsername);
+        Assert.Equal(2, settings.UsernameChangeCount);
+    }
+
+    [Fact]
     public async Task MobileJourneyCircles_ProjectsAClientAvatarOnlyFromTheTypedClientProfile()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -1363,8 +1419,7 @@ public sealed class MobileIntegrationTests
             messaging,
             attachmentStorage ?? new Mock<IMessageAttachmentStorage>(MockBehavior.Strict).Object,
             realtimePublisher ?? new Mock<IMessagingRealtimePublisher>(MockBehavior.Loose).Object,
-            profiles,
-            db)
+            profiles)
         {
             ControllerContext = new ControllerContext
             {

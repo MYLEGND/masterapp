@@ -217,7 +217,7 @@ final class MobileNativeContractTests: XCTestCase {
         let accountUpdate = MobileAccountUpdate(
             displayName: "Client Identity",
             phone: "555-0100",
-            title: nil,
+            roleLabel: nil,
             shortBio: nil,
             username: "client.legend",
             bio: "Building a legacy.",
@@ -337,6 +337,50 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertFalse(store.didClear)
         let requestedRoles = await service.requestedRoles()
         XCTAssertEqual(requestedRoles, [.agent, .client])
+    }
+
+    func testFaceIDRestoreReopensTheLastDualRoleAccountWithoutRoleSelection() async throws {
+        let cache = LegendLaunchCache(
+            directoryName: "MobileNativeContractTests-\(UUID().uuidString)")
+        defer { cache.clear() }
+
+        let cachedActor = try MobileActor(
+            identity: LogicalParticipantIdentity(
+                userID: "shared-entra-oid",
+                participantType: .agent),
+            profileID: "00000000-0000-0000-0000-000000000001",
+            displayName: "Agent Account",
+            avatar: nil)
+        cache.writeSession(MobileSessionCacheEntry(
+            actor: cachedActor,
+            capabilities: ["messaging"],
+            permittedParticipantTypes: [.agent, .client],
+            cachedUtc: Date()))
+
+        let store = InMemoryTokenStore(
+            storedTokens: OAuthTokenSet(
+                accessToken: "stored-access-token",
+                refreshToken: "stored-refresh-token",
+                expiresAt: .distantFuture))
+        let service = try DualRoleSessionService()
+        let coordinator = MobileSessionCoordinator(
+            configuration: completeConfiguration(),
+            tokenStore: store,
+            authorizer: TestAuthorizer(),
+            tokenExchanger: TestTokenExchanger(),
+            sessionService: service,
+            launchCache: cache,
+            biometricSecurity: AcceptingBiometricSecurity())
+
+        coordinator.restore()
+
+        let restored = try await waitForAuthenticatedSession(
+            coordinator,
+            participantType: .agent)
+        XCTAssertEqual(restored.actor.displayName, "Agent Account")
+        let requestedRoles = await service.requestedRoles()
+        XCTAssertEqual(requestedRoles, [.agent])
+        XCTAssertFalse(store.didClear)
     }
 
     func testMessagingStoreTransitionsFromLoadingToLoaded() async {
@@ -607,6 +651,18 @@ private final class InMemoryTokenStore: SecureTokenStoring, @unchecked Sendable 
     }
 }
 
+@MainActor
+private final class AcceptingBiometricSecurity: MobileBiometricSessionSecuring {
+    var isAvailable: Bool { true }
+
+    func hasPrompted(for identity: LogicalParticipantIdentity) -> Bool { true }
+    func markPrompted(for identity: LogicalParticipantIdentity) {}
+    func isEnabled(for identity: LogicalParticipantIdentity) -> Bool { true }
+    func disable(for identity: LogicalParticipantIdentity) {}
+    func enable(for identity: LogicalParticipantIdentity) async -> Bool { true }
+    func authenticate() async -> Bool { true }
+}
+
 private enum SessionSwitchTestError: Error {
     case expectedSessionWasNotReached
 }
@@ -778,7 +834,7 @@ private final class TypedClientRecipientMessagingAPI: MessagingAPI, @unchecked S
                 profileID: "00000000-0000-0000-0000-000000000111",
                 displayName: "Agent identity",
                 email: "agent@example.test",
-                title: nil,
+                roleLabel: nil,
                 relationshipLabel: "Company agent",
                 existingConversationID: nil,
                 avatar: nil),
@@ -787,7 +843,7 @@ private final class TypedClientRecipientMessagingAPI: MessagingAPI, @unchecked S
                 profileID: clientProfileID.uuidString,
                 displayName: "Client identity",
                 email: "client@example.test",
-                title: nil,
+                roleLabel: nil,
                 relationshipLabel: "Active client",
                 existingConversationID: nil,
                 avatar: nil)
@@ -798,11 +854,25 @@ private final class TypedClientRecipientMessagingAPI: MessagingAPI, @unchecked S
         startedRecipient = recipient
         return ConversationDetail(
             id: UUID(),
+            conversationType: "ClientAgent",
             title: recipient.displayName,
             participants: [],
             messages: [],
             isMuted: false,
-            isClosed: false)
+            isClosed: false,
+            canManageMembers: false)
+    }
+
+    func createGroup(subject: String, recipients: [MessagingRecipient], accessToken: String) async throws -> ConversationDetail {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func startVerificationRequest(accessToken: String) async throws -> ConversationDetail {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func addGroupParticipant(conversationID: UUID, recipient: MessagingRecipient, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
     }
 
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }

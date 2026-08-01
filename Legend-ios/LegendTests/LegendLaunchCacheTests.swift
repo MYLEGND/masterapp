@@ -59,6 +59,34 @@ final class LegendLaunchCacheTests: XCTestCase {
         XCTAssertNil(cache.readSession(), "The cached identity must not survive a rejection")
     }
 
+    func testNinetyDayCheckpointClearsTheStoredSessionAndRequiresInteractiveSignIn() throws {
+        let store = MutableTokenStore(tokens: OAuthTokenSet(
+            accessToken: "access",
+            refreshToken: "refresh",
+            expiresAt: .distantFuture,
+            interactiveSignInAt: Date().addingTimeInterval(-60 * 60 * 24 * 90)))
+        let cache = InMemoryLaunchCache()
+        cache.writeSession(MobileSessionCacheEntry(
+            actor: try Self.cachedActor(),
+            capabilities: ["messaging"],
+            permittedParticipantTypes: [.client],
+            cachedUtc: Date()))
+        let coordinator = MobileSessionCoordinator(
+            configuration: Self.readyConfiguration(),
+            tokenStore: store,
+            authorizer: NeverAuthorizer(),
+            tokenExchanger: NeverExchanger(),
+            sessionService: HangingSessionService(),
+            diagnostics: LegendDiagnostics(),
+            launchCache: cache)
+
+        coordinator.restore()
+
+        XCTAssertEqual(coordinator.state, .signedOut)
+        XCTAssertNil(try store.read())
+        XCTAssertNil(cache.readSession())
+    }
+
     /// An expired cache is not trusted; the app resolves the session over the network
     /// before showing a shell.
     func testStaleCachedSessionIsIgnored() throws {
@@ -67,7 +95,7 @@ final class LegendLaunchCacheTests: XCTestCase {
             actor: try Self.cachedActor(),
             capabilities: [],
             permittedParticipantTypes: [.client],
-            cachedUtc: Date().addingTimeInterval(-60 * 60 * 24 * 30)))
+            cachedUtc: Date().addingTimeInterval(-60 * 60 * 24 * 91)))
 
         XCTAssertNil(cache.readSession())
     }

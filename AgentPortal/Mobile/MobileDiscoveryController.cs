@@ -1,9 +1,12 @@
 using Domain.Messaging;
 using Domain.Social;
+using Domain.Entities;
+using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Mobile;
 
@@ -25,17 +28,20 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
     private readonly ISocialDiscoveryService _discovery;
     private readonly ISocialFeedService _social;
     private readonly IMessagingProfileImageResolver _profiles;
+    private readonly MasterAppDbContext? _db;
 
     public MobileDiscoveryController(
         IMobileActorResolver actorResolver,
         ISocialDiscoveryService discovery,
         ISocialFeedService social,
-        IMessagingProfileImageResolver profiles)
+        IMessagingProfileImageResolver profiles,
+        MasterAppDbContext? db = null)
         : base(actorResolver)
     {
         _discovery = discovery;
         _social = social;
         _profiles = profiles;
+        _db = db;
     }
 
     [HttpGet("search")]
@@ -179,7 +185,32 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
             result.Bio,
             result.Website,
             result.PublicEmail,
-            result.IsPrivate);
+            result.IsPrivate,
+            await IsVerifiedAgentProfileAsync(
+                result.ParticipantType,
+                result.ClientProfileId,
+                cancellationToken),
+            result.RoleLabel);
+    }
+
+    private async Task<bool> IsVerifiedAgentProfileAsync(
+        string participantType,
+        Guid profileId,
+        CancellationToken cancellationToken)
+    {
+        if (_db is null ||
+            profileId == Guid.Empty ||
+            !string.Equals(participantType, MessagingParticipantTypes.Agent, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var email = await _db.AgentProfiles
+            .AsNoTracking()
+            .Where(profile => profile.Id == profileId && profile.IsActive)
+            .Select(profile => profile.NormalizedEmail ?? profile.AgentUpn)
+            .SingleOrDefaultAsync(cancellationToken);
+        return LegendVerifiedIdentity.IsVerifiedAgentEmail(email);
     }
 
     private IActionResult DiscoveryFailure(string? errorCode, string? errorMessage)
@@ -225,7 +256,9 @@ public sealed record MobileDiscoveryResultDto(
     string? Bio = null,
     string? Website = null,
     string? PublicEmail = null,
-    bool IsPrivate = false);
+    bool IsPrivate = false,
+    bool IsVerified = false,
+    string? RoleLabel = null);
 
 public sealed record MobileDiscoveryPageDto(
     IReadOnlyList<MobileDiscoveryResultDto> Results,

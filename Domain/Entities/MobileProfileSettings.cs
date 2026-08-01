@@ -14,6 +14,11 @@ public sealed class MobileProfileSettings
 
     public string? Username { get; set; }
     public string? NormalizedUsername { get; set; }
+    /// Calendar month and count for member-initiated username changes. The first
+    /// username reservation is not a change; subsequent changes are capped by the
+    /// mobile profile authority at two per calendar month.
+    public DateTime? UsernameChangeMonthUtc { get; set; }
+    public int UsernameChangeCount { get; set; }
     public string? Bio { get; set; }
     public string? Website { get; set; }
     public string? Location { get; set; }

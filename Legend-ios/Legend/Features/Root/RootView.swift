@@ -8,13 +8,13 @@ struct RootView: View {
         Group {
             switch session.state {
             case .loading:
-                LegendLaunchSkeleton()
+                LegendSessionProgressView()
             case .contractUnavailable(let validation):
                 ConfigurationStateView(validation: validation)
             case .signedOut:
                 SignInView()
             case .authenticating:
-                LegendLaunchSkeleton()
+                LegendSessionProgressView()
             case .roleSelection(let selection):
                 RoleSelectionView(selection: selection)
             case .authenticated(let currentSession):
@@ -31,6 +31,25 @@ struct RootView: View {
         .onChange(of: session.state.diagnosticName) { _, _ in
             recordSelectedBranch()
         }
+        .alert(
+            "Use Face ID?",
+            isPresented: Binding(
+                get: { session.isOfferingBiometricSignIn },
+                set: { isPresented in
+                    if !isPresented {
+                        session.declineBiometricSignInEnrollment()
+                    }
+                })
+        ) {
+            Button("Enable Face ID") {
+                session.enableBiometricSignInFromEnrollment()
+            }
+            Button("Not now", role: .cancel) {
+                session.declineBiometricSignInEnrollment()
+            }
+        } message: {
+            Text("Optionally use Face ID to protect this Legend account on this device. You can change this any time in Profile settings.")
+        }
         // Legend's standard canvas is white. Discover opts into its blue
         // treatment locally, making that choice explicit rather than allowing
         // each individual page to choose a competing color scheme.
@@ -46,6 +65,16 @@ struct RootView: View {
     }
 }
 
+private struct LegendSessionProgressView: View {
+    var body: some View {
+        ProgressView()
+            .tint(LegendNextColor.navyElevated)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(LegendNextCanvas())
+            .accessibilityLabel("Securing your Legend session")
+    }
+}
+
 private struct RoleSelectionView: View {
     let selection: MobileRoleSelection
     @EnvironmentObject private var session: MobileSessionCoordinator
@@ -57,12 +86,8 @@ private struct RoleSelectionView: View {
                     LegendNextHero(
                         eyebrow: "Legend membership",
                         title: "Choose your experience",
-                        detail: "Your account includes every authorized Legend workspace."
-                    ) {
-                        LegendBrandLogo(maximumWidth: 86)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                            .accessibilityLabel("Legend")
-                    }
+                        detail: "Choose the account you want to use. Legend will reopen this account next time."
+                    )
 
                     LegendNextSurface(style: .elevated) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
@@ -210,71 +235,37 @@ private struct SignInView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: LegendNextSpacing.lg) {
-                    Spacer(minLength: LegendNextSpacing.section)
+            VStack(spacing: LegendNextSpacing.lg) {
+                Spacer(minLength: LegendNextSpacing.section)
 
-                    LegendNextSurface(
-                        style: .navy,
-                        cornerRadius: LegendNextRadius.hero,
-                        padding: LegendNextSpacing.xxl
-                    ) {
-                        VStack(spacing: LegendNextSpacing.md) {
-                            Text("LEGEND")
-                                .font(.system(size: 13, weight: .bold, design: .default))
-                                .tracking(4.2)
-                                .foregroundStyle(LegendNextColor.goldBright)
-
-                            Image("LegendLogo")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxWidth: 154)
-                                .accessibilityLabel("Legend")
-
-                            Text("Your legacy, in motion.")
-                                .font(LegendNextTypography.hero)
-                                .foregroundStyle(.white)
-                                .multilineTextAlignment(.center)
-
-                            Text("Life, finances, protection, and community—elevated in one secure experience.")
-                                .font(LegendNextTypography.supporting)
-                                .foregroundStyle(.white.opacity(0.74))
-                                .multilineTextAlignment(.center)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-
-                    LegendNextSurface(style: .elevated) {
-                        VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                            Label("Private member access", systemImage: "lock.shield.fill")
-                                .font(LegendNextTypography.label)
-                                .foregroundStyle(LegendNextColor.gold)
-
-                            Text("Continue securely to your personalized Legend workspace.")
-                                .font(LegendNextTypography.supporting)
-                                .foregroundStyle(LegendNextColor.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-
-                            Button("Continue securely") {
-                                session.signIn()
-                            }
-                            .buttonStyle(LegendNextButtonStyle(kind: .primary))
-                            .accessibilityHint("Opens secure sign-in.")
-                        }
-                    }
-
-                    Text("Built for the life you are leading and the legacy you are building.")
-                        .font(LegendNextTypography.caption)
+                VStack(spacing: LegendNextSpacing.sm) {
+                    Text("Secure sign in")
+                        .font(LegendNextTypography.hero)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                    Text("Verify your Legend account to continue.")
+                        .font(LegendNextTypography.supporting)
                         .foregroundStyle(LegendNextColor.textSecondary)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, LegendNextSpacing.xl)
                 }
-                .frame(maxWidth: 520)
-                .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-                .padding(.vertical, LegendNextSpacing.xxl)
-                .frame(maxWidth: .infinity, minHeight: 640)
+
+                Button("Sign in securely") {
+                    session.signIn()
+                }
+                .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                .accessibilityHint("Opens secure Legend sign-in and verification.")
+
+                Text("Face ID is optional and can be enabled after sign in in Profile settings.")
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, LegendNextSpacing.xl)
+
+                Spacer()
             }
+            .frame(maxWidth: 520)
+            .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+            .padding(.vertical, LegendNextSpacing.xxl)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
         }
@@ -320,7 +311,7 @@ private struct AuthenticatedHomeView: View {
         Group {
             switch bootstrap.state {
             case .idle, .loading:
-                LegendLaunchSkeleton()
+                LegendSessionProgressView()
             case .ready, .partiallyReady:
                 LegendApplicationShell(
                     currentSession: currentSession,

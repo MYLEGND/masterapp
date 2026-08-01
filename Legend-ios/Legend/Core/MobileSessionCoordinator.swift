@@ -1,6 +1,7 @@
 import AuthenticationServices
 import Combine
 import Foundation
+import LocalAuthentication
 
 struct MobileSession: Equatable, Sendable {
     let actor: MobileActor
@@ -38,7 +39,23 @@ struct MobileRoleSelection: Equatable, Sendable {
 
 protocol MobileSessionServicing: Sendable {
     func bootstrap(accessToken: String) async throws -> MobileBootstrapResponse
+    func bootstrap(
+        accessToken: String,
+        preferredParticipantType: ParticipantType?
+    ) async throws -> MobileBootstrapResponse
     func selectRole(_ participantType: ParticipantType, accessToken: String) async throws -> MobileRoleSelectionResponse
+}
+
+extension MobileSessionServicing {
+    /// Existing test and contract implementations that only need the role-neutral
+    /// session endpoint stay valid. The concrete API provides its own implementation
+    /// and receives dynamic dispatch through this protocol requirement.
+    func bootstrap(
+        accessToken: String,
+        preferredParticipantType: ParticipantType?
+    ) async throws -> MobileBootstrapResponse {
+        try await bootstrap(accessToken: accessToken)
+    }
 }
 
 enum MobileSessionState: Equatable {
@@ -60,6 +77,7 @@ struct UserFacingFailure: Equatable {
 @MainActor
 final class MobileSessionCoordinator: ObservableObject {
     @Published private(set) var state: MobileSessionState = .loading
+    @Published private(set) var isOfferingBiometricSignIn = false
 
     private let configuration: MobileConfiguration
     private let tokenStore: any SecureTokenStoring
@@ -67,6 +85,7 @@ final class MobileSessionCoordinator: ObservableObject {
     private let tokenExchanger: any OAuthTokenExchanging
     private let diagnostics: LegendDiagnostics
     private let sessionService: (any MobileSessionServicing)?
+    private let biometricSecurity: any MobileBiometricSessionSecuring
     let launchCache: any LegendLaunchCaching
     private var activeTokens: OAuthTokenSet?
     /// The single in-flight token refresh, shared by every concurrent caller.
@@ -87,7 +106,8 @@ final class MobileSessionCoordinator: ObservableObject {
         tokenExchanger: (any OAuthTokenExchanging)? = nil,
         sessionService: (any MobileSessionServicing)? = nil,
         diagnostics: LegendDiagnostics? = nil,
-        launchCache: (any LegendLaunchCaching)? = nil
+        launchCache: (any LegendLaunchCaching)? = nil,
+        biometricSecurity: (any MobileBiometricSessionSecuring)? = nil
     ) {
         self.configuration = configuration
         self.tokenStore = tokenStore ?? KeychainTokenStore(service: configuration.bundleIdentifier)
@@ -96,6 +116,7 @@ final class MobileSessionCoordinator: ObservableObject {
         self.sessionService = sessionService
         self.diagnostics = diagnostics ?? LegendDiagnostics()
         self.launchCache = launchCache ?? LegendLaunchCache()
+        self.biometricSecurity = biometricSecurity ?? MobileBiometricSessionSecurity()
     }
 
     func restore() {
@@ -137,36 +158,90 @@ final class MobileSessionCoordinator: ObservableObject {
             return
         }
 
-        transition(to: .loading, reason: "Stored session validation started")
+        guard !storedTokens.requiresInteractiveSignIn else {
+            endSessionForRejectedCredential(reason: "90-day interactive sign-in checkpoint reached")
+            diagnostics.record(
+                category: .authentication,
+                summary: "The 90-day mobile security checkpoint requires a fresh interactive sign-in.")
+            return
+        }
 
-        Task {
+        let cachedSession = launchCache.readSession()?.session
+        if let cachedSession,
+           biometricSecurity.isEnabled(for: cachedSession.actor.identity) {
+            transition(to: .loading, reason: "Face ID required before cached session restoration")
+            Task { [weak self] in
+                guard let self else { return }
+                guard await self.biometricSecurity.authenticate() else {
+                    self.transition(
+                        to: .failed(UserFacingFailure(
+                            title: "Face ID required",
+                            message: "Use Face ID to reopen your protected Legend session.",
+                            correlationID: nil)),
+                        reason: "Face ID did not authenticate the cached session")
+                    return
+                }
+                self.restoreStoredSession(storedTokens, cachedSession: cachedSession)
+            }
+            return
+        }
+
+        restoreStoredSession(storedTokens, cachedSession: cachedSession)
+    }
+
+    /// A returning member sees the exact last authorized account immediately. The
+    /// cached identity is only a presentation hint; the API still validates the token
+    /// and selected participant type in the background before it can persist.
+    private func restoreStoredSession(
+        _ storedTokens: OAuthTokenSet,
+        cachedSession: MobileSession?
+    ) {
+        if let cachedSession {
+            transition(to: .authenticated(cachedSession), reason: "Cached last account opened immediately")
+        } else {
+            transition(to: .loading, reason: "Stored session validation started")
+        }
+
+        Task { [weak self] in
+            guard let self else { return }
             do {
-                diagnostics.record(
+                self.diagnostics.record(
                     category: .authentication,
                     summary: "Stored mobile credential found; server session validation started.")
 
-                let tokens = try await usableTokens(from: storedTokens)
-                try await establishSession(using: tokens)
+                let tokens = try await self.usableTokens(from: storedTokens)
+                try await self.establishSession(
+                    using: tokens,
+                    preferredParticipantType: cachedSession?.actor.identity.participantType)
             } catch {
                 let apiError = error as? MobileAPIError
 
                 if apiError?.provesInvalidBearerCredential == true ||
-                    isRefreshCredentialRejected(error) {
-                    endSessionForRejectedCredential(
+                    self.isRefreshCredentialRejected(error) {
+                    self.endSessionForRejectedCredential(
                         reason: "Stored credential rejected during restore")
-                    diagnostics.record(
+                    self.diagnostics.record(
                         category: .authentication,
                         summary: "Stored mobile credential was rejected; sign-in is required again.",
                         correlationID: apiError?.correlationID)
                     return
                 }
 
-                // Preserve the secure credential for an explicit retry, but never
-                // manufacture an authenticated actor from cached identity data.
-                transition(
-                    to: .failed(failure(for: error)),
+                if cachedSession != nil {
+                    // A temporary outage must not hide the already-authorized shell.
+                    // The credential is retained and the next foreground refresh
+                    // validates it again.
+                    self.diagnostics.record(
+                        category: .authentication,
+                        summary: "Cached Legend session remains visible while server validation retries.",
+                        correlationID: apiError?.correlationID)
+                    return
+                }
+
+                self.transition(
+                    to: .failed(self.failure(for: error)),
                     reason: "Stored session could not be validated")
-                diagnostics.record(
+                self.diagnostics.record(
                     category: .authentication,
                     summary: "Server session validation could not complete; the credential was retained for retry.",
                     correlationID: apiError?.correlationID)
@@ -228,6 +303,10 @@ final class MobileSessionCoordinator: ObservableObject {
                 activeTokens = tokens
                 try await establishSession(using: tokens)
                 try tokenStore.save(tokens)
+
+                if case .authenticated(let session) = state {
+                    offerBiometricSignInIfNeeded(for: session)
+                }
 
                 diagnostics.record(
                     category: .authentication,
@@ -378,15 +457,12 @@ final class MobileSessionCoordinator: ObservableObject {
                 let tokens = try await usableTokens(from: storedTokens)
                 let response = try await mobileSessionService(apiBaseURL: apiBaseURL)
                     .selectRole(participantType, accessToken: tokens.accessToken)
-                let session = MobileSession(
-                    actor: response.actor,
-                    capabilities: ["messaging"],
-                    permittedParticipantTypes: response.permittedParticipantTypes)
-                // A role switch changes the acting identity, so the previous role's
-                // cached shell and content must not survive it.
-                launchCache.clear()
-                cacheSession(session)
-                transition(to: .authenticated(session), reason: "Mobile role selection completed")
+                let session = try activateSelectedRole(
+                    response,
+                    expectedParticipantType: participantType,
+                    clearCachedLaunch: true,
+                    reason: "Mobile role selection completed")
+                offerBiometricSignInIfNeeded(for: session)
             } catch {
                 transition(to: .failed(failure(for: error, defaultTitle: "Role selection unavailable")), reason: "Mobile role selection did not complete")
                 diagnostics.record(category: .authentication, summary: "Native mobile role selection did not complete. Failure category: \(failureCategory(for: error)).", correlationID: (error as? MobileAPIError)?.correlationID)
@@ -526,18 +602,13 @@ final class MobileSessionCoordinator: ObservableObject {
             diagnostics: diagnostics)
     }
 
-    /// Discover composes the social and Journey Circles stores so following and
-    /// connection requests keep flowing through their existing owners.
-    func makeDiscoveryStore(
-        social: MobileSocialStore,
-        journeyCircles: MobileJourneyCirclesStore
-    ) -> MobileDiscoveryStore {
+    /// Discover is read-only; relationship changes are handled by the opened
+    /// public profile through the social authority.
+    func makeDiscoveryStore() -> MobileDiscoveryStore {
         guard let apiBaseURL = configuration.apiBaseURL,
               case .authenticated(let currentSession) = state else {
             return MobileDiscoveryStore(
                 api: MobileUnavailableDiscoveryAPI(),
-                social: social,
-                journeyCircles: journeyCircles,
                 accessTokenProvider: { throw MobileAPIError.unauthorized(correlationID: nil) },
                 diagnostics: diagnostics)
         }
@@ -546,8 +617,6 @@ final class MobileSessionCoordinator: ObservableObject {
             api: URLSessionMobileDiscoveryAPI(
                 client: MobileHTTPClient(baseURL: apiBaseURL),
                 participantType: currentSession.actor.identity.participantType),
-            social: social,
-            journeyCircles: journeyCircles,
             accessTokenProvider: { [weak self] in
                 guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
                 return try await self.accessTokenForRequest()
@@ -575,11 +644,16 @@ final class MobileSessionCoordinator: ObservableObject {
             diagnostics: diagnostics)
     }
 
-    private func establishSession(using tokens: OAuthTokenSet) async throws {
+    private func establishSession(
+        using tokens: OAuthTokenSet,
+        preferredParticipantType: ParticipantType? = nil
+    ) async throws {
         guard let apiBaseURL = configuration.apiBaseURL else { throw MobileAPIError.invalidBaseURL }
         diagnostics.record(category: .authentication, summary: "Mobile session request started. Authorization header present: true.")
         let response = try await mobileSessionService(apiBaseURL: apiBaseURL)
-            .bootstrap(accessToken: tokens.accessToken)
+            .bootstrap(
+                accessToken: tokens.accessToken,
+                preferredParticipantType: preferredParticipantType)
         diagnostics.record(category: .authentication, summary: "Mobile session response decoded successfully.", correlationID: response.correlationID)
         guard response.authenticated else {
             throw MobileAPIError.unauthorized(correlationID: response.correlationID)
@@ -588,6 +662,23 @@ final class MobileSessionCoordinator: ObservableObject {
             guard !response.permittedParticipantTypes.isEmpty else {
                 throw MobileAPIError.forbidden(correlationID: response.correlationID)
             }
+
+            // A returning member has already made this choice. Some session
+            // responses intentionally remain role-neutral, so resolve the saved
+            // typed role through the same server-authorized selection endpoint
+            // instead of ever returning them to the chooser.
+            if let preferredParticipantType,
+               response.permittedParticipantTypes.contains(preferredParticipantType) {
+                let selected = try await mobileSessionService(apiBaseURL: apiBaseURL)
+                    .selectRole(preferredParticipantType, accessToken: tokens.accessToken)
+                _ = try activateSelectedRole(
+                    selected,
+                    expectedParticipantType: preferredParticipantType,
+                    clearCachedLaunch: false,
+                    reason: "Restored last selected mobile account")
+                return
+            }
+
             transition(to: .roleSelection(MobileRoleSelection(
                 permittedParticipantTypes: response.permittedParticipantTypes,
                 correlationID: response.correlationID))
@@ -604,6 +695,31 @@ final class MobileSessionCoordinator: ObservableObject {
         cacheSession(session)
         authenticationRecoveryAttempts = 0
         transition(to: .authenticated(session), reason: "Authenticated mobile session decoded")
+    }
+
+    /// Applies the single authoritative role-selection response. Manual switches
+    /// replace cached content; returning to the same stored role preserves it.
+    private func activateSelectedRole(
+        _ response: MobileRoleSelectionResponse,
+        expectedParticipantType: ParticipantType,
+        clearCachedLaunch: Bool,
+        reason: String
+    ) throws -> MobileSession {
+        guard response.actor.identity.participantType == expectedParticipantType else {
+            throw MobileAPIError.forbidden(correlationID: response.correlationID)
+        }
+
+        let session = MobileSession(
+            actor: response.actor,
+            capabilities: ["messaging"],
+            permittedParticipantTypes: response.permittedParticipantTypes)
+        if clearCachedLaunch {
+            launchCache.clear()
+        }
+        cacheSession(session)
+        authenticationRecoveryAttempts = 0
+        transition(to: .authenticated(session), reason: reason)
+        return session
     }
 
     private func accessTokenForRequest() async throws -> String {
@@ -645,9 +761,13 @@ final class MobileSessionCoordinator: ObservableObject {
         }
 
         let task = Task { () throws -> OAuthTokenSet in
-            let refreshed = try await self.tokenExchanger.refresh(
+            let refreshedResponse = try await self.tokenExchanger.refresh(
                 refreshToken: refreshToken,
                 configuration: self.configuration)
+            let refreshed = tokens.refreshed(
+                accessToken: refreshedResponse.accessToken,
+                refreshToken: refreshedResponse.refreshToken,
+                expiresAt: refreshedResponse.expiresAt)
             try self.tokenStore.save(refreshed)
             return refreshed
         }
@@ -709,6 +829,53 @@ final class MobileSessionCoordinator: ObservableObject {
 
     private func mobileSessionService(apiBaseURL: URL) -> any MobileSessionServicing {
         sessionService ?? MobileSessionAPI(client: MobileHTTPClient(baseURL: apiBaseURL))
+    }
+
+    var isBiometricSignInAvailable: Bool {
+        biometricSecurity.isAvailable
+    }
+
+    var isBiometricSignInEnabled: Bool {
+        guard case .authenticated(let session) = state else { return false }
+        return biometricSecurity.isEnabled(for: session.actor.identity)
+    }
+
+    func setBiometricSignInEnabled(_ isEnabled: Bool) {
+        guard case .authenticated(let session) = state else { return }
+        let identity = session.actor.identity
+        if !isEnabled {
+            biometricSecurity.disable(for: identity)
+            return
+        }
+
+        Task { [weak self] in
+            guard let self else { return }
+            _ = await self.biometricSecurity.enable(for: identity)
+        }
+    }
+
+    func enableBiometricSignInFromEnrollment() {
+        guard case .authenticated(let session) = state else { return }
+        isOfferingBiometricSignIn = false
+        let identity = session.actor.identity
+        Task { [weak self] in
+            guard let self else { return }
+            _ = await self.biometricSecurity.enable(for: identity)
+        }
+    }
+
+    func declineBiometricSignInEnrollment() {
+        guard case .authenticated(let session) = state else { return }
+        biometricSecurity.markPrompted(for: session.actor.identity)
+        isOfferingBiometricSignIn = false
+    }
+
+    private func offerBiometricSignInIfNeeded(for session: MobileSession) {
+        guard biometricSecurity.isAvailable,
+              !biometricSecurity.hasPrompted(for: session.actor.identity) else {
+            return
+        }
+        isOfferingBiometricSignIn = true
     }
 
     private func transition(to newState: MobileSessionState, reason: String) {
@@ -907,11 +1074,115 @@ private extension String {
     }
 }
 
+/// Device-local protection for an already-authorized Legend session. The bearer
+/// credential remains in Keychain; this only decides whether the device should ask
+/// for Face ID before reopening that member's cached shell.
+@MainActor
+protocol MobileBiometricSessionSecuring: AnyObject {
+    var isAvailable: Bool { get }
+    func hasPrompted(for identity: LogicalParticipantIdentity) -> Bool
+    func isEnabled(for identity: LogicalParticipantIdentity) -> Bool
+    func markPrompted(for identity: LogicalParticipantIdentity)
+    func disable(for identity: LogicalParticipantIdentity)
+    func enable(for identity: LogicalParticipantIdentity) async -> Bool
+    func authenticate() async -> Bool
+}
+
+@MainActor
+final class MobileBiometricSessionSecurity: MobileBiometricSessionSecuring {
+    private let defaults: UserDefaults
+    private let contextFactory: () -> LAContext
+
+    init(
+        defaults: UserDefaults = .standard,
+        contextFactory: @escaping () -> LAContext = { LAContext() }
+    ) {
+        self.defaults = defaults
+        self.contextFactory = contextFactory
+    }
+
+    var isAvailable: Bool {
+        let context = contextFactory()
+        var error: NSError?
+        return context.canEvaluatePolicy(
+            .deviceOwnerAuthenticationWithBiometrics,
+            error: &error) && context.biometryType == .faceID
+    }
+
+    func hasPrompted(for identity: LogicalParticipantIdentity) -> Bool {
+        defaults.bool(forKey: key(for: identity, suffix: "prompted"))
+    }
+
+    func isEnabled(for identity: LogicalParticipantIdentity) -> Bool {
+        defaults.bool(forKey: key(for: identity, suffix: "enabled"))
+    }
+
+    func markPrompted(for identity: LogicalParticipantIdentity) {
+        defaults.set(true, forKey: key(for: identity, suffix: "prompted"))
+    }
+
+    func disable(for identity: LogicalParticipantIdentity) {
+        markPrompted(for: identity)
+        defaults.set(false, forKey: key(for: identity, suffix: "enabled"))
+    }
+
+    func enable(for identity: LogicalParticipantIdentity) async -> Bool {
+        markPrompted(for: identity)
+        let authenticated = await evaluateFaceID()
+        defaults.set(authenticated, forKey: key(for: identity, suffix: "enabled"))
+        return authenticated
+    }
+
+    func authenticate() async -> Bool {
+        await evaluateFaceID()
+    }
+
+    private func evaluateFaceID() async -> Bool {
+        let context = contextFactory()
+        var error: NSError?
+        guard context.canEvaluatePolicy(
+            .deviceOwnerAuthenticationWithBiometrics,
+            error: &error),
+            context.biometryType == .faceID else {
+            return false
+        }
+
+        return await withCheckedContinuation { continuation in
+            context.evaluatePolicy(
+                .deviceOwnerAuthenticationWithBiometrics,
+                localizedReason: "Use Face ID to access your Legend account.") { success, _ in
+                    continuation.resume(returning: success)
+                }
+        }
+    }
+
+    private func key(
+        for identity: LogicalParticipantIdentity,
+        suffix: String
+    ) -> String {
+        "com.mylegnd.mobile.face-id.\(identity.participantType.rawValue).\(identity.userID).\(suffix)"
+    }
+}
+
 private struct MobileSessionAPI: MobileSessionServicing {
     let client: MobileHTTPClient
 
     func bootstrap(accessToken: String) async throws -> MobileBootstrapResponse {
         try await client.get("/api/v1/mobile/session", accessToken: accessToken, response: MobileBootstrapResponse.self)
+    }
+
+    func bootstrap(
+        accessToken: String,
+        preferredParticipantType: ParticipantType?
+    ) async throws -> MobileBootstrapResponse {
+        let headers = preferredParticipantType.map {
+            ["X-Legend-Participant-Type": $0.rawValue]
+        } ?? [:]
+        return try await client.get(
+            "/api/v1/mobile/session",
+            accessToken: accessToken,
+            headers: headers,
+            response: MobileBootstrapResponse.self)
     }
 
     func selectRole(_ participantType: ParticipantType, accessToken: String) async throws -> MobileRoleSelectionResponse {

@@ -38,6 +38,13 @@ protocol MobileJourneyCirclesAPI: Sendable {
     func saveProfile(_ profile: MobileJourneyProfileInput, accessToken: String) async throws
     func requestConnection(_ request: MobileJourneyConnectionRequestBody, accessToken: String) async throws
     func respondToConnection(id: UUID, accept: Bool, accessToken: String) async throws
+    func disconnectConnection(id: UUID, accessToken: String) async throws
+}
+
+extension MobileJourneyCirclesAPI {
+    func disconnectConnection(id: UUID, accessToken: String) async throws {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
 }
 
 protocol MobileAgentWorkspaceAPI: Sendable {
@@ -73,7 +80,6 @@ struct MobileUnavailableJourneyCirclesAPI: MobileJourneyCirclesAPI {
     func respondToConnection(id: UUID, accept: Bool, accessToken: String) async throws {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
-
 }
 
 struct MobileUnavailableAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
@@ -157,6 +163,13 @@ struct URLSessionMobileJourneyCirclesAPI: MobileJourneyCirclesAPI {
             body: MobileJourneyConnectionResponseBody(accept: accept),
             accessToken: accessToken,
             idempotencyKey: UUID(),
+            headers: participantHeader)
+    }
+
+    func disconnectConnection(id: UUID, accessToken: String) async throws {
+        try await client.delete(
+            "/api/v1/mobile/journey-circles/connections/\(id.uuidString)/disconnect",
+            accessToken: accessToken,
             headers: participantHeader)
     }
 
@@ -599,6 +612,20 @@ final class MobileJourneyCirclesStore: ObservableObject {
             return true
         } catch {
             actionFailure = failure(for: error, title: "Could not send the request")
+            return false
+        }
+    }
+
+    func disconnectConnectionConfirmed(id: UUID) async -> Bool {
+        actionFailure = nil
+        do {
+            try await api.disconnectConnection(
+                id: id,
+                accessToken: try await accessTokenProvider())
+            _ = await refresh()
+            return true
+        } catch {
+            actionFailure = failure(for: error, title: "Could not remove the connection")
             return false
         }
     }

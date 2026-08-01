@@ -5,6 +5,58 @@ struct OAuthTokenSet: Codable, Equatable, Sendable {
     let accessToken: String
     let refreshToken: String?
     let expiresAt: Date
+    /// This is intentionally independent from the short-lived access-token expiry.
+    /// Refreshing a bearer token must not reset the member's 90-day interactive
+    /// sign-in checkpoint.
+    let interactiveSignInAt: Date
+
+    init(
+        accessToken: String,
+        refreshToken: String?,
+        expiresAt: Date,
+        interactiveSignInAt: Date = Date()
+    ) {
+        self.accessToken = accessToken
+        self.refreshToken = refreshToken
+        self.expiresAt = expiresAt
+        self.interactiveSignInAt = interactiveSignInAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case accessToken
+        case refreshToken
+        case expiresAt
+        case interactiveSignInAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            accessToken: try container.decode(String.self, forKey: .accessToken),
+            refreshToken: try container.decodeIfPresent(String.self, forKey: .refreshToken),
+            expiresAt: try container.decode(Date.self, forKey: .expiresAt),
+            // Existing keychain records predate the checkpoint. They are treated as
+            // due now instead of inventing a timestamp that weakens the policy.
+            interactiveSignInAt: try container.decodeIfPresent(
+                Date.self,
+                forKey: .interactiveSignInAt) ?? .distantPast)
+    }
+
+    var requiresInteractiveSignIn: Bool {
+        Date().timeIntervalSince(interactiveSignInAt) >= 60 * 60 * 24 * 90
+    }
+
+    func refreshed(
+        accessToken: String,
+        refreshToken: String?,
+        expiresAt: Date
+    ) -> OAuthTokenSet {
+        OAuthTokenSet(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            expiresAt: expiresAt,
+            interactiveSignInAt: interactiveSignInAt)
+    }
 }
 
 protocol SecureTokenStoring: Sendable {
