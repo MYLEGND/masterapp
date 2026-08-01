@@ -10,7 +10,8 @@ public static class MessagingConversationTypes
 
 public static class MessagingConversationPurposes
 {
-    public const string VerificationRequest = "VerificationRequest";
+    /// <summary>The one private, founder-managed staff queue for verification.</summary>
+    public const string VerificationReview = "VerificationReview";
 }
 
 public static class MessagingParticipantTypes
@@ -57,13 +58,29 @@ public sealed record CreateMessagingGroupCommand(
     IReadOnlyList<MessagingParticipantReference> Participants,
     string Subject,
     string? InitialMessageBody = null,
-    string? ClientMessageId = null);
+    string? ClientMessageId = null,
+    MessagingGroupImage? GroupImage = null);
+
+public sealed record MessagingGroupImage(
+    byte[] Content,
+    string ContentType);
+
+public sealed record UpdateMessagingGroupProfileCommand(
+    MessagingActor Actor,
+    Guid ConversationId,
+    string Subject,
+    MessagingGroupImage? GroupImage);
 
 public sealed record AddMessagingGroupParticipantCommand(
     MessagingActor Actor,
     Guid ConversationId,
     string UserId,
     string ParticipantType);
+
+public sealed record ResolveVerificationReviewRequestCommand(
+    MessagingActor Actor,
+    Guid RequestId,
+    bool Approve);
 
 public sealed record SendMessagingMessageCommand(
     MessagingActor Actor,
@@ -146,6 +163,16 @@ public sealed record MessagingConversationResult(
         new(false, errorCode, errorMessage, null);
 }
 
+public sealed record MessagingVerificationRequestResult(
+    bool Succeeded,
+    string? ErrorCode,
+    string? ErrorMessage,
+    MessagingVerificationReview? Request)
+{
+    public static MessagingVerificationRequestResult Failure(string errorCode, string errorMessage) =>
+        new(false, errorCode, errorMessage, null);
+}
+
 public sealed record MessagingMessageResult(
     bool Succeeded,
     string? ErrorCode,
@@ -197,7 +224,9 @@ public sealed record MessagingConversationSummary(
     bool IsArchivedMembership,
     int UnreadCount,
     MessagingParticipantSummary Counterparty,
-    string? LastMessagePreview);
+    string? LastMessagePreview,
+    string? Purpose = null,
+    MessagingGroupImage? GroupImage = null);
 
 public sealed record MessagingConversationDetail(
     Guid Id,
@@ -210,7 +239,9 @@ public sealed record MessagingConversationDetail(
     bool IsMuted,
     IReadOnlyList<MessagingParticipantSummary> Participants,
     IReadOnlyList<MessagingMessageSummary> Messages,
-    bool CanManageMembers = false);
+    bool CanManageMembers = false,
+    string? Purpose = null,
+    MessagingGroupImage? GroupImage = null);
 
 public sealed record MessagingParticipantSummary(
     string UserId,
@@ -260,7 +291,16 @@ public sealed record MessagingMessageSummary(
     bool IsDeleted,
     IReadOnlyList<MessagingAttachmentSummary> Attachments,
     Guid? ReplyToMessageId = null,
-    MessagingReplyPreview? Reply = null);
+    MessagingReplyPreview? Reply = null,
+    MessagingVerificationReview? VerificationReview = null);
+
+public sealed record MessagingVerificationReview(
+    Guid Id,
+    string RequesterUserId,
+    string RequesterParticipantType,
+    string Status,
+    DateTime RequestedUtc,
+    bool CanResolve = false);
 
 public sealed record MessagingReplyPreview(
     Guid Id,

@@ -93,7 +93,9 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 conversation.LastMessagePreview,
                 conversation.LastMessageUtc,
                 conversation.UnreadCount,
-                conversation.IsClosed));
+                conversation.IsClosed,
+                conversation.Purpose,
+                ToGroupAvatarDto(conversation.GroupImage)));
         }
 
         return Ok(response);
@@ -180,12 +182,16 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 member.UserId ?? string.Empty,
                 member.ParticipantType ?? string.Empty))
             .ToArray() ?? Array.Empty<MessagingParticipantReference>();
+        if (!TryToGroupImage(request?.GroupImage, out var groupImage))
+            return Error(StatusCodes.Status400BadRequest, "mobile_group_image_invalid", "Choose a supported group image.");
+
         var result = await _messaging.CreateGroupAsync(
             new CreateMessagingGroupCommand(
                 resolved.Actor!.Actor,
                 members,
                 request?.Subject ?? string.Empty,
-                request?.InitialMessageBody),
+                request?.InitialMessageBody,
+                GroupImage: groupImage),
             cancellationToken);
         if (!result.Succeeded || result.Conversation is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
@@ -203,10 +209,58 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         var result = await _messaging.StartVerificationRequestAsync(
             resolved.Actor!.Actor,
             cancellationToken);
-        if (!result.Succeeded || result.Conversation is null)
+        if (!result.Succeeded || result.Request is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
 
-        return Ok(await ToConversationDtoAsync(result.Conversation, resolved.Actor.Actor, cancellationToken));
+        return Ok(new MobileVerificationRequestDto(
+            result.Request.Id,
+            result.Request.Status,
+            result.Request.RequestedUtc));
+    }
+
+    [HttpPost("messaging/verification-requests/{requestId:guid}/resolution")]
+    public async Task<IActionResult> ResolveVerificationRequest(
+        Guid requestId,
+        [FromBody] MobileVerificationResolutionRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.ResolveVerificationReviewRequestAsync(
+            new ResolveVerificationReviewRequestCommand(
+                resolved.Actor!.Actor,
+                requestId,
+                request?.Approve == true),
+            cancellationToken);
+        return result.Succeeded
+            ? NoContent()
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpPut("messaging/groups/{conversationId:guid}")]
+    public async Task<IActionResult> UpdateGroupProfile(
+        Guid conversationId,
+        [FromBody] MobileUpdateMessagingGroupRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+        if (!TryToGroupImage(request?.GroupImage, out var groupImage))
+            return Error(StatusCodes.Status400BadRequest, "mobile_group_image_invalid", "Choose a supported group image.");
+
+        var result = await _messaging.UpdateGroupProfileAsync(
+            new UpdateMessagingGroupProfileCommand(
+                resolved.Actor!.Actor,
+                conversationId,
+                request?.Subject ?? string.Empty,
+                groupImage),
+            cancellationToken);
+        return result.Succeeded
+            ? NoContent()
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
     }
 
     [HttpPost("messaging/conversations/{conversationId:guid}/participants")]
@@ -256,7 +310,9 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         if (!result.Succeeded || result.Conversation is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
 
-        var identities = await ResolveParticipantIdentitiesAsync(result.Conversation.Participants, cancellationToken);
+        var identities = await ResolveParticipantIdentitiesAsync(
+            ConversationIdentities(result.Conversation),
+            cancellationToken);
         var messages = new List<MobileMessageDto>();
         foreach (var message in result.Conversation.Messages)
             messages.Add(await ToMessageDtoAsync(message, resolved.Actor.Actor, identities, cancellationToken));
@@ -379,7 +435,9 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         MessagingActor actor,
         CancellationToken cancellationToken)
     {
-        var identities = await ResolveParticipantIdentitiesAsync(conversation.Participants, cancellationToken);
+        var identities = await ResolveParticipantIdentitiesAsync(
+            ConversationIdentities(conversation),
+            cancellationToken);
         var participants = new List<MobileParticipantDto>();
         foreach (var participant in conversation.Participants)
             participants.Add(await ToParticipantDtoAsync(participant, identities, cancellationToken));
@@ -396,8 +454,24 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             messages,
             conversation.IsMuted,
             conversation.IsClosed,
-            conversation.CanManageMembers);
+            conversation.CanManageMembers,
+            conversation.Purpose,
+            ToGroupAvatarDto(conversation.GroupImage));
     }
+
+    private static IEnumerable<MessagingParticipantSummary> ConversationIdentities(
+        MessagingConversationDetail conversation) =>
+        conversation.Participants.Concat(
+            conversation.Messages.Select(message => new MessagingParticipantSummary(
+                message.SenderUserId,
+                message.SenderType,
+                string.Empty))).Concat(
+            conversation.Messages
+                .Where(message => message.Reply is not null)
+                .Select(message => new MessagingParticipantSummary(
+                    message.Reply!.SenderUserId,
+                    message.Reply.SenderType,
+                    string.Empty)));
 
     private async Task<IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity>> ResolveParticipantIdentitiesAsync(
         IEnumerable<MessagingParticipantSummary> participants,
@@ -469,12 +543,29 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                     identities,
                     cancellationToken),
                 message.Reply.Body,
-                message.Reply.IsDeleted));
+                message.Reply.IsDeleted),
+        message.VerificationReview is null
+            ? null
+            : new MobileVerificationReviewDto(
+                message.VerificationReview.Id,
+                message.VerificationReview.RequesterUserId,
+                message.VerificationReview.RequesterParticipantType,
+                message.VerificationReview.Status,
+                message.VerificationReview.RequestedUtc,
+                message.VerificationReview.CanResolve));
 
     private async Task<MobileAvatarDto?> ToAvatarDtoAsync(
         MessagingParticipantIdentity identity,
         CancellationToken cancellationToken) =>
         await MobileAvatarProjection.ResolveAsync(_profiles, identity, cancellationToken);
+
+    private static MobileAvatarDto? ToGroupAvatarDto(MessagingGroupImage? image) =>
+        image is null
+            ? null
+            : new MobileAvatarDto(
+                "inline",
+                image.ContentType,
+                Convert.ToBase64String(image.Content));
 
     private static MobileMessageAttachmentDto ToAttachmentDto(MessagingAttachmentSummary attachment) => new(
         attachment.Id,
@@ -484,6 +575,29 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         attachment.ScanStatus,
         attachment.CreatedUtc,
         attachment.CanDownload);
+
+    private static bool TryToGroupImage(
+        MobileGroupImageRequest? request,
+        out MessagingGroupImage? groupImage)
+    {
+        groupImage = null;
+        if (request is null)
+            return true;
+        if (string.IsNullOrWhiteSpace(request.ContentType) ||
+            string.IsNullOrWhiteSpace(request.Base64Content))
+            return false;
+        try
+        {
+            groupImage = new MessagingGroupImage(
+                Convert.FromBase64String(request.Base64Content),
+                request.ContentType);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
 
     private IActionResult MessagingFailure(string? errorCode, string? errorMessage)
     {
@@ -540,7 +654,9 @@ public sealed record MobileConversationSummaryDto(
     string? LastMessagePreview,
     DateTime? LastMessageUtc,
     int UnreadCount,
-    bool IsClosed);
+    bool IsClosed,
+    string? Purpose,
+    MobileAvatarDto? GroupAvatar);
 
 public sealed record MobileConversationDetailDto(
     Guid Id,
@@ -550,7 +666,9 @@ public sealed record MobileConversationDetailDto(
     IReadOnlyList<MobileMessageDto> Messages,
     bool IsMuted,
     bool IsClosed,
-    bool CanManageMembers);
+    bool CanManageMembers,
+    string? Purpose,
+    MobileAvatarDto? GroupAvatar);
 
 public sealed record MobileMessageDto(
     Guid Id,
@@ -560,7 +678,16 @@ public sealed record MobileMessageDto(
     DateTime SentUtc,
     IReadOnlyList<MobileMessageAttachmentDto> Attachments,
     bool IsMine,
-    MobileReplyPreviewDto? Reply = null);
+    MobileReplyPreviewDto? Reply = null,
+    MobileVerificationReviewDto? VerificationReview = null);
+
+public sealed record MobileVerificationReviewDto(
+    Guid Id,
+    string RequesterUserId,
+    string RequesterParticipantType,
+    string Status,
+    DateTime RequestedUtc,
+    bool CanResolve);
 
 public sealed record MobileReplyPreviewDto(
     Guid Id,
@@ -588,7 +715,23 @@ public sealed record MobileStartConversationRequest(
 public sealed record MobileCreateGroupRequest(
     string? Subject,
     IReadOnlyList<MobileGroupParticipantRequest>? Participants,
-    string? InitialMessageBody = null);
+    string? InitialMessageBody = null,
+    MobileGroupImageRequest? GroupImage = null);
+
+public sealed record MobileUpdateMessagingGroupRequest(
+    string? Subject,
+    MobileGroupImageRequest? GroupImage = null);
+
+public sealed record MobileGroupImageRequest(
+    string? ContentType,
+    string? Base64Content);
+
+public sealed record MobileVerificationResolutionRequest(bool? Approve);
+
+public sealed record MobileVerificationRequestDto(
+    Guid Id,
+    string Status,
+    DateTime RequestedUtc);
 
 public sealed record MobileGroupParticipantRequest(
     string? UserId,

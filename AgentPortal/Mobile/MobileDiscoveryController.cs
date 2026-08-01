@@ -186,31 +186,41 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
             result.Website,
             result.PublicEmail,
             result.IsPrivate,
-            await IsVerifiedAgentProfileAsync(
+            await IsVerifiedProfileAsync(
                 result.ParticipantType,
                 result.ClientProfileId,
                 cancellationToken),
             result.RoleLabel);
     }
 
-    private async Task<bool> IsVerifiedAgentProfileAsync(
+    private async Task<bool> IsVerifiedProfileAsync(
         string participantType,
         Guid profileId,
         CancellationToken cancellationToken)
     {
-        if (_db is null ||
-            profileId == Guid.Empty ||
-            !string.Equals(participantType, MessagingParticipantTypes.Agent, StringComparison.Ordinal))
+        if (_db is null || profileId == Guid.Empty)
         {
             return false;
         }
 
-        var email = await _db.AgentProfiles
+        if (string.Equals(participantType, MessagingParticipantTypes.Client, StringComparison.Ordinal))
+        {
+            return await _db.ClientProfiles
+                .AsNoTracking()
+                .Where(profile => profile.Id == profileId)
+                .Select(profile => profile.IsVerified)
+                .SingleOrDefaultAsync(cancellationToken);
+        }
+
+        if (!string.Equals(participantType, MessagingParticipantTypes.Agent, StringComparison.Ordinal))
+            return false;
+
+        var profile = await _db.AgentProfiles
             .AsNoTracking()
-            .Where(profile => profile.Id == profileId && profile.IsActive)
-            .Select(profile => profile.NormalizedEmail ?? profile.AgentUpn)
+            .Where(candidate => candidate.Id == profileId && candidate.IsActive)
+            .Select(candidate => new { candidate.IsVerified, Email = candidate.NormalizedEmail ?? candidate.AgentUpn })
             .SingleOrDefaultAsync(cancellationToken);
-        return LegendVerifiedIdentity.IsVerifiedAgentEmail(email);
+        return profile?.IsVerified == true || LegendVerifiedIdentity.IsVerifiedAgentEmail(profile?.Email);
     }
 
     private IActionResult DiscoveryFailure(string? errorCode, string? errorMessage)

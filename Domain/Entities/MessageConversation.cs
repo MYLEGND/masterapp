@@ -11,6 +11,14 @@ public class MessageConversation
     public string? Subject { get; set; }
 
     /// <summary>
+    /// Optional square group image, owned by the conversation rather than by a
+    /// participant. Direct conversations never use these fields.
+    /// </summary>
+    public byte[]? GroupImageContent { get; set; }
+
+    public string? GroupImageContentType { get; set; }
+
+    /// <summary>
     /// Optional server-defined purpose for a group. It is never supplied by a
     /// client and lets a member resume one verification review instead of
     /// creating duplicate support groups.

@@ -14,6 +14,7 @@ internal static class MessagingModelConfiguration
         ConfigureParticipant(modelBuilder.Entity<MessageConversationParticipant>());
         ConfigureMessage(modelBuilder.Entity<InternalMessage>(), providerName);
         ConfigureAttachment(modelBuilder.Entity<MessageAttachment>());
+        ConfigureVerificationReviewRequest(modelBuilder.Entity<VerificationReviewRequest>(), providerName);
         ConfigureGrant(modelBuilder.Entity<ClientAgentMessagingGrant>());
         ConfigureAuditEntry(modelBuilder.Entity<MessagingAuditEntry>());
     }
@@ -49,6 +50,9 @@ internal static class MessagingModelConfiguration
         entity.Property(x => x.Subject)
             .HasMaxLength(240);
 
+        entity.Property(x => x.GroupImageContentType)
+            .HasMaxLength(150);
+
         entity.Property(x => x.Purpose)
             .HasMaxLength(40);
 
@@ -63,6 +67,21 @@ internal static class MessagingModelConfiguration
             .HasMaxLength(450);
 
         entity.HasIndex(x => new { x.Purpose, x.CreatedByUserId, x.OwnerParticipantType });
+
+        // There is exactly one staff-only verification review conversation for
+        // the application. A filtered unique index makes that invariant hold
+        // even when two members submit a request at the same moment.
+        var verificationReviewIndex = entity
+            .HasIndex(x => x.Purpose)
+            .IsUnique();
+        if (IsSqlServer(providerName))
+        {
+            verificationReviewIndex.HasFilter("[Purpose] = 'VerificationReview'");
+        }
+        else if (IsSqlite(providerName))
+        {
+            verificationReviewIndex.HasFilter("\"Purpose\" = 'VerificationReview'");
+        }
 
         ConfigureRowVersion(entity.Property(x => x.RowVersion), providerName);
 
@@ -124,6 +143,8 @@ internal static class MessagingModelConfiguration
 
         entity.HasIndex(x => new { x.ConversationId, x.SentUtc });
 
+        entity.HasIndex(x => x.VerificationReviewRequestId);
+
         var clientMessageIndex = entity
             .HasIndex(x => x.ClientMessageId)
             .IsUnique();
@@ -141,6 +162,33 @@ internal static class MessagingModelConfiguration
             .WithMany(x => x.Messages)
             .HasForeignKey(x => x.ConversationId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+
+    private static void ConfigureVerificationReviewRequest(
+        EntityTypeBuilder<VerificationReviewRequest> entity,
+        string? providerName)
+    {
+        entity.ToTable("VerificationReviewRequests");
+        entity.HasKey(x => x.Id);
+        entity.Property(x => x.RequesterUserId).IsRequired().HasMaxLength(450);
+        entity.Property(x => x.RequesterParticipantType).IsRequired().HasMaxLength(40);
+        entity.Property(x => x.Status).IsRequired().HasMaxLength(24);
+        entity.Property(x => x.ResolvedByUserId).HasMaxLength(450);
+        entity.Property(x => x.ResolutionNote).HasMaxLength(1_000);
+        entity.HasIndex(x => new { x.RequesterUserId, x.RequesterParticipantType, x.Status });
+        entity.HasIndex(x => new { x.ReviewConversationId, x.RequestedUtc });
+
+        var pendingRequestIndex = entity
+            .HasIndex(x => new { x.RequesterUserId, x.RequesterParticipantType })
+            .IsUnique();
+        if (IsSqlServer(providerName))
+        {
+            pendingRequestIndex.HasFilter("[Status] = 'Pending'");
+        }
+        else if (IsSqlite(providerName))
+        {
+            pendingRequestIndex.HasFilter("\"Status\" = 'Pending'");
+        }
     }
 
     private static void ConfigureAttachment(

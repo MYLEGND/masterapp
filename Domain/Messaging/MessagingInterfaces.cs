@@ -32,8 +32,16 @@ public interface IMessagingService
         CreateMessagingGroupCommand command,
         CancellationToken cancellationToken = default);
 
-    Task<MessagingConversationResult> StartVerificationRequestAsync(
+    Task<MessagingVerificationRequestResult> StartVerificationRequestAsync(
         MessagingActor actor,
+        CancellationToken cancellationToken = default);
+
+    Task<MessagingOperationResult> ResolveVerificationReviewRequestAsync(
+        ResolveVerificationReviewRequestCommand command,
+        CancellationToken cancellationToken = default);
+
+    Task<MessagingOperationResult> UpdateGroupProfileAsync(
+        UpdateMessagingGroupProfileCommand command,
         CancellationToken cancellationToken = default);
 
     Task<MessagingOperationResult> AddGroupParticipantAsync(

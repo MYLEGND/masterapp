@@ -18,6 +18,7 @@ internal sealed class MessagingService : IMessagingService
     private const int MaximumAttachmentContentTypeLength = 150;
     private const int MaximumAttachmentStoragePathLength = 1_000;
     private const int MaximumAuditDetailLength = 1_000;
+    private const int MaximumGroupImageBytes = 512 * 1_024;
 
     private readonly MasterAppDbContext _db;
     private readonly ILogger<MessagingService> _logger;
@@ -74,7 +75,10 @@ internal sealed class MessagingService : IMessagingService
                 x.ConversationType,
                 x.Subject,
                 x.LastMessageUtc,
-                x.IsClosed))
+                x.IsClosed,
+                x.Purpose,
+                x.GroupImageContent,
+                x.GroupImageContentType))
             .ToListAsync(cancellationToken);
 
         if (conversations.Count == 0)
@@ -160,7 +164,9 @@ internal sealed class MessagingService : IMessagingService
                 isArchivedMembership,
                 unreadCount,
                 ToParticipantSummary(counterparty, displayNames),
-                latest is null ? null : Preview(latest.Body)));
+                latest is null ? null : Preview(latest.Body),
+                conversation.Purpose,
+                ToGroupImage(conversation.GroupImageContent, conversation.GroupImageContentType)));
         }
 
         // Legacy data can contain more than one direct conversation for the
@@ -168,12 +174,9 @@ internal sealed class MessagingService : IMessagingService
         // duplicates, while this projection keeps every client authoritative
         // and stable until legacy rows are repaired.
         var canonicalConversations = result
-            .GroupBy(
-                conversation => new
-                {
-                    UserId = NormalizeUserId(conversation.Counterparty.UserId),
-                    ParticipantType = NormalizeRequired(conversation.Counterparty.ParticipantType)
-                })
+            .GroupBy(conversation => conversation.ConversationType == MessagingConversationTypes.Group
+                ? $"group:{conversation.Id:D}"
+                : $"person:{NormalizeUserId(conversation.Counterparty.UserId)}:{NormalizeRequired(conversation.Counterparty.ParticipantType)}")
             .Select(group =>
             {
                 var canonical = group
@@ -216,7 +219,10 @@ internal sealed class MessagingService : IMessagingService
                 x.LastMessageUtc,
                 x.IsClosed,
                 x.OwnerUserId,
-                x.OwnerParticipantType))
+                x.OwnerParticipantType,
+                x.Purpose,
+                x.GroupImageContent,
+                x.GroupImageContentType))
             .FirstOrDefaultAsync(cancellationToken);
         if (conversation is null)
             return MessagingConversationResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The requested conversation was not found.");
@@ -252,6 +258,7 @@ internal sealed class MessagingService : IMessagingService
                 x.EditedUtc,
                 x.IsDeleted,
                 x.ReplyToMessageId,
+                x.VerificationReviewRequestId,
                 x.ReplyToMessage == null
                     ? null
                     : new ReplyDetailRow(
@@ -261,7 +268,39 @@ internal sealed class MessagingService : IMessagingService
                         x.ReplyToMessage.Body,
                         x.ReplyToMessage.IsDeleted)))
             .ToListAsync(cancellationToken);
-        var displayNames = await LoadDisplayNamesAsync(participants, cancellationToken);
+        var messageParticipants = messages
+            .Select(message => new MessagingParticipantReference(message.SenderUserId, message.SenderType))
+            .Concat(messages
+                .Where(message => message.Reply is not null)
+                .Select(message => new MessagingParticipantReference(
+                    message.Reply!.SenderUserId,
+                    message.Reply.SenderType)))
+            .ToArray();
+        var displayNames = await LoadDisplayNamesAsync(
+            participants,
+            messageParticipants,
+            cancellationToken);
+        var reviewRequestIds = messages
+            .Where(message => message.VerificationReviewRequestId.HasValue)
+            .Select(message => message.VerificationReviewRequestId!.Value)
+            .Distinct()
+            .ToArray();
+        var canResolveReview = conversation.Purpose == MessagingConversationPurposes.VerificationReview &&
+            await IsFounderVerificationManagerAsync(actor, cancellationToken);
+        var reviews = reviewRequestIds.Length == 0
+            ? new Dictionary<Guid, MessagingVerificationReview>()
+            : (await _db.VerificationReviewRequests
+                .AsNoTracking()
+                .Where(request => reviewRequestIds.Contains(request.Id))
+                .Select(request => new MessagingVerificationReview(
+                    request.Id,
+                    request.RequesterUserId,
+                    request.RequesterParticipantType,
+                    request.Status,
+                    request.RequestedUtc,
+                    canResolveReview && request.Status == VerificationReviewStatuses.Pending))
+                .ToListAsync(cancellationToken))
+                .ToDictionary(request => request.Id);
         var currentParticipant = participants.FirstOrDefault(x =>
             IsSameParticipant(x.UserId, x.ParticipantType, actor.UserId, actor.ParticipantType));
         var isArchivedMembership =
@@ -278,13 +317,15 @@ internal sealed class MessagingService : IMessagingService
             isArchivedMembership,
             currentParticipant?.IsMuted == true,
             participants.Select(x => ToParticipantSummary(x, displayNames)).ToList(),
-            messages.Select(message => ToMessageSummary(message, attachments)).ToList(),
+            messages.Select(message => ToMessageSummary(message, attachments, reviews)).ToList(),
             conversation.ConversationType == MessagingConversationTypes.Group &&
             IsSameParticipant(
                 conversation.OwnerUserId ?? string.Empty,
                 conversation.OwnerParticipantType ?? string.Empty,
                 actor.UserId,
-                actor.ParticipantType));
+                actor.ParticipantType),
+            conversation.Purpose,
+            ToGroupImage(conversation.GroupImageContent, conversation.GroupImageContentType));
 
         return new MessagingConversationResult(true, null, null, detail);
     }
@@ -593,43 +634,44 @@ internal sealed class MessagingService : IMessagingService
             clientMessageId,
             purpose: null,
             owner: new MessagingParticipantReference(actor.UserId, actor.ParticipantType),
+            groupImage: command.GroupImage,
             cancellationToken: cancellationToken);
     }
 
-    public async Task<MessagingConversationResult> StartVerificationRequestAsync(
+    public async Task<MessagingVerificationRequestResult> StartVerificationRequestAsync(
         MessagingActor actor,
         CancellationToken cancellationToken = default)
     {
         actor = NormalizeActor(actor);
         if (!await IsValidActorAsync(actor, cancellationToken))
-            return MessagingConversationResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
+            return MessagingVerificationRequestResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
 
         var actorIdentity = await _participantIdentities.ResolveIdentitiesAsync(
             [new MessagingParticipantReference(actor.UserId, actor.ParticipantType)],
             cancellationToken);
         if (actorIdentity.Values.SingleOrDefault()?.IsVerified == true)
         {
-            return MessagingConversationResult.Failure(
+            return MessagingVerificationRequestResult.Failure(
                 "MESSAGING_VERIFICATION_ALREADY_GRANTED",
                 "This profile is already verified.");
         }
 
-        var existing = await _db.MessageConversations
+        var existingRequest = await _db.VerificationReviewRequests
             .AsNoTracking()
-            .Where(conversation =>
-                conversation.ConversationType == MessagingConversationTypes.Group &&
-                conversation.Purpose == MessagingConversationPurposes.VerificationRequest &&
-                conversation.CreatedByUserId.ToLower() == actor.UserId &&
-                conversation.OwnerParticipantType == MessagingParticipantTypes.Agent &&
-                conversation.Participants.Any(participant =>
-                    participant.IsActive &&
-                    participant.UserId.ToLower() == actor.UserId &&
-                    participant.ParticipantType == actor.ParticipantType))
-            .OrderByDescending(conversation => conversation.UpdatedUtc)
-            .Select(conversation => conversation.Id)
+            .Where(request =>
+                request.RequesterUserId.ToLower() == actor.UserId &&
+                request.RequesterParticipantType == actor.ParticipantType &&
+                request.Status == VerificationReviewStatuses.Pending)
+            .OrderByDescending(request => request.RequestedUtc)
+            .Select(request => new MessagingVerificationReview(
+                request.Id,
+                request.RequesterUserId,
+                request.RequesterParticipantType,
+                request.Status,
+                request.RequestedUtc))
             .FirstOrDefaultAsync(cancellationToken);
-        if (existing != Guid.Empty)
-            return await GetConversationAsync(actor, existing, cancellationToken);
+        if (existingRequest is not null)
+            return new MessagingVerificationRequestResult(true, null, null, existingRequest);
 
         var profiles = await _db.AgentProfiles
             .AsNoTracking()
@@ -667,7 +709,7 @@ internal sealed class MessagingService : IMessagingService
                 .FirstOrDefault();
             if (profile is null || string.IsNullOrWhiteSpace(profile.AgentUserId))
             {
-                return MessagingConversationResult.Failure(
+                return MessagingVerificationRequestResult.Failure(
                     "MESSAGING_VERIFICATION_UNAVAILABLE",
                     "Verification review is temporarily unavailable.");
             }
@@ -684,20 +726,97 @@ internal sealed class MessagingService : IMessagingService
                     actor.UserId,
                     actor.ParticipantType)))
         {
-            return MessagingConversationResult.Failure(
+            return MessagingVerificationRequestResult.Failure(
                 "MESSAGING_VERIFICATION_UNAVAILABLE",
                 "Verification review is temporarily unavailable.");
         }
 
-        return await CreateGroupConversationCoreAsync(
-            actor,
-            founders,
-            "Verification request",
-            "I would like to request a Legend verification review.",
-            clientMessageId: null,
-            purpose: MessagingConversationPurposes.VerificationRequest,
-            owner: founders[0],
-            cancellationToken: cancellationToken);
+        var founder = founders[0];
+        var reviewConversation = await _db.MessageConversations
+            .Include(conversation => conversation.Participants)
+            .Where(conversation =>
+                conversation.ConversationType == MessagingConversationTypes.Group &&
+                conversation.Purpose == MessagingConversationPurposes.VerificationReview &&
+                conversation.OwnerUserId!.ToLower() == founder.UserId &&
+                conversation.OwnerParticipantType == MessagingParticipantTypes.Agent)
+            .OrderBy(conversation => conversation.CreatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var nowUtc = DateTime.UtcNow;
+        if (reviewConversation is null)
+        {
+            reviewConversation = new MessageConversation
+            {
+                Id = Guid.NewGuid(),
+                ConversationType = MessagingConversationTypes.Group,
+                Subject = "Legend verification review",
+                Purpose = MessagingConversationPurposes.VerificationReview,
+                CreatedUtc = nowUtc,
+                UpdatedUtc = nowUtc,
+                CreatedByUserId = founder.UserId,
+                OwnerUserId = founder.UserId,
+                OwnerParticipantType = MessagingParticipantTypes.Agent
+            };
+            _db.MessageConversations.Add(reviewConversation);
+            _db.MessageConversationParticipants.AddRange(founders.Select(participant =>
+                new MessageConversationParticipant
+                {
+                    Id = Guid.NewGuid(),
+                    ConversationId = reviewConversation.Id,
+                    UserId = participant.UserId,
+                    ParticipantType = participant.ParticipantType,
+                    IsActive = true,
+                    JoinedUtc = nowUtc
+                }));
+            AddAudit(founder.UserId, "VerificationReviewGroupCreated", reviewConversation.Id, null, null, null, nowUtc);
+        }
+
+        var request = new VerificationReviewRequest
+        {
+            Id = Guid.NewGuid(),
+            ReviewConversationId = reviewConversation.Id,
+            RequesterUserId = actor.UserId,
+            RequesterParticipantType = actor.ParticipantType,
+            Status = VerificationReviewStatuses.Pending,
+            RequestedUtc = nowUtc
+        };
+        _db.VerificationReviewRequests.Add(request);
+        _db.InternalMessages.Add(new InternalMessage
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = reviewConversation.Id,
+            SenderUserId = actor.UserId,
+            SenderType = actor.ParticipantType,
+            Body = "Requested a Legend verification review.",
+            SentUtc = nowUtc,
+            VerificationReviewRequestId = request.Id
+        });
+        reviewConversation.LastMessageUtc = nowUtc;
+        reviewConversation.UpdatedUtc = nowUtc;
+        AddAudit(actor.UserId, "VerificationReviewRequested", reviewConversation.Id, null, actor.UserId, request.Id.ToString("D"), nowUtc);
+
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Verification review request save failed. ActorUserId={ActorUserId}", actor.UserId);
+            return MessagingVerificationRequestResult.Failure(
+                "MESSAGING_VERIFICATION_SAVE_FAILED",
+                "Legend could not submit your verification request. Please try again.");
+        }
+
+        return new MessagingVerificationRequestResult(
+            true,
+            null,
+            null,
+            new MessagingVerificationReview(
+                request.Id,
+                request.RequesterUserId,
+                request.RequesterParticipantType,
+                request.Status,
+                request.RequestedUtc));
     }
 
     public async Task<MessagingOperationResult> AddGroupParticipantAsync(
@@ -738,16 +857,31 @@ internal sealed class MessagingService : IMessagingService
         if (!authorizedConversation)
             return MessagingOperationResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The requested conversation was not found.");
 
-        var authorizedRecipient = await GetAuthorizedParticipantAsync(
-            actor,
-            userId,
-            participantType,
-            cancellationToken);
-        if (!authorizedRecipient.Succeeded)
+        var isVerificationReview = conversation.Purpose == MessagingConversationPurposes.VerificationReview;
+        if (isVerificationReview)
         {
-            return MessagingOperationResult.Failure(
-                "MESSAGING_RECIPIENT_FORBIDDEN",
-                "That member is no longer one of your available connections.");
+            if (!await IsFounderVerificationManagerAsync(actor, cancellationToken) ||
+                participantType != MessagingParticipantTypes.Agent ||
+                !await IsActiveAgentAsync(userId, cancellationToken))
+            {
+                return MessagingOperationResult.Failure(
+                    "MESSAGING_VERIFICATION_REVIEWER_FORBIDDEN",
+                    "Only Zac Owen can add active Legend agents to the verification review group.");
+            }
+        }
+        else
+        {
+            var authorizedRecipient = await GetAuthorizedParticipantAsync(
+                actor,
+                userId,
+                participantType,
+                cancellationToken);
+            if (!authorizedRecipient.Succeeded)
+            {
+                return MessagingOperationResult.Failure(
+                    "MESSAGING_RECIPIENT_FORBIDDEN",
+                    "That member is no longer one of your available connections.");
+            }
         }
 
         var nowUtc = DateTime.UtcNow;
@@ -778,6 +912,100 @@ internal sealed class MessagingService : IMessagingService
         conversation.UpdatedUtc = nowUtc;
         AddAudit(actor.UserId, "GroupMemberAdded", conversation.Id, null, userId, participantType, nowUtc);
         return await SaveOperationAsync("GroupMemberAdded", actor.UserId, conversation.Id, cancellationToken);
+    }
+
+    public async Task<MessagingOperationResult> UpdateGroupProfileAsync(
+        UpdateMessagingGroupProfileCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = NormalizeActor(command.Actor);
+        var subject = NormalizeOptional(command.Subject);
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return MessagingOperationResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
+        if (command.ConversationId == Guid.Empty || string.IsNullOrWhiteSpace(subject) ||
+            !Fits(subject, MaximumConversationSubjectLength) || !IsValidGroupImage(command.GroupImage))
+        {
+            return MessagingOperationResult.Failure("MESSAGING_GROUP_PROFILE_INVALID", "Choose a valid group name and image.");
+        }
+
+        var conversation = await _db.MessageConversations.FirstOrDefaultAsync(
+            candidate => candidate.Id == command.ConversationId,
+            cancellationToken);
+        if (conversation is null || conversation.ConversationType != MessagingConversationTypes.Group ||
+            !IsSameParticipant(
+                conversation.OwnerUserId,
+                conversation.OwnerParticipantType,
+                actor.UserId,
+                actor.ParticipantType))
+        {
+            return MessagingOperationResult.Failure("MESSAGING_GROUP_OWNER_REQUIRED", "Only the group owner can edit this group.");
+        }
+
+        conversation.Subject = subject;
+        if (command.GroupImage is not null)
+        {
+            conversation.GroupImageContent = command.GroupImage.Content;
+            conversation.GroupImageContentType = command.GroupImage.ContentType;
+        }
+        conversation.UpdatedUtc = DateTime.UtcNow;
+        AddAudit(actor.UserId, "GroupProfileUpdated", conversation.Id, null, null, null, conversation.UpdatedUtc);
+        return await SaveOperationAsync("GroupProfileUpdated", actor.UserId, conversation.Id, cancellationToken);
+    }
+
+    public async Task<MessagingOperationResult> ResolveVerificationReviewRequestAsync(
+        ResolveVerificationReviewRequestCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = NormalizeActor(command.Actor);
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return MessagingOperationResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
+        if (command.RequestId == Guid.Empty || !await IsFounderVerificationManagerAsync(actor, cancellationToken))
+            return MessagingOperationResult.Failure("MESSAGING_VERIFICATION_REVIEWER_FORBIDDEN", "Only Zac Owen can resolve verification requests.");
+
+        var request = await _db.VerificationReviewRequests.FirstOrDefaultAsync(
+            candidate => candidate.Id == command.RequestId,
+            cancellationToken);
+        if (request is null || request.Status != VerificationReviewStatuses.Pending)
+            return MessagingOperationResult.Failure("MESSAGING_VERIFICATION_REQUEST_UNAVAILABLE", "This verification request is no longer pending.");
+
+        var reviewConversation = await _db.MessageConversations.FirstOrDefaultAsync(
+            conversation => conversation.Id == request.ReviewConversationId &&
+                conversation.Purpose == MessagingConversationPurposes.VerificationReview,
+            cancellationToken);
+        if (reviewConversation is null)
+            return MessagingOperationResult.Failure("MESSAGING_VERIFICATION_REQUEST_UNAVAILABLE", "The verification review is no longer available.");
+
+        var approved = command.Approve;
+        if (approved)
+        {
+            var profileUpdated = request.RequesterParticipantType switch
+            {
+                MessagingParticipantTypes.Agent => await SetAgentVerifiedAsync(request.RequesterUserId, cancellationToken),
+                MessagingParticipantTypes.Client => await SetClientVerifiedAsync(request.RequesterUserId, cancellationToken),
+                _ => false
+            };
+            if (!profileUpdated)
+                return MessagingOperationResult.Failure("MESSAGING_VERIFICATION_PROFILE_UNAVAILABLE", "The requesting profile is no longer available.");
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        request.Status = approved ? VerificationReviewStatuses.Approved : VerificationReviewStatuses.Declined;
+        request.ResolvedUtc = nowUtc;
+        request.ResolvedByUserId = actor.UserId;
+        _db.InternalMessages.Add(new InternalMessage
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = reviewConversation.Id,
+            SenderUserId = actor.UserId,
+            SenderType = actor.ParticipantType,
+            Body = approved ? "Verification approved." : "Verification declined.",
+            SentUtc = nowUtc,
+            VerificationReviewRequestId = request.Id
+        });
+        reviewConversation.LastMessageUtc = nowUtc;
+        reviewConversation.UpdatedUtc = nowUtc;
+        AddAudit(actor.UserId, approved ? "VerificationApproved" : "VerificationDeclined", reviewConversation.Id, null, request.RequesterUserId, request.Id.ToString("D"), nowUtc);
+        return await SaveOperationAsync("VerificationReviewResolved", actor.UserId, reviewConversation.Id, cancellationToken);
     }
 
     public async Task<MessagingMessageResult> SendMessageAsync(
@@ -1811,8 +2039,16 @@ internal sealed class MessagingService : IMessagingService
         string? clientMessageId,
         string? purpose,
         MessagingParticipantReference owner,
+        MessagingGroupImage? groupImage,
         CancellationToken cancellationToken)
     {
+        if (!IsValidGroupImage(groupImage))
+        {
+            return MessagingConversationResult.Failure(
+                "MESSAGING_GROUP_PROFILE_INVALID",
+                "The group image must be a supported image smaller than 512 KB.");
+        }
+
         var moderation = _moderation.Evaluate(initialMessage, "MessagingGroupStart");
         if (!moderation.IsAllowed)
         {
@@ -1832,7 +2068,9 @@ internal sealed class MessagingService : IMessagingService
             UpdatedUtc = nowUtc,
             CreatedByUserId = actor.UserId,
             OwnerUserId = owner.UserId,
-            OwnerParticipantType = owner.ParticipantType
+            OwnerParticipantType = owner.ParticipantType,
+            GroupImageContent = groupImage?.Content,
+            GroupImageContentType = groupImage?.ContentType
         };
         _db.MessageConversations.Add(conversation);
 
@@ -1893,17 +2131,24 @@ internal sealed class MessagingService : IMessagingService
 
     private async Task<Dictionary<(string UserId, string ParticipantType), string>> LoadDisplayNamesAsync(
         IReadOnlyCollection<ParticipantRow> participants,
+        IReadOnlyCollection<MessagingParticipantReference>? additionalParticipants,
         CancellationToken cancellationToken)
     {
         var identities = await _participantIdentities.ResolveIdentitiesAsync(
             participants.Select(participant => new MessagingParticipantReference(
                 participant.UserId,
-                participant.ParticipantType)),
+                participant.ParticipantType))
+                .Concat(additionalParticipants ?? Array.Empty<MessagingParticipantReference>()),
             cancellationToken);
         return identities.ToDictionary(
             pair => pair.Key,
             pair => pair.Value.DisplayName);
     }
+
+    private Task<Dictionary<(string UserId, string ParticipantType), string>> LoadDisplayNamesAsync(
+        IReadOnlyCollection<ParticipantRow> participants,
+        CancellationToken cancellationToken) =>
+        LoadDisplayNamesAsync(participants, null, cancellationToken);
 
     private async Task<MessagingOperationResult> SaveOperationAsync(
         string operation,
@@ -1944,6 +2189,61 @@ internal sealed class MessagingService : IMessagingService
             CreatedUtc = createdUtc
         });
     }
+
+    private async Task<bool> IsFounderVerificationManagerAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken) =>
+        actor.ParticipantType == MessagingParticipantTypes.Agent &&
+        await _db.AgentProfiles.AsNoTracking().AnyAsync(profile =>
+            profile.IsActive &&
+            profile.AgentUserId.ToLower() == actor.UserId &&
+            (profile.NormalizedEmail == LegendVerifiedIdentity.FounderEmail ||
+             (profile.AgentUpn != null &&
+              profile.AgentUpn.ToLower() == LegendVerifiedIdentity.FounderEmail)),
+            cancellationToken);
+
+    private Task<bool> IsActiveAgentAsync(
+        string userId,
+        CancellationToken cancellationToken) =>
+        _db.AgentProfiles.AsNoTracking().AnyAsync(profile =>
+            profile.IsActive && profile.AgentUserId.ToLower() == userId,
+            cancellationToken);
+
+    private async Task<bool> SetAgentVerifiedAsync(
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var profile = await _db.AgentProfiles.FirstOrDefaultAsync(candidate =>
+            candidate.IsActive && candidate.AgentUserId.ToLower() == userId,
+            cancellationToken);
+        if (profile is null)
+            return false;
+        profile.IsVerified = true;
+        profile.UpdatedUtc = DateTime.UtcNow;
+        return true;
+    }
+
+    private async Task<bool> SetClientVerifiedAsync(
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var profile = await _db.ClientProfiles.FirstOrDefaultAsync(candidate =>
+            candidate.ClientUserId.ToLower() == userId ||
+            (candidate.ExternalIdentityObjectId != null && candidate.ExternalIdentityObjectId.ToLower() == userId),
+            cancellationToken);
+        if (profile is null)
+            return false;
+        profile.IsVerified = true;
+        profile.UpdatedUtc = DateTime.UtcNow;
+        return true;
+    }
+
+    private static bool IsValidGroupImage(MessagingGroupImage? image) =>
+        image is null ||
+        (image.Content.Length is > 0 and <= MaximumGroupImageBytes &&
+         (string.Equals(image.ContentType, "image/jpeg", StringComparison.OrdinalIgnoreCase) ||
+          string.Equals(image.ContentType, "image/png", StringComparison.OrdinalIgnoreCase) ||
+          string.Equals(image.ContentType, "image/heic", StringComparison.OrdinalIgnoreCase)));
 
     private static MessagingActor NormalizeActor(MessagingActor actor) => new(
         NormalizeUserId(actor.UserId),
@@ -2075,7 +2375,8 @@ internal sealed class MessagingService : IMessagingService
 
     private static MessagingMessageSummary ToMessageSummary(
         MessageDetailRow message,
-        IReadOnlyCollection<AttachmentRow> attachments)
+        IReadOnlyCollection<AttachmentRow> attachments,
+        IReadOnlyDictionary<Guid, MessagingVerificationReview>? reviews = null)
     {
         return new MessagingMessageSummary(
             message.Id,
@@ -2097,8 +2398,17 @@ internal sealed class MessagingService : IMessagingService
                     message.Reply.IsDeleted
                         ? "Message unavailable"
                         : message.Reply.Body,
-                    message.Reply.IsDeleted));
+                    message.Reply.IsDeleted),
+            message.VerificationReviewRequestId.HasValue &&
+            reviews?.TryGetValue(message.VerificationReviewRequestId.Value, out var review) == true
+                ? review
+                : null);
     }
+
+    private static MessagingGroupImage? ToGroupImage(byte[]? content, string? contentType) =>
+        content is { Length: > 0 } && !string.IsNullOrWhiteSpace(contentType)
+            ? new MessagingGroupImage(content, contentType)
+            : null;
 
     private static MessagingAttachmentSummary ToAttachmentSummary(AttachmentRow attachment) => new(
         attachment.Id,
@@ -2158,7 +2468,10 @@ internal sealed class MessagingService : IMessagingService
         string ConversationType,
         string? Subject,
         DateTime? LastMessageUtc,
-        bool IsClosed);
+        bool IsClosed,
+        string? Purpose,
+        byte[]? GroupImageContent,
+        string? GroupImageContentType);
 
     private sealed record DirectConversationParticipant(
         string UserId,
@@ -2177,7 +2490,10 @@ internal sealed class MessagingService : IMessagingService
         DateTime? LastMessageUtc,
         bool IsClosed,
         string? OwnerUserId,
-        string? OwnerParticipantType);
+        string? OwnerParticipantType,
+        string? Purpose,
+        byte[]? GroupImageContent,
+        string? GroupImageContentType);
 
     private sealed record ParticipantRow(
         Guid ConversationId,
@@ -2205,6 +2521,7 @@ internal sealed class MessagingService : IMessagingService
         DateTime? EditedUtc,
         bool IsDeleted,
         Guid? ReplyToMessageId,
+        Guid? VerificationReviewRequestId,
         ReplyDetailRow? Reply);
 
     private sealed record ReplyDetailRow(

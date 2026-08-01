@@ -424,7 +424,9 @@ public sealed class SocialFeedService : ISocialFeedService
         }
 
         var author = AuthorKey.From(command.Actor.Identity.UserId, command.Actor.Identity.ParticipantType);
-        var post = await _db.SocialPosts.SingleOrDefaultAsync(
+        var post = await _db.SocialPosts
+            .Include(item => item.MediaAssets)
+            .SingleOrDefaultAsync(
             item => item.Id == command.PostId &&
                     item.DeletedUtc == null &&
                     item.AuthorUserId == author.UserId &&
@@ -437,7 +439,56 @@ public sealed class SocialFeedService : ISocialFeedService
                 "Only the creator can delete this update.");
         }
 
-        post.DeletedUtc = DateTime.UtcNow;
+        // Object storage is separate from the relational transaction. Delete those
+        // idempotent keys first so a returned success never leaves the member's
+        // video or image behind; a transient storage failure leaves the database
+        // untouched and the user can safely retry.
+        var mediaStorageKeys = post.MediaAssets
+            .SelectMany(media => new[]
+            {
+                media.StorageKey,
+                media.ThumbnailStorageKey
+            })
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        try
+        {
+            await DeleteStoredMediaAsync(mediaStorageKeys, cancellationToken);
+        }
+        catch (Exception) when (cancellationToken.IsCancellationRequested == false)
+        {
+            return SocialOperationResult<bool>.Failure(
+                "social_media_delete_failed",
+                "Legend could not remove this post's media. Nothing was deleted; please try again.");
+        }
+
+        // These tables intentionally preserve a relationship or an attribution
+        // without requiring a database FK to the post. A physical post deletion
+        // must explicitly clean or detach those source references.
+        var profileVisits = await _db.SocialProfileVisits
+            .Where(visit => visit.SourceSocialPostId == post.Id)
+            .ToArrayAsync(cancellationToken);
+        var sourceFollows = await _db.SocialFollows
+            .Where(follow => follow.SourceSocialPostId == post.Id)
+            .ToArrayAsync(cancellationToken);
+        var dependentReposts = await _db.SocialPosts
+            .Where(item => item.RepostOfSocialPostId == post.Id)
+            .ToArrayAsync(cancellationToken);
+
+        _db.SocialProfileVisits.RemoveRange(profileVisits);
+        foreach (var follow in sourceFollows)
+            follow.SourceSocialPostId = null;
+        foreach (var repost in dependentReposts)
+            repost.RepostOfSocialPostId = null;
+
+        // The model configures cascade removal for media metadata, comments,
+        // reactions, views, saves, shares, reposts, and music. This is deliberately
+        // a physical removal: deleted social content no longer occupies a row in the
+        // production database.
+        _db.SocialPosts.Remove(post);
         await _db.SaveChangesAsync(cancellationToken);
         return SocialOperationResult<bool>.Success(true);
     }

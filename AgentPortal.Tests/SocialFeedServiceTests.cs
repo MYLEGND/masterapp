@@ -435,7 +435,7 @@ public sealed class SocialFeedServiceTests
             owner,
             created.Value.Id));
         var profileAfterDelete = await service.GetCurrentProfilePostsAsync(owner);
-        var stored = await db.SocialPosts.SingleAsync(post => post.Id == created.Value.Id);
+        var stillStored = await db.SocialPosts.AnyAsync(post => post.Id == created.Value.Id);
 
         Assert.False(rejectedEdit.Succeeded);
         Assert.Equal("social_post_not_owned", rejectedEdit.ErrorCode);
@@ -444,9 +444,88 @@ public sealed class SocialFeedServiceTests
         Assert.False(rejectedDelete.Succeeded);
         Assert.Equal("social_post_not_owned", rejectedDelete.ErrorCode);
         Assert.True(deleted.Succeeded);
-        Assert.NotNull(stored.DeletedUtc);
+        Assert.False(stillStored);
         Assert.True(profileAfterDelete.Succeeded);
         Assert.Empty(profileAfterDelete.Value!);
+    }
+
+    [Fact]
+    public async Task DeletePost_PhysicallyRemovesMediaAndPostAttributedRows()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("delete-media-client", "Delete", "Media");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var storage = new InMemoryTestSocialMediaStorage();
+        var service = CreateService(db, storage);
+        await using var video = new MemoryStream([1, 2, 3, 4]);
+        var created = await service.CreateMediaPostAsync(
+            new CreateSocialMediaPostCommand(
+                ClientActor(client),
+                SocialPostContentTypes.Reel,
+                "A Hac that will be removed.",
+                [new SocialMediaUpload("remove.mp4", video.Length, video, null)]));
+        Assert.True(created.Succeeded);
+        var postId = created.Value!.Id;
+        var mediaId = Assert.Single(created.Value.Media).Id;
+
+        var sourceFollow = new SocialFollow
+        {
+            FollowerUserId = "follower",
+            FollowerParticipantType = MessagingParticipantTypes.Client,
+            FollowedUserId = client.ClientUserId,
+            FollowedParticipantType = MessagingParticipantTypes.Client,
+            SourceSocialPostId = postId,
+            Status = SocialFollowStatuses.Accepted
+        };
+        db.SocialFollows.Add(sourceFollow);
+        db.SocialProfileVisits.Add(new SocialProfileVisit
+        {
+            TargetUserId = client.ClientUserId,
+            TargetParticipantType = MessagingParticipantTypes.Client,
+            VisitorUserId = "viewer",
+            VisitorParticipantType = MessagingParticipantTypes.Client,
+            SourceSocialPostId = postId
+        });
+        await db.SaveChangesAsync();
+
+        var deleted = await service.DeletePostAsync(
+            new SocialPostMutationCommand(ClientActor(client), postId));
+
+        Assert.True(deleted.Succeeded);
+        Assert.False(await db.SocialPosts.AnyAsync(post => post.Id == postId));
+        Assert.False(await db.SocialPostMediaAssets.AnyAsync(media => media.Id == mediaId));
+        Assert.False(await db.SocialProfileVisits.AnyAsync(visit => visit.SourceSocialPostId == postId));
+        Assert.Null((await db.SocialFollows.SingleAsync(follow => follow.Id == sourceFollow.Id)).SourceSocialPostId);
+        Assert.Equal(0, storage.StoredMediaCount);
+    }
+
+    [Fact]
+    public async Task SocialContentCreation_HasNoPerMemberQuota()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("unlimited-content-client", "Unlimited", "Content");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        const int itemCount = 125;
+        for (var index = 0; index < itemCount; index++)
+        {
+            var created = await service.CreatePostAsync(
+                new CreateSocialPostCommand(
+                    ClientActor(client),
+                    index % 2 == 0
+                        ? SocialPostContentTypes.Post
+                        : SocialPostContentTypes.Story,
+                    $"Unlimited Legend content {index}"));
+            Assert.True(created.Succeeded);
+        }
+
+        Assert.Equal(
+            itemCount,
+            await db.SocialPosts.CountAsync(post => post.AuthorUserId == client.ClientUserId));
     }
 
     [Fact]
@@ -631,6 +710,20 @@ public sealed class SocialFeedServiceTests
         Assert.Equal("Video", media.MediaKind);
         Assert.Equal("video/mp4", media.MimeType);
         Assert.Equal("A Legend video Hac", media.AccessibilityText);
+
+        var persistedPost = await db.SocialPosts
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == created.Value.Id);
+        var persistedMedia = await db.SocialPostMediaAssets
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == media.Id);
+
+        Assert.Equal(SocialPostContentTypes.Reel, persistedPost.ContentType);
+        Assert.Equal(created.Value.Id, persistedMedia.SocialPostId);
+        Assert.Equal("Video", persistedMedia.MediaKind);
+        Assert.Equal("video/mp4", persistedMedia.MimeType);
+        Assert.Equal(content.LongLength, persistedMedia.FileSizeBytes);
+        Assert.Equal("Ready", persistedMedia.ProcessingState);
 
         var retrieved = await service.GetMediaAsync(ClientActor(client), media.Id);
 

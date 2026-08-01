@@ -87,6 +87,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
     public DbSet<ClientAgentMessagingGrant> ClientAgentMessagingGrants => Set<ClientAgentMessagingGrant>();
     public DbSet<MessagingAuditEntry> MessagingAuditEntries => Set<MessagingAuditEntry>();
+    public DbSet<VerificationReviewRequest> VerificationReviewRequests => Set<VerificationReviewRequest>();
     public DbSet<JourneyCircleProfile> JourneyCircleProfiles => Set<JourneyCircleProfile>();
     public DbSet<JourneyCircleConnection> JourneyCircleConnections => Set<JourneyCircleConnection>();
     public DbSet<JourneyCircleBlock> JourneyCircleBlocks => Set<JourneyCircleBlock>();

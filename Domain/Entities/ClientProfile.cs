@@ -28,6 +28,7 @@ public class ClientProfile
     // file path so a client and an agent identity can never resolve each other.
     public byte[]? ProfileImageContent { get; set; }
     public string? ProfileImageContentType { get; set; }
+    public bool IsVerified { get; set; }
 
     public DateTime? DOB { get; set; }
     public string MaritalStatus { get; set; } = "";

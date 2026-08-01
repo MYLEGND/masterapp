@@ -17,6 +17,7 @@ public class AgentProfile
     // supplying the agent image.
     public byte[]? ProfileImageContent { get; set; }
     public string? ProfileImageContentType { get; set; }
+    public bool IsVerified { get; set; }
 
     public string? FullName { get; set; }
     public string? Title { get; set; }

@@ -49,6 +49,7 @@ public sealed record MobileAccountSnapshot(
     string? Title,
     string? RoleLabel,
     string? ShortBio,
+    bool IsVerified = false,
     string? Username = null,
     string? Bio = null,
     string? Website = null,
@@ -56,7 +57,6 @@ public sealed record MobileAccountSnapshot(
     string? ProfileEmail = null,
     bool IsEmailVisible = false,
     bool IsPrivate = false,
-    bool IsVerified = false,
     int UsernameChangesRemaining = 2);
 
 public sealed record MobileAccountResult(
@@ -124,7 +124,8 @@ public sealed class MobileAccountService : IMobileAccountService
                     candidate.Phone,
                     candidate.Title,
                     null,
-                    candidate.ShortBio))
+                    candidate.ShortBio,
+                    candidate.IsVerified))
                 .SingleOrDefaultAsync(cancellationToken);
 
             if (profile is null)
@@ -136,7 +137,7 @@ public sealed class MobileAccountService : IMobileAccountService
 
             profile = profile with
             {
-                IsVerified = LegendVerifiedIdentity.IsVerifiedAgentEmail(profile.Email),
+                IsVerified = profile.IsVerified || LegendVerifiedIdentity.IsVerifiedAgentEmail(profile.Email),
                 RoleLabel = AgentProfileIdentity.LegendRoleLabel(profile.Title)
             };
 
@@ -165,7 +166,8 @@ public sealed class MobileAccountService : IMobileAccountService
                     candidate.Phone,
                     null,
                     null,
-                    null))
+                    null,
+                    candidate.IsVerified))
                 .SingleOrDefaultAsync(cancellationToken);
 
             if (profile is null)

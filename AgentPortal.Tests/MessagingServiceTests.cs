@@ -148,7 +148,7 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
-    public async Task VerificationRequest_CreatesOneFounderOwnedGroupForTheRequester()
+    public async Task VerificationRequest_UsesOnePrivateFounderReviewQueueAndResolvesTheProfile()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: false, grantClientToAgent: false);
@@ -174,25 +174,44 @@ public sealed class MessagingServiceTests
         var service = CreateService(db);
         var requester = new MessagingActor("client-1", MessagingParticipantTypes.Client);
         var opened = await service.StartVerificationRequestAsync(requester);
-        var conversation = Assert.IsType<MessagingConversationDetail>(opened.Conversation);
+        var request = Assert.IsType<MessagingVerificationReview>(opened.Request);
 
         Assert.True(opened.Succeeded);
-        Assert.Equal(MessagingConversationTypes.Group, conversation.ConversationType);
-        Assert.False(conversation.CanManageMembers);
-        Assert.Equal(3, conversation.Participants.Count);
+        Assert.Equal(VerificationReviewStatuses.Pending, request.Status);
 
         var persisted = await db.MessageConversations.SingleAsync();
-        Assert.Equal(MessagingConversationPurposes.VerificationRequest, persisted.Purpose);
+        Assert.Equal(MessagingConversationTypes.Group, persisted.ConversationType);
+        Assert.Equal(MessagingConversationPurposes.VerificationReview, persisted.Purpose);
         Assert.Equal("zac-founder-oid", persisted.OwnerUserId);
         Assert.Equal(MessagingParticipantTypes.Agent, persisted.OwnerParticipantType);
+        Assert.Equal(2, await db.MessageConversationParticipants.CountAsync());
+        Assert.Equal(1, await db.VerificationReviewRequests.CountAsync());
 
         var repeated = await service.StartVerificationRequestAsync(requester);
-        Assert.Equal(conversation.Id, Assert.IsType<MessagingConversationDetail>(repeated.Conversation).Id);
+        Assert.Equal(request.Id, Assert.IsType<MessagingVerificationReview>(repeated.Request).Id);
+
+        var requesterDetail = await service.GetConversationAsync(requester, persisted.Id);
+        Assert.False(requesterDetail.Succeeded);
 
         var founderDetail = await service.GetConversationAsync(
             new MessagingActor("zac-founder-oid", MessagingParticipantTypes.Agent),
-            conversation.Id);
-        Assert.True(Assert.IsType<MessagingConversationDetail>(founderDetail.Conversation).CanManageMembers);
+            persisted.Id);
+        var reviewQueue = Assert.IsType<MessagingConversationDetail>(founderDetail.Conversation);
+        Assert.True(reviewQueue.CanManageMembers);
+        Assert.Single(reviewQueue.Messages);
+        Assert.Equal("client-1", reviewQueue.Messages.Single().SenderUserId);
+        var review = Assert.IsType<MessagingVerificationReview>(reviewQueue.Messages.Single().VerificationReview);
+        Assert.True(review.CanResolve);
+
+        var resolved = await service.ResolveVerificationReviewRequestAsync(
+            new ResolveVerificationReviewRequestCommand(
+                new MessagingActor("zac-founder-oid", MessagingParticipantTypes.Agent),
+                request.Id,
+                Approve: true));
+        Assert.True(resolved.Succeeded);
+        Assert.True((await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1")).IsVerified);
+        Assert.Equal(VerificationReviewStatuses.Approved,
+            (await db.VerificationReviewRequests.SingleAsync()).Status);
     }
 
     [Fact]

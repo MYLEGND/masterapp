@@ -623,31 +623,41 @@ public sealed class MobileSocialController : MobileApiControllerBase
             author.Location,
             author.PublicEmail,
             author.IsPrivate,
-            await IsVerifiedAgentProfileAsync(
+            await IsVerifiedProfileAsync(
                 author.ParticipantType,
                 author.ProfileId,
                 cancellationToken),
             author.RoleLabel);
     }
 
-    private async Task<bool> IsVerifiedAgentProfileAsync(
+    private async Task<bool> IsVerifiedProfileAsync(
         string participantType,
         Guid profileId,
         CancellationToken cancellationToken)
     {
-        if (_db is null ||
-            profileId == Guid.Empty ||
-            !string.Equals(participantType, MessagingParticipantTypes.Agent, StringComparison.Ordinal))
+        if (_db is null || profileId == Guid.Empty)
         {
             return false;
         }
 
-        var email = await _db.AgentProfiles
+        if (string.Equals(participantType, MessagingParticipantTypes.Client, StringComparison.Ordinal))
+        {
+            return await _db.ClientProfiles
+                .AsNoTracking()
+                .Where(profile => profile.Id == profileId)
+                .Select(profile => profile.IsVerified)
+                .SingleOrDefaultAsync(cancellationToken);
+        }
+
+        if (!string.Equals(participantType, MessagingParticipantTypes.Agent, StringComparison.Ordinal))
+            return false;
+
+        var profile = await _db.AgentProfiles
             .AsNoTracking()
-            .Where(profile => profile.Id == profileId && profile.IsActive)
-            .Select(profile => profile.NormalizedEmail ?? profile.AgentUpn)
+            .Where(candidate => candidate.Id == profileId && candidate.IsActive)
+            .Select(candidate => new { candidate.IsVerified, Email = candidate.NormalizedEmail ?? candidate.AgentUpn })
             .SingleOrDefaultAsync(cancellationToken);
-        return LegendVerifiedIdentity.IsVerifiedAgentEmail(email);
+        return profile?.IsVerified == true || LegendVerifiedIdentity.IsVerifiedAgentEmail(profile?.Email);
     }
 
     private async Task<MobileSocialProfileMetricsDto> ToProfileMetricsDtoAsync(
@@ -771,6 +781,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
                     "SOCIAL_MEDIA_STORAGE_FAILED" or
                     "SOCIAL_MEDIA_STORAGE_UNAVAILABLE" or
                     "social_media_storage_unavailable" or
+                    "social_media_delete_failed" or
                     "social_media_persistence_failed"
                         ? StatusCodes.Status503ServiceUnavailable
                         : errorCode is "social_music_provider_unavailable"
