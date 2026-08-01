@@ -627,7 +627,8 @@ public sealed class MobileSocialController : MobileApiControllerBase
                 author.ParticipantType,
                 author.ProfileId,
                 cancellationToken),
-            author.RoleLabel);
+            author.RoleLabel,
+            author.PublicPhone);
     }
 
     private async Task<bool> IsVerifiedProfileAsync(
@@ -835,7 +836,8 @@ public sealed record MobileSocialAuthorDto(
     string? PublicEmail = null,
     bool IsPrivate = false,
     bool IsVerified = false,
-    string? RoleLabel = null);
+    string? RoleLabel = null,
+    string? PublicPhone = null);
 public sealed record MobileSocialFollowListEntryDto(MobileSocialAuthorDto Profile, bool FollowedByCurrentActor);
 public sealed record MobileSocialFollowRequestDto(Guid Id, MobileSocialAuthorDto Profile, DateTime RequestedUtc);
 public sealed record MobileSocialCommentDto(Guid Id, MobileSocialAuthorDto Author, Guid? ParentCommentId, string Body, DateTime CreatedUtc);

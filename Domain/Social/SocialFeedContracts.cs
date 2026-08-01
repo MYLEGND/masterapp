@@ -92,7 +92,11 @@ public sealed record SocialAuthor(
     string? Location = null,
     string? PublicEmail = null,
     bool IsPrivate = false,
-    string? RoleLabel = null);
+    string? RoleLabel = null,
+    // Kept inside the social authority so the mobile-profile visibility rule
+    // can project it without creating a second contact record.
+    string? Phone = null,
+    string? PublicPhone = null);
 
 public sealed record SocialCommentView(Guid Id, SocialAuthor Author, Guid? ParentCommentId, string Body, DateTime CreatedUtc);
 

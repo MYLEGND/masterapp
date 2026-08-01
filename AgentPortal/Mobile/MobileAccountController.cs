@@ -1,3 +1,4 @@
+using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Messaging;
 using Infrastructure.Mobile;
@@ -82,6 +83,8 @@ public sealed class MobileAccountController : MobileApiControllerBase
                 request.Location,
                 request.PublicEmail,
                 request.IsEmailVisible,
+                request.IsPhoneVisible,
+                request.PreferredCommunicationLanguage,
                 request.IsPrivate),
             cancellationToken);
 
@@ -158,7 +161,12 @@ public sealed class MobileAccountController : MobileApiControllerBase
             account.IsPrivate,
             avatar,
             account.IsVerified,
-            account.UsernameChangesRemaining);
+            account.UsernameChangesRemaining,
+            account.IsPhoneVisible,
+            new MobileTranslationAccessDto(
+                account.TranslationAccess?.State ?? ControlledResourceAccessStates.NotGranted,
+                account.TranslationAccess?.CanManage ?? false,
+                account.PreferredCommunicationLanguage));
     }
 
     private IActionResult AccountFailure(MobileAccountResult result)
@@ -195,6 +203,8 @@ public sealed record MobileAccountUpdateRequest(
     string? Location = null,
     string? PublicEmail = null,
     bool IsEmailVisible = false,
+    bool IsPhoneVisible = false,
+    string? PreferredCommunicationLanguage = null,
     bool? IsPrivate = null);
 
 public sealed record MobileAccountPrivacyUpdateRequest(bool IsPrivate);
@@ -217,4 +227,11 @@ public sealed record MobileAccountProfile(
     bool IsPrivate,
     MobileAvatarDto? Avatar,
     bool IsVerified,
-    int UsernameChangesRemaining);
+    int UsernameChangesRemaining,
+    bool IsPhoneVisible = false,
+    MobileTranslationAccessDto? TranslationAccess = null);
+
+public sealed record MobileTranslationAccessDto(
+    string State,
+    bool CanManage,
+    string? PreferredCommunicationLanguage);

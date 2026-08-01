@@ -2054,7 +2054,7 @@ public sealed class SocialFeedService : ISocialFeedService
             var agents = await _db.AgentProfiles
                 .AsNoTracking()
                 .Where(profile => profile.IsActive && ids.Contains(profile.AgentUserId.ToLower()))
-                .Select(profile => new { profile.Id, profile.AgentUserId, profile.FullName, profile.AgentUpn, profile.Title })
+                .Select(profile => new { profile.Id, profile.AgentUserId, profile.FullName, profile.AgentUpn, profile.Title, profile.Phone })
                 .ToListAsync(cancellationToken);
             foreach (var profile in agents)
             {
@@ -2064,7 +2064,8 @@ public sealed class SocialFeedService : ISocialFeedService
                     MessagingParticipantTypes.Agent,
                     profile.Id,
                     name,
-                    RoleLabel: AgentProfileIdentity.LegendRoleLabel(profile.Title));
+                    RoleLabel: AgentProfileIdentity.LegendRoleLabel(profile.Title),
+                    Phone: profile.Phone);
             }
         }
 
@@ -2076,7 +2077,7 @@ public sealed class SocialFeedService : ISocialFeedService
                 .AsNoTracking()
                 .Where(profile => ids.Contains(profile.ClientUserId.ToLower()) ||
                                   (profile.ExternalIdentityObjectId != null && ids.Contains(profile.ExternalIdentityObjectId.ToLower())))
-                .Select(profile => new { profile.Id, profile.ClientUserId, profile.ExternalIdentityObjectId, profile.FirstName, profile.LastName, profile.Email })
+                .Select(profile => new { profile.Id, profile.ClientUserId, profile.ExternalIdentityObjectId, profile.FirstName, profile.LastName, profile.Email, profile.Phone })
                 .ToListAsync(cancellationToken);
             foreach (var profile in clients)
             {
@@ -2093,7 +2094,8 @@ public sealed class SocialFeedService : ISocialFeedService
 
                 var name = FirstNonEmpty($"{profile.FirstName} {profile.LastName}".Trim(), profile.Email, "Client");
                 var author = new SocialAuthor(
-                    canonicalUserId, MessagingParticipantTypes.Client, profile.Id, name);
+                    canonicalUserId, MessagingParticipantTypes.Client, profile.Id, name,
+                    Phone: profile.Phone);
 
                 foreach (var identityForm in ClientIdentityForms(profile.ClientUserId, profile.ExternalIdentityObjectId))
                     result[AuthorKey.From(identityForm, MessagingParticipantTypes.Client)] = author;
@@ -2129,6 +2131,7 @@ public sealed class SocialFeedService : ISocialFeedService
         Website = mobileProfile.Website,
         Location = mobileProfile.Location,
         PublicEmail = mobileProfile.IsEmailVisible ? mobileProfile.PublicEmail : null,
+        PublicPhone = mobileProfile.IsPhoneVisible ? author.Phone : null,
         IsPrivate = mobileProfile.IsPrivate
     };
 

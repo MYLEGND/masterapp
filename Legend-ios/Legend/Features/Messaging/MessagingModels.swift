@@ -142,6 +142,8 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
     let isDeleted: Bool
     let reply: MessageReplyPreview?
     let verificationReview: VerificationReview?
+    let translation: MessageTranslationPresentation?
+    let originalBody: String?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -154,6 +156,8 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         case isDeleted
         case reply
         case verificationReview
+        case translation
+        case originalBody
     }
 
     init(
@@ -166,7 +170,9 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         isMine: Bool,
         isDeleted: Bool = false,
         reply: MessageReplyPreview?,
-        verificationReview: VerificationReview? = nil
+        verificationReview: VerificationReview? = nil,
+        translation: MessageTranslationPresentation? = nil,
+        originalBody: String? = nil
     ) {
         self.id = id
         self.conversationID = conversationID
@@ -178,6 +184,8 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         self.isDeleted = isDeleted
         self.reply = reply
         self.verificationReview = verificationReview
+        self.translation = translation
+        self.originalBody = originalBody
     }
 
     init(from decoder: Decoder) throws {
@@ -192,7 +200,15 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         isDeleted = try container.decodeIfPresent(Bool.self, forKey: .isDeleted) ?? false
         reply = try container.decodeIfPresent(MessageReplyPreview.self, forKey: .reply)
         verificationReview = try container.decodeIfPresent(VerificationReview.self, forKey: .verificationReview)
+        translation = try container.decodeIfPresent(MessageTranslationPresentation.self, forKey: .translation)
+        originalBody = try container.decodeIfPresent(String.self, forKey: .originalBody)
     }
+}
+
+struct MessageTranslationPresentation: Codable, Equatable, Sendable {
+    let originalLanguage: String
+    let targetLanguage: String
+    let provider: String
 }
 
 struct VerificationReview: Codable, Equatable, Identifiable, Sendable {
@@ -202,6 +218,7 @@ struct VerificationReview: Codable, Equatable, Identifiable, Sendable {
     let status: String
     let requestedUTC: Date
     let canResolve: Bool
+    let resourceType: ControlledResourceType
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -210,6 +227,37 @@ struct VerificationReview: Codable, Equatable, Identifiable, Sendable {
         case status
         case requestedUTC = "requestedUtc"
         case canResolve
+        case resourceType
+    }
+
+    init(
+        id: UUID,
+        requesterUserID: String,
+        requesterParticipantType: ParticipantType,
+        status: String,
+        requestedUTC: Date,
+        canResolve: Bool,
+        resourceType: ControlledResourceType = .verificationBadge
+    ) {
+        self.id = id
+        self.requesterUserID = requesterUserID
+        self.requesterParticipantType = requesterParticipantType
+        self.status = status
+        self.requestedUTC = requestedUTC
+        self.canResolve = canResolve
+        self.resourceType = resourceType
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(UUID.self, forKey: .id),
+            requesterUserID: try container.decode(String.self, forKey: .requesterUserID),
+            requesterParticipantType: try container.decode(ParticipantType.self, forKey: .requesterParticipantType),
+            status: try container.decode(String.self, forKey: .status),
+            requestedUTC: try container.decode(Date.self, forKey: .requestedUTC),
+            canResolve: try container.decode(Bool.self, forKey: .canResolve),
+            resourceType: try container.decodeIfPresent(ControlledResourceType.self, forKey: .resourceType) ?? .verificationBadge)
     }
 }
 
@@ -217,11 +265,41 @@ struct VerificationRequestSubmission: Codable, Equatable, Sendable {
     let id: UUID
     let status: String
     let requestedUTC: Date
+    let resourceType: ControlledResourceType
 
     private enum CodingKeys: String, CodingKey {
         case id
         case status
         case requestedUTC = "requestedUtc"
+        case resourceType
+    }
+
+    init(id: UUID, status: String, requestedUTC: Date, resourceType: ControlledResourceType = .verificationBadge) {
+        self.id = id
+        self.status = status
+        self.requestedUTC = requestedUTC
+        self.resourceType = resourceType
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decode(UUID.self, forKey: .id),
+            status: try container.decode(String.self, forKey: .status),
+            requestedUTC: try container.decode(Date.self, forKey: .requestedUTC),
+            resourceType: try container.decodeIfPresent(ControlledResourceType.self, forKey: .resourceType) ?? .verificationBadge)
+    }
+}
+
+enum ControlledResourceType: String, Codable, Sendable {
+    case verificationBadge = "VerificationBadge"
+    case languageTranslation = "LanguageTranslation"
+
+    var displayName: String {
+        switch self {
+        case .verificationBadge: "Legend verification"
+        case .languageTranslation: "Language Translation Access"
+        }
     }
 }
 
@@ -290,6 +368,18 @@ struct SendMessageRequest: Encodable, Sendable {
     }
 }
 
+private struct ControlledResourceGrantRequest: Encodable, Sendable {
+    let targetUserID: String
+    let targetParticipantType: ParticipantType
+    let isGranted: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case targetUserID = "targetUserId"
+        case targetParticipantType
+        case isGranted
+    }
+}
+
 struct MessagingRecipient: Codable, Equatable, Identifiable, Sendable {
     let identity: LogicalParticipantIdentity
     let profileID: String
@@ -300,6 +390,8 @@ struct MessagingRecipient: Codable, Equatable, Identifiable, Sendable {
     let existingConversationID: UUID?
     let avatar: ProfileAvatar?
     var isVerified: Bool? = nil
+    let resourceType: ControlledResourceType? = nil
+    let resourceAccessState: String? = nil
 
     var id: LogicalParticipantIdentity { identity }
 
@@ -313,6 +405,8 @@ struct MessagingRecipient: Codable, Equatable, Identifiable, Sendable {
         case avatar
         case isVerified
         case existingConversationID = "existingConversationId"
+        case resourceType
+        case resourceAccessState
     }
 }
 
@@ -415,6 +509,26 @@ protocol MessagingAPI: Sendable {
         accessToken: String
     ) async throws -> ConversationDetail
     func startVerificationRequest(accessToken: String) async throws -> VerificationRequestSubmission
+    func startControlledResourceRequest(
+        resourceType: ControlledResourceType,
+        accessToken: String
+    ) async throws -> VerificationRequestSubmission
+    func controlledResourceRecipients(
+        resourceType: ControlledResourceType,
+        search: String?,
+        accessToken: String
+    ) async throws -> [MessagingRecipient]
+    func setControlledResourceGrant(
+        resourceType: ControlledResourceType,
+        recipient: MessagingRecipient,
+        isGranted: Bool,
+        accessToken: String
+    ) async throws
+    func resolveControlledResourceRequest(
+        requestID: UUID,
+        approve: Bool,
+        accessToken: String
+    ) async throws
     func updateGroup(
         conversationID: UUID,
         subject: String,
@@ -464,6 +578,38 @@ extension MessagingAPI {
     }
 
     func startVerificationRequest(accessToken: String) async throws -> VerificationRequestSubmission {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func startControlledResourceRequest(
+        resourceType: ControlledResourceType,
+        accessToken: String
+    ) async throws -> VerificationRequestSubmission {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func controlledResourceRecipients(
+        resourceType: ControlledResourceType,
+        search: String?,
+        accessToken: String
+    ) async throws -> [MessagingRecipient] {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func setControlledResourceGrant(
+        resourceType: ControlledResourceType,
+        recipient: MessagingRecipient,
+        isGranted: Bool,
+        accessToken: String
+    ) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func resolveControlledResourceRequest(
+        requestID: UUID,
+        approve: Bool,
+        accessToken: String
+    ) async throws {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -685,6 +831,65 @@ struct URLSessionMessagingAPI: MessagingAPI {
             idempotencyKey: UUID(),
             headers: participantHeader,
             response: VerificationRequestSubmission.self)
+    }
+
+    func startControlledResourceRequest(
+        resourceType: ControlledResourceType,
+        accessToken: String
+    ) async throws -> VerificationRequestSubmission {
+        try await client.post(
+            "/api/v1/mobile/messaging/controlled-resources/\(resourceType.rawValue)/requests",
+            body: EmptyMobileRequest(),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader,
+            response: VerificationRequestSubmission.self)
+    }
+
+    func controlledResourceRecipients(
+        resourceType: ControlledResourceType,
+        search: String?,
+        accessToken: String
+    ) async throws -> [MessagingRecipient] {
+        var queryItems: [URLQueryItem] = []
+        if search?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            queryItems.append(URLQueryItem(name: "search", value: search))
+        }
+        return try await client.get(
+            "/api/v1/mobile/messaging/controlled-resources/\(resourceType.rawValue)/recipients",
+            accessToken: accessToken,
+            queryItems: queryItems,
+            headers: participantHeader,
+            response: [MessagingRecipient].self)
+    }
+
+    func setControlledResourceGrant(
+        resourceType: ControlledResourceType,
+        recipient: MessagingRecipient,
+        isGranted: Bool,
+        accessToken: String
+    ) async throws {
+        try await client.put(
+            "/api/v1/mobile/messaging/controlled-resources/\(resourceType.rawValue)/recipients",
+            body: ControlledResourceGrantRequest(
+                targetUserID: recipient.identity.userID,
+                targetParticipantType: recipient.identity.participantType,
+                isGranted: isGranted),
+            accessToken: accessToken,
+            headers: participantHeader)
+    }
+
+    func resolveControlledResourceRequest(
+        requestID: UUID,
+        approve: Bool,
+        accessToken: String
+    ) async throws {
+        try await client.post(
+            "/api/v1/mobile/messaging/controlled-resource-requests/\(requestID.uuidString)/resolution",
+            body: ResolveVerificationRequest(approve: approve),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader)
     }
 
     func updateGroup(

@@ -1,9 +1,10 @@
 namespace Domain.Entities;
 
 /// <summary>
-/// One member's auditable request for the private Legend verification review.
-/// The request is separate from the staff conversation, so the review queue can
-/// stay private while each member only sees their own verification state.
+/// One member's auditable request for a founder-controlled Legend resource.
+/// This table began with verification and remains the single request queue for
+/// every controlled resource. The requester is never added to the staff review
+/// conversation, so the queue stays private.
 /// </summary>
 public sealed class VerificationReviewRequest
 {
@@ -15,6 +16,12 @@ public sealed class VerificationReviewRequest
 
     public string RequesterParticipantType { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The resource requested through the shared Founder + Legend review queue.
+    /// Existing rows are verification requests by default.
+    /// </summary>
+    public string ResourceType { get; set; } = ControlledResourceTypes.VerificationBadge;
+
     public string Status { get; set; } = VerificationReviewStatuses.Pending;
 
     public DateTime RequestedUtc { get; set; } = DateTime.UtcNow;
@@ -24,6 +31,27 @@ public sealed class VerificationReviewRequest
     public string? ResolvedByUserId { get; set; }
 
     public string? ResolutionNote { get; set; }
+}
+
+/// <summary>
+/// Resource identifiers shared by the request queue, server authorization, and
+/// grant persistence. These values are never inferred by the mobile client.
+/// </summary>
+public static class ControlledResourceTypes
+{
+    public const string VerificationBadge = "VerificationBadge";
+    public const string LanguageTranslation = "LanguageTranslation";
+
+    public static bool IsSupported(string? value) =>
+        string.Equals(value, VerificationBadge, StringComparison.Ordinal) ||
+        string.Equals(value, LanguageTranslation, StringComparison.Ordinal);
+}
+
+public static class ControlledResourceAccessStates
+{
+    public const string NotGranted = "NotGranted";
+    public const string Pending = "Pending";
+    public const string Granted = "Granted";
 }
 
 public static class VerificationReviewStatuses

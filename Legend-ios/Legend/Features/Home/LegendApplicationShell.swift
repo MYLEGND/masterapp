@@ -5229,6 +5229,8 @@ private struct LegendAccountView: View {
     @State private var isShowingSettings = false
     @State private var isPresentingCreatorInsights = false
     @State private var isPresentingFollowRequests = false
+    @State private var isPresentingTranslationLanguagePicker = false
+    @State private var isPresentingTranslationManagement = false
     @State private var isConfirmingSignOut = false
     @State private var creationRoute: LegendSocialCreationRoute?
     @State private var selectedPost: MobileSocialPost?
@@ -5284,10 +5286,7 @@ private struct LegendAccountView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text("PROFILE")
-                    .font(LegendNextTypography.label)
-                    .tracking(1.35)
-                    .foregroundStyle(LegendNextColor.textPrimary)
+                profileAccountMenu
             }
 
             ToolbarItem(placement: .topBarTrailing) {
@@ -5315,6 +5314,14 @@ private struct LegendAccountView: View {
             if case .loaded(let profile) = account.state {
                 profileSettingsSheet(profile)
             }
+        }
+        .sheet(isPresented: $isPresentingTranslationLanguagePicker) {
+            if case .loaded(let profile) = account.state {
+                LegendTranslationLanguagePicker(profile: profile, store: account)
+            }
+        }
+        .sheet(isPresented: $isPresentingTranslationManagement) {
+            LegendTranslationAccessManager(messages: messages)
         }
         .sheet(item: $creationRoute) { _ in
             LegendSocialCreationSheet(
@@ -5390,6 +5397,59 @@ private struct LegendAccountView: View {
         )
     }
 
+    @ViewBuilder
+    private var profileAccountMenu: some View {
+        let handle = profileNavigationHandle
+        if currentSession.alternateParticipantTypes.isEmpty {
+            Text(handle)
+                .font(LegendNextTypography.label)
+                .tracking(0.4)
+                .foregroundStyle(LegendNextColor.textPrimary)
+        } else {
+            Menu {
+                Section {
+                    Label(
+                        "Current: \(currentSession.actor.identity.participantType.accountLabel)",
+                        systemImage: "checkmark.circle.fill"
+                    )
+                }
+
+                Section("Switch account") {
+                    ForEach(currentSession.alternateParticipantTypes, id: \.self) { participantType in
+                        Button {
+                            coordinator.switchToRole(participantType)
+                        } label: {
+                            Label(
+                                "Continue as \(participantType.accountLabel)",
+                                systemImage: participantType.accountSystemImage
+                            )
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(handle)
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.bold))
+                }
+                .font(LegendNextTypography.label)
+                .tracking(0.4)
+                .foregroundStyle(LegendNextColor.textPrimary)
+            }
+            .accessibilityLabel("\(handle). Switch account")
+            .accessibilityHint("Choose another authorized Legend account")
+        }
+    }
+
+    private var profileNavigationHandle: String {
+        guard case .loaded(let profile) = account.state,
+              let username = normalized(profile.username) else {
+            return currentSession.actor.displayName
+        }
+
+        return "@\(username)"
+    }
+
     private func profileContent(
         _ profile: MobileAccountProfile
     ) -> some View {
@@ -5451,52 +5511,22 @@ private struct LegendAccountView: View {
         LegendNextSurface(
             style: .elevated,
             cornerRadius: LegendNextRadius.prominentCard,
-            padding: LegendNextSpacing.md
+            padding: LegendNextSpacing.sm
         ) {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                HStack(alignment: .center, spacing: LegendNextSpacing.sm) {
                     LegendProfileAvatar(
                         avatar: profile.avatar,
                         displayName: profile.displayName,
-                        size: 72
+                        size: 64
                     )
-                    .overlay(alignment: .bottomTrailing) {
-                        Button {
-                            isEditing = true
-                        } label: {
-                            Image(systemName: "pencil")
-                        .font(.caption.weight(.black))
-                        .foregroundStyle(LegendNextColor.navy)
-                                .frame(width: 28, height: 28)
-                                .background(LegendNextGradient.gold, in: Circle())
-                                .overlay {
-                                    Circle().stroke(
-                                        LegendNextColor.surface,
-                                        lineWidth: 3
-                                    )
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Edit profile")
-                    }
 
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.tiny) {
-                        Text("YOUR LEGEND")
-                            .font(LegendNextTypography.eyebrow)
-                            .tracking(1)
-                            .foregroundStyle(LegendNextColor.gold)
-
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
                         LegendVerifiedName(
                             profile.displayName,
                             isVerified: profile.isVerified,
-                            font: LegendNextTypography.title
+                            font: .title2.weight(.bold)
                         )
-
-                        if let username = normalized(profile.username) {
-                            Text("@\(username)")
-                                .font(LegendNextTypography.supporting.weight(.semibold))
-                                .foregroundStyle(LegendNextColor.gold)
-                        }
 
                         if let roleLabel = normalized(profile.roleLabel) {
                             LegendNextBadge(roleLabel, tone: .gold, systemImage: "briefcase.fill")
@@ -5507,8 +5537,6 @@ private struct LegendAccountView: View {
                 }
 
                 profileDetails(profile)
-
-                LegendNextDivider()
 
                 HStack(spacing: LegendNextSpacing.tiny) {
                     Button {
@@ -5548,17 +5576,19 @@ private struct LegendAccountView: View {
                     .accessibilityHint("Show people who follow you")
                 }
                 .frame(maxWidth: .infinity)
+                .padding(.top, LegendNextSpacing.micro)
             }
         }
     }
 
     @ViewBuilder
     private func profileDetails(_ profile: MobileAccountProfile) -> some View {
-        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
             if let bio = normalized(profile.bio) ?? normalized(profile.shortBio) {
                 Text(bio)
-                    .font(LegendNextTypography.supporting)
+                    .font(LegendNextTypography.caption)
                     .foregroundStyle(LegendNextColor.textPrimary)
+                    .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -5569,47 +5599,33 @@ private struct LegendAccountView: View {
             }
 
             if let website = normalized(profile.website) {
-                Label(website, systemImage: "link")
-                    .font(LegendNextTypography.caption.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.gold)
-                    .textSelection(.enabled)
+                LegendProfileContactLink(value: website, kind: .website)
             }
 
             if profile.isEmailVisible,
                let email = normalized(profile.profileEmail) {
-                Label(email, systemImage: "envelope")
-                    .font(LegendNextTypography.caption.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.textSecondary)
-                    .textSelection(.enabled)
+                LegendProfileContactLink(value: email, kind: .email)
+            }
+
+            if profile.isPhoneVisible,
+               let phone = normalized(profile.phone) {
+                LegendProfileContactLink(value: phone, kind: .phone)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var profileActions: some View {
-        HStack(spacing: LegendNextSpacing.xs) {
-            Button {
-                isEditing = true
-            } label: {
-                Text("Edit profile")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(LegendNextButtonStyle(
-                kind: .secondary,
-                controlHeight: 42
-            ))
-
-            Button {
-                isShowingSettings = true
-            } label: {
-                Text("Profile settings")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(LegendNextButtonStyle(
-                kind: .secondary,
-                controlHeight: 42
-            ))
+        Button {
+            isEditing = true
+        } label: {
+            Text("Edit profile")
+                .frame(maxWidth: .infinity)
         }
+        .buttonStyle(LegendNextButtonStyle(
+            kind: .secondary,
+            controlHeight: 40
+        ))
     }
 
     private var profileContentSelector: some View {
@@ -5850,6 +5866,57 @@ private struct LegendAccountView: View {
                         }
                     }
 
+                    LegendProfileSettingsSection(title: "Language translation") {
+                        VStack(spacing: 0) {
+                            if profile.translationAccess.isGranted {
+                                Button {
+                                    isPresentingTranslationLanguagePicker = true
+                                } label: {
+                                    LegendProfileSettingsRow(
+                                        title: "Translation language",
+                                        detail: legendLanguageName(profile.translationAccess.preferredCommunicationLanguage),
+                                        systemImage: "character.bubble",
+                                        showsChevron: true)
+                                }
+                                .buttonStyle(.plain)
+
+                                if profile.translationAccess.canManage {
+                                    LegendProfileSettingsDivider()
+
+                                    Button {
+                                        isPresentingTranslationManagement = true
+                                    } label: {
+                                        LegendProfileSettingsRow(
+                                            title: "Manage translation access",
+                                            detail: "Grant or remove access for any Legend profile.",
+                                            systemImage: "person.badge.key",
+                                            showsChevron: true)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            } else {
+                                Button {
+                                    messages.startControlledResourceRequest(.languageTranslation) {
+                                        isShowingSettings = false
+                                        showMessages()
+                                    }
+                                } label: {
+                                    LegendProfileSettingsRow(
+                                        title: profile.translationAccess.isPending
+                                            ? "Translation access pending"
+                                            : "Request translation access",
+                                        detail: profile.translationAccess.isPending
+                                            ? "Your request is with the private Legend review team."
+                                            : "Choose Haitian Creole or another supported language after approval.",
+                                        systemImage: "character.bubble",
+                                        showsChevron: !profile.translationAccess.isPending)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(profile.translationAccess.isPending || messages.isCreatingGroup)
+                            }
+                        }
+                    }
+
                     LegendProfileSettingsSection(title: "Security") {
                         VStack(spacing: 0) {
                             LegendProfileSettingsRow(
@@ -6031,6 +6098,270 @@ private struct LegendAccountView: View {
 
         return normalized
     }
+
+    private func legendLanguageName(_ code: String?) -> String {
+        LegendTranslationLanguage.allCases
+            .first(where: { $0.rawValue == code })?
+            .displayName ?? "Choose a language"
+    }
+}
+
+private enum LegendTranslationLanguage: String, CaseIterable, Identifiable {
+    // Haitian Creole is the first choice by product decision, and its Azure
+    // Translator language identifier is server-owned as `ht`.
+    case haitianCreole = "ht"
+    case english = "en"
+    case spanish = "es"
+    case french = "fr"
+    case portuguese = "pt"
+    case german = "de"
+    case japanese = "ja"
+    case korean = "ko"
+    case chineseSimplified = "zh-Hans"
+    case arabic = "ar"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .haitianCreole: "Haitian Creole"
+        case .english: "English"
+        case .spanish: "Spanish"
+        case .french: "French"
+        case .portuguese: "Portuguese"
+        case .german: "German"
+        case .japanese: "Japanese"
+        case .korean: "Korean"
+        case .chineseSimplified: "Chinese (Simplified)"
+        case .arabic: "Arabic"
+        }
+    }
+}
+
+private struct LegendTranslationLanguagePicker: View {
+    let profile: MobileAccountProfile
+    @ObservedObject var store: MobileAccountStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedLanguage: LegendTranslationLanguage
+
+    init(profile: MobileAccountProfile, store: MobileAccountStore) {
+        self.profile = profile
+        _store = ObservedObject(wrappedValue: store)
+        _selectedLanguage = State(
+            initialValue: LegendTranslationLanguage(rawValue: profile.translationAccess.preferredCommunicationLanguage ?? "")
+                ?? .haitianCreole)
+    }
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Language translation",
+                        title: "Choose your language",
+                        detail: "Messages are translated only for your view. The sender’s original message is always available.",
+                        dismiss: { dismiss() })
+
+                    LegendProfileSettingsSection(title: "Preferred language") {
+                        VStack(spacing: 0) {
+                            ForEach(LegendTranslationLanguage.allCases) { language in
+                                Button {
+                                    selectedLanguage = language
+                                } label: {
+                                    HStack(spacing: LegendNextSpacing.sm) {
+                                        Image(systemName: selectedLanguage == language
+                                              ? "checkmark.circle.fill"
+                                              : "circle")
+                                            .foregroundStyle(selectedLanguage == language
+                                                ? LegendNextColor.goldBright
+                                                : .white.opacity(0.74))
+                                        Text(language.displayName)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(.white)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.vertical, LegendNextSpacing.micro)
+                                }
+                                .buttonStyle(.plain)
+
+                                if language != LegendTranslationLanguage.allCases.last {
+                                    LegendProfileSettingsDivider()
+                                }
+                            }
+                        }
+                    }
+
+                    Button(store.isSaving ? "Saving language…" : "Save language") {
+                        Task {
+                            if await store.savePreferredCommunicationLanguage(selectedLanguage.rawValue) {
+                                dismiss()
+                            }
+                        }
+                    }
+                    .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                    .disabled(store.isSaving)
+                }
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .tint(LegendNextColor.gold)
+        .legendNextSheetChrome(detents: [.large])
+    }
+}
+
+private struct LegendTranslationAccessManager: View {
+    @ObservedObject var messages: MessagingStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var recipients: MobileDataLoadState<[MessagingRecipient]> = .idle
+    @State private var search = ""
+    @State private var isUpdatingRecipientID: LogicalParticipantIdentity?
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Founder controls",
+                        title: "Translation access",
+                        detail: "Grant or remove Language Translation Access for any active Legend profile.",
+                        dismiss: { dismiss() })
+
+                    TextField("Search people", text: $search)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .padding(.horizontal, LegendNextSpacing.sm)
+                        .frame(minHeight: 44)
+                        .background(LegendNextColor.brandBlueSurface, in: RoundedRectangle(
+                            cornerRadius: LegendNextRadius.control,
+                            style: .continuous))
+                        .overlay {
+                            RoundedRectangle(
+                                cornerRadius: LegendNextRadius.control,
+                                style: .continuous)
+                                .strokeBorder(LegendNextColor.navy.opacity(0.18), lineWidth: 1)
+                        }
+
+                    directoryContent
+                }
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .tint(LegendNextColor.gold)
+        .legendNextSheetChrome(detents: [.large])
+        .task { await reloadDirectory() }
+        .onChange(of: search) { _, _ in
+            Task { await reloadDirectory() }
+        }
+    }
+
+    @ViewBuilder
+    private var directoryContent: some View {
+        switch recipients {
+        case .idle, .loading:
+            ProgressView("Loading the Legend directory")
+                .frame(maxWidth: .infinity, minHeight: 144)
+
+        case .unavailable(let failure):
+            LegendNextErrorState(
+                title: failure.title,
+                message: failure.message,
+                retryTitle: "Retry",
+                retry: { Task { await reloadDirectory() } })
+
+        case .loaded(let directory):
+            if directory.isEmpty {
+                LegendNextEmptyState(
+                    title: "No profiles found",
+                    message: "Try a name, username, or email address.",
+                    systemImage: "person.crop.circle.badge.questionmark")
+            } else {
+                LazyVStack(spacing: LegendNextSpacing.xs) {
+                    ForEach(directory) { recipient in
+                        accessRow(recipient)
+                    }
+                }
+            }
+        }
+    }
+
+    private func accessRow(_ recipient: MessagingRecipient) -> some View {
+        let isGranted = recipient.resourceAccessState == "Granted"
+        let isUpdating = isUpdatingRecipientID == recipient.identity
+        return HStack(spacing: LegendNextSpacing.sm) {
+            LegendProfileAvatar(
+                avatar: recipient.avatar,
+                displayName: recipient.displayName,
+                size: 42)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(recipient.displayName)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.white)
+                    if recipient.isVerified == true {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.caption)
+                            .foregroundStyle(LegendNextColor.verified)
+                    }
+                }
+                Text(recipient.email ?? recipient.roleLabel ?? recipient.identity.participantType.rawValue)
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(.white.opacity(0.74))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Button(isUpdating ? "Updating…" : (isGranted ? "Remove" : "Grant")) {
+                Task { await update(recipient, isGranted: !isGranted) }
+            }
+            .buttonStyle(LegendNextButtonStyle(
+                kind: isGranted ? .secondary : .primary,
+                isFullWidth: false,
+                controlHeight: 34))
+            .disabled(isUpdating)
+        }
+        .padding(LegendNextSpacing.sm)
+        .background(LegendNextGradient.finance, in: RoundedRectangle(
+            cornerRadius: LegendNextRadius.compact,
+            style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: LegendNextRadius.compact, style: .continuous)
+                .strokeBorder(LegendNextColor.gold.opacity(0.58), lineWidth: 1)
+        }
+    }
+
+    private func reloadDirectory() async {
+        recipients = .loading
+        guard let loaded = await messages.controlledResourceRecipients(
+            .languageTranslation,
+            search: search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : search) else {
+            recipients = .unavailable(UserFacingFailure(
+                title: "Access directory unavailable",
+                message: "The Legend directory could not be loaded. Try again.",
+                correlationID: nil))
+            return
+        }
+        recipients = .loaded(loaded)
+    }
+
+    private func update(_ recipient: MessagingRecipient, isGranted: Bool) async {
+        isUpdatingRecipientID = recipient.identity
+        defer { isUpdatingRecipientID = nil }
+        guard await messages.setControlledResourceGrant(
+            .languageTranslation,
+            recipient: recipient,
+            isGranted: isGranted) else {
+            return
+        }
+        await reloadDirectory()
+    }
 }
 
 /// The shared, server-backed relationship-list presentation for a profile. It
@@ -6150,6 +6481,84 @@ private struct LegendFollowListView: View {
     }
 }
 
+private struct LegendProfileContactLink: View {
+    enum Kind {
+        case website
+        case email
+        case phone
+
+        var systemImage: String {
+            switch self {
+            case .website: "link"
+            case .email: "envelope"
+            case .phone: "phone"
+            }
+        }
+
+        var accessibilityAction: String {
+            switch self {
+            case .website: "Open website"
+            case .email: "Compose email"
+            case .phone: "Call phone number"
+            }
+        }
+    }
+
+    let value: String
+    let kind: Kind
+
+    var body: some View {
+        if let destination {
+            Link(destination: destination) {
+                label
+            }
+            .accessibilityHint(kind.accessibilityAction)
+        } else {
+            label
+        }
+    }
+
+    private var label: some View {
+        Label(value, systemImage: kind.systemImage)
+            .font(LegendNextTypography.caption.weight(.semibold))
+            .foregroundStyle(kind == .website ? LegendNextColor.gold : LegendNextColor.textSecondary)
+            .lineLimit(1)
+            .contentShape(Rectangle())
+    }
+
+    private var destination: URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        switch kind {
+        case .website:
+            let candidate = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
+            guard let components = URLComponents(string: candidate),
+                  let scheme = components.scheme?.lowercased(),
+                  ["http", "https"].contains(scheme),
+                  !(components.host?.isEmpty ?? true) else {
+                return nil
+            }
+            return components.url
+
+        case .email:
+            guard !trimmed.contains(where: { $0.isWhitespace }) else { return nil }
+            var components = URLComponents()
+            components.scheme = "mailto"
+            components.path = trimmed
+            return components.url
+
+        case .phone:
+            let phone = trimmed.filter { $0.isNumber || $0 == "+" || $0 == "*" || $0 == "#" }
+            guard !phone.isEmpty else { return nil }
+            var components = URLComponents()
+            components.scheme = "tel"
+            components.path = phone
+            return components.url
+        }
+    }
+}
+
 /// The single public profile route for Discover, feed posts, Follows, and
 /// Followers. Identity, counters, and updates are independently fetched from
 /// the social authority; this view never turns directory metadata into a
@@ -6266,11 +6675,11 @@ struct LegendPublicProfileView: View {
            verificationReview.status == "Pending" {
             LegendNextSurface(style: .navy) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                    Label("Verification review", systemImage: "checkmark.seal.fill")
+                    Label("\(verificationReview.resourceType.displayName) review", systemImage: "checkmark.seal.fill")
                         .font(.headline.weight(.bold))
                         .foregroundStyle(.white)
 
-                    Text("This member requested verification. Your decision is recorded in the private founder review queue.")
+                    Text("This member requested \(verificationReview.resourceType.displayName). Your decision is recorded in the private founder review queue.")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.74))
                         .fixedSize(horizontal: false, vertical: true)
@@ -6393,7 +6802,8 @@ struct LegendPublicProfileView: View {
         let location = normalized(displayedProfile.location)
         let website = normalized(displayedProfile.website)
         let publicEmail = normalized(displayedProfile.publicEmail)
-        if bio != nil || location != nil || website != nil || publicEmail != nil {
+        let publicPhone = normalized(displayedProfile.publicPhone)
+        if bio != nil || location != nil || website != nil || publicEmail != nil || publicPhone != nil {
             LegendNextSurface(style: .plain) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                     Text("About")
@@ -6414,19 +6824,17 @@ struct LegendPublicProfileView: View {
                     }
 
                     if let website {
-                        Label(website, systemImage: "link")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(LegendNextColor.gold)
-                            .textSelection(.enabled)
+                        LegendProfileContactLink(value: website, kind: .website)
                     }
 
                     // Public contact is deliberately last, and only appears when the
                     // member explicitly enabled it in mobile profile settings.
                     if let publicEmail {
-                        Label(publicEmail, systemImage: "envelope")
-                            .font(LegendNextTypography.supporting)
-                            .foregroundStyle(LegendNextColor.textSecondary)
-                            .textSelection(.enabled)
+                        LegendProfileContactLink(value: publicEmail, kind: .email)
+                    }
+
+                    if let publicPhone {
+                        LegendProfileContactLink(value: publicPhone, kind: .phone)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -6690,6 +7098,7 @@ private struct LegendAccountEditor: View {
     @State private var location: String
     @State private var profileEmail: String
     @State private var isEmailVisible: Bool
+    @State private var isPhoneVisible: Bool
 
     init(profile: MobileAccountProfile, store: MobileAccountStore) {
         self.profile = profile
@@ -6704,6 +7113,7 @@ private struct LegendAccountEditor: View {
         _location = State(initialValue: profile.location ?? "")
         _profileEmail = State(initialValue: profile.profileEmail ?? "")
         _isEmailVisible = State(initialValue: profile.isEmailVisible)
+        _isPhoneVisible = State(initialValue: profile.isPhoneVisible)
     }
 
     var body: some View {
@@ -6797,11 +7207,7 @@ private struct LegendAccountEditor: View {
                                 }
                             }
                             .tint(LegendNextColor.goldBright)
-                        }
-                    }
 
-                    LegendProfileSettingsSection(title: "Account details") {
-                        VStack(spacing: LegendNextSpacing.md) {
                             LegendProfileEditorField(
                                 title: "Phone",
                                 prompt: "Phone number",
@@ -6809,7 +7215,23 @@ private struct LegendAccountEditor: View {
                                 keyboardType: .phonePad,
                                 contentType: .telephoneNumber)
 
-                            if profile.participantType == .agent {
+                            Toggle(isOn: $isPhoneVisible) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Show phone on profile")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.white)
+                                    Text("Your number stays private unless you turn this on.")
+                                        .font(LegendNextTypography.caption)
+                                        .foregroundStyle(.white.opacity(0.76))
+                                }
+                            }
+                            .tint(LegendNextColor.goldBright)
+                        }
+                    }
+
+                    if profile.participantType == .agent {
+                        LegendProfileSettingsSection(title: "Account details") {
+                            VStack(spacing: LegendNextSpacing.md) {
                                 LegendProfileEditorField(
                                     title: "Professional title",
                                     prompt: "Advisor, coach, or specialist",
@@ -6860,7 +7282,8 @@ private struct LegendAccountEditor: View {
                 website: website,
                 location: location,
                 publicEmail: profileEmail,
-                isEmailVisible: isEmailVisible))
+                isEmailVisible: isEmailVisible,
+                isPhoneVisible: isPhoneVisible))
             if didSave {
                 dismiss()
             }

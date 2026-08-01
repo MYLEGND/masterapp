@@ -345,6 +345,7 @@ public sealed class SocialFeedServiceTests
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var client = Client("mobile-social-profile", "Mobile", "Profile");
+        client.Phone = "555-0100";
         db.ClientProfiles.Add(client);
         db.MobileProfileSettings.Add(new MobileProfileSettings
         {
@@ -372,9 +373,11 @@ public sealed class SocialFeedServiceTests
         Assert.Equal("https://legend.example/profile", hidden.Value.Profile.Website);
         Assert.Equal("Phoenix, AZ", hidden.Value.Profile.Location);
         Assert.Null(hidden.Value.Profile.PublicEmail);
+        Assert.Null(hidden.Value.Profile.PublicPhone);
 
         var settings = await db.MobileProfileSettings.SingleAsync();
         settings.IsEmailVisible = true;
+        settings.IsPhoneVisible = true;
         settings.UpdatedUtc = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
@@ -382,6 +385,7 @@ public sealed class SocialFeedServiceTests
 
         Assert.True(visible.Succeeded);
         Assert.Equal("shareable@example.test", visible.Value!.Profile.PublicEmail);
+        Assert.Equal("555-0100", visible.Value.Profile.PublicPhone);
         Assert.Equal(client.Email, (await db.ClientProfiles.SingleAsync()).Email);
     }
 

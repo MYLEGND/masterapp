@@ -1,5 +1,38 @@
 import Foundation
 
+struct MobileTranslationAccess: Codable, Equatable, Sendable {
+    let state: String
+    let canManage: Bool
+    let preferredCommunicationLanguage: String?
+
+    var isGranted: Bool { state == "Granted" }
+    var isPending: Bool { state == "Pending" }
+
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case canManage
+        case preferredCommunicationLanguage
+    }
+
+    init(
+        state: String = "NotGranted",
+        canManage: Bool = false,
+        preferredCommunicationLanguage: String? = nil
+    ) {
+        self.state = state
+        self.canManage = canManage
+        self.preferredCommunicationLanguage = preferredCommunicationLanguage
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            state: try container.decodeIfPresent(String.self, forKey: .state) ?? "NotGranted",
+            canManage: try container.decodeIfPresent(Bool.self, forKey: .canManage) ?? false,
+            preferredCommunicationLanguage: try container.decodeIfPresent(String.self, forKey: .preferredCommunicationLanguage))
+    }
+}
+
 struct MobileAccountProfile: Codable, Equatable, Sendable {
     let participantType: ParticipantType
     let profileID: UUID
@@ -13,6 +46,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
     /// the member has chosen to make this address visible on their profile.
     let profileEmail: String?
     let isEmailVisible: Bool
+    let isPhoneVisible: Bool
     let username: String?
     let bio: String?
     let website: String?
@@ -21,9 +55,10 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
     let avatar: ProfileAvatar?
     let isVerified: Bool
     let usernameChangesRemaining: Int
+    let translationAccess: MobileTranslationAccess
 
     private enum CodingKeys: String, CodingKey {
-        case participantType, displayName, email, phone, title, roleLabel, shortBio, profileEmail, isEmailVisible, username, bio, website, location, isPrivate, avatar, isVerified, usernameChangesRemaining
+        case participantType, displayName, email, phone, title, roleLabel, shortBio, profileEmail, isEmailVisible, isPhoneVisible, username, bio, website, location, isPrivate, avatar, isVerified, usernameChangesRemaining, translationAccess
         case profileID = "profileId"
     }
 
@@ -38,6 +73,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         shortBio: String?,
         profileEmail: String? = nil,
         isEmailVisible: Bool = false,
+        isPhoneVisible: Bool = false,
         username: String? = nil,
         bio: String? = nil,
         website: String? = nil,
@@ -45,7 +81,8 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         isPrivate: Bool = false,
         avatar: ProfileAvatar?,
         isVerified: Bool = false,
-        usernameChangesRemaining: Int = 2
+        usernameChangesRemaining: Int = 2,
+        translationAccess: MobileTranslationAccess = .init()
     ) {
         self.participantType = participantType
         self.profileID = profileID
@@ -57,6 +94,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         self.shortBio = shortBio
         self.profileEmail = profileEmail
         self.isEmailVisible = isEmailVisible
+        self.isPhoneVisible = isPhoneVisible
         self.username = username
         self.bio = bio
         self.website = website
@@ -65,6 +103,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         self.avatar = avatar
         self.isVerified = isVerified
         self.usernameChangesRemaining = usernameChangesRemaining
+        self.translationAccess = translationAccess
     }
 
     init(from decoder: Decoder) throws {
@@ -80,6 +119,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
             shortBio: try container.decodeIfPresent(String.self, forKey: .shortBio),
             profileEmail: try container.decodeIfPresent(String.self, forKey: .profileEmail),
             isEmailVisible: try container.decodeIfPresent(Bool.self, forKey: .isEmailVisible) ?? false,
+            isPhoneVisible: try container.decodeIfPresent(Bool.self, forKey: .isPhoneVisible) ?? false,
             username: try container.decodeIfPresent(String.self, forKey: .username),
             bio: try container.decodeIfPresent(String.self, forKey: .bio),
             website: try container.decodeIfPresent(String.self, forKey: .website),
@@ -87,7 +127,8 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
             isPrivate: try container.decodeIfPresent(Bool.self, forKey: .isPrivate) ?? false,
             avatar: try container.decodeIfPresent(ProfileAvatar.self, forKey: .avatar),
             isVerified: try container.decodeIfPresent(Bool.self, forKey: .isVerified) ?? false,
-            usernameChangesRemaining: try container.decodeIfPresent(Int.self, forKey: .usernameChangesRemaining) ?? 2)
+            usernameChangesRemaining: try container.decodeIfPresent(Int.self, forKey: .usernameChangesRemaining) ?? 2,
+            translationAccess: try container.decodeIfPresent(MobileTranslationAccess.self, forKey: .translationAccess) ?? .init())
     }
 }
 
@@ -102,7 +143,9 @@ struct MobileAccountUpdate: Encodable, Sendable {
     let location: String?
     let publicEmail: String?
     let isEmailVisible: Bool
+    let isPhoneVisible: Bool
     let isPrivate: Bool?
+    let preferredCommunicationLanguage: String?
 
     init(
         displayName: String,
@@ -115,7 +158,9 @@ struct MobileAccountUpdate: Encodable, Sendable {
         location: String? = nil,
         publicEmail: String? = nil,
         isEmailVisible: Bool = false,
-        isPrivate: Bool? = nil
+        isPhoneVisible: Bool = false,
+        isPrivate: Bool? = nil,
+        preferredCommunicationLanguage: String? = nil
     ) {
         self.displayName = displayName
         self.phone = phone
@@ -127,7 +172,9 @@ struct MobileAccountUpdate: Encodable, Sendable {
         self.location = location
         self.publicEmail = publicEmail
         self.isEmailVisible = isEmailVisible
+        self.isPhoneVisible = isPhoneVisible
         self.isPrivate = isPrivate
+        self.preferredCommunicationLanguage = preferredCommunicationLanguage
     }
 }
 
@@ -273,6 +320,24 @@ final class MobileAccountStore: ObservableObject {
             actionFailure = failure(for: error, title: "Account update unavailable")
             return false
         }
+    }
+
+    @discardableResult
+    func savePreferredCommunicationLanguage(_ language: String) async -> Bool {
+        guard case .loaded(let profile) = state else { return false }
+        return await save(MobileAccountUpdate(
+            displayName: profile.displayName,
+            phone: profile.phone,
+            title: profile.title,
+            shortBio: profile.shortBio,
+            username: profile.username,
+            bio: profile.bio,
+            website: profile.website,
+            location: profile.location,
+            publicEmail: profile.profileEmail,
+            isEmailVisible: profile.isEmailVisible,
+            isPhoneVisible: profile.isPhoneVisible,
+            preferredCommunicationLanguage: language))
     }
 
     func dismissActionFailure() {

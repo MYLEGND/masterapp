@@ -70,6 +70,7 @@ final class MobileNativeContractTests: XCTestCase {
         {
           "id": "00000000-0000-0000-0000-000000000010",
           "title": "Secure conversation",
+          "conversationType": "ClientAgent",
           "participants": [{
             "identity": { "userId": "same-oid", "participantType": "Client" },
             "profileId": "00000000-0000-0000-0000-000000000002",
@@ -91,7 +92,8 @@ final class MobileNativeContractTests: XCTestCase {
             "isMine": false
           }],
           "isMuted": false,
-          "isClosed": false
+          "isClosed": false,
+          "canManageMembers": false
         }
         """.utf8)
         let conversation = try JSONDecoder.mobile.decode(ConversationDetail.self, from: conversationData)
@@ -200,6 +202,7 @@ final class MobileNativeContractTests: XCTestCase {
           "shortBio": null,
           "profileEmail": "hello@example.test",
           "isEmailVisible": true,
+          "isPhoneVisible": true,
           "username": "client.legend",
           "bio": "Building a legacy.",
           "website": "https://legend.example.test",
@@ -211,24 +214,27 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(account.participantType, .client)
         XCTAssertEqual(account.profileEmail, "hello@example.test")
         XCTAssertTrue(account.isEmailVisible)
+        XCTAssertTrue(account.isPhoneVisible)
         XCTAssertEqual(account.username, "client.legend")
         XCTAssertEqual(account.avatar?.imageData, Data("client".utf8))
 
         let accountUpdate = MobileAccountUpdate(
             displayName: "Client Identity",
             phone: "555-0100",
-            roleLabel: nil,
+            title: nil,
             shortBio: nil,
             username: "client.legend",
             bio: "Building a legacy.",
             website: "https://legend.example.test",
             location: "Phoenix, Arizona",
             publicEmail: "hello@example.test",
-            isEmailVisible: true)
+            isEmailVisible: true,
+            isPhoneVisible: true)
         let accountUpdateObject = try XCTUnwrap(
             JSONSerialization.jsonObject(with: JSONEncoder.mobile.encode(accountUpdate)) as? [String: Any])
         XCTAssertEqual(accountUpdateObject["publicEmail"] as? String, "hello@example.test")
         XCTAssertEqual(accountUpdateObject["isEmailVisible"] as? Bool, true)
+        XCTAssertEqual(accountUpdateObject["isPhoneVisible"] as? Bool, true)
 
         let input = MobileJourneyProfileInput(
             consentAffirmed: true,

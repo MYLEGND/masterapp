@@ -2632,6 +2632,7 @@ private struct LegendMessageBubble: View {
     let onOpenVerificationProfile: (() -> Void)?
 
     @State private var copyFeedbackTrigger = 0
+    @State private var isShowingOriginal = false
 
     private let senderBubbleColor = LegendNextColor.gold
 
@@ -2725,7 +2726,7 @@ private struct LegendMessageBubble: View {
                 alignment: message.isMine ? .trailing : .leading,
                 spacing: LegendNextSpacing.xs
             ) {
-                Text(message.isDeleted ? "Message unsent" : message.body)
+                Text(message.isDeleted ? "Message unsent" : displayedMessageBody)
                     .font(.system(size: 15, weight: .regular))
                     .italic(message.isDeleted)
                     .lineSpacing(0)
@@ -2747,12 +2748,32 @@ private struct LegendMessageBubble: View {
                     }
                 }
 
+                if let translation = message.translation,
+                   message.originalBody != nil {
+                    Button {
+                        isShowingOriginal.toggle()
+                    } label: {
+                        Label(
+                            isShowingOriginal
+                                ? "View translation"
+                                : "Translated from \(languageName(translation.originalLanguage)) · View original",
+                            systemImage: "character.bubble")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(message.isMine
+                                             ? LegendNextColor.midnight
+                                             : LegendNextColor.goldBright)
+                            .padding(.top, 2)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Switch between the translated and original message")
+                }
+
                 if let onOpenVerificationProfile,
                    let review = message.verificationReview {
                     Button(action: onOpenVerificationProfile) {
                         Label(
                             review.status == "Pending"
-                                ? "Open verification profile"
+                                ? "Open \(review.resourceType.displayName) profile"
                                 : "Open reviewed profile",
                             systemImage: "person.crop.circle")
                             .font(.caption.weight(.bold))
@@ -2762,7 +2783,7 @@ private struct LegendMessageBubble: View {
                             .padding(.top, 2)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Open this member’s profile for verification review")
+                    .accessibilityHint("Open this member’s profile for \(review.resourceType.displayName) review")
                 }
             }
             .padding(.horizontal, 10)
@@ -2787,6 +2808,26 @@ private struct LegendMessageBubble: View {
             )
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var displayedMessageBody: String {
+        isShowingOriginal ? (message.originalBody ?? message.body) : message.body
+    }
+
+    private func languageName(_ code: String) -> String {
+        switch code {
+        case "ht": "Haitian Creole"
+        case "en": "English"
+        case "es": "Spanish"
+        case "fr": "French"
+        case "pt": "Portuguese"
+        case "de": "German"
+        case "ja": "Japanese"
+        case "ko": "Korean"
+        case "zh-Hans": "Chinese (Simplified)"
+        case "ar": "Arabic"
+        default: code
+        }
     }
 
     @ViewBuilder

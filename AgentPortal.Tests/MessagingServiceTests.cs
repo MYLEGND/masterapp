@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Domain.Billing;
 using Domain.Entities;
@@ -370,6 +371,110 @@ public sealed class MessagingServiceTests
         Assert.True((await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1")).IsVerified);
         Assert.Equal(VerificationReviewStatuses.Approved,
             (await db.VerificationReviewRequests.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task LanguageTranslationAccess_UsesTheExistingFounderReviewQueueAndDirectGrant()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: false, grantClientToAgent: false);
+        db.AgentProfiles.AddRange(
+            new AgentProfile
+            {
+                AgentUserId = "zac-founder-oid",
+                AgentUpn = LegendVerifiedIdentity.FounderEmail,
+                NormalizedEmail = LegendVerifiedIdentity.FounderEmail,
+                FullName = "Zac Owen",
+                IsActive = true
+            },
+            new AgentProfile
+            {
+                AgentUserId = "legend-oid",
+                AgentUpn = LegendVerifiedIdentity.LegendEmail,
+                NormalizedEmail = LegendVerifiedIdentity.LegendEmail,
+                FullName = "Legend™",
+                IsActive = true
+            });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var requester = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var request = await service.StartControlledResourceRequestAsync(
+            new StartControlledResourceRequestCommand(requester, ControlledResourceTypes.LanguageTranslation));
+
+        Assert.True(request.Succeeded);
+        Assert.Equal(ControlledResourceTypes.LanguageTranslation, request.Request!.ResourceType);
+        Assert.Equal(MessagingConversationPurposes.VerificationReview,
+            (await db.MessageConversations.SingleAsync()).Purpose);
+
+        var grant = await service.SetControlledResourceGrantAsync(
+            new SetControlledResourceGrantCommand(
+                new MessagingActor("zac-founder-oid", MessagingParticipantTypes.Agent),
+                ControlledResourceTypes.LanguageTranslation,
+                requester.UserId,
+                requester.ParticipantType,
+                IsGranted: true));
+
+        Assert.True(grant.Succeeded);
+        Assert.Equal(VerificationReviewStatuses.Approved,
+            (await db.VerificationReviewRequests.SingleAsync()).Status);
+        Assert.True(await db.ControlledResourceGrants.AnyAsync(access =>
+            access.UserId == requester.UserId &&
+            access.ParticipantType == requester.ParticipantType &&
+            access.ResourceType == ControlledResourceTypes.LanguageTranslation &&
+            access.IsActive));
+        Assert.Equal(ControlledResourceAccessStates.Granted,
+            (await new ControlledResourceAccessService(db).GetAccessAsync(
+                requester,
+                ControlledResourceTypes.LanguageTranslation)).State);
+    }
+
+    [Fact]
+    public async Task MessageTranslation_CachesHaitianCreoleWithoutReplacingTheOriginalMessage()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var clientProfile = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");
+        db.ControlledResourceGrants.Add(new ControlledResourceGrant
+        {
+            UserId = "client-1",
+            ParticipantType = MessagingParticipantTypes.Client,
+            ResourceType = ControlledResourceTypes.LanguageTranslation,
+            IsActive = true,
+            GrantedUtc = DateTime.UtcNow,
+            GrantedByUserId = "zac-founder-oid"
+        });
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            ProfileId = clientProfile.Id,
+            ParticipantType = MessagingParticipantTypes.Client,
+            PreferredCommunicationLanguage = "ht"
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent,
+            client.UserId,
+            client.ParticipantType,
+            InitialMessageBody: "Welcome to Legend"));
+        var conversationId = Assert.IsType<MessagingConversationDetail>(opened.Conversation).Id;
+
+        var firstView = await service.GetConversationAsync(client, conversationId);
+        var message = Assert.Single(Assert.IsType<MessagingConversationDetail>(firstView.Conversation).Messages);
+        Assert.Equal("Welcome to Legend (ht)", message.Body);
+        Assert.Equal("Welcome to Legend", message.OriginalBody);
+        Assert.Equal("en", message.Translation!.OriginalLanguage);
+        Assert.Equal("ht", message.Translation.TargetLanguage);
+        Assert.Equal("Welcome to Legend", (await db.InternalMessages.SingleAsync()).Body);
+        Assert.Single(await db.MessageTranslations.ToListAsync());
+
+        var secondView = await service.GetConversationAsync(client, conversationId);
+        Assert.Equal("Welcome to Legend (ht)",
+            Assert.Single(Assert.IsType<MessagingConversationDetail>(secondView.Conversation).Messages).Body);
+        Assert.Single(await db.MessageTranslations.ToListAsync());
     }
 
     [Fact]
@@ -1433,7 +1538,32 @@ public sealed class MessagingServiceTests
         var images = new MessagingProfileImageResolver(
             db,
             NullLogger<MessagingProfileImageResolver>.Instance);
-        return new MessagingService(db, NullLogger<MessagingService>.Instance, moderation, images);
+        return new MessagingService(
+            db,
+            NullLogger<MessagingService>.Instance,
+            moderation,
+            images,
+            new ControlledResourceAccessService(db),
+            new TestTranslationService());
+    }
+
+    private sealed class TestTranslationService : ITranslationService
+    {
+        public Task<TranslationDetectionResult> DetectLanguageAsync(
+            string text,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new TranslationDetectionResult(true, "en"));
+
+        public Task<TranslationProviderResult> TranslateAsync(
+            string text,
+            string targetLanguage,
+            string? sourceLanguage = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new TranslationProviderResult(
+                true,
+                $"{text} ({targetLanguage})",
+                sourceLanguage ?? "en",
+                "TestTranslator"));
     }
 
     private static async Task SeedAgentAndClientAsync(

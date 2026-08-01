@@ -1,3 +1,5 @@
+using Domain.Entities;
+
 namespace Domain.Messaging;
 
 public static class MessagingConversationTypes
@@ -10,9 +12,83 @@ public static class MessagingConversationTypes
 
 public static class MessagingConversationPurposes
 {
-    /// <summary>The one private, founder-managed staff queue for verification.</summary>
+    /// <summary>
+    /// The original persisted name of the one private Founder + Legend staff
+    /// queue. It now serves every controlled-resource review and is retained so
+    /// existing verification rows and production data remain intact.
+    /// </summary>
     public const string VerificationReview = "VerificationReview";
+    public const string ControlledResourceReview = VerificationReview;
 }
+
+/// <summary>
+/// Server-owned language choices for automatic message translation. Haitian
+/// Creole is intentionally first: it is a priority Legend language and uses
+/// Azure Translator's supported <c>ht</c> identifier.
+/// </summary>
+public static class CommunicationLanguages
+{
+    public static readonly IReadOnlyList<CommunicationLanguage> Supported =
+    [
+        new("ht", "Haitian Creole"),
+        new("en", "English"),
+        new("es", "Spanish"),
+        new("fr", "French"),
+        new("pt", "Portuguese"),
+        new("de", "German"),
+        new("ja", "Japanese"),
+        new("ko", "Korean"),
+        new("zh-Hans", "Chinese (Simplified)"),
+        new("ar", "Arabic")
+    ];
+
+    public static bool TryNormalize(string? value, out string language)
+    {
+        language = string.Empty;
+        var candidate = value?.Trim();
+        if (string.IsNullOrWhiteSpace(candidate))
+            return false;
+
+        var supported = Supported.FirstOrDefault(item =>
+            string.Equals(item.Code, candidate, StringComparison.OrdinalIgnoreCase));
+        if (supported is null)
+            return false;
+
+        language = supported.Code;
+        return true;
+    }
+
+    public static string? NormalizeOrNull(string? value) =>
+        TryNormalize(value, out var language) ? language : null;
+}
+
+public sealed record CommunicationLanguage(string Code, string DisplayName);
+
+/// <summary>Trusted server-side boundary for a translation provider.</summary>
+public interface ITranslationService
+{
+    Task<TranslationDetectionResult> DetectLanguageAsync(
+        string text,
+        CancellationToken cancellationToken = default);
+
+    Task<TranslationProviderResult> TranslateAsync(
+        string text,
+        string targetLanguage,
+        string? sourceLanguage = null,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record TranslationDetectionResult(
+    bool Succeeded,
+    string? Language,
+    string? ErrorCode = null);
+
+public sealed record TranslationProviderResult(
+    bool Succeeded,
+    string? TranslatedText,
+    string? DetectedLanguage,
+    string Provider,
+    string? ErrorCode = null);
 
 public static class MessagingParticipantTypes
 {
@@ -81,6 +157,22 @@ public sealed record ResolveVerificationReviewRequestCommand(
     MessagingActor Actor,
     Guid RequestId,
     bool Approve);
+
+public sealed record StartControlledResourceRequestCommand(
+    MessagingActor Actor,
+    string ResourceType);
+
+public sealed record ResolveControlledResourceRequestCommand(
+    MessagingActor Actor,
+    Guid RequestId,
+    bool Approve);
+
+public sealed record SetControlledResourceGrantCommand(
+    MessagingActor Actor,
+    string ResourceType,
+    string TargetUserId,
+    string TargetParticipantType,
+    bool IsGranted);
 
 public sealed record SendMessagingMessageCommand(
     MessagingActor Actor,
@@ -185,6 +277,26 @@ public sealed record MessagingVerificationRequestResult(
 {
     public static MessagingVerificationRequestResult Failure(string errorCode, string errorMessage) =>
         new(false, errorCode, errorMessage, null);
+}
+
+public sealed record MessagingControlledResourceRequestResult(
+    bool Succeeded,
+    string? ErrorCode,
+    string? ErrorMessage,
+    MessagingVerificationReview? Request)
+{
+    public static MessagingControlledResourceRequestResult Failure(string errorCode, string errorMessage) =>
+        new(false, errorCode, errorMessage, null);
+}
+
+public sealed record MessagingControlledResourceRecipientListResult(
+    bool Succeeded,
+    string? ErrorCode,
+    string? ErrorMessage,
+    IReadOnlyList<MessagingControlledResourceRecipient> Recipients)
+{
+    public static MessagingControlledResourceRecipientListResult Failure(string errorCode, string errorMessage) =>
+        new(false, errorCode, errorMessage, Array.Empty<MessagingControlledResourceRecipient>());
 }
 
 public sealed record MessagingMessageResult(
@@ -330,7 +442,18 @@ public sealed record MessagingMessageSummary(
     IReadOnlyList<MessagingAttachmentSummary> Attachments,
     Guid? ReplyToMessageId = null,
     MessagingReplyPreview? Reply = null,
-    MessagingVerificationReview? VerificationReview = null);
+    MessagingVerificationReview? VerificationReview = null,
+    MessagingTranslationPresentation? Translation = null,
+    string? OriginalBody = null);
+
+/// <summary>
+/// Presentation metadata for a server-cached derivative. The message body's
+/// original text remains authoritative and is exposed through OriginalBody.
+/// </summary>
+public sealed record MessagingTranslationPresentation(
+    string OriginalLanguage,
+    string TargetLanguage,
+    string Provider);
 
 public sealed record MessagingVerificationReview(
     Guid Id,
@@ -338,7 +461,13 @@ public sealed record MessagingVerificationReview(
     string RequesterParticipantType,
     string Status,
     DateTime RequestedUtc,
-    bool CanResolve = false);
+    bool CanResolve = false,
+    string ResourceType = ControlledResourceTypes.VerificationBadge);
+
+public sealed record MessagingControlledResourceRecipient(
+    MessagingRecipientSummary Recipient,
+    string ResourceType,
+    string AccessState);
 
 public sealed record MessagingReplyPreview(
     Guid Id,

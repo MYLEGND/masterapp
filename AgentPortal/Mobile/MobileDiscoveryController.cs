@@ -190,7 +190,8 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
                 result.ParticipantType,
                 result.ClientProfileId,
                 cancellationToken),
-            result.RoleLabel);
+            result.RoleLabel,
+            result.PublicPhone);
     }
 
     private async Task<bool> IsVerifiedProfileAsync(
@@ -268,7 +269,8 @@ public sealed record MobileDiscoveryResultDto(
     string? PublicEmail = null,
     bool IsPrivate = false,
     bool IsVerified = false,
-    string? RoleLabel = null);
+    string? RoleLabel = null,
+    string? PublicPhone = null);
 
 public sealed record MobileDiscoveryPageDto(
     IReadOnlyList<MobileDiscoveryResultDto> Results,

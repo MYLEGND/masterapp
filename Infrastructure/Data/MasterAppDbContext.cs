@@ -88,6 +88,8 @@ public class MasterAppDbContext : DbContext
     public DbSet<ClientAgentMessagingGrant> ClientAgentMessagingGrants => Set<ClientAgentMessagingGrant>();
     public DbSet<MessagingAuditEntry> MessagingAuditEntries => Set<MessagingAuditEntry>();
     public DbSet<VerificationReviewRequest> VerificationReviewRequests => Set<VerificationReviewRequest>();
+    public DbSet<ControlledResourceGrant> ControlledResourceGrants => Set<ControlledResourceGrant>();
+    public DbSet<MessageTranslation> MessageTranslations => Set<MessageTranslation>();
     public DbSet<JourneyCircleProfile> JourneyCircleProfiles => Set<JourneyCircleProfile>();
     public DbSet<JourneyCircleConnection> JourneyCircleConnections => Set<JourneyCircleConnection>();
     public DbSet<JourneyCircleBlock> JourneyCircleBlocks => Set<JourneyCircleBlock>();
@@ -739,6 +741,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Website).HasMaxLength(2_048);
             e.Property(x => x.Location).HasMaxLength(120);
             e.Property(x => x.PublicEmail).HasMaxLength(320);
+            e.Property(x => x.PreferredCommunicationLanguage).HasMaxLength(32);
             e.HasIndex(x => new { x.ProfileId, x.ParticipantType }).IsUnique();
 
             if (isSqlServer)

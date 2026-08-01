@@ -1,6 +1,7 @@
 using Domain.Messaging;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Mobile;
@@ -38,6 +39,8 @@ public sealed record MobileAccountUpdate(
     string? Location = null,
     string? PublicEmail = null,
     bool IsEmailVisible = false,
+    bool IsPhoneVisible = false,
+    string? PreferredCommunicationLanguage = null,
     bool? IsPrivate = null);
 
 public sealed record MobileAccountSnapshot(
@@ -56,8 +59,11 @@ public sealed record MobileAccountSnapshot(
     string? Location = null,
     string? ProfileEmail = null,
     bool IsEmailVisible = false,
+    bool IsPhoneVisible = false,
     bool IsPrivate = false,
-    int UsernameChangesRemaining = 2);
+    int UsernameChangesRemaining = 2,
+    ControlledResourceAccess? TranslationAccess = null,
+    string? PreferredCommunicationLanguage = null);
 
 public sealed record MobileAccountResult(
     bool Succeeded,
@@ -94,10 +100,14 @@ public sealed class MobileAccountService : IMobileAccountService
     private const int MaximumUsernameChangesPerCalendarMonth = 2;
 
     private readonly MasterAppDbContext _db;
+    private readonly IControlledResourceAccessService _controlledResources;
 
-    public MobileAccountService(MasterAppDbContext db)
+    public MobileAccountService(
+        MasterAppDbContext db,
+        IControlledResourceAccessService controlledResources)
     {
         _db = db;
+        _controlledResources = controlledResources;
     }
 
     public async Task<MobileAccountResult> GetAsync(
@@ -215,6 +225,27 @@ public sealed class MobileAccountService : IMobileAccountService
                 mobileSettingsValidationError);
         }
 
+        var translationAccess = await _controlledResources.GetAccessAsync(
+            actor.Actor,
+            ControlledResourceTypes.LanguageTranslation,
+            cancellationToken);
+        var preferredLanguage = TrimOptional(update.PreferredCommunicationLanguage);
+        if (update.PreferredCommunicationLanguage is not null &&
+            translationAccess.State != ControlledResourceAccessStates.Granted)
+        {
+            return MobileAccountResult.Failure(
+                "MOBILE_TRANSLATION_ACCESS_REQUIRED",
+                "Language Translation Access must be granted before choosing a communication language.");
+        }
+        if (update.PreferredCommunicationLanguage is not null &&
+            preferredLanguage is not null &&
+            !CommunicationLanguages.TryNormalize(preferredLanguage, out preferredLanguage))
+        {
+            return MobileAccountResult.Failure(
+                "MOBILE_ACCOUNT_INPUT_INVALID",
+                "Choose a supported communication language.");
+        }
+
         var now = DateTime.UtcNow;
 
         if (string.Equals(
@@ -290,6 +321,9 @@ public sealed class MobileAccountService : IMobileAccountService
         mobileSettings.Location = TrimOptional(update.Location);
         mobileSettings.PublicEmail = TrimOptional(update.PublicEmail);
         mobileSettings.IsEmailVisible = update.IsEmailVisible;
+        mobileSettings.IsPhoneVisible = update.IsPhoneVisible;
+        if (update.PreferredCommunicationLanguage is not null)
+            mobileSettings.PreferredCommunicationLanguage = preferredLanguage;
         if (update.IsPrivate.HasValue)
             mobileSettings.IsPrivate = update.IsPrivate.Value;
         mobileSettings.UpdatedUtc = now;
@@ -339,8 +373,13 @@ public sealed class MobileAccountService : IMobileAccountService
                 candidate.ParticipantType == actor.Actor.ParticipantType,
                 cancellationToken);
 
+        var translationAccess = await _controlledResources.GetAccessAsync(
+            actor.Actor,
+            ControlledResourceTypes.LanguageTranslation,
+            cancellationToken);
+
         if (settings is null)
-            return MobileAccountResult.Success(account);
+            return MobileAccountResult.Success(account with { TranslationAccess = translationAccess });
 
         var profileEmail = TrimOptional(settings.PublicEmail);
         return MobileAccountResult.Success(account with
@@ -352,8 +391,13 @@ public sealed class MobileAccountService : IMobileAccountService
             Location = TrimOptional(settings.Location),
             ProfileEmail = profileEmail,
             IsEmailVisible = settings.IsEmailVisible,
+            IsPhoneVisible = settings.IsPhoneVisible,
             IsPrivate = settings.IsPrivate,
-            UsernameChangesRemaining = UsernameChangesRemaining(settings)
+            UsernameChangesRemaining = UsernameChangesRemaining(settings),
+            TranslationAccess = translationAccess,
+            PreferredCommunicationLanguage = translationAccess.State == ControlledResourceAccessStates.Granted
+                ? CommunicationLanguages.NormalizeOrNull(settings.PreferredCommunicationLanguage)
+                : null
         });
     }
 
@@ -414,6 +458,9 @@ public sealed class MobileAccountService : IMobileAccountService
 
         if (update.IsEmailVisible && string.IsNullOrWhiteSpace(update.PublicEmail))
             return "Add the email you want to show before enabling it on your profile.";
+
+        if (update.IsPhoneVisible && string.IsNullOrWhiteSpace(update.Phone))
+            return "Add the phone number you want to show before enabling it on your profile.";
 
         if (string.Equals(
                 actor.Actor.ParticipantType,

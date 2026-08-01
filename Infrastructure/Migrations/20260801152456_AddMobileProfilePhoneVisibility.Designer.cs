@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260801152456_AddMobileProfilePhoneVisibility")]
+    partial class AddMobileProfilePhoneVisibility
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2788,61 +2791,6 @@ namespace Infrastructure.Migrations
                     b.ToTable("Commitments");
                 });
 
-            modelBuilder.Entity("Domain.Entities.ControlledResourceGrant", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("GrantedByUserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<DateTime>("GrantedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("ParticipantType")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("ResourceType")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("RevokedByUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<DateTime?>("RevokedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ResourceType", "IsActive");
-
-                    b.HasIndex("UserId", "ParticipantType", "ResourceType")
-                        .IsUnique();
-
-                    b.ToTable("ControlledResourceGrants", (string)null);
-                });
-
             modelBuilder.Entity("Domain.Entities.DecisionRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4005,10 +3953,6 @@ namespace Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<string>("OriginalLanguage")
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
                     b.Property<Guid?>("ReplyToMessageId")
                         .HasColumnType("uniqueidentifier");
 
@@ -4647,41 +4591,6 @@ namespace Infrastructure.Migrations
                     b.ToTable("MessageConversationParticipants", (string)null);
                 });
 
-            modelBuilder.Entity("Domain.Entities.MessageTranslation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("InternalMessageId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Provider")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("TargetLanguage")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<string>("TranslatedText")
-                        .IsRequired()
-                        .HasMaxLength(10000)
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InternalMessageId", "TargetLanguage")
-                        .IsUnique();
-
-                    b.ToTable("MessageTranslations", (string)null);
-                });
-
             modelBuilder.Entity("Domain.Entities.MessagingAuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4996,10 +4905,6 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("PreferredCommunicationLanguage")
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
 
                     b.Property<Guid>("ProfileId")
                         .HasColumnType("uniqueidentifier");
@@ -6475,13 +6380,6 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime?>("ResolvedUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("ResourceType")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)")
-                        .HasDefaultValue("VerificationBadge");
-
                     b.Property<Guid>("ReviewConversationId")
                         .HasColumnType("uniqueidentifier");
 
@@ -6492,13 +6390,13 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ReviewConversationId", "RequestedUtc");
-
-                    b.HasIndex("RequesterUserId", "RequesterParticipantType", "ResourceType")
+                    b.HasIndex("RequesterUserId", "RequesterParticipantType")
                         .IsUnique()
                         .HasFilter("[Status] = 'Pending'");
 
-                    b.HasIndex("RequesterUserId", "RequesterParticipantType", "ResourceType", "Status");
+                    b.HasIndex("ReviewConversationId", "RequestedUtc");
+
+                    b.HasIndex("RequesterUserId", "RequesterParticipantType", "Status");
 
                     b.ToTable("VerificationReviewRequests", (string)null);
                 });
@@ -7542,17 +7440,6 @@ namespace Infrastructure.Migrations
                     b.Navigation("Conversation");
                 });
 
-            modelBuilder.Entity("Domain.Entities.MessageTranslation", b =>
-                {
-                    b.HasOne("Domain.Entities.InternalMessage", "InternalMessage")
-                        .WithMany("Translations")
-                        .HasForeignKey("InternalMessageId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("InternalMessage");
-                });
-
             modelBuilder.Entity("Domain.Entities.OnboardingSubmission", b =>
                 {
                     b.HasOne("Domain.Entities.OnboardingInvite", "Invite")
@@ -7741,8 +7628,6 @@ namespace Infrastructure.Migrations
                     b.Navigation("Attachments");
 
                     b.Navigation("Replies");
-
-                    b.Navigation("Translations");
                 });
 
             modelBuilder.Entity("Domain.Entities.MessageConversation", b =>

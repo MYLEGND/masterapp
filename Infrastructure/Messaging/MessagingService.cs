@@ -25,17 +25,23 @@ internal sealed class MessagingService : IMessagingService
     private readonly ILogger<MessagingService> _logger;
     private readonly ICommunityTextModerationService _moderation;
     private readonly IMessagingProfileImageResolver _participantIdentities;
+    private readonly IControlledResourceAccessService _controlledResources;
+    private readonly ITranslationService _translation;
 
     public MessagingService(
         MasterAppDbContext db,
         ILogger<MessagingService> logger,
         ICommunityTextModerationService moderation,
-        IMessagingProfileImageResolver participantIdentities)
+        IMessagingProfileImageResolver participantIdentities,
+        IControlledResourceAccessService controlledResources,
+        ITranslationService translation)
     {
         _db = db;
         _logger = logger;
         _moderation = moderation;
         _participantIdentities = participantIdentities;
+        _controlledResources = controlledResources;
+        _translation = translation;
     }
 
     public async Task<MessagingConversationListResult> ListConversationsAsync(
@@ -289,6 +295,7 @@ internal sealed class MessagingService : IMessagingService
                 x.SenderUserId,
                 x.SenderType,
                 x.Body,
+                x.OriginalLanguage,
                 x.SentUtc,
                 x.EditedUtc,
                 x.IsDeleted,
@@ -333,7 +340,8 @@ internal sealed class MessagingService : IMessagingService
                     request.RequesterParticipantType,
                     request.Status,
                     request.RequestedUtc,
-                    canResolveReview && request.Status == VerificationReviewStatuses.Pending))
+                    canResolveReview && request.Status == VerificationReviewStatuses.Pending,
+                    request.ResourceType))
                 .ToListAsync(cancellationToken))
                 .ToDictionary(request => request.Id);
         var currentParticipant = participants.FirstOrDefault(x =>
@@ -341,6 +349,15 @@ internal sealed class MessagingService : IMessagingService
         var isArchivedMembership =
             conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
             !await ConversationHasActiveClientMembershipAsync(conversation.Id, cancellationToken);
+
+        var messageSummaries = messages
+            .Select(message => ToMessageSummary(message, attachments, reviews))
+            .ToList();
+        messageSummaries = await ApplyTranslationPresentationAsync(
+            actor,
+            messageSummaries,
+            messages,
+            cancellationToken);
 
         var detail = new MessagingConversationDetail(
             conversation.Id,
@@ -352,7 +369,7 @@ internal sealed class MessagingService : IMessagingService
             isArchivedMembership,
             currentParticipant?.IsMuted == true,
             participants.Select(x => ToParticipantSummary(x, displayNames)).ToList(),
-            messages.Select(message => ToMessageSummary(message, attachments, reviews)).ToList(),
+            messageSummaries,
             conversation.ConversationType == MessagingConversationTypes.Group &&
             IsSameParticipant(
                 conversation.OwnerUserId ?? string.Empty,
@@ -677,141 +694,51 @@ internal sealed class MessagingService : IMessagingService
         MessagingActor actor,
         CancellationToken cancellationToken = default)
     {
-        actor = NormalizeActor(actor);
-        if (!await IsValidActorAsync(actor, cancellationToken))
-            return MessagingVerificationRequestResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
-
-        var actorIdentity = await _participantIdentities.ResolveIdentitiesAsync(
-            [new MessagingParticipantReference(actor.UserId, actor.ParticipantType)],
+        var result = await StartControlledResourceRequestAsync(
+            new StartControlledResourceRequestCommand(actor, ControlledResourceTypes.VerificationBadge),
             cancellationToken);
-        if (actorIdentity.Values.SingleOrDefault()?.IsVerified == true)
-        {
-            return MessagingVerificationRequestResult.Failure(
-                "MESSAGING_VERIFICATION_ALREADY_GRANTED",
-                "This profile is already verified.");
-        }
+        return result.Succeeded
+            ? new MessagingVerificationRequestResult(true, null, null, result.Request)
+            : MessagingVerificationRequestResult.Failure(
+                result.ErrorCode ?? "MESSAGING_VERIFICATION_UNAVAILABLE",
+                result.ErrorMessage ?? "Verification review is temporarily unavailable.");
+    }
 
-        var existingRequest = await _db.VerificationReviewRequests
-            .AsNoTracking()
-            .Where(request =>
-                request.RequesterUserId.ToLower() == actor.UserId &&
-                request.RequesterParticipantType == actor.ParticipantType &&
-                request.Status == VerificationReviewStatuses.Pending)
-            .OrderByDescending(request => request.RequestedUtc)
-            .Select(request => new MessagingVerificationReview(
-                request.Id,
-                request.RequesterUserId,
-                request.RequesterParticipantType,
-                request.Status,
-                request.RequestedUtc))
-            .FirstOrDefaultAsync(cancellationToken);
-        if (existingRequest is not null)
-            return new MessagingVerificationRequestResult(true, null, null, existingRequest);
+    public async Task<MessagingControlledResourceRequestResult> StartControlledResourceRequestAsync(
+        StartControlledResourceRequestCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = NormalizeActor(command.Actor);
+        var resourceType = NormalizeRequired(command.ResourceType);
+        if (!ControlledResourceTypes.IsSupported(resourceType))
+            return MessagingControlledResourceRequestResult.Failure("MESSAGING_RESOURCE_INVALID", "This Legend resource is not available.");
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return MessagingControlledResourceRequestResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
 
-        var profiles = await _db.AgentProfiles
-            .AsNoTracking()
-            .Where(profile => profile.IsActive)
-            .Select(profile => new
-            {
-                profile.AgentUserId,
-                profile.AgentUpn,
-                profile.NormalizedEmail,
-                profile.FullName,
-                profile.Title,
-                profile.ShortBio,
-                profile.UpdatedUtc
-            })
-            .ToListAsync(cancellationToken);
+        var access = await _controlledResources.GetAccessAsync(actor, resourceType, cancellationToken);
+        if (access.State == ControlledResourceAccessStates.Granted)
+            return MessagingControlledResourceRequestResult.Failure(
+                "MESSAGING_RESOURCE_ALREADY_GRANTED",
+                $"{ControlledResourceDisplayName(resourceType)} is already enabled for this profile.");
 
-        var founders = new List<MessagingParticipantReference>(2);
-        foreach (var email in new[]
-                 {
-                     LegendVerifiedIdentity.FounderEmail,
-                     LegendVerifiedIdentity.LegendEmail
-                 })
-        {
-            var profile = profiles
-                .Where(candidate => string.Equals(
-                    NormalizeUserId(candidate.NormalizedEmail ?? candidate.AgentUpn),
-                    email,
-                    StringComparison.Ordinal))
-                .OrderByDescending(candidate => AgentProfileIdentity.DirectoryCompleteness(
-                    candidate.NormalizedEmail,
-                    candidate.FullName,
-                    candidate.Title,
-                    candidate.ShortBio))
-                .ThenByDescending(candidate => candidate.UpdatedUtc)
-                .FirstOrDefault();
-            if (profile is null || string.IsNullOrWhiteSpace(profile.AgentUserId))
-            {
-                return MessagingVerificationRequestResult.Failure(
-                    "MESSAGING_VERIFICATION_UNAVAILABLE",
-                    "Verification review is temporarily unavailable.");
-            }
+        var existing = await FindPendingControlledResourceRequestAsync(actor, resourceType, cancellationToken);
+        if (existing is not null)
+            return new MessagingControlledResourceRequestResult(true, null, null, ToReview(existing));
 
-            founders.Add(new MessagingParticipantReference(
-                NormalizeUserId(profile.AgentUserId),
-                MessagingParticipantTypes.Agent));
-        }
-
-        if (founders.Distinct().Count() != 2 || founders.Any(founder =>
-                IsSameParticipant(
-                    founder.UserId,
-                    founder.ParticipantType,
-                    actor.UserId,
-                    actor.ParticipantType)))
-        {
-            return MessagingVerificationRequestResult.Failure(
-                "MESSAGING_VERIFICATION_UNAVAILABLE",
-                "Verification review is temporarily unavailable.");
-        }
-
-        var founder = founders[0];
-        var reviewConversation = await _db.MessageConversations
-            .Include(conversation => conversation.Participants)
-            .Where(conversation =>
-                conversation.ConversationType == MessagingConversationTypes.Group &&
-                conversation.Purpose == MessagingConversationPurposes.VerificationReview &&
-                conversation.OwnerUserId!.ToLower() == founder.UserId &&
-                conversation.OwnerParticipantType == MessagingParticipantTypes.Agent)
-            .OrderBy(conversation => conversation.CreatedUtc)
-            .FirstOrDefaultAsync(cancellationToken);
+        var reviewConversation = await GetOrCreateControlledResourceReviewConversationAsync(actor, cancellationToken);
+        if (reviewConversation is null)
+            return MessagingControlledResourceRequestResult.Failure(
+                "MESSAGING_RESOURCE_REVIEW_UNAVAILABLE",
+                "The private Legend review team is temporarily unavailable.");
 
         var nowUtc = DateTime.UtcNow;
-        if (reviewConversation is null)
-        {
-            reviewConversation = new MessageConversation
-            {
-                Id = Guid.NewGuid(),
-                ConversationType = MessagingConversationTypes.Group,
-                Subject = "Legend verification review",
-                Purpose = MessagingConversationPurposes.VerificationReview,
-                CreatedUtc = nowUtc,
-                UpdatedUtc = nowUtc,
-                CreatedByUserId = founder.UserId,
-                OwnerUserId = founder.UserId,
-                OwnerParticipantType = MessagingParticipantTypes.Agent
-            };
-            _db.MessageConversations.Add(reviewConversation);
-            _db.MessageConversationParticipants.AddRange(founders.Select(participant =>
-                new MessageConversationParticipant
-                {
-                    Id = Guid.NewGuid(),
-                    ConversationId = reviewConversation.Id,
-                    UserId = participant.UserId,
-                    ParticipantType = participant.ParticipantType,
-                    IsActive = true,
-                    JoinedUtc = nowUtc
-                }));
-            AddAudit(founder.UserId, "VerificationReviewGroupCreated", reviewConversation.Id, null, null, null, nowUtc);
-        }
-
         var request = new VerificationReviewRequest
         {
             Id = Guid.NewGuid(),
             ReviewConversationId = reviewConversation.Id,
             RequesterUserId = actor.UserId,
             RequesterParticipantType = actor.ParticipantType,
+            ResourceType = resourceType,
             Status = VerificationReviewStatuses.Pending,
             RequestedUtc = nowUtc
         };
@@ -822,36 +749,30 @@ internal sealed class MessagingService : IMessagingService
             ConversationId = reviewConversation.Id,
             SenderUserId = actor.UserId,
             SenderType = actor.ParticipantType,
-            Body = "Requested a Legend verification review.",
+            Body = $"Requested {ControlledResourceDisplayName(resourceType)}.",
             SentUtc = nowUtc,
             VerificationReviewRequestId = request.Id
         });
         reviewConversation.LastMessageUtc = nowUtc;
         reviewConversation.UpdatedUtc = nowUtc;
-        AddAudit(actor.UserId, "VerificationReviewRequested", reviewConversation.Id, null, actor.UserId, request.Id.ToString("D"), nowUtc);
+        AddAudit(actor.UserId, "ControlledResourceRequested", reviewConversation.Id, null, actor.UserId, $"{resourceType}:{request.Id:D}", nowUtc);
 
         try
         {
             await _db.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException ex)
+        catch (DbUpdateException exception)
         {
-            _logger.LogError(ex, "Verification review request save failed. ActorUserId={ActorUserId}", actor.UserId);
-            return MessagingVerificationRequestResult.Failure(
-                "MESSAGING_VERIFICATION_SAVE_FAILED",
-                "Legend could not submit your verification request. Please try again.");
+            _logger.LogWarning(exception, "Controlled resource request save conflicted. ActorUserId={ActorUserId} ResourceType={ResourceType}", actor.UserId, resourceType);
+            var concurrent = await FindPendingControlledResourceRequestAsync(actor, resourceType, cancellationToken);
+            if (concurrent is not null)
+                return new MessagingControlledResourceRequestResult(true, null, null, ToReview(concurrent));
+            return MessagingControlledResourceRequestResult.Failure(
+                "MESSAGING_RESOURCE_SAVE_FAILED",
+                "Legend could not submit your request. Please try again.");
         }
 
-        return new MessagingVerificationRequestResult(
-            true,
-            null,
-            null,
-            new MessagingVerificationReview(
-                request.Id,
-                request.RequesterUserId,
-                request.RequesterParticipantType,
-                request.Status,
-                request.RequestedUtc));
+        return new MessagingControlledResourceRequestResult(true, null, null, ToReview(request));
     }
 
     public async Task<MessagingOperationResult> AddGroupParticipantAsync(
@@ -991,40 +912,47 @@ internal sealed class MessagingService : IMessagingService
         ResolveVerificationReviewRequestCommand command,
         CancellationToken cancellationToken = default)
     {
+        return await ResolveControlledResourceRequestAsync(
+            new ResolveControlledResourceRequestCommand(command.Actor, command.RequestId, command.Approve),
+            cancellationToken);
+    }
+
+    public async Task<MessagingOperationResult> ResolveControlledResourceRequestAsync(
+        ResolveControlledResourceRequestCommand command,
+        CancellationToken cancellationToken = default)
+    {
         var actor = NormalizeActor(command.Actor);
         if (!await IsValidActorAsync(actor, cancellationToken))
             return MessagingOperationResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
-        if (command.RequestId == Guid.Empty || !await IsFounderVerificationManagerAsync(actor, cancellationToken))
-            return MessagingOperationResult.Failure("MESSAGING_VERIFICATION_REVIEWER_FORBIDDEN", "Only Zac Owen can resolve verification requests.");
+        if (command.RequestId == Guid.Empty || !await _controlledResources.IsFounderManagerAsync(actor, cancellationToken))
+            return MessagingOperationResult.Failure("MESSAGING_RESOURCE_REVIEWER_FORBIDDEN", "Only the Founder can resolve this resource request.");
 
         var request = await _db.VerificationReviewRequests.FirstOrDefaultAsync(
             candidate => candidate.Id == command.RequestId,
             cancellationToken);
-        if (request is null || request.Status != VerificationReviewStatuses.Pending)
-            return MessagingOperationResult.Failure("MESSAGING_VERIFICATION_REQUEST_UNAVAILABLE", "This verification request is no longer pending.");
+        if (request is null || request.Status != VerificationReviewStatuses.Pending || !ControlledResourceTypes.IsSupported(request.ResourceType))
+            return MessagingOperationResult.Failure("MESSAGING_RESOURCE_REQUEST_UNAVAILABLE", "This resource request is no longer pending.");
 
         var reviewConversation = await _db.MessageConversations.FirstOrDefaultAsync(
             conversation => conversation.Id == request.ReviewConversationId &&
-                conversation.Purpose == MessagingConversationPurposes.VerificationReview,
+                conversation.Purpose == MessagingConversationPurposes.ControlledResourceReview,
             cancellationToken);
         if (reviewConversation is null)
-            return MessagingOperationResult.Failure("MESSAGING_VERIFICATION_REQUEST_UNAVAILABLE", "The verification review is no longer available.");
+            return MessagingOperationResult.Failure("MESSAGING_RESOURCE_REQUEST_UNAVAILABLE", "The resource review is no longer available.");
 
-        var approved = command.Approve;
-        if (approved)
+        if (command.Approve && !await SetResourceGrantCoreAsync(
+                actor,
+                request.ResourceType,
+                request.RequesterUserId,
+                request.RequesterParticipantType,
+                isGranted: true,
+                cancellationToken))
         {
-            var profileUpdated = request.RequesterParticipantType switch
-            {
-                MessagingParticipantTypes.Agent => await SetAgentVerifiedAsync(request.RequesterUserId, cancellationToken),
-                MessagingParticipantTypes.Client => await SetClientVerifiedAsync(request.RequesterUserId, cancellationToken),
-                _ => false
-            };
-            if (!profileUpdated)
-                return MessagingOperationResult.Failure("MESSAGING_VERIFICATION_PROFILE_UNAVAILABLE", "The requesting profile is no longer available.");
+            return MessagingOperationResult.Failure("MESSAGING_RESOURCE_PROFILE_UNAVAILABLE", "The requesting profile is no longer available.");
         }
 
         var nowUtc = DateTime.UtcNow;
-        request.Status = approved ? VerificationReviewStatuses.Approved : VerificationReviewStatuses.Declined;
+        request.Status = command.Approve ? VerificationReviewStatuses.Approved : VerificationReviewStatuses.Declined;
         request.ResolvedUtc = nowUtc;
         request.ResolvedByUserId = actor.UserId;
         _db.InternalMessages.Add(new InternalMessage
@@ -1033,14 +961,138 @@ internal sealed class MessagingService : IMessagingService
             ConversationId = reviewConversation.Id,
             SenderUserId = actor.UserId,
             SenderType = actor.ParticipantType,
-            Body = approved ? "Verification approved." : "Verification declined.",
+            Body = command.Approve
+                ? $"{ControlledResourceDisplayName(request.ResourceType)} approved."
+                : $"{ControlledResourceDisplayName(request.ResourceType)} declined.",
             SentUtc = nowUtc,
             VerificationReviewRequestId = request.Id
         });
         reviewConversation.LastMessageUtc = nowUtc;
         reviewConversation.UpdatedUtc = nowUtc;
-        AddAudit(actor.UserId, approved ? "VerificationApproved" : "VerificationDeclined", reviewConversation.Id, null, request.RequesterUserId, request.Id.ToString("D"), nowUtc);
-        return await SaveOperationAsync("VerificationReviewResolved", actor.UserId, reviewConversation.Id, cancellationToken);
+        AddAudit(actor.UserId, command.Approve ? "ControlledResourceApproved" : "ControlledResourceDeclined", reviewConversation.Id, null, request.RequesterUserId, $"{request.ResourceType}:{request.Id:D}", nowUtc);
+        return await SaveOperationAsync("ControlledResourceRequestResolved", actor.UserId, reviewConversation.Id, cancellationToken);
+    }
+
+    public async Task<MessagingControlledResourceRecipientListResult> ListControlledResourceRecipientsAsync(
+        MessagingActor actor,
+        string resourceType,
+        string? search = null,
+        CancellationToken cancellationToken = default)
+    {
+        actor = NormalizeActor(actor);
+        resourceType = NormalizeRequired(resourceType);
+        if (!ControlledResourceTypes.IsSupported(resourceType))
+            return MessagingControlledResourceRecipientListResult.Failure("MESSAGING_RESOURCE_INVALID", "This Legend resource is not available.");
+        if (!await IsValidActorAsync(actor, cancellationToken) ||
+            !await _controlledResources.IsFounderManagerAsync(actor, cancellationToken))
+        {
+            return MessagingControlledResourceRecipientListResult.Failure("MESSAGING_RESOURCE_REVIEWER_FORBIDDEN", "Only the Founder can manage this resource.");
+        }
+
+        search = NormalizeOptional(search);
+        if (!Fits(search, MaximumConversationSubjectLength))
+            return MessagingControlledResourceRecipientListResult.Failure("MESSAGING_SEARCH_INVALID", "The search text is too long.");
+
+        var recipients = await ListFounderControlledResourceRecipientsAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(search))
+            recipients = recipients.Where(recipient => MatchesContactSearch(recipient, search)).ToList();
+
+        var managed = new List<MessagingControlledResourceRecipient>(Math.Min(recipients.Count, 100));
+        foreach (var recipient in recipients.Take(100))
+        {
+            var access = await _controlledResources.GetAccessAsync(
+                new MessagingActor(recipient.UserId, recipient.ParticipantType),
+                resourceType,
+                cancellationToken);
+            managed.Add(new MessagingControlledResourceRecipient(recipient, resourceType, access.State));
+        }
+
+        return new MessagingControlledResourceRecipientListResult(true, null, null, managed);
+    }
+
+    public async Task<MessagingOperationResult> SetControlledResourceGrantAsync(
+        SetControlledResourceGrantCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = NormalizeActor(command.Actor);
+        var target = new MessagingActor(NormalizeUserId(command.TargetUserId), NormalizeRequired(command.TargetParticipantType));
+        var resourceType = NormalizeRequired(command.ResourceType);
+        if (!ControlledResourceTypes.IsSupported(resourceType))
+            return MessagingOperationResult.Failure("MESSAGING_RESOURCE_INVALID", "This Legend resource is not available.");
+        if (!await IsValidActorAsync(actor, cancellationToken) ||
+            !await _controlledResources.IsFounderManagerAsync(actor, cancellationToken))
+        {
+            return MessagingOperationResult.Failure("MESSAGING_RESOURCE_REVIEWER_FORBIDDEN", "Only the Founder can manage this resource.");
+        }
+        if (!await IsValidActorAsync(target, cancellationToken))
+            return MessagingOperationResult.Failure("MESSAGING_RESOURCE_RECIPIENT_UNAVAILABLE", "This person is no longer available.");
+
+        var targetAccess = await _controlledResources.GetAccessAsync(target, resourceType, cancellationToken);
+        if (!command.IsGranted && targetAccess.CanManage && resourceType == ControlledResourceTypes.LanguageTranslation)
+            return MessagingOperationResult.Failure("MESSAGING_RESOURCE_FOUNDER_PERSISTENT", "Founder Language Translation Access remains active.");
+
+        if (!await SetResourceGrantCoreAsync(actor, resourceType, target.UserId, target.ParticipantType, command.IsGranted, cancellationToken))
+            return MessagingOperationResult.Failure("MESSAGING_RESOURCE_RECIPIENT_UNAVAILABLE", "This person is no longer available.");
+
+        var pending = await _db.VerificationReviewRequests
+            .Where(request =>
+                request.ResourceType == resourceType &&
+                request.Status == VerificationReviewStatuses.Pending &&
+                request.RequesterUserId.ToLower() == target.UserId &&
+                request.RequesterParticipantType == target.ParticipantType)
+            .ToListAsync(cancellationToken);
+        var nowUtc = DateTime.UtcNow;
+        var reviewConversationIds = pending
+            .Select(request => request.ReviewConversationId)
+            .Distinct()
+            .ToArray();
+        var reviewConversations = reviewConversationIds.Length == 0
+            ? new Dictionary<Guid, MessageConversation>()
+            : await _db.MessageConversations
+                .Where(conversation => reviewConversationIds.Contains(conversation.Id))
+                .ToDictionaryAsync(conversation => conversation.Id, cancellationToken);
+        foreach (var request in pending)
+        {
+            request.Status = command.IsGranted ? VerificationReviewStatuses.Approved : VerificationReviewStatuses.Declined;
+            request.ResolvedUtc = nowUtc;
+            request.ResolvedByUserId = actor.UserId;
+            if (reviewConversations.TryGetValue(request.ReviewConversationId, out var reviewConversation))
+            {
+                _db.InternalMessages.Add(new InternalMessage
+                {
+                    Id = Guid.NewGuid(),
+                    ConversationId = reviewConversation.Id,
+                    SenderUserId = actor.UserId,
+                    SenderType = actor.ParticipantType,
+                    Body = command.IsGranted
+                        ? $"{ControlledResourceDisplayName(resourceType)} granted directly by the Founder."
+                        : $"{ControlledResourceDisplayName(resourceType)} declined directly by the Founder.",
+                    SentUtc = nowUtc,
+                    VerificationReviewRequestId = request.Id
+                });
+                reviewConversation.LastMessageUtc = nowUtc;
+                reviewConversation.UpdatedUtc = nowUtc;
+            }
+        }
+
+        AddAudit(actor.UserId,
+            command.IsGranted ? "ControlledResourceGranted" : "ControlledResourceRevoked",
+            null,
+            null,
+            target.UserId,
+            resourceType,
+            nowUtc);
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception)
+        {
+            _logger.LogWarning(exception, "Controlled resource grant save failed. ResourceType={ResourceType} TargetUserId={TargetUserId}", resourceType, target.UserId);
+            return MessagingOperationResult.Failure("MESSAGING_RESOURCE_SAVE_FAILED", "Legend could not update this resource. Please try again.");
+        }
+
+        return MessagingOperationResult.Success();
     }
 
     public async Task<MessagingMessageResult> SendMessageAsync(
@@ -2380,17 +2432,231 @@ internal sealed class MessagingService : IMessagingService
         });
     }
 
-    private async Task<bool> IsFounderVerificationManagerAsync(
+    private Task<bool> IsFounderVerificationManagerAsync(
         MessagingActor actor,
         CancellationToken cancellationToken) =>
-        actor.ParticipantType == MessagingParticipantTypes.Agent &&
-        await _db.AgentProfiles.AsNoTracking().AnyAsync(profile =>
-            profile.IsActive &&
-            profile.AgentUserId.ToLower() == actor.UserId &&
-            (profile.NormalizedEmail == LegendVerifiedIdentity.FounderEmail ||
-             (profile.AgentUpn != null &&
-              profile.AgentUpn.ToLower() == LegendVerifiedIdentity.FounderEmail)),
+        _controlledResources.IsFounderManagerAsync(actor, cancellationToken);
+
+    private async Task<VerificationReviewRequest?> FindPendingControlledResourceRequestAsync(
+        MessagingActor actor,
+        string resourceType,
+        CancellationToken cancellationToken) =>
+        await _db.VerificationReviewRequests
+            .AsNoTracking()
+            .Where(request =>
+                request.RequesterUserId.ToLower() == actor.UserId &&
+                request.RequesterParticipantType == actor.ParticipantType &&
+                request.ResourceType == resourceType &&
+                request.Status == VerificationReviewStatuses.Pending)
+            .OrderByDescending(request => request.RequestedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private async Task<MessageConversation?> GetOrCreateControlledResourceReviewConversationAsync(
+        MessagingActor requester,
+        CancellationToken cancellationToken)
+    {
+        var profiles = await _db.AgentProfiles
+            .AsNoTracking()
+            .Where(profile => profile.IsActive)
+            .Select(profile => new
+            {
+                profile.AgentUserId,
+                profile.AgentUpn,
+                profile.NormalizedEmail,
+                profile.FullName,
+                profile.Title,
+                profile.ShortBio,
+                profile.UpdatedUtc
+            })
+            .ToListAsync(cancellationToken);
+
+        var staff = new List<MessagingParticipantReference>(2);
+        foreach (var email in new[] { LegendVerifiedIdentity.FounderEmail, LegendVerifiedIdentity.LegendEmail })
+        {
+            var profile = profiles
+                .Where(candidate => string.Equals(
+                    NormalizeUserId(candidate.NormalizedEmail ?? candidate.AgentUpn),
+                    email,
+                    StringComparison.Ordinal))
+                .OrderByDescending(candidate => AgentProfileIdentity.DirectoryCompleteness(
+                    candidate.NormalizedEmail,
+                    candidate.FullName,
+                    candidate.Title,
+                    candidate.ShortBio))
+                .ThenByDescending(candidate => candidate.UpdatedUtc)
+                .FirstOrDefault();
+            if (profile is null || string.IsNullOrWhiteSpace(profile.AgentUserId))
+                return null;
+
+            staff.Add(new MessagingParticipantReference(
+                NormalizeUserId(profile.AgentUserId),
+                MessagingParticipantTypes.Agent));
+        }
+
+        if (staff.Distinct().Count() != 2 || staff.Any(member =>
+                IsSameParticipant(member.UserId, member.ParticipantType, requester.UserId, requester.ParticipantType)))
+        {
+            return null;
+        }
+
+        var founder = staff[0];
+        var conversation = await _db.MessageConversations
+            .Include(candidate => candidate.Participants)
+            .Where(candidate =>
+                candidate.ConversationType == MessagingConversationTypes.Group &&
+                candidate.Purpose == MessagingConversationPurposes.ControlledResourceReview &&
+                candidate.OwnerUserId!.ToLower() == founder.UserId &&
+                candidate.OwnerParticipantType == MessagingParticipantTypes.Agent)
+            .OrderBy(candidate => candidate.CreatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (conversation is not null)
+            return conversation;
+
+        var nowUtc = DateTime.UtcNow;
+        conversation = new MessageConversation
+        {
+            Id = Guid.NewGuid(),
+            ConversationType = MessagingConversationTypes.Group,
+            Subject = "Legend resource review",
+            Purpose = MessagingConversationPurposes.ControlledResourceReview,
+            CreatedUtc = nowUtc,
+            UpdatedUtc = nowUtc,
+            CreatedByUserId = founder.UserId,
+            OwnerUserId = founder.UserId,
+            OwnerParticipantType = MessagingParticipantTypes.Agent
+        };
+        _db.MessageConversations.Add(conversation);
+        _db.MessageConversationParticipants.AddRange(staff.Select(member =>
+            new MessageConversationParticipant
+            {
+                Id = Guid.NewGuid(),
+                ConversationId = conversation.Id,
+                UserId = member.UserId,
+                ParticipantType = member.ParticipantType,
+                IsActive = true,
+                JoinedUtc = nowUtc
+            }));
+        AddAudit(founder.UserId, "ControlledResourceReviewGroupCreated", conversation.Id, null, null, null, nowUtc);
+        return conversation;
+    }
+
+    private async Task<List<MessagingRecipientSummary>> ListFounderControlledResourceRecipientsAsync(
+        CancellationToken cancellationToken)
+    {
+        var agentRows = await ActiveMessagingAgentProfilesQuery()
+            .Select(profile => new RecipientAgentRow(
+                profile.AgentUserId,
+                profile.NormalizedEmail,
+                profile.FullName,
+                profile.AgentUpn,
+                profile.Title,
+                profile.ShortBio,
+                profile.CreatedUtc,
+                profile.UpdatedUtc))
+            .ToListAsync(cancellationToken);
+        var clientRows = await ActiveMessagingClientProfilesQuery()
+            .Select(profile => new RecipientClientRow(
+                profile.ClientUserId,
+                profile.FirstName,
+                profile.LastName,
+                profile.Email,
+                profile.CrmNotes,
+                profile.CrmStatus))
+            .ToListAsync(cancellationToken);
+
+        var candidates = CanonicalAgentRecipients(agentRows).Concat(clientRows.Select(row =>
+            new MessagingRecipientSummary(
+                row.UserId,
+                MessagingParticipantTypes.Client,
+                FirstNonEmpty($"{row.FirstName} {row.LastName}".Trim(), row.Email, "Client"),
+                row.Email,
+                ClientRecordClassification.IsLead(row.UserId, row.CrmNotes, row.CrmStatus) ? "Lead" : "Client")))
+            .GroupBy(recipient => (NormalizeUserId(recipient.UserId), recipient.ParticipantType))
+            .Select(group => group.First())
+            .OrderBy(recipient => recipient.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return await ResolveRecipientIdentitiesAsync(candidates, cancellationToken);
+    }
+
+    private async Task<bool> SetResourceGrantCoreAsync(
+        MessagingActor founder,
+        string resourceType,
+        string targetUserId,
+        string targetParticipantType,
+        bool isGranted,
+        CancellationToken cancellationToken)
+    {
+        if (resourceType == ControlledResourceTypes.VerificationBadge)
+        {
+            return targetParticipantType switch
+            {
+                MessagingParticipantTypes.Agent => await SetAgentVerificationAsync(targetUserId, isGranted, cancellationToken),
+                MessagingParticipantTypes.Client => await SetClientVerificationAsync(targetUserId, isGranted, cancellationToken),
+                _ => false
+            };
+        }
+
+        if (resourceType != ControlledResourceTypes.LanguageTranslation)
+            return false;
+
+        var grant = await _db.ControlledResourceGrants.SingleOrDefaultAsync(candidate =>
+            candidate.UserId.ToLower() == targetUserId &&
+            candidate.ParticipantType == targetParticipantType &&
+            candidate.ResourceType == resourceType,
             cancellationToken);
+        var nowUtc = DateTime.UtcNow;
+        if (grant is null)
+        {
+            if (!isGranted)
+                return true;
+
+            _db.ControlledResourceGrants.Add(new ControlledResourceGrant
+            {
+                Id = Guid.NewGuid(),
+                UserId = targetUserId,
+                ParticipantType = targetParticipantType,
+                ResourceType = resourceType,
+                IsActive = true,
+                GrantedUtc = nowUtc,
+                GrantedByUserId = founder.UserId
+            });
+            return true;
+        }
+
+        if (grant.IsActive == isGranted)
+            return true;
+
+        grant.IsActive = isGranted;
+        if (isGranted)
+        {
+            grant.GrantedUtc = nowUtc;
+            grant.GrantedByUserId = founder.UserId;
+            grant.RevokedUtc = null;
+            grant.RevokedByUserId = null;
+        }
+        else
+        {
+            grant.RevokedUtc = nowUtc;
+            grant.RevokedByUserId = founder.UserId;
+        }
+        return true;
+    }
+
+    private static MessagingVerificationReview ToReview(VerificationReviewRequest request) => new(
+        request.Id,
+        request.RequesterUserId,
+        request.RequesterParticipantType,
+        request.Status,
+        request.RequestedUtc,
+        ResourceType: request.ResourceType);
+
+    private static string ControlledResourceDisplayName(string resourceType) => resourceType switch
+    {
+        ControlledResourceTypes.VerificationBadge => "Legend verification",
+        ControlledResourceTypes.LanguageTranslation => "Language Translation Access",
+        _ => "Legend resource"
+    };
 
     private Task<bool> IsActiveAgentAsync(
         string userId,
@@ -2399,8 +2665,9 @@ internal sealed class MessagingService : IMessagingService
             profile.IsActive && profile.AgentUserId.ToLower() == userId,
             cancellationToken);
 
-    private async Task<bool> SetAgentVerifiedAsync(
+    private async Task<bool> SetAgentVerificationAsync(
         string userId,
+        bool isVerified,
         CancellationToken cancellationToken)
     {
         var profile = await _db.AgentProfiles.FirstOrDefaultAsync(candidate =>
@@ -2408,13 +2675,14 @@ internal sealed class MessagingService : IMessagingService
             cancellationToken);
         if (profile is null)
             return false;
-        profile.IsVerified = true;
+        profile.IsVerified = isVerified;
         profile.UpdatedUtc = DateTime.UtcNow;
         return true;
     }
 
-    private async Task<bool> SetClientVerifiedAsync(
+    private async Task<bool> SetClientVerificationAsync(
         string userId,
+        bool isVerified,
         CancellationToken cancellationToken)
     {
         var profile = await _db.ClientProfiles.FirstOrDefaultAsync(candidate =>
@@ -2423,7 +2691,7 @@ internal sealed class MessagingService : IMessagingService
             cancellationToken);
         if (profile is null)
             return false;
-        profile.IsVerified = true;
+        profile.IsVerified = isVerified;
         profile.UpdatedUtc = DateTime.UtcNow;
         return true;
     }
@@ -2602,6 +2870,156 @@ internal sealed class MessagingService : IMessagingService
             ? new MessagingGroupImage(content, contentType)
             : null;
 
+    private async Task<List<MessagingMessageSummary>> ApplyTranslationPresentationAsync(
+        MessagingActor actor,
+        IReadOnlyList<MessagingMessageSummary> summaries,
+        IReadOnlyList<MessageDetailRow> sourceMessages,
+        CancellationToken cancellationToken)
+    {
+        var targetLanguage = await _controlledResources.GetPreferredLanguageAsync(actor, cancellationToken);
+        if (targetLanguage is null || summaries.Count == 0)
+            return summaries.ToList();
+
+        var sources = sourceMessages.ToDictionary(message => message.Id);
+        var presented = new List<MessagingMessageSummary>(summaries.Count);
+        foreach (var summary in summaries)
+        {
+            if (!sources.TryGetValue(summary.Id, out var source) ||
+                summary.IsDeleted ||
+                summary.VerificationReview is not null ||
+                IsSameParticipant(summary.SenderUserId, summary.SenderType, actor.UserId, actor.ParticipantType))
+            {
+                presented.Add(summary);
+                continue;
+            }
+
+            var senderLanguage = await _controlledResources.GetPreferredLanguageAsync(
+                new MessagingActor(source.SenderUserId, source.SenderType),
+                cancellationToken);
+            if (string.Equals(senderLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(CommunicationLanguages.NormalizeOrNull(source.OriginalLanguage), targetLanguage, StringComparison.OrdinalIgnoreCase))
+            {
+                presented.Add(summary);
+                continue;
+            }
+
+            var translation = await GetOrCreateMessageTranslationAsync(source, targetLanguage, cancellationToken);
+            presented.Add(translation is null
+                ? summary
+                : summary with
+                {
+                    Body = translation.TranslatedText,
+                    OriginalBody = source.Body,
+                    Translation = new MessagingTranslationPresentation(
+                        translation.OriginalLanguage,
+                        targetLanguage,
+                        translation.Provider)
+                });
+        }
+
+        return presented;
+    }
+
+    private async Task<CachedMessageTranslation?> GetOrCreateMessageTranslationAsync(
+        MessageDetailRow message,
+        string targetLanguage,
+        CancellationToken cancellationToken)
+    {
+        var cached = await _db.MessageTranslations
+            .AsNoTracking()
+            .Where(translation =>
+                translation.InternalMessageId == message.Id &&
+                translation.TargetLanguage == targetLanguage)
+            .Select(translation => new CachedMessageTranslation(
+                translation.TranslatedText,
+                message.OriginalLanguage ?? string.Empty,
+                translation.Provider))
+            .SingleOrDefaultAsync(cancellationToken);
+        if (cached is not null)
+            return cached.OriginalLanguage.Length == 0
+                ? null
+                : cached;
+
+        var sourceLanguage = CommunicationLanguages.NormalizeOrNull(message.OriginalLanguage);
+        if (string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        TranslationProviderResult providerResult;
+        try
+        {
+            providerResult = await _translation.TranslateAsync(
+                message.Body,
+                targetLanguage,
+                sourceLanguage,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Message translation provider failed. MessageId={MessageId} TargetLanguage={TargetLanguage}", message.Id, targetLanguage);
+            return null;
+        }
+
+        var detectedLanguage = CommunicationLanguages.NormalizeOrNull(providerResult.DetectedLanguage) ?? sourceLanguage;
+        if (!providerResult.Succeeded ||
+            string.IsNullOrWhiteSpace(providerResult.TranslatedText) ||
+            detectedLanguage is null ||
+            string.Equals(detectedLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (!string.Equals(message.OriginalLanguage, detectedLanguage, StringComparison.OrdinalIgnoreCase))
+        {
+            var messageEntity = _db.InternalMessages.Local
+                .FirstOrDefault(candidate => candidate.Id == message.Id);
+            if (messageEntity is null)
+            {
+                messageEntity = new InternalMessage { Id = message.Id };
+                _db.Attach(messageEntity);
+            }
+            messageEntity.OriginalLanguage = detectedLanguage;
+            _db.Entry(messageEntity).Property(entity => entity.OriginalLanguage).IsModified = true;
+        }
+
+        var created = new MessageTranslation
+        {
+            Id = Guid.NewGuid(),
+            InternalMessageId = message.Id,
+            TargetLanguage = targetLanguage,
+            TranslatedText = providerResult.TranslatedText.Trim(),
+            Provider = providerResult.Provider,
+            CreatedUtc = DateTime.UtcNow
+        };
+        _db.MessageTranslations.Add(created);
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            _db.Entry(created).State = EntityState.Detached;
+            var concurrent = await _db.MessageTranslations
+                .AsNoTracking()
+                .Where(translation =>
+                    translation.InternalMessageId == message.Id &&
+                    translation.TargetLanguage == targetLanguage)
+                .Select(translation => new CachedMessageTranslation(
+                    translation.TranslatedText,
+                    detectedLanguage,
+                    translation.Provider))
+                .SingleOrDefaultAsync(cancellationToken);
+            if (concurrent is null)
+                return null;
+            return concurrent;
+        }
+
+        return new CachedMessageTranslation(created.TranslatedText, detectedLanguage, created.Provider);
+    }
+
     private static MessagingAttachmentSummary ToAttachmentSummary(AttachmentRow attachment) => new(
         attachment.Id,
         attachment.OriginalFileName,
@@ -2735,12 +3153,18 @@ internal sealed class MessagingService : IMessagingService
         string SenderUserId,
         string SenderType,
         string Body,
+        string? OriginalLanguage,
         DateTime SentUtc,
         DateTime? EditedUtc,
         bool IsDeleted,
         Guid? ReplyToMessageId,
         Guid? VerificationReviewRequestId,
         ReplyDetailRow? Reply);
+
+    private sealed record CachedMessageTranslation(
+        string TranslatedText,
+        string OriginalLanguage,
+        string Provider);
 
     private sealed record ReplyDetailRow(
         Guid Id,

@@ -29,6 +29,18 @@ public sealed class MobileProfileSettings
     public string? PublicEmail { get; set; }
     public bool IsEmailVisible { get; set; }
 
+    // The account phone remains owned by the typed AgentProfile or ClientProfile.
+    // This flag controls only whether that existing number is presented on the
+    // mobile profile; it never creates a second copy of contact data.
+    public bool IsPhoneVisible { get; set; }
+
+    /// <summary>
+    /// The server-validated BCP-47-style communication preference. It stays
+    /// saved across an entitlement revocation but is usable only while the
+    /// language-translation resource is granted.
+    /// </summary>
+    public string? PreferredCommunicationLanguage { get; set; }
+
     // Public is the default. A private profile keeps its public identity
     // discoverable, but its social content is limited to approved followers.
     public bool IsPrivate { get; set; }

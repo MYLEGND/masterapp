@@ -12,6 +12,12 @@ public class InternalMessage
 
     public string Body { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Detected only by the trusted server translation provider when needed.
+    /// It describes the authoritative body and is never client-supplied.
+    /// </summary>
+    public string? OriginalLanguage { get; set; }
+
     public DateTime SentUtc { get; set; }
 
     public DateTime? EditedUtc { get; set; }
@@ -25,9 +31,9 @@ public class InternalMessage
     public Guid? ReplyToMessageId { get; set; }
 
     /// <summary>
-    /// Present only for the private staff notification created when a member
-    /// submits a verification request. The requester is never made a member of
-    /// that staff conversation.
+    /// Legacy column name for the shared controlled-resource request link.
+    /// It can identify verification or language-translation review actions;
+    /// the requester is never made a member of that staff conversation.
     /// </summary>
     public Guid? VerificationReviewRequestId { get; set; }
 
@@ -42,4 +48,7 @@ public class InternalMessage
 
     public ICollection<MessageAttachment> Attachments { get; set; }
         = new List<MessageAttachment>();
+
+    public ICollection<MessageTranslation> Translations { get; set; }
+        = new List<MessageTranslation>();
 }

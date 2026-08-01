@@ -75,6 +75,7 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
     let bio: String?
     let website: String?
     let publicEmail: String?
+    let publicPhone: String?
     let isPrivate: Bool?
     let isVerified: Bool?
     let roleLabel: String?
@@ -83,7 +84,7 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case identity, displayName, headline, location, goals, interests, circleCodes
-        case compatibilityScore, matchExplanation, relationship, avatar, username, bio, website, publicEmail, isPrivate, isVerified, roleLabel
+        case compatibilityScore, matchExplanation, relationship, avatar, username, bio, website, publicEmail, publicPhone, isPrivate, isVerified, roleLabel
         case clientProfileID = "clientProfileId"
     }
 
@@ -106,7 +107,8 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
         publicEmail: String? = nil,
         isPrivate: Bool? = nil,
         isVerified: Bool? = nil,
-        roleLabel: String? = nil
+        roleLabel: String? = nil,
+        publicPhone: String? = nil
     ) {
         self.clientProfileID = clientProfileID
         self.identity = identity
@@ -124,6 +126,7 @@ struct MobileDiscoveryResult: Codable, Equatable, Identifiable, Sendable {
         self.bio = bio
         self.website = website
         self.publicEmail = publicEmail
+        self.publicPhone = publicPhone
         self.isPrivate = isPrivate
         self.isVerified = isVerified
         self.roleLabel = roleLabel

@@ -655,13 +655,15 @@ public sealed class MobileIntegrationTests
                 Website: "https://legend.example.test/member",
                 Location: "Phoenix, Arizona",
                 PublicEmail: "hello@example.test",
-                IsEmailVisible: true),
+                IsEmailVisible: true,
+                IsPhoneVisible: true),
             CancellationToken.None);
         var updatedProfile = Assert.IsType<OkObjectResult>(updateResult).Value as MobileAccountProfile;
         Assert.NotNull(updatedProfile);
         Assert.Equal("hello@example.test", updatedProfile!.Email);
         Assert.Equal("hello@example.test", updatedProfile.ProfileEmail);
         Assert.True(updatedProfile.IsEmailVisible);
+        Assert.True(updatedProfile.IsPhoneVisible);
         Assert.Equal("Private.Member", updatedProfile.Username);
         Assert.Equal("Building a legacy.", updatedProfile.Bio);
 
@@ -670,6 +672,7 @@ public sealed class MobileIntegrationTests
         var settings = Assert.Single(db.MobileProfileSettings);
         Assert.Equal("private.member", settings.NormalizedUsername);
         Assert.Equal("hello@example.test", settings.PublicEmail);
+        Assert.True(settings.IsPhoneVisible);
 
         var hideResult = await controller.Update(
             new MobileAccountUpdateRequest(
@@ -682,12 +685,14 @@ public sealed class MobileIntegrationTests
                 Website: "https://legend.example.test/member",
                 Location: "Phoenix, Arizona",
                 PublicEmail: "hello@example.test",
-                IsEmailVisible: false),
+                IsEmailVisible: false,
+                IsPhoneVisible: false),
             CancellationToken.None);
         var hiddenProfile = Assert.IsType<OkObjectResult>(hideResult).Value as MobileAccountProfile;
         Assert.NotNull(hiddenProfile);
         Assert.Null(hiddenProfile!.Email);
         Assert.Equal("hello@example.test", hiddenProfile.ProfileEmail);
+        Assert.False(hiddenProfile.IsPhoneVisible);
         Assert.False(hiddenProfile.IsEmailVisible);
     }
 
@@ -1488,7 +1493,9 @@ public sealed class MobileIntegrationTests
         Infrastructure.Data.MasterAppDbContext db,
         ClaimsPrincipal principal)
     {
-        var accounts = new MobileAccountService(db);
+        var accounts = new MobileAccountService(
+            db,
+            new ControlledResourceAccessService(db));
 
         return new MobileAccountController(
             CreateResolver(db),

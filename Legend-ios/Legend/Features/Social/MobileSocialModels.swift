@@ -97,6 +97,7 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
     let website: String?
     let location: String?
     let publicEmail: String?
+    let publicPhone: String?
     let isPrivate: Bool?
     let isVerified: Bool?
     let roleLabel: String?
@@ -113,7 +114,8 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
         publicEmail: String? = nil,
         isPrivate: Bool? = nil,
         isVerified: Bool? = nil,
-        roleLabel: String? = nil
+        roleLabel: String? = nil,
+        publicPhone: String? = nil
     ) {
         self.identity = identity
         self.profileID = profileID
@@ -124,6 +126,7 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
         self.website = website
         self.location = location
         self.publicEmail = publicEmail
+        self.publicPhone = publicPhone
         self.isPrivate = isPrivate
         self.isVerified = isVerified
         self.roleLabel = roleLabel
@@ -132,7 +135,7 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case identity
         case profileID = "profileId"
-        case displayName, avatar, username, bio, website, location, publicEmail, isPrivate, isVerified, roleLabel
+        case displayName, avatar, username, bio, website, location, publicEmail, publicPhone, isPrivate, isVerified, roleLabel
     }
 }
 

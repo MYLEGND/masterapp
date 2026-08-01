@@ -36,8 +36,32 @@ public interface IMessagingService
         MessagingActor actor,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Starts a request through the existing private Founder + Legend review
+    /// queue. Verification is a compatibility wrapper around this one path.
+    /// </summary>
+    Task<MessagingControlledResourceRequestResult> StartControlledResourceRequestAsync(
+        StartControlledResourceRequestCommand command,
+        CancellationToken cancellationToken = default);
+
     Task<MessagingOperationResult> ResolveVerificationReviewRequestAsync(
         ResolveVerificationReviewRequestCommand command,
+        CancellationToken cancellationToken = default);
+
+    Task<MessagingOperationResult> ResolveControlledResourceRequestAsync(
+        ResolveControlledResourceRequestCommand command,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Founder-only search over the established people directory.</summary>
+    Task<MessagingControlledResourceRecipientListResult> ListControlledResourceRecipientsAsync(
+        MessagingActor actor,
+        string resourceType,
+        string? search = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Founder-only idempotent grant or revocation for a resource.</summary>
+    Task<MessagingOperationResult> SetControlledResourceGrantAsync(
+        SetControlledResourceGrantCommand command,
         CancellationToken cancellationToken = default);
 
     Task<MessagingOperationResult> UpdateGroupProfileAsync(

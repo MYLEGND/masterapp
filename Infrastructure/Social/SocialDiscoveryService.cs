@@ -144,7 +144,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             Journey = journey,
             ClientProfileId = client.Id,
             ClientUserId = client.ClientUserId,
-            ExternalIdentityObjectId = client.ExternalIdentityObjectId
+            ExternalIdentityObjectId = client.ExternalIdentityObjectId,
+            Phone = client.Phone
         };
 
     /// <summary>
@@ -303,6 +304,7 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                 profile.AgentUpn,
                 profile.Title,
                 profile.ShortBio,
+                profile.Phone,
                 profile.CreatedUtc,
                 profile.UpdatedUtc))
             .ToArrayAsync(cancellationToken);
@@ -400,7 +402,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             journey?.Introduction,
             JourneyCircleCompatibilityScorer.FromDelimited(journey?.LifeStage),
             JourneyCircleCompatibilityScorer.FromJson(journey?.ConnectionTypesJson),
-            null);
+            null,
+            Phone: row.Client.Phone);
     }
 
     private static DirectoryCandidate ToDirectoryCandidate(AgentDirectoryRow agent)
@@ -420,7 +423,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             agent.ShortBio,
             [],
             [],
-            null);
+            null,
+            Phone: agent.Phone);
     }
 
     private async Task<IReadOnlyList<SocialDiscoveryResult>> ProjectDirectoryAsync(
@@ -529,6 +533,9 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                 candidate.Presentation?.IsPrivate ?? false,
                 candidate.ParticipantType == MessagingParticipantTypes.Agent
                     ? candidate.Headline
+                    : null,
+                PublicPhone: candidate.Presentation?.IsPhoneVisible == true
+                    ? candidate.Phone
                     : null);
         }).ToArray();
     }
@@ -676,7 +683,10 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                 presentation?.Bio,
                 presentation?.Website,
                 presentation?.PublicEmail,
-                presentation?.IsPrivate ?? false);
+                presentation?.IsPrivate ?? false,
+                PublicPhone: presentation?.IsPhoneVisible == true
+                    ? candidate.Phone
+                    : null);
         }).ToArray();
     }
 
@@ -703,7 +713,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
                     TrimOptional(setting.Bio),
                     TrimOptional(setting.Website),
                     setting.IsEmailVisible ? TrimOptional(setting.PublicEmail) : null,
-                    setting.IsPrivate)
+                    setting.IsPrivate,
+                    setting.IsPhoneVisible)
             })
             .Where(entry => requestedKeys.Contains(entry.Key))
             .ToDictionary(entry => entry.Key, entry => entry.Presentation);
@@ -850,7 +861,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         string? Bio,
         string? Website,
         string? PublicEmail,
-        bool IsPrivate);
+        bool IsPrivate,
+        bool IsPhoneVisible);
 
     private sealed record ClientDirectoryRow(ClientProfile Client, JourneyCircleProfile? Journey);
 
@@ -862,6 +874,7 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         string? AgentUpn,
         string? Title,
         string? ShortBio,
+        string? Phone,
         DateTime CreatedUtc,
         DateTime UpdatedUtc);
 
@@ -879,7 +892,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         string? Introduction,
         IReadOnlyList<string> LifeStages,
         IReadOnlyList<string> ConnectionTypes,
-        MobileProfilePresentation? Presentation);
+        MobileProfilePresentation? Presentation,
+        string? Phone = null);
 
     private sealed class CommunityCandidate
     {
@@ -887,5 +901,6 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         public required Guid ClientProfileId { get; init; }
         public required string ClientUserId { get; init; }
         public required string? ExternalIdentityObjectId { get; init; }
+        public required string? Phone { get; init; }
     }
 }

@@ -1,3 +1,4 @@
+using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Messaging;
 using Infrastructure.Mobile;
@@ -217,7 +218,30 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         return Ok(new MobileVerificationRequestDto(
             result.Request.Id,
             result.Request.Status,
-            result.Request.RequestedUtc));
+            result.Request.RequestedUtc,
+            result.Request.ResourceType));
+    }
+
+    [HttpPost("messaging/controlled-resources/{resourceType}/requests")]
+    public async Task<IActionResult> StartControlledResourceRequest(
+        string resourceType,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.StartControlledResourceRequestAsync(
+            new StartControlledResourceRequestCommand(resolved.Actor!.Actor, resourceType),
+            cancellationToken);
+        if (!result.Succeeded || result.Request is null)
+            return MessagingFailure(result.ErrorCode, result.ErrorMessage);
+
+        return Ok(new MobileVerificationRequestDto(
+            result.Request.Id,
+            result.Request.Status,
+            result.Request.RequestedUtc,
+            result.Request.ResourceType));
     }
 
     [HttpPost("messaging/verification-requests/{requestId:guid}/resolution")]
@@ -235,6 +259,98 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 resolved.Actor!.Actor,
                 requestId,
                 request?.Approve == true),
+            cancellationToken);
+        return result.Succeeded
+            ? NoContent()
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpPost("messaging/controlled-resource-requests/{requestId:guid}/resolution")]
+    public async Task<IActionResult> ResolveControlledResourceRequest(
+        Guid requestId,
+        [FromBody] MobileVerificationResolutionRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.ResolveControlledResourceRequestAsync(
+            new ResolveControlledResourceRequestCommand(
+                resolved.Actor!.Actor,
+                requestId,
+                request?.Approve == true),
+            cancellationToken);
+        return result.Succeeded
+            ? NoContent()
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpGet("messaging/controlled-resources/{resourceType}/recipients")]
+    public async Task<IActionResult> ControlledResourceRecipients(
+        string resourceType,
+        [FromQuery] string? search,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.ListControlledResourceRecipientsAsync(
+            resolved.Actor!.Actor,
+            resourceType,
+            search,
+            cancellationToken);
+        if (!result.Succeeded)
+            return MessagingFailure(result.ErrorCode, result.ErrorMessage);
+
+        var identities = await ResolveParticipantIdentitiesAsync(
+            result.Recipients.Select(entry => new MessagingParticipantSummary(
+                entry.Recipient.UserId,
+                entry.Recipient.ParticipantType,
+                entry.Recipient.DisplayName)),
+            cancellationToken);
+        var response = new List<MobileMessagingRecipientDto>();
+        foreach (var entry in result.Recipients)
+        {
+            var recipient = entry.Recipient;
+            identities.TryGetValue((recipient.UserId, recipient.ParticipantType), out var identity);
+            response.Add((new MobileMessagingRecipientDto(
+                new MobileLogicalIdentityDto(recipient.UserId, recipient.ParticipantType),
+                identity?.ProfileId.ToString("D") ?? string.Empty,
+                identity?.DisplayName ?? recipient.DisplayName,
+                recipient.Email,
+                recipient.RelationshipLabel,
+                recipient.ExistingConversationId,
+                identity is null ? null : await ToAvatarDtoAsync(identity, cancellationToken))) with
+            {
+                RoleLabel = identity?.RoleLabel,
+                IsVerified = identity?.IsVerified ?? false,
+                ResourceType = entry.ResourceType,
+                ResourceAccessState = entry.AccessState
+            });
+        }
+
+        return Ok(response);
+    }
+
+    [HttpPut("messaging/controlled-resources/{resourceType}/recipients")]
+    public async Task<IActionResult> SetControlledResourceGrant(
+        string resourceType,
+        [FromBody] MobileControlledResourceGrantRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.SetControlledResourceGrantAsync(
+            new SetControlledResourceGrantCommand(
+                resolved.Actor!.Actor,
+                resourceType,
+                request?.TargetUserId ?? string.Empty,
+                request?.TargetParticipantType ?? string.Empty,
+                request?.IsGranted == true),
             cancellationToken);
         return result.Succeeded
             ? NoContent()
@@ -654,7 +770,15 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 message.VerificationReview.RequesterParticipantType,
                 message.VerificationReview.Status,
                 message.VerificationReview.RequestedUtc,
-                message.VerificationReview.CanResolve));
+                message.VerificationReview.CanResolve,
+                message.VerificationReview.ResourceType),
+        message.Translation is null
+            ? null
+            : new MobileMessageTranslationDto(
+                message.Translation.OriginalLanguage,
+                message.Translation.TargetLanguage,
+                message.Translation.Provider),
+        message.OriginalBody);
 
     private async Task<MobileAvatarDto?> ToAvatarDtoAsync(
         MessagingParticipantIdentity identity,
@@ -784,7 +908,14 @@ public sealed record MobileMessageDto(
     bool IsMine,
     bool IsDeleted,
     MobileReplyPreviewDto? Reply = null,
-    MobileVerificationReviewDto? VerificationReview = null);
+    MobileVerificationReviewDto? VerificationReview = null,
+    MobileMessageTranslationDto? Translation = null,
+    string? OriginalBody = null);
+
+public sealed record MobileMessageTranslationDto(
+    string OriginalLanguage,
+    string TargetLanguage,
+    string Provider);
 
 public sealed record MobileVerificationReviewDto(
     Guid Id,
@@ -792,7 +923,8 @@ public sealed record MobileVerificationReviewDto(
     string RequesterParticipantType,
     string Status,
     DateTime RequestedUtc,
-    bool CanResolve);
+    bool CanResolve,
+    string ResourceType = ControlledResourceTypes.VerificationBadge);
 
 public sealed record MobileReplyPreviewDto(
     Guid Id,
@@ -843,7 +975,13 @@ public sealed record MobileVerificationResolutionRequest(bool? Approve);
 public sealed record MobileVerificationRequestDto(
     Guid Id,
     string Status,
-    DateTime RequestedUtc);
+    DateTime RequestedUtc,
+    string ResourceType = ControlledResourceTypes.VerificationBadge);
+
+public sealed record MobileControlledResourceGrantRequest(
+    string? TargetUserId,
+    string? TargetParticipantType,
+    bool? IsGranted);
 
 public sealed record MobileGroupParticipantRequest(
     string? UserId,
@@ -860,6 +998,8 @@ public sealed record MobileMessagingRecipientDto(
 {
     public string? RoleLabel { get; init; }
     public bool IsVerified { get; init; }
+    public string? ResourceType { get; init; }
+    public string? ResourceAccessState { get; init; }
 }
 
 internal static class MobileParticipantIdentityDictionaryExtensions

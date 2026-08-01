@@ -15,6 +15,8 @@ internal static class MessagingModelConfiguration
         ConfigureMessage(modelBuilder.Entity<InternalMessage>(), providerName);
         ConfigureAttachment(modelBuilder.Entity<MessageAttachment>());
         ConfigureVerificationReviewRequest(modelBuilder.Entity<VerificationReviewRequest>(), providerName);
+        ConfigureControlledResourceGrant(modelBuilder.Entity<ControlledResourceGrant>(), providerName);
+        ConfigureMessageTranslation(modelBuilder.Entity<MessageTranslation>());
         ConfigureGrant(modelBuilder.Entity<ClientAgentMessagingGrant>());
         ConfigureAuditEntry(modelBuilder.Entity<MessagingAuditEntry>());
     }
@@ -139,6 +141,9 @@ internal static class MessagingModelConfiguration
             .IsRequired()
             .HasMaxLength(10000);
 
+        entity.Property(x => x.OriginalLanguage)
+            .HasMaxLength(32);
+
         entity.Property(x => x.ClientMessageId)
             .HasMaxLength(100);
 
@@ -175,14 +180,18 @@ internal static class MessagingModelConfiguration
         entity.HasKey(x => x.Id);
         entity.Property(x => x.RequesterUserId).IsRequired().HasMaxLength(450);
         entity.Property(x => x.RequesterParticipantType).IsRequired().HasMaxLength(40);
+        entity.Property(x => x.ResourceType)
+            .IsRequired()
+            .HasMaxLength(80)
+            .HasDefaultValue(ControlledResourceTypes.VerificationBadge);
         entity.Property(x => x.Status).IsRequired().HasMaxLength(24);
         entity.Property(x => x.ResolvedByUserId).HasMaxLength(450);
         entity.Property(x => x.ResolutionNote).HasMaxLength(1_000);
-        entity.HasIndex(x => new { x.RequesterUserId, x.RequesterParticipantType, x.Status });
+        entity.HasIndex(x => new { x.RequesterUserId, x.RequesterParticipantType, x.ResourceType, x.Status });
         entity.HasIndex(x => new { x.ReviewConversationId, x.RequestedUtc });
 
         var pendingRequestIndex = entity
-            .HasIndex(x => new { x.RequesterUserId, x.RequesterParticipantType })
+            .HasIndex(x => new { x.RequesterUserId, x.RequesterParticipantType, x.ResourceType })
             .IsUnique();
         if (IsSqlServer(providerName))
         {
@@ -192,6 +201,36 @@ internal static class MessagingModelConfiguration
         {
             pendingRequestIndex.HasFilter("\"Status\" = 'Pending'");
         }
+    }
+
+    private static void ConfigureControlledResourceGrant(
+        EntityTypeBuilder<ControlledResourceGrant> entity,
+        string? providerName)
+    {
+        entity.ToTable("ControlledResourceGrants");
+        entity.HasKey(x => x.Id);
+        entity.Property(x => x.UserId).IsRequired().HasMaxLength(450);
+        entity.Property(x => x.ParticipantType).IsRequired().HasMaxLength(40);
+        entity.Property(x => x.ResourceType).IsRequired().HasMaxLength(80);
+        entity.Property(x => x.GrantedByUserId).IsRequired().HasMaxLength(450);
+        entity.Property(x => x.RevokedByUserId).HasMaxLength(450);
+        ConfigureRowVersion(entity.Property(x => x.RowVersion), providerName);
+        entity.HasIndex(x => new { x.UserId, x.ParticipantType, x.ResourceType }).IsUnique();
+        entity.HasIndex(x => new { x.ResourceType, x.IsActive });
+    }
+
+    private static void ConfigureMessageTranslation(EntityTypeBuilder<MessageTranslation> entity)
+    {
+        entity.ToTable("MessageTranslations");
+        entity.HasKey(x => x.Id);
+        entity.Property(x => x.TargetLanguage).IsRequired().HasMaxLength(32);
+        entity.Property(x => x.TranslatedText).IsRequired().HasMaxLength(10_000);
+        entity.Property(x => x.Provider).IsRequired().HasMaxLength(80);
+        entity.HasIndex(x => new { x.InternalMessageId, x.TargetLanguage }).IsUnique();
+        entity.HasOne(x => x.InternalMessage)
+            .WithMany(x => x.Translations)
+            .HasForeignKey(x => x.InternalMessageId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 
     private static void ConfigureAttachment(

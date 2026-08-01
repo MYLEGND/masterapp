@@ -196,6 +196,66 @@ final class MessagingStore: ObservableObject {
         }
     }
 
+    func startControlledResourceRequest(
+        _ resourceType: ControlledResourceType,
+        completion: @escaping () -> Void
+    ) {
+        guard !isCreatingGroup else { return }
+        isCreatingGroup = true
+        sendFailure = nil
+        Task {
+            defer { isCreatingGroup = false }
+            do {
+                _ = try await api.startControlledResourceRequest(
+                    resourceType: resourceType,
+                    accessToken: try await accessTokenProvider())
+                _ = await refresh()
+                completion()
+            } catch {
+                sendFailure = failure(for: error, title: "Access request not started")
+            }
+        }
+    }
+
+    func controlledResourceRecipients(
+        _ resourceType: ControlledResourceType,
+        search: String? = nil
+    ) async -> [MessagingRecipient]? {
+        do {
+            return try await api.controlledResourceRecipients(
+                resourceType: resourceType,
+                search: search,
+                accessToken: try await accessTokenProvider())
+        } catch {
+            sendFailure = failure(for: error, title: "Access directory unavailable")
+            return nil
+        }
+    }
+
+    @discardableResult
+    func setControlledResourceGrant(
+        _ resourceType: ControlledResourceType,
+        recipient: MessagingRecipient,
+        isGranted: Bool
+    ) async -> Bool {
+        guard !isCreatingGroup else { return false }
+        isCreatingGroup = true
+        sendFailure = nil
+        defer { isCreatingGroup = false }
+        do {
+            try await api.setControlledResourceGrant(
+                resourceType: resourceType,
+                recipient: recipient,
+                isGranted: isGranted,
+                accessToken: try await accessTokenProvider())
+            _ = await refresh()
+            return true
+        } catch {
+            sendFailure = failure(for: error, title: "Access not updated")
+            return false
+        }
+    }
+
     func addGroupParticipant(
         _ recipient: MessagingRecipient,
         to conversationID: UUID,
@@ -261,7 +321,7 @@ final class MessagingStore: ObservableObject {
         sendFailure = nil
         defer { isCreatingGroup = false }
         do {
-            try await api.resolveVerificationRequest(
+            try await api.resolveControlledResourceRequest(
                 requestID: request.id,
                 approve: approve,
                 accessToken: try await accessTokenProvider())

@@ -63,6 +63,13 @@ public static class LegendVerifiedIdentity
         string.Equals(Normalize(email), FounderEmail, StringComparison.Ordinal) ||
         string.Equals(Normalize(email), LegendEmail, StringComparison.Ordinal);
 
+    /// <summary>
+    /// The Founder identity used by the existing private review queue. Keeping
+    /// it here prevents a resource-specific copy of Founder recognition.
+    /// </summary>
+    public static bool IsFounderAgentEmail(string? email) =>
+        string.Equals(Normalize(email), FounderEmail, StringComparison.Ordinal);
+
     private static string Normalize(string? value) =>
         value?.Trim().ToLowerInvariant() ?? string.Empty;
 }

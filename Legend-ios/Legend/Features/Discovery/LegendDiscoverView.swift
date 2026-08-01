@@ -280,7 +280,8 @@ struct LegendDiscoverView: View {
                 isVerified: result.isVerified,
                 roleLabel: result.identity.participantType == .agent
                     ? result.roleLabel
-                    : nil),
+                    : nil,
+                publicPhone: result.publicPhone),
             isFollowing: result.relationship.followedByCurrentActor,
             isFollowRequestPending: result.relationship.followRequestPending ?? false)
     }

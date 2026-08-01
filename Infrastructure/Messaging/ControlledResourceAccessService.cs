@@ -1,0 +1,159 @@
+using Domain.Entities;
+using Domain.Messaging;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+
+namespace Infrastructure.Messaging;
+
+public interface IControlledResourceAccessService
+{
+    Task<ControlledResourceAccess> GetAccessAsync(
+        MessagingActor actor,
+        string resourceType,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> IsFounderManagerAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default);
+
+    Task<string?> GetPreferredLanguageAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// One server-side authority for controlled-resource state. Requests continue
+/// to be authored and resolved by <see cref="MessagingService"/> so they retain
+/// the existing Founder + Legend review queue and audit behavior.
+/// </summary>
+internal sealed class ControlledResourceAccessService : IControlledResourceAccessService
+{
+    private readonly MasterAppDbContext _db;
+
+    public ControlledResourceAccessService(MasterAppDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task<ControlledResourceAccess> GetAccessAsync(
+        MessagingActor actor,
+        string resourceType,
+        CancellationToken cancellationToken = default)
+    {
+        actor = Normalize(actor);
+        if (!ControlledResourceTypes.IsSupported(resourceType))
+            return new ControlledResourceAccess(resourceType, ControlledResourceAccessStates.NotGranted, false);
+
+        var canManage = await IsFounderManagerAsync(actor, cancellationToken);
+        var granted = resourceType switch
+        {
+            ControlledResourceTypes.VerificationBadge => await IsVerificationGrantedAsync(actor, cancellationToken),
+            ControlledResourceTypes.LanguageTranslation => canManage || await _db.ControlledResourceGrants
+                .AsNoTracking()
+                .AnyAsync(grant =>
+                    grant.IsActive &&
+                    grant.ResourceType == ControlledResourceTypes.LanguageTranslation &&
+                    grant.UserId.ToLower() == actor.UserId &&
+                    grant.ParticipantType == actor.ParticipantType,
+                    cancellationToken),
+            _ => false
+        };
+
+        if (granted)
+            return new ControlledResourceAccess(resourceType, ControlledResourceAccessStates.Granted, canManage);
+
+        var pending = await _db.VerificationReviewRequests
+            .AsNoTracking()
+            .AnyAsync(request =>
+                request.ResourceType == resourceType &&
+                request.Status == VerificationReviewStatuses.Pending &&
+                request.RequesterUserId.ToLower() == actor.UserId &&
+                request.RequesterParticipantType == actor.ParticipantType,
+                cancellationToken);
+
+        return new ControlledResourceAccess(
+            resourceType,
+            pending ? ControlledResourceAccessStates.Pending : ControlledResourceAccessStates.NotGranted,
+            canManage);
+    }
+
+    public Task<bool> IsFounderManagerAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        actor = Normalize(actor);
+        if (actor.ParticipantType != MessagingParticipantTypes.Agent)
+            return Task.FromResult(false);
+
+        return _db.AgentProfiles.AsNoTracking().AnyAsync(profile =>
+            profile.IsActive &&
+            profile.AgentUserId.ToLower() == actor.UserId &&
+            (profile.NormalizedEmail == LegendVerifiedIdentity.FounderEmail ||
+             (profile.AgentUpn != null && profile.AgentUpn.ToLower() == LegendVerifiedIdentity.FounderEmail)),
+            cancellationToken);
+    }
+
+    public async Task<string?> GetPreferredLanguageAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        actor = Normalize(actor);
+        var profileId = actor.ParticipantType switch
+        {
+            MessagingParticipantTypes.Agent => await _db.AgentProfiles.AsNoTracking()
+                .Where(profile => profile.IsActive && profile.AgentUserId.ToLower() == actor.UserId)
+                .Select(profile => (Guid?)profile.Id)
+                .SingleOrDefaultAsync(cancellationToken),
+            MessagingParticipantTypes.Client => await _db.ClientProfiles.AsNoTracking()
+                .Where(profile => profile.ClientUserId.ToLower() == actor.UserId ||
+                    (profile.ExternalIdentityObjectId != null && profile.ExternalIdentityObjectId.ToLower() == actor.UserId))
+                .Select(profile => (Guid?)profile.Id)
+                .SingleOrDefaultAsync(cancellationToken),
+            _ => null
+        };
+
+        if (!profileId.HasValue)
+            return null;
+
+        var access = await GetAccessAsync(actor, ControlledResourceTypes.LanguageTranslation, cancellationToken);
+        if (access.State != ControlledResourceAccessStates.Granted)
+            return null;
+
+        var language = await _db.MobileProfileSettings.AsNoTracking()
+            .Where(setting => setting.ProfileId == profileId.Value && setting.ParticipantType == actor.ParticipantType)
+            .Select(setting => setting.PreferredCommunicationLanguage)
+            .SingleOrDefaultAsync(cancellationToken);
+        return CommunicationLanguages.NormalizeOrNull(language);
+    }
+
+    private async Task<bool> IsVerificationGrantedAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken) => actor.ParticipantType switch
+        {
+            MessagingParticipantTypes.Agent => await _db.AgentProfiles.AsNoTracking().AnyAsync(profile =>
+                profile.IsActive &&
+                profile.AgentUserId.ToLower() == actor.UserId &&
+                (profile.IsVerified ||
+                 profile.NormalizedEmail == LegendVerifiedIdentity.FounderEmail ||
+                 profile.NormalizedEmail == LegendVerifiedIdentity.LegendEmail ||
+                 (profile.AgentUpn != null &&
+                  (profile.AgentUpn.ToLower() == LegendVerifiedIdentity.FounderEmail ||
+                   profile.AgentUpn.ToLower() == LegendVerifiedIdentity.LegendEmail))),
+                cancellationToken),
+            MessagingParticipantTypes.Client => await _db.ClientProfiles.AsNoTracking().AnyAsync(profile =>
+                (profile.ClientUserId.ToLower() == actor.UserId ||
+                 (profile.ExternalIdentityObjectId != null && profile.ExternalIdentityObjectId.ToLower() == actor.UserId)) &&
+                profile.IsVerified,
+                cancellationToken),
+            _ => false
+        };
+
+    private static MessagingActor Normalize(MessagingActor actor) => new(
+        actor.UserId.Trim().ToLowerInvariant(),
+        actor.ParticipantType.Trim());
+}
+
+public sealed record ControlledResourceAccess(
+    string ResourceType,
+    string State,
+    bool CanManage);
