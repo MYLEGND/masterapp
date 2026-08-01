@@ -87,7 +87,37 @@ internal sealed class MessagingService : IMessagingService
                 x.Messages.Any(message => !message.IsDeleted && EF.Functions.Like(message.Body, searchPattern)));
         }
 
-        var conversations = await conversationsQuery
+        // The actor's active participant row is the source of truth for inbox
+        // controls such as pinning. Joining it directly keeps the existing
+        // authorization query intact and produces a simple, portable SQL ORDER BY.
+        // Ordering a projected record containing a correlated FirstOrDefault was
+        // not translatable by the production SQL Server provider.
+        var conversationRows = await (
+                from conversation in conversationsQuery
+                join participant in _db.MessageConversationParticipants.AsNoTracking()
+                    on conversation.Id equals participant.ConversationId
+                where participant.IsActive &&
+                      participant.UserId.ToLower() == actorUserId &&
+                      participant.ParticipantType == actorParticipantType
+                select new
+                {
+                    conversation.Id,
+                    conversation.ConversationType,
+                    conversation.Subject,
+                    conversation.LastMessageUtc,
+                    conversation.IsClosed,
+                    conversation.Purpose,
+                    conversation.GroupImageContent,
+                    conversation.GroupImageContentType,
+                    participant.PinnedUtc
+                })
+            .OrderByDescending(x => x.PinnedUtc.HasValue)
+            .ThenByDescending(x => x.PinnedUtc)
+            .ThenByDescending(x => x.LastMessageUtc ?? DateTime.MinValue)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
+        var conversations = conversationRows
             .Select(x => new ConversationRow(
                 x.Id,
                 x.ConversationType,
@@ -97,18 +127,8 @@ internal sealed class MessagingService : IMessagingService
                 x.Purpose,
                 x.GroupImageContent,
                 x.GroupImageContentType,
-                x.Participants
-                    .Where(participant =>
-                        participant.IsActive &&
-                        participant.UserId.ToLower() == actorUserId &&
-                        participant.ParticipantType == actorParticipantType)
-                    .Select(participant => participant.PinnedUtc)
-                    .FirstOrDefault()))
-            .OrderByDescending(x => x.PinnedUtc.HasValue)
-            .ThenByDescending(x => x.PinnedUtc)
-            .ThenByDescending(x => x.LastMessageUtc ?? DateTime.MinValue)
-            .Take(take)
-            .ToListAsync(cancellationToken);
+                x.PinnedUtc))
+            .ToList();
 
         if (conversations.Count == 0)
             return new MessagingConversationListResult(true, null, null, Array.Empty<MessagingConversationSummary>());

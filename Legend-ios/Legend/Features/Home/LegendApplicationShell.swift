@@ -85,7 +85,10 @@ struct LegendApplicationShell: View {
     var body: some View {
         selectedTabContent
             .legendNextPageBackground()
-            .safeAreaInset(edge: .top, spacing: 0) {
+            // This is the one primary-page viewport boundary. Every tab is laid
+            // out beneath the stationary wordmark, with a deliberate visual gap
+            // so no page header or first card can be clipped by the app chrome.
+            .safeAreaInset(edge: .top, spacing: LegendNextSpacing.pageTop) {
                 LegendAppBrandBar(
                     showsHomeActions: selectedTab == .home,
                     activityCount: homeActivityCount,
