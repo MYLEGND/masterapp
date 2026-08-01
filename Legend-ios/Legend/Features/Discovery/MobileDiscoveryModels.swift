@@ -27,7 +27,7 @@ enum MobileDiscoveryConnectionStatus: String, Codable, Sendable {
 
 struct MobileDiscoveryRelationship: Codable, Equatable, Sendable {
     let followedByCurrentActor: Bool
-    let followRequestPending: Bool? = nil
+    let followRequestPending: Bool?
     let followsCurrentActor: Bool
     let connectionStatus: MobileDiscoveryConnectionStatus
     let connectionID: UUID?
@@ -37,6 +37,24 @@ struct MobileDiscoveryRelationship: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case followedByCurrentActor, followRequestPending, followsCurrentActor, connectionStatus, canRequestConnection, canFollow
         case connectionID = "connectionId"
+    }
+
+    init(
+        followedByCurrentActor: Bool,
+        followRequestPending: Bool? = nil,
+        followsCurrentActor: Bool,
+        connectionStatus: MobileDiscoveryConnectionStatus,
+        connectionID: UUID?,
+        canRequestConnection: Bool,
+        canFollow: Bool
+    ) {
+        self.followedByCurrentActor = followedByCurrentActor
+        self.followRequestPending = followRequestPending
+        self.followsCurrentActor = followsCurrentActor
+        self.connectionStatus = connectionStatus
+        self.connectionID = connectionID
+        self.canRequestConnection = canRequestConnection
+        self.canFollow = canFollow
     }
 }
 
