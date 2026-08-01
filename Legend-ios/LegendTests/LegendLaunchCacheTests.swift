@@ -31,6 +31,39 @@ final class LegendLaunchCacheTests: XCTestCase {
         XCTAssertEqual(session.actor.displayName, "Client One")
     }
 
+    func testConfirmingTheCachedIdentityDoesNotRemountTheVisibleShell() async throws {
+        let cache = InMemoryLaunchCache()
+        cache.writeSession(MobileSessionCacheEntry(
+            actor: try Self.cachedActor(),
+            capabilities: ["messaging"],
+            permittedParticipantTypes: [.client],
+            cachedUtc: Date()))
+        let confirmedActor = try MobileActor(
+            identity: LogicalParticipantIdentity(
+                userID: "client-one",
+                participantType: .client),
+            profileID: "00000000-0000-0000-0000-000000000002",
+            displayName: "Client One Updated",
+            avatar: nil)
+        let coordinator = MobileSessionCoordinator(
+            configuration: Self.readyConfiguration(),
+            tokenStore: StubTokenStore(tokens: Self.validTokens()),
+            authorizer: NeverAuthorizer(),
+            tokenExchanger: NeverExchanger(),
+            sessionService: AcceptingSessionService(actor: confirmedActor),
+            diagnostics: LegendDiagnostics(),
+            launchCache: cache)
+
+        coordinator.restore()
+        try await Task.sleep(for: .milliseconds(200))
+
+        guard case .authenticated(let visibleSession) = coordinator.state else {
+            return XCTFail("Expected the cached shell to remain authenticated")
+        }
+        XCTAssertEqual(visibleSession.actor.displayName, "Client One")
+        XCTAssertEqual(cache.readSession()?.actor.displayName, "Client One Updated")
+    }
+
     /// Cached identity is a rendering hint, never an authority. A rejected credential
     /// still signs the user out and wipes the cache.
     func testRejectedCredentialClearsTheCachedSession() async throws {
@@ -284,7 +317,6 @@ final class LegendLaunchCacheTests: XCTestCase {
             subscription: nil,
             entitlement: nil,
             journey: nil,
-            financial: nil,
             upcomingAppointments: [],
             actions: [],
             notifications: [],

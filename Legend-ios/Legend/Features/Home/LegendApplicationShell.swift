@@ -1227,8 +1227,6 @@ private struct LegendHomeView: View {
     @ObservedObject private var social: MobileSocialStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     @State private var presentedScripture: MobileDailyScripture? = nil
-    @State private var homePage = 0
-    @State private var isFinancialIntelligencePresented = false
 
     init(
         currentSession: MobileSession,
@@ -1254,7 +1252,7 @@ private struct LegendHomeView: View {
                 }
 
             case .loaded(let home):
-                financialHomeContent(home)
+                homeContent(home)
 
             case .unavailable(let failure):
                 LegendNextErrorState(
@@ -1312,34 +1310,6 @@ private struct LegendHomeView: View {
         .navigationBarHidden(true)
         .refreshable {
             await bootstrap.refreshHome()
-        }
-    }
-
-    private func financialHomeContent(
-        _ home: MobileHomeResponse
-    ) -> some View {
-        TabView(selection: $homePage) {
-            homeContent(home)
-                .tag(0)
-
-            LegendFinancialHomePanel(
-                store: bootstrap.stores.financial,
-                bootstrap: bootstrap,
-                openFinancialIntelligence: {
-                    isFinancialIntelligencePresented = true
-                }
-            )
-            .tag(1)
-        }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .navigationDestination(
-            isPresented: $isFinancialIntelligencePresented
-        ) {
-            LegendFinanceView(
-                currentSession: currentSession,
-                store: bootstrap.stores.financial,
-                bootstrap: bootstrap
-            )
         }
     }
 
@@ -1475,34 +1445,6 @@ private struct LegendHomeView: View {
                         tone: .gold
                     )
                 } else {
-                    if let position = home.financial?.position {
-                        Button {
-                            openFinancialPanel()
-                        } label: {
-                            LegendNextMetricTile(
-                                title: "Health score",
-                                value: "\(position.healthScore)",
-                                detail: position.positionStatus,
-                                systemImage: "heart.text.square.fill",
-                                tone: healthTone(position.healthScore)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        Button {
-                            openFinancialPanel()
-                        } label: {
-                            LegendNextMetricTile(
-                                title: "Financial health",
-                                value: "—",
-                                detail: "Complete your snapshot",
-                                systemImage: "chart.line.uptrend.xyaxis",
-                                tone: .neutral
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-
                     if let journey = home.journey {
                         Button {
                             open(.discover)
@@ -1577,18 +1519,6 @@ private struct LegendHomeView: View {
                             tone: .information
                         ) {
                             open(.messages)
-                        }
-                    }
-
-                    if home.identity.participantType == .client {
-                        let move = financialMove(for: home.financial)
-                        priorityRow(
-                            title: move.title,
-                            detail: move.detail,
-                            systemImage: move.systemImage,
-                            tone: move.tone
-                        ) {
-                            openFinancialPanel()
                         }
                     }
 
@@ -1846,221 +1776,6 @@ private struct LegendHomeView: View {
                     )
                     .lineLimit(2)
             }
-        }
-        .frame(
-            maxWidth: .infinity,
-            alignment: .leading
-        )
-    }
-
-    private func financialCard(
-        _ financial: MobileFinancialSnapshotResponse
-    ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.xs
-        ) {
-            LegendNextSectionHeader(
-                eyebrow: "Intelligence",
-                title: "Financial position",
-                detail: financial.intelligence?.status
-            )
-
-            LegendNextSurface(
-                style: .navy,
-                cornerRadius: LegendNextRadius.prominentCard,
-                padding: LegendNextSpacing.sm
-            ) {
-                VStack(
-                    alignment: .leading,
-                    spacing: LegendNextSpacing.xs
-                ) {
-                    if let position = financial.position {
-                        HStack(
-                            alignment: .top,
-                            spacing: LegendNextSpacing.xs
-                        ) {
-                            VStack(
-                                alignment: .leading,
-                                spacing: LegendNextSpacing.micro
-                            ) {
-                                Text("HEALTH SCORE")
-                                    .font(LegendNextTypography.eyebrow)
-                                    .tracking(0.8)
-                                    .foregroundStyle(
-                                        LegendNextColor.goldBright
-                                    )
-
-                                Text("\(position.healthScore)")
-                                    .font(LegendNextTypography.hero)
-                                    .foregroundStyle(.white)
-                                    .monospacedDigit()
-                            }
-
-                            Spacer(minLength: LegendNextSpacing.sm)
-
-                            LegendNextBadge(
-                                position.positionStatus,
-                                tone: healthTone(position.healthScore),
-                                systemImage: "heart.fill"
-                            )
-                        }
-
-                        Text(position.positionSummary)
-                            .font(LegendNextTypography.body)
-                            .foregroundStyle(.white.opacity(0.76))
-                            .fixedSize(
-                                horizontal: false,
-                                vertical: true
-                            )
-
-                        HStack(
-                            alignment: .top,
-                            spacing: LegendNextSpacing.xs
-                        ) {
-                            financialValue(
-                                title: "Net worth",
-                                value: position.netWorth.formatted(
-                                    .currency(code: "USD")
-                                )
-                            )
-
-                            financialValue(
-                                title: "Annual cash",
-                                value: position.annualLifestyleRemaining.formatted(
-                                    .currency(code: "USD")
-                                )
-                            )
-                        }
-                    } else {
-                        VStack(
-                            alignment: .leading,
-                            spacing: LegendNextSpacing.xs
-                        ) {
-                            Image(systemName: "chart.line.uptrend.xyaxis")
-                                .font(
-                                    .system(
-                                        size: 24,
-                                        weight: .semibold
-                                    )
-                                )
-                                .foregroundStyle(
-                                    LegendNextColor.goldBright
-                                )
-
-                            Text("No saved financial snapshot")
-                                .font(LegendNextTypography.section)
-                                .foregroundStyle(.white)
-
-                            Text(
-                                "Complete your financial health profile to unlock your position, trends, and next opportunities."
-                            )
-                            .font(LegendNextTypography.body)
-                            .foregroundStyle(.white.opacity(0.74))
-                            .fixedSize(
-                                horizontal: false,
-                                vertical: true
-                            )
-                        }
-                    }
-                }
-            }
-
-            if let intelligence = financial.intelligence,
-               !intelligence.findings.isEmpty {
-                LegendNextSurface(style: .elevated) {
-                    VStack(
-                        alignment: .leading,
-                        spacing: LegendNextSpacing.xs
-                    ) {
-                        ForEach(
-                            Array(intelligence.findings.prefix(3).enumerated()),
-                            id: \.element.id
-                        ) { index, finding in
-                            if index > 0 {
-                                LegendNextDivider()
-                            }
-
-                            HStack(
-                                alignment: .top,
-                                spacing: LegendNextSpacing.xs
-                            ) {
-                                Image(systemName: "sparkles")
-                                    .font(
-                                        .system(
-                                            size: 14,
-                                            weight: .semibold
-                                        )
-                                    )
-                                    .foregroundStyle(
-                                        LegendNextColor.gold
-                                    )
-                                    .frame(width: 34, height: 34)
-                                    .background(
-                                        LegendNextColor.gold.opacity(0.10),
-                                        in: Circle()
-                                    )
-
-                                VStack(
-                                    alignment: .leading,
-                                    spacing: LegendNextSpacing.micro
-                                ) {
-                                    Text(finding.title)
-                                        .font(
-                                            LegendNextTypography.bodyEmphasis
-                                        )
-                                        .foregroundStyle(
-                                            LegendNextColor.textPrimary
-                                        )
-
-                                    Text(finding.explanation)
-                                        .font(
-                                            LegendNextTypography.supporting
-                                        )
-                                        .foregroundStyle(
-                                            LegendNextColor.textSecondary
-                                        )
-                                        .lineLimit(3)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Button {
-                openFinancialPanel()
-            } label: {
-                Label(
-                    "Open financial intelligence",
-                    systemImage: "chart.line.uptrend.xyaxis"
-                )
-            }
-            .buttonStyle(
-                LegendNextButtonStyle(kind: .secondary)
-            )
-        }
-    }
-
-    private func financialValue(
-        title: String,
-        value: String
-    ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.micro
-        ) {
-            Text(title.uppercased())
-                .font(LegendNextTypography.eyebrow)
-                .tracking(0.55)
-                .foregroundStyle(.white.opacity(0.54))
-
-            Text(value)
-                .font(LegendNextTypography.cardTitle)
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.62)
-                .monospacedDigit()
         }
         .frame(
             maxWidth: .infinity,
@@ -2476,14 +2191,6 @@ private struct LegendHomeView: View {
                     }
                 } else {
                     quickActionButton(
-                        title: "Finance",
-                        systemImage: "chart.line.uptrend.xyaxis",
-                        tone: .success
-                    ) {
-                        openFinancialPanel()
-                    }
-
-                    quickActionButton(
                         title: "Journey",
                         systemImage: "person.3.fill",
                         tone: .gold
@@ -2601,76 +2308,16 @@ private struct LegendHomeView: View {
             return "Lead with clarity, serve with precision, and keep every relationship moving forward."
         }
 
-        return "Continue building the financial position, protection, and community behind your legacy."
+        return "Continue building the protection, community, and legacy behind your journey."
     }
 
     private func hasPriorityContent(
         _ home: MobileHomeResponse
     ) -> Bool {
-        if home.identity.participantType == .client {
-            return true
-        }
-
         return home.messaging.unreadCount > 0
             || !home.actions.isEmpty
             || !home.upcomingAppointments.isEmpty
             || !home.notifications.isEmpty
-    }
-
-    private struct FinancialMove {
-        let title: String
-        let detail: String
-        let systemImage: String
-        let tone: LegendNextTone
-    }
-
-    private func financialMove(
-        for financial: MobileFinancialSnapshotResponse?
-    ) -> FinancialMove {
-        guard let financial else {
-            return FinancialMove(
-                title: "Open Financial Intelligence",
-                detail: "Your financial snapshot is not available in this home projection.",
-                systemImage: "chart.line.uptrend.xyaxis",
-                tone: .information
-            )
-        }
-
-        if financial.position == nil,
-           financial.operatingSystem?.projection.reasonCode == "EXPENSE_LENS_STATE_NOT_FOUND" {
-            return FinancialMove(
-                title: "Save your financial picture",
-                detail: "Complete and save your Financial Health Snapshot to begin tracking your position.",
-                systemImage: "square.and.pencil",
-                tone: .information
-            )
-        }
-
-        if let projection = financial.operatingSystem?.projection,
-           projection.status.caseInsensitiveCompare("Available") != .orderedSame {
-            return FinancialMove(
-                title: "Review Expense Lens",
-                detail: projection.summary ?? "Your saved weekly cash-flow projection needs attention.",
-                systemImage: "calendar.badge.exclamationmark",
-                tone: .warning
-            )
-        }
-
-        if let position = financial.position {
-            return FinancialMove(
-                title: "Review your financial position",
-                detail: position.positionSummary,
-                systemImage: "heart.text.square.fill",
-                tone: healthTone(position.healthScore)
-            )
-        }
-
-        return FinancialMove(
-            title: "Finish your financial setup",
-            detail: "Add your financial picture to make your weekly plan available.",
-            systemImage: "chart.line.uptrend.xyaxis",
-            tone: .information
-        )
     }
 
     private func actionDueDetail(
@@ -2709,21 +2356,6 @@ private struct LegendHomeView: View {
         }
 
         return .gold
-    }
-
-    private func healthTone(
-        _ score: Int
-    ) -> LegendNextTone {
-        switch score {
-        case 80...:
-            return .success
-        case 60..<80:
-            return .information
-        case 40..<60:
-            return .warning
-        default:
-            return .danger
-        }
     }
 
     private func priorityTone(
@@ -2808,17 +2440,6 @@ private struct LegendHomeView: View {
         }
     }
 
-    private func openFinancialPanel() {
-        guard homePage != 1 else {
-            return
-        }
-
-        UISelectionFeedbackGenerator().selectionChanged()
-
-        withAnimation(LegendNextMotion.tab) {
-            homePage = 1
-        }
-    }
 }
 
 private struct LegendAgentClientsView: View {
@@ -3212,7 +2833,7 @@ private enum LegendFinancialOutlookSelection: Identifiable {
 }
 
 
-private struct LegendFinancialHomePanel: View {
+private struct LegendFinancialProfilePanel: View {
     @ObservedObject private var store: MobileFinancialStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     let openFinancialIntelligence: () -> Void
@@ -3275,11 +2896,6 @@ private struct LegendFinancialHomePanel: View {
             }
         }
         .legendNextPageBackground()
-        .task {
-            if case .idle = store.state {
-                await bootstrap.refreshFinancial()
-            }
-        }
         .sheet(item: $selectedOutlook) { selection in
             LegendFinancialOutlookSheet(selection: selection)
         }
@@ -4735,7 +4351,7 @@ private struct LegendFinanceView: View {
                 switch destination {
                 case .currentOutlook, .monthlyOutlook:
                     operatingSystemUnavailable(
-                        summary: "Week and month outlooks are available from the Financial Intelligence panel on Home."
+                        summary: "Week and month outlooks are available from the Financial Intelligence panel in your Profile."
                     )
 
                 case .debtObligations:
@@ -5601,6 +5217,8 @@ private struct LegendAccountView: View {
     @State private var isConfirmingSignOut = false
     @State private var creationRoute: LegendSocialCreationRoute?
     @State private var selectedPost: MobileSocialPost?
+    @State private var profilePage = 0
+    @State private var isFinancialIntelligencePresented = false
 
     private let profileColumns = [
         GridItem(.flexible(), spacing: LegendNextSpacing.tiny),
@@ -5635,7 +5253,7 @@ private struct LegendAccountView: View {
                 }
 
             case .loaded(let profile):
-                profileContent(profile)
+                profileWorkspace(profile)
 
             case .unavailable(let failure):
                 LegendNextErrorState(
@@ -5775,6 +5393,41 @@ private struct LegendAccountView: View {
             .padding(.bottom, 116)
         }
         .scrollIndicators(.hidden)
+    }
+
+    private func profileWorkspace(
+        _ profile: MobileAccountProfile
+    ) -> some View {
+        TabView(selection: $profilePage) {
+            profileContent(profile)
+                .tag(0)
+
+            LegendFinancialProfilePanel(
+                store: bootstrap.stores.financial,
+                bootstrap: bootstrap,
+                openFinancialIntelligence: {
+                    isFinancialIntelligencePresented = true
+                }
+            )
+            .tag(1)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .onChange(of: profilePage) { _, page in
+            guard page == 1 else { return }
+
+            Task {
+                await bootstrap.loadFinancialIntelligenceIfNeeded()
+            }
+        }
+        .navigationDestination(
+            isPresented: $isFinancialIntelligencePresented
+        ) {
+            LegendFinanceView(
+                currentSession: currentSession,
+                store: bootstrap.stores.financial,
+                bootstrap: bootstrap
+            )
+        }
     }
 
     private func profileIdentityHeader(

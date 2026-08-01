@@ -29,7 +29,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(accountCalls, 1)
         XCTAssertEqual(messagingCalls, 1)
         XCTAssertEqual(journeyCalls, 1)
-        XCTAssertEqual(financialCalls, 1)
+        XCTAssertEqual(financialCalls, 0)
         XCTAssertEqual(workspaceCalls.clients, 0)
         XCTAssertEqual(workspaceCalls.leads, 0)
     }
@@ -84,7 +84,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(settledMessaging, 1)
     }
 
-    func testAgentBootstrapLoadsAgentCoreDataAndFinancialProjection() async throws {
+    func testAgentBootstrapDefersFinancialIntelligenceUntilProfileDrawer() async throws {
         let fixture = try BootstrapFixture()
         let services = BootstrapServices(fixture: fixture)
         let coordinator = makeCoordinator(
@@ -111,7 +111,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(workspaceCalls.clients, 1)
         XCTAssertEqual(workspaceCalls.leads, 1)
         XCTAssertEqual(journeyCalls, 0)
-        XCTAssertEqual(financialCalls, 1)
+        XCTAssertEqual(financialCalls, 0)
     }
 
     func testAgentBootstrapFailsClearlyWithoutItsRequiredWorkspace() async throws {
@@ -159,10 +159,10 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(accountCalls, 1)
         XCTAssertEqual(messagingCalls, 1)
         XCTAssertEqual(journeyCalls, 1)
-        XCTAssertEqual(financialCalls, 1)
+        XCTAssertEqual(financialCalls, 0)
     }
 
-    func testRecoverableFeatureFailureOpensAPartiallyReadyShell() async throws {
+    func testFinancialFailureDoesNotBlockStartupBeforeProfileDrawerOpens() async throws {
         let fixture = try BootstrapFixture()
         let services = BootstrapServices(fixture: fixture)
         await services.financial.setNetworkFailure(true)
@@ -174,10 +174,9 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         await coordinator.bootstrapIfNeeded()
         await coordinator.awaitStartupCompletion()
 
-        guard case .partiallyReady(let failures) = coordinator.state else {
-            return XCTFail("Expected a partially ready application shell")
-        }
-        XCTAssertEqual(Set(failures.keys), [.financial])
+        XCTAssertEqual(coordinator.state, .ready)
+        let financialCalls = await services.financial.calls()
+        XCTAssertEqual(financialCalls, 0)
     }
 
     func testAuthenticationFailureReturnsControlToSessionAuthority() async throws {
@@ -246,10 +245,9 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(stateFailure, failure)
     }
 
-    func testRetryBootstrapRecoversOnlyTheFailedFeature() async throws {
+    func testFinancialIntelligenceLoadsOnlyAfterProfileDrawerActivation() async throws {
         let fixture = try BootstrapFixture()
         let services = BootstrapServices(fixture: fixture)
-        await services.financial.setNetworkFailure(true)
         let coordinator = makeCoordinator(
             participantType: .client,
             services: services,
@@ -257,15 +255,15 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
 
         await coordinator.bootstrapIfNeeded()
         await coordinator.awaitStartupCompletion()
-        await services.financial.setNetworkFailure(false)
-        await coordinator.retryBootstrap()
-        await coordinator.awaitStartupCompletion()
 
         XCTAssertEqual(coordinator.state, .ready)
-        let homeCalls = await services.home.calls()
-        let financialCalls = await services.financial.calls()
-        XCTAssertEqual(homeCalls, 1)
-        XCTAssertEqual(financialCalls, 2)
+        let callsBeforeOpeningDrawer = await services.financial.calls()
+        XCTAssertEqual(callsBeforeOpeningDrawer, 0)
+
+        await coordinator.loadFinancialIntelligenceIfNeeded()
+
+        let callsAfterOpeningDrawer = await services.financial.calls()
+        XCTAssertEqual(callsAfterOpeningDrawer, 1)
     }
 
     func testProfileRefreshCoordinatesAccountFeedAndProfilePostsOnce() async throws {
@@ -285,7 +283,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(socialCalls.profilePosts, 1)
     }
 
-    func testAgentRefreshApplicationIncludesFinancialProjection() async throws {
+    func testAgentRefreshApplicationDoesNotActivateFinancialIntelligence() async throws {
         let fixture = try BootstrapFixture()
         let services = BootstrapServices(fixture: fixture)
         let coordinator = makeCoordinator(
@@ -301,7 +299,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(workspaceCalls.clients, 1)
         XCTAssertEqual(workspaceCalls.leads, 1)
         XCTAssertEqual(journeyCalls, 0)
-        XCTAssertEqual(financialCalls, 1)
+        XCTAssertEqual(financialCalls, 0)
     }
 
     func testRefreshApplicationCoalescesConcurrentRequests() async throws {
@@ -328,7 +326,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(accountCalls, 1)
         XCTAssertEqual(messagingCalls, 1)
         XCTAssertEqual(journeyCalls, 1)
-        XCTAssertEqual(financialCalls, 1)
+        XCTAssertEqual(financialCalls, 0)
     }
 
     private func makeCoordinator(
@@ -425,7 +423,6 @@ private struct BootstrapFixture {
             subscription: nil,
             entitlement: nil,
             journey: nil,
-            financial: nil,
             upcomingAppointments: [],
             actions: [],
             notifications: [],

@@ -7,7 +7,6 @@ enum LegendBootstrapFeature: String, CaseIterable, Hashable {
     case account
     case messaging
     case journeyCircles
-    case financial
     case clients
     case leads
 }
@@ -176,7 +175,6 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
             async let messaging = stores.messaging.refresh()
             async let clients = agentWorkspace.refreshClients()
             async let leads = agentWorkspace.refreshLeads()
-            async let financial = stores.financial.refresh()
             _ = await (
                 home,
                 social,
@@ -184,8 +182,7 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
                 account,
                 messaging,
                 clients,
-                leads,
-                financial
+                leads
             )
         } else {
             async let home = stores.home.refresh()
@@ -194,8 +191,7 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
             async let account = stores.account.refresh()
             async let messaging = stores.messaging.refresh()
             async let journey = stores.journeyCircles.refresh()
-            async let financial = stores.financial.refresh()
-            _ = await (home, social, profilePosts, account, messaging, journey, financial)
+            _ = await (home, social, profilePosts, account, messaging, journey)
         }
     }
 
@@ -218,6 +214,10 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
 
     func refreshFinancial() async {
         _ = await stores.financial.refresh()
+    }
+
+    func loadFinancialIntelligenceIfNeeded() async {
+        _ = await stores.financial.loadIfNeeded()
     }
 
     func refreshJourneyCircles() async {
@@ -262,13 +262,13 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
         applyRecoverableFailures(in: critical + deferred)
     }
 
-    /// Home renders the home projection, the social feed, and the financial panel.
+    /// Home renders only its own projection and social feed. Financial Intelligence
+    /// stays dormant until the user opens the hidden Profile drawer.
     private func loadCriticalFeatures() async -> [(LegendBootstrapFeature, MobileStoreLoadResult)] {
         async let home = stores.home.loadIfNeeded()
         async let social = stores.social.loadIfNeeded()
-        async let financial = stores.financial.loadIfNeeded()
-        let values = await (home, social, financial)
-        return [(.home, values.0), (.social, values.1), (.financial, values.2)]
+        let values = await (home, social)
+        return [(.home, values.0), (.social, values.1)]
     }
 
     private func loadDeferredFeatures() async -> [(LegendBootstrapFeature, MobileStoreLoadResult)] {

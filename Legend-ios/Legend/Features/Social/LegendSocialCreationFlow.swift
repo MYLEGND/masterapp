@@ -1692,7 +1692,6 @@ private struct LegendSocialMusicSelectionSheet: View {
                                     }
                                 }
 
-                                previewAvailabilityNotice
                             }
 
                             if let selectedTrack {
@@ -1803,22 +1802,6 @@ private struct LegendSocialMusicSelectionSheet: View {
         }
     }
 
-    /// The catalog provider does not return preview audio for every track, so no play
-    /// control is offered for those. Say so plainly rather than leaving the absence of
-    /// a button unexplained.
-    @ViewBuilder
-    private var previewAvailabilityNotice: some View {
-        if tracks.allSatisfy({ $0.previewURL == nil }) {
-            Label(
-                "These tracks link to the provider's catalog. In-app preview is not available for them, but your selection is attached to the post.",
-                systemImage: "info.circle")
-                .font(LegendNextTypography.supporting)
-                .foregroundStyle(Color.white.opacity(0.66))
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, LegendNextSpacing.micro)
-        }
-    }
-
     private func musicResultRow(_ track: MobileSocialMusicTrack) -> some View {
         HStack(spacing: LegendNextSpacing.xs) {
             Button {
@@ -1864,7 +1847,7 @@ private struct LegendSocialMusicSelectionSheet: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Select \(track.trackTitle) by \(track.artistName)")
 
-            if track.previewURL != nil {
+            if track.providerID.lowercased() == "spotify" {
                 Button {
                     preview(track)
                 } label: {
@@ -1941,16 +1924,50 @@ private struct LegendSocialMusicSelectionSheet: View {
     }
 
     private func preview(_ track: MobileSocialMusicTrack) {
-        guard let url = track.previewURL else { return }
-        if previewPlayer?.currentItem?.asset as? AVURLAsset == AVURLAsset(url: url) {
-            previewPlayer?.seek(to: .zero)
-            previewPlayer?.play()
+        stopPreview()
+
+        guard track.providerID.lowercased() == "spotify" else {
             return
         }
 
-        let player = AVPlayer(url: url)
-        previewPlayer = player
-        player.play()
+        let encodedTrackID = track.providerTrackID
+            .addingPercentEncoding(
+                withAllowedCharacters: .urlPathAllowed
+            ) ?? track.providerTrackID
+
+        guard !encodedTrackID.isEmpty else {
+            return
+        }
+
+        // Spotify's preview_url is deprecated and nullable. The Spotify track
+        // identity is the durable playback authority. LEGND never receives or
+        // stores the Spotify client secret and never downloads/proxies Spotify
+        // audio.
+        if let spotifyURL = URL(
+            string: "spotify:track:\(encodedTrackID)"
+        ) {
+            UIApplication.shared.open(
+                spotifyURL,
+                options: [:]
+            ) { opened in
+                guard !opened,
+                      let webURL = URL(
+                        string: "https://open.spotify.com/track/\(encodedTrackID)"
+                      ) else {
+                    return
+                }
+
+                UIApplication.shared.open(webURL)
+            }
+
+            return
+        }
+
+        if let webURL = URL(
+            string: "https://open.spotify.com/track/\(encodedTrackID)"
+        ) {
+            UIApplication.shared.open(webURL)
+        }
     }
 
     private func stopPreview() {

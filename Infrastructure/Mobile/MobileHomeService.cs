@@ -438,7 +438,6 @@ public sealed class MobileHomeService : IMobileHomeService
             cancellationToken);
 
         var journey = await _journeyCircles.GetDashboardAsync(actor.Actor.UserId, cancellationToken);
-        var financial = await GetFinancialAsync(actor, cancellationToken);
         var appointments = await QueryAppointmentsForClientAsync(actor.ProfileId, cancellationToken);
         var notifications = await _db.ClientBillingNotifications
             .AsNoTracking()
@@ -468,7 +467,6 @@ public sealed class MobileHomeService : IMobileHomeService
                 journey.Recommendations.Count,
                 journey.Connections.Count(connection => string.Equals(connection.Status, JourneyCircleConnectionStatuses.Accepted, StringComparison.Ordinal)),
                 journey.Requests.Count),
-            financial.Snapshot,
             appointments,
             Array.Empty<MobileActionItem>(),
             notifications,
@@ -520,7 +518,6 @@ public sealed class MobileHomeService : IMobileHomeService
         return new MobileHome(
             MobileHomeIdentity.From(actor),
             messaging,
-            null,
             null,
             null,
             null,
@@ -612,7 +609,6 @@ public sealed record MobileHome(
     MobileSubscription? Subscription,
     MobileEntitlement? Entitlement,
     MobileJourneySummary? Journey,
-    MobileFinancialSnapshot? Financial,
     IReadOnlyList<MobileUpcomingAppointment> UpcomingAppointments,
     IReadOnlyList<MobileActionItem> Actions,
     IReadOnlyList<MobileBillingNotification> Notifications,

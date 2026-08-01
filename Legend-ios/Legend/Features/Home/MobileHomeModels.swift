@@ -6,7 +6,6 @@ struct MobileHomeResponse: Codable, Equatable, Sendable {
     let subscription: MobileSubscriptionSummary?
     let entitlement: MobileEntitlementSummary?
     let journey: MobileJourneySummary?
-    let financial: MobileFinancialSnapshotResponse?
     let upcomingAppointments: [MobileUpcomingAppointment]
     let actions: [MobileActionItem]
     let notifications: [MobileBillingNotification]

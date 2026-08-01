@@ -692,9 +692,7 @@ final class MobileSessionCoordinator: ObservableObject {
             actor: actor,
             capabilities: response.capabilities.messaging ? ["messaging"] : [],
             permittedParticipantTypes: response.permittedParticipantTypes)
-        cacheSession(session)
-        authenticationRecoveryAttempts = 0
-        transition(to: .authenticated(session), reason: "Authenticated mobile session decoded")
+        commitConfirmedSession(session, reason: "Authenticated mobile session decoded")
     }
 
     /// Applies the single authoritative role-selection response. Manual switches
@@ -716,10 +714,26 @@ final class MobileSessionCoordinator: ObservableObject {
         if clearCachedLaunch {
             launchCache.clear()
         }
+        commitConfirmedSession(session, reason: reason)
+        return session
+    }
+
+    /// Revalidation refreshes the persisted session without remounting an already
+    /// visible shell for the same typed account. A different Agent/Client identity
+    /// is a real account switch and remains the sole reason to rebuild the shell.
+    private func commitConfirmedSession(_ session: MobileSession, reason: String) {
         cacheSession(session)
         authenticationRecoveryAttempts = 0
+
+        if case .authenticated(let activeSession) = state,
+           activeSession.actor.identity == session.actor.identity {
+            diagnostics.record(
+                category: .authentication,
+                summary: "Validated the active mobile identity without remounting its application shell.")
+            return
+        }
+
         transition(to: .authenticated(session), reason: reason)
-        return session
     }
 
     private func accessTokenForRequest() async throws -> String {

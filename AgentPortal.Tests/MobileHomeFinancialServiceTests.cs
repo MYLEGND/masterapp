@@ -15,6 +15,84 @@ namespace AgentPortal.Tests;
 public sealed class MobileHomeFinancialServiceTests
 {
     [Fact]
+    public async Task GetHomeAsync_DoesNotEvaluateFinancialIntelligenceUntilTheProfileDrawerRequestsIt()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "client-home-identity",
+            FirstName = "Client",
+            LastName = "Home",
+            Email = "client.home@example.test"
+        };
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var messaging = new Mock<IMessagingService>(MockBehavior.Strict);
+        messaging
+            .Setup(service => service.ListConversationsAsync(
+                It.Is<MessagingActor>(actor =>
+                    actor.UserId == client.ClientUserId &&
+                    actor.ParticipantType == MessagingParticipantTypes.Client),
+                It.IsAny<MessagingConversationListQuery>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MessagingConversationListResult(
+                true,
+                null,
+                null,
+                Array.Empty<MessagingConversationSummary>()));
+
+        var journey = new Mock<IJourneyCirclesService>(MockBehavior.Strict);
+        journey
+            .Setup(service => service.GetDashboardAsync(
+                client.ClientUserId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmptyJourneyDashboard());
+
+        var financialIntelligence = new Mock<IFinancialIntelligenceEvaluationService>(
+            MockBehavior.Strict);
+        var financialOperatingSystem = new Mock<
+            IMobileFinancialOperatingSystemProjectionService>(MockBehavior.Strict);
+        var entitlements = new Mock<IBillingEntitlementService>(MockBehavior.Strict);
+        entitlements
+            .Setup(service => service.EvaluateAsync(
+                It.IsAny<BillingEntitlementEvaluationRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingEntitlementEvaluationResult(
+                ClientEntitlementStatus.Active,
+                DateTime.UtcNow,
+                DateTime.UtcNow.AddDays(30),
+                null,
+                null,
+                ClientEntitlementSourceType.Subscription,
+                "test",
+                "Active"));
+
+        var service = new MobileHomeService(
+            db,
+            messaging.Object,
+            journey.Object,
+            financialIntelligence.Object,
+            entitlements.Object,
+            financialOperatingSystem.Object,
+            new Infrastructure.DailyScripture.DailyScriptureService());
+
+        var result = await service.GetHomeAsync(new MobileResolvedActor(
+            new MessagingActor(client.ClientUserId, MessagingParticipantTypes.Client),
+            client.Id,
+            "Client Home"));
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.Home);
+        messaging.VerifyAll();
+        journey.VerifyAll();
+        entitlements.VerifyAll();
+        financialIntelligence.VerifyNoOtherCalls();
+        financialOperatingSystem.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task GetFinancialAsync_UsesOnlyThePersistedActiveAgentClientsRelationship()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -163,6 +241,21 @@ public sealed class MobileHomeFinancialServiceTests
             presentation.PrioritySections,
             section => section.Key == "current-outlook");
     }
+
+    private static JourneyCircleDashboard EmptyJourneyDashboard() => new(
+        Profile: null,
+        Preferences: null,
+        Recommendations: Array.Empty<JourneyCircleRecommendation>(),
+        Connections: Array.Empty<JourneyCircleConnectionSummary>(),
+        Requests: Array.Empty<JourneyCircleConnectionSummary>(),
+        Goals: Array.Empty<string>(),
+        Circles: Array.Empty<string>(),
+        LifeStages: Array.Empty<string>(),
+        Locations: Array.Empty<string>(),
+        Interests: Array.Empty<string>(),
+        ConnectionTypes: Array.Empty<string>(),
+        CommunicationStyles: Array.Empty<string>(),
+        AccountabilityFrequencies: Array.Empty<string>());
 
     private static MobileHomeService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
