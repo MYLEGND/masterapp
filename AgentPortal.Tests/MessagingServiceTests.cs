@@ -119,13 +119,27 @@ public sealed class MessagingServiceTests
                 new MessagingParticipantReference("client-2", MessagingParticipantTypes.Client)
             ],
             "Protection review team",
-            "Welcome to the review."));
+            "Welcome to the review.",
+            GroupImage: new MessagingGroupImage([1, 2, 3], "image/png")));
 
         var conversation = Assert.IsType<MessagingConversationDetail>(created.Conversation);
         Assert.True(created.Succeeded);
         Assert.Equal(MessagingConversationTypes.Group, conversation.ConversationType);
         Assert.True(conversation.CanManageMembers);
         Assert.Equal(3, conversation.Participants.Count);
+        Assert.Equal("image/png", conversation.GroupImage?.ContentType);
+
+        var updateGroup = await service.UpdateGroupProfileAsync(
+            new UpdateMessagingGroupProfileCommand(
+                owner,
+                conversation.Id,
+                "Protection review leaders",
+                new MessagingGroupImage([4, 5, 6], "image/jpeg")));
+        Assert.True(updateGroup.Succeeded);
+        var updatedGroup = Assert.IsType<MessagingConversationDetail>(
+            (await service.GetConversationAsync(owner, conversation.Id)).Conversation);
+        Assert.Equal("Protection review leaders", updatedGroup.Subject);
+        Assert.Equal("image/jpeg", updatedGroup.GroupImage?.ContentType);
 
         var addMember = await service.AddGroupParticipantAsync(
             new AddMessagingGroupParticipantCommand(
@@ -145,6 +159,15 @@ public sealed class MessagingServiceTests
                 MessagingParticipantTypes.Client));
         Assert.False(nonOwner.Succeeded);
         Assert.Equal("MESSAGING_GROUP_OWNER_REQUIRED", nonOwner.ErrorCode);
+
+        var nonOwnerUpdate = await service.UpdateGroupProfileAsync(
+            new UpdateMessagingGroupProfileCommand(
+                new MessagingActor("client-1", MessagingParticipantTypes.Client),
+                conversation.Id,
+                "Not allowed",
+                null));
+        Assert.False(nonOwnerUpdate.Succeeded);
+        Assert.Equal("MESSAGING_GROUP_OWNER_REQUIRED", nonOwnerUpdate.ErrorCode);
     }
 
     [Fact]

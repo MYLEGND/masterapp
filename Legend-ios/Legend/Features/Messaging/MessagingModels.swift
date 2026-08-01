@@ -29,8 +29,8 @@ struct ConversationSummary: Codable, Equatable, Identifiable, Sendable {
     let lastMessageUTC: Date?
     let unreadCount: Int
     let isClosed: Bool
-    let purpose: String? = nil
-    let groupAvatar: ProfileAvatar? = nil
+    let purpose: String?
+    let groupAvatar: ProfileAvatar?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -44,6 +44,30 @@ struct ConversationSummary: Codable, Equatable, Identifiable, Sendable {
         case purpose
         case groupAvatar
     }
+
+    init(
+        id: UUID,
+        conversationType: String,
+        counterparty: MessagingParticipant,
+        title: String,
+        lastMessagePreview: String?,
+        lastMessageUTC: Date?,
+        unreadCount: Int,
+        isClosed: Bool,
+        purpose: String? = nil,
+        groupAvatar: ProfileAvatar? = nil
+    ) {
+        self.id = id
+        self.conversationType = conversationType
+        self.counterparty = counterparty
+        self.title = title
+        self.lastMessagePreview = lastMessagePreview
+        self.lastMessageUTC = lastMessageUTC
+        self.unreadCount = unreadCount
+        self.isClosed = isClosed
+        self.purpose = purpose
+        self.groupAvatar = groupAvatar
+    }
 }
 
 struct ConversationDetail: Codable, Equatable, Sendable {
@@ -55,8 +79,32 @@ struct ConversationDetail: Codable, Equatable, Sendable {
     let isMuted: Bool
     let isClosed: Bool
     let canManageMembers: Bool
-    let purpose: String? = nil
-    let groupAvatar: ProfileAvatar? = nil
+    let purpose: String?
+    let groupAvatar: ProfileAvatar?
+
+    init(
+        id: UUID,
+        conversationType: String,
+        title: String,
+        participants: [MessagingParticipant],
+        messages: [ConversationMessage],
+        isMuted: Bool,
+        isClosed: Bool,
+        canManageMembers: Bool,
+        purpose: String? = nil,
+        groupAvatar: ProfileAvatar? = nil
+    ) {
+        self.id = id
+        self.conversationType = conversationType
+        self.title = title
+        self.participants = participants
+        self.messages = messages
+        self.isMuted = isMuted
+        self.isClosed = isClosed
+        self.canManageMembers = canManageMembers
+        self.purpose = purpose
+        self.groupAvatar = groupAvatar
+    }
 }
 
 struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
@@ -68,7 +116,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
     let attachments: [MessagingAttachment]
     let isMine: Bool
     let reply: MessageReplyPreview?
-    let verificationReview: VerificationReview? = nil
+    let verificationReview: VerificationReview?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -80,6 +128,28 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         case isMine
         case reply
         case verificationReview
+    }
+
+    init(
+        id: UUID,
+        conversationID: UUID,
+        sender: MessagingParticipant,
+        body: String,
+        sentUTC: Date,
+        attachments: [MessagingAttachment],
+        isMine: Bool,
+        reply: MessageReplyPreview?,
+        verificationReview: VerificationReview? = nil
+    ) {
+        self.id = id
+        self.conversationID = conversationID
+        self.sender = sender
+        self.body = body
+        self.sentUTC = sentUTC
+        self.attachments = attachments
+        self.isMine = isMine
+        self.reply = reply
+        self.verificationReview = verificationReview
     }
 }
 

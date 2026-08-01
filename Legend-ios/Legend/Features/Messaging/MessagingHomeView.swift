@@ -2037,7 +2037,7 @@ private struct LegendMessageTimeline: View {
                                 onReply: {
                                     onReply(message)
                                 },
-                                onOpenVerificationProfile: message.verificationReview == nil
+                                onOpenVerificationProfile: message.verificationReview?.status != "Pending"
                                     ? nil
                                     : { onOpenVerificationProfile(message) }
                             )

@@ -863,15 +863,23 @@ private final class TypedClientRecipientMessagingAPI: MessagingAPI, @unchecked S
             canManageMembers: false)
     }
 
-    func createGroup(subject: String, recipients: [MessagingRecipient], accessToken: String) async throws -> ConversationDetail {
+    func createGroup(subject: String, recipients: [MessagingRecipient], groupImage: MessagingGroupImageRequest?, accessToken: String) async throws -> ConversationDetail {
         throw MobileMessagingContractError.unavailable
     }
 
-    func startVerificationRequest(accessToken: String) async throws -> ConversationDetail {
+    func startVerificationRequest(accessToken: String) async throws -> VerificationRequestSubmission {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func updateGroup(conversationID: UUID, subject: String, groupImage: MessagingGroupImageRequest?, accessToken: String) async throws {
         throw MobileMessagingContractError.unavailable
     }
 
     func addGroupParticipant(conversationID: UUID, recipient: MessagingRecipient, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func resolveVerificationRequest(requestID: UUID, approve: Bool, accessToken: String) async throws {
         throw MobileMessagingContractError.unavailable
     }
 
