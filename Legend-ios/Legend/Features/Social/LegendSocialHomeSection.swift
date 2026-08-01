@@ -794,6 +794,7 @@ struct LegendPostDetailView: View {
     let post: MobileSocialPost
     let currentIdentity: LogicalParticipantIdentity
     @ObservedObject var social: MobileSocialStore
+    let profilePosts: [MobileSocialPost]
 
     @Environment(\.dismiss) private var dismiss
     @State private var commentTarget: MobileSocialPost?
@@ -802,35 +803,25 @@ struct LegendPostDetailView: View {
     @State private var editingPost: MobileSocialPost?
     @State private var deletionTarget: MobileSocialPost?
 
+    init(
+        post: MobileSocialPost,
+        currentIdentity: LogicalParticipantIdentity,
+        social: MobileSocialStore,
+        profilePosts: [MobileSocialPost] = []
+    ) {
+        self.post = post
+        self.currentIdentity = currentIdentity
+        _social = ObservedObject(wrappedValue: social)
+        self.profilePosts = profilePosts
+    }
+
     var body: some View {
         LegendScrollView {
-            LegendSocialPostCard(
-                post: post,
-                currentIdentity: currentIdentity,
-                social: social,
-                react: {
-                    social.toggleReaction(postID: post.id)
-                },
-                comment: {
-                    commentTarget = post
-                },
-                follow: {
-                    social.toggleFollow(author: post.author, sourcePostID: post.id)
-                },
-                insights: {
-                    Task {
-                        postInsight = await social.postInsights(postID: post.id)
-                    }
-                },
-                presentation: .detail,
-                open: {},
-                openProfile: {
-                    publicProfile = LegendPublicProfileRoute(
-                        profile: post.author,
-                        isFollowing: post.followedByCurrentActor,
-                        isFollowRequestPending: post.followRequestPending ?? false)
+            LazyVStack(spacing: LegendNextSpacing.xs) {
+                ForEach(postsInProfileFeed) { feedPost in
+                    postCard(feedPost)
                 }
-            )
+            }
             .padding(.horizontal, LegendNextSpacing.sm)
             .padding(.vertical, LegendNextSpacing.md)
         }
@@ -930,6 +921,41 @@ struct LegendPostDetailView: View {
 
     private var deletionTargetDisplayName: String {
         deletionTarget?.displayContentType ?? post.displayContentType
+    }
+
+    /// Profile selections open at the tapped item and continue through that
+    /// profile's current collection. Other callers retain a single-post view.
+    private var postsInProfileFeed: [MobileSocialPost] {
+        [post] + profilePosts.filter { $0.id != post.id }
+    }
+
+    private func postCard(_ feedPost: MobileSocialPost) -> some View {
+        LegendSocialPostCard(
+            post: feedPost,
+            currentIdentity: currentIdentity,
+            social: social,
+            react: {
+                social.toggleReaction(postID: feedPost.id)
+            },
+            comment: {
+                commentTarget = feedPost
+            },
+            follow: {
+                social.toggleFollow(author: feedPost.author, sourcePostID: feedPost.id)
+            },
+            insights: {
+                Task {
+                    postInsight = await social.postInsights(postID: feedPost.id)
+                }
+            },
+            presentation: .detail,
+            open: {},
+            openProfile: {
+                publicProfile = LegendPublicProfileRoute(
+                    profile: feedPost.author,
+                    isFollowing: feedPost.followedByCurrentActor,
+                    isFollowRequestPending: feedPost.followRequestPending ?? false)
+            })
     }
 }
 

@@ -14,20 +14,15 @@ struct LegendDiscoverView: View {
 
     @State private var isEditingJourneyProfile = false
     @State private var publicProfile: LegendPublicProfileRoute?
+    @FocusState private var searchIsFocused: Bool
 
     var body: some View {
-        content
+        VStack(spacing: 0) {
+            discoverControls
+            content
+        }
             .background(LegendNextColor.midnight.ignoresSafeArea())
-            .navigationTitle("Discover")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(LegendNextColor.midnight, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar { toolbarContent }
-            .searchable(
-                text: $store.searchText,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: searchPrompt)
+            .toolbar(.hidden, for: .navigationBar)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .refreshable { await store.refresh() }
@@ -69,12 +64,54 @@ struct LegendDiscoverView: View {
             : "Search people, goals, interests"
     }
 
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        // The Journey Circles profile controls a client's own discoverability, so the
-        // entry point belongs here. It is meaningless in the agent scope.
-        if currentSession.actor.identity.participantType == .client {
-            ToolbarItem(placement: .topBarTrailing) {
+    private var hasJourneyProfile: Bool {
+        if case .loaded(let dashboard) = journeyCircles.state {
+            return dashboard.profile != nil
+        }
+        return false
+    }
+
+    private var discoverControls: some View {
+        HStack(spacing: LegendNextSpacing.xs) {
+            HStack(spacing: LegendNextSpacing.xs) {
+                Image(systemName: "magnifyingglass")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(
+                        searchIsFocused
+                            ? LegendNextColor.goldBright
+                            : .white.opacity(0.70)
+                    )
+
+                TextField(searchPrompt, text: $store.searchText)
+                    .font(.body)
+                    .foregroundStyle(.white)
+                    .focused($searchIsFocused)
+
+                if store.isSearching {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(LegendNextColor.goldBright)
+                } else if !store.searchText.isEmpty {
+                    Button {
+                        store.searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.white.opacity(0.68))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                }
+            }
+            .padding(.horizontal, LegendNextSpacing.sm)
+            .frame(minHeight: LegendNextSize.controlHeight)
+            .frame(maxWidth: .infinity)
+            .background(LegendNextColor.navy, in: Capsule())
+            .overlay {
+                Capsule()
+                    .strokeBorder(LegendNextColor.navyElevated.opacity(0.66), lineWidth: 1)
+            }
+
+            if currentSession.actor.identity.participantType == .client {
                 Button {
                     isEditingJourneyProfile = true
                 } label: {
@@ -82,19 +119,26 @@ struct LegendDiscoverView: View {
                         ? "line.3.horizontal.decrease.circle"
                         : "person.crop.circle.badge.plus")
                         .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(LegendNextColor.goldBright)
+                        .frame(
+                            width: LegendNextSize.controlHeight,
+                            height: LegendNextSize.controlHeight)
+                        .background(LegendNextColor.navy, in: Circle())
+                        .overlay {
+                            Circle().strokeBorder(
+                                LegendNextColor.navyElevated.opacity(0.66),
+                                lineWidth: 1)
+                        }
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel(hasJourneyProfile
                     ? "Manage your Discover profile"
                     : "Set up your Discover profile")
             }
         }
-    }
-
-    private var hasJourneyProfile: Bool {
-        if case .loaded(let dashboard) = journeyCircles.state {
-            return dashboard.profile != nil
-        }
-        return false
+        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+        .padding(.top, LegendNextSpacing.micro)
+        .padding(.bottom, LegendNextSpacing.xs)
     }
 
     @ViewBuilder

@@ -83,47 +83,62 @@ struct LegendApplicationShell: View {
     }
 
     var body: some View {
-        selectedTabContent
-            .legendNextPageBackground()
-            // This is the one primary-page viewport boundary. Every tab is laid
-            // out beneath the stationary wordmark, with a deliberate visual gap
-            // so no page header or first card can be clipped by the app chrome.
-            .safeAreaInset(edge: .top, spacing: LegendNextSpacing.pageTop) {
-                LegendAppBrandBar(
-                    showsHomeActions: selectedTab == .home,
-                    activityCount: homeActivityCount,
-                    usesDarkSurface: selectedTab == .discover)
+        // The app chrome owns a real layout row rather than overlaying an inset.
+        // Primary tabs are therefore constrained to the viewport below the
+        // stationary wordmark; neither their initial content nor scroll position
+        // can enter the banner's frame.
+        VStack(spacing: 0) {
+            LegendAppBrandBar(
+                showsHomeActions: selectedTab == .home,
+                activityCount: homeActivityCount,
+                usesDarkSurface: selectedTab == .discover)
+                .padding(.bottom, LegendNextSpacing.xs)
+
+            selectedTabContent
+                // The shell already reserves the status bar and wordmark row.
+                // Do not let nested NavigationStacks reserve the device top
+                // safe area again inside this bounded content viewport.
+                .ignoresSafeArea(.container, edges: .top)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background {
+            (selectedTab == .discover
+                ? LegendNextColor.midnight
+                : LegendNextColor.canvas)
+                .ignoresSafeArea()
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if !isMessageThreadActive {
+                LegendNextTabBar(
+                    selection: $selectedTab,
+                    tabs: LegendAppTab.available(
+                        for: currentSession.actor.identity.participantType
+                    ),
+                    accountAvatar: currentSession.actor.avatar,
+                    accountDisplayName: currentSession.actor.displayName,
+                    unreadMessageCount: unreadMessageCount,
+                    alternateAccountTypes: currentSession.alternateParticipantTypes,
+                    switchAccount: { participantType in
+                        coordinator.switchToRole(participantType)
+                    }
+                )
+                .opacity(scrollChrome.isBottomNavigationVisible ? 1 : 0)
+                .offset(y: scrollChrome.isBottomNavigationVisible ? 0 : 84)
+                .frame(height: scrollChrome.isBottomNavigationVisible ? nil : 0)
+                .clipped()
+                .allowsHitTesting(scrollChrome.isBottomNavigationVisible)
+                .accessibilityHidden(!scrollChrome.isBottomNavigationVisible)
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if !isMessageThreadActive {
-                    LegendNextTabBar(
-                        selection: $selectedTab,
-                        tabs: LegendAppTab.available(
-                            for: currentSession.actor.identity.participantType
-                        ),
-                        accountAvatar: currentSession.actor.avatar,
-                        accountDisplayName: currentSession.actor.displayName,
-                        unreadMessageCount: unreadMessageCount,
-                        alternateAccountTypes: currentSession.alternateParticipantTypes,
-                        switchAccount: { participantType in
-                            coordinator.switchToRole(participantType)
-                        }
-                    )
-                    .opacity(scrollChrome.isBottomNavigationVisible ? 1 : 0)
-                    .offset(y: scrollChrome.isBottomNavigationVisible ? 0 : 84)
-                    .frame(height: scrollChrome.isBottomNavigationVisible ? nil : 0)
-                    .clipped()
-                    .allowsHitTesting(scrollChrome.isBottomNavigationVisible)
-                    .accessibilityHidden(!scrollChrome.isBottomNavigationVisible)
-                }
-            }
-            .tint(LegendNextColor.gold)
-            .animation(
-                reduceMotion ? nil : LegendNextMotion.tab,
-                value: scrollChrome.isBottomNavigationVisible)
-            .onChange(of: selectedTab) {
-                scrollChrome.reset()
-            }
+        }
+        .tint(LegendNextColor.gold)
+        .animation(
+            reduceMotion ? nil : LegendNextMotion.tab,
+            value: scrollChrome.isBottomNavigationVisible)
+        .onChange(of: selectedTab) {
+            scrollChrome.reset()
+        }
     }
 
     @ViewBuilder
@@ -315,7 +330,7 @@ private struct LegendAppBrandBar: View {
                 badge: activityCount)
         }
         .padding(.horizontal, LegendNextSpacing.sm)
-        .padding(.vertical, LegendNextSpacing.xs)
+        .padding(.vertical, LegendNextSpacing.micro)
         .background(surfaceColor)
         .animation(
             reduceMotion ? nil : LegendNextMotion.tab,
@@ -5410,22 +5425,7 @@ private struct LegendAccountView: View {
             }
         }
         .background(LegendNextCanvas())
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                profileAccountMenu
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    isShowingSettings = true
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                }
-                .buttonStyle(LegendNextIconButtonStyle(tone: .navy, size: 38))
-                .accessibilityLabel("Open profile settings")
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .refreshable {
             await bootstrap.refreshProfile()
         }
@@ -5465,7 +5465,8 @@ private struct LegendAccountView: View {
                 LegendPostDetailView(
                     post: selectedPost,
                     currentIdentity: currentSession.actor.identity,
-                    social: social)
+                    social: social,
+                    profilePosts: selectedProfileItems)
             }
         }
         .confirmationDialog(
@@ -5617,6 +5618,23 @@ private struct LegendAccountView: View {
             .tag(1)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
+        // Profile content is vertically scrollable and contains tappable media.
+        // Keep the pager's one horizontal intent explicit so a left swipe always
+        // reaches the financial page instead of being interpreted by that content.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in
+                    let horizontalDistance = abs(value.translation.width)
+                    let verticalDistance = abs(value.translation.height)
+                    guard horizontalDistance > verticalDistance else { return }
+
+                    let destination = value.translation.width < 0 ? 1 : 0
+                    guard destination != profilePage else { return }
+                    withAnimation(LegendNextMotion.tab) {
+                        profilePage = destination
+                    }
+                }
+        )
         .onChange(of: profilePage) { _, page in
             guard page == 1 else { return }
 
@@ -5652,6 +5670,8 @@ private struct LegendAccountView: View {
                     )
 
                     VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                        profileAccountMenu
+
                         LegendVerifiedName(
                             profile.displayName,
                             isVerified: profile.isVerified,
@@ -5664,6 +5684,14 @@ private struct LegendAccountView: View {
                     }
 
                     Spacer(minLength: 0)
+
+                    Button {
+                        isShowingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                    }
+                    .buttonStyle(LegendNextIconButtonStyle(tone: .navy, size: 38))
+                    .accessibilityLabel("Open profile settings")
                 }
 
                 profileDetails(profile)
