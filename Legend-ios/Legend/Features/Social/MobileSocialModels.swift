@@ -95,7 +95,7 @@ struct MobileSocialAuthor: Codable, Equatable, Sendable {
 struct LegendPublicProfileRoute: Identifiable, Hashable {
     let profile: MobileSocialAuthor
     let isFollowing: Bool
-    let isFollowRequestPending: Bool = false
+    let isFollowRequestPending: Bool
 
     var id: String {
         "\(profile.identity.participantType.rawValue):\(profile.identity.userID)"
@@ -188,7 +188,7 @@ struct MobileSocialPost: Codable, Equatable, Identifiable, Sendable {
     let commentCount: Int
     let reactedByCurrentActor: Bool
     let followedByCurrentActor: Bool
-    let followRequestPending: Bool? = nil
+    let followRequestPending: Bool?
     let savedByCurrentActor: Bool
     let repostedByCurrentActor: Bool
     let metrics: MobileSocialPostMetrics
@@ -200,6 +200,50 @@ struct MobileSocialPost: Codable, Equatable, Identifiable, Sendable {
         case id, author, contentType, body, audience, location, commentsEnabled, reactionCount, commentCount, reactedByCurrentActor, followedByCurrentActor, followRequestPending, savedByCurrentActor, repostedByCurrentActor, metrics, music, media, comments
         case postedUTC = "postedUtc"
         case expiresUTC = "expiresUtc"
+    }
+
+    init(
+        id: UUID,
+        author: MobileSocialAuthor,
+        contentType: String,
+        body: String,
+        audience: String,
+        location: String?,
+        commentsEnabled: Bool,
+        postedUTC: Date,
+        expiresUTC: Date?,
+        reactionCount: Int,
+        commentCount: Int,
+        reactedByCurrentActor: Bool,
+        followedByCurrentActor: Bool,
+        followRequestPending: Bool? = nil,
+        savedByCurrentActor: Bool,
+        repostedByCurrentActor: Bool,
+        metrics: MobileSocialPostMetrics,
+        music: MobileSocialMusic?,
+        media: [MobileSocialMedia],
+        comments: [MobileSocialComment]
+    ) {
+        self.id = id
+        self.author = author
+        self.contentType = contentType
+        self.body = body
+        self.audience = audience
+        self.location = location
+        self.commentsEnabled = commentsEnabled
+        self.postedUTC = postedUTC
+        self.expiresUTC = expiresUTC
+        self.reactionCount = reactionCount
+        self.commentCount = commentCount
+        self.reactedByCurrentActor = reactedByCurrentActor
+        self.followedByCurrentActor = followedByCurrentActor
+        self.followRequestPending = followRequestPending
+        self.savedByCurrentActor = savedByCurrentActor
+        self.repostedByCurrentActor = repostedByCurrentActor
+        self.metrics = metrics
+        self.music = music
+        self.media = media
+        self.comments = comments
     }
 }
 
@@ -237,7 +281,22 @@ extension MobileSocialPost {
         metrics: MobileSocialPostMetrics? = nil,
         comments: [MobileSocialComment]? = nil
     ) -> MobileSocialPost {
-        MobileSocialPost(
+        let resolvedReactionCount: Int = reactionCount ?? self.reactionCount
+        let resolvedCommentCount: Int = commentCount ?? self.commentCount
+        let resolvedReactedState: Bool =
+            reactedByCurrentActor ?? self.reactedByCurrentActor
+        let resolvedFollowedState: Bool =
+            followedByCurrentActor ?? self.followedByCurrentActor
+        let resolvedFollowRequestState: Bool? =
+            followRequestPending ?? self.followRequestPending
+        let resolvedSavedState: Bool =
+            savedByCurrentActor ?? self.savedByCurrentActor
+        let resolvedRepostedState: Bool =
+            repostedByCurrentActor ?? self.repostedByCurrentActor
+        let resolvedMetrics: MobileSocialPostMetrics = metrics ?? self.metrics
+        let resolvedComments: [MobileSocialComment] = comments ?? self.comments
+
+        return MobileSocialPost(
             id: id,
             author: author,
             contentType: contentType,
@@ -247,17 +306,17 @@ extension MobileSocialPost {
             commentsEnabled: commentsEnabled,
             postedUTC: postedUTC,
             expiresUTC: expiresUTC,
-            reactionCount: reactionCount ?? self.reactionCount,
-            commentCount: commentCount ?? self.commentCount,
-            reactedByCurrentActor: reactedByCurrentActor ?? self.reactedByCurrentActor,
-            followedByCurrentActor: followedByCurrentActor ?? self.followedByCurrentActor,
-            followRequestPending: followRequestPending ?? self.followRequestPending,
-            savedByCurrentActor: savedByCurrentActor ?? self.savedByCurrentActor,
-            repostedByCurrentActor: repostedByCurrentActor ?? self.repostedByCurrentActor,
-            metrics: metrics ?? self.metrics,
+            reactionCount: resolvedReactionCount,
+            commentCount: resolvedCommentCount,
+            reactedByCurrentActor: resolvedReactedState,
+            followedByCurrentActor: resolvedFollowedState,
+            followRequestPending: resolvedFollowRequestState,
+            savedByCurrentActor: resolvedSavedState,
+            repostedByCurrentActor: resolvedRepostedState,
+            metrics: resolvedMetrics,
             music: music,
             media: media,
-            comments: comments ?? self.comments)
+            comments: resolvedComments)
     }
 }
 

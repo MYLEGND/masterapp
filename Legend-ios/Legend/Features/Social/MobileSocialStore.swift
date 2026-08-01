@@ -1105,8 +1105,8 @@ final class MobileSocialStore: ObservableObject {
             activity: snapshot.activity,
             activityCount: snapshot.activityCount,
             currentProfileMetrics: snapshot.currentProfileMetrics.adjusting(
-                followingCountBy: followingCountBy,
-                followerCountBy: followerCountBy
+                followerCountBy: followerCountBy,
+                followingCountBy: followingCountBy
             ),
             creatorInsights: snapshot.creatorInsights
         ))
