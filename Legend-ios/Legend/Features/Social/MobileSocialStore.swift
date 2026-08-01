@@ -314,6 +314,18 @@ private struct EmptyMobileRequest: Codable, Sendable {}
 
 @MainActor
 final class MobileSocialStore: ObservableObject {
+    private struct CachedMediaFile {
+        let url: URL
+        let byteCount: Int
+        var lastAccessed: Date
+    }
+
+    /// Materialized protected videos are short-lived playback aids, not a second
+    /// offline media library. Keep their disk footprint bounded independently of
+    /// the in-memory response cache below.
+    private static let maximumCachedMediaFileCount = 8
+    private static let maximumCachedMediaFileBytes = 128 * 1_024 * 1_024
+
     @Published private(set) var state: MobileDataLoadState<MobileSocialSnapshot> = .idle
     @Published private(set) var profileContentState: MobileDataLoadState<[MobileSocialPost]> = .idle
     @Published private(set) var actionFailure: UserFacingFailure?
@@ -329,8 +341,9 @@ final class MobileSocialStore: ObservableObject {
     private let diagnostics: LegendDiagnostics
     private let persistence: LegendStorePersistence<MobileSocialSnapshot>
     private let mediaCache = NSCache<NSUUID, NSData>()
-    private var mediaFileCache: [UUID: URL] = [:]
+    private var mediaFileCache: [UUID: CachedMediaFile] = [:]
     private var mediaLoadTasks: [UUID: Task<Data?, Never>] = [:]
+    private var inFlightMutationKeys: Set<String> = []
     private var pendingPublicationRequest: MobileSocialPublishRequest?
     private var feedLoadTask: Task<MobileStoreLoadResult, Never>?
     private var profilePostsLoadTask: Task<MobileStoreLoadResult, Never>?
@@ -352,6 +365,13 @@ final class MobileSocialStore: ObservableObject {
         // refreshes underneath.
         if let cached = persistence.read() {
             state = .loaded(cached)
+        }
+    }
+
+    deinit {
+        mediaLoadTasks.values.forEach { $0.cancel() }
+        for cached in mediaFileCache.values {
+            try? FileManager.default.removeItem(at: cached.url)
         }
     }
 
@@ -508,6 +528,7 @@ final class MobileSocialStore: ObservableObject {
     func mediaData(for assetID: UUID, forceRefresh: Bool = false) async -> Data? {
         if forceRefresh {
             mediaCache.removeObject(forKey: assetID as NSUUID)
+            removeCachedMediaFile(for: assetID)
             mediaFailures.removeValue(forKey: assetID)
         } else if let cached = mediaCache.object(forKey: assetID as NSUUID) {
             return cached as Data
@@ -543,10 +564,14 @@ final class MobileSocialStore: ObservableObject {
     }
 
     func mediaFile(for media: MobileSocialMedia) async -> URL? {
-        if let cached = mediaFileCache[media.id],
-           FileManager.default.fileExists(atPath: cached.path) {
-            return cached
+        if var cached = mediaFileCache[media.id],
+           FileManager.default.fileExists(atPath: cached.url.path) {
+            cached.lastAccessed = .now
+            mediaFileCache[media.id] = cached
+            return cached.url
         }
+
+        mediaFileCache.removeValue(forKey: media.id)
 
         guard let data = await mediaData(for: media.id) else { return nil }
         let fileExtension = media.mimeType.split(separator: "/").last
@@ -556,7 +581,11 @@ final class MobileSocialStore: ObservableObject {
             .appendingPathExtension(fileExtension)
         do {
             try data.write(to: fileURL, options: .atomic)
-            mediaFileCache[media.id] = fileURL
+            mediaFileCache[media.id] = CachedMediaFile(
+                url: fileURL,
+                byteCount: data.count,
+                lastAccessed: .now)
+            trimMediaFileCache(keeping: media.id)
             return fileURL
         } catch {
             diagnostics.record(
@@ -584,21 +613,25 @@ final class MobileSocialStore: ObservableObject {
 
 
     func toggleReaction(postID: UUID) {
-        perform(title: "Could not update appreciation") { token in
+        perform(key: "reaction:\(postID.uuidString)", title: "Could not update appreciation") { token in
             let post = try await self.api.toggleReaction(postID: postID, accessToken: token)
             self.replace(post)
         }
     }
 
     func addComment(postID: UUID, body: String, parentCommentID: UUID? = nil) {
-        perform(title: "Could not add comment") { token in
+        let normalizedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parentKey = parentCommentID?.uuidString ?? "root"
+        perform(
+            key: "comment:\(postID.uuidString):\(parentKey):\(normalizedBody)",
+            title: "Could not add comment") { token in
             let comment = try await self.api.addComment(postID: postID, request: MobileCreateSocialComment(body: body, parentCommentID: parentCommentID), accessToken: token)
             self.append(comment, to: postID)
         }
     }
 
     func toggleSave(postID: UUID) {
-        perform(title: "Could not update saved status") { token in
+        perform(key: "save:\(postID.uuidString)", title: "Could not update saved status") { token in
             let state = try await self.api.toggleSave(postID: postID, accessToken: token)
             self.mutate(postID: postID) { post in
                 let delta = state.isActive == post.savedByCurrentActor
@@ -612,7 +645,7 @@ final class MobileSocialStore: ObservableObject {
     }
 
     func toggleRepost(postID: UUID) {
-        perform(title: "Could not update repost") { token in
+        perform(key: "repost:\(postID.uuidString)", title: "Could not update repost") { token in
             let state = try await self.api.toggleRepost(postID: postID, accessToken: token)
             self.mutate(postID: postID) { post in
                 let delta = state.isActive == post.repostedByCurrentActor
@@ -626,7 +659,7 @@ final class MobileSocialStore: ObservableObject {
     }
 
     func recordShare(postID: UUID) {
-        perform(title: "Could not record share") { token in
+        perform(key: "share:\(postID.uuidString)", title: "Could not record share") { token in
             _ = try await self.api.recordShare(postID: postID, accessToken: token)
         }
     }
@@ -684,7 +717,11 @@ final class MobileSocialStore: ObservableObject {
 
     func toggleFollow(author: MobileSocialAuthor, sourcePostID: UUID?) {
         let wasFollowing = follows(author)
-        perform(title: "Could not update your connection") { token in
+        perform(
+            key: followMutationKey(
+                userID: author.identity.userID,
+                participantType: author.identity.participantType),
+            title: "Could not update your connection") { token in
             let result = try await self.api.toggleFollow(
                 MobileToggleSocialFollow(
                     followedUserID: author.identity.userID,
@@ -713,6 +750,14 @@ final class MobileSocialStore: ObservableObject {
         participantType: ParticipantType,
         isFollowing: Bool
     ) async -> MobileSocialFollowResult? {
+        let mutationKey = followMutationKey(
+            userID: userID,
+            participantType: participantType)
+        guard inFlightMutationKeys.insert(mutationKey).inserted else {
+            return nil
+        }
+        defer { inFlightMutationKeys.remove(mutationKey) }
+
         actionFailure = nil
         do {
             let token = try await accessTokenProvider()
@@ -1048,9 +1093,15 @@ final class MobileSocialStore: ObservableObject {
         }
     }
 
-    private func perform(title: String, work: @escaping @MainActor (String) async throws -> Void) {
+    private func perform(
+        key: String,
+        title: String,
+        work: @escaping @MainActor (String) async throws -> Void
+    ) {
+        guard inFlightMutationKeys.insert(key).inserted else { return }
         actionFailure = nil
         Task {
+            defer { inFlightMutationKeys.remove(key) }
             do {
                 let token = try await accessTokenProvider()
                 try await work(token)
@@ -1104,10 +1155,12 @@ final class MobileSocialStore: ObservableObject {
     }
 
     private func remove(_ postID: UUID) {
+        var mediaAssetIDs = Set<UUID>()
         if case .loaded(let snapshot) = state {
             let removedPost = snapshot.stories.first { $0.id == postID }
                 ?? snapshot.posts.first { $0.id == postID }
                 ?? snapshot.hacs.first { $0.id == postID }
+            mediaAssetIDs.formUnion(removedPost?.media.map(\.id) ?? [])
             state = .loaded(MobileSocialSnapshot(
                 stories: snapshot.stories.filter { $0.id != postID },
                 posts: snapshot.posts.filter { $0.id != postID },
@@ -1121,7 +1174,15 @@ final class MobileSocialStore: ObservableObject {
         }
 
         if case .loaded(let posts) = profileContentState {
+            mediaAssetIDs.formUnion(
+                posts.first(where: { $0.id == postID })?.media.map(\.id) ?? [])
             profileContentState = .loaded(posts.filter { $0.id != postID })
+        }
+
+        for assetID in mediaAssetIDs {
+            mediaCache.removeObject(forKey: assetID as NSUUID)
+            removeCachedMediaFile(for: assetID)
+            mediaFailures.removeValue(forKey: assetID)
         }
     }
 
@@ -1228,6 +1289,32 @@ final class MobileSocialStore: ObservableObject {
 
     private func mediaFailurePresentation(for error: Error) -> UserFacingFailure {
         failure(for: error, title: "Media temporarily unavailable")
+    }
+
+    private func followMutationKey(
+        userID: String,
+        participantType: ParticipantType
+    ) -> String {
+        "follow:\(participantType.rawValue):\(userID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+    }
+
+    private func removeCachedMediaFile(for assetID: UUID) {
+        guard let cached = mediaFileCache.removeValue(forKey: assetID) else {
+            return
+        }
+        try? FileManager.default.removeItem(at: cached.url)
+    }
+
+    private func trimMediaFileCache(keeping assetID: UUID) {
+        while mediaFileCache.count > Self.maximumCachedMediaFileCount ||
+            mediaFileCache.values.reduce(0, { $0 + $1.byteCount }) > Self.maximumCachedMediaFileBytes {
+            guard let victim = mediaFileCache
+                .filter({ $0.key != assetID })
+                .min(by: { $0.value.lastAccessed < $1.value.lastAccessed }) else {
+                return
+            }
+            removeCachedMediaFile(for: victim.key)
+        }
     }
 
     private func failure(for error: Error, title: String) -> UserFacingFailure {

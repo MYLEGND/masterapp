@@ -52,9 +52,10 @@ It supports only the following eventual data flow:
 4. Send, read, mute, close, and attachment actions submit server intent only.
 5. Realtime events and foreground reconciliation update the local view state.
 
-Until the bearer/mobile API contract exists, the app presents a clear blocked
-state. It does not ship seeded conversations, fake recipients, or a simulated
-login.
+The bearer-authenticated mobile API contract is implemented under
+`AgentPortal/Mobile` and consumed by the native app. If the required local or
+release configuration is absent, the app presents a clear blocked state rather
+than shipping seeded conversations, fake recipients, or a simulated login.
 
 ## Eventual feature order
 

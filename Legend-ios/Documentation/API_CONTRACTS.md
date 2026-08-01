@@ -2,11 +2,21 @@
 
 ## Status
 
-**No native API contract is implemented in the current repository.** This
-document records the minimum contract required to connect Legend iOS without
-reusing browser cookies or weakening existing protections. Paths below are
-design requirements, not live endpoints and not authorization to implement
-them without backend review.
+The native API is implemented in `AgentPortal/Mobile` under
+`/api/v1/mobile` and is protected by the `LegendMobileApi` bearer policy. It
+uses the existing MASTERAPP services for identity, messaging, profile, social,
+financial, Journey Circles, and CRM authority; the native client does not
+receive a browser cookie or choose a trusted actor.
+
+Live deployment remains configuration-gated. The approved native Entra
+registration and the matching `MobileAuth` deployment values must be supplied
+outside source control before any environment can authenticate a device. An
+unconfigured server fails closed and an unconfigured iOS build stays on its
+configuration state.
+
+The routes and DTOs in the Swift feature adapters plus the matching
+`AgentPortal/Mobile` controllers are the executable contract. This document
+records the transport invariants those implementations must preserve.
 
 ## Transport baseline
 

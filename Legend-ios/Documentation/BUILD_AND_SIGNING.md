@@ -46,11 +46,9 @@ The generator removes transparent padding, centers the original shield at 73.5% 
 
 This workspace has full Xcode 26.6 and the iOS SDK. The app, unit-test, and
 UI-test targets compile successfully with a local placeholder bundle identifier.
-Simulator test execution is currently blocked by the host
-`CoreSimulatorService`, which refuses connections and exposes no runtimes to
-`simctl`. That is a host-environment limitation, not a substitute for passing
-tests: run the same test command on a machine with an available simulator or on
-a physical device before release.
+The native test suite runs on the available iPhone 17 Pro simulator; release
+validation must still include a physical-device pass using approved,
+non-production identity and mobile API configuration.
 
 ## Device, archive, and TestFlight procedure
 
@@ -65,8 +63,10 @@ a physical device before release.
 4. Run the unit and UI tests on an installed simulator runtime or a dedicated
    device-test job. Run server contract tests only against staging.
 5. Select **Any iOS Device (arm64)**, choose **Product > Archive**, and validate
-   the archive in Xcode Organizer. Do not archive until the approved mobile API
-   and bearer-authentication contract described in `API_CONTRACTS.md` exists.
+   the archive in Xcode Organizer. Do not archive until the approved
+   environment configuration has been deployed and the bearer-authenticated
+   mobile API contract described in `API_CONTRACTS.md` has passed staging
+   validation.
 6. Upload the validated archive to the authorized App Store Connect/TestFlight
    account using the organization’s CI credentials or the approved release
    operator. Never store those credentials in this repository.

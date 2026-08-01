@@ -523,4 +523,34 @@ public class ClientsControllerTests
         Assert.Equal(otherAgentId, remainingLink.AgentUserId);
         Assert.Equal(clientUserId, remainingLink.ClientUserId);
     }
+
+    [Fact]
+    public async Task Delete_FounderOverridePostedByScopedAgent_IsForbidden()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string clientUserId = "founder-override-protected-client";
+
+        await SeedOwnedClientAsync(
+            db,
+            "another-agent",
+            clientUserId,
+            "protected-client@example.com",
+            ClientCrmMetaSerializer.Serialize(new ClientCrmMeta
+            {
+                RecordType = "Client",
+                PipelineStage = "Client"
+            }));
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser("scoped-agent", "scoped-agent@example.com"));
+
+        var result = await controller.Delete(clientUserId, founderOverride: true);
+
+        Assert.IsType<ForbidResult>(result);
+        Assert.Single(await db.ClientProfiles.ToListAsync());
+        Assert.Single(await db.AgentClients.ToListAsync());
+    }
 }

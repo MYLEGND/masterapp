@@ -1,14 +1,13 @@
 # Known Gaps
 
-## Blocking gaps
+## Release gates
 
-| Gap | Why it blocks live mobile behavior | Required owner/action |
+| Gate | Why it matters | Required owner/action |
 | --- | --- | --- |
-| No native OAuth application contract | iOS cannot perform a legitimate PKCE token flow | Identity/platform owner registers public native client and documents redirect/audience/scopes |
-| No bearer-authenticated mobile API | Existing JSON endpoints require browser cookie + anti-forgery context | Backend owner exposes versioned mobile endpoints that call existing services |
-| No native messaging realtime decision | Browser hub does not declare native bearer handshake behavior | Platform owner decides bearer SignalR or APNs + reconciliation path |
-| No API contract schema/versioning | Swift cannot safely decode undocumented web response shapes | Backend owner publishes DTO/OpenAPI or equivalent versioned contract |
-| No Xcode installation in workspace | Native target cannot be compiled, simulator-tested, or archived locally | Install/select full Xcode on build Mac |
+| Native Entra deployment configuration | The checked-in project intentionally has no live client ID, redirect, scope, audience, or API URL. Both iOS and `MobileAuth` must agree before bearer validation can succeed. | Identity/platform owner configures the public native registration and deployment values through the approved secret/configuration path. |
+| Staging end-to-end verification | Unit tests validate typed contracts, but they cannot prove a deployed Entra registration, DNS/TLS path, or production authorization data. | Release owner validates Agent and Client PKCE, session restore, role switching, all key API routes, and a rejected-token path in staging. |
+| Mobile realtime policy | Foreground reconciliation is available; a native bearer SignalR handshake or APNs policy has not been adopted as the universal realtime channel. | Product/platform owner chooses and documents the supported notification/reconciliation model before relying on instant delivery. |
+| App Store release evidence | A simulator build and automated tests do not substitute for signed-device, privacy-label, accessibility, and store-submission validation. | Release owner completes the checklist in `APP_STORE_READINESS.md` with the actual shipping configuration. |
 
 ## Explicit non-solutions
 
@@ -18,15 +17,17 @@
 - Rendering mocked conversations as if live is not acceptable.
 - Moving business authorization into Swift is not acceptable.
 
-## Foundation completed despite gaps
+## Foundation completed
 
 - isolated `Legend-ios` project structure;
 - configuration validator with no default live authority;
-- PKCE/system-browser abstraction ready for approved endpoints;
-- Keychain-backed token store abstraction;
-- typed messaging DTO/protocol boundary and no-data unavailable state;
-- deterministic tests for configuration, identity, redaction, and navigation;
+- PKCE/system-browser, Keychain token storage, 90-day checkpoint, and optional
+  Face ID session protection;
+- bearer-authenticated, role-aware mobile controllers in AgentPortal;
+- typed native adapters for the implemented mobile features;
+- deterministic tests for configuration, identity, launch cache, API failures,
+  financial presentation, messaging, and navigation;
 - architecture, authorization, API, security, build, and release documents.
 
-The completion items become live only after contract configuration and end-to-end
-staging verification. They do not mean production connectivity is claimed.
+These completed items do not claim production readiness. The release gates
+above remain mandatory for every target environment.

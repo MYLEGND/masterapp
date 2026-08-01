@@ -1488,9 +1488,9 @@ struct LegendForYouView: View {
                 systemImage: "play.rectangle.on.rectangle"
             )
         } else {
-            TabView(selection: $selectedPostID) {
-                ForEach(posts) { post in
-                    LegendScrollView {
+            LegendScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(posts) { post in
                         LegendSocialPostCard(
                             post: post,
                             currentIdentity: currentIdentity,
@@ -1521,13 +1521,17 @@ struct LegendForYouView: View {
                                     isFollowRequestPending: post.followRequestPending ?? false)
                             }
                         )
-                        .padding(.bottom, LegendNextSpacing.xl)
+                        // The For You feed is intentionally vertical. Each Hac
+                        // owns a viewport, so a scroll advances through videos
+                        // instead of entering an unrelated horizontal pager.
+                        .containerRelativeFrame(.vertical)
+                        .id(post.id)
                     }
-                    .scrollIndicators(.hidden)
-                    .tag(Optional(post.id))
                 }
+                .scrollTargetLayout()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $selectedPostID)
             .onAppear {
                 selectInitialPost(from: posts)
             }

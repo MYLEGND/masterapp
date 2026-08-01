@@ -1,10 +1,17 @@
 # MASTERAPP Mobile Authority Audit
 
+> Historical pre-implementation decision record (2026-07-25). This document
+> explains why the native API could not safely reuse browser authentication; it
+> is no longer the current API-status source. The resulting bearer API is now
+> implemented in `AgentPortal/Mobile`. Use
+> [API_CONTRACTS.md](API_CONTRACTS.md), the mobile controllers, and their tests
+> for the current contract and release assessment.
+
 ## Scope and decision record
 
-This document records the verified mobile authority boundary before any native
-screen implementation. It is the source of truth for the iOS client: native
-code presents data and submits user intent; MASTERAPP remains the sole owner of
+This document records the verified mobile authority boundary before native
+screen implementation. Its architectural rule remains current: native code
+presents data and submits user intent; MASTERAPP remains the sole owner of
 identity, authorization, billing, messaging, finance calculations, Journey
 Circles, and persistence.
 

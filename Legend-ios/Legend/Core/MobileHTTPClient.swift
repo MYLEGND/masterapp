@@ -283,20 +283,6 @@ struct MobileHTTPClient: Sendable {
             uploadProgress: uploadProgress,
             resourceTimeout: resourceTimeout)
 
-#if DEBUG
-        if let http = urlResponse as? HTTPURLResponse {
-            print("========== MOBILE API ==========")
-            print("\(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "")")
-            print("HTTP \(http.statusCode)")
-
-            if let body = String(data: data, encoding: .utf8), !body.isEmpty {
-                print(body)
-            }
-
-            print("================================")
-        }
-#endif
-
         guard let http = urlResponse as? HTTPURLResponse else {
             throw MobileAPIError.invalidServerResponse
         }

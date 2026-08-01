@@ -208,6 +208,20 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
             throw;
         }
         catch (Exception ex)
+            when (ex is AuthenticationFailedException or CredentialUnavailableException)
+        {
+            await DeleteBlobIfExistsAsync(blobClient);
+
+            _logger.LogError(
+                ex,
+                "Social media blob credentials could not be authenticated. StorageKey={StorageKey}",
+                storageKey);
+
+            return SocialMediaStorageResult.Failure(
+                "SOCIAL_MEDIA_STORAGE_UNAVAILABLE",
+                "Legend media storage is temporarily unavailable. Please try again shortly.");
+        }
+        catch (Exception ex)
             when (ex is RequestFailedException or IOException or UnauthorizedAccessException)
         {
             await DeleteBlobIfExistsAsync(blobClient);

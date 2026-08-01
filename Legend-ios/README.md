@@ -6,14 +6,23 @@ business-authority implementation with the web portals.
 
 ## Current implementation state
 
-The native foundation, configuration validation, privacy-safe diagnostics,
-authenticated-session architecture, and messaging presentation slice live here.
-The existing backend currently has no approved native PKCE/bearer API contract.
-Consequently, the app correctly presents a configuration/contract-unavailable
-state instead of pretending an authenticated session or a message list exists.
+Legend iOS has a native PKCE/session foundation and a versioned,
+bearer-authenticated mobile API surface in `AgentPortal/Mobile`. The server
+derives the active Agent or Client identity from the validated bearer and keeps
+all business authority in MASTERAPP. Native features currently consume typed
+home, account, messaging, social, discovery, Journey Circles, financial, and
+agent-workspace contracts.
 
-The required contract and the exact verified backend gaps are in
-[MASTERAPP_MOBILE_AUTHORITY_AUDIT.md](Documentation/MASTERAPP_MOBILE_AUTHORITY_AUDIT.md).
+Checked-in build settings deliberately contain no live identity or API values.
+Until deployment or an ignored local configuration supplies the approved native
+registration, the app presents its configuration-unavailable state rather than
+falling back to browser cookies, a WebView, or mock authority.
+
+The current transport expectations are in
+[API_CONTRACTS.md](Documentation/API_CONTRACTS.md). The older
+[MASTERAPP_MOBILE_AUTHORITY_AUDIT.md](Documentation/MASTERAPP_MOBILE_AUTHORITY_AUDIT.md)
+is retained as a pre-implementation decision record, not as the current API
+status.
 
 ## Project structure
 

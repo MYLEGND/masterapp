@@ -166,7 +166,9 @@ final class MobileSessionCoordinator: ObservableObject {
             return
         }
 
-        let cachedSession = launchCache.readSession()?.session
+        let cachedSession = launchCache.readSession(
+            matchingCredentialFingerprint: LegendSessionCredentialFingerprint.make(
+                from: storedTokens))?.session
         if let cachedSession,
            biometricSecurity.isEnabled(for: cachedSession.actor.identity) {
             transition(to: .loading, reason: "Face ID required before cached session restoration")
@@ -253,11 +255,21 @@ final class MobileSessionCoordinator: ObservableObject {
     /// Records the identity the server just confirmed, so the next launch can render
     /// the correct shell before the network answers.
     private func cacheSession(_ session: MobileSession) {
+        guard let activeTokens,
+              let credentialFingerprint = LegendSessionCredentialFingerprint.make(
+                from: activeTokens) else {
+            // There is no safe credential binding for this presentation cache.
+            // Removing it is preferable to risking another account seeing it.
+            launchCache.clear()
+            return
+        }
+
         launchCache.writeSession(MobileSessionCacheEntry(
             actor: session.actor,
             capabilities: Array(session.capabilities),
             permittedParticipantTypes: session.permittedParticipantTypes,
-            cachedUtc: Date()))
+            cachedUtc: Date(),
+            credentialFingerprint: credentialFingerprint))
     }
 
     /// What the failure screen's retry should do. A user who still holds a valid

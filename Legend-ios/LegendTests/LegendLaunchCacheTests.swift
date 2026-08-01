@@ -11,7 +11,9 @@ final class LegendLaunchCacheTests: XCTestCase {
             actor: try Self.cachedActor(),
             capabilities: ["messaging"],
             permittedParticipantTypes: [.client],
-            cachedUtc: Date()))
+            cachedUtc: Date(),
+            credentialFingerprint: LegendSessionCredentialFingerprint.make(
+                from: Self.validTokens())))
 
         let coordinator = MobileSessionCoordinator(
             configuration: Self.readyConfiguration(),
@@ -37,7 +39,9 @@ final class LegendLaunchCacheTests: XCTestCase {
             actor: try Self.cachedActor(),
             capabilities: ["messaging"],
             permittedParticipantTypes: [.client],
-            cachedUtc: Date()))
+            cachedUtc: Date(),
+            credentialFingerprint: LegendSessionCredentialFingerprint.make(
+                from: Self.validTokens())))
         let confirmedActor = try MobileActor(
             identity: LogicalParticipantIdentity(
                 userID: "client-one",
@@ -90,6 +94,38 @@ final class LegendLaunchCacheTests: XCTestCase {
             return XCTFail("Expected a rejected credential to sign the user out")
         }
         XCTAssertNil(cache.readSession(), "The cached identity must not survive a rejection")
+    }
+
+    func testDifferentCredentialNeverPresentsAnotherAccountFromLaunchCache() async throws {
+        let cache = InMemoryLaunchCache()
+        let cachedTokens = OAuthTokenSet(
+            accessToken: "cached-access-token",
+            refreshToken: "cached-refresh-token",
+            expiresAt: .distantFuture)
+        let currentTokens = OAuthTokenSet(
+            accessToken: "current-access-token",
+            refreshToken: "current-refresh-token",
+            expiresAt: .distantFuture)
+        cache.writeSession(MobileSessionCacheEntry(
+            actor: try Self.cachedActor(),
+            capabilities: ["messaging"],
+            permittedParticipantTypes: [.client],
+            cachedUtc: Date(),
+            credentialFingerprint: LegendSessionCredentialFingerprint.make(
+                from: cachedTokens)))
+
+        let coordinator = MobileSessionCoordinator(
+            configuration: Self.readyConfiguration(),
+            tokenStore: StubTokenStore(tokens: currentTokens),
+            authorizer: NeverAuthorizer(),
+            tokenExchanger: NeverExchanger(),
+            sessionService: HangingSessionService(),
+            diagnostics: LegendDiagnostics(),
+            launchCache: cache)
+
+        coordinator.restore()
+
+        XCTAssertEqual(coordinator.state, .loading)
     }
 
     func testNinetyDayCheckpointClearsTheStoredSessionAndRequiresInteractiveSignIn() throws {

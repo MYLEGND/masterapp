@@ -13,6 +13,7 @@
     var conversionSourceName = (ViewData["ConversionSourceName"] as string ?? string.Empty).Trim();
     var emailErrors = ViewData.ModelState[nameof(Model.Email)]?.Errors;
     var blocked = emailErrors != null && emailErrors.Any(e => (e.ErrorMessage ?? "").Contains("BLOCKED", StringComparison.OrdinalIgnoreCase));
+    var founderConflictClientUserId = (ViewData["FounderConflictClientUserId"] as string ?? string.Empty).Trim();
 }
 
 <main class="dashboard-page-shell client-create-page">
@@ -61,6 +62,22 @@
                     <div class="client-create-blocked text-danger" role="alert">
                         Blocked for privacy: this email is already tied to an existing client profile.
                     </div>
+
+                    @if (!string.IsNullOrWhiteSpace(founderConflictClientUserId))
+                    {
+                        <form asp-action="Delete" method="post" class="client-create-founder-conflict-action">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="clientUserId" value="@founderConflictClientUserId" />
+                            <input type="hidden" name="founderOverride" value="true" />
+                            <p class="client-create-section-copy">
+                                Founder control: permanently delete the conflicting account before creating a replacement.
+                            </p>
+                            <button type="submit" class="client-create-button client-create-button-secondary"
+                                    onclick="return confirm('Delete the conflicting account permanently? This cannot be undone.');">
+                                Delete conflicting account
+                            </button>
+                        </form>
+                    }
                 }
 
                 <div class="client-create-section-shell">

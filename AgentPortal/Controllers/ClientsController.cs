@@ -3306,6 +3306,15 @@ namespace AgentPortal.Controllers;
                 if (existingByEmail != null &&
                     (conversionSourceLead is null || existingByEmail.Id != conversionSourceLead.Id))
                 {
+                    // Do not disclose the conflicting record to scoped agents. The
+                    // founder alone may be offered the existing delete flow, which
+                    // verifies founder authority again on submit before allowing a
+                    // cross-assignment account deletion.
+                    if (FounderGuard.IsFounder(User))
+                    {
+                        ViewData["FounderConflictClientUserId"] = existingByEmail.ClientUserId;
+                    }
+
                     ModelState.AddModelError(nameof(CreateClientViewModel.Email),
                         "BLOCKED (409): That email is already tied to an existing client profile. " +
                         "For privacy and compliance, you cannot create or access that client. " +
@@ -6072,10 +6081,16 @@ namespace AgentPortal.Controllers;
     // =====================================================================
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Delete(string clientUserId)
+    public async Task<IActionResult> Delete(string clientUserId, bool founderOverride = false)
     {
         var isFetchRequest = string.Equals(Request.Headers["X-Requested-With"], "fetch", StringComparison.OrdinalIgnoreCase)
             || string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
+
+        // The founder override is deliberately opt-in and checked server-side.
+        // A posted boolean never grants a scoped agent cross-client authority.
+        var isFounderOverride = founderOverride && FounderGuard.IsFounder(User);
+        if (founderOverride && !isFounderOverride)
+            return Forbid();
 
         string agentOid;
         try { agentOid = GetAgentOidOrThrow(); }
@@ -6095,7 +6110,7 @@ namespace AgentPortal.Controllers;
             x.AgentUserId == agentOid &&
             x.ClientUserId == clientUserIdNorm);
 
-        if (!linked)
+        if (!linked && !isFounderOverride)
             return Forbid();
 
         // A subscription owner has a restricted household relationship and
@@ -6150,7 +6165,7 @@ namespace AgentPortal.Controllers;
 
             // If another agent also has this client, remove only this agent's relationship.
             // Deleting the shared profile/account would break the other agent and the client app.
-            if (allLinks.Count > currentAgentLinks.Count)
+            if (!isFounderOverride && allLinks.Count > currentAgentLinks.Count)
             {
                 if (currentAgentLinks.Count > 0)
                     _db.AgentClients.RemoveRange(currentAgentLinks);
@@ -6215,7 +6230,12 @@ namespace AgentPortal.Controllers;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Delete failed. AgentOid={AgentOid} ClientUserId={ClientUserId}", agentOid, clientUserIdNorm);
+            _logger.LogError(
+                ex,
+                "Delete failed. AgentOid={AgentOid} ClientUserId={ClientUserId} FounderOverride={FounderOverride}",
+                agentOid,
+                clientUserIdNorm,
+                isFounderOverride);
 
             await tx.RollbackAsync();
             TempData["Created"] = $"Delete failed: {ex.Message}";

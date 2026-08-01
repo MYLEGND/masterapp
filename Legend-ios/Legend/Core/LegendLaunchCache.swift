@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// On-device cache of the last known good launch state.
@@ -34,6 +35,26 @@ struct MobileSessionCacheEntry: Codable, Equatable, Sendable {
     let capabilities: [String]
     let permittedParticipantTypes: [ParticipantType]
     let cachedUtc: Date
+    /// A one-way fingerprint of the credential that authorized this cached shell.
+    /// It prevents one account's last-known identity from appearing while a
+    /// different account's credential is being restored on the same device.
+    /// Legacy entries omit this value and are deliberately not used for eager
+    /// presentation.
+    let credentialFingerprint: String?
+
+    init(
+        actor: MobileActor,
+        capabilities: [String],
+        permittedParticipantTypes: [ParticipantType],
+        cachedUtc: Date,
+        credentialFingerprint: String? = nil
+    ) {
+        self.actor = actor
+        self.capabilities = capabilities
+        self.permittedParticipantTypes = permittedParticipantTypes
+        self.cachedUtc = cachedUtc
+        self.credentialFingerprint = credentialFingerprint
+    }
 
     /// Cached identity is only trusted briefly. Past this the app resolves the session
     /// over the network before showing a shell, so a revoked account cannot linger.
@@ -51,6 +72,36 @@ struct MobileSessionCacheEntry: Codable, Equatable, Sendable {
             actor: actor,
             capabilities: Set(capabilities),
             permittedParticipantTypes: permittedParticipantTypes)
+    }
+}
+
+/// Keeps the launch cache account-bound without persisting either raw token.
+/// A refresh credential is stable across routine access-token renewal; if the
+/// provider rotates it, the next server-confirmed session writes a new binding.
+enum LegendSessionCredentialFingerprint {
+    static func make(from tokens: OAuthTokenSet) -> String? {
+        let credential = tokens.refreshToken?.trimmingCharacters(
+            in: .whitespacesAndNewlines)
+            ?? tokens.accessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !credential.isEmpty else { return nil }
+
+        let digest = SHA256.hash(data: Data(credential.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+extension LegendLaunchCaching {
+    /// A cache entry is presentation-only and may be used before the network
+    /// answers only when it belongs to the same locally stored credential.
+    func readSession(
+        matchingCredentialFingerprint credentialFingerprint: String?
+    ) -> MobileSessionCacheEntry? {
+        guard let credentialFingerprint,
+              let entry = readSession(),
+              entry.credentialFingerprint == credentialFingerprint else {
+            return nil
+        }
+        return entry
     }
 }
 

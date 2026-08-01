@@ -371,7 +371,12 @@ final class MobileNativeContractTests: XCTestCase {
             actor: cachedActor,
             capabilities: ["messaging"],
             permittedParticipantTypes: [.agent, .client],
-            cachedUtc: Date()))
+            cachedUtc: Date(),
+            credentialFingerprint: LegendSessionCredentialFingerprint.make(
+                from: OAuthTokenSet(
+                    accessToken: "stored-access-token",
+                    refreshToken: "stored-refresh-token",
+                    expiresAt: .distantFuture))))
 
         let store = InMemoryTokenStore(
             storedTokens: OAuthTokenSet(

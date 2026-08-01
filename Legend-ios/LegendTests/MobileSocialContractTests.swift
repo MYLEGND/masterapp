@@ -167,6 +167,53 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertEqual(followRequest?.sourcePostID, post.id)
     }
 
+    func testSocialStoreIgnoresRepeatedReactionWhileTheFirstRequestIsRunning() async throws {
+        let author = MobileSocialAuthor(
+            identity: try LogicalParticipantIdentity(userID: "client-one", participantType: .client),
+            profileID: "00000000-0000-0000-0000-000000000002",
+            displayName: "Client One",
+            avatar: nil)
+        let post = MobileSocialPost(
+            id: UUID(),
+            author: author,
+            contentType: MobileSocialContentType.post.rawValue,
+            body: "Build the plan.",
+            audience: MobileSocialAudience.authorizedNetwork.rawValue,
+            location: nil,
+            commentsEnabled: true,
+            postedUTC: .now,
+            expiresUTC: nil,
+            reactionCount: 0,
+            commentCount: 0,
+            reactedByCurrentActor: false,
+            followedByCurrentActor: false,
+            savedByCurrentActor: false,
+            repostedByCurrentActor: false,
+            metrics: testSocialMetrics,
+            music: nil,
+            media: [],
+            comments: [])
+        let api = RecordingSocialAPI(
+            post: post,
+            reactionDelay: .milliseconds(150))
+        let store = MobileSocialStore(
+            api: api,
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics())
+
+        store.load()
+        try await Task.sleep(for: .milliseconds(50))
+        store.toggleReaction(postID: post.id)
+        store.toggleReaction(postID: post.id)
+        try await Task.sleep(for: .milliseconds(250))
+
+        let reactionCallCount = await api.reactionCallCount()
+        XCTAssertEqual(
+            reactionCallCount,
+            1,
+            "A repeated tap must not turn a single reaction into a second toggle.")
+    }
+
     func testCreationRoutesExposeOnlyTheAuthoritativeMenuAndSupportedTypes() {
         XCTAssertEqual(
             MobileSocialContentType.allCases.map(\.rawValue),
@@ -698,6 +745,7 @@ private struct StubSocialAPI: MobileSocialAPI {
 
 private actor RecordingSocialAPI: MobileSocialAPI {
     private let post: MobileSocialPost
+    private let reactionDelay: Duration?
     private var recordedMediaContentTypes: [MobileSocialContentType] = []
     private var recordedFollowRequest: MobileToggleSocialFollow?
     private var recordedViewRequest: (postID: UUID, request: MobileRecordSocialView)?
@@ -707,9 +755,11 @@ private actor RecordingSocialAPI: MobileSocialAPI {
     private var recordedMediaAudience: MobileSocialAudience?
     private var recordedMediaLocation: String?
     private var recordedMediaCommentsEnabled: Bool?
+    private var recordedReactionCallCount = 0
 
-    init(post: MobileSocialPost) {
+    init(post: MobileSocialPost, reactionDelay: Duration? = nil) {
         self.post = post
+        self.reactionDelay = reactionDelay
     }
 
     func feed(accessToken: String) async throws -> MobileSocialSnapshot {
@@ -771,8 +821,14 @@ private actor RecordingSocialAPI: MobileSocialAPI {
         postID: UUID,
         accessToken: String
     ) async throws -> MobileSocialPost {
-        post
+        recordedReactionCallCount += 1
+        if let reactionDelay {
+            try await Task.sleep(for: reactionDelay)
+        }
+        return post
     }
+
+    func reactionCallCount() -> Int { recordedReactionCallCount }
 
     func addComment(
         postID: UUID,
