@@ -16,18 +16,18 @@ public class ProfileController : Controller
 {
     private readonly MasterAppDbContext _db;
     private readonly EffectiveClientContextService _clientContext;
-    private readonly IAzureUserUpdater _azureUserUpdater;
+    private readonly IClientEntraLifecycleService _entraLifecycle;
     private readonly IClientSubscriptionIdentitySyncService _subscriptionIdentitySync;
 
     public ProfileController(
         MasterAppDbContext db,
         EffectiveClientContextService clientContext,
-        IAzureUserUpdater azureUserUpdater,
+        IClientEntraLifecycleService entraLifecycle,
         IClientSubscriptionIdentitySyncService subscriptionIdentitySync)
     {
         _db = db;
         _clientContext = clientContext;
-        _azureUserUpdater = azureUserUpdater;
+        _entraLifecycle = entraLifecycle;
         _subscriptionIdentitySync = subscriptionIdentitySync;
     }
 
@@ -144,11 +144,11 @@ public class ProfileController : Controller
             MaritalStatus = profile.MaritalStatus ?? string.Empty,
             AccountManagementMode = ClientAccountManagementModes.Normalize(profile.AccountManagementMode),
             DOB = profile.DOB,
-            SignificantOtherFirstName = significantOther?.FirstName ?? profile.SignificantOtherFirstName,
-            SignificantOtherLastName = significantOther?.LastName ?? profile.SignificantOtherLastName,
-            SignificantOtherDOB = significantOther?.DOB ?? profile.SignificantOtherDOB,
-            SignificantOtherEmail = significantOther?.Email ?? profile.SignificantOtherEmail,
-            SignificantOtherPhone = significantOther?.Phone ?? profile.SignificantOtherPhone,
+            SignificantOtherFirstName = profile.SignificantOtherFirstName ?? significantOther?.FirstName,
+            SignificantOtherLastName = profile.SignificantOtherLastName ?? significantOther?.LastName,
+            SignificantOtherDOB = profile.SignificantOtherDOB ?? significantOther?.DOB,
+            SignificantOtherEmail = profile.SignificantOtherEmail ?? significantOther?.Email,
+            SignificantOtherPhone = profile.SignificantOtherPhone ?? significantOther?.Phone,
             Children = await LoadChildrenAsync(profile.ClientUserId ?? string.Empty)
         };
     }
@@ -248,45 +248,16 @@ public class ProfileController : Controller
 
         if (NeedsSignificantOther(profile.MaritalStatus))
         {
-            var significantOthers = await _db.HouseholdMembers
-                .Where(member =>
-                    member.ClientUserId == context.ClientUserId &&
-                    (member.RelationshipType == "SignificantOther" || member.RelationshipType == "Spouse"))
-                .OrderByDescending(member => member.UpdatedUtc)
-                .ThenByDescending(member => member.CreatedUtc)
-                .ToListAsync();
-
-            var significantOther = significantOthers.FirstOrDefault();
-            if (significantOther == null)
-            {
-                significantOther = new HouseholdMember
-                {
-                    ClientUserId = context.ClientUserId,
-                    RelationshipType = "SignificantOther",
-                    CreatedUtc = DateTime.UtcNow
-                };
-                _db.HouseholdMembers.Add(significantOther);
-            }
-            else if (significantOthers.Count > 1)
-            {
-                _db.HouseholdMembers.RemoveRange(significantOthers.Skip(1));
-            }
-
-            significantOther.RelationshipType = "SignificantOther";
-            significantOther.FirstName = (model.SignificantOtherFirstName ?? string.Empty).Trim();
-            significantOther.LastName = (model.SignificantOtherLastName ?? string.Empty).Trim();
-            significantOther.DOB = model.SignificantOtherDOB?.Date;
-            significantOther.Email = string.IsNullOrWhiteSpace(model.SignificantOtherEmail)
-                ? string.Empty
+            // These fields are legacy relationship detail used only to seed a
+            // separately reviewed partner invitation. They do not create,
+            // activate, or mutate a household membership.
+            profile.SignificantOtherFirstName = (model.SignificantOtherFirstName ?? string.Empty).Trim();
+            profile.SignificantOtherLastName = (model.SignificantOtherLastName ?? string.Empty).Trim();
+            profile.SignificantOtherDOB = model.SignificantOtherDOB?.Date;
+            profile.SignificantOtherEmail = string.IsNullOrWhiteSpace(model.SignificantOtherEmail)
+                ? null
                 : model.SignificantOtherEmail.Trim().ToLowerInvariant();
-            significantOther.Phone = (model.SignificantOtherPhone ?? string.Empty).Trim();
-            significantOther.UpdatedUtc = DateTime.UtcNow;
-
-            profile.SignificantOtherFirstName = significantOther.FirstName;
-            profile.SignificantOtherLastName = significantOther.LastName;
-            profile.SignificantOtherDOB = significantOther.DOB;
-            profile.SignificantOtherEmail = string.IsNullOrWhiteSpace(significantOther.Email) ? null : significantOther.Email;
-            profile.SignificantOtherPhone = string.IsNullOrWhiteSpace(significantOther.Phone) ? null : significantOther.Phone;
+            profile.SignificantOtherPhone = (model.SignificantOtherPhone ?? string.Empty).Trim();
         }
         else
         {
@@ -296,32 +267,23 @@ public class ProfileController : Controller
             profile.SignificantOtherEmail = null;
             profile.SignificantOtherPhone = null;
 
-            var significantOthers = await _db.HouseholdMembers
-                .Where(member =>
-                    member.ClientUserId == context.ClientUserId &&
-                    (member.RelationshipType == "SignificantOther" || member.RelationshipType == "Spouse"))
-                .ToListAsync();
-
-            if (significantOthers.Count > 0)
-                _db.HouseholdMembers.RemoveRange(significantOthers);
         }
 
         await SaveChildrenAsync(context.ClientUserId, model.Children);
         await _db.SaveChangesAsync();
 
-        var updateResult = await _azureUserUpdater.UpdateEmailAsync(
-            context.ClientUserId,
-            profile.Email,
-            HttpContext.RequestAborted);
-
-        if (!updateResult.Success && !updateResult.Skipped)
+        try
+        {
+            await _entraLifecycle.SynchronizeClientIdentityAsync(
+                profile.Id,
+                HttpContext.RequestAborted);
+        }
+        catch
         {
             await transaction.RollbackAsync();
             ModelState.AddModelError(
                 string.Empty,
-                string.IsNullOrWhiteSpace(updateResult.Message)
-                    ? "We couldn't update your sign-in email in Azure. No changes were saved. Please try again."
-                    : updateResult.Message);
+                "We couldn't update your sign-in email. No changes were saved. Please try again.");
             return await ProfileViewAsync(model, context);
         }
 
@@ -345,10 +307,7 @@ public class ProfileController : Controller
         return await ProfileViewAsync(
             model,
             context,
-            "Profile saved.",
-            updateResult.Skipped
-                ? updateResult.Message ?? "Profile saved locally; your sign-in email did not need to change."
-                : null);
+            "Profile saved.");
     }
 
     [HttpGet("/profile/{clientUserId}")]

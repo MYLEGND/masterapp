@@ -12,6 +12,7 @@ using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
 using Infrastructure.Identity;
+using Infrastructure.Households;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -45,7 +46,8 @@ namespace AgentPortal.Controllers;
         private readonly IConfiguration _config;
         private readonly ILogger<ClientsController> _logger;
         private readonly IAgentTimeZoneResolver _agentTimeZoneResolver;
-        private readonly IAzureClientEmailSyncService _azureClientEmailSync;
+        private readonly IClientEntraLifecycleService _entraLifecycle;
+        private readonly IHouseholdMembershipService _households;
         private readonly IClientSubscriptionIdentitySyncService _subscriptionIdentitySync;
         private readonly ProductionService _production;
         private readonly EffectiveAgentContext _agentContext;
@@ -54,6 +56,7 @@ namespace AgentPortal.Controllers;
         private readonly IBillingOrchestrator _billingOrchestrator;
         private readonly ClientBillingWorkspaceService _clientBillingWorkspaceService;
         private readonly ClientSubscriptionInvitationEmailService _subscriptionInvitationEmailService;
+        private readonly HouseholdPartnerInvitationEmailService _householdPartnerInvitationEmailService;
         private const string AdvancedMarketsToolId = "AdvancedMarketsInputs";
         private static readonly JsonSerializerOptions AdvancedMarketsStateJsonOptions = new(JsonSerializerDefaults.Web)
         {
@@ -66,7 +69,8 @@ namespace AgentPortal.Controllers;
             IConfiguration config,
             ILogger<ClientsController> logger,
             IAgentTimeZoneResolver agentTimeZoneResolver,
-            IAzureClientEmailSyncService azureClientEmailSync,
+            IClientEntraLifecycleService entraLifecycle,
+            IHouseholdMembershipService households,
             IClientSubscriptionIdentitySyncService subscriptionIdentitySync,
             ProductionService production,
             EffectiveAgentContext agentContext,
@@ -74,14 +78,16 @@ namespace AgentPortal.Controllers;
             ICommitmentService commitments,
             IBillingOrchestrator billingOrchestrator,
             ClientBillingWorkspaceService clientBillingWorkspaceService,
-            ClientSubscriptionInvitationEmailService subscriptionInvitationEmailService)
+            ClientSubscriptionInvitationEmailService subscriptionInvitationEmailService,
+            HouseholdPartnerInvitationEmailService householdPartnerInvitationEmailService)
         {
             _db = db;
             _provisioning = provisioning;
             _config = config;
             _logger = logger;
             _agentTimeZoneResolver = agentTimeZoneResolver;
-            _azureClientEmailSync = azureClientEmailSync;
+            _entraLifecycle = entraLifecycle;
+            _households = households;
             _subscriptionIdentitySync = subscriptionIdentitySync;
             _production = production;
             _agentContext = agentContext;
@@ -90,6 +96,7 @@ namespace AgentPortal.Controllers;
             _billingOrchestrator = billingOrchestrator;
             _clientBillingWorkspaceService = clientBillingWorkspaceService;
             _subscriptionInvitationEmailService = subscriptionInvitationEmailService;
+            _householdPartnerInvitationEmailService = householdPartnerInvitationEmailService;
         }
 
         private static string NormLower(string? v) => (v ?? "").Trim().ToLowerInvariant();
@@ -980,19 +987,18 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(emailNorm))
             return new PortalEmailSyncResult("Portal-enabled clients must have a real email address.", false);
 
-        var result = await _azureClientEmailSync.UpdateEmailAsync(profile.ClientUserId, emailNorm, cancellationToken);
-        if (!result.Success)
+        try
         {
-            _logger.LogError(
-                "Azure client email sync failed. ClientUserId={ClientUserId} Email={Email} Message={Message}",
-                profile.ClientUserId,
-                emailNorm,
-                result.Message);
-
+            await _entraLifecycle.SynchronizeClientIdentityAsync(profile.Id, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Client Entra email synchronization failed. ClientProfileId={ClientProfileId} Email={Email}",
+                profile.Id,
+                emailNorm);
             return new PortalEmailSyncResult(
-                string.IsNullOrWhiteSpace(result.Message)
-                    ? "We couldn't update the client's Microsoft sign-in email."
-                    : result.Message,
+                "We couldn't update the client's Microsoft sign-in email.",
                 false);
         }
 
@@ -1298,49 +1304,6 @@ namespace AgentPortal.Controllers;
         profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
     }
 
-    private async Task ApplySignificantOtherFromCreateFormAsync(
-        string clientUserId,
-        CreateClientViewModel model,
-        bool needsSignificantOther)
-    {
-        var existing = await _db.HouseholdMembers
-            .Where(x => x.ClientUserId == clientUserId &&
-                        (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
-            .OrderByDescending(x => x.UpdatedUtc)
-            .ToListAsync();
-
-        if (!needsSignificantOther)
-        {
-            if (existing.Count > 0)
-                _db.HouseholdMembers.RemoveRange(existing);
-            return;
-        }
-
-        var significantOther = existing.FirstOrDefault();
-        if (significantOther is null)
-        {
-            significantOther = new HouseholdMember
-            {
-                ClientUserId = clientUserId,
-                RelationshipType = "SignificantOther",
-                CreatedUtc = DateTime.UtcNow
-            };
-            _db.HouseholdMembers.Add(significantOther);
-        }
-        else if (existing.Count > 1)
-        {
-            _db.HouseholdMembers.RemoveRange(existing.Skip(1));
-        }
-
-        significantOther.RelationshipType = "SignificantOther";
-        significantOther.FirstName = (model.SignificantOtherFirstName ?? string.Empty).Trim();
-        significantOther.LastName = (model.SignificantOtherLastName ?? string.Empty).Trim();
-        significantOther.DOB = model.SignificantOtherDOB;
-        significantOther.Email = (model.SignificantOtherEmail ?? string.Empty).Trim();
-        significantOther.Phone = (model.SignificantOtherPhone ?? string.Empty).Trim();
-        significantOther.UpdatedUtc = DateTime.UtcNow;
-    }
-
     private async Task<PortalAccessEnableResult> EnablePortalAccessInternalAsync(
         ClientProfile profile,
         string recordType,
@@ -1389,7 +1352,6 @@ namespace AgentPortal.Controllers;
             meta.PipelineStage = DefaultPipelineStageForRecordType(recordType);
             meta.StageEnteredUtc = DateTime.UtcNow;
             var agentLinks = await _db.AgentClients.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
-            var householdMembers = await _db.HouseholdMembers.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
 
             var recreatedLinks = agentLinks.Select(link => new AgentClient
             {
@@ -1399,24 +1361,8 @@ namespace AgentPortal.Controllers;
                 CreatedUtc = link.CreatedUtc
             }).ToList();
 
-            var recreatedHousehold = householdMembers.Select(member => new HouseholdMember
-            {
-                ClientUserId = newClientObjectId,
-                RelationshipType = member.RelationshipType,
-                FirstName = member.FirstName,
-                LastName = member.LastName,
-                DOB = member.DOB,
-                Email = member.Email,
-                Phone = member.Phone,
-                CreatedUtc = member.CreatedUtc,
-                UpdatedUtc = DateTime.UtcNow
-            }).ToList();
-
             if (agentLinks.Count > 0)
                 _db.AgentClients.RemoveRange(agentLinks);
-
-            if (householdMembers.Count > 0)
-                _db.HouseholdMembers.RemoveRange(householdMembers);
 
             await _db.SaveChangesAsync();
 
@@ -1431,6 +1377,7 @@ namespace AgentPortal.Controllers;
                 SET ClientUserId = {newClientObjectId},
                     CrmNotes = {serializedMeta},
                     CrmStatus = {"Active"},
+                    ExternalIdentityObjectId = {newClientObjectId},
                     UpdatedUtc = {updatedUtc}
                 WHERE Id = {profileId}");
 
@@ -1439,9 +1386,6 @@ namespace AgentPortal.Controllers;
 
             if (recreatedLinks.Count > 0)
                 _db.AgentClients.AddRange(recreatedLinks);
-
-            if (recreatedHousehold.Count > 0)
-                _db.HouseholdMembers.AddRange(recreatedHousehold);
 
             await _db.SaveChangesAsync();
 
@@ -2108,6 +2052,18 @@ namespace AgentPortal.Controllers;
         var profile = await GetOwnedClientProfileAsync(agentOid, clientProfileId);
         return profile != null && ClientAccountManagementModes.AllowsAgentWorkspaceAccess(profile.AccountManagementMode)
             ? profile
+            : null;
+    }
+
+    private async Task<(Guid HouseholdAccountId, Guid OwnerProfileId)?> ResolveSharedFinancialScopeAsync(
+        ClientProfile profile,
+        CancellationToken cancellationToken = default)
+    {
+        var access = await _households.ResolveActiveAccessAsync(profile.Id, cancellationToken);
+        return access.HasActiveMembership &&
+               access.HouseholdAccountId.HasValue &&
+               access.SubscriptionOwnerClientProfileId.HasValue
+            ? (access.HouseholdAccountId.Value, access.SubscriptionOwnerClientProfileId.Value)
             : null;
     }
 
@@ -3380,9 +3336,6 @@ namespace AgentPortal.Controllers;
                     beforeCommitAsync: async convertedProfile =>
                     {
                         createdClientProfile = convertedProfile;
-                        await ApplySignificantOtherFromCreateFormAsync(convertedProfile.ClientUserId, model, needsSO);
-                        await _db.SaveChangesAsync();
-
                         createdSubscriptionOffer = await _billingOrchestrator.CreateClientSubscriptionOfferAsync(
                             new CreateClientSubscriptionOfferCommand(
                                 convertedProfile.Id,
@@ -3490,6 +3443,7 @@ namespace AgentPortal.Controllers;
             createdClientProfile = new ClientProfile
             {
                 ClientUserId = clientObjectId,
+                ExternalIdentityObjectId = isPortalClient ? clientObjectId : null,
                 FirstName = firstName,
                 LastName = lastName,
                 Email = emailNorm ?? "",
@@ -3497,6 +3451,11 @@ namespace AgentPortal.Controllers;
                 Phone = phone,
                 DOB = model.DOB,
                 MaritalStatus = maritalStatus,
+                SignificantOtherFirstName = (model.SignificantOtherFirstName ?? string.Empty).Trim(),
+                SignificantOtherLastName = (model.SignificantOtherLastName ?? string.Empty).Trim(),
+                SignificantOtherDOB = model.SignificantOtherDOB,
+                SignificantOtherEmail = (model.SignificantOtherEmail ?? string.Empty).Trim(),
+                SignificantOtherPhone = (model.SignificantOtherPhone ?? string.Empty).Trim(),
 
                 // ✅ CRM (DB-backed)
                 CrmStatus = crmStatus,
@@ -3535,22 +3494,6 @@ namespace AgentPortal.Controllers;
                 CreatedUtc = DateTime.UtcNow
             });
 
-            if (needsSO)
-            {
-                _db.HouseholdMembers.Add(new HouseholdMember
-                {
-                    ClientUserId = clientObjectId,
-                    RelationshipType = "SignificantOther",
-                    FirstName = (model.SignificantOtherFirstName ?? "").Trim(),
-                    LastName = (model.SignificantOtherLastName ?? "").Trim(),
-                    DOB = model.SignificantOtherDOB,
-                    Email = (model.SignificantOtherEmail ?? "").Trim(),
-                    Phone = (model.SignificantOtherPhone ?? "").Trim(),
-                    CreatedUtc = DateTime.UtcNow,
-                    UpdatedUtc = DateTime.UtcNow
-                });
-            }
-
             await _db.SaveChangesAsync();
 
             if (isPortalClient)
@@ -3584,6 +3527,53 @@ namespace AgentPortal.Controllers;
             // 3) Email should not rollback DB
             // ==========================================================
             var creationWarnings = new List<string>();
+            if (isPortalClient && createdClientProfile is not null)
+            {
+                var partnerFirstName = (model.SignificantOtherFirstName ?? string.Empty).Trim();
+                var partnerLastName = (model.SignificantOtherLastName ?? string.Empty).Trim();
+                var partnerEmail = NormalizeEmail(model.SignificantOtherEmail);
+                var hasAnyPartnerDetail = !string.IsNullOrWhiteSpace(partnerFirstName) ||
+                                          !string.IsNullOrWhiteSpace(partnerLastName) ||
+                                          !string.IsNullOrWhiteSpace(partnerEmail);
+
+                if (hasAnyPartnerDetail)
+                {
+                    if (string.IsNullOrWhiteSpace(partnerFirstName) ||
+                        string.IsNullOrWhiteSpace(partnerLastName) ||
+                        string.IsNullOrWhiteSpace(partnerEmail))
+                    {
+                        creationWarnings.Add(
+                            "Partner access was not staged because a first name, last name, and email are required.");
+                    }
+                    else
+                    {
+                        try
+                        {
+                            // This records a non-authorizing household invite.
+                            // It does not provision Entra or expose a partner
+                            // link until the paid primary activation succeeds.
+                            await _households.StagePartnerInvitationAsync(
+                                new IssuePartnerInvitationCommand(
+                                    createdClientProfile.Id,
+                                    partnerFirstName,
+                                    partnerLastName,
+                                    partnerEmail,
+                                    agentOid),
+                                HttpContext.RequestAborted);
+                        }
+                        catch (Exception partnerStageEx)
+                        {
+                            _logger.LogError(
+                                partnerStageEx,
+                                "Partner invitation staging failed for primary ClientProfileId={ClientProfileId}",
+                                createdClientProfile.Id);
+                            creationWarnings.Add(
+                                "Client account was created, but partner access could not be staged.");
+                        }
+                    }
+                }
+            }
+
             if (conversionSourceWorkstationLead is not null)
             {
                 try
@@ -3920,6 +3910,14 @@ namespace AgentPortal.Controllers;
     {
         public string ClientUserId { get; set; } = "";
         public string? NewEmail { get; set; }  // optional: update email before resending
+    }
+
+    public sealed class IssuePartnerInvitationRequest
+    {
+        public Guid PrimaryClientProfileId { get; set; }
+        public string PartnerFirstName { get; set; } = "";
+        public string PartnerLastName { get; set; } = "";
+        public string PartnerEmail { get; set; } = "";
     }
 
     public sealed class SaveAdvancedMarketsInputsRequest
@@ -4468,13 +4466,24 @@ namespace AgentPortal.Controllers;
             ));
         }
 
-        var profileIds = businessProfiles.Select(x => x.Id).ToList();
-        var savedStateIds = profileIds.Count == 0
+        var householdByProfileId = new Dictionary<Guid, Guid>();
+        foreach (var businessProfile in businessProfiles)
+        {
+            var profile = ownedProfiles.First(x => x.Id == businessProfile.Id);
+            var scope = await ResolveSharedFinancialScopeAsync(profile, HttpContext.RequestAborted);
+            if (scope.HasValue)
+                householdByProfileId[businessProfile.Id] = scope.Value.HouseholdAccountId;
+        }
+
+        var householdIds = householdByProfileId.Values.Distinct().ToList();
+        var savedStateHouseholdIds = householdIds.Count == 0
             ? new HashSet<Guid>()
             : (await _db.FinanceToolStates
                 .AsNoTracking()
-                .Where(x => x.ToolId == AdvancedMarketsToolId && profileIds.Contains(x.ClientProfileId))
-                .Select(x => x.ClientProfileId)
+                .Where(x => x.ToolId == AdvancedMarketsToolId &&
+                            x.HouseholdAccountId.HasValue &&
+                            householdIds.Contains(x.HouseholdAccountId.Value))
+                .Select(x => x.HouseholdAccountId!.Value)
                 .ToListAsync())
                 .ToHashSet();
 
@@ -4489,7 +4498,8 @@ namespace AgentPortal.Controllers;
                 displayName = x.DisplayName,
                 email = x.Email,
                 phone = x.Phone,
-                hasSavedInputs = savedStateIds.Contains(x.Id)
+                hasSavedInputs = householdByProfileId.TryGetValue(x.Id, out var householdId) &&
+                                 savedStateHouseholdIds.Contains(householdId)
             });
 
         return Json(results);
@@ -4522,13 +4532,25 @@ namespace AgentPortal.Controllers;
                 }
             ).ToListAsync();
 
-            var profileIds = ownedProfiles.Select(x => x.Id).ToList();
-            var savedPlanIds = profileIds.Count == 0
+            var householdByProfileId = new Dictionary<Guid, Guid>();
+            foreach (var ownedProfile in ownedProfiles)
+            {
+                var profile = await _db.ClientProfiles
+                    .FirstAsync(x => x.Id == ownedProfile.Id, HttpContext.RequestAborted);
+                var scope = await ResolveSharedFinancialScopeAsync(profile, HttpContext.RequestAborted);
+                if (scope.HasValue)
+                    householdByProfileId[ownedProfile.Id] = scope.Value.HouseholdAccountId;
+            }
+
+            var householdIds = householdByProfileId.Values.Distinct().ToList();
+            var savedPlanHouseholdIds = householdIds.Count == 0
                 ? new HashSet<Guid>()
                 : (await _db.ClientFinancialPlans
                     .AsNoTracking()
-                    .Where(x => profileIds.Contains(x.ClientId) && !x.IsDeleted)
-                    .Select(x => x.ClientId)
+                    .Where(x => x.HouseholdAccountId.HasValue &&
+                                householdIds.Contains(x.HouseholdAccountId.Value) &&
+                                !x.IsDeleted)
+                    .Select(x => x.HouseholdAccountId!.Value)
                     .ToListAsync()).ToHashSet();
 
             // Build display + haystack after materialization (null-safe)
@@ -4561,7 +4583,8 @@ namespace AgentPortal.Controllers;
                     displayName = x.displayName,
                     email = x.email,
                     phone = x.phone,
-                    hasSavedPlan = savedPlanIds.Contains(x.Id)
+                    hasSavedPlan = householdByProfileId.TryGetValue(x.Id, out var householdId) &&
+                                   savedPlanHouseholdIds.Contains(householdId)
                 })
                 .ToList();
 
@@ -4986,6 +5009,56 @@ namespace AgentPortal.Controllers;
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public async Task<IActionResult> IssuePartnerInvitation([FromBody] IssuePartnerInvitationRequest request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        if (request.PrimaryClientProfileId == Guid.Empty)
+            return BadRequest("A primary client profile is required.");
+
+        var profile = await GetOwnedSharedClientProfileAsync(agentOid, request.PrimaryClientProfileId);
+        if (profile is null)
+            return Forbid();
+
+        try
+        {
+            var issued = await _households.IssuePartnerInvitationAsync(
+                new IssuePartnerInvitationCommand(
+                    profile.Id,
+                    request.PartnerFirstName,
+                    request.PartnerLastName,
+                    request.PartnerEmail,
+                    agentOid),
+                HttpContext.RequestAborted);
+
+            await _householdPartnerInvitationEmailService.SendAsync(
+                issued.Invitation,
+                issued.PlainTextToken,
+                HttpContext.RequestAborted);
+            await _households.MarkPartnerInvitationSentAsync(
+                issued.Invitation.Id,
+                HttpContext.RequestAborted);
+
+            var acceptanceUrl =
+                $"{GetClientPortalBaseUrl().TrimEnd('/')}/household/partner/accept?token={Uri.EscapeDataString(issued.PlainTextToken)}";
+            return Json(new
+            {
+                ok = true,
+                partnerEmail = issued.Invitation.IntendedNormalizedEmail,
+                expiresUtc = issued.Invitation.ExpiresUtc,
+                acceptanceUrl
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> RevokeClientAccess([FromBody] RevokeClientAccessRequest request)
     {
         string agentOid;
@@ -5043,11 +5116,14 @@ namespace AgentPortal.Controllers;
 
         if (profile == null) return Forbid();
 
+        var financialScope = await ResolveSharedFinancialScopeAsync(profile, HttpContext.RequestAborted);
+        if (!financialScope.HasValue) return BadRequest("This client does not have an active household financial scope.");
+
         var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
         var recordType = ResolveRecordType(profile.ClientUserId, meta);
         var row = await _db.FinanceToolStates
             .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.ClientProfileId == profile.Id && x.ToolId == AdvancedMarketsToolId);
+            .FirstOrDefaultAsync(x => x.HouseholdAccountId == financialScope.Value.HouseholdAccountId && x.ToolId == AdvancedMarketsToolId);
 
         // Allow load if explicitly a business client OR if a state row already exists (grandfathered data)
         if (!IsBusinessClientRecordType(recordType) && row == null)
@@ -5096,8 +5172,11 @@ namespace AgentPortal.Controllers;
 
             if (profile == null) return Forbid();
 
+            var financialScope = await ResolveSharedFinancialScopeAsync(profile, HttpContext.RequestAborted);
+            if (!financialScope.HasValue) return BadRequest("This client does not have an active household financial scope.");
+
             var row = await _db.ClientFinancialPlans.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.ClientId == profile.Id && !x.IsDeleted);
+                .FirstOrDefaultAsync(x => x.HouseholdAccountId == financialScope.Value.HouseholdAccountId && !x.IsDeleted);
 
             var json = row?.JsonData;
             if (string.IsNullOrWhiteSpace(json)) json = "{}";
@@ -5187,10 +5266,13 @@ namespace AgentPortal.Controllers;
 
         if (profile == null) return Forbid();
 
+        var financialScope = await ResolveSharedFinancialScopeAsync(profile, HttpContext.RequestAborted);
+        if (!financialScope.HasValue) return BadRequest("This client does not have an active household financial scope.");
+
         var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
         var recordType = ResolveRecordType(profile.ClientUserId, meta);
         var existingRow = await _db.FinanceToolStates
-            .FirstOrDefaultAsync(x => x.ClientProfileId == profile.Id && x.ToolId == AdvancedMarketsToolId);
+            .FirstOrDefaultAsync(x => x.HouseholdAccountId == financialScope.Value.HouseholdAccountId && x.ToolId == AdvancedMarketsToolId);
 
         // Allow save if explicitly a business client OR if a state row already exists (grandfathered data)
         if (!IsBusinessClientRecordType(recordType) && existingRow == null)
@@ -5203,7 +5285,7 @@ namespace AgentPortal.Controllers;
         var normalizedInputs = NormalizeAdvancedMarketsInputs(request.Inputs ?? new AdvancedMarketsPageViewModel(), BuildDefaultAdvancedMarketsInputs(profile, meta));
         var row = existingRow
             ?? await _db.FinanceToolStates
-                .FirstOrDefaultAsync(x => x.ClientProfileId == profile.Id && x.ToolId == AdvancedMarketsToolId);
+                .FirstOrDefaultAsync(x => x.HouseholdAccountId == financialScope.Value.HouseholdAccountId && x.ToolId == AdvancedMarketsToolId);
 
         var nowUtc = DateTime.UtcNow;
         var jsonState = JsonSerializer.Serialize(normalizedInputs, AdvancedMarketsStateJsonOptions);
@@ -5212,7 +5294,8 @@ namespace AgentPortal.Controllers;
         {
             row = new FinanceToolState
             {
-                ClientProfileId = profile.Id,
+                HouseholdAccountId = financialScope.Value.HouseholdAccountId,
+                ClientProfileId = financialScope.Value.OwnerProfileId,
                 ToolId = AdvancedMarketsToolId,
                 JsonState = jsonState,
                 CreatedUtc = nowUtc,
@@ -5235,7 +5318,7 @@ namespace AgentPortal.Controllers;
         // verify by reloading from DB
         var verifyRow = await _db.FinanceToolStates
             .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.ClientProfileId == profile.Id && x.ToolId == AdvancedMarketsToolId);
+            .FirstOrDefaultAsync(x => x.HouseholdAccountId == financialScope.Value.HouseholdAccountId && x.ToolId == AdvancedMarketsToolId);
         var verifyFingerprint = verifyRow?.JsonState != null ? FingerprintPayload(verifyRow.JsonState) : "(none)";
 
         if (verifyRow == null || verifyRow.JsonState?.Length == 0 || verifyFingerprint != fingerprint)
@@ -5287,10 +5370,14 @@ namespace AgentPortal.Controllers;
 
             if (profile == null) return Forbid();
 
+            var financialScope = await ResolveSharedFinancialScopeAsync(profile, HttpContext.RequestAborted);
+            if (!financialScope.HasValue) return BadRequest("This client does not have an active household financial scope.");
+
             var nowUtc = DateTime.UtcNow;
             var incomingJson = string.IsNullOrWhiteSpace(request.JsonData) ? "{}" : request.JsonData;
             // Include deleted rows so we can revive instead of violating unique index
-            var row = await _db.ClientFinancialPlans.FirstOrDefaultAsync(x => x.ClientId == profile.Id);
+            var row = await _db.ClientFinancialPlans.FirstOrDefaultAsync(
+                x => x.HouseholdAccountId == financialScope.Value.HouseholdAccountId);
             // Validate canonical distribution planner payload if present
             try
             {
@@ -5318,7 +5405,8 @@ namespace AgentPortal.Controllers;
             {
                 row = new ClientFinancialPlan
                 {
-                    ClientId = profile.Id,
+                    HouseholdAccountId = financialScope.Value.HouseholdAccountId,
+                    ClientId = financialScope.Value.OwnerProfileId,
                     JsonData = sanitized,
                     LastUpdatedUtc = nowUtc,
                     UpdatedBy = GetAgentUpnForAudit(),
@@ -5343,7 +5431,7 @@ namespace AgentPortal.Controllers;
             await _db.SaveChangesAsync();
 
             var verify = await _db.ClientFinancialPlans.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.ClientId == profile.Id && !x.IsDeleted);
+                .FirstOrDefaultAsync(x => x.HouseholdAccountId == financialScope.Value.HouseholdAccountId && !x.IsDeleted);
             if (verify == null || string.IsNullOrWhiteSpace(verify.JsonData))
             {
                 _logger.LogError("FinancialPlan SAVE verification failed clientUserId={ClientUserId} profileId={ProfileId}", profile.ClientUserId, profile.Id);
@@ -6040,20 +6128,24 @@ namespace AgentPortal.Controllers;
             var profile = await _db.ClientProfiles
                 .FirstOrDefaultAsync(x => x.ClientUserId == clientUserIdNorm);
 
-            // Delete Entra only for real portal users. Lead-only records use synthetic ids.
-            var hadPortalAccess = HasPortalAccess(clientUserIdNorm);
-            if (hadPortalAccess)
-                await _provisioning.DeleteTenantUserAsync(clientUserIdNorm);
+            // Delete a client identity only through the central lifecycle and
+            // only after the final MASTERAPP membership record is removed.
+            var hadPortalAccess = profile != null && !string.IsNullOrWhiteSpace(profile.ExternalIdentityObjectId);
+            if (profile != null)
+            {
+                await _households.RemoveMemberAsync(
+                    profile.Id,
+                    "CLIENT_PROFILE_DELETED",
+                    agentOid,
+                    HttpContext.RequestAborted);
+
+                if (hadPortalAccess)
+                    await _entraLifecycle.DeleteClientIdentityAsync(profile.Id, HttpContext.RequestAborted);
+            }
 
             // DB cleanup
             if (allLinks.Count > 0)
                 _db.AgentClients.RemoveRange(allLinks);
-
-            var household = await _db.HouseholdMembers
-                .Where(x => x.ClientUserId == clientUserIdNorm)
-                .ToListAsync();
-            if (household.Count > 0)
-                _db.HouseholdMembers.RemoveRange(household);
 
             if (profile != null)
             {

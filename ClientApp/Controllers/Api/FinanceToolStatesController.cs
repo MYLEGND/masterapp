@@ -141,17 +141,20 @@ public class FinanceToolStatesController : ControllerBase
         if (IsBusinessOnlyTool(normalizedToolId) && !IsBusinessClient(context.Profile.CrmNotes))
             return Forbid();
 
+        if (!context.HouseholdAccountId.HasValue || !context.FinancialScopeOwnerClientProfileId.HasValue)
+            return Forbid();
+
         var row = await _db.FinanceToolStates
             .AsNoTracking()
             .FirstOrDefaultAsync(x =>
-                x.ClientProfileId == context.ClientProfileId &&
+                x.HouseholdAccountId == context.HouseholdAccountId.Value &&
                 x.ToolId == normalizedToolId);
 
         var jsonState = row?.JsonState ?? "{}";
         if (row != null)
-            jsonState = NormalizeFinanceJsonState(normalizedToolId, row.JsonState, context.ClientProfileId);
+            jsonState = NormalizeFinanceJsonState(normalizedToolId, row.JsonState, context.FinancialScopeOwnerClientProfileId.Value);
         else if (string.Equals(normalizedToolId, LegendLivingBalanceSheetToolId, StringComparison.OrdinalIgnoreCase))
-            jsonState = LegendLivingBalanceSheetCalculator.NormalizeJson("{}", context.ClientProfileId);
+            jsonState = LegendLivingBalanceSheetCalculator.NormalizeJson("{}", context.FinancialScopeOwnerClientProfileId.Value);
 
         return Ok(new
         {
@@ -191,18 +194,25 @@ public class FinanceToolStatesController : ControllerBase
         if (context.IsAgentView && string.Equals(normalizedToolId, ProtectionSnapshotToolId, StringComparison.OrdinalIgnoreCase))
             return Forbid();
 
-        var normalizedJsonState = NormalizeFinanceJsonState(normalizedToolId, request.JsonState, context.ClientProfileId);
+        if (!context.HouseholdAccountId.HasValue || !context.FinancialScopeOwnerClientProfileId.HasValue)
+            return Forbid();
+
+        var normalizedJsonState = NormalizeFinanceJsonState(
+            normalizedToolId,
+            request.JsonState,
+            context.FinancialScopeOwnerClientProfileId.Value);
 
         var row = await _db.FinanceToolStates
             .FirstOrDefaultAsync(x =>
-                x.ClientProfileId == context.ClientProfileId &&
+                x.HouseholdAccountId == context.HouseholdAccountId.Value &&
                 x.ToolId == normalizedToolId);
 
         if (row == null)
         {
             row = new FinanceToolState
             {
-                ClientProfileId = context.ClientProfileId,
+                HouseholdAccountId = context.HouseholdAccountId.Value,
+                ClientProfileId = context.FinancialScopeOwnerClientProfileId.Value,
                 ToolId = normalizedToolId,
                 JsonState = normalizedJsonState,
                 CreatedUtc = DateTime.UtcNow,
@@ -248,9 +258,12 @@ public class FinanceToolStatesController : ControllerBase
         if (context.IsAgentView && string.Equals(normalizedToolId, ProtectionSnapshotToolId, StringComparison.OrdinalIgnoreCase))
             return Forbid();
 
+        if (!context.HouseholdAccountId.HasValue)
+            return Forbid();
+
         var row = await _db.FinanceToolStates
             .FirstOrDefaultAsync(x =>
-                x.ClientProfileId == context.ClientProfileId &&
+                x.HouseholdAccountId == context.HouseholdAccountId.Value &&
                 x.ToolId == normalizedToolId);
 
         if (row != null)

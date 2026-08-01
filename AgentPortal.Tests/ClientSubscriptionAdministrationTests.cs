@@ -327,7 +327,7 @@ public sealed class ClientSubscriptionAdministrationTests
 
     private static BillingEntitlementService BuildEntitlementService(MasterAppDbContext db)
     {
-        return new BillingEntitlementService(db);
+        return new BillingEntitlementService(db, ControllerTestHelpers.BuildHouseholdMembershipService(db));
     }
 
     private static async Task<ClientProfile> AddOwnedProfileAsync(

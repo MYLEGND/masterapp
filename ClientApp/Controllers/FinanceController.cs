@@ -102,9 +102,12 @@ namespace ClientApp.Controllers
             if (context == null || context.IsAgentView)
                 return Forbid();
 
+            if (!context.FinancialScopeOwnerClientProfileId.HasValue)
+                return Forbid();
+
             var snapshot = await _financialIntelligence.GetSnapshotAsync(
                 new FinancialIntelligenceActor(
-                    context.ClientProfileId,
+                    context.FinancialScopeOwnerClientProfileId.Value,
                     context.ClientUserId,
                     FinancialIntelligenceActorTypes.Client),
                 cancellationToken);
@@ -122,9 +125,12 @@ namespace ClientApp.Controllers
             if (context == null || context.IsAgentView)
                 return Forbid();
 
+            if (!context.FinancialScopeOwnerClientProfileId.HasValue)
+                return Forbid();
+
             var result = await _financialIntelligence.EvaluateAsync(
                 new FinancialIntelligenceActor(
-                    context.ClientProfileId,
+                    context.FinancialScopeOwnerClientProfileId.Value,
                     context.ClientUserId,
                     FinancialIntelligenceActorTypes.Client),
                 cancellationToken);
@@ -144,9 +150,12 @@ namespace ClientApp.Controllers
             if (context == null || context.IsAgentView)
                 return Forbid();
 
+            if (!context.FinancialScopeOwnerClientProfileId.HasValue)
+                return Forbid();
+
             var result = await _financialIntelligence.RecordFeedbackAsync(
                 new FinancialIntelligenceActor(
-                    context.ClientProfileId,
+                    context.FinancialScopeOwnerClientProfileId.Value,
                     context.ClientUserId,
                     FinancialIntelligenceActorTypes.Client),
                 new FinancialIntelligenceFeedbackCommand(findingId, feedbackType, reasonCode),

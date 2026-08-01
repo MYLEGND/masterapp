@@ -526,6 +526,10 @@ command_check() {
 
 command_sync() {
     local migration_name="${1:-}"
+    local sources_before="$WORK_DIR/migration-sources-before.txt"
+    local sources_after="$WORK_DIR/migration-sources-after.txt"
+    local generated_sources="$WORK_DIR/generated-migration-sources.txt"
+
     build_backend
     test_backend
     ensure_ef_tool
@@ -539,6 +543,8 @@ command_sync() {
 
     require_valid_migration_name "$migration_name"
     ensure_no_uncommitted_migrations
+
+    migration_source_paths >"$sources_before"
 
     printf '\n[MIGRATION] Generating %s\n' "$migration_name"
     if ! run_ef migrations add "$migration_name" \
@@ -560,18 +566,27 @@ command_sync() {
         exit 20
     fi
 
+    migration_source_paths >"$sources_after"
+    comm -13 "$sources_before" "$sources_after" >"$generated_sources"
+
     local generated=()
-    local path file
+    local path designer
     while IFS= read -r path; do
-        file="${path##*/}"
-        [[ "$file" == *.Designer.cs || "$file" == MasterAppDbContextModelSnapshot.cs ]] && continue
-        if path_changed "$path"; then
-            generated+=("$path")
-        fi
-    done <"$CHANGED_PATHS_FILE"
+        [[ -n "$path" ]] && generated+=("$path")
+    done <"$generated_sources"
 
     if (( ${#generated[@]} != 1 )); then
-        artifact_failure "Expected exactly one newly generated migration source, found ${#generated[@]}."
+        artifact_failure "Expected exactly one migration source created by this sync invocation, found ${#generated[@]}."
+    fi
+
+    designer="${generated[0]%.cs}.Designer.cs"
+    if [[ ! -f "$designer" ]]; then
+        artifact_failure "The generated migration is missing its matching designer: $(basename "$designer")."
+    fi
+
+    refresh_changed_paths
+    if ! path_changed "$SNAPSHOT_FILE"; then
+        artifact_failure "The generated migration did not update $(basename "$SNAPSHOT_FILE")."
     fi
 
     if ! scan_for_manual_review "${generated[@]}"; then

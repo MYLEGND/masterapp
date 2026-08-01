@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using AgentPortal.Models;
 using AgentPortal.Services;
+using Infrastructure.Households;
 using System.Text.Json.Nodes;
 using Shared.Finance;
 
@@ -26,11 +27,21 @@ namespace AgentPortal.Controllers.API
 
         private readonly MasterAppDbContext _db;
         private readonly EffectiveAgentContext _agentContext;
+        private readonly IHouseholdMembershipService? _households;
 
         public FinanceToolStatesController(MasterAppDbContext db, EffectiveAgentContext agentContext)
+            : this(db, agentContext, households: null)
+        {
+        }
+
+        public FinanceToolStatesController(
+            MasterAppDbContext db,
+            EffectiveAgentContext agentContext,
+            IHouseholdMembershipService? households)
         {
             _db = db;
             _agentContext = agentContext;
+            _households = households;
         }
 
         private static string Norm(string? v) => (v ?? "").Trim().ToLowerInvariant();
@@ -115,6 +126,21 @@ namespace AgentPortal.Controllers.API
 
         private static bool IsAgentWorkspaceRequest(Guid clientProfileId, string? clientUserId)
             => clientProfileId == Guid.Empty && string.IsNullOrWhiteSpace(clientUserId);
+
+        private async Task<(Guid HouseholdAccountId, Guid OwnerProfileId)?> ResolveFinancialScopeAsync(
+            Guid clientProfileId,
+            CancellationToken cancellationToken)
+        {
+            if (_households is null)
+                return null;
+
+            var access = await _households.ResolveActiveAccessAsync(clientProfileId, cancellationToken);
+            return access.HasActiveMembership &&
+                   access.HouseholdAccountId.HasValue &&
+                   access.SubscriptionOwnerClientProfileId.HasValue
+                ? (access.HouseholdAccountId.Value, access.SubscriptionOwnerClientProfileId.Value)
+                : null;
+        }
 
         private string GetAgentStateOwnerKey()
         {
@@ -225,18 +251,24 @@ namespace AgentPortal.Controllers.API
             if (resolvedClientProfileId == null)
                 return Forbid();
 
+            var financialScope = await ResolveFinancialScopeAsync(
+                resolvedClientProfileId.Value,
+                HttpContext.RequestAborted);
+            if (!financialScope.HasValue)
+                return Forbid();
+
             if (IsBusinessOnlyTool(normalizedToolId) && !await IsBusinessClientProfileAsync(resolvedClientProfileId.Value))
                 return Forbid();
 
             var row = await _db.FinanceToolStates
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x =>
-                    x.ClientProfileId == resolvedClientProfileId.Value &&
+                    x.HouseholdAccountId == financialScope.Value.HouseholdAccountId &&
                     x.ToolId == normalizedToolId);
 
             var jsonState = row?.JsonState ?? "{}";
             if (string.Equals(normalizedToolId, LegendLivingBalanceSheetToolId, StringComparison.OrdinalIgnoreCase))
-                jsonState = LegendLivingBalanceSheetCalculator.NormalizeJson(jsonState, resolvedClientProfileId.Value);
+                jsonState = LegendLivingBalanceSheetCalculator.NormalizeJson(jsonState, financialScope.Value.OwnerProfileId);
 
             return Ok(new
             {
@@ -315,21 +347,28 @@ namespace AgentPortal.Controllers.API
             if (resolvedClientProfileId == null)
                 return Forbid();
 
+            var financialScope = await ResolveFinancialScopeAsync(
+                resolvedClientProfileId.Value,
+                HttpContext.RequestAborted);
+            if (!financialScope.HasValue)
+                return Forbid();
+
             if (IsBusinessOnlyTool(normalizedToolId) && !await IsBusinessClientProfileAsync(resolvedClientProfileId.Value))
                 return Forbid();
 
             var row = await _db.FinanceToolStates
                 .FirstOrDefaultAsync(x =>
-                    x.ClientProfileId == resolvedClientProfileId.Value &&
+                    x.HouseholdAccountId == financialScope.Value.HouseholdAccountId &&
                     x.ToolId == normalizedToolId);
 
             if (row == null)
             {
                 row = new FinanceToolState
                 {
-                    ClientProfileId = resolvedClientProfileId.Value,
+                    HouseholdAccountId = financialScope.Value.HouseholdAccountId,
+                    ClientProfileId = financialScope.Value.OwnerProfileId,
                     ToolId = normalizedToolId,
-                    JsonState = NormalizeFinanceJsonState(normalizedToolId, req.JsonState, resolvedClientProfileId.Value),
+                    JsonState = NormalizeFinanceJsonState(normalizedToolId, req.JsonState, financialScope.Value.OwnerProfileId),
                     CreatedUtc = DateTime.UtcNow,
                     UpdatedUtc = DateTime.UtcNow
                 };
@@ -338,7 +377,7 @@ namespace AgentPortal.Controllers.API
             }
             else
             {
-                row.JsonState = NormalizeFinanceJsonState(normalizedToolId, req.JsonState, resolvedClientProfileId.Value);
+                row.JsonState = NormalizeFinanceJsonState(normalizedToolId, req.JsonState, financialScope.Value.OwnerProfileId);
                 row.UpdatedUtc = DateTime.UtcNow;
             }
 
@@ -382,12 +421,18 @@ namespace AgentPortal.Controllers.API
             if (resolvedClientProfileId == null)
                 return Forbid();
 
+            var financialScope = await ResolveFinancialScopeAsync(
+                resolvedClientProfileId.Value,
+                HttpContext.RequestAborted);
+            if (!financialScope.HasValue)
+                return Forbid();
+
             if (IsBusinessOnlyTool(normalizedToolId) && !await IsBusinessClientProfileAsync(resolvedClientProfileId.Value))
                 return Forbid();
 
             var row = await _db.FinanceToolStates
                 .FirstOrDefaultAsync(x =>
-                    x.ClientProfileId == resolvedClientProfileId.Value &&
+                    x.HouseholdAccountId == financialScope.Value.HouseholdAccountId &&
                     x.ToolId == normalizedToolId);
 
             if (row != null)

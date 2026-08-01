@@ -1,5 +1,12 @@
 namespace Domain.Entities;
 
+/// <summary>
+/// Legacy imported household-contact detail. This record is retained only for
+/// explicit reconciliation and historic financial-form display; it must not be
+/// used for account membership, entitlement, identity, or invitation decisions.
+/// New household access is represented exclusively by HouseholdAccount,
+/// HouseholdMembership, and HouseholdMemberInvitation.
+/// </summary>
 public class HouseholdMember
 {
     public Guid Id { get; set; } = Guid.NewGuid();

@@ -1,0 +1,54 @@
+@{
+    ViewData["Title"] = "Join your household";
+    var token = ViewData["InvitationToken"] as string ?? string.Empty;
+}
+
+<main class="container py-5" style="max-width: 620px;">
+    <h1>Join your Legend household</h1>
+    <p>Your profile and sign-in remain your own. This invitation provides shared household access without a separate subscription.</p>
+    <form id="household-invitation-form">
+        <div class="mb-3">
+            <label class="form-label" for="firstName">First name</label>
+            <input class="form-control" id="firstName" name="firstName" autocomplete="given-name" required />
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="lastName">Last name</label>
+            <input class="form-control" id="lastName" name="lastName" autocomplete="family-name" required />
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="email">Invited email</label>
+            <input class="form-control" id="email" name="email" type="email" autocomplete="email" required />
+        </div>
+        <button class="btn btn-primary" type="submit">Accept invitation</button>
+        <p id="household-invitation-message" class="mt-3" role="status"></p>
+    </form>
+</main>
+
+@section Scripts {
+<script>
+(() => {
+    const form = document.getElementById('household-invitation-form');
+    const message = document.getElementById('household-invitation-message');
+    const token = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(token));
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        message.textContent = 'Accepting your invitation…';
+        const response = await fetch(`/household/partner/accept?token=${encodeURIComponent(token)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                firstName: form.firstName.value,
+                lastName: form.lastName.value,
+                email: form.email.value
+            })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            message.textContent = payload?.message || payload?.title || 'This invitation could not be accepted.';
+            return;
+        }
+        window.location.assign(payload.signInUrl || '/Account/SignIn');
+    });
+})();
+</script>
+}

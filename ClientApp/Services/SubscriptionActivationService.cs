@@ -4,6 +4,7 @@ using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Billing.Square;
 using Infrastructure.Data;
+using Infrastructure.Households;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClientApp.Services;
@@ -42,6 +43,7 @@ public sealed class SubscriptionActivationService
     private readonly ClientIdentityContinuationService _continuationService;
     private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
     private readonly global::Infrastructure.Identity.IClientEntraLifecycleService _entraLifecycle;
+    private readonly IHouseholdMembershipService _households;
 
     public SubscriptionActivationService(
         MasterAppDbContext db,
@@ -50,7 +52,8 @@ public sealed class SubscriptionActivationService
         SquareBillingOptions squareOptions,
         ClientIdentityContinuationService continuationService,
         ClientAppReturnUrlNormalizer returnUrlNormalizer,
-        global::Infrastructure.Identity.IClientEntraLifecycleService entraLifecycle)
+        global::Infrastructure.Identity.IClientEntraLifecycleService entraLifecycle,
+        IHouseholdMembershipService households)
     {
         _db = db;
         _billingOrchestrator = billingOrchestrator;
@@ -59,6 +62,7 @@ public sealed class SubscriptionActivationService
         _continuationService = continuationService;
         _returnUrlNormalizer = returnUrlNormalizer;
         _entraLifecycle = entraLifecycle;
+        _households = households;
     }
 
     public bool BrowserPaymentReady => _squareOptions.HasBrowserCredentials();
@@ -178,6 +182,9 @@ public sealed class SubscriptionActivationService
         try
         {
             await _entraLifecycle.EnsureClientIdentityAsync(
+                context.Client.Id,
+                cancellationToken);
+            await _households.EnsurePrimaryHouseholdActiveAsync(
                 context.Client.Id,
                 cancellationToken);
         }

@@ -16,6 +16,9 @@ public class MasterAppDbContext : DbContext
     public DbSet<AgentClient> AgentClients => Set<AgentClient>();
     public DbSet<AgentAssistant> AgentAssistants => Set<AgentAssistant>();
     public DbSet<HouseholdMember> HouseholdMembers => Set<HouseholdMember>();
+    public DbSet<HouseholdAccount> HouseholdAccounts => Set<HouseholdAccount>();
+    public DbSet<HouseholdMembership> HouseholdMemberships => Set<HouseholdMembership>();
+    public DbSet<HouseholdMemberInvitation> HouseholdMemberInvitations => Set<HouseholdMemberInvitation>();
     public DbSet<FinanceToolState> FinanceToolStates => Set<FinanceToolState>();
     public DbSet<FinancialDataConnection> FinancialDataConnections => Set<FinancialDataConnection>();
     public DbSet<ImportedFinancialAccount> ImportedFinancialAccounts => Set<ImportedFinancialAccount>();
@@ -797,10 +800,15 @@ public class MasterAppDbContext : DbContext
                 .HasForeignKey(x => x.ClientId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            e.HasOne<HouseholdAccount>()
+                .WithMany()
+                .HasForeignKey(x => x.HouseholdAccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             if (isSqlServer)
-                e.HasIndex(x => x.ClientId).IsUnique().HasFilter("[IsDeleted] = 0");
+                e.HasIndex(x => x.HouseholdAccountId).IsUnique().HasFilter("[HouseholdAccountId] IS NOT NULL AND [IsDeleted] = 0");
             else
-                e.HasIndex(x => new { x.ClientId, x.IsDeleted }).IsUnique();
+                e.HasIndex(x => new { x.HouseholdAccountId, x.IsDeleted }).IsUnique();
         });
 
         // ==========================================================
@@ -1820,8 +1828,13 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.JsonState)
                 .IsRequired();
 
-            e.HasIndex(x => new { x.ClientProfileId, x.ToolId })
+            e.HasIndex(x => new { x.HouseholdAccountId, x.ToolId })
                 .IsUnique();
+
+            e.HasOne<HouseholdAccount>()
+                .WithMany()
+                .HasForeignKey(x => x.HouseholdAccountId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<AgentFinanceToolState>(e =>
@@ -1888,7 +1901,125 @@ public class MasterAppDbContext : DbContext
         });
 
         // ==========================================================
-        // HOUSEHOLD MEMBER
+        // HOUSEHOLD AUTHORITY
+        // ==========================================================
+        modelBuilder.Entity<HouseholdAccount>(e =>
+        {
+            e.ToTable("HouseholdAccounts");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.StatusReasonCode).HasMaxLength(120);
+            e.HasIndex(x => x.SubscriptionOwnerClientProfileId).IsUnique();
+
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.SubscriptionOwnerClientProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<HouseholdMembership>(e =>
+        {
+            e.ToTable("HouseholdMemberships");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Role).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.NormalizedEmail).HasMaxLength(320).IsRequired();
+            e.Property(x => x.ExternalIdentityObjectId).HasMaxLength(450);
+            e.Property(x => x.StatusReasonCode).HasMaxLength(120);
+            e.Property(x => x.CreatedByUserId).HasMaxLength(450);
+            e.Property(x => x.UpdatedByUserId).HasMaxLength(450);
+
+            if (isSqlServer)
+            {
+                e.HasIndex(x => new { x.HouseholdAccountId, x.NormalizedEmail })
+                    .IsUnique()
+                    .HasFilter("[Status] <> 'Removed'");
+            }
+            else
+            {
+                e.HasIndex(x => new { x.HouseholdAccountId, x.NormalizedEmail, x.Status })
+                    .IsUnique();
+            }
+            e.HasIndex(x => new { x.HouseholdAccountId, x.Role }).IsUnique();
+
+            if (isSqlServer)
+            {
+                e.HasIndex(x => x.ClientProfileId).IsUnique().HasFilter("[ClientProfileId] IS NOT NULL");
+                e.HasIndex(x => x.ExternalIdentityObjectId)
+                    .IsUnique()
+                    .HasFilter("[ExternalIdentityObjectId] IS NOT NULL AND [Status] <> 'Removed'");
+            }
+            else
+            {
+                e.HasIndex(x => x.ClientProfileId).IsUnique();
+                e.HasIndex(x => new { x.ExternalIdentityObjectId, x.Status }).IsUnique();
+            }
+
+            e.HasOne<HouseholdAccount>()
+                .WithMany()
+                .HasForeignKey(x => x.HouseholdAccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<HouseholdMemberInvitation>(e =>
+        {
+            e.ToTable("HouseholdMemberInvitations");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.TokenHash).HasMaxLength(128).IsRequired();
+            e.Property(x => x.IntendedNormalizedEmail).HasMaxLength(320).IsRequired();
+            e.Property(x => x.InvitedFirstName).HasMaxLength(100).IsRequired();
+            e.Property(x => x.InvitedLastName).HasMaxLength(100).IsRequired();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.DeclineReasonCode).HasMaxLength(120);
+            e.Property(x => x.CreatedByUserId).HasMaxLength(450).IsRequired();
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => new { x.HouseholdAccountId, x.IntendedNormalizedEmail, x.Status });
+
+            e.HasOne<HouseholdAccount>()
+                .WithMany()
+                .HasForeignKey(x => x.HouseholdAccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne<HouseholdMembership>()
+                .WithMany()
+                .HasForeignKey(x => x.HouseholdMembershipId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        // ==========================================================
+        // LEGACY HOUSEHOLD CONTACT DETAIL (non-authoritative)
         // ==========================================================
         modelBuilder.Entity<HouseholdMember>(e =>
         {

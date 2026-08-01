@@ -12,6 +12,7 @@ using Domain.Entities;
 using Infrastructure.Billing.Square;
 using Infrastructure.Data;
 using Infrastructure.Identity;
+using Infrastructure.Households;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -715,7 +716,17 @@ public class ClientAppSubscriptionActivationTests
             },
             BuildContinuationService(db),
             new ClientAppReturnUrlNormalizer(),
-            Mock.Of<IClientEntraLifecycleService>());
+            Mock.Of<IClientEntraLifecycleService>(),
+            BuildHouseholdMembershipService());
+    }
+
+    private static IHouseholdMembershipService BuildHouseholdMembershipService()
+    {
+        var households = new Mock<IHouseholdMembershipService>();
+        households
+            .Setup(x => x.EnsurePrimaryHouseholdActiveAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HouseholdAccount());
+        return households.Object;
     }
 
     private static ClaimsPrincipal BuildPrincipal(string oid, string email)

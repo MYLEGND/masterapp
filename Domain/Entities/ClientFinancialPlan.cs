@@ -10,6 +10,13 @@ public class ClientFinancialPlan
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    /// <summary>
+    /// The authoritative household scope for the shared plan. ClientId is
+    /// retained as the historical primary-owner reference for migration and
+    /// audit compatibility.
+    /// </summary>
+    public Guid? HouseholdAccountId { get; set; }
+
     public Guid ClientId { get; set; }
 
     public string JsonData { get; set; } = "{}";

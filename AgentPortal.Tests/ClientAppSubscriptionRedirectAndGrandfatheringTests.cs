@@ -357,7 +357,7 @@ public sealed class ClientAppSubscriptionRedirectTests
 
     private static async Task<BillingEntitlementEvaluationResult> EvaluateAsync(MasterAppDbContext db, Guid profileId)
     {
-        var service = new BillingEntitlementService(db);
+        var service = new BillingEntitlementService(db, ControllerTestHelpers.BuildHouseholdMembershipService(db));
 
         return await service.EvaluateAsync(new BillingEntitlementEvaluationRequest(
             profileId,

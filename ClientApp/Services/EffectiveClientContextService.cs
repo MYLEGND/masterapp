@@ -1,6 +1,7 @@
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
+using Infrastructure.Households;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Shared.Auth;
@@ -16,6 +17,12 @@ public sealed class EffectiveClientContext
     public required ClientProfile Profile { get; init; }
     public required bool IsAgentView { get; init; }
 
+    /// <summary>Shared financial scope; null only before household activation.</summary>
+    public Guid? HouseholdAccountId { get; init; }
+
+    /// <summary>The paid household owner's profile used only for legacy financial audit fields.</summary>
+    public Guid? FinancialScopeOwnerClientProfileId { get; init; }
+
     public string? AgentDisplayName { get; init; }
     public string? AgentNpn { get; init; }
     public string? AgentEmail { get; init; }
@@ -25,11 +32,30 @@ public sealed class EffectiveClientContext
 public sealed class EffectiveClientContextService
 {
     private readonly MasterAppDbContext _db;
+    private readonly IHouseholdMembershipService? _households;
     private readonly ILogger<EffectiveClientContextService>? _logger;
 
     public EffectiveClientContextService(MasterAppDbContext db, ILogger<EffectiveClientContextService>? logger = null)
+        : this(db, households: null, logger: logger, initialize: true)
+    {
+    }
+
+    public EffectiveClientContextService(
+        MasterAppDbContext db,
+        IHouseholdMembershipService households,
+        ILogger<EffectiveClientContextService>? logger = null)
+        : this(db, households, logger, initialize: true)
+    {
+    }
+
+    private EffectiveClientContextService(
+        MasterAppDbContext db,
+        IHouseholdMembershipService? households,
+        ILogger<EffectiveClientContextService>? logger,
+        bool initialize)
     {
         _db = db;
+        _households = households;
         _logger = logger;
     }
 
@@ -101,6 +127,32 @@ public sealed class EffectiveClientContextService
             AgentNpn = agentNpn,
             AgentEmail = agentEmail,
             AgentPhone = agentPhone
+        };
+    }
+
+    private async Task<EffectiveClientContext> AttachHouseholdScopeAsync(
+        EffectiveClientContext context,
+        CancellationToken cancellationToken = default)
+    {
+        if (_households is null)
+            return context;
+
+        var access = await _households.ResolveActiveAccessAsync(
+            context.ClientProfileId,
+            cancellationToken);
+
+        return new EffectiveClientContext
+        {
+            ClientProfileId = context.ClientProfileId,
+            ClientUserId = context.ClientUserId,
+            Profile = context.Profile,
+            IsAgentView = context.IsAgentView,
+            HouseholdAccountId = access.HasActiveMembership ? access.HouseholdAccountId : null,
+            FinancialScopeOwnerClientProfileId = access.HasActiveMembership ? access.SubscriptionOwnerClientProfileId : null,
+            AgentDisplayName = context.AgentDisplayName,
+            AgentNpn = context.AgentNpn,
+            AgentEmail = context.AgentEmail,
+            AgentPhone = context.AgentPhone
         };
     }
 
@@ -281,13 +333,13 @@ public sealed class EffectiveClientContextService
         var agentEmail = agentProfile?.AgentUpn ?? agentLink?.AgentUpn;
         var agentPhone = string.IsNullOrWhiteSpace(agentProfile?.Phone) ? null : agentProfile!.Phone;
 
-        return ToContext(
+        return await AttachHouseholdScopeAsync(ToContext(
             profile,
             isAgentView: true,
             agentDisplayName: agentDisplayName,
             agentNpn: agentNpn,
             agentEmail: agentEmail,
-            agentPhone: agentPhone);
+            agentPhone: agentPhone));
     }
 
     private async Task<EffectiveClientContext?> ResolveClientAsync(
@@ -325,7 +377,7 @@ public sealed class EffectiveClientContextService
                     candidates.Contains(Norm(pinnedProfile.ExternalIdentityObjectId));
 
                 if (matchesPinnedProfile)
-                    return ToContext(pinnedProfile, isAgentView: false);
+                    return await AttachHouseholdScopeAsync(ToContext(pinnedProfile, isAgentView: false));
             }
         }
 
@@ -463,12 +515,12 @@ public sealed class EffectiveClientContextService
         var agentEmail = agentProfile?.AgentUpn ?? agentLink?.AgentUpn;
         var agentPhone = string.IsNullOrWhiteSpace(agentProfile?.Phone) ? null : agentProfile!.Phone;
 
-        return ToContext(
+        return await AttachHouseholdScopeAsync(ToContext(
             profile,
             isAgentView: false,
             agentDisplayName: agentDisplayName,
             agentNpn: agentNpn,
             agentEmail: agentEmail,
-            agentPhone: agentPhone);
+            agentPhone: agentPhone));
     }
 }

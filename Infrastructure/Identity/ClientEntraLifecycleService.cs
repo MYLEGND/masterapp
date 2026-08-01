@@ -16,6 +16,11 @@ public sealed record ClientEntraIdentityResult(
     bool Created,
     bool ApplicationAssignmentCreated);
 
+public sealed record ClientEntraIdentitySynchronizationResult(
+    string ObjectId,
+    string LoginEmail,
+    bool RedemptionReset);
+
 public interface IClientEntraLifecycleService
 {
     Task<ClientEntraIdentityResult> EnsureClientIdentityAsync(
@@ -28,7 +33,20 @@ public interface IClientEntraLifecycleService
         string email,
         CancellationToken cancellationToken = default);
 
+    Task<ClientEntraIdentitySynchronizationResult> SynchronizeClientIdentityAsync(
+        Guid clientProfileId,
+        CancellationToken cancellationToken = default);
+
     Task DeleteClientIdentityAsync(
+        Guid clientProfileId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes the ClientApp assignment and invalidates active sessions while
+    /// preserving the Entra identity. Household member removal uses this;
+    /// full profile deletion uses <see cref="DeleteClientIdentityAsync"/>.
+    /// </summary>
+    Task RevokeClientApplicationAccessAsync(
         Guid clientProfileId,
         CancellationToken cancellationToken = default);
 
@@ -252,6 +270,101 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
             assignmentCreated);
     }
 
+    public async Task<ClientEntraIdentitySynchronizationResult> SynchronizeClientIdentityAsync(
+        Guid clientProfileId,
+        CancellationToken cancellationToken = default)
+    {
+        if (clientProfileId == Guid.Empty)
+            throw new ArgumentException("Client profile id is required.", nameof(clientProfileId));
+
+        var profile = await _db.ClientProfiles
+            .SingleOrDefaultAsync(x => x.Id == clientProfileId, cancellationToken)
+            ?? throw new InvalidOperationException($"Client profile {clientProfileId} was not found.");
+
+        var email = NormalizeEmail(profile.NormalizedEmail ?? profile.Email);
+        if (string.IsNullOrWhiteSpace(email))
+            throw new InvalidOperationException("A client email is required for Entra synchronization.");
+
+        var objectId = NormalizeToken(profile.ExternalIdentityObjectId);
+        if (string.IsNullOrWhiteSpace(objectId) && Guid.TryParse(profile.ClientUserId, out _))
+            objectId = NormalizeToken(profile.ClientUserId);
+
+        if (string.IsNullOrWhiteSpace(objectId))
+        {
+            var ensured = await EnsureClientIdentityAsync(clientProfileId, cancellationToken);
+            return new ClientEntraIdentitySynchronizationResult(
+                ensured.ObjectId,
+                ensured.LoginEmail,
+                RedemptionReset: false);
+        }
+
+        User? user;
+        try
+        {
+            user = await _graph.Users[objectId].GetAsync(
+                request =>
+                {
+                    request.QueryParameters.Select = new[]
+                    {
+                        "id", "mail", "otherMails", "userPrincipalName", "userType"
+                    };
+                },
+                cancellationToken: cancellationToken);
+        }
+        catch (ODataError error) when (IsNotFound(error))
+        {
+            var ensured = await EnsureClientIdentityAsync(clientProfileId, cancellationToken);
+            return new ClientEntraIdentitySynchronizationResult(
+                ensured.ObjectId,
+                ensured.LoginEmail,
+                RedemptionReset: false);
+        }
+
+        if (user?.Id is null)
+            throw new InvalidOperationException("Microsoft Graph did not return the client identity.");
+
+        var currentMail = NormalizeEmail(user.Mail);
+        await SynchronizeUserAsync(
+            objectId,
+            profile.FirstName,
+            profile.LastName,
+            email,
+            cancellationToken);
+
+        var redemptionReset = IsGuestUser(user) &&
+                             !string.Equals(currentMail, email, StringComparison.Ordinal);
+        if (redemptionReset)
+        {
+            await _graph.Invitations.PostAsync(
+                new Invitation
+                {
+                    InvitedUserEmailAddress = email,
+                    InviteRedirectUrl = _inviteRedirectUrl,
+                    SendInvitationMessage = false,
+                    ResetRedemption = true,
+                    InvitedUser = new User { Id = objectId }
+                },
+                cancellationToken: cancellationToken);
+        }
+
+        await EnsureApplicationAssignmentAsync(objectId, cancellationToken);
+
+        if (!string.Equals(profile.ExternalIdentityObjectId, objectId, StringComparison.OrdinalIgnoreCase))
+        {
+            profile.ExternalIdentityObjectId = objectId;
+            profile.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "Client Entra identity synchronized. ObjectId={ObjectId} Email={Email} RedemptionReset={RedemptionReset}",
+            objectId,
+            email,
+            redemptionReset);
+
+        return new ClientEntraIdentitySynchronizationResult(objectId, email, redemptionReset);
+    }
+
     public async Task DeleteClientIdentityAsync(
         Guid clientProfileId,
         CancellationToken cancellationToken = default)
@@ -266,12 +379,43 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
 
         await DeleteExternalIdentityAsync(
             profile.ExternalIdentityObjectId,
-            profile.NormalizedEmail ?? profile.Email,
+            email: null,
             cancellationToken);
 
         profile.ExternalIdentityObjectId = null;
         profile.UpdatedUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task RevokeClientApplicationAccessAsync(
+        Guid clientProfileId,
+        CancellationToken cancellationToken = default)
+    {
+        if (clientProfileId == Guid.Empty)
+            throw new ArgumentException("Client profile id is required.", nameof(clientProfileId));
+
+        var objectId = await _db.ClientProfiles
+            .AsNoTracking()
+            .Where(x => x.Id == clientProfileId)
+            .Select(x => x.ExternalIdentityObjectId)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        objectId = NormalizeToken(objectId);
+        if (string.IsNullOrWhiteSpace(objectId))
+            return;
+
+        try
+        {
+            await RevokeApplicationAccessAndSessionsAsync(objectId, cancellationToken);
+        }
+        catch (ODataError error) when (IsNotFound(error))
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "Client Entra application access revoked. ObjectId={ObjectId}",
+            objectId);
     }
 
     public async Task DeleteExternalIdentityAsync(
@@ -295,6 +439,9 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
 
         try
         {
+            await RevokeApplicationAccessAndSessionsAsync(
+                normalizedObjectId,
+                cancellationToken);
             await _graph.Users[normalizedObjectId]
                 .DeleteAsync(cancellationToken: cancellationToken);
         }
@@ -339,6 +486,40 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
         return response?.Value?.FirstOrDefault();
     }
 
+    private async Task RevokeApplicationAccessAndSessionsAsync(
+        string userObjectId,
+        CancellationToken cancellationToken)
+    {
+        var servicePrincipalId = await FindClientServicePrincipalIdAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(servicePrincipalId))
+        {
+            var assignments = await _graph.Users[userObjectId]
+                .AppRoleAssignments
+                .GetAsync(
+                    request =>
+                    {
+                        request.QueryParameters.Filter =
+                            $"resourceId eq {servicePrincipalId}";
+                        request.QueryParameters.Select = new[] { "id" };
+                    },
+                    cancellationToken);
+
+            foreach (var assignment in assignments?.Value ?? Enumerable.Empty<AppRoleAssignment>())
+            {
+                if (!string.IsNullOrWhiteSpace(assignment.Id))
+                {
+                    await _graph.Users[userObjectId]
+                        .AppRoleAssignments[assignment.Id]
+                        .DeleteAsync(cancellationToken: cancellationToken);
+                }
+            }
+        }
+
+        await _graph.Users[userObjectId]
+            .RevokeSignInSessions
+            .PostAsRevokeSignInSessionsPostResponseAsync(cancellationToken: cancellationToken);
+    }
+
     private async Task SynchronizeUserAsync(
         string objectId,
         string? firstName,
@@ -367,23 +548,7 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
         string userObjectId,
         CancellationToken cancellationToken)
     {
-        var escapedApplicationId =
-            _clientApplicationId.Replace("'", "''");
-
-        var servicePrincipals =
-            await _graph.ServicePrincipals.GetAsync(
-                request =>
-                {
-                    request.QueryParameters.Filter =
-                        $"appId eq '{escapedApplicationId}'";
-                    request.QueryParameters.Select =
-                        new[] { "id", "appId", "displayName" };
-                    request.QueryParameters.Top = 1;
-                },
-                cancellationToken);
-
-        var resourceId =
-            servicePrincipals?.Value?.FirstOrDefault()?.Id;
+        var resourceId = await FindClientServicePrincipalIdAsync(cancellationToken);
 
         if (string.IsNullOrWhiteSpace(resourceId))
         {
@@ -427,6 +592,30 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
                 cancellationToken: cancellationToken);
 
         return true;
+    }
+
+    private async Task<string?> FindClientServicePrincipalIdAsync(CancellationToken cancellationToken)
+    {
+        var escapedApplicationId = _clientApplicationId.Replace("'", "''");
+        var servicePrincipals = await _graph.ServicePrincipals.GetAsync(
+            request =>
+            {
+                request.QueryParameters.Filter = $"appId eq '{escapedApplicationId}'";
+                request.QueryParameters.Select = new[] { "id", "appId", "displayName" };
+                request.QueryParameters.Top = 1;
+            },
+            cancellationToken);
+
+        return servicePrincipals?.Value?.FirstOrDefault()?.Id;
+    }
+
+    private static bool IsGuestUser(User user)
+    {
+        if (string.Equals(user.UserType, "Guest", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return (user.UserPrincipalName ?? string.Empty)
+            .Contains("#EXT#", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsNotFound(ODataError error)
