@@ -430,9 +430,11 @@ public sealed class MessagingServiceTests
 
         var languages = await service.ListCommunicationLanguagesAsync(requester);
         Assert.True(languages.Succeeded);
-        var priorityLanguage = languages.Languages.First();
-        Assert.Equal("ht", priorityLanguage.Code);
-        Assert.Equal("Haitian Creole", priorityLanguage.DisplayName);
+        Assert.Equal(
+            new[] { "en", "ht", "es", "fr", "pt", "de", "ja", "ko", "zh-Hans", "ar" },
+            languages.Languages.Select(language => language.Code));
+        Assert.Equal("English", languages.Languages[0].DisplayName);
+        Assert.Equal("Haitian Creole", languages.Languages[1].DisplayName);
     }
 
     [Fact]

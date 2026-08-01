@@ -30,8 +30,10 @@ public static class CommunicationLanguages
 {
     public static readonly IReadOnlyList<CommunicationLanguage> Supported =
     [
-        new("ht", "Haitian Creole"),
         new("en", "English"),
+        // English remains the default experience. Haitian Creole is placed
+        // directly beside it as a priority language, never as a replacement.
+        new("ht", "Haitian Creole"),
         new("es", "Spanish"),
         new("fr", "French"),
         new("pt", "Portuguese"),

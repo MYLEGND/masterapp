@@ -7,6 +7,8 @@ import UIKit
 /// projections. It never derives a role, feed audience, finance state, or
 /// profile identity in the client.
 struct LegendSocialHomeSection<DashboardContent: View>: View {
+    @EnvironmentObject private var scrollChrome: LegendScrollChrome
+
     let session: MobileSession
     let home: MobileHomeResponse
     @ObservedObject var social: MobileSocialStore
@@ -22,7 +24,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     @State private var commentTarget: MobileSocialPost?
     @State private var postInsight: MobileSocialPostInsight?
     @State private var storyCollection: MobileSocialStoryCollection?
-    @State private var selectedForYouPost: MobileSocialPost?
+    @State private var selectedPost: MobileSocialPost?
     @State private var publicProfile: LegendPublicProfileRoute?
 
     init(
@@ -59,7 +61,6 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
-            topBar
             storyContent
             dashboardContent
             socialFeed
@@ -100,15 +101,24 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 currentIdentity: session.actor.identity,
                 social: social)
         }
-        .fullScreenCover(item: $selectedForYouPost) { post in
-            NavigationStack {
-                LegendForYouView(
+        .navigationDestination(
+            isPresented: Binding(
+                get: { selectedPost != nil },
+                set: { if !$0 { selectedPost = nil } }
+            )
+        ) {
+            if let selectedPost {
+                LegendPostDetailView(
+                    post: selectedPost,
                     currentIdentity: session.actor.identity,
-                    social: social,
-                    initialPostID: post.id,
-                    presentsDismissControl: true
-                )
+                    social: social)
             }
+        }
+        .onAppear {
+            handleHomeChromeAction(scrollChrome.pendingHomeAction)
+        }
+        .onChange(of: scrollChrome.pendingHomeAction) { _, request in
+            handleHomeChromeAction(request)
         }
         .alert(
             social.actionFailure?.title ?? "Legend update unavailable",
@@ -126,22 +136,17 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         return snapshot.activity
     }
 
-    /// Presentation-only unread state.
-    ///
-    /// The social feed remains server-authoritative for which activity exists.
-    /// This marker only records which already-authorized activity this actor
-    /// has viewed on this device.
-    private var activityCount: Int {
-        guard case .loaded(let snapshot) = social.state else { return 0 }
+    private func handleHomeChromeAction(
+        _ request: LegendHomeChromeActionRequest?
+    ) {
+        guard let request else { return }
+        defer { scrollChrome.completeHomeAction(request) }
 
-        guard let activitySeenThroughUTC else {
-            return snapshot.activityCount
-        }
-
-        return snapshot.activity.reduce(into: 0) { count, item in
-            if item.occurredUTC > activitySeenThroughUTC {
-                count += 1
-            }
+        switch request.kind {
+        case .create:
+            creationRoute = .menu
+        case .activity:
+            openActivity()
         }
     }
 
@@ -161,51 +166,6 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         Binding(
             get: { social.actionFailure != nil },
             set: { if !$0 { social.dismissActionFailure() } })
-    }
-
-    private var topBar: some View {
-        HStack(spacing: LegendNextSpacing.sm) {
-            Button {
-                creationRoute = .menu
-            } label: {
-                Image(systemName: "plus")
-            }
-            .buttonStyle(LegendNextIconButtonStyle(tone: .navy))
-            .accessibilityLabel("Create a Legend update")
-
-            Spacer(minLength: LegendNextSpacing.sm)
-
-            Text("LEGEND")
-                .font(
-                    .system(
-                        size: 23,
-                        weight: .bold,
-                        design: .default
-                    )
-                )
-                .tracking(4.6)
-                .foregroundStyle(LegendNextColor.navy)
-                .accessibilityAddTraits(.isHeader)
-
-            Spacer(minLength: LegendNextSpacing.sm)
-
-            Button(action: openActivity) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: "heart")
-                    if activityCount > 0 {
-                        Text("\(min(activityCount, 99))")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(5)
-                            .background(LegendNextColor.danger, in: Circle())
-                            .offset(x: 4, y: -4)
-                    }
-                }
-            }
-            .buttonStyle(LegendNextIconButtonStyle(tone: .navy))
-            .accessibilityLabel("Open activity, \(activityCount) recent interactions")
-        }
-        .padding(.top, LegendNextSpacing.xs)
     }
 
     @ViewBuilder
@@ -313,7 +273,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                         },
                         presentation: .preview,
                         open: {
-                            selectedForYouPost = post
+                            selectedPost = post
                         },
                         openProfile: {
                             publicProfile = LegendPublicProfileRoute(
@@ -800,10 +760,11 @@ private struct LegendStoryMedia: View {
 
 private enum LegendSocialPostPresentation {
     case preview
+    case detail
     case immersive
 
     var includesSaveAction: Bool {
-        self == .immersive
+        self != .preview
     }
 
     var opensForYou: Bool {
@@ -823,6 +784,152 @@ enum LegendSocialPostMetadata {
         let kind = MobileSocialContentType.displayName(for: contentType)
         guard viewerParticipantType == .agent else { return kind }
         return "\(kind) · \(authorParticipantType.rawValue)"
+    }
+}
+
+/// The only destination for a selected published update. It renders the exact
+/// post that was tapped and deliberately never delegates ordinary posts to the
+/// vertical HACS feed, which is reserved for video discovery.
+struct LegendPostDetailView: View {
+    let post: MobileSocialPost
+    let currentIdentity: LogicalParticipantIdentity
+    @ObservedObject var social: MobileSocialStore
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var commentTarget: MobileSocialPost?
+    @State private var postInsight: MobileSocialPostInsight?
+    @State private var publicProfile: LegendPublicProfileRoute?
+    @State private var editingPost: MobileSocialPost?
+    @State private var deletionTarget: MobileSocialPost?
+
+    var body: some View {
+        LegendScrollView {
+            LegendSocialPostCard(
+                post: post,
+                currentIdentity: currentIdentity,
+                social: social,
+                react: {
+                    social.toggleReaction(postID: post.id)
+                },
+                comment: {
+                    commentTarget = post
+                },
+                follow: {
+                    social.toggleFollow(author: post.author, sourcePostID: post.id)
+                },
+                insights: {
+                    Task {
+                        postInsight = await social.postInsights(postID: post.id)
+                    }
+                },
+                presentation: .detail,
+                open: {},
+                openProfile: {
+                    publicProfile = LegendPublicProfileRoute(
+                        profile: post.author,
+                        isFollowing: post.followedByCurrentActor,
+                        isFollowRequestPending: post.followRequestPending ?? false)
+                }
+            )
+            .padding(.horizontal, LegendNextSpacing.sm)
+            .padding(.vertical, LegendNextSpacing.md)
+        }
+        .background(LegendNextCanvas())
+        .navigationTitle(post.displayContentType)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if post.author.identity == currentIdentity {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            editingPost = post
+                        } label: {
+                            Label("Edit \(post.displayContentType)", systemImage: "pencil")
+                        }
+
+                        Button(role: .destructive) {
+                            deletionTarget = post
+                        } label: {
+                            Label("Delete \(post.displayContentType)", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.body.weight(.semibold))
+                    }
+                    .accessibilityLabel("\(post.displayContentType) options")
+                }
+            }
+        }
+        .sheet(item: $commentTarget) { target in
+            LegendCommentComposer(
+                postID: target.id,
+                social: social,
+                cancel: { commentTarget = nil }
+            )
+        }
+        .sheet(item: $postInsight) { insight in
+            LegendPostInsightsSheet(insight: insight)
+        }
+        .sheet(item: $publicProfile) { route in
+            NavigationStack {
+                LegendPublicProfileView(
+                    profile: route.profile,
+                    currentIdentity: currentIdentity,
+                    social: social,
+                    isFollowing: route.isFollowing,
+                    isFollowRequestPending: route.isFollowRequestPending)
+            }
+        }
+        .sheet(item: $editingPost) { editablePost in
+            LegendSocialPostEditor(
+                post: editablePost,
+                social: social,
+                onSaved: { editingPost = nil }
+            )
+        }
+        .confirmationDialog(
+            "Delete this \(deletionTargetDisplayName)?",
+            isPresented: Binding(
+                get: { deletionTarget != nil },
+                set: { if !$0 { deletionTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let deletionTarget {
+                Button("Delete \(deletionTarget.displayContentType)", role: .destructive) {
+                    Task {
+                        guard await social.deletePost(postID: deletionTarget.id) else { return }
+                        self.deletionTarget = nil
+                        dismiss()
+                    }
+                }
+            }
+
+            Button("Cancel", role: .cancel) {
+                deletionTarget = nil
+            }
+        } message: {
+            Text("This removes the \(deletionTargetDisplayName) from your Legend profile and feed.")
+        }
+        .alert(
+            social.actionFailure?.title ?? "Legend update unavailable",
+            isPresented: Binding(
+                get: { social.actionFailure != nil },
+                set: { if !$0 { social.dismissActionFailure() } }
+            ),
+            actions: {
+                Button("OK", role: .cancel) {
+                    social.dismissActionFailure()
+                }
+            },
+            message: {
+                Text(social.actionFailure?.message ?? "The request could not be completed.")
+            }
+        )
+    }
+
+    private var deletionTargetDisplayName: String {
+        deletionTarget?.displayContentType ?? post.displayContentType
     }
 }
 

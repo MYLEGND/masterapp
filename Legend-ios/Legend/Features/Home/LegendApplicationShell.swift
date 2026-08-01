@@ -85,6 +85,12 @@ struct LegendApplicationShell: View {
     var body: some View {
         selectedTabContent
             .legendNextPageBackground()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                LegendAppBrandBar(
+                    showsHomeActions: selectedTab == .home,
+                    activityCount: homeActivityCount,
+                    usesDarkSurface: selectedTab == .discover)
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if !isMessageThreadActive {
                     LegendNextTabBar(
@@ -236,6 +242,30 @@ struct LegendApplicationShell: View {
         }
     }
 
+    private var homeActivityCount: Int {
+        guard case .loaded(let snapshot) = social.state else {
+            return 0
+        }
+
+        let activitySeenKey =
+            "legend.social.activity.seen." +
+            currentSession.actor.identity.participantType.rawValue +
+            "." +
+            currentSession.actor.identity.userID
+
+        guard let seenThroughUTC = UserDefaults.standard.object(
+            forKey: activitySeenKey
+        ) as? Date else {
+            return snapshot.activityCount
+        }
+
+        return snapshot.activity.reduce(into: 0) { count, activity in
+            if activity.occurredUTC > seenThroughUTC {
+                count += 1
+            }
+        }
+    }
+
     private func select(_ tab: LegendAppTab) {
         guard selectedTab != tab else {
             return
@@ -244,6 +274,105 @@ struct LegendApplicationShell: View {
         withAnimation(LegendNextMotion.tab) {
             selectedTab = tab
         }
+    }
+}
+
+/// Application-level brand chrome. The wordmark remains stationary on every
+/// primary page. Only Home's creation and activity controls follow the shared
+/// scroll visibility signal, so they never obscure content while reading.
+private struct LegendAppBrandBar: View {
+    @EnvironmentObject private var scrollChrome: LegendScrollChrome
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let showsHomeActions: Bool
+    let activityCount: Int
+    let usesDarkSurface: Bool
+
+    var body: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            homeActionButton(
+                systemImage: "plus",
+                label: "Create a Legend update",
+                action: .create)
+
+            Spacer(minLength: LegendNextSpacing.sm)
+
+            Text("LEGEND")
+                .font(.system(size: 23, weight: .bold, design: .default))
+                .tracking(4.6)
+                .foregroundStyle(wordmarkColor)
+                .accessibilityAddTraits(.isHeader)
+
+            Spacer(minLength: LegendNextSpacing.sm)
+
+            homeActionButton(
+                systemImage: "heart",
+                label: activityAccessibilityLabel,
+                action: .activity,
+                badge: activityCount)
+        }
+        .padding(.horizontal, LegendNextSpacing.sm)
+        .padding(.vertical, LegendNextSpacing.xs)
+        .background(surfaceColor)
+        .animation(
+            reduceMotion ? nil : LegendNextMotion.tab,
+            value: scrollChrome.isBottomNavigationVisible)
+    }
+
+    @ViewBuilder
+    private func homeActionButton(
+        systemImage: String,
+        label: String,
+        action: LegendHomeChromeActionRequest.Kind,
+        badge: Int = 0
+    ) -> some View {
+        Group {
+            if showsHomeActions {
+                Button {
+                    scrollChrome.requestHomeAction(action)
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: systemImage)
+
+                        if badge > 0 {
+                            Text("\(min(badge, 99))")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(5)
+                                .background(LegendNextColor.danger, in: Circle())
+                                .offset(x: 4, y: -4)
+                        }
+                    }
+                }
+                .buttonStyle(LegendNextIconButtonStyle(tone: .navy))
+                .accessibilityLabel(label)
+                .opacity(scrollChrome.isBottomNavigationVisible ? 1 : 0)
+                .offset(y: scrollChrome.isBottomNavigationVisible ? 0 : -24)
+                .allowsHitTesting(scrollChrome.isBottomNavigationVisible)
+                .accessibilityHidden(!scrollChrome.isBottomNavigationVisible)
+            } else {
+                Color.clear
+                    .frame(
+                        width: LegendNextSize.minimumTapTarget,
+                        height: LegendNextSize.minimumTapTarget)
+                    .accessibilityHidden(true)
+            }
+        }
+        .frame(
+            width: LegendNextSize.minimumTapTarget,
+            height: LegendNextSize.minimumTapTarget)
+    }
+
+    private var wordmarkColor: Color {
+        usesDarkSurface ? .white : LegendNextColor.navy
+    }
+
+    private var surfaceColor: Color {
+        usesDarkSurface ? LegendNextColor.midnight : LegendNextColor.canvas
+    }
+
+    private var activityAccessibilityLabel: String {
+        "Open activity, \(activityCount) recent interactions"
     }
 }
 
@@ -5243,6 +5372,7 @@ private struct LegendAccountView: View {
         GridItem(.flexible(), spacing: LegendNextSpacing.tiny),
         GridItem(.flexible(), spacing: LegendNextSpacing.tiny)
     ]
+    private let profileTileAspectRatio: CGFloat = 0.8
 
     init(
         currentSession: MobileSession,
@@ -5329,14 +5459,17 @@ private struct LegendAccountView: View {
                 route: $creationRoute,
                 social: social)
         }
-        .fullScreenCover(item: $selectedPost) { post in
-            NavigationStack {
-                LegendForYouView(
+        .navigationDestination(
+            isPresented: Binding(
+                get: { selectedPost != nil },
+                set: { if !$0 { selectedPost = nil } }
+            )
+        ) {
+            if let selectedPost {
+                LegendPostDetailView(
+                    post: selectedPost,
                     currentIdentity: currentSession.actor.identity,
-                    social: social,
-                    initialPostID: post.id,
-                    presentsDismissControl: true
-                )
+                    social: social)
             }
         }
         .confirmationDialog(
@@ -5682,10 +5815,10 @@ private struct LegendAccountView: View {
         switch social.profileContentState {
         case .idle, .loading:
             LazyVGrid(columns: profileColumns, spacing: LegendNextSpacing.tiny) {
-                ForEach(0..<9, id: \.self) { _ in
+                ForEach(0..<6, id: \.self) { _ in
                     Rectangle()
                         .fill(LegendNextColor.brandBlueSurface)
-                        .aspectRatio(1, contentMode: .fit)
+                        .aspectRatio(profileTileAspectRatio, contentMode: .fit)
                         .clipShape(RoundedRectangle(
                             cornerRadius: LegendNextRadius.compact,
                             style: .continuous
@@ -5715,7 +5848,7 @@ private struct LegendAccountView: View {
                             selectedPost = post
                         } label: {
                             LegendProfileGridTile(post: post, social: social)
-                                .aspectRatio(1, contentMode: .fit)
+                                .aspectRatio(profileTileAspectRatio, contentMode: .fit)
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint("Open post options")
@@ -6852,7 +6985,10 @@ struct LegendPublicProfileView: View {
                         systemImage: "rectangle.stack")
                 } else {
                     ForEach(posts) { post in
-                        LegendPublicProfilePost(post: post, social: social)
+                        LegendPublicProfilePost(
+                            post: post,
+                            currentIdentity: currentIdentity,
+                            social: social)
                     }
                 }
 
@@ -6935,45 +7071,55 @@ struct LegendPublicProfileView: View {
 /// remote-media handling for profile pages.
 private struct LegendPublicProfilePost: View {
     let post: MobileSocialPost
+    let currentIdentity: LogicalParticipantIdentity
     @ObservedObject var social: MobileSocialStore
 
     var body: some View {
-        LegendNextSurface {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                if let media = post.media.first {
-                    if media.isImage {
-                        LegendSocialMediaImage(
-                            media: media,
-                            social: social,
-                            contentMode: .fit,
-                            placeholderHeight: 220)
-                    } else if media.isVideo {
-                        LegendSocialMediaVideo(
-                            postID: post.id,
-                            media: media,
-                            music: post.music,
-                            social: social)
+        NavigationLink {
+            LegendPostDetailView(
+                post: post,
+                currentIdentity: currentIdentity,
+                social: social)
+        } label: {
+            LegendNextSurface {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                    if let media = post.media.first {
+                        if media.isImage {
+                            LegendSocialMediaImage(
+                                media: media,
+                                social: social,
+                                contentMode: .fit,
+                                placeholderHeight: 220)
+                        } else if media.isVideo {
+                            LegendSocialMediaVideo(
+                                postID: post.id,
+                                media: media,
+                                music: post.music,
+                                social: social)
+                        }
                     }
-                }
 
-                if !post.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(post.body)
-                        .font(LegendNextTypography.body)
-                        .foregroundStyle(LegendNextColor.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                    if !post.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(post.body)
+                            .font(LegendNextTypography.body)
+                            .foregroundStyle(LegendNextColor.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
-                HStack(spacing: LegendNextSpacing.sm) {
-                    Text(post.displayContentType)
-                    Text(post.postedUTC.formatted(date: .abbreviated, time: .omitted))
-                    Spacer(minLength: 0)
-                    Label(post.reactionCount.formatted(), systemImage: "heart")
-                    Label(post.commentCount.formatted(), systemImage: "bubble.right")
+                    HStack(spacing: LegendNextSpacing.sm) {
+                        Text(post.displayContentType)
+                        Text(post.postedUTC.formatted(date: .abbreviated, time: .omitted))
+                        Spacer(minLength: 0)
+                        Label(post.reactionCount.formatted(), systemImage: "heart")
+                        Label(post.commentCount.formatted(), systemImage: "bubble.right")
+                    }
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
                 }
-                .font(LegendNextTypography.caption)
-                .foregroundStyle(LegendNextColor.textSecondary)
             }
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open \(post.displayContentType) by \(post.author.displayName)")
     }
 }
 

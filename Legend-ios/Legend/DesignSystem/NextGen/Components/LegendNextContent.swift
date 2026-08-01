@@ -1,53 +1,64 @@
 import SwiftUI
 
+struct LegendHomeChromeActionRequest: Equatable, Identifiable {
+    enum Kind: Equatable {
+        case create
+        case activity
+    }
+
+    let id = UUID()
+    let kind: Kind
+}
+
 /// One navigation-chrome authority for the native app. A downward movement hides
-/// the bottom action bar; even a small upward movement immediately restores it.
-/// Screens report their content offset through `LegendScrollView` rather than
-/// carrying their own visibility flags.
+/// action chrome; even a small upward movement immediately restores it. Screens
+/// report their vertical drag direction through `LegendScrollView`, so the bottom
+/// navigation and the Home actions cannot get out of sync.
 @MainActor
 final class LegendScrollChrome: ObservableObject {
     @Published private(set) var isBottomNavigationVisible = true
+    @Published private(set) var pendingHomeAction: LegendHomeChromeActionRequest?
 
-    private var lastContentOffset: CGFloat?
     private let downwardThreshold: CGFloat = 1
     private let upwardThreshold: CGFloat = 0.5
 
     func beginTracking() {
-        lastContentOffset = nil
+        // A new scroll surface inherits the current chrome visibility. This
+        // prevents a tab switch from flashing the navigation back on screen.
     }
 
     func reset() {
-        lastContentOffset = nil
         isBottomNavigationVisible = true
     }
 
-    func record(contentOffset: CGFloat) {
-        guard let previous = lastContentOffset else {
-            lastContentOffset = contentOffset
-            return
-        }
-
-        lastContentOffset = contentOffset
-        let movement = contentOffset - previous
-
-        if movement <= -downwardThreshold {
+    func record(verticalDragTranslation: CGFloat) {
+        if verticalDragTranslation <= -downwardThreshold {
             isBottomNavigationVisible = false
-        } else if movement >= upwardThreshold {
+        } else if verticalDragTranslation >= upwardThreshold {
             isBottomNavigationVisible = true
         }
+    }
+
+    func requestHomeAction(_ kind: LegendHomeChromeActionRequest.Kind) {
+        pendingHomeAction = LegendHomeChromeActionRequest(kind: kind)
+    }
+
+    func completeHomeAction(_ request: LegendHomeChromeActionRequest) {
+        guard pendingHomeAction?.id == request.id else { return }
+        pendingHomeAction = nil
     }
 }
 
 /// The shared vertical scrolling surface. It hides the system indicator and
-/// reports only real content movement to the single navigation-chrome authority.
+/// reports the user's actual drag direction to the single navigation-chrome
+/// authority. Gesture direction works consistently for every supported iOS 17
+/// scroll surface, including nested content where geometry offsets can be stale.
 struct LegendScrollView<Content: View>: View {
     private let axes: Axis.Set
     private let tracksNavigationChrome: Bool
     private let content: Content
 
     @EnvironmentObject private var scrollChrome: LegendScrollChrome
-    @State private var coordinateSpaceID = UUID()
-
     init(
         _ axes: Axis.Set = .vertical,
         tracksNavigationChrome: Bool = true,
@@ -60,37 +71,25 @@ struct LegendScrollView<Content: View>: View {
 
     var body: some View {
         ScrollView(axes, showsIndicators: false) {
-            if axes.contains(.vertical) {
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: LegendScrollOffsetPreferenceKey.self,
-                        value: proxy.frame(in: .named(coordinateSpaceID)).minY
-                    )
-                }
-                .frame(height: 0)
-            }
-
             content
         }
-        .coordinateSpace(name: coordinateSpaceID)
         .scrollIndicators(.hidden)
         .onAppear {
             if tracksNavigationChrome && axes.contains(.vertical) {
                 scrollChrome.beginTracking()
             }
         }
-        .onPreferenceChange(LegendScrollOffsetPreferenceKey.self) { offset in
-            guard tracksNavigationChrome, axes.contains(.vertical) else { return }
-            scrollChrome.record(contentOffset: offset)
-        }
-    }
-}
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    guard tracksNavigationChrome, axes.contains(.vertical) else {
+                        return
+                    }
 
-private enum LegendScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = .zero
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+                    scrollChrome.record(
+                        verticalDragTranslation: value.translation.height)
+                }
+        )
     }
 }
 
