@@ -2603,28 +2603,21 @@ private struct LegendAgentLeadsView: View {
                     )
 
                     ForEach(leads) { lead in
-                        LegendNextSurface {
-                            HStack(spacing: LegendNextSpacing.sm) {
+                        LegendContactCard(
+                            displayName: lead.displayName,
+                            subtitle: lead.crmStage,
+                            detail: "Updated \(lead.updatedUTC.formatted(.dateTime.month(.abbreviated).day().hour().minute()))",
+                            avatar: {
                                 Image(systemName: "person.crop.circle")
                                     .font(.title2)
-                                    .foregroundStyle(LegendNextColor.gold)
+                                    .foregroundStyle(LegendNextColor.goldBright)
                                     .frame(width: 46, height: 46)
-                                    .background(
-                                        LegendNextColor.gold.opacity(0.12),
-                                        in: Circle())
-                                VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                                    Text(lead.displayName)
-                                        .font(LegendNextTypography.bodyEmphasis)
-                                        .foregroundStyle(LegendNextColor.textPrimary)
-                                        .lineLimit(1)
-                                    Text("Updated \(lead.updatedUTC, format: .dateTime.month(.abbreviated).day().hour().minute())")
-                                        .font(LegendNextTypography.supporting)
-                                        .foregroundStyle(LegendNextColor.textSecondary)
-                                }
-                                Spacer(minLength: LegendNextSpacing.sm)
-                                LegendNextBadge(lead.crmStage, tone: .neutral)
+                                    .background(.white.opacity(0.10), in: Circle())
+                            },
+                            action: {
+                                EmptyView()
                             }
-                        }
+                        )
                     }
                 }
                 .padding(.horizontal, LegendNextSpacing.sm)
@@ -6143,7 +6136,7 @@ private struct LegendFollowListView: View {
             action: {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(LegendNextColor.textTertiary)
+                    .foregroundStyle(LegendNextColor.contactAction)
             }
         )
     }

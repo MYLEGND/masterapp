@@ -2374,7 +2374,7 @@ private struct LegendActivitySheet: View {
                             action: {
                                 Text(item.occurredUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
                                     .font(.caption2)
-                                    .foregroundStyle(LegendNextColor.textSecondary)
+                                    .foregroundStyle(LegendNextColor.contactSupporting)
                             }
                         )
                     }

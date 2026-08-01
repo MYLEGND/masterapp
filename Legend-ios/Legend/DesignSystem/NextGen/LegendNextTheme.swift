@@ -119,18 +119,25 @@ enum LegendNextColor {
     static let information = Color(uiColor: .systemBlue)
     static let inactive = Color(uiColor: .systemGray)
 
-    // Contact cards are intentionally distinct from generic surfaces. Their
-    // fill follows the surrounding Legend canvas: white on the standard app
-    // pages and a lifted navy on Discover and branded navy sheets.
+    // Contact cards are intentionally distinct from generic surfaces. This is
+    // their one visual contract everywhere in the app; it does not vary with
+    // the device's Light/Dark setting or with the screen that happens to host
+    // the card.
     static let contactNavy = Color(
         red: 20.0 / 255.0,
         green: 46.0 / 255.0,
         blue: 91.0 / 255.0
     )
 
-    static let contactBorder = adaptiveColor(
-        light: UIColor(red: 111 / 255, green: 78 / 255, blue: 20 / 255, alpha: 1),
-        dark: UIColor(red: 196 / 255, green: 155 / 255, blue: 61 / 255, alpha: 1)
+    static let contactBorder = gold.opacity(0.92)
+    static let contactTitle = Color.white
+    static let contactSupporting = Color.white.opacity(0.78)
+    static let contactDetail = Color.white.opacity(0.62)
+    static let contactAction = Color.white.opacity(0.72)
+    static let contactConnected = Color(
+        red: 74 / 255,
+        green: 226 / 255,
+        blue: 139 / 255
     )
 
     static let verified = Color(
@@ -138,10 +145,6 @@ enum LegendNextColor {
         green: 122 / 255,
         blue: 235 / 255
     )
-
-    static func contactFill(for colorScheme: ColorScheme) -> Color {
-        colorScheme == .dark ? contactNavy : .white
-    }
 
     static func premiumBorder(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark

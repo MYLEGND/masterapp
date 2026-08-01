@@ -39,13 +39,14 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
                     LegendVerifiedName(
                         displayName,
                         isVerified: isVerified,
-                        font: LegendNextTypography.bodyEmphasis
+                        font: LegendNextTypography.bodyEmphasis,
+                        textColor: LegendNextColor.contactTitle
                     )
 
                     if let nameStatus = normalized(nameStatus) {
                         Text(nameStatus)
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(LegendNextColor.success)
+                            .foregroundStyle(LegendNextColor.contactConnected)
                             .lineLimit(1)
                     }
                 }
@@ -53,14 +54,14 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
                 if let subtitle = normalized(subtitle) {
                     Text(subtitle)
                         .font(LegendNextTypography.supporting)
-                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .foregroundStyle(LegendNextColor.contactSupporting)
                         .lineLimit(1)
                 }
 
                 if let detail = normalized(detail) {
                     Text(detail)
                         .font(LegendNextTypography.caption)
-                        .foregroundStyle(LegendNextColor.textTertiary)
+                        .foregroundStyle(LegendNextColor.contactDetail)
                         .lineLimit(1)
                 }
             }
@@ -68,12 +69,13 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
             Spacer(minLength: LegendNextSpacing.xs)
 
             action
+                .foregroundStyle(LegendNextColor.contactAction)
         }
         .padding(.horizontal, LegendNextSpacing.sm)
         .padding(.vertical, LegendNextSpacing.xs)
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
         .background(
-            LegendNextColor.contactFill(for: colorScheme),
+            LegendNextColor.contactNavy,
             in: RoundedRectangle(
                 cornerRadius: LegendNextRadius.control,
                 style: .continuous
@@ -86,15 +88,9 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
             )
             .strokeBorder(LegendNextColor.contactBorder.opacity(0.82), lineWidth: 1)
         }
-        .shadow(
-            color: LegendNextColor.ambientShadow(for: colorScheme),
-            radius: 7,
-            y: 3
-        )
+        .shadow(color: LegendNextColor.midnight.opacity(0.24), radius: 7, y: 3)
         .contentShape(Rectangle())
     }
-
-    @Environment(\.colorScheme) private var colorScheme
 
     private func normalized(_ value: String?) -> String? {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),

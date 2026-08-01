@@ -310,7 +310,7 @@ private struct LegendDiscoverResultCard: View {
             action: {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(LegendNextColor.textTertiary)
+                    .foregroundStyle(LegendNextColor.contactAction)
             }
         )
         .onTapGesture(perform: open)

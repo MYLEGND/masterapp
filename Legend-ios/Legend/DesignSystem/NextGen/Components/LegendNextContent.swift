@@ -60,16 +60,17 @@ struct LegendScrollView<Content: View>: View {
 
     var body: some View {
         ScrollView(axes, showsIndicators: false) {
-            content
-                .background {
-                    if axes.contains(.vertical) {
-                        GeometryReader { proxy in
-                            Color.clear.preference(
-                                key: LegendScrollOffsetPreferenceKey.self,
-                                value: proxy.frame(in: .named(coordinateSpaceID)).minY)
-                        }
-                    }
+            if axes.contains(.vertical) {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: LegendScrollOffsetPreferenceKey.self,
+                        value: proxy.frame(in: .named(coordinateSpaceID)).minY
+                    )
                 }
+                .frame(height: 0)
+            }
+
+            content
         }
         .coordinateSpace(name: coordinateSpaceID)
         .scrollIndicators(.hidden)

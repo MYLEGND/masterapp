@@ -196,26 +196,16 @@ struct MessagingHomeView: View {
     }
 
     private var inboxHeader: some View {
-        VStack(alignment: .leading, spacing: LegendNextSpacing.intermediate) {
+        LegendNextSurface(
+            style: .navy,
+            cornerRadius: LegendNextRadius.card,
+            padding: LegendNextSpacing.md
+        ) {
             HStack(alignment: .center, spacing: LegendNextSpacing.md) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                    HStack(spacing: LegendNextSpacing.xs) {
-                        Capsule()
-                            .fill(LegendNextGradient.gold)
-                            .frame(width: 22, height: 3)
-
-                            .font(LegendNextTypography.eyebrow)
-                            .tracking(1.1)
-                            .foregroundStyle(LegendNextColor.goldBright)
-                    }
-
                     Text("Messages")
-                        .font(LegendNextTypography.hero)
+                        .font(LegendNextTypography.section)
                         .foregroundStyle(.white)
-
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(.white.opacity(0.76))
-                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: LegendNextSpacing.sm)
@@ -244,51 +234,25 @@ struct MessagingHomeView: View {
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-        .padding(.top, LegendNextSpacing.xl)
-        .padding(.bottom, LegendNextSpacing.xxl)
-        .background {
-            ZStack {
-                LegendNextGradient.hero
-
-                LegendNextGradient.heroGlow
-                    .allowsHitTesting(false)
-
-                Circle()
-                    .fill(LegendNextColor.goldBright.opacity(0.12))
-                    .frame(width: 150, height: 150)
-                    .blur(radius: 28)
-                    .offset(x: 150, y: -76)
-                    .allowsHitTesting(false)
-            }
-            .clipShape(
-                UnevenRoundedRectangle(
-                    bottomLeadingRadius: LegendNextRadius.hero,
-                    bottomTrailingRadius: LegendNextRadius.hero
-                )
-            )
-            .ignoresSafeArea(edges: .top)
-        }
+        .padding(.top, LegendNextSpacing.md)
+        .padding(.bottom, LegendNextSpacing.xs)
     }
 
     private func conversationSection(
         _ conversations: [ConversationSummary]
     ) -> some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Conversations")
-                    .font(.system(.headline, design: .rounded).weight(.bold))
-                    .foregroundStyle(LegendNextColor.textPrimary)
-
-                Spacer()
-
-                if store.isRefreshing {
+            if store.isRefreshing {
+                HStack(spacing: LegendNextSpacing.xs) {
                     ProgressView()
                         .controlSize(.small)
                         .tint(LegendNextColor.gold)
-                        .accessibilityLabel("Refreshing messages")
+                    Text("Updating")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(LegendNextColor.textSecondary)
                 }
+                .padding(.horizontal, LegendNextSpacing.pageHorizontal)
             }
-            .padding(.horizontal, LegendNextSpacing.pageHorizontal)
 
             LazyVStack(spacing: LegendNextSpacing.sm) {
                 ForEach(conversations) { conversation in
@@ -325,10 +289,6 @@ struct MessagingHomeView: View {
                 inboxHeader
 
                 VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                    Text("Conversations")
-                        .font(.system(.headline, design: .rounded).weight(.bold))
-                        .foregroundStyle(LegendNextColor.textPrimary)
-
                     ForEach(0..<4, id: \.self) { _ in
                         LegendMessagingConversationSkeleton()
                     }
@@ -708,7 +668,7 @@ private struct LegendRecipientPicker: View {
                                           : "checkmark.circle.fill")
                                         .font(.title3.weight(.semibold))
                                         .foregroundStyle(groupRecipients[recipient.identity] == nil
-                                                         ? LegendNextColor.textTertiary
+                                                         ? LegendNextColor.contactAction
                                                          : LegendNextColor.success)
                                 }
                             )
@@ -1665,7 +1625,7 @@ private struct LegendConversationRow: View {
                     if let date = conversation.lastMessageUTC {
                         Text(LegendMessagingDateFormatter.inbox(date))
                             .font(.caption2.weight(conversation.unreadCount > 0 ? .bold : .medium))
-                            .foregroundStyle(conversation.unreadCount > 0 ? unreadColor : LegendNextColor.textTertiary)
+                            .foregroundStyle(conversation.unreadCount > 0 ? unreadColor : LegendNextColor.contactAction)
                             .lineLimit(1)
                     }
 
@@ -1680,7 +1640,7 @@ private struct LegendConversationRow: View {
                     } else {
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(LegendNextColor.textTertiary)
+                            .foregroundStyle(LegendNextColor.contactAction)
                     }
                 }
             }
