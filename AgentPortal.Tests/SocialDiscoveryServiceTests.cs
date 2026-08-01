@@ -231,6 +231,71 @@ public sealed class SocialDiscoveryServiceTests
     }
 
     [Fact]
+    public async Task AgentScope_ExposesOnePeerForDuplicateAgentEmailAliases()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var actor = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "current-actor",
+            AgentUpn = "actor@example.test",
+            NormalizedEmail = "actor@example.test",
+            FullName = "Current Actor",
+            IsActive = true
+        };
+        var actorAlias = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "legacy-actor-oid",
+            AgentUpn = "actor@example.test",
+            FullName = "Current Actor",
+            IsActive = true
+        };
+        var legacyAlias = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "legacy-peer-oid",
+            AgentUpn = "peer@example.test",
+            FullName = "Peer Agent",
+            IsActive = true,
+            CreatedUtc = DateTime.UtcNow.AddDays(-2),
+            UpdatedUtc = DateTime.UtcNow.AddDays(-2)
+        };
+        var canonicalPeer = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "current-peer-oid",
+            AgentUpn = "peer@example.test",
+            NormalizedEmail = "peer@example.test",
+            FullName = "Peer Agent",
+            Title = "Legend Agent",
+            IsActive = true,
+            CreatedUtc = DateTime.UtcNow.AddDays(-1),
+            UpdatedUtc = DateTime.UtcNow.AddDays(-1)
+        };
+        db.AgentProfiles.AddRange(actor, actorAlias, legacyAlias, canonicalPeer);
+        await db.SaveChangesAsync();
+
+        var page = await new SocialDiscoveryService(db).SearchAsync(
+            new SocialDiscoveryQuery(
+                new SocialFeedActor(
+                    new MessagingActor(actor.AgentUserId, MessagingParticipantTypes.Agent),
+                    actor.Id,
+                    actor.FullName!),
+                null,
+                0,
+                20));
+
+        Assert.True(page.Succeeded);
+        var peers = page.Value!.Results
+            .Where(result => result.ParticipantType == MessagingParticipantTypes.Agent)
+            .ToArray();
+        var peer = Assert.Single(peers);
+        Assert.Equal(canonicalPeer.Id, peer.ClientProfileId);
+        Assert.Equal(canonicalPeer.AgentUserId, peer.UserId);
+    }
+
+    [Fact]
     public async Task DirectorySearch_IncludesActiveMobileProfilesWithoutJourneyRecommendations()
     {
         await using var db = ControllerTestHelpers.BuildDb();

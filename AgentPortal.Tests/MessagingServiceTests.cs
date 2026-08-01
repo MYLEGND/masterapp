@@ -154,6 +154,51 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task AgentRecipients_ExposeOneCardForDuplicateAgentEmailAliases()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: false, grantClientToAgent: false);
+        db.AgentProfiles.AddRange(
+            new AgentProfile
+            {
+                AgentUserId = "legacy-actor-oid",
+                AgentUpn = "agent.one@mylegnd.com",
+                FullName = "Agent One",
+                IsActive = true
+            },
+            new AgentProfile
+            {
+                AgentUserId = "legacy-peer-oid",
+                AgentUpn = "peer@example.test",
+                FullName = "Peer Agent",
+                IsActive = true,
+                CreatedUtc = DateTime.UtcNow.AddDays(-2),
+                UpdatedUtc = DateTime.UtcNow.AddDays(-2)
+            },
+            new AgentProfile
+            {
+                AgentUserId = "current-peer-oid",
+                AgentUpn = "peer@example.test",
+                NormalizedEmail = "peer@example.test",
+                FullName = "Peer Agent",
+                Title = "Legend Agent",
+                IsActive = true,
+                CreatedUtc = DateTime.UtcNow.AddDays(-1),
+                UpdatedUtc = DateTime.UtcNow.AddDays(-1)
+            });
+        await db.SaveChangesAsync();
+
+        var recipients = await CreateService(db).ListRecipientsAsync(
+            new MessagingActor("agent-1", MessagingParticipantTypes.Agent),
+            recipientScope: MessagingRecipientScopes.Agents);
+
+        Assert.True(recipients.Succeeded);
+        var recipient = Assert.Single(recipients.Recipients);
+        Assert.Equal("current-peer-oid", recipient.UserId);
+        Assert.Equal("Peer Agent", recipient.DisplayName);
+    }
+
+    [Fact]
     public async Task ActiveClients_CompleteConversationFlowWithoutRequiringJourneyAcceptance()
     {
         await using var db = ControllerTestHelpers.BuildDb();

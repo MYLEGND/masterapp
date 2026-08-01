@@ -74,28 +74,49 @@ public sealed class AzureAgentDirectorySyncHostedService : BackgroundService
         }
 
         var profiles = await db.AgentProfiles.ToListAsync(ct);
+        var resolvedProfiles = profiles
+            .Select(profile => new ResolvedAgentProfile(
+                profile,
+                activeAzureUsers.ResolveObjectId(profile)))
+            .ToArray();
+        var canonicalProfileIds = resolvedProfiles
+            .Where(resolved => resolved.AzureObjectId is not null)
+            .GroupBy(resolved => resolved.AzureObjectId!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => SelectCanonicalProfile(group).Profile.Id)
+            .ToHashSet();
         var changed = 0;
 
-        foreach (var profile in profiles)
+        foreach (var resolved in resolvedProfiles)
         {
-            var oid = NormalizeKey(profile.AgentUserId);
-            var upn = NormalizeEmail(profile.AgentUpn);
-            var normalizedEmail = NormalizeEmail(profile.NormalizedEmail);
-            var calendarEmail = NormalizeEmail(profile.CalendarEmail);
+            var profile = resolved.Profile;
+            var existsInAzure = resolved.AzureObjectId is not null;
 
-            var existsInAzure =
-                (!string.IsNullOrWhiteSpace(oid) && activeAzureUsers.ObjectIds.Contains(oid)) ||
-                (!string.IsNullOrWhiteSpace(upn) && activeAzureUsers.Emails.Contains(upn)) ||
-                (!string.IsNullOrWhiteSpace(normalizedEmail) && activeAzureUsers.Emails.Contains(normalizedEmail)) ||
-                (!string.IsNullOrWhiteSpace(calendarEmail) && activeAzureUsers.Emails.Contains(calendarEmail));
-
-            if (existsInAzure)
+            if (existsInAzure && canonicalProfileIds.Contains(profile.Id))
             {
                 if (!profile.IsActive)
                 {
                     profile.IsActive = true;
                     profile.DeactivatedUtc = null;
                     profile.DeactivationReason = null;
+                    profile.UpdatedUtc = DateTime.UtcNow;
+                    changed++;
+                }
+
+                continue;
+            }
+
+            if (existsInAzure)
+            {
+                // An Entra user can have only one active AgentProfile. Older rows can
+                // retain a development or pre-migration OID but match the same email;
+                // leaving each one active makes the mobile directory show the person
+                // multiple times. Keep the profile keyed by the active Entra OID when
+                // present and preserve every alias as inactive historical data.
+                if (profile.IsActive || profile.DeactivationReason != DuplicateProfileReason)
+                {
+                    profile.IsActive = false;
+                    profile.DeactivatedUtc = DateTime.UtcNow;
+                    profile.DeactivationReason = DuplicateProfileReason;
                     profile.UpdatedUtc = DateTime.UtcNow;
                     changed++;
                 }
@@ -151,8 +172,8 @@ public sealed class AzureAgentDirectorySyncHostedService : BackgroundService
 
     private static async Task<AzureUserSet> LoadActiveAzureUsersAsync(GraphServiceClient graph, CancellationToken ct)
     {
-        var objectIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var emails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var objectIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var emailObjectIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         var response = await graph.Users.GetAsync(config =>
         {
@@ -164,17 +185,48 @@ public sealed class AzureAgentDirectorySyncHostedService : BackgroundService
         {
             if (user.AccountEnabled == false) continue;
 
-            AddIfPresent(objectIds, NormalizeKey(user.Id));
-            AddIfPresent(emails, NormalizeEmail(user.UserPrincipalName));
-            AddIfPresent(emails, NormalizeEmail(user.Mail));
+            var objectId = NormalizeKey(user.Id);
+            if (objectId is null) continue;
+
+            objectIds[objectId] = objectId;
+            AddEmailObjectId(emailObjectIds, NormalizeEmail(user.UserPrincipalName), objectId);
+            AddEmailObjectId(emailObjectIds, NormalizeEmail(user.Mail), objectId);
         }
 
-        return new AzureUserSet(objectIds, emails);
+        return new AzureUserSet(objectIds, emailObjectIds);
     }
 
-    private static void AddIfPresent(HashSet<string> set, string? value)
+    private static void AddEmailObjectId(
+        IDictionary<string, string> emailObjectIds,
+        string? email,
+        string objectId)
     {
-        if (!string.IsNullOrWhiteSpace(value)) set.Add(value);
+        if (!string.IsNullOrWhiteSpace(email)) emailObjectIds[email] = objectId;
+    }
+
+    private static ResolvedAgentProfile SelectCanonicalProfile(
+        IEnumerable<ResolvedAgentProfile> profiles) =>
+        profiles
+            .OrderByDescending(profile => string.Equals(
+                NormalizeKey(profile.Profile.AgentUserId),
+                profile.AzureObjectId,
+                StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(profile => ProfileCompleteness(profile.Profile))
+            .ThenBy(profile => profile.Profile.CreatedUtc)
+            .ThenBy(profile => profile.Profile.Id)
+            .First();
+
+    private static int ProfileCompleteness(AgentProfile profile)
+    {
+        var score = 0;
+        if (!string.IsNullOrWhiteSpace(profile.NormalizedEmail)) score += 2;
+        if (!string.IsNullOrWhiteSpace(profile.FullName)) score++;
+        if (!string.IsNullOrWhiteSpace(profile.Title)) score++;
+        if (!string.IsNullOrWhiteSpace(profile.Phone)) score++;
+        if (!string.IsNullOrWhiteSpace(profile.ShortBio)) score++;
+        if (!string.IsNullOrWhiteSpace(profile.Npn)) score++;
+        if (profile.ProfileImageContent is not null) score += 2;
+        return score;
     }
 
     private static string? NormalizeEmail(string? value)
@@ -189,8 +241,36 @@ public sealed class AzureAgentDirectorySyncHostedService : BackgroundService
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
     }
 
-    private sealed record AzureUserSet(HashSet<string> ObjectIds, HashSet<string> Emails)
+    private sealed record ResolvedAgentProfile(AgentProfile Profile, string? AzureObjectId);
+
+    private sealed record AzureUserSet(
+        IReadOnlyDictionary<string, string> ObjectIds,
+        IReadOnlyDictionary<string, string> EmailObjectIds)
     {
         public int Count => ObjectIds.Count;
+
+        public string? ResolveObjectId(AgentProfile profile)
+        {
+            var objectId = NormalizeKey(profile.AgentUserId);
+            if (objectId is not null && ObjectIds.TryGetValue(objectId, out var resolvedByObjectId))
+                return resolvedByObjectId;
+
+            var matches = new[]
+            {
+                NormalizeEmail(profile.AgentUpn),
+                NormalizeEmail(profile.NormalizedEmail),
+                NormalizeEmail(profile.CalendarEmail)
+            }
+            .Where(email => email is not null)
+            .Select(email => EmailObjectIds.GetValueOrDefault(email!))
+            .Where(resolved => resolved is not null)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+            return matches.Length == 1 ? matches[0] : null;
+        }
     }
+
+    private const string DuplicateProfileReason =
+        "Superseded duplicate profile for the same active Entra user.";
 }

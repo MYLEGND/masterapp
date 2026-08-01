@@ -289,17 +289,40 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             .GroupBy(row => row.Client.Id)
             .Select(group => ToDirectoryCandidate(group.First()))
             .ToArray();
-        var agents = await _db.AgentProfiles
+        // Load all active agents before removing the actor's identity group. If a
+        // legacy profile is an alias of the current actor, filtering only by its
+        // profile ID would otherwise surface that alias as a followable peer.
+        var agentRows = await _db.AgentProfiles
             .AsNoTracking()
-            .Where(profile => profile.IsActive && profile.Id != actor.ProfileId)
+            .Where(profile => profile.IsActive)
             .Select(profile => new AgentDirectoryRow(
                 profile.Id,
                 profile.AgentUserId,
+                profile.NormalizedEmail,
                 profile.FullName,
                 profile.AgentUpn,
                 profile.Title,
-                profile.ShortBio))
+                profile.ShortBio,
+                profile.CreatedUtc,
+                profile.UpdatedUtc))
             .ToArrayAsync(cancellationToken);
+        var agents = agentRows
+            .GroupBy(agent => AgentProfileIdentity.DirectoryKey(
+                agent.NormalizedEmail,
+                agent.AgentUpn,
+                agent.AgentUserId), StringComparer.Ordinal)
+            .Where(group => !group.Any(agent => agent.Id == actor.ProfileId))
+            .Select(group => group
+                .OrderByDescending(agent => AgentProfileIdentity.DirectoryCompleteness(
+                    agent.NormalizedEmail,
+                    agent.FullName,
+                    agent.Title,
+                    agent.ShortBio))
+                .ThenByDescending(agent => agent.UpdatedUtc)
+                .ThenBy(agent => agent.CreatedUtc)
+                .ThenBy(agent => agent.Id)
+                .First())
+            .ToArray();
 
         var candidates = clients
             .Concat(agents.Select(ToDirectoryCandidate))
@@ -831,10 +854,13 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
     private sealed record AgentDirectoryRow(
         Guid Id,
         string AgentUserId,
+        string? NormalizedEmail,
         string? FullName,
         string? AgentUpn,
         string? Title,
-        string? ShortBio);
+        string? ShortBio,
+        DateTime CreatedUtc,
+        DateTime UpdatedUtc);
 
     private sealed record DirectoryCandidate(
         Guid ProfileId,

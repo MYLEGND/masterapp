@@ -1138,6 +1138,36 @@ internal sealed class MessagingService : IMessagingService
         return await AttachExistingConversationIdsAsync(actor, recipients, cancellationToken);
     }
 
+    private static IEnumerable<MessagingRecipientSummary> CanonicalAgentRecipients(
+        IEnumerable<RecipientAgentRow> rows,
+        string? excludedAgentUserId = null)
+    {
+        return rows
+            .GroupBy(row => AgentProfileIdentity.DirectoryKey(
+                row.NormalizedEmail,
+                row.Email,
+                row.UserId), StringComparer.Ordinal)
+            .Where(group => !group.Any(row =>
+                !string.IsNullOrWhiteSpace(excludedAgentUserId) &&
+                string.Equals(row.UserId, excludedAgentUserId, StringComparison.OrdinalIgnoreCase)))
+            .Select(group => group
+                .OrderByDescending(row => AgentProfileIdentity.DirectoryCompleteness(
+                    row.NormalizedEmail,
+                    row.FullName,
+                    row.Title,
+                    row.ShortBio))
+                .ThenByDescending(row => row.UpdatedUtc)
+                .ThenBy(row => row.CreatedUtc)
+                .ThenBy(row => row.UserId, StringComparer.Ordinal)
+                .First())
+            .Select(row => new MessagingRecipientSummary(
+                row.UserId,
+                MessagingParticipantTypes.Agent,
+                FirstNonEmpty(row.FullName, row.Email, "Agent"),
+                row.Email,
+                "Agent"));
+    }
+
     private static bool MatchesContactSearch(MessagingRecipientSummary recipient, string search)
     {
         var normalizedSearch = NormalizeSearchText(search);
@@ -1172,16 +1202,18 @@ internal sealed class MessagingService : IMessagingService
         if (recipientScope is not MessagingRecipientScopes.Clients and not MessagingRecipientScopes.Leads)
         {
             var agentRows = await ActiveMessagingAgentProfilesQuery()
-                .Where(x => x.AgentUserId.ToLower() != agentUserId)
-                .Select(x => new RecipientAgentRow(x.AgentUserId, x.FullName, x.AgentUpn))
+                .Select(x => new RecipientAgentRow(
+                    x.AgentUserId,
+                    x.NormalizedEmail,
+                    x.FullName,
+                    x.AgentUpn,
+                    x.Title,
+                    x.ShortBio,
+                    x.CreatedUtc,
+                    x.UpdatedUtc))
                 .ToListAsync(cancellationToken);
 
-            recipients.AddRange(agentRows.Select(x => new MessagingRecipientSummary(
-                x.UserId,
-                MessagingParticipantTypes.Agent,
-                FirstNonEmpty(x.FullName, x.Email, "Agent"),
-                x.Email,
-                "Agent")));
+            recipients.AddRange(CanonicalAgentRecipients(agentRows, agentUserId));
         }
 
         if (recipientScope is not MessagingRecipientScopes.Agents)
@@ -1224,15 +1256,18 @@ internal sealed class MessagingService : IMessagingService
         if (recipientScope is not MessagingRecipientScopes.Clients)
         {
             var agentRows = await ActiveMessagingAgentProfilesQuery()
-                .Select(x => new RecipientAgentRow(x.AgentUserId, x.FullName, x.AgentUpn))
+                .Select(x => new RecipientAgentRow(
+                    x.AgentUserId,
+                    x.NormalizedEmail,
+                    x.FullName,
+                    x.AgentUpn,
+                    x.Title,
+                    x.ShortBio,
+                    x.CreatedUtc,
+                    x.UpdatedUtc))
                 .ToListAsync(cancellationToken);
 
-            recipients.AddRange(agentRows.Select(x => new MessagingRecipientSummary(
-                x.UserId,
-                MessagingParticipantTypes.Agent,
-                FirstNonEmpty(x.FullName, x.Email, "Agent"),
-                x.Email,
-                "Agent")));
+            recipients.AddRange(CanonicalAgentRecipients(agentRows));
         }
 
         if (recipientScope is not MessagingRecipientScopes.Agents)
@@ -1797,7 +1832,15 @@ internal sealed class MessagingService : IMessagingService
         string ScanStatus,
         DateTime CreatedUtc);
 
-    private sealed record RecipientAgentRow(string UserId, string? FullName, string? Email);
+    private sealed record RecipientAgentRow(
+        string UserId,
+        string? NormalizedEmail,
+        string? FullName,
+        string? Email,
+        string? Title,
+        string? ShortBio,
+        DateTime CreatedUtc,
+        DateTime UpdatedUtc);
 
     private sealed record RecipientClientRow(string UserId, string? FirstName, string? LastName, string? Email, string? CrmNotes, string? CrmStatus);
 }
