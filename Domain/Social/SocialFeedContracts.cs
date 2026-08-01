@@ -11,6 +11,20 @@ public static class SocialPostContentTypes
 }
 
 /// <summary>
+/// Canonical ingress limits for social media. The request allowance includes a
+/// small multipart envelope so the maximum accepted video itself remains the
+/// same size as the secure-media storage policy.
+/// </summary>
+public static class SocialMediaUploadLimits
+{
+    public const long MaximumMediaBytes = 100L * 1024L * 1024L;
+    public const long MultipartEnvelopeBytes = 1024L * 1024L;
+    public const long MaximumMultipartRequestBytes =
+        MaximumMediaBytes + MultipartEnvelopeBytes;
+    public const int MaximumFormValueLength = 2_000;
+}
+
+/// <summary>
 /// Retained for post-level preferences and legacy data. Account privacy is the
 /// outer visibility authority: public posts reach active members, while private
 /// posts reach their owner and approved followers.

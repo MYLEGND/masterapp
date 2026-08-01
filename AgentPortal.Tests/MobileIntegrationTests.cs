@@ -7,6 +7,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Reflection;
 using AgentPortal.Mobile;
 using AgentPortal.Services.Tracking;
 using Domain.Entities;
@@ -17,6 +18,7 @@ using Infrastructure.Messaging;
 using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -32,6 +34,31 @@ namespace AgentPortal.Tests;
 
 public sealed class MobileIntegrationTests
 {
+    [Fact]
+    public void MobileSocialMediaEndpoint_AdmitsTheConfiguredSecureVideoPayload()
+    {
+        var action = typeof(MobileSocialController).GetMethod(
+            nameof(MobileSocialController.CreateMediaPost));
+        Assert.NotNull(action);
+
+        var requestLimit = action!.GetCustomAttribute<RequestSizeLimitAttribute>();
+        var formLimit = action.GetCustomAttribute<RequestFormLimitsAttribute>();
+
+        Assert.NotNull(requestLimit);
+        Assert.NotNull(formLimit);
+        var requestSizeMetadata = Assert.IsAssignableFrom<IRequestSizeLimitMetadata>(
+            requestLimit);
+        Assert.Equal(
+            SocialMediaUploadLimits.MaximumMultipartRequestBytes,
+            requestSizeMetadata.MaxRequestBodySize);
+        Assert.Equal(
+            SocialMediaUploadLimits.MaximumMultipartRequestBytes,
+            formLimit!.MultipartBodyLengthLimit);
+        Assert.Equal(
+            SocialMediaUploadLimits.MaximumFormValueLength,
+            formLimit.ValueLengthLimit);
+    }
+
     [Fact]
     public async Task MobileActorResolver_UsesOnlyCanonicalOid_AndPreservesDualTypedRoles()
     {

@@ -4,6 +4,16 @@ import XCTest
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testSharedScrollChromeHidesAllActionChromeDownwardAndRestoresItUpward() {
+        let chrome = LegendScrollChrome()
+
+        chrome.record(verticalDragTranslation: -1.1)
+        XCTAssertFalse(chrome.isBottomNavigationVisible)
+
+        chrome.record(verticalDragTranslation: 0.6)
+        XCTAssertTrue(chrome.isBottomNavigationVisible)
+    }
+
     func testPKCEUsesAS256ChallengeAndAuthorizationRequestUsesStandardParameters() throws {
         let pkce = try PKCEChallenge.create()
         XCTAssertGreaterThanOrEqual(pkce.verifier.count, 43)

@@ -5367,13 +5367,6 @@ private struct LegendAccountView: View {
     @State private var profilePage = 0
     @State private var isFinancialIntelligencePresented = false
 
-    private let profileColumns = [
-        GridItem(.flexible(), spacing: LegendNextSpacing.tiny),
-        GridItem(.flexible(), spacing: LegendNextSpacing.tiny),
-        GridItem(.flexible(), spacing: LegendNextSpacing.tiny)
-    ]
-    private let profileTileAspectRatio: CGFloat = 0.8
-
     init(
         currentSession: MobileSession,
         coordinator: MobileSessionCoordinator,
@@ -5814,16 +5807,17 @@ private struct LegendAccountView: View {
     private func profileGrid() -> some View {
         switch social.profileContentState {
         case .idle, .loading:
-            LazyVGrid(columns: profileColumns, spacing: LegendNextSpacing.tiny) {
+            LazyVGrid(columns: LegendProfileGridLayout.columns, spacing: LegendNextSpacing.tiny) {
                 ForEach(0..<6, id: \.self) { _ in
-                    Rectangle()
-                        .fill(LegendNextColor.brandBlueSurface)
-                        .aspectRatio(profileTileAspectRatio, contentMode: .fit)
-                        .clipShape(RoundedRectangle(
-                            cornerRadius: LegendNextRadius.compact,
-                            style: .continuous
-                        ))
-                        .legendNextShimmer()
+                    LegendProfileGridCell {
+                        Rectangle()
+                            .fill(LegendNextColor.brandBlueSurface)
+                            .clipShape(RoundedRectangle(
+                                cornerRadius: LegendNextRadius.compact,
+                                style: .continuous
+                            ))
+                            .legendNextShimmer()
+                    }
                 }
             }
 
@@ -5842,13 +5836,14 @@ private struct LegendAccountView: View {
             if items.isEmpty {
                 profileEmptyState()
             } else {
-                LazyVGrid(columns: profileColumns, spacing: LegendNextSpacing.tiny) {
+                LazyVGrid(columns: LegendProfileGridLayout.columns, spacing: LegendNextSpacing.tiny) {
                     ForEach(items) { post in
                         Button {
                             selectedPost = post
                         } label: {
-                            LegendProfileGridTile(post: post, social: social)
-                                .aspectRatio(profileTileAspectRatio, contentMode: .fit)
+                            LegendProfileGridCell {
+                                LegendProfileGridTile(post: post, social: social)
+                            }
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint("Open post options")
@@ -7135,6 +7130,33 @@ private struct LegendProfileActionButtonStyle: ButtonStyle {
     }
 }
 
+private enum LegendProfileGridLayout {
+    static let columns = [
+        GridItem(.flexible(), spacing: LegendNextSpacing.tiny),
+        GridItem(.flexible(), spacing: LegendNextSpacing.tiny),
+        GridItem(.flexible(), spacing: LegendNextSpacing.tiny)
+    ]
+    static let tileAspectRatio: CGFloat = 4 / 5
+}
+
+/// The profile's loading and loaded states deliberately share this frame so a
+/// completed refresh cannot change the grid from its established portrait layout.
+private struct LegendProfileGridCell<Content: View>: View {
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity)
+            .aspectRatio(
+                LegendProfileGridLayout.tileAspectRatio,
+                contentMode: .fit)
+    }
+}
+
 private struct LegendProfileGridTile: View {
     let post: MobileSocialPost
     @ObservedObject var social: MobileSocialStore
@@ -7196,7 +7218,6 @@ private struct LegendProfileGridTile: View {
                 }
             }
         }
-        .aspectRatio(1, contentMode: .fit)
         .clipShape(RoundedRectangle(
             cornerRadius: LegendNextRadius.compact,
             style: .continuous

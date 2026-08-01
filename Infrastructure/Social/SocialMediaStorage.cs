@@ -11,7 +11,8 @@ namespace Infrastructure.Social;
 
 internal sealed class SocialMediaStorage : ISocialMediaStorage
 {
-    private const long DefaultMaximumMediaBytes = 100L * 1024L * 1024L;
+    private const long DefaultMaximumMediaBytes =
+        SocialMediaUploadLimits.MaximumMediaBytes;
     private const int MaximumOriginalFileNameLength = 255;
     private const int CopyBufferSize = 80 * 1024;
 

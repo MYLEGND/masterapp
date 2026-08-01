@@ -175,9 +175,10 @@ public sealed class MobileSocialController : MobileApiControllerBase
 
     [HttpPost("posts/media")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(SocialMediaUploadLimits.MaximumMultipartRequestBytes)]
     [RequestFormLimits(
-        MultipartBodyLengthLimit = 1_048_576_000,
-        ValueLengthLimit = 2_000)]
+        MultipartBodyLengthLimit = SocialMediaUploadLimits.MaximumMultipartRequestBytes,
+        ValueLengthLimit = SocialMediaUploadLimits.MaximumFormValueLength)]
     public async Task<IActionResult> CreateMediaPost(
         [FromForm] MobileCreateSocialMediaPostRequest? request,
         CancellationToken cancellationToken)
