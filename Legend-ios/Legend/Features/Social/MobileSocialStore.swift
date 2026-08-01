@@ -15,6 +15,7 @@ protocol MobileSocialAPI: Sendable {
         audience: MobileSocialAudience,
         location: String?,
         commentsEnabled: Bool,
+        uploadProgress: @escaping @Sendable (Double) -> Void,
         accessToken: String
     ) async throws -> MobileSocialPost
     func updatePost(postID: UUID, request: MobileUpdateSocialPost, accessToken: String) async throws -> MobileSocialPost
@@ -82,6 +83,7 @@ struct MobileUnavailableSocialAPI: MobileSocialAPI {
         audience: MobileSocialAudience,
         location: String?,
         commentsEnabled: Bool,
+        uploadProgress: @escaping @Sendable (Double) -> Void,
         accessToken: String
     ) async throws -> MobileSocialPost {
         throw MobileAPIError.unauthorized(correlationID: nil)
@@ -176,6 +178,7 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
         audience: MobileSocialAudience,
         location: String?,
         commentsEnabled: Bool,
+        uploadProgress: @escaping @Sendable (Double) -> Void,
         accessToken: String
     ) async throws -> MobileSocialPost {
 
@@ -202,6 +205,7 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
             fields: fields,
             files: files,
             headers: participantHeader,
+            uploadProgress: uploadProgress,
             response: MobileSocialPost.self
         )
     }
@@ -416,6 +420,7 @@ final class MobileSocialStore: ObservableObject {
             id: identifier,
             contentType: request.contentType,
             stage: .preparing,
+            uploadProgress: 0,
             failureMessage: nil)
 
         Task { await runPublication(identifier: identifier, request: request) }
@@ -433,6 +438,7 @@ final class MobileSocialStore: ObservableObject {
             id: publication.id,
             contentType: request.contentType,
             stage: .preparing,
+            uploadProgress: 0,
             failureMessage: nil)
         Task { await runPublication(identifier: publication.id, request: request) }
     }
@@ -831,12 +837,22 @@ final class MobileSocialStore: ObservableObject {
             return false
         }
 
+        if request.contentType.requiresVideo,
+           (request.files.count != 1 || request.files.contains(where: { !$0.isVideo })) {
+            actionFailure = UserFacingFailure(
+                title: "Could not share your Hac",
+                message: "A Hac requires exactly one video.",
+                correlationID: nil)
+            return false
+        }
+
         actionFailure = nil
         return true
     }
 
     private func publishToServer(
-        _ request: MobileSocialPublishRequest
+        _ request: MobileSocialPublishRequest,
+        uploadProgress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> MobileSocialPost {
         let body = request.body.trimmingCharacters(in: .whitespacesAndNewlines)
         let token = try await accessTokenProvider()
@@ -861,6 +877,7 @@ final class MobileSocialStore: ObservableObject {
             audience: request.audience,
             location: request.location,
             commentsEnabled: request.commentsEnabled,
+            uploadProgress: uploadProgress,
             accessToken: token)
     }
 
@@ -872,12 +889,19 @@ final class MobileSocialStore: ObservableObject {
         publication?.stage = request.files.isEmpty ? .processing : .uploading
 
         do {
-            let post = try await publishToServer(request)
+            let post = try await publishToServer(request) { [weak self] progress in
+                Task { @MainActor [weak self] in
+                    self?.updatePublicationProgress(
+                        progress,
+                        identifier: identifier)
+                }
+            }
             guard publication?.id == identifier else { return }
             applyPublishedPost(post)
             discardStagedFiles(in: request)
             pendingPublicationRequest = nil
             publication?.stage = .published
+            publication?.uploadProgress = 1
         } catch {
             guard publication?.id == identifier else { return }
             let presentation = failure(
@@ -886,6 +910,21 @@ final class MobileSocialStore: ObservableObject {
             actionFailure = presentation
             publication?.stage = .failed
             publication?.failureMessage = presentation.message
+        }
+    }
+
+    private func updatePublicationProgress(
+        _ value: Double,
+        identifier: UUID
+    ) {
+        guard publication?.id == identifier else { return }
+        let progress = min(max(value, 0), 1)
+        let currentProgress = publication?.uploadProgress ?? 0
+        guard progress >= currentProgress else { return }
+
+        publication?.uploadProgress = progress
+        if progress >= 1, publication?.stage == .uploading {
+            publication?.stage = .processing
         }
     }
 

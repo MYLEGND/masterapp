@@ -679,6 +679,9 @@ struct MobileSocialPublication: Equatable, Identifiable, Sendable {
     let id: UUID
     let contentType: MobileSocialContentType
     var stage: MobileSocialPublicationStage
+    /// The exact fraction of outbound multipart bytes confirmed by URLSession.
+    /// It remains at 1 while the server validates and commits the new post.
+    var uploadProgress: Double
     var failureMessage: String?
 }
 

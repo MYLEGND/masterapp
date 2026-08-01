@@ -73,7 +73,7 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
         .padding(.vertical, LegendNextSpacing.xs)
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
         .background(
-            LegendNextColor.contactFill,
+            LegendNextColor.contactFill(for: colorScheme),
             in: RoundedRectangle(
                 cornerRadius: LegendNextRadius.control,
                 style: .continuous

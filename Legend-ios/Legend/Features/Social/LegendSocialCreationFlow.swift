@@ -517,7 +517,7 @@ struct LegendSocialComposer: View {
         overlayText: String? = nil
     ) -> some View {
         if type == .post {
-            ScrollView(.horizontal) {
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(
                     alignment: .top,
                     spacing: LegendNextSpacing.xs

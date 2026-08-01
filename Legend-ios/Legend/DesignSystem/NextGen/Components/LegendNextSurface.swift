@@ -90,14 +90,10 @@ struct LegendNextSurface<Content: View>: View {
             )
 
         case .profileSettings:
-            LinearGradient(
-                colors: [
-                    LegendNextColor.navyElevated,
-                    LegendNextColor.royal
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            ZStack {
+                LegendNextGradient.hero
+                LegendNextGradient.heroGlow
+            }
 
         case .glass:
             Rectangle()
@@ -133,7 +129,7 @@ struct LegendNextSurface<Content: View>: View {
                 LegendNextColor.navy.opacity(colorScheme == .dark ? 0.45 : 0.18)
             )
         case .profileSettings:
-            return AnyShapeStyle(Color.white.opacity(0.32))
+            return AnyShapeStyle(LegendNextColor.gold.opacity(0.52))
         case .plain, .elevated:
             return AnyShapeStyle(
                 LegendNextColor.subtleBorder(for: colorScheme)
@@ -237,7 +233,14 @@ struct LegendNextInsetSurface<Content: View>: View {
                 endPoint: .bottomTrailing
             ))
         case .profileSettings:
-            return AnyShapeStyle(Color.white)
+            return AnyShapeStyle(LinearGradient(
+                colors: [
+                    LegendNextColor.surfaceInset,
+                    LegendNextColor.navy
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ))
         }
     }
 
@@ -246,7 +249,7 @@ struct LegendNextInsetSurface<Content: View>: View {
         case .brandBlue:
             LegendNextColor.navy.opacity(colorScheme == .dark ? 0.48 : 0.18)
         case .profileSettings:
-            LegendNextColor.navy.opacity(0.56)
+            LegendNextColor.gold.opacity(0.48)
         case .standard:
             LegendNextColor.subtleBorder(for: colorScheme)
         }

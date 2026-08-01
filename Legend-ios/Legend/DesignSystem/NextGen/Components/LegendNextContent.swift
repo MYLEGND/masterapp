@@ -1,5 +1,98 @@
 import SwiftUI
 
+/// One navigation-chrome authority for the native app. A downward movement hides
+/// the bottom action bar; even a small upward movement immediately restores it.
+/// Screens report their content offset through `LegendScrollView` rather than
+/// carrying their own visibility flags.
+@MainActor
+final class LegendScrollChrome: ObservableObject {
+    @Published private(set) var isBottomNavigationVisible = true
+
+    private var lastContentOffset: CGFloat?
+    private let downwardThreshold: CGFloat = 1
+    private let upwardThreshold: CGFloat = 0.5
+
+    func beginTracking() {
+        lastContentOffset = nil
+    }
+
+    func reset() {
+        lastContentOffset = nil
+        isBottomNavigationVisible = true
+    }
+
+    func record(contentOffset: CGFloat) {
+        guard let previous = lastContentOffset else {
+            lastContentOffset = contentOffset
+            return
+        }
+
+        lastContentOffset = contentOffset
+        let movement = contentOffset - previous
+
+        if movement <= -downwardThreshold {
+            isBottomNavigationVisible = false
+        } else if movement >= upwardThreshold {
+            isBottomNavigationVisible = true
+        }
+    }
+}
+
+/// The shared vertical scrolling surface. It hides the system indicator and
+/// reports only real content movement to the single navigation-chrome authority.
+struct LegendScrollView<Content: View>: View {
+    private let axes: Axis.Set
+    private let tracksNavigationChrome: Bool
+    private let content: Content
+
+    @EnvironmentObject private var scrollChrome: LegendScrollChrome
+    @State private var coordinateSpaceID = UUID()
+
+    init(
+        _ axes: Axis.Set = .vertical,
+        tracksNavigationChrome: Bool = true,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.axes = axes
+        self.tracksNavigationChrome = tracksNavigationChrome
+        self.content = content()
+    }
+
+    var body: some View {
+        ScrollView(axes, showsIndicators: false) {
+            content
+                .background {
+                    if axes.contains(.vertical) {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: LegendScrollOffsetPreferenceKey.self,
+                                value: proxy.frame(in: .named(coordinateSpaceID)).minY)
+                        }
+                    }
+                }
+        }
+        .coordinateSpace(name: coordinateSpaceID)
+        .scrollIndicators(.hidden)
+        .onAppear {
+            if tracksNavigationChrome && axes.contains(.vertical) {
+                scrollChrome.beginTracking()
+            }
+        }
+        .onPreferenceChange(LegendScrollOffsetPreferenceKey.self) { offset in
+            guard tracksNavigationChrome, axes.contains(.vertical) else { return }
+            scrollChrome.record(contentOffset: offset)
+        }
+    }
+}
+
+private enum LegendScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = .zero
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct LegendNextSectionHeader<Trailing: View>: View {
     let eyebrow: String?
     let title: String
@@ -513,7 +606,7 @@ private struct LegendNextSheetChrome: ViewModifier {
             .presentationDetents(detents)
             .presentationDragIndicator(showsDragIndicator ? .visible : .hidden)
             .presentationCornerRadius(LegendNextRadius.sheet)
-            .presentationBackground(LegendNextColor.canvas)
+            .legendNextBrandedSheetAppearance()
     }
 }
 

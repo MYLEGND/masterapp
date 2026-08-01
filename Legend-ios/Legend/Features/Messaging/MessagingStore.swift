@@ -155,6 +155,7 @@ final class MessagingStore: ObservableObject {
     func createGroup(
         subject: String,
         recipients: [MessagingRecipient],
+        groupImage: MessagingGroupImageRequest?,
         completion: @escaping (UUID) -> Void
     ) {
         guard !isCreatingGroup else { return }
@@ -166,6 +167,7 @@ final class MessagingStore: ObservableObject {
                 let conversation = try await api.createGroup(
                     subject: subject,
                     recipients: recipients,
+                    groupImage: groupImage,
                     accessToken: try await accessTokenProvider())
                 detailState = .loaded(conversation)
                 selectedConversationID = conversation.id
@@ -177,19 +179,17 @@ final class MessagingStore: ObservableObject {
         }
     }
 
-    func startVerificationRequest(completion: @escaping (UUID) -> Void) {
+    func startVerificationRequest(completion: @escaping () -> Void) {
         guard !isCreatingGroup else { return }
         isCreatingGroup = true
         sendFailure = nil
         Task {
             defer { isCreatingGroup = false }
             do {
-                let conversation = try await api.startVerificationRequest(
+                _ = try await api.startVerificationRequest(
                     accessToken: try await accessTokenProvider())
-                detailState = .loaded(conversation)
-                selectedConversationID = conversation.id
                 _ = await refresh()
-                completion(conversation.id)
+                completion()
             } catch {
                 sendFailure = failure(for: error, title: "Verification request not started")
             }
@@ -220,6 +220,62 @@ final class MessagingStore: ObservableObject {
             } catch {
                 sendFailure = failure(for: error, title: "Member not added")
             }
+        }
+    }
+
+    func updateGroup(
+        conversationID: UUID,
+        subject: String,
+        groupImage: MessagingGroupImageRequest?,
+        completion: @escaping () -> Void
+    ) {
+        guard !isCreatingGroup else { return }
+        isCreatingGroup = true
+        sendFailure = nil
+        Task {
+            defer { isCreatingGroup = false }
+            do {
+                try await api.updateGroup(
+                    conversationID: conversationID,
+                    subject: subject,
+                    groupImage: groupImage,
+                    accessToken: try await accessTokenProvider())
+                let conversation = try await api.conversation(
+                    id: conversationID,
+                    accessToken: try await accessTokenProvider())
+                detailState = .loaded(conversation)
+                _ = await refresh()
+                completion()
+            } catch {
+                sendFailure = failure(for: error, title: "Group not updated")
+            }
+        }
+    }
+
+    func resolveVerificationRequest(
+        _ request: VerificationReview,
+        approve: Bool
+    ) async -> Bool {
+        guard !isCreatingGroup else { return false }
+        isCreatingGroup = true
+        sendFailure = nil
+        defer { isCreatingGroup = false }
+        do {
+            try await api.resolveVerificationRequest(
+                requestID: request.id,
+                approve: approve,
+                accessToken: try await accessTokenProvider())
+            if let conversationID = selectedConversationID {
+                let conversation = try await api.conversation(
+                    id: conversationID,
+                    accessToken: try await accessTokenProvider())
+                detailState = .loaded(conversation)
+            }
+            _ = await refresh()
+            return true
+        } catch {
+            sendFailure = failure(for: error, title: "Verification not resolved")
+            return false
         }
     }
 
@@ -334,7 +390,9 @@ final class MessagingStore: ObservableObject {
             messages: conversation.messages + [message],
             isMuted: conversation.isMuted,
             isClosed: conversation.isClosed,
-            canManageMembers: conversation.canManageMembers))
+            canManageMembers: conversation.canManageMembers,
+            purpose: conversation.purpose,
+            groupAvatar: conversation.groupAvatar))
     }
 
     private func append(attachment: MessagingAttachment, to messageID: UUID) {
@@ -354,11 +412,14 @@ final class MessagingStore: ObservableObject {
                     sentUTC: message.sentUTC,
                     attachments: message.attachments + [attachment],
                     isMine: message.isMine,
-                    reply: message.reply)
+                    reply: message.reply,
+                    verificationReview: message.verificationReview)
             },
             isMuted: conversation.isMuted,
             isClosed: conversation.isClosed,
-            canManageMembers: conversation.canManageMembers))
+            canManageMembers: conversation.canManageMembers,
+            purpose: conversation.purpose,
+            groupAvatar: conversation.groupAvatar))
     }
 
     private var hasCachedConversations: Bool {
@@ -440,7 +501,9 @@ final class MessagingStore: ObservableObject {
                 lastMessagePreview: conversation.lastMessagePreview,
                 lastMessageUTC: conversation.lastMessageUTC,
                 unreadCount: 0,
-                isClosed: conversation.isClosed)
+                isClosed: conversation.isClosed,
+                purpose: conversation.purpose,
+                groupAvatar: conversation.groupAvatar)
         })
         if case .loaded(let updatedConversations) = state {
             NativeUnreadBadge.update(with: updatedConversations.reduce(0) { $0 + max(0, $1.unreadCount) })

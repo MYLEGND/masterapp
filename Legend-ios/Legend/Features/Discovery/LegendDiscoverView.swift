@@ -123,7 +123,7 @@ struct LegendDiscoverView: View {
         if results.isEmpty && store.recommendations.isEmpty {
             emptyState
         } else {
-            ScrollView {
+            LegendScrollView {
                 LazyVStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                     header
 

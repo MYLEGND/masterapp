@@ -4,6 +4,7 @@ import SwiftUI
 struct LegendApp: App {
     @StateObject private var diagnostics: LegendDiagnostics
     @StateObject private var session: MobileSessionCoordinator
+    @StateObject private var scrollChrome: LegendScrollChrome
 
     init() {
         let diagnostics = LegendDiagnostics()
@@ -17,6 +18,7 @@ struct LegendApp: App {
                 diagnostics: diagnostics
             )
         )
+        _scrollChrome = StateObject(wrappedValue: LegendScrollChrome())
     }
 
     var body: some Scene {
@@ -24,6 +26,8 @@ struct LegendApp: App {
             RootView()
                 .environmentObject(session)
                 .environmentObject(diagnostics)
+                .environmentObject(scrollChrome)
+                .scrollIndicators(.hidden)
                 .task {
                     NativeUnreadBadge.prepare()
                 }

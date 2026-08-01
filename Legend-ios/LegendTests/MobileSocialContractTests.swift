@@ -281,7 +281,18 @@ final class MobileSocialContractTests: XCTestCase {
             repostedByCurrentActor: false,
             metrics: testSocialMetrics,
             music: nil,
-            media: [],
+            media: [MobileSocialMedia(
+                id: UUID(),
+                displayOrder: 0,
+                mediaKind: "Video",
+                mimeType: "video/mp4",
+                fileSizeBytes: 4,
+                width: 1080,
+                height: 1920,
+                aspectRatio: 0.5625,
+                durationSeconds: 10,
+                processingState: "Ready",
+                accessibilityText: "A Legend Hac")],
             comments: [])
         let api = RecordingSocialAPI(post: post)
         let store = MobileSocialStore(
@@ -289,7 +300,12 @@ final class MobileSocialContractTests: XCTestCase {
             accessTokenProvider: { "token" },
             diagnostics: LegendDiagnostics())
 
-        let published = await store.publish(MobileSocialPublishRequest(
+        store.load()
+        for _ in 0..<200 where store.state == .loading {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        let request = MobileSocialPublishRequest(
             contentType: .hac,
             body: "A focused Hac.",
             files: [MultipartFormFile(
@@ -301,11 +317,55 @@ final class MobileSocialContractTests: XCTestCase {
             music: nil,
             audience: .authorizedNetwork,
             location: nil,
-            commentsEnabled: true))
+            commentsEnabled: true)
 
-        XCTAssertTrue(published)
+        XCTAssertTrue(store.beginPublication(request))
+        for _ in 0..<200 where store.publication?.stage != .published {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        XCTAssertEqual(store.publication?.stage, .published)
+        XCTAssertEqual(store.publication?.uploadProgress, 1)
         let contentTypes = await api.mediaContentTypes()
         XCTAssertEqual(contentTypes, [.hac])
+        guard case .loaded(let snapshot) = store.state else {
+            return XCTFail("Expected the Hac to be inserted after server confirmation")
+        }
+        XCTAssertEqual(snapshot.hacs.first?.id, post.id)
+        XCTAssertTrue(snapshot.hacs.first?.isVideoHac ?? false)
+    }
+
+    func testHacPublicationRejectsNonVideoMediaBeforeUpload() throws {
+        let author = MobileSocialAuthor(
+            identity: try LogicalParticipantIdentity(
+                userID: "client-one",
+                participantType: .client),
+            profileID: "00000000-0000-0000-0000-000000000002",
+            displayName: "Client One",
+            avatar: nil)
+        let post = socialPost(author: author, contentType: .post, postedUTC: .now)
+        let store = MobileSocialStore(
+            api: StubSocialAPI(post: post),
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics())
+
+        XCTAssertFalse(store.beginPublication(MobileSocialPublishRequest(
+            contentType: .hac,
+            body: "An invalid Hac.",
+            files: [MultipartFormFile(
+                fieldName: "files",
+                fileName: "not-a-video.jpg",
+                mimeType: "image/jpeg",
+                data: Data([0]))],
+            accessibilityText: nil,
+            music: nil,
+            audience: .authorizedNetwork,
+            location: nil,
+            commentsEnabled: true)))
+        XCTAssertNil(store.publication)
+        XCTAssertEqual(
+            store.actionFailure?.message,
+            "A Hac requires exactly one video.")
     }
 
     /// Audience, location, and the comment switch are collected in the share sheet.
@@ -593,7 +653,10 @@ private struct StubSocialAPI: MobileSocialAPI {
     func currentProfilePosts(accessToken: String) async throws -> [MobileSocialPost] { [post] }
 
     func createPost(_ request: MobileCreateSocialPost, accessToken: String) async throws -> MobileSocialPost { post }
-    func createMediaPost(type: MobileSocialContentType, body: String, files: [MultipartFormFile], accessibilityText: String?, music: MobileSocialMusicSelection?, audience: MobileSocialAudience, location: String?, commentsEnabled: Bool, accessToken: String) async throws -> MobileSocialPost { post }
+    func createMediaPost(type: MobileSocialContentType, body: String, files: [MultipartFormFile], accessibilityText: String?, music: MobileSocialMusicSelection?, audience: MobileSocialAudience, location: String?, commentsEnabled: Bool, uploadProgress: @escaping @Sendable (Double) -> Void, accessToken: String) async throws -> MobileSocialPost {
+        uploadProgress(1)
+        return post
+    }
     func updatePost(postID: UUID, request: MobileUpdateSocialPost, accessToken: String) async throws -> MobileSocialPost { updatedSocialPost(post, body: request.body) }
     func deletePost(postID: UUID, accessToken: String) async throws {}
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data { Data() }
@@ -652,12 +715,14 @@ private actor RecordingSocialAPI: MobileSocialAPI {
         audience: MobileSocialAudience,
         location: String?,
         commentsEnabled: Bool,
+        uploadProgress: @escaping @Sendable (Double) -> Void,
         accessToken: String
     ) async throws -> MobileSocialPost {
         recordedMediaContentTypes.append(type)
         recordedMediaAudience = audience
         recordedMediaLocation = location
         recordedMediaCommentsEnabled = commentsEnabled
+        uploadProgress(1)
         return post
     }
 

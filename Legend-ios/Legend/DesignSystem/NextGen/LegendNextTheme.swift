@@ -119,10 +119,14 @@ enum LegendNextColor {
     static let information = Color(uiColor: .systemBlue)
     static let inactive = Color(uiColor: .systemGray)
 
-    // Contact cards are intentionally distinct from generic surfaces. Keeping
-    // the fill and premium, dark-gold edge here gives every people surface one
-    // authority without changing unrelated cards such as journeys or posts.
-    static let contactFill = Color.white
+    // Contact cards are intentionally distinct from generic surfaces. Their
+    // fill follows the surrounding Legend canvas: white on the standard app
+    // pages and a lifted navy on Discover and branded navy sheets.
+    static let contactNavy = Color(
+        red: 20.0 / 255.0,
+        green: 46.0 / 255.0,
+        blue: 91.0 / 255.0
+    )
 
     static let contactBorder = adaptiveColor(
         light: UIColor(red: 111 / 255, green: 78 / 255, blue: 20 / 255, alpha: 1),
@@ -134,6 +138,10 @@ enum LegendNextColor {
         green: 122 / 255,
         blue: 235 / 255
     )
+
+    static func contactFill(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? contactNavy : .white
+    }
 
     static func premiumBorder(for colorScheme: ColorScheme) -> Color {
         colorScheme == .dark
@@ -257,8 +265,8 @@ enum LegendNextGradient {
 
         return LinearGradient(
             colors: [
-                .white,
-                .white
+                LegendNextColor.canvas,
+                LegendNextColor.canvas
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -502,9 +510,9 @@ extension View {
     }
 }
 
-/// The only standard application canvas. Light screens stay white, while the
-/// restrained blue and gold illumination gives the entire product a shared
-/// Legend depth without turning each screen into a separate treatment.
+/// The only standard application canvas. It is intentionally quiet and
+/// deterministic: standard pages use a clean near-white field while branded
+/// surfaces explicitly use the Discover navy system.
 struct LegendNextCanvas: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -512,24 +520,12 @@ struct LegendNextCanvas: View {
         ZStack {
             LegendNextGradient.pageWash(for: colorScheme)
 
-            if colorScheme == .light {
+            if colorScheme == .dark {
                 Circle()
-                    .fill(LegendNextColor.navyElevated.opacity(0.055))
-                    .frame(width: 360, height: 360)
-                    .blur(radius: 54)
-                    .offset(x: 150, y: -330)
-
-                Circle()
-                    .fill(LegendNextColor.goldBright.opacity(0.045))
-                    .frame(width: 300, height: 300)
-                    .blur(radius: 58)
-                    .offset(x: -145, y: 390)
-            } else {
-                Circle()
-                    .fill(LegendNextColor.navyElevated.opacity(0.20))
-                    .frame(width: 360, height: 360)
-                    .blur(radius: 64)
-                    .offset(x: 130, y: -300)
+                    .fill(LegendNextColor.navyElevated.opacity(0.12))
+                    .frame(width: 320, height: 320)
+                    .blur(radius: 72)
+                    .offset(x: 140, y: -260)
             }
         }
         .ignoresSafeArea()
@@ -542,6 +538,30 @@ private struct LegendNextPageBackgroundModifier: ViewModifier {
         content.background {
             LegendNextCanvas()
         }
+    }
+}
+
+private struct LegendNextBrandedSheetAppearance<Background: ShapeStyle>: ViewModifier {
+    let background: Background
+
+    func body(content: Content) -> some View {
+        content
+            .preferredColorScheme(.dark)
+            .presentationBackground(background)
+    }
+}
+
+extension View {
+    /// The shared sheet appearance. Sheets never inherit a system material or
+    /// device color-mode treatment; they always use the Discover navy language.
+    func legendNextBrandedSheetAppearance() -> some View {
+        legendNextBrandedSheetAppearance(background: LegendNextColor.midnight)
+    }
+
+    func legendNextBrandedSheetAppearance<Background: ShapeStyle>(
+        background: Background
+    ) -> some View {
+        modifier(LegendNextBrandedSheetAppearance(background: background))
     }
 }
 

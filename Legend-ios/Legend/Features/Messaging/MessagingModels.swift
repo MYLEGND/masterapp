@@ -29,6 +29,8 @@ struct ConversationSummary: Codable, Equatable, Identifiable, Sendable {
     let lastMessageUTC: Date?
     let unreadCount: Int
     let isClosed: Bool
+    let purpose: String? = nil
+    let groupAvatar: ProfileAvatar? = nil
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -39,6 +41,8 @@ struct ConversationSummary: Codable, Equatable, Identifiable, Sendable {
         case lastMessageUTC = "lastMessageUtc"
         case unreadCount
         case isClosed
+        case purpose
+        case groupAvatar
     }
 }
 
@@ -51,6 +55,8 @@ struct ConversationDetail: Codable, Equatable, Sendable {
     let isMuted: Bool
     let isClosed: Bool
     let canManageMembers: Bool
+    let purpose: String? = nil
+    let groupAvatar: ProfileAvatar? = nil
 }
 
 struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
@@ -62,6 +68,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
     let attachments: [MessagingAttachment]
     let isMine: Bool
     let reply: MessageReplyPreview?
+    let verificationReview: VerificationReview? = nil
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -72,6 +79,37 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         case attachments
         case isMine
         case reply
+        case verificationReview
+    }
+}
+
+struct VerificationReview: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let requesterUserID: String
+    let requesterParticipantType: ParticipantType
+    let status: String
+    let requestedUTC: Date
+    let canResolve: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case requesterUserID = "requesterUserId"
+        case requesterParticipantType
+        case status
+        case requestedUTC = "requestedUtc"
+        case canResolve
+    }
+}
+
+struct VerificationRequestSubmission: Codable, Equatable, Sendable {
+    let id: UUID
+    let status: String
+    let requestedUTC: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case status
+        case requestedUTC = "requestedUtc"
     }
 }
 
@@ -207,10 +245,25 @@ struct CreateMessagingGroupRequest: Encodable, Sendable {
     let subject: String
     let participants: [MessagingGroupMemberRequest]
     let initialMessageBody: String?
+    let groupImage: MessagingGroupImageRequest?
 
     private enum CodingKeys: String, CodingKey {
-        case subject, participants, initialMessageBody
+        case subject, participants, initialMessageBody, groupImage
     }
+}
+
+struct MessagingGroupImageRequest: Codable, Sendable {
+    let contentType: String
+    let base64Content: String
+}
+
+struct UpdateMessagingGroupRequest: Encodable, Sendable {
+    let subject: String
+    let groupImage: MessagingGroupImageRequest?
+}
+
+struct ResolveVerificationRequest: Encodable, Sendable {
+    let approve: Bool
 }
 
 protocol MessagingAPI: Sendable {
@@ -224,12 +277,24 @@ protocol MessagingAPI: Sendable {
     func createGroup(
         subject: String,
         recipients: [MessagingRecipient],
+        groupImage: MessagingGroupImageRequest?,
         accessToken: String
     ) async throws -> ConversationDetail
-    func startVerificationRequest(accessToken: String) async throws -> ConversationDetail
+    func startVerificationRequest(accessToken: String) async throws -> VerificationRequestSubmission
+    func updateGroup(
+        conversationID: UUID,
+        subject: String,
+        groupImage: MessagingGroupImageRequest?,
+        accessToken: String
+    ) async throws
     func addGroupParticipant(
         conversationID: UUID,
         recipient: MessagingRecipient,
+        accessToken: String
+    ) async throws
+    func resolveVerificationRequest(
+        requestID: UUID,
+        approve: Bool,
         accessToken: String
     ) async throws
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail
@@ -253,18 +318,36 @@ extension MessagingAPI {
     func createGroup(
         subject: String,
         recipients: [MessagingRecipient],
+        groupImage: MessagingGroupImageRequest? = nil,
         accessToken: String
     ) async throws -> ConversationDetail {
         throw MobileMessagingContractError.unavailable
     }
 
-    func startVerificationRequest(accessToken: String) async throws -> ConversationDetail {
+    func startVerificationRequest(accessToken: String) async throws -> VerificationRequestSubmission {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func updateGroup(
+        conversationID: UUID,
+        subject: String,
+        groupImage: MessagingGroupImageRequest?,
+        accessToken: String
+    ) async throws {
         throw MobileMessagingContractError.unavailable
     }
 
     func addGroupParticipant(
         conversationID: UUID,
         recipient: MessagingRecipient,
+        accessToken: String
+    ) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func resolveVerificationRequest(
+        requestID: UUID,
+        approve: Bool,
         accessToken: String
     ) async throws {
         throw MobileMessagingContractError.unavailable
@@ -288,15 +371,23 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
         throw MobileMessagingContractError.unavailable
     }
 
-    func createGroup(subject: String, recipients: [MessagingRecipient], accessToken: String) async throws -> ConversationDetail {
+    func createGroup(subject: String, recipients: [MessagingRecipient], groupImage: MessagingGroupImageRequest?, accessToken: String) async throws -> ConversationDetail {
         throw MobileMessagingContractError.unavailable
     }
 
-    func startVerificationRequest(accessToken: String) async throws -> ConversationDetail {
+    func startVerificationRequest(accessToken: String) async throws -> VerificationRequestSubmission {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func updateGroup(conversationID: UUID, subject: String, groupImage: MessagingGroupImageRequest?, accessToken: String) async throws {
         throw MobileMessagingContractError.unavailable
     }
 
     func addGroupParticipant(conversationID: UUID, recipient: MessagingRecipient, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func resolveVerificationRequest(requestID: UUID, approve: Bool, accessToken: String) async throws {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -387,6 +478,7 @@ struct URLSessionMessagingAPI: MessagingAPI {
     func createGroup(
         subject: String,
         recipients: [MessagingRecipient],
+        groupImage: MessagingGroupImageRequest?,
         accessToken: String
     ) async throws -> ConversationDetail {
         try await client.post(
@@ -398,21 +490,35 @@ struct URLSessionMessagingAPI: MessagingAPI {
                         userID: $0.identity.userID,
                         participantType: $0.identity.participantType)
                 },
-                initialMessageBody: nil),
+                initialMessageBody: nil,
+                groupImage: groupImage),
             accessToken: accessToken,
             idempotencyKey: UUID(),
             headers: participantHeader,
             response: ConversationDetail.self)
     }
 
-    func startVerificationRequest(accessToken: String) async throws -> ConversationDetail {
+    func startVerificationRequest(accessToken: String) async throws -> VerificationRequestSubmission {
         try await client.post(
             "/api/v1/mobile/messaging/verification-requests",
             body: EmptyMobileRequest(),
             accessToken: accessToken,
             idempotencyKey: UUID(),
             headers: participantHeader,
-            response: ConversationDetail.self)
+            response: VerificationRequestSubmission.self)
+    }
+
+    func updateGroup(
+        conversationID: UUID,
+        subject: String,
+        groupImage: MessagingGroupImageRequest?,
+        accessToken: String
+    ) async throws {
+        try await client.put(
+            "/api/v1/mobile/messaging/groups/\(conversationID.uuidString)",
+            body: UpdateMessagingGroupRequest(subject: subject, groupImage: groupImage),
+            accessToken: accessToken,
+            headers: participantHeader)
     }
 
     func addGroupParticipant(
@@ -425,6 +531,19 @@ struct URLSessionMessagingAPI: MessagingAPI {
             body: MessagingGroupMemberRequest(
                 userID: recipient.identity.userID,
                 participantType: recipient.identity.participantType),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader)
+    }
+
+    func resolveVerificationRequest(
+        requestID: UUID,
+        approve: Bool,
+        accessToken: String
+    ) async throws {
+        try await client.post(
+            "/api/v1/mobile/messaging/verification-requests/\(requestID.uuidString)/resolution",
+            body: ResolveVerificationRequest(approve: approve),
             accessToken: accessToken,
             idempotencyKey: UUID(),
             headers: participantHeader)

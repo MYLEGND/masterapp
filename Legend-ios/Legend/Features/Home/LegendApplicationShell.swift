@@ -58,6 +58,9 @@ private enum LegendAppTab: String, Identifiable {
 }
 
 struct LegendApplicationShell: View {
+    @EnvironmentObject private var scrollChrome: LegendScrollChrome
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let currentSession: MobileSession
     @ObservedObject private var coordinator: MobileSessionCoordinator
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
@@ -97,9 +100,21 @@ struct LegendApplicationShell: View {
                             coordinator.switchToRole(participantType)
                         }
                     )
+                    .opacity(scrollChrome.isBottomNavigationVisible ? 1 : 0)
+                    .offset(y: scrollChrome.isBottomNavigationVisible ? 0 : 84)
+                    .frame(height: scrollChrome.isBottomNavigationVisible ? nil : 0)
+                    .clipped()
+                    .allowsHitTesting(scrollChrome.isBottomNavigationVisible)
+                    .accessibilityHidden(!scrollChrome.isBottomNavigationVisible)
                 }
             }
             .tint(LegendNextColor.gold)
+            .animation(
+                reduceMotion ? nil : LegendNextMotion.tab,
+                value: scrollChrome.isBottomNavigationVisible)
+            .onChange(of: selectedTab) {
+                scrollChrome.reset()
+            }
     }
 
     @ViewBuilder
@@ -173,7 +188,9 @@ struct LegendApplicationShell: View {
             LegendMessagesTab(
                 isThreadActive: $isMessageThreadActive,
                 pendingConversationID: $pendingMessageConversationID,
-                messages: messages
+                messages: messages,
+                currentSession: currentSession,
+                social: social
             )
             .task { messages.load() }
 
@@ -186,8 +203,7 @@ struct LegendApplicationShell: View {
                     messages: messages,
                     social: social,
                     bootstrap: bootstrap,
-                    openMessages: { conversationID in
-                        pendingMessageConversationID = conversationID
+                    showMessages: {
                         select(.messages)
                     }
                 )
@@ -454,7 +470,7 @@ private struct LegendAccountSwitcherSheet: View {
                 LegendNextGradient.hero
                     .ignoresSafeArea()
 
-                ScrollView {
+                LegendScrollView(tracksNavigationChrome: false) {
                     VStack(
                         alignment: .leading,
                         spacing: LegendNextSpacing.sm
@@ -479,7 +495,7 @@ private struct LegendAccountSwitcherSheet: View {
         .presentationDetents([.height(preferredHeight), .large])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(34)
-        .presentationBackground(LegendNextColor.midnight)
+        .legendNextBrandedSheetAppearance()
     }
 
     private var sheetHeader: some View {
@@ -866,10 +882,9 @@ private struct DailyScriptureSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                LegendNextColor.canvas
-                    .ignoresSafeArea()
+                LegendNextCanvas()
 
-                ScrollView {
+                LegendScrollView(tracksNavigationChrome: false) {
                     VStack(
                         alignment: .leading,
                         spacing: LegendNextSpacing.sm
@@ -889,7 +904,7 @@ private struct DailyScriptureSheet: View {
             .navigationTitle("God Above All")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(
-                LegendNextColor.canvas,
+                LegendNextColor.midnight,
                 for: .navigationBar
             )
             .toolbarBackground(
@@ -917,7 +932,7 @@ private struct DailyScriptureSheet: View {
             }
         }
         .tint(LegendNextColor.gold)
-        .presentationBackground(LegendNextColor.canvas)
+        .legendNextBrandedSheetAppearance()
         .presentationCornerRadius(32)
     }
 
@@ -1186,6 +1201,8 @@ private struct LegendMessagesTab: View {
     @Binding var isThreadActive: Bool
     @Binding var pendingConversationID: UUID?
     @ObservedObject var messages: MessagingStore
+    let currentSession: MobileSession
+    @ObservedObject var social: MobileSocialStore
     @State private var navigationPath: [UUID] = []
 
     var body: some View {
@@ -1207,7 +1224,11 @@ private struct LegendMessagesTab: View {
                     isThreadActive = true
                 })
                 .navigationDestination(for: UUID.self) { conversationID in
-                    ConversationThreadView(store: messages, conversationID: conversationID)
+                    ConversationThreadView(
+                        store: messages,
+                        conversationID: conversationID,
+                        currentIdentity: currentSession.actor.identity,
+                        social: social)
                 }
         }
         .onChange(of: pendingConversationID) { _, conversationID in
@@ -1277,7 +1298,7 @@ private struct LegendHomeView: View {
     private func homeContent(
         _ home: MobileHomeResponse
     ) -> some View {
-        ScrollView {
+        LegendScrollView {
             LazyVStack(
                 alignment: .leading,
                 spacing: LegendNextSpacing.xs
@@ -2488,7 +2509,7 @@ private struct LegendAgentClientsView: View {
                 message: "Your active Client and Business Client CRM records will appear here.",
                 systemImage: "person.2")
         } else {
-            ScrollView {
+            LegendScrollView {
                 LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                     LegendNextSectionHeader(
                         eyebrow: "CRM",
@@ -2573,7 +2594,7 @@ private struct LegendAgentLeadsView: View {
                 message: "Your active workstation lead records will appear here.",
                 systemImage: "person.crop.circle.badge.plus")
         } else {
-            ScrollView {
+            LegendScrollView {
                 LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                     LegendNextSectionHeader(
                         eyebrow: "Pipeline",
@@ -2658,7 +2679,7 @@ struct LegendJourneyProfileEditor: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            LegendScrollView(tracksNavigationChrome: false) {
                 LazyVStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                     LegendNextSurface(style: .navy) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
@@ -2905,7 +2926,7 @@ private struct LegendFinancialProfilePanel: View {
         _ financial: MobileFinancialSnapshotResponse,
         availabilityDetail: String? = nil
     ) -> some View {
-        ScrollView {
+        LegendScrollView {
             LazyVStack(
                 alignment: .leading,
                 spacing: LegendNextSpacing.sm
@@ -3193,7 +3214,7 @@ private struct LegendFinancialOutlookSheet: View {
                 LegendNextGradient.financialSheet
                     .ignoresSafeArea()
 
-                ScrollView {
+                LegendScrollView(tracksNavigationChrome: false) {
                     LazyVStack(
                         alignment: .leading,
                         spacing: LegendNextSpacing.sm
@@ -3228,7 +3249,8 @@ private struct LegendFinancialOutlookSheet: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(34)
-        .presentationBackground(LegendNextGradient.financialSheet)
+        .legendNextBrandedSheetAppearance(
+            background: LegendNextGradient.financialSheet)
     }
 
     private var premiumModalHeader: some View {
@@ -4000,7 +4022,7 @@ private struct LegendFinanceView: View {
         _ financial: MobileFinancialSnapshotResponse,
         availability: FinancialAvailability? = nil
     ) -> some View {
-        ScrollView {
+        LegendScrollView {
             LazyVStack(
                 alignment: .leading,
                 spacing: LegendNextSpacing.xs
@@ -4330,7 +4352,7 @@ private struct LegendFinanceView: View {
         _ destination: MobileFinancialDetailDestination,
         financial: MobileFinancialSnapshotResponse
     ) -> some View {
-        ScrollView {
+        LegendScrollView {
             LazyVStack(
                 alignment: .leading,
                 spacing: LegendNextSpacing.xs
@@ -5207,7 +5229,7 @@ private struct LegendAccountView: View {
     @ObservedObject private var messages: MessagingStore
     @ObservedObject private var social: MobileSocialStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
-    private let openMessages: (UUID) -> Void
+    private let showMessages: () -> Void
 
     @State private var selectedContent: LegendProfileContentFilter = .posts
     @State private var isEditing = false
@@ -5233,7 +5255,7 @@ private struct LegendAccountView: View {
         messages: MessagingStore,
         social: MobileSocialStore,
         bootstrap: LegendApplicationBootstrapCoordinator,
-        openMessages: @escaping (UUID) -> Void
+        showMessages: @escaping () -> Void
     ) {
         self.currentSession = currentSession
         _coordinator = ObservedObject(wrappedValue: coordinator)
@@ -5241,7 +5263,7 @@ private struct LegendAccountView: View {
         _messages = ObservedObject(wrappedValue: messages)
         _social = ObservedObject(wrappedValue: social)
         _bootstrap = ObservedObject(wrappedValue: bootstrap)
-        self.openMessages = openMessages
+        self.showMessages = showMessages
     }
 
     var body: some View {
@@ -5378,7 +5400,7 @@ private struct LegendAccountView: View {
     private func profileContent(
         _ profile: MobileAccountProfile
     ) -> some View {
-        ScrollView {
+        LegendScrollView {
             LazyVStack(spacing: LegendNextSpacing.sm) {
                 profileIdentityHeader(profile)
 
@@ -5729,7 +5751,7 @@ private struct LegendAccountView: View {
 
     private func profileSettingsSheet(_ profile: MobileAccountProfile) -> some View {
         NavigationStack {
-            ScrollView {
+            LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
                         eyebrow: "Member experience",
@@ -5817,16 +5839,16 @@ private struct LegendAccountView: View {
                     if !profile.isVerified {
                         LegendProfileSettingsSection(title: "Verification") {
                             Button {
-                                messages.startVerificationRequest { conversationID in
+                                messages.startVerificationRequest {
                                     isShowingSettings = false
-                                    openMessages(conversationID)
+                                    showMessages()
                                 }
                             } label: {
                                 LegendProfileSettingsRow(
                                     title: messages.isCreatingGroup
                                         ? "Opening verification review…"
                                         : "Request verification",
-                                    detail: "Start a private review with Zac Owen and Legend.",
+                                    detail: "Submit your profile to the private Legend review team.",
                                     systemImage: "checkmark.seal",
                                     showsChevron: true)
                             }
@@ -5894,7 +5916,7 @@ private struct LegendAccountView: View {
             .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
         }
-        .tint(LegendNextColor.navyElevated)
+        .tint(LegendNextColor.gold)
         .legendNextSheetChrome()
         .sheet(isPresented: $isPresentingCreatorInsights) {
             if case .loaded(let snapshot) = social.state {
@@ -6052,7 +6074,7 @@ private struct LegendFollowListView: View {
                         systemImage: kind == .follows ? "person.2" : "person.2.fill",
                         description: Text(kind.emptyMessage))
                 } else {
-                    ScrollView {
+                    LegendScrollView(tracksNavigationChrome: false) {
                         LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                             LegendNextSectionHeader(
                                 eyebrow: "Legend network",
@@ -6151,8 +6173,11 @@ struct LegendPublicProfileView: View {
     @State private var isUpdatingFollow = false
     @State private var isConnectionActive: Bool
     @State private var isRemovingConnection = false
+    @State private var verificationReview: VerificationReview?
+    @State private var isResolvingVerification = false
     private let journeyConnectionID: UUID?
     private let disconnectConnection: ((UUID) async -> Bool)?
+    private let performVerificationResolution: ((VerificationReview, Bool) async -> Bool)?
 
     init(
         profile: MobileSocialAuthor,
@@ -6161,7 +6186,9 @@ struct LegendPublicProfileView: View {
         isFollowing: Bool,
         isFollowRequestPending: Bool = false,
         journeyConnectionID: UUID? = nil,
-        disconnectConnection: ((UUID) async -> Bool)? = nil
+        disconnectConnection: ((UUID) async -> Bool)? = nil,
+        verificationReview: VerificationReview? = nil,
+        resolveVerification: ((VerificationReview, Bool) async -> Bool)? = nil
     ) {
         self.profile = profile
         self.currentIdentity = currentIdentity
@@ -6169,12 +6196,14 @@ struct LegendPublicProfileView: View {
         _isFollowing = State(initialValue: isFollowing)
         _isFollowRequestPending = State(initialValue: isFollowRequestPending)
         _isConnectionActive = State(initialValue: journeyConnectionID != nil)
+        _verificationReview = State(initialValue: verificationReview)
         self.journeyConnectionID = journeyConnectionID
         self.disconnectConnection = disconnectConnection
+        performVerificationResolution = resolveVerification
     }
 
     var body: some View {
-        ScrollView {
+        LegendScrollView {
             VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
                 profileHero
 
@@ -6218,6 +6247,8 @@ struct LegendPublicProfileView: View {
                     .disabled(isRemovingConnection)
                 }
 
+                verificationDecisionSection
+
                 aboutSection
                 updatesSection
             }
@@ -6233,6 +6264,64 @@ struct LegendPublicProfileView: View {
         .refreshable {
             await refresh()
         }
+    }
+
+    @ViewBuilder
+    private var verificationDecisionSection: some View {
+        if let verificationReview,
+           verificationReview.canResolve,
+           verificationReview.status == "Pending" {
+            LegendNextSurface(style: .navy) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                    Label("Verification review", systemImage: "checkmark.seal.fill")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+
+                    Text("This member requested verification. Your decision is recorded in the private founder review queue.")
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.74))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: LegendNextSpacing.sm) {
+                        Button(role: .destructive) {
+                            Task { await resolveVerification(verificationReview, approve: false) }
+                        } label: {
+                            Text("Decline")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(LegendNextButtonStyle(kind: .secondary, controlHeight: 40))
+                        .disabled(isResolvingVerification)
+
+                        Button {
+                            Task { await resolveVerification(verificationReview, approve: true) }
+                        } label: {
+                            if isResolvingVerification {
+                                ProgressView()
+                                    .tint(LegendNextColor.midnight)
+                                    .frame(maxWidth: .infinity)
+                            } else {
+                                Text("Approve")
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .buttonStyle(LegendNextButtonStyle(kind: .primary, controlHeight: 40))
+                        .disabled(isResolvingVerification)
+                    }
+                }
+            }
+        }
+    }
+
+    private func resolveVerification(
+        _ review: VerificationReview,
+        approve: Bool
+    ) async {
+        guard let performVerificationResolution else { return }
+        isResolvingVerification = true
+        defer { isResolvingVerification = false }
+        guard await performVerificationResolution(review, approve) else { return }
+        verificationReview = nil
+        await refresh()
     }
 
     private var displayedProfile: MobileSocialAuthor {
@@ -6626,7 +6715,7 @@ private struct LegendAccountEditor: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
                     LegendNextSheetHeader(
                         eyebrow: "Your identity",
@@ -6759,7 +6848,7 @@ private struct LegendAccountEditor: View {
             .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
         }
-        .tint(LegendNextColor.navyElevated)
+        .tint(LegendNextColor.gold)
         .legendNextSheetChrome(detents: [.large])
         .onChange(of: username) { _, newUsername in
             store.checkUsernameAvailability(newUsername)
@@ -6810,7 +6899,7 @@ private struct LegendProfileSettingsSection<Content: View>: View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
             Text(title.uppercased())
                 .font(LegendNextTypography.eyebrow)
-                .foregroundStyle(LegendNextColor.navyElevated)
+                .foregroundStyle(LegendNextColor.goldBright)
 
             LegendNextSurface(style: .profileSettings, padding: LegendNextSpacing.xs) {
                 content

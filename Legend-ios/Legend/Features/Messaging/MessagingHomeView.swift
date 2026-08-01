@@ -39,6 +39,68 @@ private func publicRelationshipLabel(
     return normalized
 }
 
+private func legendMessagingGroupImageRequest(
+    from data: Data?
+) -> MessagingGroupImageRequest? {
+    guard let data,
+          let image = UIImage(data: data) else { return nil }
+
+    let maximumSide: CGFloat = 640
+    let scale = min(1, maximumSide / max(image.size.width, image.size.height))
+    let targetSize = CGSize(
+        width: max(1, image.size.width * scale),
+        height: max(1, image.size.height * scale))
+    let resized = UIGraphicsImageRenderer(size: targetSize).image { _ in
+        image.draw(in: CGRect(origin: .zero, size: targetSize))
+    }
+    guard let compressed = resized.jpegData(compressionQuality: 0.70),
+          compressed.count <= 512 * 1_024 else { return nil }
+
+    return MessagingGroupImageRequest(
+        contentType: "image/jpeg",
+        base64Content: compressed.base64EncodedString())
+}
+
+private struct LegendMessagingGroupAvatar: View {
+    let avatar: ProfileAvatar?
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let data = avatar?.imageData,
+               let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: size * 0.38, weight: .semibold))
+                    .foregroundStyle(LegendNextColor.midnight)
+                    .background(LegendNextGradient.gold, in: Circle())
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+    }
+}
+
+private struct LegendVerificationProfileRoute: Identifiable {
+    let participant: MessagingParticipant
+    let review: VerificationReview
+
+    var id: UUID { review.id }
+
+    var profile: MobileSocialAuthor {
+        MobileSocialAuthor(
+            identity: participant.identity,
+            profileID: participant.profileID,
+            displayName: participant.displayName,
+            avatar: participant.avatar,
+            isVerified: participant.isVerified,
+            roleLabel: participant.roleLabel)
+    }
+}
+
 // MARK: - Messages Inbox
 
 struct MessagingHomeView: View {
@@ -106,7 +168,7 @@ struct MessagingHomeView: View {
     private func inbox(
         _ conversations: [ConversationSummary]
     ) -> some View {
-        ScrollView {
+        LegendScrollView {
             LazyVStack(spacing: 0) {
                 inboxHeader
 
@@ -258,7 +320,7 @@ struct MessagingHomeView: View {
     }
 
     private var inboxLoadingState: some View {
-        ScrollView {
+        LegendScrollView {
             VStack(spacing: 0) {
                 inboxHeader
 
@@ -286,7 +348,7 @@ struct MessagingHomeView: View {
         symbol: String,
         canRetry: Bool
     ) -> some View {
-        ScrollView {
+        LegendScrollView {
             VStack(spacing: 0) {
                 inboxHeader
 
@@ -321,6 +383,8 @@ private struct LegendRecipientPicker: View {
     @State private var isCreatingGroup = false
     @State private var groupSubject = ""
     @State private var groupRecipients: [LogicalParticipantIdentity: MessagingRecipient] = [:]
+    @State private var selectedGroupPhoto: PhotosPickerItem?
+    @State private var groupPhotoData: Data?
 
     var body: some View {
         NavigationStack {
@@ -378,6 +442,8 @@ private struct LegendRecipientPicker: View {
                     isCreatingGroup.toggle()
                     groupRecipients.removeAll()
                     groupSubject = ""
+                    groupPhotoData = nil
+                    selectedGroupPhoto = nil
                 } label: {
                     Image(systemName: isCreatingGroup ? "person.fill" : "person.3.fill")
                         .font(.body.weight(.semibold))
@@ -460,22 +526,42 @@ private struct LegendRecipientPicker: View {
 
     private var groupCreationBar: some View {
         VStack(spacing: LegendNextSpacing.xs) {
-            TextField("Group name", text: $groupSubject)
-                .textInputAutocapitalization(.words)
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, LegendNextSpacing.sm)
-                .frame(minHeight: 42)
-                .background(
-                    LegendNextColor.surfaceElevated,
-                    in: RoundedRectangle(
-                        cornerRadius: LegendNextRadius.compact,
-                        style: .continuous
+            HStack(spacing: LegendNextSpacing.sm) {
+                PhotosPicker(
+                    selection: $selectedGroupPhoto,
+                    matching: .images,
+                    photoLibrary: PHPhotoLibrary.shared()) {
+                        LegendMessagingGroupAvatar(
+                            avatar: groupPhotoData.map {
+                                ProfileAvatar(
+                                    kind: "inline",
+                                    contentType: "image/jpeg",
+                                    base64Content: $0.base64EncodedString())
+                            },
+                            size: 42)
+                    }
+                    .accessibilityLabel("Choose group photo")
+
+                TextField("Group name", text: $groupSubject)
+                    .textInputAutocapitalization(.words)
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, LegendNextSpacing.sm)
+                    .frame(minHeight: 42)
+                    .background(
+                        LegendNextColor.surfaceElevated,
+                        in: RoundedRectangle(
+                            cornerRadius: LegendNextRadius.compact,
+                            style: .continuous
+                        )
                     )
-                )
+            }
 
             Button(store.isCreatingGroup ? "Creating group…" : "Create group (\(groupRecipients.count))") {
                 let recipients = Array(groupRecipients.values)
-                store.createGroup(subject: groupSubject, recipients: recipients) { conversationID in
+                store.createGroup(
+                    subject: groupSubject,
+                    recipients: recipients,
+                    groupImage: legendMessagingGroupImageRequest(from: groupPhotoData)) { conversationID in
                     selectConversation(conversationID)
                 }
             }
@@ -488,10 +574,17 @@ private struct LegendRecipientPicker: View {
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
         .padding(.bottom, LegendNextSpacing.sm)
+        .onChange(of: selectedGroupPhoto) { _, item in
+            guard let item else { return }
+            Task {
+                groupPhotoData = try? await item.loadTransferable(type: Data.self)
+                selectedGroupPhoto = nil
+            }
+        }
     }
 
     private var recipientScopes: some View {
-        ScrollView(.horizontal) {
+        ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: LegendNextSpacing.xs) {
                 ForEach(store.availableRecipientScopes) { scope in
                     Button {
@@ -579,7 +672,7 @@ private struct LegendRecipientPicker: View {
     private func recipientList(
         _ recipients: [MessagingRecipient]
     ) -> some View {
-        ScrollView {
+        LegendScrollView(tracksNavigationChrome: false) {
             LazyVStack(alignment: .leading, spacing: 3) {
                 Text(store.selectedRecipientScope.rawValue)
                     .font(.system(.headline, design: .rounded).weight(.bold))
@@ -684,7 +777,7 @@ private struct LegendRecipientPicker: View {
     }
 
     private var recipientLoading: some View {
-        ScrollView {
+        LegendScrollView(tracksNavigationChrome: false) {
             LazyVStack(spacing: LegendNextSpacing.sm) {
                 ForEach(0..<4, id: \.self) { _ in
                     LegendMessagingConversationSkeleton()
@@ -818,7 +911,7 @@ private struct LegendGroupMemberPicker: View {
             .padding(LegendNextSpacing.md)
 
         case .loaded(let recipients):
-            ScrollView {
+            LegendScrollView(tracksNavigationChrome: false) {
                 LazyVStack(spacing: LegendNextSpacing.sm) {
                     ForEach(recipients) { recipient in
                         Button {
@@ -864,11 +957,114 @@ private struct LegendGroupMemberPicker: View {
     }
 }
 
+/// Group ownership is enforced by the server. This sheet only exposes the
+/// owner-authorized profile fields shared by regular and staff groups.
+private struct LegendGroupProfileEditor: View {
+    @ObservedObject var store: MessagingStore
+    let conversation: ConversationDetail
+    let dismiss: () -> Void
+
+    @State private var subject: String
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var replacementPhotoData: Data?
+
+    init(
+        store: MessagingStore,
+        conversation: ConversationDetail,
+        dismiss: @escaping () -> Void
+    ) {
+        _store = ObservedObject(wrappedValue: store)
+        self.conversation = conversation
+        self.dismiss = dismiss
+        _subject = State(initialValue: conversation.title)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LegendNextCanvas()
+
+                VStack(spacing: LegendNextSpacing.lg) {
+                    PhotosPicker(
+                        selection: $selectedPhoto,
+                        matching: .images,
+                        photoLibrary: PHPhotoLibrary.shared()) {
+                            LegendMessagingGroupAvatar(
+                                avatar: replacementAvatar ?? conversation.groupAvatar,
+                                size: 92)
+                        }
+                        .accessibilityLabel("Change group photo")
+
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                        Text("Group name")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                        TextField("Group name", text: $subject)
+                            .textInputAutocapitalization(.words)
+                            .padding(.horizontal, LegendNextSpacing.md)
+                            .frame(minHeight: 48)
+                            .background(
+                                LegendNextColor.surfaceElevated,
+                                in: RoundedRectangle(
+                                    cornerRadius: LegendNextRadius.control,
+                                    style: .continuous))
+                    }
+
+                    Text("You manage this group’s members, name, and photo.")
+                        .font(.footnote)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Spacer()
+                }
+                .padding(LegendNextSpacing.pageHorizontal)
+            }
+            .navigationTitle("Group profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: dismiss)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(store.isCreatingGroup ? "Saving…" : "Save") {
+                        store.updateGroup(
+                            conversationID: conversation.id,
+                            subject: subject,
+                            groupImage: legendMessagingGroupImageRequest(from: replacementPhotoData),
+                            completion: dismiss)
+                    }
+                    .disabled(
+                        store.isCreatingGroup ||
+                        subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .onChange(of: selectedPhoto) { _, item in
+                guard let item else { return }
+                Task {
+                    replacementPhotoData = try? await item.loadTransferable(type: Data.self)
+                    selectedPhoto = nil
+                }
+            }
+        }
+    }
+
+    private var replacementAvatar: ProfileAvatar? {
+        replacementPhotoData.map {
+            ProfileAvatar(
+                kind: "inline",
+                contentType: "image/jpeg",
+                base64Content: $0.base64EncodedString())
+        }
+    }
+}
+
 // MARK: - Conversation Thread
 
 struct ConversationThreadView: View {
     @ObservedObject var store: MessagingStore
     let conversationID: UUID
+    let currentIdentity: LogicalParticipantIdentity
+    @ObservedObject var social: MobileSocialStore
 
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var composerIsFocused: Bool
@@ -879,6 +1075,8 @@ struct ConversationThreadView: View {
     @State private var messageForStagedAttachments: ConversationMessage?
     @State private var replyingToMessage: ConversationMessage?
     @State private var isPresentingAddMember = false
+    @State private var isPresentingGroupProfile = false
+    @State private var verificationProfile: LegendVerificationProfileRoute?
 
     var body: some View {
         ZStack {
@@ -899,6 +1097,27 @@ struct ConversationThreadView: View {
                 dismiss: { isPresentingAddMember = false }
             )
             .legendNextSheetChrome(detents: [.large])
+        }
+        .sheet(isPresented: $isPresentingGroupProfile) {
+            if case .loaded(let conversation) = store.detailState {
+                LegendGroupProfileEditor(
+                    store: store,
+                    conversation: conversation,
+                    dismiss: { isPresentingGroupProfile = false })
+                    .legendNextSheetChrome(detents: [.large])
+            }
+        }
+        .sheet(item: $verificationProfile) { route in
+            LegendPublicProfileView(
+                profile: route.profile,
+                currentIdentity: currentIdentity,
+                social: social,
+                isFollowing: false,
+                verificationReview: route.review,
+                resolveVerification: { review, approve in
+                    await store.resolveVerificationRequest(review, approve: approve)
+                })
+                .legendNextSheetChrome(detents: [.large])
         }
     }
 
@@ -936,7 +1155,8 @@ struct ConversationThreadView: View {
         VStack(spacing: 0) {
             LegendConversationHeader(
                 conversation: conversation,
-                addMember: { isPresentingAddMember = true }
+                addMember: { isPresentingAddMember = true },
+                editGroup: { isPresentingGroupProfile = true }
             )
 
             LegendMessageTimeline(
@@ -944,6 +1164,12 @@ struct ConversationThreadView: View {
                 onReply: { message in
                     replyingToMessage = message
                     composerIsFocused = true
+                },
+                onOpenVerificationProfile: { message in
+                    guard let review = message.verificationReview else { return }
+                    verificationProfile = LegendVerificationProfileRoute(
+                        participant: message.sender,
+                        review: review)
                 }
             )
         }
@@ -1301,7 +1527,7 @@ private struct LegendMessageAttachmentStaging: View {
     let onRetry: (UUID) -> Void
 
     var body: some View {
-        ScrollView(.horizontal) {
+        ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: LegendNextSpacing.sm) {
                 ForEach(attachments) { attachment in
                     HStack(spacing: LegendNextSpacing.xs) {
@@ -1424,11 +1650,9 @@ private struct LegendConversationRow: View {
             isVerified: !isGroup && conversation.counterparty.isVerified == true,
             avatar: {
                 if isGroup {
-                    Image(systemName: "person.3.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.midnight)
-                        .frame(width: 46, height: 46)
-                        .background(LegendNextGradient.gold, in: Circle())
+                    LegendMessagingGroupAvatar(
+                        avatar: conversation.groupAvatar,
+                        size: 46)
                 } else {
                     LegendMessagingAvatar(
                         participant: conversation.counterparty,
@@ -1586,6 +1810,7 @@ private struct LegendRecipientRow: View {
 private struct LegendConversationHeader: View {
     let conversation: ConversationDetail
     let addMember: () -> Void
+    let editGroup: () -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -1608,11 +1833,9 @@ private struct LegendConversationHeader: View {
             .accessibilityLabel("Back")
 
             if isGroup {
-                Image(systemName: "person.3.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(LegendNextColor.midnight)
-                    .frame(width: 46, height: 46)
-                    .background(LegendNextGradient.gold, in: Circle())
+                LegendMessagingGroupAvatar(
+                    avatar: conversation.groupAvatar,
+                    size: 46)
             } else if let counterparty {
                 LegendMessagingAvatar(
                     participant: counterparty,
@@ -1656,15 +1879,27 @@ private struct LegendConversationHeader: View {
             Spacer()
 
             if isGroup && conversation.canManageMembers {
-                Button(action: addMember) {
-                    Image(systemName: "person.badge.plus")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.midnight)
-                        .frame(width: 38, height: 38)
-                        .background(LegendNextGradient.gold, in: Circle())
+                HStack(spacing: LegendNextSpacing.xs) {
+                    Button(action: editGroup) {
+                        Image(systemName: "pencil")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.midnight)
+                            .frame(width: 38, height: 38)
+                            .background(LegendNextGradient.gold, in: Circle())
+                    }
+                    .buttonStyle(LegendMessagingPressButtonStyle())
+                    .accessibilityLabel("Edit group profile")
+
+                    Button(action: addMember) {
+                        Image(systemName: "person.badge.plus")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.midnight)
+                            .frame(width: 38, height: 38)
+                            .background(LegendNextGradient.gold, in: Circle())
+                    }
+                    .buttonStyle(LegendMessagingPressButtonStyle())
+                    .accessibilityLabel("Add group member")
                 }
-                .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel("Add group member")
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -1764,10 +1999,11 @@ private struct LegendConversationFallbackHeader: View {
 private struct LegendMessageTimeline: View {
     let messages: [ConversationMessage]
     let onReply: (ConversationMessage) -> Void
+    let onOpenVerificationProfile: (ConversationMessage) -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
+            LegendScrollView(tracksNavigationChrome: false) {
                 LazyVStack(spacing: 2) {
                     if messages.isEmpty {
                         LegendMessagingEmptyState(
@@ -1800,7 +2036,10 @@ private struct LegendMessageTimeline: View {
                                 ),
                                 onReply: {
                                     onReply(message)
-                                }
+                                },
+                                onOpenVerificationProfile: message.verificationReview == nil
+                                    ? nil
+                                    : { onOpenVerificationProfile(message) }
                             )
                             .id(message.id)
                         }
@@ -2034,6 +2273,7 @@ private struct LegendMessageBubble: View {
     let message: ConversationMessage
     let showsSender: Bool
     let onReply: () -> Void
+    let onOpenVerificationProfile: (() -> Void)?
 
     @State private var copyFeedbackTrigger = 0
 
@@ -2132,6 +2372,24 @@ private struct LegendMessageBubble: View {
                         attachment: attachment,
                         isMine: message.isMine
                     )
+                }
+
+                if let onOpenVerificationProfile,
+                   let review = message.verificationReview {
+                    Button(action: onOpenVerificationProfile) {
+                        Label(
+                            review.status == "Pending"
+                                ? "Open verification profile"
+                                : "Open reviewed profile",
+                            systemImage: "person.crop.circle")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(message.isMine
+                                             ? LegendNextColor.midnight
+                                             : LegendNextColor.goldBright)
+                            .padding(.top, 2)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Open this member’s profile for verification review")
                 }
             }
             .padding(.horizontal, 10)

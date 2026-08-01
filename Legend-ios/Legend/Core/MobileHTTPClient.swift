@@ -37,11 +37,38 @@ struct MultipartFormFile: Sendable {
         self.mimeType = mimeType
         source = .file(fileURL)
     }
+
+    var isVideo: Bool {
+        mimeType.lowercased().hasPrefix("video/")
+    }
 }
 
 private extension Data {
     mutating func append(_ string: String) {
         append(Data(string.utf8))
+    }
+}
+
+/// Receives the URL loading system's actual outbound-byte measurements for one
+/// multipart upload. Keeping this delegate private to the request avoids changing
+/// the shared session's delegate or inventing timer-based progress.
+private final class MobileUploadProgressDelegate: NSObject, URLSessionTaskDelegate {
+    private let update: @Sendable (Double) -> Void
+
+    init(update: @escaping @Sendable (Double) -> Void) {
+        self.update = update
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        let progress = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
+        update(min(max(progress, 0), 1))
     }
 }
 
@@ -135,6 +162,7 @@ struct MobileHTTPClient: Sendable {
         fields: [String: String],
         files: [MultipartFormFile],
         headers: [String: String] = [:],
+        uploadProgress: (@Sendable (Double) -> Void)? = nil,
         response: Response.Type
     ) async throws -> Response {
 
@@ -162,7 +190,8 @@ struct MobileHTTPClient: Sendable {
         return try await perform(
             request,
             response: response,
-            uploadBodyFile: bodyFile)
+            uploadBodyFile: bodyFile,
+            uploadProgress: uploadProgress)
     }
 
     func put<Body: Encodable, Response: Decodable>(
@@ -226,11 +255,13 @@ struct MobileHTTPClient: Sendable {
     private func perform<Response: Decodable>(
         _ request: URLRequest,
         response: Response.Type,
-        uploadBodyFile: URL? = nil
+        uploadBodyFile: URL? = nil,
+        uploadProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> Response {
         let (data, correlationID) = try await successfulData(
             for: request,
-            uploadBodyFile: uploadBodyFile)
+            uploadBodyFile: uploadBodyFile,
+            uploadProgress: uploadProgress)
         do {
             return try JSONDecoder.mobile.decode(Response.self, from: data)
         } catch {
@@ -241,6 +272,7 @@ struct MobileHTTPClient: Sendable {
     private func successfulData(
         for request: URLRequest,
         uploadBodyFile: URL? = nil,
+        uploadProgress: (@Sendable (Double) -> Void)? = nil,
         resourceTimeout: TimeInterval? = nil
     ) async throws -> (Data, String?) {
         let hasAuthorizationHeader = request.value(forHTTPHeaderField: "Authorization") != nil
@@ -248,6 +280,7 @@ struct MobileHTTPClient: Sendable {
         let (data, urlResponse) = try await requestData(
             for: request,
             uploadBodyFile: uploadBodyFile,
+            uploadProgress: uploadProgress,
             resourceTimeout: resourceTimeout)
 
 #if DEBUG
@@ -298,6 +331,7 @@ struct MobileHTTPClient: Sendable {
     private func requestData(
         for request: URLRequest,
         uploadBodyFile: URL? = nil,
+        uploadProgress: (@Sendable (Double) -> Void)? = nil,
         resourceTimeout: TimeInterval? = nil
     ) async throws -> (Data, URLResponse) {
         if let resourceTimeout {
@@ -307,7 +341,8 @@ struct MobileHTTPClient: Sendable {
                 group.addTask {
                     try await executeRequest(
                         for: request,
-                        uploadBodyFile: uploadBodyFile)
+                        uploadBodyFile: uploadBodyFile,
+                        uploadProgress: uploadProgress)
                 }
                 group.addTask {
                     try await Task.sleep(
@@ -327,18 +362,22 @@ struct MobileHTTPClient: Sendable {
 
         return try await executeRequest(
             for: request,
-            uploadBodyFile: uploadBodyFile)
+            uploadBodyFile: uploadBodyFile,
+            uploadProgress: uploadProgress)
     }
 
     private func executeRequest(
         for request: URLRequest,
-        uploadBodyFile: URL?
+        uploadBodyFile: URL?,
+        uploadProgress: (@Sendable (Double) -> Void)?
     ) async throws -> (Data, URLResponse) {
         do {
             if let uploadBodyFile {
+                let delegate = uploadProgress.map(MobileUploadProgressDelegate.init(update:))
                 return try await session.upload(
                     for: request,
-                    fromFile: uploadBodyFile)
+                    fromFile: uploadBodyFile,
+                    delegate: delegate)
             }
 
             return try await session.data(for: request)

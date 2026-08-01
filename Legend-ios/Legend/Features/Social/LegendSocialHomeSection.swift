@@ -1357,7 +1357,7 @@ struct LegendForYouView: View {
         } else {
             TabView(selection: $selectedPostID) {
                 ForEach(posts) { post in
-                    ScrollView {
+                    LegendScrollView {
                         LegendSocialPostCard(
                             post: post,
                             currentIdentity: currentIdentity,
@@ -1804,71 +1804,115 @@ private struct LegendSocialPublicationBanner: View {
     let dismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: LegendNextSpacing.sm) {
-            Image(systemName: publication.stage.systemImage)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(accent)
+        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+            HStack(alignment: .center, spacing: LegendNextSpacing.sm) {
+                Image(systemName: publication.stage.systemImage)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(accent)
+                    .frame(width: 34, height: 34)
+                    .background(accent.opacity(0.12), in: Circle())
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(publication.stage.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(LegendNextColor.textPrimary)
-                Text(detail)
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(LegendNextColor.textSecondary)
-                    .lineLimit(2)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                    Text(detail)
+                        .font(LegendNextTypography.supporting)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: LegendNextSpacing.xs)
+
+                controls
             }
 
-            Spacer(minLength: LegendNextSpacing.xs)
-
-            if publication.stage == .failed {
-                // Discard must be reachable: a parked failure used to hold the upload
-                // slot and disable the composer with no way to clear it.
-                HStack(spacing: LegendNextSpacing.xs) {
-                    Button("Discard", action: dismiss)
-                        .font(.caption.weight(.semibold))
-                        .buttonStyle(.bordered)
-                        .tint(LegendNextColor.textSecondary)
-                        .accessibilityLabel("Discard this failed upload")
-
-                    Button("Retry", action: retry)
-                        .font(.caption.weight(.bold))
-                        .buttonStyle(.borderedProminent)
-                        .tint(LegendNextColor.navy)
-                }
-            } else if publication.stage == .published {
-                Button(action: dismiss) {
-                    Image(systemName: "xmark")
-                        .font(.caption.weight(.bold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(LegendNextColor.textSecondary)
-                .accessibilityLabel("Dismiss upload confirmation")
-            } else {
-                ProgressView()
-                    .tint(accent)
-            }
+            progressLine
         }
-        .padding(LegendNextSpacing.sm)
+        .padding(LegendNextSpacing.md)
         .background(
             LegendNextColor.surfaceElevated,
             in: RoundedRectangle(
                 cornerRadius: LegendNextRadius.control,
                 style: .continuous))
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous)
+            .stroke(accent.opacity(0.34), lineWidth: 1)
+        }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Publication status: \(publication.stage.title). \(detail)")
+        .accessibilityLabel("Publication status: \(title). \(detail)")
+    }
+
+    @ViewBuilder
+    private var controls: some View {
+        if publication.stage == .failed {
+            // Discard must be reachable: a parked failure used to hold the upload
+            // slot and disable the composer with no way to clear it.
+            HStack(spacing: LegendNextSpacing.xs) {
+                Button("Discard", action: dismiss)
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .tint(LegendNextColor.textSecondary)
+                    .accessibilityLabel("Discard this failed upload")
+
+                Button("Retry", action: retry)
+                    .font(.caption.weight(.bold))
+                    .buttonStyle(.borderedProminent)
+                    .tint(LegendNextColor.navy)
+            }
+        } else if publication.stage == .published {
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .frame(width: 32, height: 32)
+                    .background(
+                        LegendNextColor.surfaceInset,
+                        in: Circle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(LegendNextColor.textSecondary)
+            .accessibilityLabel("Dismiss upload confirmation")
+        }
+    }
+
+    private var progressLine: some View {
+        GeometryReader { proxy in
+            Capsule()
+                .fill(LegendNextColor.surfaceInset)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(accent)
+                        .frame(
+                            width: proxy.size.width * CGFloat(publication.uploadProgress))
+                }
+        }
+        .frame(height: 5)
+        .accessibilityLabel("Upload progress \(Int((publication.uploadProgress * 100).rounded())) percent")
+    }
+
+    private var title: String {
+        let content = publication.contentType.displayName
+        switch publication.stage {
+        case .preparing: return "Preparing \(content)"
+        case .uploading: return "Uploading \(content)"
+        case .processing: return "Publishing \(content)"
+        case .published: return "\(content) shared"
+        case .failed: return "\(content) needs attention"
+        }
     }
 
     private var detail: String {
         switch publication.stage {
         case .preparing:
-            "Your update will appear here after the secure upload begins."
+            "Your secure upload is about to begin."
         case .uploading:
-            "You can keep browsing while this update is securely transferred."
+            "\(Int((publication.uploadProgress * 100).rounded()))% securely transferred. You can keep browsing."
         case .processing:
-            "Legend is confirming your update with the server."
+            "Transfer complete. Legend is validating and publishing it."
         case .published:
-            "Your update is now in the authorized Legend feed."
+            "Your \(publication.contentType.displayName.lowercased()) is now in the authorized Legend feed."
         case .failed:
             publication.failureMessage ?? "Tap Retry to try this secure upload again."
         }
@@ -1957,7 +2001,7 @@ private struct LegendCommentComposer: View {
         )
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(LegendNextRadius.sheet)
-        .presentationBackground(LegendNextColor.canvas)
+        .legendNextBrandedSheetAppearance()
     }
 
     private func postPreview(
@@ -2045,7 +2089,7 @@ private struct LegendCommentComposer: View {
             .padding(LegendNextSpacing.md)
         } else {
             ScrollViewReader { proxy in
-                ScrollView {
+                LegendScrollView(tracksNavigationChrome: false) {
                     LazyVStack(
                         alignment: .leading,
                         spacing: LegendNextSpacing.sm
@@ -2296,7 +2340,7 @@ private struct LegendActivitySheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
                         eyebrow: "Legend network",
@@ -2354,7 +2398,7 @@ struct LegendCreatorInsightsSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
                         eyebrow: "Creator intelligence",
@@ -2420,7 +2464,7 @@ struct LegendFollowRequestsSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                     LegendNextSheetHeader(
                         eyebrow: "Account privacy",
@@ -2514,7 +2558,7 @@ private struct LegendPostInsightsSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
                         eyebrow: "Legend performance",
