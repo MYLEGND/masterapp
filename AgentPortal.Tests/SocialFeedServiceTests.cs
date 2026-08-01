@@ -903,6 +903,95 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task Feed_SeparatesPhotoPostsFromVideoHacs_AndRanksHacsFromViewerEngagement()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var viewer = Client("hac-viewer", "Hac", "Viewer");
+        var preferredAuthor = Client("hac-preferred", "Preferred", "Creator");
+        var otherAuthor = Client("hac-other", "Other", "Creator");
+        db.ClientProfiles.AddRange(viewer, preferredAuthor, otherAuthor);
+
+        var now = DateTime.UtcNow;
+        var photoPost = new SocialPost
+        {
+            Id = Guid.NewGuid(),
+            AuthorUserId = otherAuthor.ClientUserId,
+            AuthorParticipantType = MessagingParticipantTypes.Client,
+            AuthorProfileId = otherAuthor.Id,
+            ContentType = SocialPostContentTypes.Post,
+            Audience = SocialPostAudiences.AuthorizedNetwork,
+            Body = "A home photo post",
+            PostedUtc = now
+        };
+        var watchedHac = VideoHac(preferredAuthor, "A watched Hac", now.AddDays(-5));
+        var preferredHac = VideoHac(preferredAuthor, "A related Hac", now.AddHours(-1));
+        var otherHac = VideoHac(otherAuthor, "A recent but unrelated Hac", now);
+        db.SocialPosts.AddRange(photoPost, watchedHac, preferredHac, otherHac);
+        db.SocialPostMediaAssets.Add(new SocialPostMediaAsset
+        {
+            Id = Guid.NewGuid(),
+            SocialPostId = photoPost.Id,
+            DisplayOrder = 0,
+            MediaKind = "Image",
+            MimeType = "image/jpeg",
+            FileSizeBytes = 1,
+            StorageKey = "test/photo.jpg",
+            ProcessingState = "Ready"
+        });
+        db.SocialPostViews.Add(new SocialPostViewer
+        {
+            Id = Guid.NewGuid(),
+            SocialPostId = watchedHac.Id,
+            ViewerUserId = viewer.ClientUserId,
+            ViewerParticipantType = MessagingParticipantTypes.Client,
+            MaximumWatchDurationSeconds = 30,
+            MaximumWatchCompletionPercentage = 100,
+            FirstViewedUtc = now.AddDays(-1),
+            LastViewedUtc = now.AddDays(-1)
+        });
+        await db.SaveChangesAsync();
+
+        var feed = await CreateService(db).GetFeedAsync(ClientActor(viewer));
+
+        Assert.True(feed.Succeeded);
+        Assert.Equal(photoPost.Id, Assert.Single(feed.Value!.Posts).Id);
+        Assert.DoesNotContain(feed.Value.Posts, post => post.ContentType == SocialPostContentTypes.Reel);
+        Assert.All(feed.Value.Hacs, hac =>
+        {
+            Assert.Equal(SocialPostContentTypes.Reel, hac.ContentType);
+            Assert.Equal("Video", Assert.Single(hac.Media).MediaKind);
+        });
+        Assert.Equal(preferredHac.Id, feed.Value.Hacs.First().Id);
+
+        SocialPost VideoHac(ClientProfile author, string body, DateTime postedUtc)
+        {
+            var post = new SocialPost
+            {
+                Id = Guid.NewGuid(),
+                AuthorUserId = author.ClientUserId,
+                AuthorParticipantType = MessagingParticipantTypes.Client,
+                AuthorProfileId = author.Id,
+                ContentType = SocialPostContentTypes.Reel,
+                Audience = SocialPostAudiences.AuthorizedNetwork,
+                Body = body,
+                PostedUtc = postedUtc
+            };
+            db.SocialPostMediaAssets.Add(new SocialPostMediaAsset
+            {
+                Id = Guid.NewGuid(),
+                SocialPostId = post.Id,
+                DisplayOrder = 0,
+                MediaKind = "Video",
+                MimeType = "video/mp4",
+                FileSizeBytes = 1,
+                StorageKey = $"test/{post.Id:N}.mp4",
+                ProcessingState = "Ready"
+            });
+            return post;
+        }
+    }
+
+    [Fact]
     public async Task StoryRail_SurvivesABurstOfFeedPostsThatWouldFillACombinedPage()
     {
         await using var db = ControllerTestHelpers.BuildDb();

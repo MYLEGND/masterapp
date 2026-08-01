@@ -487,6 +487,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
     private async Task<MobileSocialSnapshotDto> ToSnapshotDtoAsync(SocialFeedSnapshot snapshot, CancellationToken cancellationToken) => new(
         await ToPostDtosAsync(snapshot.Stories, cancellationToken),
         await ToPostDtosAsync(snapshot.Posts, cancellationToken),
+        await ToPostDtosAsync(snapshot.Hacs, cancellationToken),
         await ToActivityDtosAsync(snapshot.Activity, cancellationToken),
         snapshot.ActivityCount,
         await ToProfileMetricsDtoAsync(snapshot.CurrentProfileMetrics, cancellationToken),
@@ -866,6 +867,7 @@ public sealed record MobileSocialActivityDto(Guid Id, string Kind, MobileSocialA
 public sealed record MobileSocialSnapshotDto(
     IReadOnlyList<MobileSocialPostDto> Stories,
     IReadOnlyList<MobileSocialPostDto> Posts,
+    IReadOnlyList<MobileSocialPostDto> Hacs,
     IReadOnlyList<MobileSocialActivityDto> Activity,
     int ActivityCount,
     MobileSocialProfileMetricsDto CurrentProfileMetrics,

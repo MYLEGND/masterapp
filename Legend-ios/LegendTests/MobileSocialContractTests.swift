@@ -118,6 +118,7 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertTrue(client.followedByCurrentActor)
         XCTAssertTrue(client.savedByCurrentActor)
         XCTAssertEqual(agent.metrics.uniqueViewerCount, 3)
+        XCTAssertTrue(snapshot.hacs.isEmpty)
     }
 
     func testSocialStorePreservesServerReturnedFollowState() async throws {

@@ -1237,7 +1237,7 @@ struct LegendForYouView: View {
                 .padding(LegendNextSpacing.sm)
 
             case .loaded(let snapshot):
-                feed(snapshot.posts)
+                feed(snapshot.hacs.filter(\.isVideoHac))
             }
         }
         .background(LegendNextCanvas())
@@ -1351,7 +1351,7 @@ struct LegendForYouView: View {
         if posts.isEmpty {
             LegendNextEmptyState(
                 title: "No updates yet",
-                message: "New posts and Hacs from your Legend network will appear here.",
+                message: "Video Hacs matched to your Legend activity will appear here.",
                 systemImage: "play.rectangle.on.rectangle"
             )
         } else {
@@ -1415,7 +1415,7 @@ struct LegendForYouView: View {
 
     private var selectedPost: MobileSocialPost? {
         guard case .loaded(let snapshot) = social.state else { return nil }
-        return snapshot.posts.first { $0.id == selectedPostID }
+        return snapshot.hacs.first { $0.id == selectedPostID }
     }
 
     private var deletionTargetDisplayName: String {
@@ -1901,7 +1901,7 @@ private struct LegendCommentComposer: View {
             return nil
         }
 
-        return (snapshot.posts + snapshot.stories).first {
+        return (snapshot.posts + snapshot.stories + snapshot.hacs).first {
             $0.id == postID
         }
     }

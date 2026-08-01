@@ -165,6 +165,7 @@ public sealed record SocialActivityView(Guid Id, string Kind, SocialAuthor Actor
 public sealed record SocialFeedSnapshot(
     IReadOnlyList<SocialPostView> Stories,
     IReadOnlyList<SocialPostView> Posts,
+    IReadOnlyList<SocialPostView> Hacs,
     IReadOnlyList<SocialActivityView> Activity,
     int ActivityCount,
     SocialProfileMetrics CurrentProfileMetrics,

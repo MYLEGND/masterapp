@@ -1029,9 +1029,32 @@ final class MobileSocialStore: ObservableObject {
             by: 1
         )
         if post.contentType == MobileSocialContentType.story.rawValue {
-            snapshot = MobileSocialSnapshot(stories: [post] + snapshot.stories, posts: snapshot.posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: profileMetrics, creatorInsights: snapshot.creatorInsights)
+            snapshot = MobileSocialSnapshot(
+                stories: [post] + snapshot.stories,
+                posts: snapshot.posts,
+                hacs: snapshot.hacs,
+                activity: snapshot.activity,
+                activityCount: snapshot.activityCount,
+                currentProfileMetrics: profileMetrics,
+                creatorInsights: snapshot.creatorInsights)
+        } else if post.contentType == MobileSocialContentType.hac.rawValue {
+            snapshot = MobileSocialSnapshot(
+                stories: snapshot.stories,
+                posts: snapshot.posts,
+                hacs: [post] + snapshot.hacs,
+                activity: snapshot.activity,
+                activityCount: snapshot.activityCount,
+                currentProfileMetrics: profileMetrics,
+                creatorInsights: snapshot.creatorInsights)
         } else {
-            snapshot = MobileSocialSnapshot(stories: snapshot.stories, posts: [post] + snapshot.posts, activity: snapshot.activity, activityCount: snapshot.activityCount, currentProfileMetrics: profileMetrics, creatorInsights: snapshot.creatorInsights)
+            snapshot = MobileSocialSnapshot(
+                stories: snapshot.stories,
+                posts: [post] + snapshot.posts,
+                hacs: snapshot.hacs,
+                activity: snapshot.activity,
+                activityCount: snapshot.activityCount,
+                currentProfileMetrics: profileMetrics,
+                creatorInsights: snapshot.creatorInsights)
         }
         state = .loaded(snapshot)
         insertProfilePost(post)
@@ -1045,9 +1068,11 @@ final class MobileSocialStore: ObservableObject {
         if case .loaded(let snapshot) = state {
             let removedPost = snapshot.stories.first { $0.id == postID }
                 ?? snapshot.posts.first { $0.id == postID }
+                ?? snapshot.hacs.first { $0.id == postID }
             state = .loaded(MobileSocialSnapshot(
                 stories: snapshot.stories.filter { $0.id != postID },
                 posts: snapshot.posts.filter { $0.id != postID },
+                hacs: snapshot.hacs.filter { $0.id != postID },
                 activity: snapshot.activity,
                 activityCount: snapshot.activityCount,
                 currentProfileMetrics: removedPost.map {
@@ -1089,7 +1114,7 @@ final class MobileSocialStore: ObservableObject {
 
     private func follows(_ author: MobileSocialAuthor) -> Bool {
         guard case .loaded(let snapshot) = state else { return false }
-        return (snapshot.stories + snapshot.posts)
+        return (snapshot.stories + snapshot.posts + snapshot.hacs)
             .first { $0.author.identity == author.identity }?
             .followedByCurrentActor ?? false
     }
@@ -1102,6 +1127,7 @@ final class MobileSocialStore: ObservableObject {
         state = .loaded(MobileSocialSnapshot(
             stories: snapshot.stories,
             posts: snapshot.posts,
+            hacs: snapshot.hacs,
             activity: snapshot.activity,
             activityCount: snapshot.activityCount,
             currentProfileMetrics: snapshot.currentProfileMetrics.adjusting(
@@ -1147,6 +1173,7 @@ final class MobileSocialStore: ObservableObject {
             state = .loaded(MobileSocialSnapshot(
                 stories: snapshot.stories.map(update),
                 posts: snapshot.posts.map(update),
+                hacs: snapshot.hacs.map(update),
                 activity: snapshot.activity,
                 activityCount: snapshot.activityCount,
                 currentProfileMetrics: snapshot.currentProfileMetrics,

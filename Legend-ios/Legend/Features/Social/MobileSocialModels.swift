@@ -3,10 +3,51 @@ import Foundation
 struct MobileSocialSnapshot: Codable, Equatable, Sendable {
     let stories: [MobileSocialPost]
     let posts: [MobileSocialPost]
+    let hacs: [MobileSocialPost]
     let activity: [MobileSocialActivity]
     let activityCount: Int
     let currentProfileMetrics: MobileSocialProfileMetrics
     let creatorInsights: MobileSocialCreatorInsights
+
+    private enum CodingKeys: String, CodingKey {
+        case stories, posts, hacs, activity, activityCount, currentProfileMetrics, creatorInsights
+    }
+
+    init(
+        stories: [MobileSocialPost],
+        posts: [MobileSocialPost],
+        hacs: [MobileSocialPost] = [],
+        activity: [MobileSocialActivity],
+        activityCount: Int,
+        currentProfileMetrics: MobileSocialProfileMetrics,
+        creatorInsights: MobileSocialCreatorInsights
+    ) {
+        self.stories = stories
+        self.posts = posts
+        self.hacs = hacs
+        self.activity = activity
+        self.activityCount = activityCount
+        self.currentProfileMetrics = currentProfileMetrics
+        self.creatorInsights = creatorInsights
+    }
+
+    /// Older on-device feed caches predate the dedicated HACS collection. Decode
+    /// those caches as an empty FYP, then replace them with the server-ranked result
+    /// on the next refresh instead of failing the complete social cache.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        stories = try container.decode([MobileSocialPost].self, forKey: .stories)
+        posts = try container.decode([MobileSocialPost].self, forKey: .posts)
+        hacs = try container.decodeIfPresent([MobileSocialPost].self, forKey: .hacs) ?? []
+        activity = try container.decode([MobileSocialActivity].self, forKey: .activity)
+        activityCount = try container.decode(Int.self, forKey: .activityCount)
+        currentProfileMetrics = try container.decode(
+            MobileSocialProfileMetrics.self,
+            forKey: .currentProfileMetrics)
+        creatorInsights = try container.decode(
+            MobileSocialCreatorInsights.self,
+            forKey: .creatorInsights)
+    }
 }
 
 /// A presentation collection for one logical Story owner. Story posts remain
@@ -279,6 +320,15 @@ struct MobileSocialPostMetrics: Codable, Equatable, Sendable {
 extension MobileSocialPost {
     var displayContentType: String {
         MobileSocialContentType.displayName(for: contentType)
+    }
+
+    /// A defensive client-side contract check. The server owns HACS selection and
+    /// ranking, but a malformed or stale payload must never render an image in the
+    /// vertical-video surface.
+    var isVideoHac: Bool {
+        contentType == MobileSocialContentType.hac.rawValue &&
+            media.count == 1 &&
+            media.allSatisfy(\.isVideo)
     }
 
     func replacing(

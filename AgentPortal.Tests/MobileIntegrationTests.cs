@@ -1101,6 +1101,7 @@ public sealed class MobileIntegrationTests
         var snapshot = new SocialFeedSnapshot(
             [CreateSocialPostView(author)],
             [CreateSocialPostView(author)],
+            [CreateSocialPostView(author)],
             [new SocialActivityView(Guid.NewGuid(), "post", author, null, DateTime.UtcNow)],
             1,
             new SocialProfileMetrics(author, 2, 0, 1, 0, 0, 0, 0, 0, null),
@@ -1161,10 +1162,12 @@ public sealed class MobileIntegrationTests
 
         var result = await controller.Feed(CancellationToken.None);
 
-        Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<OkObjectResult>(result);
+        var feed = Assert.IsType<MobileSocialSnapshotDto>(response.Value);
+        Assert.Single(feed.Hacs);
         Assert.Equal(1, peakResolutions);
         social.VerifyAll();
-        images.Verify(service => service.ResolveAsync(It.IsAny<MessagingParticipantIdentity>(), It.IsAny<CancellationToken>()), Times.Exactly(4));
+        images.Verify(service => service.ResolveAsync(It.IsAny<MessagingParticipantIdentity>(), It.IsAny<CancellationToken>()), Times.Exactly(5));
     }
 
     [Fact]

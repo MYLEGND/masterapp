@@ -405,7 +405,7 @@ struct LegendSocialComposer: View {
     }
 
     private var eligibleLibraryAssets: [LegendPhotoLibraryAsset] {
-        photoLibrary.visibleAssets.filter(type.accepts)
+        photoLibrary.assets(for: type)
     }
 
     private var selectionAspectRatio: CGFloat {
@@ -626,12 +626,12 @@ struct LegendSocialComposer: View {
                 .onAppear {
                     // Page in the next batch as the tail of the grid comes into view.
                     if asset.id == eligibleLibraryAssets.last?.id {
-                        photoLibrary.loadNextPage()
+                        photoLibrary.loadNextPage(for: type)
                     }
                 }
             }
 
-            if photoLibrary.canLoadMore {
+            if photoLibrary.canLoadMore(for: type) {
                 LegendSkeletonShape(cornerRadius: 2)
                     .frame(maxWidth: .infinity)
                     .aspectRatio(
@@ -639,7 +639,7 @@ struct LegendSocialComposer: View {
                         contentMode: .fit
                     )
                     .accessibilityLabel("Loading more media")
-                    .onAppear { photoLibrary.loadNextPage() }
+                    .onAppear { photoLibrary.loadNextPage(for: type) }
             }
         }
     }
@@ -3007,7 +3007,6 @@ enum LegendPhotoLibraryAuthorization: Equatable {
 final class LegendPhotoLibraryAccess: NSObject, ObservableObject {
     @Published private(set) var status: LegendPhotoLibraryAuthorization
     @Published private(set) var visibleAssets: [LegendPhotoLibraryAsset] = []
-    @Published private(set) var canLoadMore = false
 
     private let imageManager = PHCachingImageManager()
     private var allAssets: [LegendPhotoLibraryAsset] = []
@@ -3041,7 +3040,6 @@ final class LegendPhotoLibraryAccess: NSObject, ObservableObject {
             fetchResult = nil
             assetIndexByIdentifier = [:]
             loadedAssetCount = 0
-            canLoadMore = false
             return
         }
 
@@ -3080,7 +3078,6 @@ final class LegendPhotoLibraryAccess: NSObject, ObservableObject {
             : min(pageSize, descriptors.count)
         loadedAssetCount = min(desired, descriptors.count)
         visibleAssets = Array(descriptors.prefix(loadedAssetCount))
-        canLoadMore = loadedAssetCount < descriptors.count
     }
 
     private func startObservingLibraryIfNeeded() {
@@ -3111,11 +3108,30 @@ final class LegendPhotoLibraryAccess: NSObject, ObservableObject {
         }
     }
 
-    func loadNextPage() {
-        guard canLoadMore else { return }
-        loadedAssetCount = min(loadedAssetCount + pageSize, allAssets.count)
+    /// Paginates after filtering by the selected creation format. Previously the
+    /// composer took the first mixed photo/video page and filtered it in the view,
+    /// leaving a Hac picker empty whenever the first 60 assets were photos.
+    func assets(for contentType: MobileSocialContentType) -> [LegendPhotoLibraryAsset] {
+        Array(filteredAssets(for: contentType).prefix(loadedAssetCount))
+    }
+
+    func canLoadMore(for contentType: MobileSocialContentType) -> Bool {
+        loadedAssetCount < filteredAssets(for: contentType).count
+    }
+
+    func loadNextPage(for contentType: MobileSocialContentType) {
+        let availableAssets = filteredAssets(for: contentType)
+        guard loadedAssetCount < availableAssets.count else { return }
+        loadedAssetCount = min(loadedAssetCount + pageSize, availableAssets.count)
         visibleAssets = Array(allAssets.prefix(loadedAssetCount))
-        canLoadMore = loadedAssetCount < allAssets.count
+    }
+
+    private func filteredAssets(
+        for contentType: MobileSocialContentType
+    ) -> [LegendPhotoLibraryAsset] {
+        contentType.requiresVideo
+            ? allAssets.filter(\.isVideo)
+            : allAssets
     }
 
     func thumbnailRequest(
