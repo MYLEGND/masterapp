@@ -1545,7 +1545,7 @@ public sealed class SocialFeedService : ISocialFeedService
             TrackTitle = resolved.Value.TrackTitle,
             ArtistName = resolved.Value.ArtistName,
             TrackDurationSeconds = resolved.Value.TrackDurationSeconds,
-            PreviewUrl = resolved.Value.PreviewUrl,
+            PreviewUrl = resolved.Value.AudioUrl,
             TrimStartSeconds = selection.TrimStartSeconds,
             TrimEndSeconds = selection.TrimEndSeconds,
             MusicVolume = selection.MusicVolume,

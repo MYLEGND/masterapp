@@ -598,6 +598,27 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertEqual(decoded.originalAudioVolume, 0.25)
     }
 
+    func testOpenMusicTrackDecodesItsDirectAudioURL() throws {
+        let data = Data("""
+        [{
+          "providerId": "legend-open-fma",
+          "providerTrackId": "psalters-all-yeshua",
+          "trackTitle": "All Yeshua",
+          "artistName": "Psalters",
+          "trackDurationSeconds": 321.22,
+          "audioUrl": "https://archive.org/download/us_vs_us-11170/Psalters_-_09_-_All_Yeshua.mp3"
+        }]
+        """.utf8)
+
+        let track = try XCTUnwrap(JSONDecoder().decode([MobileSocialMusicTrack].self, from: data).first)
+        let audioURL = try XCTUnwrap(track.audioURL)
+
+        XCTAssertEqual(track.providerID, "legend-open-fma")
+        XCTAssertEqual(track.trackTitle, "All Yeshua")
+        XCTAssertEqual(audioURL.scheme, "https")
+        XCTAssertEqual(audioURL.pathExtension.lowercased(), "mp3")
+    }
+
     func testVideoViewMeasurementIsForwardedWithoutClientMetricCalculation() async throws {
         let author = MobileSocialAuthor(
             identity: try LogicalParticipantIdentity(userID: "client-one", participantType: .client),

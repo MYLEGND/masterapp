@@ -1650,7 +1650,7 @@ private struct LegendSocialMusicSelectionSheet: View {
     @State private var musicVolume = 1.0
     @State private var originalAudioVolume = 1.0
     @State private var isSearching = false
-    @State private var previewPlayer: AVPlayer?
+    @StateObject private var previewPlayer = LegendOpenMusicPreviewPlayer()
 
     var body: some View {
         NavigationStack {
@@ -1692,6 +1692,19 @@ private struct LegendSocialMusicSelectionSheet: View {
                                     }
                                 }
 
+                            }
+
+                            if case .failed(_, let message) = previewPlayer.state {
+                                Label(message, systemImage: "exclamationmark.triangle.fill")
+                                    .font(LegendNextTypography.supporting)
+                                    .foregroundStyle(Color.white.opacity(0.78))
+                                    .padding(LegendNextSpacing.sm)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(
+                                        Color.red.opacity(0.18),
+                                        in: RoundedRectangle(
+                                            cornerRadius: LegendNextRadius.control,
+                                            style: .continuous))
                             }
 
                             if let selectedTrack {
@@ -1847,11 +1860,13 @@ private struct LegendSocialMusicSelectionSheet: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Select \(track.trackTitle) by \(track.artistName)")
 
-            if track.providerID.lowercased() == "spotify" {
+            if track.audioURL != nil {
                 Button {
-                    preview(track)
+                    Task {
+                        await previewPlayer.toggle(track)
+                    }
                 } label: {
-                    Image(systemName: "play.fill")
+                    Image(systemName: previewButtonIcon(for: track))
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(LegendNextColor.midnight)
                         .frame(width: LegendNextSize.controlHeight, height: LegendNextSize.controlHeight)
@@ -1860,6 +1875,17 @@ private struct LegendSocialMusicSelectionSheet: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Preview \(track.trackTitle)")
             }
+        }
+    }
+
+    private func previewButtonIcon(for track: MobileSocialMusicTrack) -> String {
+        switch previewPlayer.state {
+        case .loading(let trackID) where trackID == track.id:
+            return "hourglass"
+        case .playing(let trackID) where trackID == track.id:
+            return "pause.fill"
+        default:
+            return "play.fill"
         }
     }
 
@@ -1923,56 +1949,8 @@ private struct LegendSocialMusicSelectionSheet: View {
         originalAudioVolume = 1
     }
 
-    private func preview(_ track: MobileSocialMusicTrack) {
-        stopPreview()
-
-        guard track.providerID.lowercased() == "spotify" else {
-            return
-        }
-
-        let encodedTrackID = track.providerTrackID
-            .addingPercentEncoding(
-                withAllowedCharacters: .urlPathAllowed
-            ) ?? track.providerTrackID
-
-        guard !encodedTrackID.isEmpty else {
-            return
-        }
-
-        // Spotify's preview_url is deprecated and nullable. The Spotify track
-        // identity is the durable playback authority. LEGND never receives or
-        // stores the Spotify client secret and never downloads/proxies Spotify
-        // audio.
-        if let spotifyURL = URL(
-            string: "spotify:track:\(encodedTrackID)"
-        ) {
-            UIApplication.shared.open(
-                spotifyURL,
-                options: [:]
-            ) { opened in
-                guard !opened,
-                      let webURL = URL(
-                        string: "https://open.spotify.com/track/\(encodedTrackID)"
-                      ) else {
-                    return
-                }
-
-                UIApplication.shared.open(webURL)
-            }
-
-            return
-        }
-
-        if let webURL = URL(
-            string: "https://open.spotify.com/track/\(encodedTrackID)"
-        ) {
-            UIApplication.shared.open(webURL)
-        }
-    }
-
     private func stopPreview() {
-        previewPlayer?.pause()
-        previewPlayer = nil
+        previewPlayer.stop()
     }
 
     private func duration(_ seconds: Decimal) -> String {

@@ -10,6 +10,7 @@ using Domain.Social;
 using Infrastructure.Messaging;
 using Infrastructure.Moderation;
 using Infrastructure.Social;
+using Infrastructure.Social.OpenMusic;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.EntityFrameworkCore;
@@ -1312,7 +1313,7 @@ public sealed class SocialFeedServiceTests
         return new SocialFeedService(
             db,
             mediaStorage ?? new UnavailableTestSocialMediaStorage(),
-            musicCatalog ?? new UnavailableSocialMusicCatalog());
+            musicCatalog ?? new CuratedOpenMusicCatalog());
     }
 
     private sealed class UnavailableTestSocialMediaStorage

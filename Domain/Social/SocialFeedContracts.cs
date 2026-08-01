@@ -137,7 +137,7 @@ public sealed record SocialPostMusicView(
     string TrackTitle,
     string ArtistName,
     decimal TrackDurationSeconds,
-    string? PreviewUrl,
+    string? AudioUrl,
     decimal TrimStartSeconds,
     decimal TrimEndSeconds,
     decimal MusicVolume,
@@ -241,7 +241,7 @@ public sealed record SocialMusicTrack(
     string TrackTitle,
     string ArtistName,
     decimal TrackDurationSeconds,
-    string? PreviewUrl);
+    string? AudioUrl);
 
 public sealed record SocialMusicSelection(
     string ProviderId,

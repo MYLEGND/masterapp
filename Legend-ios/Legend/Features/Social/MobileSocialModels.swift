@@ -416,7 +416,7 @@ struct MobileSocialMusic: Codable, Equatable, Sendable {
     let trackTitle: String
     let artistName: String
     let trackDurationSeconds: Decimal
-    let previewURL: URL?
+    let audioURL: URL?
     let trimStartSeconds: Decimal?
     let trimEndSeconds: Decimal?
     let musicVolume: Decimal?
@@ -426,7 +426,7 @@ struct MobileSocialMusic: Codable, Equatable, Sendable {
         case providerID = "providerId"
         case providerTrackID = "providerTrackId"
         case trackTitle, artistName, trackDurationSeconds, trimStartSeconds, trimEndSeconds, musicVolume, originalAudioVolume
-        case previewURL = "previewUrl"
+        case audioURL = "audioUrl"
     }
 }
 
@@ -436,7 +436,7 @@ struct MobileSocialMusicTrack: Codable, Equatable, Identifiable, Sendable {
     let trackTitle: String
     let artistName: String
     let trackDurationSeconds: Decimal
-    let previewURL: URL?
+    let audioURL: URL?
 
     var id: String { "\(providerID):\(providerTrackID)" }
 
@@ -444,7 +444,7 @@ struct MobileSocialMusicTrack: Codable, Equatable, Identifiable, Sendable {
         case providerID = "providerId"
         case providerTrackID = "providerTrackId"
         case trackTitle, artistName, trackDurationSeconds
-        case previewURL = "previewUrl"
+        case audioURL = "audioUrl"
     }
 }
 
