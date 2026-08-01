@@ -62,6 +62,7 @@ public class LeadBridgeController : ControllerBase
         var normalizedQueue = NormalizeBucket(queueKey);
         var query = _db.WorkstationLeadProfiles
             .AsNoTracking()
+            .ActiveLeadQueue()
             .Where(x => x.AgentUserId == agentId);
 
         // Default list should not surface NotInterested unless explicitly requested.

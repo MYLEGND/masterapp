@@ -85,6 +85,107 @@ public class LeadsControllerTests
     }
 
     [Fact]
+    public async Task Leads_List_Excludes_Converted_And_LegacyConverted_Leads()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        db.WorkstationLeadProfiles.AddRange(
+            new WorkstationLeadProfile
+            {
+                LeadId = "L-OPEN",
+                AgentUserId = "agent-1",
+                Bucket = "MortgageProtection",
+                CrmStatus = "Lead",
+                CrmStage = "Qualified",
+                CreatedUtc = now,
+                UpdatedUtc = now
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "L-CONVERTED",
+                AgentUserId = "agent-1",
+                Bucket = "MortgageProtection",
+                CrmStatus = WorkstationLeadConversionLifecycle.ConvertedCrmStatus,
+                CrmStage = WorkstationLeadConversionLifecycle.ConvertedCrmStage,
+                CreatedUtc = now,
+                UpdatedUtc = now
+            },
+            new WorkstationLeadProfile
+            {
+                // This is the state written by the prior conversion path.
+                LeadId = "L-LEGACY-CONVERTED",
+                AgentUserId = "agent-1",
+                Bucket = "MortgageProtection",
+                CrmStatus = "Active",
+                CrmStage = WorkstationLeadConversionLifecycle.ConvertedCrmStage,
+                CreatedUtc = now,
+                UpdatedUtc = now
+            });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Leads(null);
+
+        var json = Assert.IsType<JsonResult>(result);
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(json.Value));
+        var single = Assert.Single(payload.RootElement.EnumerateArray());
+        Assert.Equal("L-OPEN", single.GetProperty("LeadId").GetString());
+    }
+
+    [Fact]
+    public void MarkConverted_PreservesLeadAttributionAndLinksTheNewClient()
+    {
+        var convertedUtc = new DateTime(2026, 8, 1, 22, 5, 30, DateTimeKind.Utc);
+        var clientProfileId = Guid.NewGuid();
+        var lead = new WorkstationLeadProfile
+        {
+            LeadId = "L-CONVERSION-AUDIT",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            CrmStatus = "Lead",
+            CrmStage = "Qualified",
+            CrmNotes = ClientCrmMetaSerializer.Serialize(new ClientCrmMeta
+            {
+                CrmTags = "meta, website"
+            })
+        };
+
+        WorkstationLeadConversionLifecycle.MarkConverted(lead, clientProfileId, "BusinessClient", convertedUtc);
+
+        var meta = ClientCrmMetaSerializer.Deserialize(lead.CrmNotes);
+        Assert.Equal("L-CONVERSION-AUDIT", lead.LeadId);
+        Assert.Equal(WorkstationLeadConversionLifecycle.ConvertedCrmStatus, lead.CrmStatus);
+        Assert.Equal(WorkstationLeadConversionLifecycle.ConvertedCrmStage, lead.CrmStage);
+        Assert.Equal(clientProfileId, meta.ConvertedClientProfileId);
+        Assert.Equal(convertedUtc, meta.ConvertedUtc);
+        Assert.Equal("BusinessClient", meta.ConversionRecordType);
+        Assert.Equal("meta, website", meta.CrmTags);
+        Assert.Contains(meta.Activities, activity => activity.Type == "Conversion");
+        Assert.True(WorkstationLeadConversionLifecycle.IsConverted(lead));
+    }
+
+    [Fact]
+    public void ReadMetadata_PreservesLegacyPlainTextNotesDuringConversion()
+    {
+        var lead = new WorkstationLeadProfile
+        {
+            LeadId = "L-LEGACY-NOTE",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            CrmNotes = "Website lead submitted after a Meta campaign."
+        };
+
+        var meta = WorkstationLeadConversionLifecycle.ReadMetadata(lead);
+
+        Assert.Equal("Website lead submitted after a Meta campaign.", meta.AgentNotes);
+    }
+
+    [Fact]
     public void LeadCanonicalizer_SelectsNewestDuplicateInMemory()
     {
         var now = DateTime.UtcNow;

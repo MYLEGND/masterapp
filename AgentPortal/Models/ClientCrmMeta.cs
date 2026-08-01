@@ -22,6 +22,10 @@ public sealed class ClientCrmMeta
     public string? Gender { get; set; }
     public DateTime? DOB { get; set; }
     public string? SourceWorkstationLeadId { get; set; }
+    public string? SourceLeadClientUserId { get; set; }
+    public Guid? ConvertedClientProfileId { get; set; }
+    public DateTime? ConvertedUtc { get; set; }
+    public string? ConversionRecordType { get; set; }
     public string? CrmPriority { get; set; }
     public string? ContactStatus { get; set; }
     public DateTime? CrmNextDate { get; set; }
@@ -224,6 +228,10 @@ public static class ClientCrmMetaSerializer
         meta.LoanAmount = Clean(meta.LoanAmount);
         meta.Gender = Clean(meta.Gender);
         meta.SourceWorkstationLeadId = Clean(meta.SourceWorkstationLeadId);
+        meta.SourceLeadClientUserId = Clean(meta.SourceLeadClientUserId);
+        meta.ConversionRecordType = Clean(meta.ConversionRecordType);
+        if (meta.ConvertedUtc.HasValue)
+            meta.ConvertedUtc = meta.ConvertedUtc.Value.ToUniversalTime();
         if (meta.DOB.HasValue)
             meta.DOB = meta.DOB.Value.Date;
         meta.CrmPriority = NormalizePriority(meta.CrmPriority);

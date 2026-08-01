@@ -444,6 +444,47 @@ public class ClientsControllerTests
     }
 
     [Fact]
+    public async Task Delete_WhenClientOwnsHousehold_ReturnsConflictInsteadOfServerError()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+        var clientUserId = Guid.NewGuid().ToString();
+
+        await SeedOwnedClientAsync(
+            db,
+            agentId,
+            clientUserId,
+            "subscribed-client@example.com",
+            ClientCrmMetaSerializer.Serialize(new ClientCrmMeta
+            {
+                RecordType = "Client",
+                PipelineStage = "Client"
+            }));
+        var profile = await db.ClientProfiles.SingleAsync(x => x.ClientUserId == clientUserId);
+        db.HouseholdAccounts.Add(new HouseholdAccount
+        {
+            SubscriptionOwnerClientProfileId = profile.Id,
+            Status = HouseholdAccountStatus.Active,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId));
+        controller.HttpContext.Request.Headers["X-Requested-With"] = "fetch";
+
+        var result = await controller.Delete(clientUserId);
+
+        Assert.IsType<ConflictObjectResult>(result);
+        Assert.Single(await db.ClientProfiles.ToListAsync());
+        Assert.Single(await db.HouseholdAccounts.ToListAsync());
+    }
+
+    [Fact]
     public async Task Delete_WhenSharedClient_RemovesOnlyCurrentAgentLink()
     {
         using var db = ControllerTestHelpers.BuildDb();

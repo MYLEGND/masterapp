@@ -1126,7 +1126,7 @@ namespace AgentPortal.Controllers;
         WorkstationLeadProfile lead,
         string recordType)
     {
-        var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(lead.CrmNotes));
+        var meta = EnsureMeta(WorkstationLeadConversionLifecycle.ReadMetadata(lead));
 
         model.RecordType = recordType;
         model.SourceWorkstationLeadId = lead.LeadId;
@@ -1343,10 +1343,14 @@ namespace AgentPortal.Controllers;
             await using var tx = await _db.Database.BeginTransactionAsync();
 
             var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
-            if (string.IsNullOrWhiteSpace(meta.SourceWorkstationLeadId) &&
+            // A Client CRM lead has a synthetic ClientUserId, not a
+            // WorkstationLeadProfile identifier. Preserve it under its own
+            // metadata key so appointment and website attribution continue to
+            // use SourceWorkstationLeadId exclusively.
+            if (string.IsNullOrWhiteSpace(meta.SourceLeadClientUserId) &&
                 !string.IsNullOrWhiteSpace(oldClientUserId))
             {
-                meta.SourceWorkstationLeadId = oldClientUserId;
+                meta.SourceLeadClientUserId = oldClientUserId;
             }
             meta.RecordType = recordType;
             meta.PipelineStage = DefaultPipelineStageForRecordType(recordType);
@@ -3145,6 +3149,12 @@ namespace AgentPortal.Controllers;
                 .FirstOrDefaultAsync(x => x.AgentUserId == agentOid && x.LeadId == sourceWorkstationLeadId);
             if (conversionSourceWorkstationLead is null)
                 return Forbid();
+
+            if (WorkstationLeadConversionLifecycle.IsConverted(conversionSourceWorkstationLead))
+            {
+                ModelState.AddModelError("", "This lead has already been converted to a client.");
+                return View(model);
+            }
         }
 
         var agentNpn = !string.IsNullOrWhiteSpace(agentProfile.Npn)
@@ -3494,6 +3504,18 @@ namespace AgentPortal.Controllers;
                 CreatedUtc = DateTime.UtcNow
             });
 
+            // The original workstation lead remains the immutable source for
+            // website/Meta attribution. Marking it converted here makes its
+            // archival atomic with the client profile and subscription setup.
+            if (conversionSourceWorkstationLead is not null)
+            {
+                WorkstationLeadConversionLifecycle.MarkConverted(
+                    conversionSourceWorkstationLead,
+                    createdClientProfile.Id,
+                    recordType,
+                    DateTime.UtcNow);
+            }
+
             await _db.SaveChangesAsync();
 
             if (isPortalClient)
@@ -3574,24 +3596,6 @@ namespace AgentPortal.Controllers;
                 }
             }
 
-            if (conversionSourceWorkstationLead is not null)
-            {
-                try
-                {
-                    conversionSourceWorkstationLead.CrmStatus = "Active";
-                    conversionSourceWorkstationLead.CrmStage = "PolicyPlaced";
-                    conversionSourceWorkstationLead.UpdatedUtc = DateTime.UtcNow;
-                    await _db.SaveChangesAsync();
-                }
-                catch (Exception sourceLeadUpdateEx)
-                {
-                    _logger.LogError(
-                        sourceLeadUpdateEx,
-                        "Client was created but the source workstation lead could not be marked converted. LeadId={LeadId}",
-                        conversionSourceWorkstationLead.LeadId);
-                    creationWarnings.Add("Client account created, but the source lead could not be marked converted.");
-                }
-            }
             var shouldSendSubscriptionInvitation =
                 isPortalClient &&
                 createdClientProfile is not null &&
@@ -6094,6 +6098,44 @@ namespace AgentPortal.Controllers;
         if (!linked)
             return Forbid();
 
+        // A subscription owner has a restricted household relationship and
+        // retained billing history. Removing it through the generic client
+        // delete action would either orphan that state or invoke the
+        // partner-only member-removal path. Keep deletion of pre-activation
+        // records available, but require a dedicated account-closure flow for
+        // subscribed households.
+        var clientProfileId = await _db.ClientProfiles
+            .AsNoTracking()
+            .Where(x => x.ClientUserId == clientUserIdNorm)
+            .Select(x => (Guid?)x.Id)
+            .FirstOrDefaultAsync();
+
+        if (clientProfileId.HasValue)
+        {
+            var hasHouseholdOrSubscription = await _db.HouseholdAccounts
+                .AsNoTracking()
+                .AnyAsync(x => x.SubscriptionOwnerClientProfileId == clientProfileId.Value)
+                || await _db.ClientSubscriptions
+                    .AsNoTracking()
+                    .AnyAsync(x => x.ClientProfileId == clientProfileId.Value);
+
+            if (hasHouseholdOrSubscription)
+            {
+                const string message = "This client has subscription or household records and cannot be deleted from the CRM. Cancel or close the subscription through its lifecycle first.";
+                _logger.LogWarning(
+                    "Blocked generic deletion of subscribed client. AgentOid={AgentOid} ClientUserId={ClientUserId} ClientProfileId={ClientProfileId}",
+                    agentOid,
+                    clientUserIdNorm,
+                    clientProfileId.Value);
+
+                if (isFetchRequest)
+                    return Conflict(new { ok = false, error = message });
+
+                TempData["Created"] = message;
+                return RedirectToAction(nameof(Index));
+            }
+        }
+
         await using var tx = await _db.Database.BeginTransactionAsync();
 
         try
@@ -6133,12 +6175,6 @@ namespace AgentPortal.Controllers;
             var hadPortalAccess = profile != null && !string.IsNullOrWhiteSpace(profile.ExternalIdentityObjectId);
             if (profile != null)
             {
-                await _households.RemoveMemberAsync(
-                    profile.Id,
-                    "CLIENT_PROFILE_DELETED",
-                    agentOid,
-                    HttpContext.RequestAborted);
-
                 if (hadPortalAccess)
                     await _entraLifecycle.DeleteClientIdentityAsync(profile.Id, HttpContext.RequestAborted);
             }

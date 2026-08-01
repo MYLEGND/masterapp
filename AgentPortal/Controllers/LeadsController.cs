@@ -346,6 +346,7 @@ public class LeadsController : Controller
 
             var leadsRaw = await _db.WorkstationLeadProfiles
                 .AsNoTracking()
+                .ActiveLeadQueue()
                 .Where(x => x.AgentUserId == agentId
                     && (x.Bucket == null || x.Bucket.ToLower() != "notinterested")
                     && (x.CrmStage == null || x.CrmStage.ToLower() != "notinterested"))
@@ -1077,11 +1078,13 @@ public class LeadsController : Controller
 
         var today = await _db.WorkstationLeadProfiles
             .AsNoTracking()
+            .ActiveLeadQueue()
             .Where(x => x.AgentUserId == agentId && x.CallsTodayDateUtc == dayStart)
             .SumAsync(x => (int?)x.CallsToday) ?? 0;
 
         var week = await _db.WorkstationLeadProfiles
             .AsNoTracking()
+            .ActiveLeadQueue()
             .Where(x => x.AgentUserId == agentId && x.CallsWeekStartUtc == weekStart)
             .SumAsync(x => (int?)x.CallsWeek) ?? 0;
 
@@ -1150,6 +1153,7 @@ public class LeadsController : Controller
 
         var query = _db.WorkstationLeadProfiles
             .AsNoTracking()
+            .ActiveLeadQueue()
             .Where(x => x.AgentUserId == agentId);
 
         // Default lists should not surface NotInterested unless explicitly filtered for that bucket.
@@ -1363,6 +1367,7 @@ public class LeadsController : Controller
 
         var leads = await _db.WorkstationLeadProfiles
             .AsNoTracking()
+            .ActiveLeadQueue()
             .Where(x => x.AgentUserId == agentId)
             .ToListAsync();
 
@@ -1412,6 +1417,7 @@ public class LeadsController : Controller
 
         var leads = await _db.WorkstationLeadProfiles
             .AsNoTracking()
+            .ActiveLeadQueue()
             .Where(x => x.AgentUserId == agentId)
             .ToListAsync();
 
