@@ -109,6 +109,8 @@ struct MessagingHomeView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var isPresentingNewConversation = false
+    @State private var isPresentingCallDirectory = false
+    @State private var conversationPendingRemoval: ConversationSummary?
 
     var body: some View {
         ZStack {
@@ -129,6 +131,34 @@ struct MessagingHomeView: View {
                 }
             )
             .legendNextSheetChrome(detents: [.large])
+        }
+        .sheet(isPresented: $isPresentingCallDirectory) {
+            if case .loaded(let conversations) = store.state {
+                LegendMessagingCallDirectory(
+                    store: store,
+                    conversations: conversations,
+                    dismiss: { isPresentingCallDirectory = false })
+                    .legendNextSheetChrome(detents: [.medium, .large])
+            }
+        }
+        .alert(
+            "Remove conversation?",
+            isPresented: Binding(
+                get: { conversationPendingRemoval != nil },
+                set: { if !$0 { conversationPendingRemoval = nil } }
+            )
+        ) {
+            Button("Cancel", role: .cancel) {
+                conversationPendingRemoval = nil
+            }
+            Button("Remove", role: .destructive) {
+                if let conversationPendingRemoval {
+                    store.removeConversation(conversationID: conversationPendingRemoval.id)
+                }
+                conversationPendingRemoval = nil
+            }
+        } message: {
+            Text("This removes the conversation from your inbox only. A new message will bring it back.")
         }
         .refreshable {
             _ = await store.refresh()
@@ -210,27 +240,45 @@ struct MessagingHomeView: View {
 
                 Spacer(minLength: LegendNextSpacing.sm)
 
-                Button {
-                    isPresentingNewConversation = true
-                    store.loadRecipients()
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 19, weight: .semibold))
-                        .foregroundStyle(LegendNextColor.midnight)
-                        .frame(width: 48, height: 48)
-                        .background(LegendNextGradient.gold, in: Circle())
-                        .overlay {
-                            Circle()
-                                .stroke(.white.opacity(0.30), lineWidth: 1)
-                        }
-                        .shadow(
-                            color: LegendNextColor.gold.opacity(0.25),
-                            radius: 12,
-                            y: 6
-                        )
+                HStack(spacing: LegendNextSpacing.sm) {
+                    Button {
+                        isPresentingNewConversation = true
+                        store.loadRecipients()
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 19, weight: .semibold))
+                            .foregroundStyle(LegendNextColor.midnight)
+                            .frame(width: 48, height: 48)
+                            .background(LegendNextGradient.gold, in: Circle())
+                            .overlay {
+                                Circle()
+                                    .stroke(.white.opacity(0.30), lineWidth: 1)
+                            }
+                            .shadow(
+                                color: LegendNextColor.gold.opacity(0.25),
+                                radius: 12,
+                                y: 6
+                            )
+                    }
+                    .buttonStyle(LegendMessagingPressButtonStyle())
+                    .accessibilityLabel("Start a new conversation")
+
+                    Button {
+                        isPresentingCallDirectory = true
+                    } label: {
+                        Image(systemName: "phone.fill")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 48, height: 48)
+                            .background(.white.opacity(0.12), in: Circle())
+                            .overlay {
+                                Circle()
+                                    .stroke(LegendNextColor.gold.opacity(0.66), lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(LegendMessagingPressButtonStyle())
+                    .accessibilityLabel("Call a connection")
                 }
-                .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel("Start a new conversation")
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -241,7 +289,10 @@ struct MessagingHomeView: View {
     private func conversationSection(
         _ conversations: [ConversationSummary]
     ) -> some View {
-        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+        let pinned = Array(conversations.filter(\.isPinned).prefix(6))
+        let remaining = conversations.filter { !$0.isPinned }
+
+        return VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
             if store.isRefreshing {
                 HStack(spacing: LegendNextSpacing.xs) {
                     ProgressView()
@@ -254,18 +305,72 @@ struct MessagingHomeView: View {
                 .padding(.horizontal, LegendNextSpacing.pageHorizontal)
             }
 
-            LazyVStack(spacing: LegendNextSpacing.sm) {
-                ForEach(conversations) { conversation in
-                    Button {
-                        openConversation(conversation.id)
-                    } label: {
-                        LegendConversationRow(conversation: conversation)
-                    }
-                    .buttonStyle(LegendMessagingPressButtonStyle())
-                    .accessibilityHint("Open conversation")
-                }
+            if !pinned.isEmpty {
+                Text("Pinned")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(LegendNextColor.gold)
+                    .textCase(.uppercase)
+                    .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+
+                LegendPinnedConversationGrid(
+                    conversations: pinned,
+                    openConversation: openConversation,
+                    setPinned: { conversation, isPinned in
+                        store.setPinned(conversationID: conversation.id, isPinned: isPinned)
+                    },
+                    setMuted: { conversation, isMuted in
+                        store.setMuted(conversationID: conversation.id, isMuted: isMuted)
+                    },
+                    remove: { conversation in
+                        conversationPendingRemoval = conversation
+                    })
+                    .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+                    .padding(.bottom, LegendNextSpacing.xs)
             }
-            .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+
+            if !remaining.isEmpty {
+                LazyVStack(spacing: LegendNextSpacing.sm) {
+                    ForEach(remaining) { conversation in
+                        conversationButton(conversation)
+                    }
+                }
+                .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+            }
+        }
+    }
+
+    private func conversationButton(_ conversation: ConversationSummary) -> some View {
+        Button {
+            openConversation(conversation.id)
+        } label: {
+            LegendConversationRow(conversation: conversation)
+        }
+        .buttonStyle(LegendMessagingPressButtonStyle())
+        .accessibilityHint("Open conversation")
+        .contextMenu {
+            Button {
+                store.setPinned(conversationID: conversation.id, isPinned: !conversation.isPinned)
+            } label: {
+                Label(
+                    conversation.isPinned ? "Unpin" : "Pin",
+                    systemImage: conversation.isPinned ? "pin.slash" : "pin")
+            }
+
+            Button {
+                store.setMuted(conversationID: conversation.id, isMuted: !conversation.isMuted)
+            } label: {
+                Label(
+                    conversation.isMuted ? "Unmute" : "Mute",
+                    systemImage: conversation.isMuted ? "bell" : "bell.slash")
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                conversationPendingRemoval = conversation
+            } label: {
+                Label("Remove from inbox", systemImage: "trash")
+            }
         }
     }
 
@@ -327,6 +432,263 @@ struct MessagingHomeView: View {
             .padding(.bottom, 118)
         }
         .scrollIndicators(.hidden)
+    }
+}
+
+private struct LegendPinnedConversationGrid: View {
+    let conversations: [ConversationSummary]
+    let openConversation: (UUID) -> Void
+    let setPinned: (ConversationSummary, Bool) -> Void
+    let setMuted: (ConversationSummary, Bool) -> Void
+    let remove: (ConversationSummary) -> Void
+
+    private let columns = Array(
+        repeating: GridItem(.flexible(minimum: 72), spacing: LegendNextSpacing.sm),
+        count: 3)
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: LegendNextSpacing.md) {
+            ForEach(conversations) { conversation in
+                Button {
+                    openConversation(conversation.id)
+                } label: {
+                    VStack(spacing: 7) {
+                        Group {
+                            if conversation.conversationType == "Group" {
+                                LegendMessagingGroupAvatar(
+                                    avatar: conversation.groupAvatar,
+                                    size: 58)
+                            } else {
+                                LegendMessagingAvatar(
+                                    participant: conversation.counterparty,
+                                    size: 58,
+                                    showsGoldRing: conversation.unreadCount > 0)
+                            }
+                        }
+
+                        Text(conversation.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.textPrimary)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(LegendMessagingPressButtonStyle())
+                .accessibilityLabel("Pinned conversation with \(conversation.title)")
+                .contextMenu {
+                    Button {
+                        setPinned(conversation, false)
+                    } label: {
+                        Label("Unpin", systemImage: "pin.slash")
+                    }
+
+                    Button {
+                        setMuted(conversation, !conversation.isMuted)
+                    } label: {
+                        Label(
+                            conversation.isMuted ? "Unmute" : "Mute",
+                            systemImage: conversation.isMuted ? "bell" : "bell.slash")
+                    }
+
+                    Divider()
+
+                    Button(role: .destructive) {
+                        remove(conversation)
+                    } label: {
+                        Label("Remove from inbox", systemImage: "trash")
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct LegendMessagingCallDirectory: View {
+    @ObservedObject var store: MessagingStore
+    let conversations: [ConversationSummary]
+    let dismiss: () -> Void
+
+    @State private var selectedConversation: ConversationSummary?
+
+    private var directConversations: [ConversationSummary] {
+        conversations.filter { $0.conversationType != "Group" }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LegendNextCanvas()
+
+                LegendScrollView {
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                        Text("Call a connection")
+                            .font(LegendNextTypography.section)
+                            .foregroundStyle(LegendNextColor.textPrimary)
+
+                        Text("Calls open through your device’s secure Phone or FaceTime experience.")
+                            .font(.subheadline)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+
+                        if directConversations.isEmpty {
+                            LegendMessagingEmptyState(
+                                symbol: "phone.down.fill",
+                                title: "No direct conversations",
+                                message: "Start a private conversation to call a connection.",
+                                actionTitle: nil,
+                                action: nil)
+                        } else {
+                            LazyVStack(spacing: LegendNextSpacing.sm) {
+                                ForEach(directConversations) { conversation in
+                                    Button {
+                                        selectedConversation = conversation
+                                    } label: {
+                                        LegendConversationRow(conversation: conversation)
+                                    }
+                                    .buttonStyle(LegendMessagingPressButtonStyle())
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+                    .padding(.vertical, LegendNextSpacing.md)
+                }
+                .scrollIndicators(.hidden)
+            }
+            .navigationTitle("Call")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done", action: dismiss)
+                        .foregroundStyle(LegendNextColor.gold)
+                }
+            }
+        }
+        .sheet(item: $selectedConversation) { conversation in
+            LegendConversationCallSheet(
+                store: store,
+                conversationID: conversation.id,
+                fallbackName: conversation.title)
+                .legendNextSheetChrome(detents: [.height(340)])
+        }
+    }
+}
+
+private struct LegendConversationCallSheet: View {
+    @ObservedObject var store: MessagingStore
+    let conversationID: UUID
+    let fallbackName: String
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var options: ConversationCallOptions?
+    @State private var isLoading = true
+
+    var body: some View {
+        ZStack {
+            LegendNextCanvas()
+
+            VStack(spacing: LegendNextSpacing.md) {
+                if isLoading {
+                    ProgressView()
+                        .tint(LegendNextColor.gold)
+                    Text("Preparing secure call options")
+                        .font(.subheadline)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                } else if let options {
+                    Image(systemName: "phone.connection.fill")
+                        .font(.system(size: 30, weight: .semibold))
+                        .foregroundStyle(LegendNextColor.gold)
+                        .frame(width: 68, height: 68)
+                        .background(LegendNextColor.navy, in: Circle())
+
+                    Text(options.displayName)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(LegendNextColor.textPrimary)
+
+                    if let phone = options.phoneNumber {
+                        LegendCallActionButton(
+                            title: "Phone call",
+                            subtitle: "Use your carrier",
+                            symbol: "phone.fill",
+                            action: { openSystemCall(scheme: "tel", address: phone) })
+                    }
+
+                    if let faceTime = options.faceTimeAddress {
+                        LegendCallActionButton(
+                            title: "FaceTime video",
+                            subtitle: "Open FaceTime",
+                            symbol: "video.fill",
+                            action: { openSystemCall(scheme: "facetime", address: faceTime) })
+
+                        LegendCallActionButton(
+                            title: "FaceTime Audio",
+                            subtitle: "Open FaceTime Audio",
+                            symbol: "phone.badge.waveform.fill",
+                            action: { openSystemCall(scheme: "facetime-audio", address: faceTime) })
+                    }
+                } else {
+                    LegendMessagingEmptyState(
+                        symbol: "phone.down.fill",
+                        title: "Calling unavailable",
+                        message: "\(fallbackName) has not shared a call address for this private conversation.",
+                        actionTitle: nil,
+                        action: nil)
+                }
+            }
+            .padding(LegendNextSpacing.pageHorizontal)
+        }
+        .task {
+            options = await store.callOptions(for: conversationID)
+            isLoading = false
+        }
+    }
+
+    private func openSystemCall(scheme: String, address: String) {
+        let allowed = CharacterSet.urlPathAllowed
+        guard let encoded = address.addingPercentEncoding(withAllowedCharacters: allowed),
+              let url = URL(string: "\(scheme)://\(encoded)") else { return }
+        UIApplication.shared.open(url)
+        dismiss()
+    }
+}
+
+private struct LegendCallActionButton: View {
+    let title: String
+    let subtitle: String
+    let symbol: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: LegendNextSpacing.sm) {
+                Image(systemName: symbol)
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(LegendNextColor.midnight)
+                    .frame(width: 42, height: 42)
+                    .background(LegendNextGradient.gold, in: Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                }
+
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(LegendNextColor.gold)
+            }
+            .padding(LegendNextSpacing.sm)
+            .background(LegendNextColor.surfaceElevated, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(LegendNextColor.separator, lineWidth: 1)
+            }
+        }
+        .buttonStyle(LegendMessagingPressButtonStyle())
     }
 }
 
@@ -1036,6 +1398,7 @@ struct ConversationThreadView: View {
     @State private var replyingToMessage: ConversationMessage?
     @State private var isPresentingAddMember = false
     @State private var isPresentingGroupProfile = false
+    @State private var isPresentingCallSheet = false
     @State private var verificationProfile: LegendVerificationProfileRoute?
 
     var body: some View {
@@ -1064,7 +1427,16 @@ struct ConversationThreadView: View {
                     store: store,
                     conversation: conversation,
                     dismiss: { isPresentingGroupProfile = false })
-                    .legendNextSheetChrome(detents: [.large])
+                .legendNextSheetChrome(detents: [.large])
+            }
+        }
+        .sheet(isPresented: $isPresentingCallSheet) {
+            if case .loaded(let conversation) = store.detailState {
+                LegendConversationCallSheet(
+                    store: store,
+                    conversationID: conversation.id,
+                    fallbackName: conversation.title)
+                    .legendNextSheetChrome(detents: [.height(340)])
             }
         }
         .sheet(item: $verificationProfile) { route in
@@ -1116,7 +1488,8 @@ struct ConversationThreadView: View {
             LegendConversationHeader(
                 conversation: conversation,
                 addMember: { isPresentingAddMember = true },
-                editGroup: { isPresentingGroupProfile = true }
+                editGroup: { isPresentingGroupProfile = true },
+                startCall: { isPresentingCallSheet = true }
             )
 
             LegendMessageTimeline(
@@ -1124,6 +1497,9 @@ struct ConversationThreadView: View {
                 onReply: { message in
                     replyingToMessage = message
                     composerIsFocused = true
+                },
+                onDelete: { message in
+                    store.deleteMessage(message)
                 },
                 onOpenVerificationProfile: { message in
                     guard let review = message.verificationReview else { return }
@@ -1637,6 +2013,10 @@ private struct LegendConversationRow: View {
                             .padding(.horizontal, conversation.unreadCount > 9 ? 4 : 0)
                             .background(unreadColor, in: Capsule())
                             .accessibilityLabel("\(conversation.unreadCount) unread messages")
+                    } else if conversation.isMuted {
+                        Image(systemName: "bell.slash.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.textTertiary)
                     } else {
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.bold))
@@ -1771,6 +2151,7 @@ private struct LegendConversationHeader: View {
     let conversation: ConversationDetail
     let addMember: () -> Void
     let editGroup: () -> Void
+    let startCall: () -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -1860,6 +2241,16 @@ private struct LegendConversationHeader: View {
                     .buttonStyle(LegendMessagingPressButtonStyle())
                     .accessibilityLabel("Add group member")
                 }
+            } else if !isGroup {
+                Button(action: startCall) {
+                    Image(systemName: "phone.fill")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.midnight)
+                        .frame(width: 38, height: 38)
+                        .background(LegendNextGradient.gold, in: Circle())
+                }
+                .buttonStyle(LegendMessagingPressButtonStyle())
+                .accessibilityLabel("Call \(conversation.title)")
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -1959,6 +2350,7 @@ private struct LegendConversationFallbackHeader: View {
 private struct LegendMessageTimeline: View {
     let messages: [ConversationMessage]
     let onReply: (ConversationMessage) -> Void
+    let onDelete: (ConversationMessage) -> Void
     let onOpenVerificationProfile: (ConversationMessage) -> Void
 
     var body: some View {
@@ -1996,6 +2388,9 @@ private struct LegendMessageTimeline: View {
                                 ),
                                 onReply: {
                                     onReply(message)
+                                },
+                                onDelete: {
+                                    onDelete(message)
                                 },
                                 onOpenVerificationProfile: message.verificationReview?.status != "Pending"
                                     ? nil
@@ -2233,6 +2628,7 @@ private struct LegendMessageBubble: View {
     let message: ConversationMessage
     let showsSender: Bool
     let onReply: () -> Void
+    let onDelete: () -> Void
     let onOpenVerificationProfile: (() -> Void)?
 
     @State private var copyFeedbackTrigger = 0
@@ -2270,23 +2666,32 @@ private struct LegendMessageBubble: View {
             )
         )
         .contextMenu {
-            Button {
-                onReply()
-            } label: {
-                Label(
-                    "Reply",
-                    systemImage: "arrowshape.turn.up.left.fill"
-                )
-            }
+            if !message.isDeleted {
+                Button {
+                    onReply()
+                } label: {
+                    Label(
+                        "Reply",
+                        systemImage: "arrowshape.turn.up.left.fill"
+                    )
+                }
 
-            Button {
-                UIPasteboard.general.string = message.body
-                copyFeedbackTrigger += 1
-            } label: {
-                Label(
-                    "Copy",
-                    systemImage: "doc.on.doc.fill"
-                )
+                Button {
+                    UIPasteboard.general.string = message.body
+                    copyFeedbackTrigger += 1
+                } label: {
+                    Label(
+                        "Copy",
+                        systemImage: "doc.on.doc.fill"
+                    )
+                }
+
+                if message.isMine {
+                    Divider()
+                    Button(role: .destructive, action: onDelete) {
+                        Label("Unsend", systemImage: "trash")
+                    }
+                }
             }
         } preview: {
             LegendMessageContextPreview(message: message)
@@ -2298,11 +2703,16 @@ private struct LegendMessageBubble: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
         .accessibilityAction(named: "Reply") {
-            onReply()
+            if !message.isDeleted { onReply() }
         }
         .accessibilityAction(named: "Copy") {
-            UIPasteboard.general.string = message.body
-            copyFeedbackTrigger += 1
+            if !message.isDeleted {
+                UIPasteboard.general.string = message.body
+                copyFeedbackTrigger += 1
+            }
+        }
+        .accessibilityAction(named: "Unsend") {
+            if message.isMine && !message.isDeleted { onDelete() }
         }
     }
 
@@ -2315,8 +2725,9 @@ private struct LegendMessageBubble: View {
                 alignment: message.isMine ? .trailing : .leading,
                 spacing: LegendNextSpacing.xs
             ) {
-                Text(message.body)
+                Text(message.isDeleted ? "Message unsent" : message.body)
                     .font(.system(size: 15, weight: .regular))
+                    .italic(message.isDeleted)
                     .lineSpacing(0)
                     .foregroundStyle(
                         message.isMine
@@ -2327,11 +2738,13 @@ private struct LegendMessageBubble: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
 
-                ForEach(message.attachments) { attachment in
-                    LegendMessageAttachmentChip(
-                        attachment: attachment,
-                        isMine: message.isMine
-                    )
+                if !message.isDeleted {
+                    ForEach(message.attachments) { attachment in
+                        LegendMessageAttachmentChip(
+                            attachment: attachment,
+                            isMine: message.isMine
+                        )
+                    }
                 }
 
                 if let onOpenVerificationProfile,
@@ -2453,6 +2866,12 @@ private struct LegendMessageBubble: View {
     }
 
     private var accessibilityDescription: String {
+        if message.isDeleted {
+            return message.isMine
+                ? "Sent message unsent."
+                : "Received message unsent by " + message.sender.displayName + "."
+        }
+
         let attachmentDescription = message.attachments.isEmpty
             ? ""
             : " Includes \(message.attachments.count) attachment"

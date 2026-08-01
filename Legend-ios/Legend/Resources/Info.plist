@@ -43,6 +43,12 @@
 	<string>$(LEGEND_AUTHORIZATION_ENDPOINT)</string>
 	<key>LegendTokenEndpoint</key>
 	<string>$(LEGEND_TOKEN_ENDPOINT)</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>facetime</string>
+		<string>facetime-audio</string>
+		<string>tel</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Legend uses the camera only when you choose to capture media for a Legend update.</string>
 	<key>NSFaceIDUsageDescription</key>

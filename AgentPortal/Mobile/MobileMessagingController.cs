@@ -95,7 +95,9 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 conversation.UnreadCount,
                 conversation.IsClosed,
                 conversation.Purpose,
-                ToGroupAvatarDto(conversation.GroupImage)));
+                ToGroupAvatarDto(conversation.GroupImage),
+                conversation.IsPinned,
+                conversation.IsMuted));
         }
 
         return Ok(response);
@@ -430,6 +432,105 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             : MessagingFailure(result.ErrorCode, result.ErrorMessage);
     }
 
+    [HttpPut("messaging/conversations/{conversationId:guid}/pin")]
+    public async Task<IActionResult> SetConversationPinned(
+        Guid conversationId,
+        [FromBody] MobileConversationPinnedRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+        if (request?.IsPinned is null)
+            return Error(StatusCodes.Status400BadRequest, "mobile_messaging_invalid", "Choose whether to pin this conversation.");
+
+        var result = await _messaging.SetConversationPinnedAsync(
+            new SetMessagingConversationPinnedCommand(
+                resolved.Actor!.Actor,
+                conversationId,
+                request.IsPinned.Value),
+            cancellationToken);
+        return result.Succeeded
+            ? NoContent()
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpPut("messaging/conversations/{conversationId:guid}/mute")]
+    public async Task<IActionResult> SetConversationMuted(
+        Guid conversationId,
+        [FromBody] MobileConversationMutedRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+        if (request?.IsMuted is null)
+            return Error(StatusCodes.Status400BadRequest, "mobile_messaging_invalid", "Choose whether to mute this conversation.");
+
+        var result = await _messaging.SetConversationMutedAsync(
+            new SetMessagingConversationMutedCommand(
+                resolved.Actor!.Actor,
+                conversationId,
+                request.IsMuted.Value),
+            cancellationToken);
+        return result.Succeeded
+            ? NoContent()
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpDelete("messaging/conversations/{conversationId:guid}")]
+    public async Task<IActionResult> RemoveConversation(Guid conversationId, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.RemoveConversationForActorAsync(
+            new RemoveMessagingConversationCommand(resolved.Actor!.Actor, conversationId),
+            cancellationToken);
+        return result.Succeeded
+            ? NoContent()
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpDelete("messaging/conversations/{conversationId:guid}/messages/{messageId:guid}")]
+    public async Task<IActionResult> DeleteMessage(
+        Guid conversationId,
+        Guid messageId,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.DeleteMessageAsync(
+            new DeleteMessagingMessageCommand(resolved.Actor!.Actor, conversationId, messageId),
+            cancellationToken);
+        return result.Succeeded
+            ? NoContent()
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpGet("messaging/conversations/{conversationId:guid}/call-options")]
+    public async Task<IActionResult> ConversationCallOptions(Guid conversationId, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.GetConversationCallOptionsAsync(
+            resolved.Actor!.Actor,
+            conversationId,
+            cancellationToken);
+        return result.Succeeded && result.Options is not null
+            ? Ok(new MobileConversationCallOptionsDto(
+                result.Options.ConversationId,
+                result.Options.DisplayName,
+                result.Options.PhoneNumber,
+                result.Options.FaceTimeAddress))
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
     private async Task<MobileConversationDetailDto> ToConversationDtoAsync(
         MessagingConversationDetail conversation,
         MessagingActor actor,
@@ -531,6 +632,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         message.Attachments.Select(ToAttachmentDto).ToArray(),
         string.Equals(message.SenderUserId, actor.UserId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(message.SenderType, actor.ParticipantType, StringComparison.Ordinal),
+        message.IsDeleted,
         message.Reply is null
             ? null
             : new MobileReplyPreviewDto(
@@ -656,7 +758,9 @@ public sealed record MobileConversationSummaryDto(
     int UnreadCount,
     bool IsClosed,
     string? Purpose,
-    MobileAvatarDto? GroupAvatar);
+    MobileAvatarDto? GroupAvatar,
+    bool IsPinned,
+    bool IsMuted);
 
 public sealed record MobileConversationDetailDto(
     Guid Id,
@@ -678,6 +782,7 @@ public sealed record MobileMessageDto(
     DateTime SentUtc,
     IReadOnlyList<MobileMessageAttachmentDto> Attachments,
     bool IsMine,
+    bool IsDeleted,
     MobileReplyPreviewDto? Reply = null,
     MobileVerificationReviewDto? VerificationReview = null);
 
@@ -707,6 +812,13 @@ public sealed record MobileMessageAttachmentDto(
 public sealed record MobileSendMessageRequest(
     string? Body,
     Guid? ReplyToMessageId = null);
+public sealed record MobileConversationPinnedRequest(bool? IsPinned);
+public sealed record MobileConversationMutedRequest(bool? IsMuted);
+public sealed record MobileConversationCallOptionsDto(
+    Guid ConversationId,
+    string DisplayName,
+    string? PhoneNumber,
+    string? FaceTimeAddress);
 public sealed record MobileStartConversationRequest(
     string? TargetUserId,
     string? TargetParticipantType,

@@ -91,7 +91,8 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                     profile.AgentUpn,
                     profile.NormalizedEmail,
                     profile.Title,
-                    profile.IsVerified))
+                    profile.IsVerified,
+                    profile.Phone))
                 .ToListAsync(cancellationToken);
 
             foreach (var userId in agentUserIds)
@@ -116,7 +117,8 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                     Initials(displayName),
                     profile.IsVerified || LegendVerifiedIdentity.IsVerifiedAgentEmail(
                         profile.NormalizedEmail ?? profile.Email),
-                    AgentProfileIdentity.LegendRoleLabel(profile.Title));
+                    AgentProfileIdentity.LegendRoleLabel(profile.Title),
+                    profile.Phone);
             }
         }
 
@@ -135,7 +137,8 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                     profile.FirstName,
                     profile.LastName,
                     profile.Email,
-                    profile.IsVerified))
+                    profile.IsVerified,
+                    profile.Phone))
                 .ToListAsync(cancellationToken);
             foreach (var userId in clientUserIds)
             {
@@ -159,7 +162,9 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                     displayName,
                     profile.Email,
                     Initials(displayName),
-                    profile.IsVerified);
+                    profile.IsVerified,
+                    null,
+                    profile.Phone);
             }
         }
 
@@ -188,7 +193,8 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                 profile.FirstName,
                 profile.LastName,
                 profile.Email,
-                profile.IsVerified))
+                profile.IsVerified,
+                profile.Phone))
             .ToListAsync(cancellationToken);
 
         var result = new Dictionary<Guid, MessagingParticipantIdentity>();
@@ -235,7 +241,9 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
                 displayName,
                 profile.Email,
                 Initials(displayName),
-                profile.IsVerified);
+                profile.IsVerified,
+                null,
+                profile.Phone);
         }
 
         return result;
@@ -329,7 +337,8 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
         string? Email,
         string? NormalizedEmail,
         string? Title,
-        bool IsVerified);
+        bool IsVerified,
+        string? Phone);
 
     private sealed record ClientIdentityRow(
         Guid Id,
@@ -338,7 +347,8 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
         string? FirstName,
         string? LastName,
         string? Email,
-        bool IsVerified);
+        bool IsVerified,
+        string? Phone);
 
     private sealed record ClientProfileImageRow(byte[]? Content, string? ContentType);
 

@@ -172,6 +172,59 @@ public class IdentityHardeningTests
         Assert.Equal("Zac Owen", profiles[0].FullName);
     }
 
+    [Fact]
+    public async Task AccountController_ManageProfileKeepsAgentManagedNameAfterRegistryRefresh()
+    {
+        using var db = BuildDb();
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "agent-oid-managed-name",
+            AgentUpn = "zac.owen@mylegnd.com",
+            NormalizedEmail = "zac.owen@mylegnd.com",
+            FullName = "Directory Display Name",
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var user = new ClaimsPrincipal(new ClaimsIdentity(new[]
+        {
+            new Claim("oid", "agent-oid-managed-name"),
+            new Claim("preferred_username", "zac.owen@mylegnd.com"),
+            new Claim("name", "Directory Display Name")
+        }, "TestAuth"));
+        var http = new DefaultHttpContext { User = user };
+        var controller = new AccountController(db, new AgentProfileAccessResolver(db))
+        {
+            ControllerContext = new ControllerContext { HttpContext = http },
+            TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>())
+        };
+
+        var result = await controller.ManageProfile(new ManageAgentProfileViewModel
+        {
+            FullName = "Zac Owen",
+            Email = "zac.owen@mylegnd.com",
+            Title = "CEO",
+            Phone = "480-555-0100",
+            ShortBio = "Founder",
+            Npn = "1234567",
+            BookingEnabled = true
+        });
+
+        Assert.Equal(nameof(AccountController.ManageProfile), Assert.IsType<RedirectToActionResult>(result).ActionName);
+
+        // The authenticated-request registry runs before the redirected GET.
+        // It must not replace an explicit profile setting with the Azure name claim.
+        await BuildRegistry(db).UpsertAgentProfileAsync(user);
+
+        var profile = await db.AgentProfiles.SingleAsync(x => x.AgentUserId == "agent-oid-managed-name");
+        Assert.Equal("Zac Owen", profile.FullName);
+        Assert.Equal("CEO", profile.Title);
+        Assert.Equal("480-555-0100", profile.Phone);
+        Assert.Equal("Founder", profile.ShortBio);
+        Assert.Equal("1234567", profile.Npn);
+        Assert.True(profile.BookingEnabled);
+    }
+
     // -----------------------------------------------------------------------
     // 2c. AgentRegistryService_BackfillsMissingDataFromDuplicateSibling
     // -----------------------------------------------------------------------

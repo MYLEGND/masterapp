@@ -98,10 +98,24 @@ public sealed record SetMessagingConversationMutedCommand(
     Guid ConversationId,
     bool IsMuted);
 
+public sealed record SetMessagingConversationPinnedCommand(
+    MessagingActor Actor,
+    Guid ConversationId,
+    bool IsPinned);
+
+public sealed record RemoveMessagingConversationCommand(
+    MessagingActor Actor,
+    Guid ConversationId);
+
 public sealed record SetMessagingConversationClosedCommand(
     MessagingActor Actor,
     Guid ConversationId,
     bool IsClosed);
+
+public sealed record DeleteMessagingMessageCommand(
+    MessagingActor Actor,
+    Guid ConversationId,
+    Guid MessageId);
 
 public sealed record AddPendingMessagingAttachmentCommand(
     MessagingActor Actor,
@@ -215,6 +229,16 @@ public sealed record MessagingOperationResult(
         new(false, errorCode, errorMessage);
 }
 
+public sealed record MessagingConversationCallOptionsResult(
+    bool Succeeded,
+    string? ErrorCode,
+    string? ErrorMessage,
+    MessagingConversationCallOptions? Options)
+{
+    public static MessagingConversationCallOptionsResult Failure(string errorCode, string errorMessage) =>
+        new(false, errorCode, errorMessage, null);
+}
+
 public sealed record MessagingConversationSummary(
     Guid Id,
     string ConversationType,
@@ -226,7 +250,20 @@ public sealed record MessagingConversationSummary(
     MessagingParticipantSummary Counterparty,
     string? LastMessagePreview,
     string? Purpose = null,
-    MessagingGroupImage? GroupImage = null);
+    MessagingGroupImage? GroupImage = null,
+    bool IsPinned = false,
+    bool IsMuted = false);
+
+/// <summary>
+/// A server-authorized native call target for a direct conversation. The app
+/// launches the system Phone or FaceTime experience; it never fabricates a
+/// separate calling identity or exposes targets for a group conversation.
+/// </summary>
+public sealed record MessagingConversationCallOptions(
+    Guid ConversationId,
+    string DisplayName,
+    string? PhoneNumber,
+    string? FaceTimeAddress);
 
 public sealed record MessagingConversationDetail(
     Guid Id,
@@ -268,7 +305,8 @@ public sealed record MessagingParticipantIdentity(
     string? Email,
     string Initials,
     bool IsVerified = false,
-    string? RoleLabel = null);
+    string? RoleLabel = null,
+    string? Phone = null);
 
 public sealed record MessagingRecipientSummary(
     string UserId,

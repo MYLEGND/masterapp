@@ -160,7 +160,9 @@ public class AgentRegistryService
                     }
                 }
 
-                // Keep email/name fresh but do not overwrite with empty values.
+                // Azure is authoritative for the sign-in address, but a profile name is
+                // managed by the agent in Account/ManageProfile. Only seed it from the
+                // directory when the profile has never been named.
                 if (!string.IsNullOrWhiteSpace(email) && !string.Equals(existing.AgentUpn, email, StringComparison.OrdinalIgnoreCase))
                 {
                     existing.AgentUpn = email;
@@ -172,7 +174,7 @@ public class AgentRegistryService
                     changed = true;
                 }
                 var hasSpecificDisplayName = !string.IsNullOrWhiteSpace(displayName) && !string.Equals(displayName, "Agent", StringComparison.Ordinal);
-                if (hasSpecificDisplayName && !string.Equals(existing.FullName, displayName, StringComparison.Ordinal))
+                if (hasSpecificDisplayName && string.IsNullOrWhiteSpace(existing.FullName))
                 {
                     existing.FullName = displayName;
                     changed = true;

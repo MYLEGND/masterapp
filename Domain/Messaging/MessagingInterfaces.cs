@@ -60,8 +60,25 @@ public interface IMessagingService
         SetMessagingConversationMutedCommand command,
         CancellationToken cancellationToken = default);
 
+    Task<MessagingOperationResult> SetConversationPinnedAsync(
+        SetMessagingConversationPinnedCommand command,
+        CancellationToken cancellationToken = default);
+
+    Task<MessagingOperationResult> RemoveConversationForActorAsync(
+        RemoveMessagingConversationCommand command,
+        CancellationToken cancellationToken = default);
+
     Task<MessagingOperationResult> SetConversationClosedAsync(
         SetMessagingConversationClosedCommand command,
+        CancellationToken cancellationToken = default);
+
+    Task<MessagingOperationResult> DeleteMessageAsync(
+        DeleteMessagingMessageCommand command,
+        CancellationToken cancellationToken = default);
+
+    Task<MessagingConversationCallOptionsResult> GetConversationCallOptionsAsync(
+        MessagingActor actor,
+        Guid conversationId,
         CancellationToken cancellationToken = default);
 
     Task<MessagingAttachmentResult> AddPendingAttachmentAsync(

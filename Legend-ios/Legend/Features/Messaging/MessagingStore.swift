@@ -377,6 +377,118 @@ final class MessagingStore: ObservableObject {
         }
     }
 
+    func setPinned(conversationID: UUID, isPinned: Bool) {
+        Task {
+            do {
+                try await api.setPinned(
+                    conversationID: conversationID,
+                    isPinned: isPinned,
+                    accessToken: try await accessTokenProvider())
+                updateConversation(conversationID) { conversation in
+                    ConversationSummary(
+                        id: conversation.id,
+                        conversationType: conversation.conversationType,
+                        counterparty: conversation.counterparty,
+                        title: conversation.title,
+                        lastMessagePreview: conversation.lastMessagePreview,
+                        lastMessageUTC: conversation.lastMessageUTC,
+                        unreadCount: conversation.unreadCount,
+                        isClosed: conversation.isClosed,
+                        purpose: conversation.purpose,
+                        groupAvatar: conversation.groupAvatar,
+                        isPinned: isPinned,
+                        isMuted: conversation.isMuted)
+                }
+            } catch {
+                sendFailure = failure(for: error, title: "Conversation not updated")
+            }
+        }
+    }
+
+    func setMuted(conversationID: UUID, isMuted: Bool) {
+        Task {
+            do {
+                try await api.setMuted(
+                    conversationID: conversationID,
+                    isMuted: isMuted,
+                    accessToken: try await accessTokenProvider())
+                updateConversation(conversationID) { conversation in
+                    ConversationSummary(
+                        id: conversation.id,
+                        conversationType: conversation.conversationType,
+                        counterparty: conversation.counterparty,
+                        title: conversation.title,
+                        lastMessagePreview: conversation.lastMessagePreview,
+                        lastMessageUTC: conversation.lastMessageUTC,
+                        unreadCount: conversation.unreadCount,
+                        isClosed: conversation.isClosed,
+                        purpose: conversation.purpose,
+                        groupAvatar: conversation.groupAvatar,
+                        isPinned: conversation.isPinned,
+                        isMuted: isMuted)
+                }
+            } catch {
+                sendFailure = failure(for: error, title: "Conversation not updated")
+            }
+        }
+    }
+
+    func removeConversation(conversationID: UUID) {
+        Task {
+            do {
+                try await api.removeConversation(
+                    conversationID: conversationID,
+                    accessToken: try await accessTokenProvider())
+                guard case .loaded(let conversations) = state else { return }
+                let remaining = conversations.filter { $0.id != conversationID }
+                state = .loaded(remaining)
+                NativeUnreadBadge.update(with: remaining.reduce(0) {
+                    $0 + max(0, $1.unreadCount)
+                })
+            } catch {
+                sendFailure = failure(for: error, title: "Conversation not removed")
+            }
+        }
+    }
+
+    func deleteMessage(_ message: ConversationMessage) {
+        guard message.isMine, !message.isDeleted else { return }
+        Task {
+            do {
+                try await api.deleteMessage(
+                    conversationID: message.conversationID,
+                    messageID: message.id,
+                    accessToken: try await accessTokenProvider())
+                replaceMessage(message.id) { original in
+                    ConversationMessage(
+                        id: original.id,
+                        conversationID: original.conversationID,
+                        sender: original.sender,
+                        body: "Message unsent",
+                        sentUTC: original.sentUTC,
+                        attachments: [],
+                        isMine: original.isMine,
+                        isDeleted: true,
+                        reply: original.reply,
+                        verificationReview: original.verificationReview)
+                }
+            } catch {
+                sendFailure = failure(for: error, title: "Message not unsent")
+            }
+        }
+    }
+
+    func callOptions(for conversationID: UUID) async -> ConversationCallOptions? {
+        do {
+            return try await api.callOptions(
+                conversationID: conversationID,
+                accessToken: try await accessTokenProvider())
+        } catch {
+            sendFailure = failure(for: error, title: "Calling unavailable")
+            return nil
+        }
+    }
+
     private func append(message: ConversationMessage, to conversationID: UUID) {
         guard case .loaded(let conversation) = detailState,
               conversation.id == conversationID else {
@@ -414,6 +526,40 @@ final class MessagingStore: ObservableObject {
                     isMine: message.isMine,
                     reply: message.reply,
                     verificationReview: message.verificationReview)
+            },
+            isMuted: conversation.isMuted,
+            isClosed: conversation.isClosed,
+            canManageMembers: conversation.canManageMembers,
+            purpose: conversation.purpose,
+            groupAvatar: conversation.groupAvatar))
+    }
+
+    private func updateConversation(
+        _ conversationID: UUID,
+        transform: (ConversationSummary) -> ConversationSummary
+    ) {
+        guard case .loaded(let conversations) = state else { return }
+        let updated = conversations
+            .map { $0.id == conversationID ? transform($0) : $0 }
+            .sorted { left, right in
+                if left.isPinned != right.isPinned { return left.isPinned }
+                return (left.lastMessageUTC ?? .distantPast) > (right.lastMessageUTC ?? .distantPast)
+            }
+        state = .loaded(updated)
+    }
+
+    private func replaceMessage(
+        _ messageID: UUID,
+        transform: (ConversationMessage) -> ConversationMessage
+    ) {
+        guard case .loaded(let conversation) = detailState else { return }
+        detailState = .loaded(ConversationDetail(
+            id: conversation.id,
+            conversationType: conversation.conversationType,
+            title: conversation.title,
+            participants: conversation.participants,
+            messages: conversation.messages.map {
+                $0.id == messageID ? transform($0) : $0
             },
             isMuted: conversation.isMuted,
             isClosed: conversation.isClosed,

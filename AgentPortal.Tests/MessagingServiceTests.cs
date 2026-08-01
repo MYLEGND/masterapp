@@ -84,6 +84,141 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task ConversationInboxControls_AreScopedToTheActorAndRestoreOnANewMessage()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent,
+            client.UserId,
+            client.ParticipantType,
+            InitialMessageBody: "Your review is ready."));
+        var conversationId = Assert.IsType<MessagingConversationDetail>(opened.Conversation).Id;
+
+        Assert.True((await service.SetConversationPinnedAsync(
+            new SetMessagingConversationPinnedCommand(client, conversationId, true))).Succeeded);
+        Assert.True(Assert.Single((await service.ListConversationsAsync(
+            client,
+            new MessagingConversationListQuery())).Conversations).IsPinned);
+        Assert.False(Assert.Single((await service.ListConversationsAsync(
+            agent,
+            new MessagingConversationListQuery())).Conversations).IsPinned);
+
+        Assert.True((await service.RemoveConversationForActorAsync(
+            new RemoveMessagingConversationCommand(client, conversationId))).Succeeded);
+        Assert.Empty((await service.ListConversationsAsync(client, new MessagingConversationListQuery())).Conversations);
+        Assert.Single((await service.ListConversationsAsync(agent, new MessagingConversationListQuery())).Conversations);
+
+        Assert.True((await service.SendMessageAsync(new SendMessagingMessageCommand(
+            agent,
+            conversationId,
+            "A new detail is available."))).Succeeded);
+
+        var restored = Assert.Single((await service.ListConversationsAsync(
+            client,
+            new MessagingConversationListQuery())).Conversations);
+        Assert.False(restored.IsPinned);
+        Assert.Null((await db.MessageConversationParticipants.SingleAsync(participant =>
+            participant.ConversationId == conversationId &&
+            participant.UserId == client.UserId &&
+            participant.ParticipantType == client.ParticipantType)).HiddenUtc);
+    }
+
+    [Fact]
+    public async Task ConversationPins_EnforceTheSixConversationLimit()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent,
+            "client-1",
+            MessagingParticipantTypes.Client,
+            InitialMessageBody: "Pinned limit test."));
+        var conversationId = Assert.IsType<MessagingConversationDetail>(opened.Conversation).Id;
+
+        db.MessageConversationParticipants.AddRange(Enumerable.Range(0, 6).Select(index =>
+            new MessageConversationParticipant
+            {
+                Id = Guid.NewGuid(),
+                ConversationId = Guid.NewGuid(),
+                UserId = agent.UserId,
+                ParticipantType = agent.ParticipantType,
+                IsActive = true,
+                JoinedUtc = DateTime.UtcNow,
+                PinnedUtc = DateTime.UtcNow.AddMinutes(-index)
+            }));
+        await db.SaveChangesAsync();
+
+        var result = await service.SetConversationPinnedAsync(
+            new SetMessagingConversationPinnedCommand(agent, conversationId, true));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("MESSAGING_PIN_LIMIT_REACHED", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task MessageUnsend_IsRestrictedToTheAuthorAndRedactsTheMessageBody()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent,
+            client.UserId,
+            client.ParticipantType,
+            InitialMessageBody: "Private message."));
+        var conversation = Assert.IsType<MessagingConversationDetail>(opened.Conversation);
+        var messageId = Assert.Single(conversation.Messages).Id;
+
+        var denied = await service.DeleteMessageAsync(
+            new DeleteMessagingMessageCommand(client, conversation.Id, messageId));
+        Assert.False(denied.Succeeded);
+        Assert.Equal("MESSAGING_MESSAGE_FORBIDDEN", denied.ErrorCode);
+
+        Assert.True((await service.DeleteMessageAsync(
+            new DeleteMessagingMessageCommand(agent, conversation.Id, messageId))).Succeeded);
+        var refreshed = Assert.IsType<MessagingConversationDetail>(
+            (await service.GetConversationAsync(client, conversation.Id)).Conversation);
+        var message = Assert.Single(refreshed.Messages);
+        Assert.True(message.IsDeleted);
+        Assert.Equal("Message unsent", message.Body);
+    }
+
+    [Fact]
+    public async Task DirectConversationCallOptions_UseOnlyTheAuthorizedCounterparty()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var agentProfile = await db.AgentProfiles.SingleAsync();
+        agentProfile.Phone = "+1 (480) 555-0100";
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent,
+            client.UserId,
+            client.ParticipantType,
+            InitialMessageBody: "Call options test."));
+        var conversationId = Assert.IsType<MessagingConversationDetail>(opened.Conversation).Id;
+
+        var options = await service.GetConversationCallOptionsAsync(client, conversationId);
+
+        Assert.True(options.Succeeded);
+        Assert.Equal("Agent One", options.Options!.DisplayName);
+        Assert.Equal("+14805550100", options.Options.PhoneNumber);
+        Assert.Equal("agent.one@mylegnd.com", options.Options.FaceTimeAddress);
+    }
+
+    [Fact]
     public async Task GroupConversation_UsesAuthorizedRecipientsAndOnlyOwnerCanAddMembers()
     {
         await using var db = ControllerTestHelpers.BuildDb();

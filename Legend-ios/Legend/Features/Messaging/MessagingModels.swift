@@ -31,6 +31,8 @@ struct ConversationSummary: Codable, Equatable, Identifiable, Sendable {
     let isClosed: Bool
     let purpose: String?
     let groupAvatar: ProfileAvatar?
+    let isPinned: Bool
+    let isMuted: Bool
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -43,6 +45,8 @@ struct ConversationSummary: Codable, Equatable, Identifiable, Sendable {
         case isClosed
         case purpose
         case groupAvatar
+        case isPinned
+        case isMuted
     }
 
     init(
@@ -55,7 +59,9 @@ struct ConversationSummary: Codable, Equatable, Identifiable, Sendable {
         unreadCount: Int,
         isClosed: Bool,
         purpose: String? = nil,
-        groupAvatar: ProfileAvatar? = nil
+        groupAvatar: ProfileAvatar? = nil,
+        isPinned: Bool = false,
+        isMuted: Bool = false
     ) {
         self.id = id
         self.conversationType = conversationType
@@ -67,6 +73,24 @@ struct ConversationSummary: Codable, Equatable, Identifiable, Sendable {
         self.isClosed = isClosed
         self.purpose = purpose
         self.groupAvatar = groupAvatar
+        self.isPinned = isPinned
+        self.isMuted = isMuted
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        conversationType = try container.decode(String.self, forKey: .conversationType)
+        counterparty = try container.decode(MessagingParticipant.self, forKey: .counterparty)
+        title = try container.decode(String.self, forKey: .title)
+        lastMessagePreview = try container.decodeIfPresent(String.self, forKey: .lastMessagePreview)
+        lastMessageUTC = try container.decodeIfPresent(Date.self, forKey: .lastMessageUTC)
+        unreadCount = try container.decode(Int.self, forKey: .unreadCount)
+        isClosed = try container.decode(Bool.self, forKey: .isClosed)
+        purpose = try container.decodeIfPresent(String.self, forKey: .purpose)
+        groupAvatar = try container.decodeIfPresent(ProfileAvatar.self, forKey: .groupAvatar)
+        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        isMuted = try container.decodeIfPresent(Bool.self, forKey: .isMuted) ?? false
     }
 }
 
@@ -115,6 +139,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
     let sentUTC: Date
     let attachments: [MessagingAttachment]
     let isMine: Bool
+    let isDeleted: Bool
     let reply: MessageReplyPreview?
     let verificationReview: VerificationReview?
 
@@ -126,6 +151,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         case sentUTC = "sentUtc"
         case attachments
         case isMine
+        case isDeleted
         case reply
         case verificationReview
     }
@@ -138,6 +164,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         sentUTC: Date,
         attachments: [MessagingAttachment],
         isMine: Bool,
+        isDeleted: Bool = false,
         reply: MessageReplyPreview?,
         verificationReview: VerificationReview? = nil
     ) {
@@ -148,8 +175,23 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         self.sentUTC = sentUTC
         self.attachments = attachments
         self.isMine = isMine
+        self.isDeleted = isDeleted
         self.reply = reply
         self.verificationReview = verificationReview
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        conversationID = try container.decode(UUID.self, forKey: .conversationID)
+        sender = try container.decode(MessagingParticipant.self, forKey: .sender)
+        body = try container.decode(String.self, forKey: .body)
+        sentUTC = try container.decode(Date.self, forKey: .sentUTC)
+        attachments = try container.decode([MessagingAttachment].self, forKey: .attachments)
+        isMine = try container.decode(Bool.self, forKey: .isMine)
+        isDeleted = try container.decodeIfPresent(Bool.self, forKey: .isDeleted) ?? false
+        reply = try container.decodeIfPresent(MessageReplyPreview.self, forKey: .reply)
+        verificationReview = try container.decodeIfPresent(VerificationReview.self, forKey: .verificationReview)
     }
 }
 
@@ -332,6 +374,28 @@ struct UpdateMessagingGroupRequest: Encodable, Sendable {
     let groupImage: MessagingGroupImageRequest?
 }
 
+struct ConversationPinnedRequest: Encodable, Sendable {
+    let isPinned: Bool
+}
+
+struct ConversationMutedRequest: Encodable, Sendable {
+    let isMuted: Bool
+}
+
+struct ConversationCallOptions: Codable, Equatable, Sendable {
+    let conversationID: UUID
+    let displayName: String
+    let phoneNumber: String?
+    let faceTimeAddress: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case conversationID = "conversationId"
+        case displayName
+        case phoneNumber
+        case faceTimeAddress
+    }
+}
+
 struct ResolveVerificationRequest: Encodable, Sendable {
     let approve: Bool
 }
@@ -382,6 +446,11 @@ protocol MessagingAPI: Sendable {
         accessToken: String
     ) async throws -> MessagingAttachment
     func markRead(conversationID: UUID, accessToken: String) async throws
+    func setPinned(conversationID: UUID, isPinned: Bool, accessToken: String) async throws
+    func setMuted(conversationID: UUID, isMuted: Bool, accessToken: String) async throws
+    func removeConversation(conversationID: UUID, accessToken: String) async throws
+    func deleteMessage(conversationID: UUID, messageID: UUID, accessToken: String) async throws
+    func callOptions(conversationID: UUID, accessToken: String) async throws -> ConversationCallOptions
 }
 
 extension MessagingAPI {
@@ -420,6 +489,26 @@ extension MessagingAPI {
         approve: Bool,
         accessToken: String
     ) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func setPinned(conversationID: UUID, isPinned: Bool, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func setMuted(conversationID: UUID, isMuted: Bool, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func removeConversation(conversationID: UUID, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func deleteMessage(conversationID: UUID, messageID: UUID, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func callOptions(conversationID: UUID, accessToken: String) async throws -> ConversationCallOptions {
         throw MobileMessagingContractError.unavailable
     }
 }
@@ -483,6 +572,26 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
     }
 
     func markRead(conversationID: UUID, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func setPinned(conversationID: UUID, isPinned: Bool, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func setMuted(conversationID: UUID, isMuted: Bool, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func removeConversation(conversationID: UUID, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func deleteMessage(conversationID: UUID, messageID: UUID, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func callOptions(conversationID: UUID, accessToken: String) async throws -> ConversationCallOptions {
         throw MobileMessagingContractError.unavailable
     }
 }
@@ -681,6 +790,44 @@ struct URLSessionMessagingAPI: MessagingAPI {
             accessToken: accessToken,
             headers: participantHeader
         )
+    }
+
+    func setPinned(conversationID: UUID, isPinned: Bool, accessToken: String) async throws {
+        try await client.put(
+            "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/pin",
+            body: ConversationPinnedRequest(isPinned: isPinned),
+            accessToken: accessToken,
+            headers: participantHeader)
+    }
+
+    func setMuted(conversationID: UUID, isMuted: Bool, accessToken: String) async throws {
+        try await client.put(
+            "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/mute",
+            body: ConversationMutedRequest(isMuted: isMuted),
+            accessToken: accessToken,
+            headers: participantHeader)
+    }
+
+    func removeConversation(conversationID: UUID, accessToken: String) async throws {
+        try await client.delete(
+            "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)",
+            accessToken: accessToken,
+            headers: participantHeader)
+    }
+
+    func deleteMessage(conversationID: UUID, messageID: UUID, accessToken: String) async throws {
+        try await client.delete(
+            "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/messages/\(messageID.uuidString)",
+            accessToken: accessToken,
+            headers: participantHeader)
+    }
+
+    func callOptions(conversationID: UUID, accessToken: String) async throws -> ConversationCallOptions {
+        try await client.get(
+            "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/call-options",
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: ConversationCallOptions.self)
     }
 }
 

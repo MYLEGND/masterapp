@@ -19,6 +19,7 @@ internal sealed class MessagingService : IMessagingService
     private const int MaximumAttachmentStoragePathLength = 1_000;
     private const int MaximumAuditDetailLength = 1_000;
     private const int MaximumGroupImageBytes = 512 * 1_024;
+    private const int MaximumPinnedConversations = 6;
 
     private readonly MasterAppDbContext _db;
     private readonly ILogger<MessagingService> _logger;
@@ -51,7 +52,20 @@ internal sealed class MessagingService : IMessagingService
         if (!Fits(search, MaximumConversationSubjectLength))
             return MessagingConversationListResult.Failure("MESSAGING_SEARCH_INVALID", "The conversation search text is too long.");
 
+        var actorUserId = NormalizeUserId(actor.UserId);
+        var actorParticipantType = NormalizeRequired(actor.ParticipantType);
         var conversationsQuery = await AuthorizedConversationsQueryAsync(actor, cancellationToken);
+
+        // Removing a conversation is actor-scoped. It remains available to the
+        // other members, and returns to this inbox if a newer message arrives.
+        conversationsQuery = conversationsQuery.Where(conversation =>
+            conversation.Participants.Any(participant =>
+                participant.IsActive &&
+                participant.UserId.ToLower() == actorUserId &&
+                participant.ParticipantType == actorParticipantType &&
+                (participant.HiddenUtc == null ||
+                 conversation.Messages.Any(message =>
+                     !message.IsDeleted && message.SentUtc > participant.HiddenUtc))));
 
         conversationsQuery = conversationsQuery.Where(conversation =>
             conversation.Messages.Any(message => !message.IsDeleted));
@@ -68,8 +82,6 @@ internal sealed class MessagingService : IMessagingService
         }
 
         var conversations = await conversationsQuery
-            .OrderByDescending(x => x.LastMessageUtc ?? x.CreatedUtc)
-            .Take(take)
             .Select(x => new ConversationRow(
                 x.Id,
                 x.ConversationType,
@@ -78,7 +90,18 @@ internal sealed class MessagingService : IMessagingService
                 x.IsClosed,
                 x.Purpose,
                 x.GroupImageContent,
-                x.GroupImageContentType))
+                x.GroupImageContentType,
+                x.Participants
+                    .Where(participant =>
+                        participant.IsActive &&
+                        participant.UserId.ToLower() == actorUserId &&
+                        participant.ParticipantType == actorParticipantType)
+                    .Select(participant => participant.PinnedUtc)
+                    .FirstOrDefault()))
+            .OrderByDescending(x => x.PinnedUtc.HasValue)
+            .ThenByDescending(x => x.PinnedUtc)
+            .ThenByDescending(x => x.LastMessageUtc ?? DateTime.MinValue)
+            .Take(take)
             .ToListAsync(cancellationToken);
 
         if (conversations.Count == 0)
@@ -93,7 +116,9 @@ internal sealed class MessagingService : IMessagingService
                 x.UserId,
                 x.ParticipantType,
                 x.LastReadUtc,
-                x.IsMuted))
+                x.IsMuted,
+                x.PinnedUtc,
+                x.HiddenUtc))
             .ToListAsync(cancellationToken);
 
         var messages = await _db.InternalMessages
@@ -122,8 +147,6 @@ internal sealed class MessagingService : IMessagingService
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var displayNames = await LoadDisplayNamesAsync(participants, cancellationToken);
-        var actorUserId = NormalizeUserId(actor.UserId);
-        var actorParticipantType = NormalizeRequired(actor.ParticipantType);
         var result = new List<MessagingConversationSummary>(conversations.Count);
         foreach (var conversation in conversations)
         {
@@ -166,7 +189,9 @@ internal sealed class MessagingService : IMessagingService
                 ToParticipantSummary(counterparty, displayNames),
                 latest is null ? null : Preview(latest.Body),
                 conversation.Purpose,
-                ToGroupImage(conversation.GroupImageContent, conversation.GroupImageContentType)));
+                ToGroupImage(conversation.GroupImageContent, conversation.GroupImageContentType),
+                currentParticipant.PinnedUtc.HasValue,
+                currentParticipant.IsMuted));
         }
 
         // Legacy data can contain more than one direct conversation for the
@@ -180,16 +205,19 @@ internal sealed class MessagingService : IMessagingService
             .Select(group =>
             {
                 var canonical = group
-                    .OrderByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
+                    .OrderByDescending(conversation => conversation.IsPinned)
+                    .ThenByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
                     .ThenByDescending(conversation => conversation.Id)
                     .First();
 
                 return canonical with
                 {
-                    UnreadCount = group.Sum(conversation => conversation.UnreadCount)
+                    UnreadCount = group.Sum(conversation => conversation.UnreadCount),
+                    IsPinned = group.Any(conversation => conversation.IsPinned)
                 };
             })
-            .OrderByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
+            .OrderByDescending(conversation => conversation.IsPinned)
+            .ThenByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
             .ThenByDescending(conversation => conversation.Id)
             .ToArray();
 
@@ -230,7 +258,14 @@ internal sealed class MessagingService : IMessagingService
         var participants = await _db.MessageConversationParticipants
             .AsNoTracking()
             .Where(x => x.ConversationId == conversationId && x.IsActive)
-            .Select(x => new ParticipantRow(x.ConversationId, x.UserId, x.ParticipantType, x.LastReadUtc, x.IsMuted))
+            .Select(x => new ParticipantRow(
+                x.ConversationId,
+                x.UserId,
+                x.ParticipantType,
+                x.LastReadUtc,
+                x.IsMuted,
+                x.PinnedUtc,
+                x.HiddenUtc))
             .ToListAsync(cancellationToken);
         var attachments = await _db.MessageAttachments
             .AsNoTracking()
@@ -1135,6 +1170,13 @@ internal sealed class MessagingService : IMessagingService
             ReplyToMessageId = command.ReplyToMessageId
         };
         _db.InternalMessages.Add(message);
+        var hiddenParticipants = await _db.MessageConversationParticipants
+            .Where(participant => participant.ConversationId == conversation.Id &&
+                                  participant.IsActive &&
+                                  participant.HiddenUtc != null)
+            .ToListAsync(cancellationToken);
+        foreach (var participant in hiddenParticipants)
+            participant.HiddenUtc = null;
         conversation.LastMessageUtc = nowUtc;
         conversation.UpdatedUtc = nowUtc;
         AddAudit(actor.UserId, "MessageSent", conversation.Id, message.Id, null, null, nowUtc);
@@ -1231,6 +1273,65 @@ internal sealed class MessagingService : IMessagingService
         return await SaveOperationAsync("ConversationMuted", actor.UserId, command.ConversationId, cancellationToken);
     }
 
+    public async Task<MessagingOperationResult> SetConversationPinnedAsync(
+        SetMessagingConversationPinnedCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = NormalizeActor(command.Actor);
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return MessagingOperationResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
+
+        var participant = await FindAuthorizedParticipantAsync(actor, command.ConversationId, cancellationToken);
+        if (participant is null)
+            return MessagingOperationResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The requested conversation was not found.");
+
+        if (command.IsPinned && !participant.PinnedUtc.HasValue)
+        {
+            var pinnedCount = await _db.MessageConversationParticipants
+                .CountAsync(candidate =>
+                    candidate.IsActive &&
+                    candidate.UserId.ToLower() == actor.UserId &&
+                    candidate.ParticipantType == actor.ParticipantType &&
+                    candidate.PinnedUtc != null,
+                    cancellationToken);
+            if (pinnedCount >= MaximumPinnedConversations)
+            {
+                return MessagingOperationResult.Failure(
+                    "MESSAGING_PIN_LIMIT_REACHED",
+                    $"You can pin up to {MaximumPinnedConversations} conversations.");
+            }
+        }
+
+        participant.PinnedUtc = command.IsPinned ? DateTime.UtcNow : null;
+        AddAudit(
+            actor.UserId,
+            command.IsPinned ? "ConversationPinned" : "ConversationUnpinned",
+            command.ConversationId,
+            null,
+            null,
+            null,
+            DateTime.UtcNow);
+        return await SaveOperationAsync("ConversationPinned", actor.UserId, command.ConversationId, cancellationToken);
+    }
+
+    public async Task<MessagingOperationResult> RemoveConversationForActorAsync(
+        RemoveMessagingConversationCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = NormalizeActor(command.Actor);
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return MessagingOperationResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
+
+        var participant = await FindAuthorizedParticipantAsync(actor, command.ConversationId, cancellationToken);
+        if (participant is null)
+            return MessagingOperationResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The requested conversation was not found.");
+
+        participant.PinnedUtc = null;
+        participant.HiddenUtc = DateTime.UtcNow;
+        AddAudit(actor.UserId, "ConversationRemovedFromInbox", command.ConversationId, null, null, null, participant.HiddenUtc.Value);
+        return await SaveOperationAsync("ConversationRemovedFromInbox", actor.UserId, command.ConversationId, cancellationToken);
+    }
+
     public async Task<MessagingOperationResult> SetConversationClosedAsync(
         SetMessagingConversationClosedCommand command,
         CancellationToken cancellationToken = default)
@@ -1250,6 +1351,93 @@ internal sealed class MessagingService : IMessagingService
         conversation.UpdatedUtc = nowUtc;
         AddAudit(actor.UserId, command.IsClosed ? "ConversationClosed" : "ConversationReopened", conversation.Id, null, null, null, nowUtc);
         return await SaveOperationAsync("ConversationClosed", actor.UserId, conversation.Id, cancellationToken);
+    }
+
+    public async Task<MessagingOperationResult> DeleteMessageAsync(
+        DeleteMessagingMessageCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = NormalizeActor(command.Actor);
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return MessagingOperationResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
+        if (command.MessageId == Guid.Empty || command.ConversationId == Guid.Empty)
+            return MessagingOperationResult.Failure("MESSAGING_MESSAGE_INVALID", "The requested message is invalid.");
+
+        var message = await _db.InternalMessages
+            .Include(candidate => candidate.Conversation)
+            .FirstOrDefaultAsync(candidate =>
+                candidate.Id == command.MessageId &&
+                candidate.ConversationId == command.ConversationId,
+                cancellationToken);
+        if (message is null || message.IsDeleted)
+            return MessagingOperationResult.Failure("MESSAGING_MESSAGE_NOT_FOUND", "The requested message is not available.");
+
+        var participant = await FindAuthorizedParticipantAsync(actor, command.ConversationId, cancellationToken);
+        if (participant is null ||
+            !IsSameParticipant(message.SenderUserId, message.SenderType, actor.UserId, actor.ParticipantType))
+        {
+            return MessagingOperationResult.Failure("MESSAGING_MESSAGE_FORBIDDEN", "Only your own messages can be unsent.");
+        }
+
+        message.Body = string.Empty;
+        message.IsDeleted = true;
+        message.DeletedUtc = DateTime.UtcNow;
+        message.EditedUtc = message.DeletedUtc;
+        AddAudit(actor.UserId, "MessageUnsent", command.ConversationId, message.Id, null, null, message.DeletedUtc.Value);
+        return await SaveOperationAsync("MessageUnsent", actor.UserId, command.ConversationId, cancellationToken);
+    }
+
+    public async Task<MessagingConversationCallOptionsResult> GetConversationCallOptionsAsync(
+        MessagingActor actor,
+        Guid conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        actor = NormalizeActor(actor);
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return MessagingConversationCallOptionsResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
+
+        var conversation = await (await AuthorizedConversationsQueryAsync(actor, cancellationToken))
+            .AsNoTracking()
+            .Where(candidate => candidate.Id == conversationId)
+            .Select(candidate => new { candidate.Id, candidate.ConversationType })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (conversation is null)
+            return MessagingConversationCallOptionsResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The requested conversation was not found.");
+        if (conversation.ConversationType == MessagingConversationTypes.Group)
+            return MessagingConversationCallOptionsResult.Failure("MESSAGING_CALL_NOT_AVAILABLE", "Calls are available for direct conversations only.");
+
+        var participants = await _db.MessageConversationParticipants
+            .AsNoTracking()
+            .Where(candidate => candidate.ConversationId == conversationId && candidate.IsActive)
+            .Select(candidate => new MessagingParticipantReference(candidate.UserId, candidate.ParticipantType))
+            .ToListAsync(cancellationToken);
+        var counterparty = participants.SingleOrDefault(participant =>
+            !IsSameParticipant(participant.UserId, participant.ParticipantType, actor.UserId, actor.ParticipantType));
+        if (participants.Count != 2 || counterparty is null)
+        {
+            return MessagingConversationCallOptionsResult.Failure(
+                "MESSAGING_CALL_NOT_AVAILABLE",
+                "Calls are available only when this conversation has one other active participant.");
+        }
+
+        var identities = await _participantIdentities.ResolveIdentitiesAsync([counterparty], cancellationToken);
+        if (!identities.TryGetValue((counterparty.UserId, counterparty.ParticipantType), out var identity))
+            return MessagingConversationCallOptionsResult.Failure("MESSAGING_CALL_NOT_AVAILABLE", "This participant is no longer available for calling.");
+
+        var phone = NormalizePhoneForNativeCall(identity.Phone);
+        var faceTimeAddress = NormalizeFaceTimeAddress(identity.Email) ?? phone;
+        if (phone is null && faceTimeAddress is null)
+            return MessagingConversationCallOptionsResult.Failure("MESSAGING_CALL_NOT_AVAILABLE", "This participant has not shared a call address.");
+
+        return new MessagingConversationCallOptionsResult(
+            true,
+            null,
+            null,
+            new MessagingConversationCallOptions(
+                conversationId,
+                identity.DisplayName,
+                phone,
+                faceTimeAddress));
     }
 
     public async Task<MessagingAttachmentResult> AddPendingAttachmentAsync(
@@ -1342,6 +1530,8 @@ internal sealed class MessagingService : IMessagingService
             .FirstOrDefaultAsync(x => x.Id == command.AttachmentId, cancellationToken);
         if (attachment is null)
             return MessagingAttachmentAccessResult.Failure("MESSAGING_ATTACHMENT_NOT_FOUND", "The requested attachment was not found.");
+        if (attachment.InternalMessage.IsDeleted)
+            return MessagingAttachmentAccessResult.Failure("MESSAGING_ATTACHMENT_NOT_FOUND", "The requested attachment was removed with its message.");
         if (!string.Equals(attachment.ScanStatus, MessagingAttachmentScanStatuses.Clean, StringComparison.OrdinalIgnoreCase))
             return MessagingAttachmentAccessResult.Failure("MESSAGING_ATTACHMENT_NOT_READY", "This attachment is not available until scanning is complete.");
 
@@ -2383,11 +2573,13 @@ internal sealed class MessagingService : IMessagingService
             message.ConversationId,
             message.SenderUserId,
             message.SenderType,
-            message.Body,
+            message.IsDeleted ? "Message unsent" : message.Body,
             message.SentUtc,
             message.EditedUtc,
             message.IsDeleted,
-            attachments.Where(x => x.InternalMessageId == message.Id).Select(ToAttachmentSummary).ToList(),
+            message.IsDeleted
+                ? Array.Empty<MessagingAttachmentSummary>()
+                : attachments.Where(x => x.InternalMessageId == message.Id).Select(ToAttachmentSummary).ToList(),
             message.ReplyToMessageId,
             message.Reply is null
                 ? null
@@ -2449,6 +2641,29 @@ internal sealed class MessagingService : IMessagingService
     private static string? NormalizeOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    private static string? NormalizePhoneForNativeCall(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var trimmed = value.Trim();
+        var digits = new string(trimmed.Where(char.IsDigit).ToArray());
+        if (digits.Length is < 7 or > 20)
+            return null;
+
+        return trimmed.StartsWith('+') ? $"+{digits}" : digits;
+    }
+
+    private static string? NormalizeFaceTimeAddress(string? value)
+    {
+        var normalized = NormalizeOptional(value);
+        return normalized is { Length: <= 320 } &&
+               normalized.Contains('@') &&
+               !normalized.Any(char.IsWhiteSpace)
+            ? normalized
+            : null;
+    }
+
     private static string NormalizeRequired(string? value) => value?.Trim() ?? string.Empty;
 
     private static string NormalizeUserId(string? value) => NormalizeRequired(value).ToLowerInvariant();
@@ -2471,7 +2686,8 @@ internal sealed class MessagingService : IMessagingService
         bool IsClosed,
         string? Purpose,
         byte[]? GroupImageContent,
-        string? GroupImageContentType);
+        string? GroupImageContentType,
+        DateTime? PinnedUtc);
 
     private sealed record DirectConversationParticipant(
         string UserId,
@@ -2500,7 +2716,9 @@ internal sealed class MessagingService : IMessagingService
         string UserId,
         string ParticipantType,
         DateTime? LastReadUtc,
-        bool IsMuted);
+        bool IsMuted,
+        DateTime? PinnedUtc,
+        DateTime? HiddenUtc);
 
     private sealed record MessageListRow(
         Guid Id,

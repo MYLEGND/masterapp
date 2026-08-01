@@ -110,6 +110,9 @@ internal static class MessagingModelConfiguration
 
         entity.HasIndex(x => new { x.UserId, x.IsActive });
 
+        entity.HasIndex(x => new { x.UserId, x.ParticipantType, x.PinnedUtc });
+        entity.HasIndex(x => new { x.UserId, x.ParticipantType, x.HiddenUtc });
+
         entity.HasOne(x => x.Conversation)
             .WithMany(x => x.Participants)
             .HasForeignKey(x => x.ConversationId)

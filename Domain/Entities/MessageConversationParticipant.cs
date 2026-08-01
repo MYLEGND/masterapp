@@ -22,5 +22,14 @@ public class MessageConversationParticipant
 
     public bool IsMuted { get; set; }
 
+    /// <summary>
+    /// Actor-scoped inbox controls. A participant can pin or remove a thread
+    /// from their own inbox without changing visibility for anyone else.
+    /// A subsequent message restores a removed thread to the inbox.
+    /// </summary>
+    public DateTime? PinnedUtc { get; set; }
+
+    public DateTime? HiddenUtc { get; set; }
+
     public MessageConversation Conversation { get; set; } = null!;
 }
