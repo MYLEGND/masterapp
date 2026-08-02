@@ -52,6 +52,15 @@ public interface IMessagingService
         MessagingActor actor,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Returns recipient-scoped system outcomes for the mobile Activity sheet.
+    /// It never projects staff-review conversations into a requester inbox.
+    /// </summary>
+    Task<MessagingActivityNotificationListResult> ListActivityNotificationsAsync(
+        MessagingActor actor,
+        int take = 50,
+        CancellationToken cancellationToken = default);
+
     Task<MessagingOperationResult> ResolveVerificationReviewRequestAsync(
         ResolveVerificationReviewRequestCommand command,
         CancellationToken cancellationToken = default);

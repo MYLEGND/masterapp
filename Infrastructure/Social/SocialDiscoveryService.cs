@@ -39,8 +39,6 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
     /// </summary>
     private const int RankingWindow = 500;
 
-    private const string CommunityAccessActive = "Active";
-
     private readonly MasterAppDbContext _db;
 
     public SocialDiscoveryService(MasterAppDbContext db)
@@ -125,14 +123,12 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
     private IQueryable<CommunityCandidate> DiscoverableCommunityProfiles(
         Guid viewerProfileId,
         IReadOnlyCollection<Guid> blockedIds) =>
-        from journey in _db.JourneyCircleProfiles.AsNoTracking()
+        from journey in _db.JourneyCircleProfiles
+            .AsNoTracking()
+            .Where(JourneyCircleParticipationPolicy.RecommendationCandidateExpression)
         join client in _db.ClientProfiles.AsNoTracking()
             on journey.ClientProfileId equals client.Id
         where journey.ClientProfileId != viewerProfileId
-              && journey.ConsentAffirmedUtc != null
-              && journey.IsOptedIn
-              && journey.IsDiscoverable
-              && journey.CommunityAccessState == CommunityAccessActive
               && !blockedIds.Contains(journey.ClientProfileId)
               && _db.ClientEntitlements.Any(entitlement =>
                   entitlement.ClientProfileId == client.Id

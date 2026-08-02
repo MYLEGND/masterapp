@@ -1446,8 +1446,11 @@ struct ConversationThreadView: View {
                 social: social,
                 isFollowing: false,
                 verificationReview: route.review,
-                resolveVerification: { review, approve in
-                    await store.resolveVerificationRequest(review, approve: approve)
+                resolveVerification: { review, approve, note in
+                    await store.resolveVerificationRequest(
+                        review,
+                        approve: approve,
+                        note: note)
                 })
                 .legendNextSheetChrome(detents: [.large])
         }
@@ -2192,16 +2195,12 @@ private struct LegendConversationHeader: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(conversation.title)
-                        .font(.system(.headline, design: .rounded).weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-
-                    if counterparty?.isVerified == true && !isGroup {
-                        LegendVerifiedBadge()
-                    }
-                }
+                LegendVerifiedName(
+                    conversation.title,
+                    isVerified: !isGroup && counterparty?.isVerified == true,
+                    font: .system(.headline, design: .rounded).weight(.bold),
+                    textColor: .white,
+                    badgePlacement: .alongsideProfileImage)
 
                 HStack(spacing: 5) {
                     Image(systemName: "lock.shield.fill")

@@ -158,7 +158,8 @@ public sealed record AddMessagingGroupParticipantCommand(
 public sealed record ResolveVerificationReviewRequestCommand(
     MessagingActor Actor,
     Guid RequestId,
-    bool Approve);
+    bool Approve,
+    string? ResolutionNote = null);
 
 public sealed record StartControlledResourceRequestCommand(
     MessagingActor Actor,
@@ -167,7 +168,8 @@ public sealed record StartControlledResourceRequestCommand(
 public sealed record ResolveControlledResourceRequestCommand(
     MessagingActor Actor,
     Guid RequestId,
-    bool Approve);
+    bool Approve,
+    string? ResolutionNote = null);
 
 public sealed record SetControlledResourceGrantCommand(
     MessagingActor Actor,
@@ -289,6 +291,30 @@ public sealed record MessagingControlledResourceRequestResult(
 {
     public static MessagingControlledResourceRequestResult Failure(string errorCode, string errorMessage) =>
         new(false, errorCode, errorMessage, null);
+}
+
+/// <summary>
+/// Recipient-facing outcome surfaced in the mobile Activity sheet. It is not a
+/// message and therefore never creates a direct or group conversation.
+/// </summary>
+public sealed record MessagingActivityNotification(
+    Guid Id,
+    string Kind,
+    string Title,
+    string Detail,
+    DateTime OccurredUtc,
+    Guid? ControlledResourceRequestId);
+
+public sealed record MessagingActivityNotificationListResult(
+    bool Succeeded,
+    string? ErrorCode,
+    string? ErrorMessage,
+    IReadOnlyList<MessagingActivityNotification> Notifications)
+{
+    public static MessagingActivityNotificationListResult Failure(
+        string errorCode,
+        string errorMessage) =>
+        new(false, errorCode, errorMessage, Array.Empty<MessagingActivityNotification>());
 }
 
 public sealed record MessagingCommunicationLanguageListResult(

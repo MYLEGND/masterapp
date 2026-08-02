@@ -258,7 +258,8 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             new ResolveVerificationReviewRequestCommand(
                 resolved.Actor!.Actor,
                 requestId,
-                request?.Approve == true),
+                request?.Approve == true,
+                request?.Note),
             cancellationToken);
         return result.Succeeded
             ? NoContent()
@@ -279,7 +280,8 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             new ResolveControlledResourceRequestCommand(
                 resolved.Actor!.Actor,
                 requestId,
-                request?.Approve == true),
+                request?.Approve == true,
+                request?.Note),
             cancellationToken);
         return result.Succeeded
             ? NoContent()
@@ -300,6 +302,28 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             ? Ok(result.Languages.Select(language => new MobileCommunicationLanguageDto(
                 language.Code,
                 language.DisplayName)))
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpGet("messaging/activity")]
+    public async Task<IActionResult> Activity([FromQuery] int? take, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.ListActivityNotificationsAsync(
+            resolved.Actor!.Actor,
+            take ?? 50,
+            cancellationToken);
+        return result.Succeeded
+            ? Ok(result.Notifications.Select(notification => new MobileActivityNotificationDto(
+                notification.Id,
+                notification.Kind,
+                notification.Title,
+                notification.Detail,
+                notification.OccurredUtc,
+                notification.ControlledResourceRequestId)))
             : MessagingFailure(result.ErrorCode, result.ErrorMessage);
     }
 
@@ -987,13 +1011,21 @@ public sealed record MobileGroupImageRequest(
     string? ContentType,
     string? Base64Content);
 
-public sealed record MobileVerificationResolutionRequest(bool? Approve);
+public sealed record MobileVerificationResolutionRequest(bool? Approve, string? Note = null);
 
 public sealed record MobileVerificationRequestDto(
     Guid Id,
     string Status,
     DateTime RequestedUtc,
     string ResourceType = ControlledResourceTypes.VerificationBadge);
+
+public sealed record MobileActivityNotificationDto(
+    Guid Id,
+    string Kind,
+    string Title,
+    string Detail,
+    DateTime OccurredUtc,
+    Guid? ControlledResourceRequestId);
 
 public sealed record MobileControlledResourceGrantRequest(
     string? TargetUserId,

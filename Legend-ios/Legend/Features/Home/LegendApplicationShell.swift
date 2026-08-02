@@ -150,6 +150,7 @@ struct LegendApplicationShell: View {
                     currentSession: currentSession,
                     store: bootstrap.stores.home,
                     social: social,
+                    messages: messages,
                     bootstrap: bootstrap,
                     selectedTab: $selectedTab
                 )
@@ -226,10 +227,7 @@ struct LegendApplicationShell: View {
                     account: bootstrap.stores.account,
                     messages: messages,
                     social: social,
-                    bootstrap: bootstrap,
-                    showMessages: {
-                        select(.messages)
-                    }
+                    bootstrap: bootstrap
                 )
             }
             .task {
@@ -1393,6 +1391,7 @@ private struct LegendHomeView: View {
     @Binding private var selectedTab: LegendAppTab
     @ObservedObject private var store: MobileHomeStore
     @ObservedObject private var social: MobileSocialStore
+    @ObservedObject private var messages: MessagingStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     @State private var presentedScripture: MobileDailyScripture? = nil
 
@@ -1400,6 +1399,7 @@ private struct LegendHomeView: View {
         currentSession: MobileSession,
         store: MobileHomeStore,
         social: MobileSocialStore,
+        messages: MessagingStore,
         bootstrap: LegendApplicationBootstrapCoordinator,
         selectedTab: Binding<LegendAppTab>
     ) {
@@ -1407,6 +1407,7 @@ private struct LegendHomeView: View {
         _selectedTab = selectedTab
         _store = ObservedObject(wrappedValue: store)
         _social = ObservedObject(wrappedValue: social)
+        _messages = ObservedObject(wrappedValue: messages)
         _bootstrap = ObservedObject(wrappedValue: bootstrap)
         _presentedScripture = State(initialValue: nil)
     }
@@ -1454,6 +1455,7 @@ private struct LegendHomeView: View {
                     session: currentSession,
                     home: home,
                     social: social,
+                    messages: messages,
                     openMessages: {
                         open(.messages)
                     },
@@ -2820,54 +2822,103 @@ struct LegendJourneyProfileEditor: View {
     var body: some View {
         NavigationStack {
             LegendScrollView(tracksNavigationChrome: false) {
-                LazyVStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                    LegendNextSurface(style: .navy) {
-                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                            Text("YOUR SELECTIONS").font(.caption.weight(.bold)).foregroundStyle(LegendNextColor.gold)
-                            Text("Journey Circles profile").font(LegendNextTypography.section).foregroundStyle(.white)
-                            Text("Choose the connections and recommendations you want to receive.")
-                                .font(LegendNextTypography.supporting)
-                                .foregroundStyle(.white.opacity(0.78))
+                LazyVStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextHero(
+                        eyebrow: "Journey Circles",
+                        title: "Build your circle",
+                        detail: "Confirm participation once to begin. Every additional detail makes your recommendations more precise."
+                    ) {
+                        HStack(spacing: LegendNextSpacing.xs) {
+                            LegendNextBadge(
+                                consentAffirmed
+                                    ? "Matching active"
+                                    : "1 confirmation needed",
+                                tone: consentAffirmed ? .success : .gold,
+                                systemImage: consentAffirmed
+                                    ? "checkmark.circle.fill"
+                                    : "checkmark.seal")
+
+                            LegendNextBadge(
+                                matchSignalCount == 1
+                                    ? "1 match signal"
+                                    : "\(matchSignalCount) match signals",
+                                tone: matchSignalCount > 0 ? .information : .neutral,
+                                systemImage: "sparkles")
                         }
                     }
 
-                    LegendNextSurface {
-                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                            LegendNextSectionHeader(title: "Participation")
-                            Toggle("Confirm community participation", isOn: $consentAffirmed)
-                            Toggle("Join Journey Circles", isOn: $isOptedIn)
-                            Toggle("Allow recommendations", isOn: $allowSuggestions)
-                            Toggle("Allow connection requests", isOn: $allowConnectionRequests)
-                            Toggle("Show my profile in Discover", isOn: $isDiscoverable)
-                        }
-                        .tint(LegendNextColor.gold)
-                    }
+                    JourneyParticipationSection(
+                        consentAffirmed: $consentAffirmed,
+                        isOptedIn: $isOptedIn,
+                        isDiscoverable: $isDiscoverable,
+                        allowSuggestions: $allowSuggestions,
+                        allowConnectionRequests: $allowConnectionRequests)
 
-                    LegendNextSurface {
-                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                            LegendNextSectionHeader(title: "Introduction")
-                            TextField("Share what you are building", text: $introduction, axis: .vertical)
-                                .lineLimit(3...6)
-                                .textInputAutocapitalization(.sentences)
-                                .padding(LegendNextSpacing.sm)
-                                .background(LegendNextColor.surfaceInset, in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
+                    JourneyIntroductionSection(introduction: $introduction)
+
+                    JourneyMultiSelectSection(
+                        title: "Goals",
+                        detail: "The strongest starting signal for recommendations.",
+                        options: dashboard.taxonomy.goals,
+                        selections: $goals)
+                    JourneyMultiSelectSection(
+                        title: "Circles",
+                        detail: "Choose communities that fit your current season.",
+                        options: dashboard.taxonomy.circles,
+                        selections: $circleCodes)
+                    JourneyMultiSelectSection(
+                        title: "Life stage",
+                        detail: "Optional context that refines your matches.",
+                        options: dashboard.taxonomy.lifeStages,
+                        selections: $lifeStages)
+                    JourneyMultiSelectSection(
+                        title: "Location",
+                        detail: "Optional regional relevance.",
+                        options: dashboard.taxonomy.locations,
+                        selections: $locations)
+                    JourneyMultiSelectSection(
+                        title: "Interests",
+                        detail: "Add the subjects you want to explore together.",
+                        options: dashboard.taxonomy.interests,
+                        selections: $interests)
+                    JourneyMultiSelectSection(
+                        title: "Connection types",
+                        detail: "Set the kind of connection you value.",
+                        options: dashboard.taxonomy.connectionTypes,
+                        selections: $connectionTypes)
+                    JourneyMultiSelectSection(
+                        title: "Communication style",
+                        detail: "Help recommendations feel natural from the start.",
+                        options: dashboard.taxonomy.communicationStyles,
+                        selections: $communicationStyles)
+                    JourneyMultiSelectSection(
+                        title: "Accountability",
+                        detail: "Optional cadence preferences for stronger fit.",
+                        options: dashboard.taxonomy.accountabilityFrequencies,
+                        selections: $accountabilityFrequencies)
+
+                    LegendNextSurface(style: .brandBlue) {
+                        Label {
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                                Text("Your match profile stays in your control")
+                                    .font(LegendNextTypography.label)
+                                    .foregroundStyle(LegendNextColor.textPrimary)
+                                Text("One participation choice gets you started. Add or remove details whenever your season changes.")
+                                    .font(LegendNextTypography.caption)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                            }
+                        } icon: {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.system(size: LegendNextSize.iconMedium, weight: .semibold))
+                                .foregroundStyle(LegendNextColor.gold)
                         }
                     }
-
-                    JourneyMultiSelectSection(title: "Goals", options: dashboard.taxonomy.goals, selections: $goals)
-                    JourneyMultiSelectSection(title: "Circles", options: dashboard.taxonomy.circles, selections: $circleCodes)
-                    JourneyMultiSelectSection(title: "Life stage", options: dashboard.taxonomy.lifeStages, selections: $lifeStages)
-                    JourneyMultiSelectSection(title: "Location", options: dashboard.taxonomy.locations, selections: $locations)
-                    JourneyMultiSelectSection(title: "Interests", options: dashboard.taxonomy.interests, selections: $interests)
-                    JourneyMultiSelectSection(title: "Connection types", options: dashboard.taxonomy.connectionTypes, selections: $connectionTypes)
-                    JourneyMultiSelectSection(title: "Communication style", options: dashboard.taxonomy.communicationStyles, selections: $communicationStyles)
-                    JourneyMultiSelectSection(title: "Accountability", options: dashboard.taxonomy.accountabilityFrequencies, selections: $accountabilityFrequencies)
                 }
                 .padding(.horizontal, LegendNextSpacing.sm)
-                .padding(.vertical, LegendNextSpacing.sm)
+                .padding(.vertical, LegendNextSpacing.md)
             }
             .background(LegendNextColor.canvas.ignoresSafeArea())
-            .navigationTitle("Discover")
+            .navigationTitle("Journey Circles")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -2896,38 +2947,210 @@ struct LegendJourneyProfileEditor: View {
             }
         }
     }
+
+    private var matchSignalCount: Int {
+        lifeStages.count +
+        locations.count +
+        goals.count +
+        interests.count +
+        circleCodes.count +
+        connectionTypes.count +
+        communicationStyles.count +
+        accountabilityFrequencies.count
+    }
+}
+
+private struct JourneyParticipationSection: View {
+    @Binding var consentAffirmed: Bool
+    @Binding var isOptedIn: Bool
+    @Binding var isDiscoverable: Bool
+    @Binding var allowSuggestions: Bool
+    @Binding var allowConnectionRequests: Bool
+
+    var body: some View {
+        LegendNextSurface(style: .elevated) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                LegendNextSectionHeader(
+                    eyebrow: "Participation",
+                    title: "Choose your starting point",
+                    detail: "Confirm participation once to begin matching. Every other choice is optional and stays under your control.")
+
+                VStack(spacing: 0) {
+                    JourneyParticipationToggle(
+                        title: "Confirm community participation",
+                        detail: "Start a private, respectful matching profile.",
+                        systemImage: "checkmark.seal",
+                        isOn: $consentAffirmed)
+                    LegendNextDivider()
+                    JourneyParticipationToggle(
+                        title: "Join Journey Circles",
+                        detail: "Take part in the Legend matching community.",
+                        systemImage: "person.3",
+                        isOn: $isOptedIn)
+                    LegendNextDivider()
+                    JourneyParticipationToggle(
+                        title: "Show my profile in Discover",
+                        detail: "Let compatible members find your profile.",
+                        systemImage: "magnifyingglass.circle",
+                        isOn: $isDiscoverable)
+                    LegendNextDivider()
+                    JourneyParticipationToggle(
+                        title: "Allow recommendations",
+                        detail: "Receive tailored connection suggestions.",
+                        systemImage: "sparkles",
+                        isOn: $allowSuggestions)
+                    LegendNextDivider()
+                    JourneyParticipationToggle(
+                        title: "Allow connection requests",
+                        detail: "Let compatible members request a connection.",
+                        systemImage: "person.crop.circle.badge.plus",
+                        isOn: $allowConnectionRequests)
+                }
+            }
+        }
+    }
+}
+
+private struct JourneyParticipationToggle: View {
+    let title: String
+    let detail: String
+    let systemImage: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+                Image(systemName: systemImage)
+                    .font(.system(size: LegendNextSize.iconMedium, weight: .semibold))
+                    .foregroundStyle(isOn ? LegendNextColor.gold : LegendNextColor.textSecondary)
+                    .frame(width: LegendNextSize.minimumTapTarget, height: LegendNextSize.minimumTapTarget)
+                    .background(
+                        (isOn ? LegendNextColor.gold : LegendNextColor.navy)
+                            .opacity(isOn ? 0.15 : 0.08),
+                        in: Circle())
+
+                VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                    Text(title)
+                        .font(LegendNextTypography.label)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                    Text(detail)
+                        .font(LegendNextTypography.caption)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .toggleStyle(SwitchToggleStyle(tint: LegendNextColor.gold))
+        .padding(.vertical, LegendNextSpacing.xs)
+    }
+}
+
+private struct JourneyIntroductionSection: View {
+    @Binding var introduction: String
+
+    var body: some View {
+        LegendNextSurface(style: .elevated) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                LegendNextSectionHeader(
+                    eyebrow: "Optional",
+                    title: "A little about your season",
+                    detail: "Give future connections useful context in your own words.")
+
+                TextField(
+                    "What are you building, learning, or looking for?",
+                    text: $introduction,
+                    axis: .vertical)
+                    .font(LegendNextTypography.body)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .lineLimit(3...6)
+                    .textInputAutocapitalization(.sentences)
+                    .padding(LegendNextSpacing.md)
+                    .background(
+                        LegendNextColor.surfaceInset,
+                        in: RoundedRectangle(
+                            cornerRadius: LegendNextRadius.control,
+                            style: .continuous))
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: LegendNextRadius.control,
+                            style: .continuous)
+                        .strokeBorder(LegendNextColor.separator, lineWidth: 1)
+                    }
+            }
+        }
+    }
 }
 
 struct JourneyMultiSelectSection: View {
     let title: String
+    let detail: String
     let options: [String]
     @Binding var selections: Set<String>
 
     var body: some View {
-        LegendNextSurface {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                LegendNextSectionHeader(title: title, detail: selections.isEmpty ? "Select all that apply" : "\(selections.count) selected")
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: LegendNextSpacing.xs)], alignment: .leading, spacing: LegendNextSpacing.xs) {
+        LegendNextSurface(style: .elevated) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                LegendNextSectionHeader(
+                    eyebrow: "Match signal",
+                    title: title,
+                    detail: selections.isEmpty
+                        ? detail
+                        : "\(selections.count) selected · \(detail)")
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 142), spacing: LegendNextSpacing.xs)],
+                    alignment: .leading,
+                    spacing: LegendNextSpacing.xs) {
                     ForEach(options, id: \.self) { option in
-                        Button {
-                            if selections.contains(option) {
-                                selections.remove(option)
-                            } else {
-                                selections.insert(option)
+                        JourneySelectionPill(
+                            title: option,
+                            isSelected: selections.contains(option)) {
+                                if selections.contains(option) {
+                                    selections.remove(option)
+                                } else {
+                                    selections.insert(option)
+                                }
                             }
-                        } label: {
-                            Label(option, systemImage: selections.contains(option) ? "checkmark.circle.fill" : "circle")
-                        }
-                        .buttonStyle(LegendNextButtonStyle(
-                            kind: selections.contains(option) ? .gold : .secondary,
-                            isFullWidth: false,
-                            controlHeight: 34
-                        ))
-                        .accessibilityValue(selections.contains(option) ? "Selected" : "Not selected")
                     }
                 }
             }
         }
+    }
+}
+
+private struct JourneySelectionPill: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: LegendNextSpacing.xs) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "plus.circle")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(title)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .font(LegendNextTypography.caption)
+            .foregroundStyle(isSelected ? .white : LegendNextColor.textPrimary)
+            .padding(.horizontal, LegendNextSpacing.sm)
+            .padding(.vertical, LegendNextSpacing.xs)
+            .frame(maxWidth: .infinity, minHeight: LegendNextSize.minimumTapTarget, alignment: .leading)
+            .background(
+                isSelected ? AnyShapeStyle(LegendNextGradient.hero) : AnyShapeStyle(LegendNextColor.surfaceInset),
+                in: RoundedRectangle(cornerRadius: LegendNextRadius.compact, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: LegendNextRadius.compact, style: .continuous)
+                    .strokeBorder(
+                        isSelected
+                            ? Color.white.opacity(0.18)
+                            : LegendNextColor.separator,
+                        lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 }
 
@@ -5369,7 +5592,6 @@ private struct LegendAccountView: View {
     @ObservedObject private var messages: MessagingStore
     @ObservedObject private var social: MobileSocialStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
-    private let showMessages: () -> Void
 
     @State private var selectedContent: LegendProfileContentFilter = .posts
     @State private var isEditing = false
@@ -5384,6 +5606,7 @@ private struct LegendAccountView: View {
     @State private var selectedPost: MobileSocialPost?
     @State private var profilePage = 0
     @State private var isFinancialIntelligencePresented = false
+    @State private var controlledResourceRequestFeedback: LegendRequestSubmissionFeedback?
 
     init(
         currentSession: MobileSession,
@@ -5391,8 +5614,7 @@ private struct LegendAccountView: View {
         account: MobileAccountStore,
         messages: MessagingStore,
         social: MobileSocialStore,
-        bootstrap: LegendApplicationBootstrapCoordinator,
-        showMessages: @escaping () -> Void
+        bootstrap: LegendApplicationBootstrapCoordinator
     ) {
         self.currentSession = currentSession
         _coordinator = ObservedObject(wrappedValue: coordinator)
@@ -5400,7 +5622,6 @@ private struct LegendAccountView: View {
         _messages = ObservedObject(wrappedValue: messages)
         _social = ObservedObject(wrappedValue: social)
         _bootstrap = ObservedObject(wrappedValue: bootstrap)
-        self.showMessages = showMessages
     }
 
     var body: some View {
@@ -5675,7 +5896,8 @@ private struct LegendAccountView: View {
                         LegendVerifiedName(
                             profile.displayName,
                             isVerified: profile.isVerified,
-                            font: .title2.weight(.bold)
+                            font: .title2.weight(.bold),
+                            badgePlacement: .alongsideProfileImage
                         )
 
                         if let roleLabel = normalized(profile.roleLabel) {
@@ -5929,6 +6151,11 @@ private struct LegendAccountView: View {
                         dismiss: { isShowingSettings = false }
                     )
 
+                    if let controlledResourceRequestFeedback {
+                        LegendRequestSubmissionPill(
+                            feedback: controlledResourceRequestFeedback)
+                    }
+
                     LegendProfileSettingsSection(title: "Profile") {
                         VStack(spacing: 0) {
                             Button {
@@ -6008,21 +6235,18 @@ private struct LegendAccountView: View {
                     if !profile.isVerified {
                         LegendProfileSettingsSection(title: "Verification") {
                             Button {
-                                messages.startVerificationRequest {
-                                    isShowingSettings = false
-                                    showMessages()
-                                }
+                                submitControlledResourceRequest(.verificationBadge)
                             } label: {
                                 LegendProfileSettingsRow(
-                                    title: messages.isCreatingGroup
-                                        ? "Opening verification review…"
+                                    title: messages.isSubmittingControlledResourceRequest
+                                        ? "Sending verification request…"
                                         : "Request verification",
                                     detail: "Submit your profile to the private Legend review team.",
                                     systemImage: "checkmark.seal",
                                     showsChevron: true)
                             }
                             .buttonStyle(.plain)
-                            .disabled(messages.isCreatingGroup)
+                            .disabled(messages.isSubmittingControlledResourceRequest)
                         }
                     }
 
@@ -6056,10 +6280,7 @@ private struct LegendAccountView: View {
                                 }
                             } else {
                                 Button {
-                                    messages.startControlledResourceRequest(.languageTranslation) {
-                                        isShowingSettings = false
-                                        showMessages()
-                                    }
+                                    submitControlledResourceRequest(.languageTranslation)
                                 } label: {
                                     LegendProfileSettingsRow(
                                         title: profile.translationAccess.isPending
@@ -6072,7 +6293,7 @@ private struct LegendAccountView: View {
                                         showsChevron: !profile.translationAccess.isPending)
                                 }
                                 .buttonStyle(.plain)
-                                .disabled(profile.translationAccess.isPending || messages.isCreatingGroup)
+                                .disabled(profile.translationAccess.isPending || messages.isSubmittingControlledResourceRequest)
                             }
                         }
                     }
@@ -6155,6 +6376,19 @@ private struct LegendAccountView: View {
             }
             translationLanguageNames = Dictionary(
                 uniqueKeysWithValues: languages.map { ($0.code, $0.displayName) })
+        }
+    }
+
+    private func submitControlledResourceRequest(_ resourceType: ControlledResourceType) {
+        controlledResourceRequestFeedback = nil
+        Task {
+            switch await messages.submitControlledResourceRequest(resourceType) {
+            case .sent:
+                controlledResourceRequestFeedback = .sent(resourceType)
+                await bootstrap.refreshProfile()
+            case .failed(let failure):
+                controlledResourceRequestFeedback = .failed(failure)
+            }
         }
     }
 
@@ -6449,16 +6683,12 @@ private struct LegendTranslationAccessManager: View {
                 size: 42)
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(recipient.displayName)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.white)
-                    if recipient.isVerified == true {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.caption)
-                            .foregroundStyle(LegendNextColor.verified)
-                    }
-                }
+                LegendVerifiedName(
+                    recipient.displayName,
+                    isVerified: recipient.isVerified == true,
+                    font: .subheadline.weight(.bold),
+                    textColor: .white,
+                    badgePlacement: .alongsideProfileImage)
                 Text(recipient.email ?? recipient.roleLabel ?? recipient.identity.participantType.rawValue)
                     .font(LegendNextTypography.caption)
                     .foregroundStyle(.white.opacity(0.74))
@@ -6726,9 +6956,10 @@ struct LegendPublicProfileView: View {
     @State private var isRemovingConnection = false
     @State private var verificationReview: VerificationReview?
     @State private var isResolvingVerification = false
+    @State private var verificationResolutionNote = ""
     private let journeyConnectionID: UUID?
     private let disconnectConnection: ((UUID) async -> Bool)?
-    private let performVerificationResolution: ((VerificationReview, Bool) async -> Bool)?
+    private let performVerificationResolution: ((VerificationReview, Bool, String?) async -> Bool)?
 
     init(
         profile: MobileSocialAuthor,
@@ -6739,7 +6970,7 @@ struct LegendPublicProfileView: View {
         journeyConnectionID: UUID? = nil,
         disconnectConnection: ((UUID) async -> Bool)? = nil,
         verificationReview: VerificationReview? = nil,
-        resolveVerification: ((VerificationReview, Bool) async -> Bool)? = nil
+        resolveVerification: ((VerificationReview, Bool, String?) async -> Bool)? = nil
     ) {
         self.profile = profile
         self.currentIdentity = currentIdentity
@@ -6828,10 +7059,29 @@ struct LegendPublicProfileView: View {
                         .font(.headline.weight(.bold))
                         .foregroundStyle(.white)
 
-                    Text("This member requested \(verificationReview.resourceType.displayName). Your decision is recorded in the private founder review queue.")
+                    Text("This member requested \(verificationReview.resourceType.displayName). The decision is recorded in the private founder queue and delivered to the member’s Activity—never as a new chat.")
                         .font(.footnote)
                         .foregroundStyle(.white.opacity(0.74))
                         .fixedSize(horizontal: false, vertical: true)
+
+                    TextField(
+                        "Optional personal update",
+                        text: $verificationResolutionNote,
+                        axis: .vertical)
+                        .font(LegendNextTypography.caption)
+                        .foregroundStyle(.white)
+                        .lineLimit(1...3)
+                        .padding(.horizontal, LegendNextSpacing.sm)
+                        .padding(.vertical, LegendNextSpacing.xs)
+                        .background(.white.opacity(0.12), in: RoundedRectangle(
+                            cornerRadius: LegendNextRadius.compact,
+                            style: .continuous))
+                        .overlay {
+                            RoundedRectangle(
+                                cornerRadius: LegendNextRadius.compact,
+                                style: .continuous)
+                                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+                        }
 
                     HStack(spacing: LegendNextSpacing.sm) {
                         Button(role: .destructive) {
@@ -6870,8 +7120,14 @@ struct LegendPublicProfileView: View {
         guard let performVerificationResolution else { return }
         isResolvingVerification = true
         defer { isResolvingVerification = false }
-        guard await performVerificationResolution(review, approve) else { return }
+        let note = verificationResolutionNote
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard await performVerificationResolution(
+            review,
+            approve,
+            note.isEmpty ? nil : note) else { return }
         verificationReview = nil
+        verificationResolutionNote = ""
         await refresh()
     }
 
@@ -6899,7 +7155,8 @@ struct LegendPublicProfileView: View {
                 LegendVerifiedName(
                     displayedProfile.displayName,
                     isVerified: displayedProfile.isVerified == true,
-                    font: .title2.weight(.bold)
+                    font: .title2.weight(.bold),
+                    badgePlacement: .alongsideProfileImage
                 )
 
                 if let roleLabel = normalized(displayedProfile.roleLabel) {

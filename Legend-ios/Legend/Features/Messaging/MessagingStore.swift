@@ -22,6 +22,14 @@ enum ConversationDetailLoadState: Equatable {
     case failed(UserFacingFailure)
 }
 
+/// The requester-visible result for a founder-controlled resource request.
+/// This is intentionally independent of conversation creation: requests go to
+/// the one private staff queue, while the requester remains in Profile settings.
+enum MessagingControlledResourceRequestSubmission {
+    case sent
+    case failed(UserFacingFailure)
+}
+
 @MainActor
 final class MessagingStore: ObservableObject {
     @Published private(set) var state: MessagingLoadState = .idle
@@ -34,6 +42,8 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var selectedRecipientScope: MessagingRecipientScope
     @Published private(set) var isStartingConversation = false
     @Published private(set) var isCreatingGroup = false
+    @Published private(set) var isSubmittingControlledResourceRequest = false
+    @Published private(set) var activityNotifications: [MobileActivityNotification] = []
     @Published private(set) var isRefreshing = false
     @Published private(set) var refreshFailure: UserFacingFailure?
 
@@ -69,7 +79,10 @@ final class MessagingStore: ObservableObject {
         if !hasCachedConversations {
             state = .loading
         }
-        Task { _ = await loadIfNeeded() }
+        Task {
+            _ = await loadIfNeeded()
+            await refreshActivityNotifications()
+        }
     }
 
     func loadIfNeeded() async -> MobileStoreLoadResult {
@@ -77,7 +90,9 @@ final class MessagingStore: ObservableObject {
     }
 
     func refresh() async -> MobileStoreLoadResult {
-        await requestConversationList(preservingCachedValue: hasCachedConversations)
+        let result = await requestConversationList(preservingCachedValue: hasCachedConversations)
+        await refreshActivityNotifications()
+        return result
     }
 
     func openConversation(_ conversationID: UUID) {
@@ -179,41 +194,44 @@ final class MessagingStore: ObservableObject {
         }
     }
 
-    func startVerificationRequest(completion: @escaping () -> Void) {
-        guard !isCreatingGroup else { return }
-        isCreatingGroup = true
+    func submitControlledResourceRequest(
+        _ resourceType: ControlledResourceType
+    ) async -> MessagingControlledResourceRequestSubmission {
+        guard !isSubmittingControlledResourceRequest else {
+            return .failed(UserFacingFailure(
+                title: "Request already sending",
+                message: "Please wait for the current request to finish.",
+                correlationID: nil))
+        }
+
+        isSubmittingControlledResourceRequest = true
         sendFailure = nil
-        Task {
-            defer { isCreatingGroup = false }
-            do {
-                _ = try await api.startVerificationRequest(
-                    accessToken: try await accessTokenProvider())
-                _ = await refresh()
-                completion()
-            } catch {
-                sendFailure = failure(for: error, title: "Verification request not started")
-            }
+        defer { isSubmittingControlledResourceRequest = false }
+
+        do {
+            // Both verification and language access use this one API path and
+            // the server-owned private review queue; the user is never added to it.
+            _ = try await api.startControlledResourceRequest(
+                resourceType: resourceType,
+                accessToken: try await accessTokenProvider())
+            _ = await refresh()
+            return .sent
+        } catch {
+            let requestFailure = failure(
+                for: error,
+                title: "Request not sent")
+            sendFailure = requestFailure
+            return .failed(requestFailure)
         }
     }
 
-    func startControlledResourceRequest(
-        _ resourceType: ControlledResourceType,
-        completion: @escaping () -> Void
-    ) {
-        guard !isCreatingGroup else { return }
-        isCreatingGroup = true
-        sendFailure = nil
-        Task {
-            defer { isCreatingGroup = false }
-            do {
-                _ = try await api.startControlledResourceRequest(
-                    resourceType: resourceType,
-                    accessToken: try await accessTokenProvider())
-                _ = await refresh()
-                completion()
-            } catch {
-                sendFailure = failure(for: error, title: "Access request not started")
-            }
+    func refreshActivityNotifications() async {
+        do {
+            activityNotifications = try await api.activityNotifications(
+                accessToken: try await accessTokenProvider())
+        } catch {
+            // Activity is supplementary: a temporary fetch failure must never
+            // obscure conversations or overwrite a more relevant user action error.
         }
     }
 
@@ -324,7 +342,8 @@ final class MessagingStore: ObservableObject {
 
     func resolveVerificationRequest(
         _ request: VerificationReview,
-        approve: Bool
+        approve: Bool,
+        note: String? = nil
     ) async -> Bool {
         guard !isCreatingGroup else { return false }
         isCreatingGroup = true
@@ -334,6 +353,7 @@ final class MessagingStore: ObservableObject {
             try await api.resolveControlledResourceRequest(
                 requestID: request.id,
                 approve: approve,
+                note: note,
                 accessToken: try await accessTokenProvider())
             if let conversationID = selectedConversationID {
                 let conversation = try await api.conversation(

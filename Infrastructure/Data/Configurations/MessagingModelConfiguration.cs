@@ -17,6 +17,7 @@ internal static class MessagingModelConfiguration
         ConfigureVerificationReviewRequest(modelBuilder.Entity<VerificationReviewRequest>(), providerName);
         ConfigureControlledResourceGrant(modelBuilder.Entity<ControlledResourceGrant>(), providerName);
         ConfigureMessageTranslation(modelBuilder.Entity<MessageTranslation>());
+        ConfigureMobileActivityNotification(modelBuilder.Entity<MobileActivityNotification>(), providerName);
         ConfigureGrant(modelBuilder.Entity<ClientAgentMessagingGrant>());
         ConfigureAuditEntry(modelBuilder.Entity<MessagingAuditEntry>());
     }
@@ -231,6 +232,34 @@ internal static class MessagingModelConfiguration
             .WithMany(x => x.Translations)
             .HasForeignKey(x => x.InternalMessageId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+
+    private static void ConfigureMobileActivityNotification(
+        EntityTypeBuilder<MobileActivityNotification> entity,
+        string? providerName)
+    {
+        entity.ToTable("MobileActivityNotifications");
+        entity.HasKey(x => x.Id);
+        entity.Property(x => x.RecipientUserId).IsRequired().HasMaxLength(450);
+        entity.Property(x => x.RecipientParticipantType).IsRequired().HasMaxLength(40);
+        entity.Property(x => x.Kind).IsRequired().HasMaxLength(80);
+        entity.Property(x => x.Title).IsRequired().HasMaxLength(240);
+        entity.Property(x => x.Detail).IsRequired().HasMaxLength(1_000);
+        entity.HasIndex(x => new
+        {
+            x.RecipientUserId,
+            x.RecipientParticipantType,
+            x.OccurredUtc
+        });
+        var requestOutcomeIndex = entity.HasIndex(x => x.ControlledResourceRequestId).IsUnique();
+        if (IsSqlServer(providerName))
+        {
+            requestOutcomeIndex.HasFilter("[ControlledResourceRequestId] IS NOT NULL");
+        }
+        else if (IsSqlite(providerName))
+        {
+            requestOutcomeIndex.HasFilter("\"ControlledResourceRequestId\" IS NOT NULL");
+        }
     }
 
     private static void ConfigureAttachment(

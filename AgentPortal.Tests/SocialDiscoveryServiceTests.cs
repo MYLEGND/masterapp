@@ -43,7 +43,7 @@ public sealed class SocialDiscoveryServiceTests
     }
 
     [Fact]
-    public async Task CommunitySearch_ExcludesMembersWhoDidNotConsentOrOptedOut()
+    public async Task CommunitySearch_RequiresCommunityConfirmationAndDiscoverability_NotEveryPreference()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var viewer = Member(db, "viewer", "Vera");
@@ -51,8 +51,8 @@ public sealed class SocialDiscoveryServiceTests
         var notDiscoverable = Member(db, "hidden", "Hank");
         notDiscoverable.Journey.IsDiscoverable = false;
 
-        var notOptedIn = Member(db, "opted-out", "Olive");
-        notOptedIn.Journey.IsOptedIn = false;
+        var confirmedWithoutJoiningEveryPreference = Member(db, "confirmed", "Olive");
+        confirmedWithoutJoiningEveryPreference.Journey.IsOptedIn = false;
 
         var neverConsented = Member(db, "no-consent", "Noah");
         neverConsented.Journey.ConsentAffirmedUtc = null;
@@ -67,8 +67,12 @@ public sealed class SocialDiscoveryServiceTests
             new SocialDiscoveryQuery(Actor(viewer), null, 0, 20));
 
         Assert.True(page.Succeeded);
-        var only = Assert.Single(page.Value!.Results);
-        Assert.Equal(visible.Id, only.ClientProfileId);
+        var ids = page.Value!.Results.Select(result => result.ClientProfileId).ToArray();
+        Assert.Contains(visible.Id, ids);
+        Assert.Contains(confirmedWithoutJoiningEveryPreference.Id, ids);
+        Assert.DoesNotContain(notDiscoverable.Id, ids);
+        Assert.DoesNotContain(neverConsented.Id, ids);
+        Assert.DoesNotContain(suspended.Id, ids);
     }
 
     [Fact]

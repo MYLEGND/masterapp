@@ -90,6 +90,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<VerificationReviewRequest> VerificationReviewRequests => Set<VerificationReviewRequest>();
     public DbSet<ControlledResourceGrant> ControlledResourceGrants => Set<ControlledResourceGrant>();
     public DbSet<MessageTranslation> MessageTranslations => Set<MessageTranslation>();
+    public DbSet<MobileActivityNotification> MobileActivityNotifications => Set<MobileActivityNotification>();
     public DbSet<JourneyCircleProfile> JourneyCircleProfiles => Set<JourneyCircleProfile>();
     public DbSet<JourneyCircleConnection> JourneyCircleConnections => Set<JourneyCircleConnection>();
     public DbSet<JourneyCircleBlock> JourneyCircleBlocks => Set<JourneyCircleBlock>();

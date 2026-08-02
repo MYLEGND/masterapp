@@ -55,17 +55,10 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
     {
         var client = await FindClientAsync(clientUserId, cancellationToken);
         if (client is null) return JourneyCircleOperationResult.Failure("JOURNEY_ACTOR_INVALID", "Journey Circles is not available for this account.");
-        var hasParticipationPreference =
-            input.ConsentAffirmed ||
-            input.IsOptedIn ||
-            input.IsDiscoverable ||
-            input.AllowSuggestions ||
-            input.AllowConnectionRequests;
-
-        if (!hasParticipationPreference)
+        if (!JourneyCircleParticipationPolicy.HasAtLeastOneResponse(input))
             return JourneyCircleOperationResult.Failure(
                 "JOURNEY_PREFERENCE_REQUIRED",
-                "Select at least one participation or privacy preference before saving.");
+                "Choose at least one participation preference before saving.");
 
         var moderation = _moderation.Evaluate(input.Introduction, "JourneyProfile");
         if (!moderation.IsAllowed)
@@ -266,13 +259,10 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
 
         var candidates = await _db.JourneyCircleProfiles
             .AsNoTracking()
+            .Where(JourneyCircleParticipationPolicy.RecommendationCandidateExpression)
             .Include(x => x.ClientProfile)
             .Where(x =>
-                x.ClientProfileId != client.Id &&
-                x.ConsentAffirmedUtc != null &&
-                x.IsOptedIn &&
-                x.IsDiscoverable &&
-                x.CommunityAccessState == "Active")
+                x.ClientProfileId != client.Id)
             .Take(candidateLimit)
             .ToListAsync(ct);
 
@@ -434,12 +424,7 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
     private async Task<ClientProfile?> FindClientAsync(string userId, CancellationToken ct) => await _db.ClientProfiles.FirstOrDefaultAsync(x => x.ClientUserId.ToLower() == userId.ToLower() || (x.ExternalIdentityObjectId != null && x.ExternalIdentityObjectId.ToLower() == userId.ToLower()), ct);
     private Task<bool> IsBlockedAsync(Guid first, Guid second, CancellationToken ct) => _db.JourneyCircleBlocks.AsNoTracking().AnyAsync(x => (x.BlockerClientProfileId == first && x.BlockedClientProfileId == second) || (x.BlockerClientProfileId == second && x.BlockedClientProfileId == first), ct);
     private static bool Eligible(JourneyCircleProfile? profile) =>
-        profile is
-        {
-            ConsentAffirmedUtc: not null,
-            IsOptedIn: true,
-            CommunityAccessState: "Active"
-        };
+        JourneyCircleParticipationPolicy.IsEligibleForMatching(profile);
     private static string PairKey(Guid first, Guid second) => string.CompareOrdinal(first.ToString("N"), second.ToString("N")) < 0 ? $"{first:N}|{second:N}" : $"{second:N}|{first:N}";
     private static JourneyCircleDashboard EmptyDashboard() => Dashboard(null, null, Array.Empty<JourneyCircleRecommendation>(), Array.Empty<JourneyCircleConnectionSummary>(), Array.Empty<JourneyCircleConnectionSummary>());
     private static JourneyCircleDashboard Dashboard(JourneyCirclePublicProfile? profile, JourneyCircleProfilePreferences? preferences, IReadOnlyList<JourneyCircleRecommendation> recommendations, IReadOnlyList<JourneyCircleConnectionSummary> connections, IReadOnlyList<JourneyCircleConnectionSummary> requests) => new(

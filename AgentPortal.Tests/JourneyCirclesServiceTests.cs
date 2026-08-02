@@ -169,6 +169,84 @@ public sealed class JourneyCirclesServiceTests
     }
 
     [Fact]
+    public async Task Recommendations_StartAfterOneCommunityConfirmationWithoutJoiningEveryPreference()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var viewer = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "one-choice-viewer",
+            FirstName = "One",
+            LastName = "Choice",
+            Email = "one.choice.viewer@example.test"
+        };
+        var candidate = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "one-choice-candidate",
+            FirstName = "Single",
+            LastName = "Signal",
+            Email = "one.choice.candidate@example.test"
+        };
+        db.ClientProfiles.AddRange(viewer, candidate);
+        await db.SaveChangesAsync();
+
+        var service = new JourneyCirclesService(
+            db,
+            new CommunityTextModerationService(new ConfigurationBuilder().Build()),
+            NullLogger<JourneyCirclesService>.Instance);
+
+        // Community confirmation is the one matching requirement. The former
+        // separate Join preference remains off for both profiles.
+        var viewerSave = await service.SaveProfileAsync(
+            viewer.ClientUserId,
+            new JourneyCircleProfileInput(
+                ConsentAffirmed: true,
+                IsOptedIn: false,
+                IsDiscoverable: false,
+                AllowSuggestions: true,
+                AllowConnectionRequests: false,
+                Introduction: null,
+                LifeStages: [],
+                Locations: [],
+                Goals: ["Growing a business"],
+                Interests: [],
+                CircleCodes: [],
+                ConnectionTypes: [],
+                CommunicationStyles: [],
+                AccountabilityFrequencies: []));
+        var candidateSave = await service.SaveProfileAsync(
+            candidate.ClientUserId,
+            new JourneyCircleProfileInput(
+                ConsentAffirmed: true,
+                IsOptedIn: false,
+                IsDiscoverable: true,
+                AllowSuggestions: false,
+                AllowConnectionRequests: false,
+                Introduction: null,
+                LifeStages: [],
+                Locations: [],
+                Goals: ["Growing a business"],
+                Interests: [],
+                CircleCodes: [],
+                ConnectionTypes: [],
+                CommunicationStyles: [],
+                AccountabilityFrequencies: []));
+
+        Assert.True(viewerSave.Succeeded);
+        Assert.True(candidateSave.Succeeded);
+
+        var dashboard = await service.GetDashboardAsync(viewer.ClientUserId);
+        var recommendation = Assert.Single(dashboard.Recommendations);
+
+        Assert.Equal(candidate.Id, recommendation.Profile.ClientProfileId);
+        Assert.Contains(
+            "shared goal: Growing a business",
+            recommendation.Explanation,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Recommendations_RespectConsentJoinDiscoverabilityAndViewerSuggestionControlsIndependently()
     {
         await using var db = ControllerTestHelpers.BuildDb();

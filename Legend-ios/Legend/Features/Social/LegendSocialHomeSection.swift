@@ -12,6 +12,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     let session: MobileSession
     let home: MobileHomeResponse
     @ObservedObject var social: MobileSocialStore
+    @ObservedObject var messages: MessagingStore
     let openMessages: () -> Void
     let openCircles: () -> Void
     let refreshSocial: () async -> Void
@@ -31,6 +32,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         session: MobileSession,
         home: MobileHomeResponse,
         social: MobileSocialStore,
+        messages: MessagingStore,
         openMessages: @escaping () -> Void,
         openCircles: @escaping () -> Void,
         refreshSocial: @escaping () async -> Void,
@@ -53,6 +55,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
 
         self.home = home
         _social = ObservedObject(wrappedValue: social)
+        _messages = ObservedObject(wrappedValue: messages)
         self.openMessages = openMessages
         self.openCircles = openCircles
         self.refreshSocial = refreshSocial
@@ -71,7 +74,9 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 social: social)
         }
         .sheet(isPresented: $isPresentingActivity) {
-            LegendActivitySheet(activity: activity)
+            LegendActivitySheet(
+                activity: activity,
+                systemNotifications: messages.activityNotifications)
         }
         .sheet(item: $postInsight) { insight in
             LegendPostInsightsSheet(insight: insight)
@@ -116,6 +121,9 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         }
         .onAppear {
             handleHomeChromeAction(scrollChrome.pendingHomeAction)
+        }
+        .task {
+            await messages.refreshActivityNotifications()
         }
         .onChange(of: scrollChrome.pendingHomeAction) { _, request in
             handleHomeChromeAction(request)
@@ -377,7 +385,8 @@ private struct LegendStoryCircle: View {
                 LegendVerifiedName(
                     title,
                     isVerified: showsVerifiedBadge,
-                    font: .caption.weight(.semibold))
+                    font: .caption.weight(.semibold),
+                    badgePlacement: .alongsideProfileImage)
             }
             .frame(width: 72)
         }
@@ -525,7 +534,8 @@ private struct LegendStoryViewer: View {
                         collection.author.displayName,
                         isVerified: collection.author.isVerified == true,
                         font: .subheadline.weight(.bold),
-                        textColor: .white)
+                        textColor: .white,
+                        badgePlacement: .alongsideProfileImage)
                 }
                 Text(item.postedUTC, style: .relative)
                     .font(.caption)
@@ -1045,7 +1055,8 @@ private struct LegendSocialPostCard: View {
                         LegendVerifiedName(
                             post.author.displayName,
                             isVerified: post.author.isVerified == true,
-                            font: .subheadline.weight(.bold)
+                            font: .subheadline.weight(.bold),
+                            badgePlacement: .alongsideProfileImage
                         )
                         Text(metadata)
                             .font(LegendNextTypography.supporting)
@@ -2162,7 +2173,8 @@ private struct LegendCommentComposer: View {
                     LegendVerifiedName(
                         post.author.displayName,
                         isVerified: post.author.isVerified == true,
-                        font: .subheadline.weight(.bold)
+                        font: .subheadline.weight(.bold),
+                        badgePlacement: .alongsideProfileImage
                     )
 
                     Text(post.postedUTC, style: .relative)
@@ -2473,6 +2485,7 @@ private struct LegendCommentComposer: View {
 
 private struct LegendActivitySheet: View {
     let activity: [MobileSocialActivity]
+    let systemNotifications: [MobileActivityNotification]
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -2486,12 +2499,53 @@ private struct LegendActivitySheet: View {
                         dismiss: { dismiss() }
                     )
 
-                if activity.isEmpty {
+                if activity.isEmpty && systemNotifications.isEmpty {
                     LegendNextEmptyState(
                         title: "No activity yet",
-                        message: "Appreciations, comments, and follows on your Legend updates appear here.",
+                        message: "Account updates, appreciations, comments, and follows appear here.",
                         systemImage: "heart")
                 } else {
+                    if !systemNotifications.isEmpty {
+                        Text("Account updates")
+                            .font(LegendNextTypography.eyebrow)
+                            .foregroundStyle(LegendNextColor.goldBright)
+
+                        ForEach(systemNotifications) { item in
+                            LegendNextSurface(style: .navy, padding: LegendNextSpacing.sm) {
+                                HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+                                    Image(systemName: item.kind == "ControlledResourceApproved"
+                                        ? "checkmark.seal.fill"
+                                        : "xmark.seal.fill")
+                                        .font(.title3.weight(.semibold))
+                                        .foregroundStyle(item.kind == "ControlledResourceApproved"
+                                            ? LegendNextColor.success
+                                            : LegendNextColor.danger)
+                                        .frame(width: 28)
+
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(item.title)
+                                            .font(.subheadline.weight(.bold))
+                                            .foregroundStyle(.white)
+                                        Text(item.detail)
+                                            .font(LegendNextTypography.caption)
+                                            .foregroundStyle(.white.opacity(0.76))
+                                            .fixedSize(horizontal: false, vertical: true)
+                                        Text(item.occurredUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
+                                            .font(.caption2)
+                                            .foregroundStyle(.white.opacity(0.58))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !activity.isEmpty {
+                        if !systemNotifications.isEmpty {
+                            Text("Legend network")
+                                .font(LegendNextTypography.eyebrow)
+                                .foregroundStyle(LegendNextColor.goldBright)
+                        }
+
                     ForEach(activity) { item in
                         LegendContactCard(
                             displayName: item.actor.displayName,
@@ -2514,6 +2568,7 @@ private struct LegendActivitySheet: View {
                                     .foregroundStyle(LegendNextColor.contactSupporting)
                             }
                         )
+                    }
                     }
                 }
             }

@@ -18,6 +18,7 @@ internal sealed class MessagingService : IMessagingService
     private const int MaximumAttachmentContentTypeLength = 150;
     private const int MaximumAttachmentStoragePathLength = 1_000;
     private const int MaximumAuditDetailLength = 1_000;
+    private const int MaximumResolutionNoteLength = 1_000;
     private const int MaximumGroupImageBytes = 512 * 1_024;
     private const int MaximumPinnedConversations = 6;
 
@@ -825,6 +826,45 @@ internal sealed class MessagingService : IMessagingService
             CommunicationLanguages.Supported);
     }
 
+    public async Task<MessagingActivityNotificationListResult> ListActivityNotificationsAsync(
+        MessagingActor actor,
+        int take = 50,
+        CancellationToken cancellationToken = default)
+    {
+        actor = NormalizeActor(actor);
+        if (!await IsValidActorAsync(actor, cancellationToken))
+        {
+            return MessagingActivityNotificationListResult.Failure(
+                "MESSAGING_ACTOR_INVALID",
+                "Activity is not available for this user.");
+        }
+
+        var actorUserId = NormalizeUserId(actor.UserId);
+        var actorParticipantType = NormalizeRequired(actor.ParticipantType);
+        var notifications = await _db.MobileActivityNotifications
+            .AsNoTracking()
+            .Where(notification =>
+                notification.RecipientUserId.ToLower() == actorUserId &&
+                notification.RecipientParticipantType == actorParticipantType)
+            .OrderByDescending(notification => notification.OccurredUtc)
+            .ThenByDescending(notification => notification.Id)
+            .Take(Math.Clamp(take, 1, 100))
+            .Select(notification => new MessagingActivityNotification(
+                notification.Id,
+                notification.Kind,
+                notification.Title,
+                notification.Detail,
+                notification.OccurredUtc,
+                notification.ControlledResourceRequestId))
+            .ToListAsync(cancellationToken);
+
+        return new MessagingActivityNotificationListResult(
+            true,
+            null,
+            null,
+            notifications);
+    }
+
     public async Task<MessagingOperationResult> AddGroupParticipantAsync(
         AddMessagingGroupParticipantCommand command,
         CancellationToken cancellationToken = default)
@@ -963,7 +1003,11 @@ internal sealed class MessagingService : IMessagingService
         CancellationToken cancellationToken = default)
     {
         return await ResolveControlledResourceRequestAsync(
-            new ResolveControlledResourceRequestCommand(command.Actor, command.RequestId, command.Approve),
+            new ResolveControlledResourceRequestCommand(
+                command.Actor,
+                command.RequestId,
+                command.Approve,
+                command.ResolutionNote),
             cancellationToken);
     }
 
@@ -1002,9 +1046,18 @@ internal sealed class MessagingService : IMessagingService
         }
 
         var nowUtc = DateTime.UtcNow;
+        var resolutionNote = Truncate(
+            NormalizeOptional(command.ResolutionNote),
+            MaximumResolutionNoteLength);
         request.Status = command.Approve ? VerificationReviewStatuses.Approved : VerificationReviewStatuses.Declined;
         request.ResolvedUtc = nowUtc;
         request.ResolvedByUserId = actor.UserId;
+        request.ResolutionNote = resolutionNote;
+        _db.MobileActivityNotifications.Add(CreateControlledResourceOutcomeNotification(
+            request,
+            command.Approve,
+            resolutionNote,
+            nowUtc));
         _db.InternalMessages.Add(new InternalMessage
         {
             Id = Guid.NewGuid(),
@@ -1106,6 +1159,11 @@ internal sealed class MessagingService : IMessagingService
             request.Status = command.IsGranted ? VerificationReviewStatuses.Approved : VerificationReviewStatuses.Declined;
             request.ResolvedUtc = nowUtc;
             request.ResolvedByUserId = actor.UserId;
+            _db.MobileActivityNotifications.Add(CreateControlledResourceOutcomeNotification(
+                request,
+                command.IsGranted,
+                resolutionNote: null,
+                nowUtc));
             if (reviewConversations.TryGetValue(request.ReviewConversationId, out var reviewConversation))
             {
                 _db.InternalMessages.Add(new InternalMessage
@@ -2707,6 +2765,45 @@ internal sealed class MessagingService : IMessagingService
         ControlledResourceTypes.LanguageTranslation => "Language Translation Access",
         _ => "Legend resource"
     };
+
+    /// <summary>
+    /// Decision copy is owned by the server so every entry point (Founder
+    /// review, direct grant, and future staff tooling) produces the same
+    /// recipient outcome without opening a conversation.
+    /// </summary>
+    private static MobileActivityNotification CreateControlledResourceOutcomeNotification(
+        VerificationReviewRequest request,
+        bool approved,
+        string? resolutionNote,
+        DateTime occurredUtc)
+    {
+        var resourceName = ControlledResourceDisplayName(request.ResourceType);
+        var defaultDetail = (request.ResourceType, approved) switch
+        {
+            (ControlledResourceTypes.VerificationBadge, true) =>
+                "Your verification request was approved. Your verified badge is now active.",
+            (ControlledResourceTypes.VerificationBadge, false) =>
+                "Your verification request was not approved. You can update your profile and submit a new request when ready.",
+            (ControlledResourceTypes.LanguageTranslation, true) =>
+                "Language Translation Access was approved. You can now select your preferred communication language in Profile settings.",
+            (ControlledResourceTypes.LanguageTranslation, false) =>
+                "Language Translation Access was not approved. You can submit a new request when ready.",
+            (_, true) => $"{resourceName} was approved.",
+            _ => $"{resourceName} was not approved."
+        };
+
+        return new MobileActivityNotification
+        {
+            Id = Guid.NewGuid(),
+            RecipientUserId = request.RequesterUserId,
+            RecipientParticipantType = request.RequesterParticipantType,
+            Kind = approved ? "ControlledResourceApproved" : "ControlledResourceDeclined",
+            Title = approved ? $"{resourceName} approved" : $"{resourceName} declined",
+            Detail = resolutionNote ?? defaultDetail,
+            ControlledResourceRequestId = request.Id,
+            OccurredUtc = occurredUtc
+        };
+    }
 
     private Task<bool> IsActiveAgentAsync(
         string userId,

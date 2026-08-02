@@ -4,6 +4,17 @@ import XCTest
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testVerificationBadgeIsLimitedToTheProfileImageIdentitySurface() {
+        XCTAssertTrue(
+            LegendVerifiedBadgePlacement.alongsideProfileImage
+                .displaysBadge(for: true))
+        XCTAssertFalse(
+            LegendVerifiedBadgePlacement.none.displaysBadge(for: true))
+        XCTAssertFalse(
+            LegendVerifiedBadgePlacement.alongsideProfileImage
+                .displaysBadge(for: false))
+    }
+
     func testSharedScrollChromeHidesAllActionChromeDownwardAndRestoresItUpward() {
         let chrome = LegendScrollChrome()
 

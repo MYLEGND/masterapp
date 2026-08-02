@@ -366,11 +366,23 @@ public sealed class MessagingServiceTests
             new ResolveVerificationReviewRequestCommand(
                 new MessagingActor("zac-founder-oid", MessagingParticipantTypes.Agent),
                 request.Id,
-                Approve: true));
+                Approve: true,
+                ResolutionNote: "Your profile is confirmed. Welcome to verified Legend."));
         Assert.True(resolved.Succeeded);
         Assert.True((await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1")).IsVerified);
         Assert.Equal(VerificationReviewStatuses.Approved,
             (await db.VerificationReviewRequests.SingleAsync()).Status);
+
+        // Decisions remain in the one staff review queue. The requester gets a
+        // recipient-scoped Activity event instead of a new direct/group chat.
+        Assert.Single(await db.MessageConversations.ToListAsync());
+        Assert.Equal(2, await db.InternalMessages.CountAsync());
+        var activity = await service.ListActivityNotificationsAsync(requester);
+        var notification = Assert.Single(activity.Notifications);
+        Assert.Equal("ControlledResourceApproved", notification.Kind);
+        Assert.Equal("Legend verification approved", notification.Title);
+        Assert.Equal("Your profile is confirmed. Welcome to verified Legend.", notification.Detail);
+        Assert.Equal(request.Id, notification.ControlledResourceRequestId);
     }
 
     [Fact]

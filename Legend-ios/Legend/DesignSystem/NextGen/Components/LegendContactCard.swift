@@ -40,7 +40,8 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
                         displayName,
                         isVerified: isVerified,
                         font: LegendNextTypography.bodyEmphasis,
-                        textColor: LegendNextColor.contactTitle
+                        textColor: LegendNextColor.contactTitle,
+                        badgePlacement: .alongsideProfileImage
                     )
 
                     if let nameStatus = normalized(nameStatus) {
@@ -101,22 +102,37 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
     }
 }
 
+/// A verification mark belongs to a person's primary visual identity, alongside
+/// their profile image. Text-only references such as comment, caption, and
+/// message rows deliberately keep the mark hidden to prevent visual duplication.
+enum LegendVerifiedBadgePlacement {
+    case none
+    case alongsideProfileImage
+
+    func displaysBadge(for isVerified: Bool) -> Bool {
+        isVerified && self == .alongsideProfileImage
+    }
+}
+
 struct LegendVerifiedName: View {
     let displayName: String
     let isVerified: Bool
     let font: Font
     let textColor: Color
+    let badgePlacement: LegendVerifiedBadgePlacement
 
     init(
         _ displayName: String,
         isVerified: Bool,
         font: Font = LegendNextTypography.bodyEmphasis,
-        textColor: Color = LegendNextColor.textPrimary
+        textColor: Color = LegendNextColor.textPrimary,
+        badgePlacement: LegendVerifiedBadgePlacement = .none
     ) {
         self.displayName = displayName
         self.isVerified = isVerified
         self.font = font
         self.textColor = textColor
+        self.badgePlacement = badgePlacement
     }
 
     var body: some View {
@@ -126,12 +142,16 @@ struct LegendVerifiedName: View {
                 .foregroundStyle(textColor)
                 .lineLimit(1)
 
-            if isVerified {
+            if showsBadge {
                 LegendVerifiedBadge()
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(isVerified ? "\(displayName), verified" : displayName)
+        .accessibilityLabel(showsBadge ? "\(displayName), verified" : displayName)
+    }
+
+    private var showsBadge: Bool {
+        badgePlacement.displaysBadge(for: isVerified)
     }
 }
 

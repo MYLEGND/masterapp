@@ -291,6 +291,24 @@ struct VerificationRequestSubmission: Codable, Equatable, Sendable {
     }
 }
 
+/// A server-owned Activity item for an administrative request outcome. It is
+/// deliberately separate from messaging conversations, so review decisions do
+/// not create requester threads or reveal the private Founder queue.
+struct MobileActivityNotification: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let kind: String
+    let title: String
+    let detail: String
+    let occurredUTC: Date
+    let controlledResourceRequestID: UUID?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, title, detail
+        case occurredUTC = "occurredUtc"
+        case controlledResourceRequestID = "controlledResourceRequestId"
+    }
+}
+
 enum ControlledResourceType: String, Codable, Sendable {
     case verificationBadge = "VerificationBadge"
     case languageTranslation = "LanguageTranslation"
@@ -501,6 +519,7 @@ struct ConversationCallOptions: Codable, Equatable, Sendable {
 
 struct ResolveVerificationRequest: Encodable, Sendable {
     let approve: Bool
+    let note: String?
 }
 
 protocol MessagingAPI: Sendable {
@@ -523,6 +542,7 @@ protocol MessagingAPI: Sendable {
         accessToken: String
     ) async throws -> VerificationRequestSubmission
     func communicationLanguages(accessToken: String) async throws -> [LegendCommunicationLanguage]
+    func activityNotifications(accessToken: String) async throws -> [MobileActivityNotification]
     func controlledResourceRecipients(
         resourceType: ControlledResourceType,
         search: String?,
@@ -537,6 +557,7 @@ protocol MessagingAPI: Sendable {
     func resolveControlledResourceRequest(
         requestID: UUID,
         approve: Bool,
+        note: String?,
         accessToken: String
     ) async throws
     func updateGroup(
@@ -602,6 +623,10 @@ extension MessagingAPI {
         throw MobileMessagingContractError.unavailable
     }
 
+    func activityNotifications(accessToken: String) async throws -> [MobileActivityNotification] {
+        throw MobileMessagingContractError.unavailable
+    }
+
     func controlledResourceRecipients(
         resourceType: ControlledResourceType,
         search: String?,
@@ -622,6 +647,7 @@ extension MessagingAPI {
     func resolveControlledResourceRequest(
         requestID: UUID,
         approve: Bool,
+        note: String?,
         accessToken: String
     ) async throws {
         throw MobileMessagingContractError.unavailable
@@ -868,6 +894,14 @@ struct URLSessionMessagingAPI: MessagingAPI {
             response: [LegendCommunicationLanguage].self)
     }
 
+    func activityNotifications(accessToken: String) async throws -> [MobileActivityNotification] {
+        try await client.get(
+            "/api/v1/mobile/messaging/activity",
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: [MobileActivityNotification].self)
+    }
+
     func controlledResourceRecipients(
         resourceType: ControlledResourceType,
         search: String?,
@@ -904,11 +938,12 @@ struct URLSessionMessagingAPI: MessagingAPI {
     func resolveControlledResourceRequest(
         requestID: UUID,
         approve: Bool,
+        note: String?,
         accessToken: String
     ) async throws {
         try await client.post(
             "/api/v1/mobile/messaging/controlled-resource-requests/\(requestID.uuidString)/resolution",
-            body: ResolveVerificationRequest(approve: approve),
+            body: ResolveVerificationRequest(approve: approve, note: note),
             accessToken: accessToken,
             idempotencyKey: UUID(),
             headers: participantHeader)
@@ -949,7 +984,7 @@ struct URLSessionMessagingAPI: MessagingAPI {
     ) async throws {
         try await client.post(
             "/api/v1/mobile/messaging/verification-requests/\(requestID.uuidString)/resolution",
-            body: ResolveVerificationRequest(approve: approve),
+            body: ResolveVerificationRequest(approve: approve, note: nil),
             accessToken: accessToken,
             idempotencyKey: UUID(),
             headers: participantHeader)

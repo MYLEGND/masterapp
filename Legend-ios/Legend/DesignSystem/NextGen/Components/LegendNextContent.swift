@@ -395,6 +395,75 @@ struct LegendNextBadge: View {
 
 }
 
+/// One feedback treatment for every founder-controlled request. A successful
+/// submission stays in the caller's current context; it never navigates the
+/// requester into the private staff review conversation.
+enum LegendRequestSubmissionFeedback: Equatable {
+    case sent(ControlledResourceType)
+    case failed(UserFacingFailure)
+
+    var title: String {
+        switch self {
+        case .sent:
+            return "Request Sent"
+        case .failed:
+            return "Request Not Sent"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .sent(let resourceType):
+            return "Your \(resourceType.displayName) request is with the private Legend review team."
+        case .failed(let failure):
+            return failure.message
+        }
+    }
+
+    var tone: LegendNextTone {
+        switch self {
+        case .sent: .success
+        case .failed: .danger
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .sent: "checkmark.circle.fill"
+        case .failed: "exclamationmark.circle.fill"
+        }
+    }
+}
+
+struct LegendRequestSubmissionPill: View {
+    let feedback: LegendRequestSubmissionFeedback
+
+    var body: some View {
+        HStack(alignment: .top, spacing: LegendNextSpacing.xs) {
+            Image(systemName: feedback.systemImage)
+                .font(.subheadline.weight(.bold))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(feedback.title)
+                    .font(LegendNextTypography.caption.weight(.bold))
+                Text(feedback.detail)
+                    .font(.caption2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .foregroundStyle(feedback.tone.color)
+        .padding(.horizontal, LegendNextSpacing.sm)
+        .padding(.vertical, LegendNextSpacing.xs)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(feedback.tone.color.opacity(0.13), in: Capsule())
+        .overlay {
+            Capsule()
+                .strokeBorder(feedback.tone.color.opacity(0.35), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 struct LegendNextMetricTile: View {
     let title: String
     let value: String
