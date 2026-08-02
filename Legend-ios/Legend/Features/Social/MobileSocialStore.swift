@@ -1,4 +1,233 @@
+import AVFoundation
 import Foundation
+
+/// The one mobile-video preparation path for Legend social media. It produces
+/// a network-optimized H.264/AAC MP4 before the file reaches the upload queue,
+/// so Hacs do not depend on the original device's HEVC, MOV, HDR, or editing
+/// container support at playback time.
+@MainActor
+enum LegendSocialVideoPreparation {
+    private static let maximumUploadBytes = 100 * 1_024 * 1_024
+    private static let preferredExportPresets = [
+        AVAssetExportPreset1920x1080,
+        AVAssetExportPreset1280x720,
+        AVAssetExportPresetMediumQuality
+    ]
+
+    enum PreparationError: LocalizedError {
+        case unreadableSource
+        case noVideoTrack
+        case noCompatibleExport
+        case exportFailed
+        case exceedsUploadLimit
+
+        var errorDescription: String? {
+            switch self {
+            case .unreadableSource:
+                "This video could not be read on this device. Choose another video and try again."
+            case .noVideoTrack:
+                "This selection does not contain a playable video track."
+            case .noCompatibleExport:
+                "Legend could not prepare this video for reliable playback."
+            case .exportFailed:
+                "Legend could not finish preparing this video. Please try again."
+            case .exceedsUploadLimit:
+                "This video is still too large after optimization. Choose a shorter video and try again."
+            }
+        }
+    }
+
+    /// Uses the device media pipeline to create the portable H.264/AAC MP4 that
+    /// every Hac uploader sends. The output is optimized for network playback
+    /// and is verified before the composer is allowed to publish it.
+    static func prepareForPublication(from sourceURL: URL) async throws -> URL {
+        let asset = AVURLAsset(url: sourceURL)
+        try await validate(asset: asset)
+        let sourceHasAudio = try await hasAudioTrack(in: asset)
+
+        for preset in preferredExportPresets {
+            let isCompatible = await AVAssetExportSession.compatibility(
+                ofExportPreset: preset,
+                with: asset,
+                outputFileType: .mp4)
+            guard isCompatible else { continue }
+
+            let outputURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("legend-social-video-\(UUID().uuidString)")
+                .appendingPathExtension("mp4")
+
+            do {
+                try await export(
+                    asset: asset,
+                    preset: preset,
+                    outputURL: outputURL)
+
+                let fileSize = try outputURL.resourceValues(
+                    forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard fileSize > 0 else {
+                    try? FileManager.default.removeItem(at: outputURL)
+                    continue
+                }
+
+                guard fileSize <= maximumUploadBytes else {
+                    try? FileManager.default.removeItem(at: outputURL)
+                    continue
+                }
+
+                let preparedVideoIsPlayable = await isPlayableVideo(at: outputURL)
+                guard preparedVideoIsPlayable else {
+                    try? FileManager.default.removeItem(at: outputURL)
+                    continue
+                }
+
+                // A Hac may intentionally be silent, but a source that has an
+                // audio track must never lose it during normalization.
+                let preparedVideoHasAudio = await hasAudioTrack(at: outputURL)
+                guard !sourceHasAudio || preparedVideoHasAudio else {
+                    try? FileManager.default.removeItem(at: outputURL)
+                    continue
+                }
+
+                return outputURL
+            } catch is CancellationError {
+                try? FileManager.default.removeItem(at: outputURL)
+                throw CancellationError()
+            } catch {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+        }
+
+        if let sourceSize = try? sourceURL.resourceValues(
+            forKeys: [.fileSizeKey]).fileSize,
+           sourceSize > maximumUploadBytes {
+            throw PreparationError.exceedsUploadLimit
+        }
+        throw PreparationError.exportFailed
+    }
+
+    /// The same playback check is used for the newly exported file and for a
+    /// protected video received from the API. A bad media object is surfaced as
+    /// an actionable error instead of a silent black AVPlayer view.
+    static func isPlayableVideo(at url: URL) async -> Bool {
+        let asset = AVURLAsset(url: url)
+        do {
+            try await validate(asset: asset)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private static func validate(asset: AVURLAsset) async throws {
+        guard try await asset.load(.isPlayable) else {
+            throw PreparationError.unreadableSource
+        }
+
+        let duration = try await asset.load(.duration).seconds
+        guard duration.isFinite, duration > 0 else {
+            throw PreparationError.unreadableSource
+        }
+
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        guard !tracks.isEmpty else {
+            throw PreparationError.noVideoTrack
+        }
+    }
+
+    private static func hasAudioTrack(in asset: AVURLAsset) async throws -> Bool {
+        !(try await asset.loadTracks(withMediaType: .audio)).isEmpty
+    }
+
+    private static func hasAudioTrack(at url: URL) async -> Bool {
+        do {
+            return try await hasAudioTrack(in: AVURLAsset(url: url))
+        } catch {
+            return false
+        }
+    }
+
+    private static func export(
+        asset: AVAsset,
+        preset: String,
+        outputURL: URL
+    ) async throws {
+        if #available(iOS 18.0, *) {
+            guard let session = AVAssetExportSession(
+                asset: asset,
+                presetName: preset) else {
+                throw PreparationError.noCompatibleExport
+            }
+            try await session.export(to: outputURL, as: .mp4)
+            return
+        }
+
+        // Keep iOS 17 support without sharing AVAssetExportSession across
+        // concurrency domains. Newer systems use AVFoundation's native async
+        // export API above; this bridge only exists for the supported OS floor.
+        guard let legacyExport = LegacyHacVideoExport(
+            asset: asset,
+            preset: preset) else {
+            throw PreparationError.noCompatibleExport
+        }
+        try await legacyExport.export(to: outputURL)
+    }
+}
+
+/// AVAssetExportSession is intentionally non-Sendable. This actor-isolated
+/// bridge confines the legacy iOS 17 API to the main actor while the export is
+/// in flight, avoiding unsafe captures in Swift 6's @Sendable callbacks.
+@MainActor
+private final class LegacyHacVideoExport {
+    private let session: AVAssetExportSession
+
+    init?(asset: AVAsset, preset: String) {
+        guard let session = AVAssetExportSession(
+            asset: asset,
+            presetName: preset),
+            session.supportedFileTypes.contains(.mp4) else {
+            return nil
+        }
+        self.session = session
+    }
+
+    func export(to outputURL: URL) async throws {
+        session.outputURL = outputURL
+        session.outputFileType = .mp4
+        session.shouldOptimizeForNetworkUse = true
+
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, Error>) in
+                session.exportAsynchronously { [weak self] in
+                    Task { @MainActor [weak self] in
+                        guard let self else {
+                            continuation.resume(throwing: CancellationError())
+                            return
+                        }
+
+                        switch self.session.status {
+                        case .completed:
+                            continuation.resume()
+                        case .cancelled:
+                            continuation.resume(throwing: CancellationError())
+                        case .failed:
+                            continuation.resume(
+                                throwing: self.session.error
+                                    ?? LegendSocialVideoPreparation.PreparationError.exportFailed)
+                        default:
+                            continuation.resume(
+                                throwing: LegendSocialVideoPreparation.PreparationError.exportFailed)
+                        }
+                    }
+                }
+            }
+        } onCancel: { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.session.cancelExport()
+            }
+        }
+    }
+}
 
 protocol MobileSocialAPI: Sendable {
     func feed(accessToken: String) async throws -> MobileSocialSnapshot
@@ -21,6 +250,7 @@ protocol MobileSocialAPI: Sendable {
     func updatePost(postID: UUID, request: MobileUpdateSocialPost, accessToken: String) async throws -> MobileSocialPost
     func deletePost(postID: UUID, accessToken: String) async throws
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data
+    func downloadMedia(assetID: UUID, accessToken: String) async throws -> URL
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult
@@ -37,6 +267,16 @@ protocol MobileSocialAPI: Sendable {
 }
 
 extension MobileSocialAPI {
+    /// API doubles can keep supplying bytes. The production API overrides this
+    /// with URLSession's file-backed download path for video playback.
+    func downloadMedia(assetID: UUID, accessToken: String) async throws -> URL {
+        let data = try await mediaData(assetID: assetID, accessToken: accessToken)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("legend-social-download-\(assetID.uuidString)")
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
     /// Optional for API doubles that do not exercise profile relationships. The
     /// production client below provides the real server-backed implementation.
     func currentProfileFollowList(
@@ -218,6 +458,13 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
         )
     }
 
+    func downloadMedia(assetID: UUID, accessToken: String) async throws -> URL {
+        try await client.downloadFile(
+            "/api/v1/mobile/social/media/\(assetID.uuidString)",
+            accessToken: accessToken,
+            headers: participantHeader)
+    }
+
 
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost {
         try await client.post("/api/v1/mobile/social/posts/\(postID.uuidString)/reaction", body: EmptyMobileRequest(), accessToken: accessToken, headers: participantHeader, response: MobileSocialPost.self)
@@ -343,6 +590,7 @@ final class MobileSocialStore: ObservableObject {
     private let mediaCache = NSCache<NSUUID, NSData>()
     private var mediaFileCache: [UUID: CachedMediaFile] = [:]
     private var mediaLoadTasks: [UUID: Task<Data?, Never>] = [:]
+    private var mediaFileLoadTasks: [UUID: Task<URL?, Never>] = [:]
     private var inFlightMutationKeys: Set<String> = []
     private var pendingPublicationRequest: MobileSocialPublishRequest?
     private var feedLoadTask: Task<MobileStoreLoadResult, Never>?
@@ -370,6 +618,7 @@ final class MobileSocialStore: ObservableObject {
 
     deinit {
         mediaLoadTasks.values.forEach { $0.cancel() }
+        mediaFileLoadTasks.values.forEach { $0.cancel() }
         for cached in mediaFileCache.values {
             try? FileManager.default.removeItem(at: cached.url)
         }
@@ -563,7 +812,16 @@ final class MobileSocialStore: ObservableObject {
         return data
     }
 
-    func mediaFile(for media: MobileSocialMedia) async -> URL? {
+    func mediaFile(
+        for media: MobileSocialMedia,
+        forceRefresh: Bool = false
+    ) async -> URL? {
+        if forceRefresh {
+            mediaCache.removeObject(forKey: media.id as NSUUID)
+            removeCachedMediaFile(for: media.id)
+            mediaFailures.removeValue(forKey: media.id)
+        }
+
         if var cached = mediaFileCache[media.id],
            FileManager.default.fileExists(atPath: cached.url.path) {
             cached.lastAccessed = .now
@@ -573,31 +831,18 @@ final class MobileSocialStore: ObservableObject {
 
         mediaFileCache.removeValue(forKey: media.id)
 
-        guard let data = await mediaData(for: media.id) else { return nil }
-        let fileExtension = media.mimeType.split(separator: "/").last
-            .map(String.init) ?? "media"
-        let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("legend-social-\(media.id.uuidString)")
-            .appendingPathExtension(fileExtension)
-        do {
-            try data.write(to: fileURL, options: .atomic)
-            mediaFileCache[media.id] = CachedMediaFile(
-                url: fileURL,
-                byteCount: data.count,
-                lastAccessed: .now)
-            trimMediaFileCache(keeping: media.id)
-            return fileURL
-        } catch {
-            diagnostics.record(
-                category: .networking,
-                summary: "A protected social video could not be prepared.",
-                correlationID: nil)
-            mediaFailures[media.id] = UserFacingFailure(
-                title: "Media temporarily unavailable",
-                message: "The protected file could not be prepared. Please try again.",
-                correlationID: nil)
-            return nil
+        if let existingTask = mediaFileLoadTasks[media.id] {
+            return await existingTask.value
         }
+
+        let task = Task { [weak self] () -> URL? in
+            guard let self else { return nil }
+            return await self.materializeMediaFile(media)
+        }
+        mediaFileLoadTasks[media.id] = task
+        let fileURL = await task.value
+        mediaFileLoadTasks.removeValue(forKey: media.id)
+        return fileURL
     }
 
     func mediaFailure(for assetID: UUID) -> UserFacingFailure? {
@@ -1289,6 +1534,70 @@ final class MobileSocialStore: ObservableObject {
 
     private func mediaFailurePresentation(for error: Error) -> UserFacingFailure {
         failure(for: error, title: "Media temporarily unavailable")
+    }
+
+    private func materializeMediaFile(_ media: MobileSocialMedia) async -> URL? {
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("legend-social-\(media.id.uuidString)")
+            .appendingPathExtension(media.playbackFileExtension)
+        try? FileManager.default.removeItem(at: destination)
+
+        do {
+            let token = try await accessTokenProvider()
+            let downloadedURL: URL
+            let byteCount: Int
+
+            if media.isVideo {
+                downloadedURL = try await api.downloadMedia(
+                    assetID: media.id,
+                    accessToken: token)
+                byteCount = try downloadedURL.resourceValues(
+                    forKeys: [.fileSizeKey]).fileSize ?? 0
+            } else {
+                let data = try await api.mediaData(
+                    assetID: media.id,
+                    accessToken: token)
+                try data.write(to: destination, options: .atomic)
+                downloadedURL = destination
+                byteCount = data.count
+            }
+
+            guard byteCount > 0 else {
+                try? FileManager.default.removeItem(at: downloadedURL)
+                throw LegendSocialVideoPreparation.PreparationError.unreadableSource
+            }
+
+            if downloadedURL != destination {
+                try FileManager.default.moveItem(at: downloadedURL, to: destination)
+            }
+
+            if media.isVideo,
+               !(await LegendSocialVideoPreparation.isPlayableVideo(at: destination)) {
+                try? FileManager.default.removeItem(at: destination)
+                mediaFailures[media.id] = UserFacingFailure(
+                    title: "Video unavailable",
+                    message: "Legend could not verify this video for playback. Ask the creator to publish it again.",
+                    correlationID: nil)
+                return nil
+            }
+
+            mediaFileCache[media.id] = CachedMediaFile(
+                url: destination,
+                byteCount: byteCount,
+                lastAccessed: .now)
+            trimMediaFileCache(keeping: media.id)
+            mediaFailures.removeValue(forKey: media.id)
+            return destination
+        } catch {
+            try? FileManager.default.removeItem(at: destination)
+            let presentation = mediaFailurePresentation(for: error)
+            diagnostics.record(
+                category: .networking,
+                summary: "A protected social video could not be prepared.",
+                correlationID: presentation.correlationID)
+            mediaFailures[media.id] = presentation
+            return nil
+        }
     }
 
     private func followMutationKey(

@@ -22,6 +22,16 @@ public static class SocialMediaUploadLimits
     public const long MaximumMultipartRequestBytes =
         MaximumMediaBytes + MultipartEnvelopeBytes;
     public const int MaximumFormValueLength = 2_000;
+
+    /// Hacs are normalized on iOS to H.264/AAC MP4 before upload. Requiring
+    /// this container at the shared social boundary prevents an arbitrary MOV
+    /// or device-specific codec from being published as a "ready" Hac that
+    /// cannot be rendered by the vertical player.
+    public static bool IsPortableHacVideoFileName(string? fileName) =>
+        string.Equals(
+            Path.GetExtension(fileName?.Trim() ?? string.Empty),
+            ".mp4",
+            StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>

@@ -1106,6 +1106,10 @@ private struct LegendSocialPostCard: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: post.media.count > 1 ? .automatic : .never))
+            // Hacs own the card's full horizontal width. Without this explicit
+            // proposal, a vertical AVPlayer can collapse the page to its
+            // intrinsic portrait width and leave an empty strip on the right.
+            .frame(maxWidth: .infinity)
             .aspectRatio(mediaAspectRatio, contentMode: .fit)
             .clipped()
         }
@@ -1628,8 +1632,10 @@ struct LegendSocialMediaVideo: View {
 
     @State private var player: AVPlayer?
     @State private var isPlaying = false
-    @State private var isMuted = true
+    @State private var isMuted = false
     @State private var mostRecentRecordedWatchSeconds = 0.0
+    @State private var playbackFailure: UserFacingFailure?
+    @State private var playerStatusObservation: NSKeyValueObservation?
 
     init(
         postID: UUID,
@@ -1649,7 +1655,9 @@ struct LegendSocialMediaVideo: View {
         VStack(spacing: 0) {
             ZStack(alignment: .bottomTrailing) {
                 Group {
-                    if let player {
+                    if let playbackFailure {
+                        videoUnavailable(presentation: playbackFailure)
+                    } else if let player {
                         VideoPlayer(player: player)
                     } else {
                         RoundedRectangle(
@@ -1661,28 +1669,30 @@ struct LegendSocialMediaVideo: View {
                 }
                 .frame(minHeight: 220)
 
-                HStack(spacing: LegendNextSpacing.xs) {
-                    Button {
-                        togglePlayback()
-                    } label: {
-                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .frame(width: 36, height: 36)
-                    }
-                    .accessibilityLabel(isPlaying ? "Pause video" : "Play video")
+                if playbackFailure == nil {
+                    HStack(spacing: LegendNextSpacing.xs) {
+                        Button {
+                            togglePlayback()
+                        } label: {
+                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                .frame(width: 36, height: 36)
+                        }
+                        .accessibilityLabel(isPlaying ? "Pause video" : "Play video")
 
-                    Button {
-                        isMuted.toggle()
-                        player?.isMuted = isMuted
-                    } label: {
-                        Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .frame(width: 36, height: 36)
+                        Button {
+                            isMuted.toggle()
+                            player?.isMuted = isMuted
+                        } label: {
+                            Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                .frame(width: 36, height: 36)
+                        }
+                        .accessibilityLabel(isMuted ? "Unmute original video audio" : "Mute original video audio")
                     }
-                    .accessibilityLabel(isMuted ? "Unmute original video audio" : "Mute original video audio")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .background(LegendNextColor.midnight.opacity(0.48), in: Capsule())
+                    .padding(LegendNextSpacing.sm)
                 }
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(.white)
-                .background(LegendNextColor.midnight.opacity(0.48), in: Capsule())
-                .padding(LegendNextSpacing.sm)
             }
 
             if let music {
@@ -1699,13 +1709,9 @@ struct LegendSocialMediaVideo: View {
                     ? LegendNextRadius.control
                     : 0,
                 style: .continuous))
+        .frame(maxWidth: .infinity)
         .task(id: media.id) {
-            guard let url = await social.mediaFile(for: media) else { return }
-            let created = AVPlayer(url: url)
-            created.isMuted = isMuted
-            player = created
-            created.play()
-            isPlaying = true
+            await loadPlayer()
         }
         .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { notification in
             guard let item = notification.object as? AVPlayerItem,
@@ -1716,10 +1722,20 @@ struct LegendSocialMediaVideo: View {
             }
             isPlaying = true
         }
+        .onReceive(NotificationCenter.default.publisher(
+            for: LegendSocialAudioSession.activeHacDidChange
+        )) { notification in
+            guard let activeMediaID = notification.userInfo?["mediaID"] as? String,
+                  activeMediaID != media.id.uuidString else { return }
+            player?.pause()
+            isPlaying = false
+        }
         .onDisappear {
             recordPlaybackMetrics(completed: false)
             player?.pause()
             isPlaying = false
+            playerStatusObservation = nil
+            LegendSocialAudioSession.endPlayback(for: .hac(media.id))
         }
         .accessibilityLabel(media.accessibilityText ?? "Shared video")
     }
@@ -1729,10 +1745,93 @@ struct LegendSocialMediaVideo: View {
         if isPlaying {
             recordPlaybackMetrics(completed: false)
             player.pause()
+            LegendSocialAudioSession.endPlayback(for: .hac(media.id))
         } else {
+            do {
+                try LegendSocialAudioSession.beginPlayback(for: .hac(media.id))
+            } catch {
+                playbackFailure = UserFacingFailure(
+                    title: "Hac audio unavailable",
+                    message: "Legend could not prepare audio playback for this Hac. Please try again.",
+                    correlationID: nil)
+                return
+            }
             player.play()
         }
         isPlaying.toggle()
+    }
+
+    private func loadPlayer(forceRefresh: Bool = false) async {
+        playbackFailure = nil
+        playerStatusObservation = nil
+        player?.pause()
+        LegendSocialAudioSession.endPlayback(for: .hac(media.id))
+
+        guard let url = await social.mediaFile(
+            for: media,
+            forceRefresh: forceRefresh) else {
+            playbackFailure = social.mediaFailure(for: media.id) ?? UserFacingFailure(
+                title: "Video unavailable",
+                message: "This video could not be prepared for playback. Please try again.",
+                correlationID: nil)
+            return
+        }
+
+        do {
+            try LegendSocialAudioSession.beginPlayback(for: .hac(media.id))
+        } catch {
+            playbackFailure = UserFacingFailure(
+                title: "Hac audio unavailable",
+                message: "Legend could not prepare audio playback for this Hac. Please try again.",
+                correlationID: nil)
+            return
+        }
+
+        let item = AVPlayerItem(url: url)
+        playerStatusObservation = item.observe(
+            \.status,
+            options: [.new, .initial]
+        ) { observedItem, _ in
+            guard observedItem.status == .failed else { return }
+            let message = observedItem.error?.localizedDescription
+                ?? "This video could not be played. Please try again."
+            Task { @MainActor in
+                player?.pause()
+                isPlaying = false
+                LegendSocialAudioSession.endPlayback(for: .hac(media.id))
+                playbackFailure = UserFacingFailure(
+                    title: "Video unavailable",
+                    message: message,
+                    correlationID: nil)
+            }
+        }
+
+        let created = AVPlayer(playerItem: item)
+        created.isMuted = isMuted
+        player = created
+        created.play()
+        isPlaying = true
+    }
+
+    private func videoUnavailable(
+        presentation: UserFacingFailure
+    ) -> some View {
+        VStack(spacing: LegendNextSpacing.xs) {
+            Image(systemName: "video.slash")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(LegendNextColor.textSecondary)
+            Text(presentation.message)
+                .font(.caption)
+                .foregroundStyle(LegendNextColor.textSecondary)
+                .multilineTextAlignment(.center)
+            Button("Retry video") {
+                Task { await loadPlayer(forceRefresh: true) }
+            }
+            .font(.caption.weight(.bold))
+            .foregroundStyle(LegendNextColor.royal)
+        }
+        .padding(LegendNextSpacing.md)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func recordPlaybackMetrics(completed: Bool) {

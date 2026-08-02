@@ -450,6 +450,175 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task LanguageTranslationAccess_AgentAndClientUseSameFounderControlledResource()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(
+            db,
+            linkClientToAgent: true,
+            grantClientToAgent: false);
+
+        db.AgentProfiles.AddRange(
+            new AgentProfile
+            {
+                AgentUserId = "zac-founder-oid",
+                AgentUpn = LegendVerifiedIdentity.FounderEmail,
+                NormalizedEmail = LegendVerifiedIdentity.FounderEmail,
+                FullName = "Zac Owen",
+                IsActive = true
+            },
+            new AgentProfile
+            {
+                AgentUserId = "legend-oid",
+                AgentUpn = LegendVerifiedIdentity.LegendEmail,
+                NormalizedEmail = LegendVerifiedIdentity.LegendEmail,
+                FullName = "Legend™",
+                IsActive = true
+            });
+
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+
+        var founder = new MessagingActor(
+            "zac-founder-oid",
+            MessagingParticipantTypes.Agent);
+
+        var agent = new MessagingActor(
+            "agent-1",
+            MessagingParticipantTypes.Agent);
+
+        var client = new MessagingActor(
+            "client-1",
+            MessagingParticipantTypes.Client);
+
+        var agentRequest =
+            await service.StartControlledResourceRequestAsync(
+                new StartControlledResourceRequestCommand(
+                    agent,
+                    ControlledResourceTypes.LanguageTranslation));
+
+        var clientRequest =
+            await service.StartControlledResourceRequestAsync(
+                new StartControlledResourceRequestCommand(
+                    client,
+                    ControlledResourceTypes.LanguageTranslation));
+
+        Assert.True(agentRequest.Succeeded);
+        Assert.True(clientRequest.Succeeded);
+
+        Assert.Equal(
+            MessagingParticipantTypes.Agent,
+            agentRequest.Request!.RequesterParticipantType);
+
+        Assert.Equal(
+            MessagingParticipantTypes.Client,
+            clientRequest.Request!.RequesterParticipantType);
+
+        Assert.Equal(
+            ControlledResourceTypes.LanguageTranslation,
+            agentRequest.Request.ResourceType);
+
+        Assert.Equal(
+            ControlledResourceTypes.LanguageTranslation,
+            clientRequest.Request.ResourceType);
+
+        // Same Founder authority grants both roles.
+        var agentGrant =
+            await service.SetControlledResourceGrantAsync(
+                new SetControlledResourceGrantCommand(
+                    founder,
+                    ControlledResourceTypes.LanguageTranslation,
+                    agent.UserId,
+                    agent.ParticipantType,
+                    IsGranted: true));
+
+        var clientGrant =
+            await service.SetControlledResourceGrantAsync(
+                new SetControlledResourceGrantCommand(
+                    founder,
+                    ControlledResourceTypes.LanguageTranslation,
+                    client.UserId,
+                    client.ParticipantType,
+                    IsGranted: true));
+
+        Assert.True(agentGrant.Succeeded);
+        Assert.True(clientGrant.Succeeded);
+
+        var access = new ControlledResourceAccessService(db);
+
+        Assert.Equal(
+            ControlledResourceAccessStates.Granted,
+            (await access.GetAccessAsync(
+                agent,
+                ControlledResourceTypes.LanguageTranslation)).State);
+
+        Assert.Equal(
+            ControlledResourceAccessStates.Granted,
+            (await access.GetAccessAsync(
+                client,
+                ControlledResourceTypes.LanguageTranslation)).State);
+
+        // Preferred languages are stored through the same MobileProfileSettings
+        // authority, discriminated only by participant type.
+        var agentProfile =
+            await db.AgentProfiles.SingleAsync(
+                profile => profile.AgentUserId == agent.UserId);
+
+        var clientProfile =
+            await db.ClientProfiles.SingleAsync(
+                profile => profile.ClientUserId == client.UserId);
+
+        db.MobileProfileSettings.AddRange(
+            new MobileProfileSettings
+            {
+                ProfileId = agentProfile.Id,
+                ParticipantType = MessagingParticipantTypes.Agent,
+                PreferredCommunicationLanguage = "ht"
+            },
+            new MobileProfileSettings
+            {
+                ProfileId = clientProfile.Id,
+                ParticipantType = MessagingParticipantTypes.Client,
+                PreferredCommunicationLanguage = "en"
+            });
+
+        await db.SaveChangesAsync();
+
+        Assert.Equal(
+            "ht",
+            await access.GetPreferredLanguageAsync(agent));
+
+        Assert.Equal(
+            "en",
+            await access.GetPreferredLanguageAsync(client));
+
+        // Normal Agents may request/use translation but cannot manage grants.
+        var unauthorizedDecision =
+            await service.SetControlledResourceGrantAsync(
+                new SetControlledResourceGrantCommand(
+                    agent,
+                    ControlledResourceTypes.LanguageTranslation,
+                    client.UserId,
+                    client.ParticipantType,
+                    IsGranted: false));
+
+        Assert.False(unauthorizedDecision.Succeeded);
+
+        // Founder remains the centralized management authority.
+        var founderDecision =
+            await service.SetControlledResourceGrantAsync(
+                new SetControlledResourceGrantCommand(
+                    founder,
+                    ControlledResourceTypes.LanguageTranslation,
+                    agent.UserId,
+                    agent.ParticipantType,
+                    IsGranted: false));
+
+        Assert.True(founderDecision.Succeeded);
+    }
+
+    [Fact]
     public async Task ActivityNotifications_ResolveBothClientIdentityForms()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -556,6 +725,149 @@ public sealed class MessagingServiceTests
         Assert.Equal("Welcome to Legend (ht)",
             Assert.Single(Assert.IsType<MessagingConversationDetail>(secondView.Conversation).Messages).Body);
         Assert.Single(await db.MessageTranslations.ToListAsync());
+    }
+
+    [Fact]
+    public async Task MessageTranslation_DoesNotTreatSenderPreferredLanguageAsMessageLanguage()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(
+            db,
+            linkClientToAgent: true,
+            grantClientToAgent: false);
+
+        var agentProfile = await db.AgentProfiles.SingleAsync(
+            profile => profile.AgentUserId == "agent-1");
+        var clientProfile = await db.ClientProfiles.SingleAsync(
+            profile => profile.ClientUserId == "client-1");
+
+        // Both participants prefer Haitian Creole. This preference describes
+        // how each participant wants to RECEIVE communication; it must never
+        // be treated as proof that an individual message was written in ht.
+        db.ControlledResourceGrants.AddRange(
+            new ControlledResourceGrant
+            {
+                UserId = "agent-1",
+                ParticipantType = MessagingParticipantTypes.Agent,
+                ResourceType = ControlledResourceTypes.LanguageTranslation,
+                IsActive = true,
+                GrantedUtc = DateTime.UtcNow,
+                GrantedByUserId = "zac-founder-oid"
+            },
+            new ControlledResourceGrant
+            {
+                UserId = "client-1",
+                ParticipantType = MessagingParticipantTypes.Client,
+                ResourceType = ControlledResourceTypes.LanguageTranslation,
+                IsActive = true,
+                GrantedUtc = DateTime.UtcNow,
+                GrantedByUserId = "zac-founder-oid"
+            });
+
+        db.MobileProfileSettings.AddRange(
+            new MobileProfileSettings
+            {
+                ProfileId = agentProfile.Id,
+                ParticipantType = MessagingParticipantTypes.Agent,
+                PreferredCommunicationLanguage = "ht"
+            },
+            new MobileProfileSettings
+            {
+                ProfileId = clientProfile.Id,
+                ParticipantType = MessagingParticipantTypes.Client,
+                PreferredCommunicationLanguage = "ht"
+            });
+
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var agent = new MessagingActor(
+            "agent-1",
+            MessagingParticipantTypes.Agent);
+        var client = new MessagingActor(
+            "client-1",
+            MessagingParticipantTypes.Client);
+
+        // The sender PREFERS ht but actually writes this message in English.
+        // TestTranslationService detects English ("en").
+        var opened = await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                agent,
+                client.UserId,
+                client.ParticipantType,
+                InitialMessageBody: "Welcome to Legend"));
+
+        Assert.True(opened.Succeeded);
+
+        var conversationId =
+            Assert.IsType<MessagingConversationDetail>(
+                opened.Conversation).Id;
+
+        var clientView = await service.GetConversationAsync(
+            client,
+            conversationId);
+
+        Assert.True(clientView.Succeeded);
+
+        var presentedMessage = Assert.Single(
+            Assert.IsType<MessagingConversationDetail>(
+                clientView.Conversation).Messages);
+
+        // Critical regression:
+        //
+        // OLD behavior:
+        // sender prefers ht + recipient targets ht
+        // => translation incorrectly skipped.
+        //
+        // CORRECT behavior:
+        // actual message language is en + recipient targets ht
+        // => existing translation pipeline runs.
+        Assert.Equal(
+            "Welcome to Legend (ht)",
+            presentedMessage.Body);
+
+        Assert.Equal(
+            "Welcome to Legend",
+            presentedMessage.OriginalBody);
+
+        Assert.NotNull(presentedMessage.Translation);
+
+        Assert.Equal(
+            "en",
+            presentedMessage.Translation!.OriginalLanguage);
+
+        Assert.Equal(
+            "ht",
+            presentedMessage.Translation.TargetLanguage);
+
+        // Original authoritative message must remain untouched.
+        var original = await db.InternalMessages.SingleAsync();
+
+        Assert.Equal(
+            "Welcome to Legend",
+            original.Body);
+
+        // Existing translation cache remains the one persistence authority.
+        var cachedTranslation =
+            Assert.Single(await db.MessageTranslations.ToListAsync());
+
+        Assert.Equal(
+            original.Id,
+            cachedTranslation.InternalMessageId);
+
+        // Original language belongs to the authoritative InternalMessage,
+        // not to the cached MessageTranslation derivative.
+        Assert.Equal(
+            "en",
+            original.OriginalLanguage);
+
+        Assert.Equal(
+            "ht",
+            cachedTranslation.TargetLanguage);
+
+        Assert.Equal(
+            "Welcome to Legend (ht)",
+            cachedTranslation.TranslatedText);
     }
 
     [Fact]

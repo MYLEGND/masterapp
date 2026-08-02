@@ -73,7 +73,10 @@ private final class MobileUploadProgressDelegate: NSObject, URLSessionTaskDelega
 }
 
 struct MobileHTTPClient: Sendable {
-    private static let protectedMediaRequestTimeout: TimeInterval = 20
+    /// Videos are copied straight to a temporary file rather than materialized
+    /// in memory. Keep the protected-media request alive long enough for a
+    /// normal cellular transfer without changing the API timeout for JSON.
+    private static let protectedMediaRequestTimeout: TimeInterval = 120
 
     let baseURL: URL
     let session: URLSession
@@ -113,6 +116,39 @@ struct MobileHTTPClient: Sendable {
             for: request,
             resourceTimeout: Self.protectedMediaRequestTimeout)
         return data
+    }
+
+    /// Downloads protected media to URLSession's temporary file. This avoids a
+    /// second full-size Data allocation before AVFoundation receives a Hac.
+    func downloadFile(
+        _ path: String,
+        accessToken: String,
+        headers: [String: String] = [:]
+    ) async throws -> URL {
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "GET"
+        request.timeoutInterval = Self.protectedMediaRequestTimeout
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("image/*, video/*", forHTTPHeaderField: "Accept")
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+
+        let (temporaryURL, response) = try await executeDownload(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            try? FileManager.default.removeItem(at: temporaryURL)
+            throw MobileAPIError.invalidServerResponse
+        }
+
+        guard (200 ... 299).contains(http.statusCode) else {
+            let body = (try? Data(contentsOf: temporaryURL)) ?? Data()
+            try? FileManager.default.removeItem(at: temporaryURL)
+            _ = try validateResponse(http, body: body)
+            throw MobileAPIError.invalidServerResponse
+        }
+
+        MobileDebugDiagnostics.record(
+            "Mobile media download completed with status \(http.statusCode).",
+            correlationID: http.value(forHTTPHeaderField: "X-Correlation-ID"))
+        return temporaryURL
     }
 
     func post<Body: Encodable, Response: Decodable>(
@@ -287,27 +323,8 @@ struct MobileHTTPClient: Sendable {
             throw MobileAPIError.invalidServerResponse
         }
 
-        let correlationID = http.value(forHTTPHeaderField: "X-Correlation-ID")
-        let problem = MobileAPIProblem.decode(from: data, fallbackCorrelationID: correlationID)
-        MobileDebugDiagnostics.record(
-            "Mobile API response status \(http.statusCode).",
-            correlationID: problem.correlationID)
-        switch http.statusCode {
-        case 200 ... 299:
-            return (data, correlationID)
-        case 401:
-            throw MobileAPIError.apiUnauthorized(code: problem.code, correlationID: problem.correlationID)
-        case 403:
-            throw MobileAPIError.apiForbidden(code: problem.code, correlationID: problem.correlationID)
-        case 409:
-            throw MobileAPIError.apiConflict(code: problem.code, correlationID: problem.correlationID)
-        default:
-            throw MobileAPIError.apiServer(
-                statusCode: http.statusCode,
-                code: problem.code,
-                message: problem.message,
-                correlationID: problem.correlationID)
-        }
+        let correlationID = try validateResponse(http, body: data)
+        return (data, correlationID)
     }
 
     private func performEmpty(_ request: URLRequest) async throws {
@@ -379,6 +396,54 @@ struct MobileHTTPClient: Sendable {
             default:
                 throw error
             }
+        }
+    }
+
+    private func executeDownload(
+        for request: URLRequest
+    ) async throws -> (URL, URLResponse) {
+        do {
+            return try await session.download(for: request)
+        } catch let error as URLError {
+            switch error.code {
+            case .notConnectedToInternet,
+                 .networkConnectionLost,
+                 .cannotConnectToHost,
+                 .cannotFindHost,
+                 .dnsLookupFailed,
+                 .timedOut:
+                throw MobileAPIError.networkUnavailable
+            default:
+                throw error
+            }
+        }
+    }
+
+    private func validateResponse(
+        _ http: HTTPURLResponse,
+        body: Data
+    ) throws -> String? {
+        let correlationID = http.value(forHTTPHeaderField: "X-Correlation-ID")
+        let problem = MobileAPIProblem.decode(from: body, fallbackCorrelationID: correlationID)
+        MobileDebugDiagnostics.record(
+            "Mobile API response status \(http.statusCode).",
+            correlationID: problem.correlationID)
+
+        switch http.statusCode {
+        case 200 ... 299:
+            return correlationID
+        case 401:
+            throw MobileAPIError.apiUnauthorized(code: problem.code, correlationID: problem.correlationID)
+        case 403:
+            throw MobileAPIError.apiForbidden(code: problem.code, correlationID: problem.correlationID)
+        case 409:
+            throw MobileAPIError.apiConflict(code: problem.code, correlationID: problem.correlationID)
+        default:
+            throw MobileAPIError.apiServer(
+                statusCode: http.statusCode,
+                code: problem.code,
+                message: problem.message,
+                correlationID: problem.correlationID)
         }
     }
 

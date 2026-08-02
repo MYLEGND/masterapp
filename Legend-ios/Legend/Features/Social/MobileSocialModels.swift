@@ -549,6 +549,32 @@ struct MobileSocialMedia: Codable, Equatable, Identifiable, Sendable {
     var isVideo: Bool {
         mediaKind.caseInsensitiveCompare("Video") == .orderedSame
     }
+
+    /// MIME subtypes are not filesystem extensions: `video/quicktime` must be
+    /// materialized as `.mov`, not `.quicktime`, before AVFoundation opens it.
+    /// This is the single extension authority for protected media playback.
+    var playbackFileExtension: String {
+        switch mimeType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "video/mp4":
+            "mp4"
+        case "video/quicktime":
+            "mov"
+        case "video/webm":
+            "webm"
+        case "image/jpeg":
+            "jpg"
+        case "image/png":
+            "png"
+        case "image/webp":
+            "webp"
+        case "image/heic":
+            "heic"
+        case "image/heif":
+            "heif"
+        default:
+            isVideo ? "mp4" : "media"
+        }
+    }
 }
 
 struct MobileSocialActivity: Codable, Equatable, Identifiable, Sendable {

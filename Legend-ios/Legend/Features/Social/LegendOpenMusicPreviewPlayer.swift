@@ -2,6 +2,53 @@ import AVFoundation
 import Combine
 import Foundation
 
+/// The single audio-session authority for all social playback. Hacs and music
+/// previews share the same category so one feature cannot silently replace the
+/// other's route or leave the device in an inconsistent audio state.
+@MainActor
+enum LegendSocialAudioSession {
+    enum Owner: Hashable {
+        case musicPreview
+        case hac(UUID)
+    }
+
+    private static var activeOwners = Set<Owner>()
+    static let activeHacDidChange = Notification.Name(
+        "LegendSocialAudioSession.activeHacDidChange")
+
+    static func beginPlayback(for owner: Owner) throws {
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(
+            .playback,
+            mode: .moviePlayback,
+            options: [.mixWithOthers])
+        try audioSession.setActive(true)
+
+        if case let .hac(mediaID) = owner {
+            // A vertical feed can keep adjacent views alive while scrolling.
+            // Ownership—not view lifetime—decides which Hac is audible.
+            activeOwners = Set(activeOwners.filter { existingOwner in
+                guard case .hac = existingOwner else { return true }
+                return existingOwner == owner
+            })
+            NotificationCenter.default.post(
+                name: activeHacDidChange,
+                object: nil,
+                userInfo: ["mediaID": mediaID.uuidString])
+        }
+
+        activeOwners.insert(owner)
+    }
+
+    static func endPlayback(for owner: Owner) {
+        activeOwners.remove(owner)
+        guard activeOwners.isEmpty else { return }
+        try? AVAudioSession.sharedInstance().setActive(
+            false,
+            options: .notifyOthersOnDeactivation)
+    }
+}
+
 /// Streams a selected Legend catalog track without downloading or retaining the
 /// media file. AVFoundation is the native iOS audio framework, so this keeps the
 /// player lightweight and avoids a second, competing playback stack.
@@ -66,9 +113,7 @@ final class LegendOpenMusicPreviewPlayer: ObservableObject {
         player?.replaceCurrentItem(with: nil)
         player = nil
         currentTrackID = nil
-        try? AVAudioSession.sharedInstance().setActive(
-            false,
-            options: .notifyOthersOnDeactivation)
+        LegendSocialAudioSession.endPlayback(for: .musicPreview)
         state = .idle
     }
 
@@ -147,16 +192,12 @@ final class LegendOpenMusicPreviewPlayer: ObservableObject {
 
     private func fail(trackID: String?, error: Error) {
         player?.pause()
-        try? AVAudioSession.sharedInstance().setActive(
-            false,
-            options: .notifyOthersOnDeactivation)
+        LegendSocialAudioSession.endPlayback(for: .musicPreview)
         state = .failed(trackID: trackID, message: "This music preview could not be played. Please try another track.")
     }
 
     private func configureAudioSession() throws {
-        let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-        try audioSession.setActive(true)
+        try LegendSocialAudioSession.beginPlayback(for: .musicPreview)
     }
 
     private func removeObservers() {

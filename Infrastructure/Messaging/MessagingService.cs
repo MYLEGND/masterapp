@@ -3110,11 +3110,10 @@ internal sealed class MessagingService : IMessagingService
                 continue;
             }
 
-            var senderLanguage = await _controlledResources.GetPreferredLanguageAsync(
-                new MessagingActor(source.SenderUserId, source.SenderType),
-                cancellationToken);
-            if (string.Equals(senderLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(CommunicationLanguages.NormalizeOrNull(source.OriginalLanguage), targetLanguage, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(
+                    CommunicationLanguages.NormalizeOrNull(source.OriginalLanguage),
+                    targetLanguage,
+                    StringComparison.OrdinalIgnoreCase))
             {
                 presented.Add(summary);
                 continue;

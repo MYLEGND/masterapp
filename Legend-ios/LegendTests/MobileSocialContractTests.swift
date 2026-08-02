@@ -4,6 +4,36 @@ import XCTest
 
 @MainActor
 final class MobileSocialContractTests: XCTestCase {
+    func testProtectedQuickTimeVideoUsesMOVPlaybackExtension() {
+        let quickTime = MobileSocialMedia(
+            id: UUID(),
+            displayOrder: 0,
+            mediaKind: "Video",
+            mimeType: "video/quicktime",
+            fileSizeBytes: 1,
+            width: nil,
+            height: nil,
+            aspectRatio: nil,
+            durationSeconds: nil,
+            processingState: "Ready",
+            accessibilityText: nil)
+        let mp4 = MobileSocialMedia(
+            id: UUID(),
+            displayOrder: 0,
+            mediaKind: "Video",
+            mimeType: "video/mp4",
+            fileSizeBytes: 1,
+            width: nil,
+            height: nil,
+            aspectRatio: nil,
+            durationSeconds: nil,
+            processingState: "Ready",
+            accessibilityText: nil)
+
+        XCTAssertEqual(quickTime.playbackFileExtension, "mov")
+        XCTAssertEqual(mp4.playbackFileExtension, "mp4")
+    }
+
     func testPostMetadataHidesParticipantRoleOutsideAgentContext() {
         XCTAssertEqual(
             LegendSocialPostMetadata.summary(

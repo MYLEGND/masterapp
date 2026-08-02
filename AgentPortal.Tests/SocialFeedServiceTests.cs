@@ -510,7 +510,7 @@ public sealed class SocialFeedServiceTests
 
         var storage = new InMemoryTestSocialMediaStorage();
         var service = CreateService(db, storage);
-        await using var video = new MemoryStream([1, 2, 3, 4]);
+        await using var video = new MemoryStream(MinimalMp4());
         var created = await service.CreateMediaPostAsync(
             new CreateSocialMediaPostCommand(
                 ClientActor(client),
@@ -741,7 +741,7 @@ public sealed class SocialFeedServiceTests
 
         var storage = new InMemoryTestSocialMediaStorage();
         var service = CreateService(db, storage);
-        var content = new byte[] { 9, 8, 7, 6 };
+        var content = MinimalMp4();
 
         await using var uploadStream = new MemoryStream(content);
         var created = await service.CreateMediaPostAsync(
@@ -825,8 +825,37 @@ public sealed class SocialFeedServiceTests
         Assert.False(invalidHac.Succeeded);
         Assert.Equal("social_media_post_invalid", invalidHac.ErrorCode);
         Assert.Equal(
-            "Hacs require exactly one supported video.",
+            "Legend Hacs require a prepared MP4 video. Choose the video again and try publishing.",
             invalidHac.ErrorMessage);
+        Assert.Empty(db.SocialPosts);
+        Assert.Equal(0, storage.StoredMediaCount);
+    }
+
+    [Fact]
+    public async Task Hac_RejectsAnMp4NameThatDoesNotContainAVideoContainer()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("invalid-hac-container-client", "Invalid", "Container");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var storage = new InMemoryTestSocialMediaStorage();
+        var service = CreateService(db, storage);
+        await using var invalidVideo = new MemoryStream([1, 2, 3, 4]);
+
+        var result = await service.CreateMediaPostAsync(
+            new CreateSocialMediaPostCommand(
+                ClientActor(client),
+                SocialPostContentTypes.Reel,
+                "This must never become a ready Hac.",
+                [new SocialMediaUpload(
+                    "not-a-real-video.mp4",
+                    invalidVideo.Length,
+                    invalidVideo,
+                    null)]));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("SOCIAL_MEDIA_STORAGE_UNAVAILABLE", result.ErrorCode);
         Assert.Empty(db.SocialPosts);
         Assert.Equal(0, storage.StoredMediaCount);
     }
@@ -964,7 +993,7 @@ public sealed class SocialFeedServiceTests
         var catalog = new TestMusicCatalog();
         var storage = new InMemoryTestSocialMediaStorage();
         var service = CreateService(db, storage, catalog);
-        await using var upload = new MemoryStream([1, 2, 3]);
+        await using var upload = new MemoryStream(MinimalMp4());
         var created = await service.CreateMediaPostAsync(new CreateSocialMediaPostCommand(
             ClientActor(client),
             SocialPostContentTypes.Reel,
@@ -1361,6 +1390,17 @@ public sealed class SocialFeedServiceTests
             mediaStorage ?? new UnavailableTestSocialMediaStorage(),
             musicCatalog ?? new CuratedOpenMusicCatalog());
     }
+
+    // Minimal ISO base media header. The social service now verifies that a
+    // purported Hac video is a media container before marking it Ready.
+    private static byte[] MinimalMp4() =>
+    [
+        0, 0, 0, 24,
+        (byte)'f', (byte)'t', (byte)'y', (byte)'p',
+        (byte)'i', (byte)'s', (byte)'o', (byte)'m',
+        0, 0, 0, 0,
+        (byte)'i', (byte)'s', (byte)'o', (byte)'m'
+    ];
 
     private sealed class UnavailableTestSocialMediaStorage
         : ISocialMediaStorage

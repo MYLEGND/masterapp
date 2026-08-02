@@ -248,6 +248,18 @@ public sealed class SocialFeedService : ISocialFeedService
                 $"Choose a post type and attach between 1 and {MaximumMediaItemsPerPost} supported media files.");
         }
 
+        // Hacs have one portable delivery contract. The iOS creation path
+        // produces H.264/AAC MP4 before this point; rejecting unnormalized
+        // containers here avoids publishing a black or unsupported player.
+        if (contentType == SocialPostContentTypes.Reel &&
+            uploads.Any(upload => !SocialMediaUploadLimits
+                .IsPortableHacVideoFileName(upload.OriginalFileName)))
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_media_post_invalid",
+                "Legend Hacs require a prepared MP4 video. Choose the video again and try publishing.");
+        }
+
         var details = command.Details ?? new SocialPostDetails();
 
         var music = await ResolveMusicAsync(command.Music, cancellationToken);
@@ -580,10 +592,38 @@ public sealed class SocialFeedService : ISocialFeedService
 
         await using (storedMedia.Content)
         {
-            var firstByte = new byte[1];
-            return await storedMedia.Content.ReadAsync(firstByte.AsMemory(), cancellationToken) == 1;
+            var header = new byte[32];
+            var read = 0;
+            while (read < header.Length)
+            {
+                var bytesRead = await storedMedia.Content.ReadAsync(
+                    header.AsMemory(read, header.Length - read),
+                    cancellationToken);
+                if (bytesRead == 0)
+                    break;
+                read += bytesRead;
+            }
+
+            if (read == 0)
+                return false;
+
+            return !string.Equals(
+                       stored.MediaKind,
+                       "Video",
+                       StringComparison.OrdinalIgnoreCase) ||
+                   HasIsoBaseMediaHeader(header.AsSpan(0, read));
         }
     }
+
+    /// MP4 files begin with an ISO base media `ftyp` box. This lightweight
+    /// validation deliberately happens before a video is marked Ready: storage
+    /// reachability alone cannot prove that a supposed video is playable media.
+    private static bool HasIsoBaseMediaHeader(ReadOnlySpan<byte> header) =>
+        header.Length >= 12 &&
+        header[4] == (byte)'f' &&
+        header[5] == (byte)'t' &&
+        header[6] == (byte)'y' &&
+        header[7] == (byte)'p';
 
     public async Task<SocialOperationResult<SocialPostView>> ToggleReactionAsync(
         SocialPostMutationCommand command,

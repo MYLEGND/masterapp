@@ -250,7 +250,6 @@ struct LegendSocialComposer: View {
                 capturesVideo: type.requiresVideo,
                 captured: { result in
                     addCapturedMedia(result)
-                    stage = .library
                 },
                 cancelled: {
                     stage = .library
@@ -1548,17 +1547,20 @@ struct LegendSocialComposer: View {
             guard type.accepts(media) else {
                 media.discardTemporaryFile()
                 mediaSelectionError = type.requiresVideo
-                    ? "A Hac can only contain a video."
+                    ? "A Hac can only contain a playable video."
                     : "The captured media is not available for this update."
+                stage = .library
                 return
             }
             let previous = selectedMedia
             selectedMedia = [media]
             previous.forEach { $0.discardTemporaryFile() }
             mediaSelectionError = nil
+            stage = .library
 
         case .failure:
             mediaSelectionError = "The captured media could not be prepared. Your draft was kept intact."
+            stage = .library
         }
     }
 
@@ -2212,13 +2214,10 @@ private enum LegendSocialMediaDraft: Identifiable {
         return .image(UUID(), data, "image/jpeg", "legend-camera.jpg", nil)
     }
 
-    static func video(from sourceURL: URL) throws -> LegendSocialMediaDraft {
-        let representation = videoRepresentation(for: sourceURL)
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("legend-camera-\(UUID().uuidString)")
-            .appendingPathExtension(sourceURL.pathExtension)
-        try FileManager.default.copyItem(at: sourceURL, to: destination)
-        return .video(UUID(), destination, representation.mimeType, representation.fileName, nil)
+    static func video(from sourceURL: URL) async throws -> LegendSocialMediaDraft {
+        let preparedURL = try await LegendSocialVideoPreparation
+            .prepareForPublication(from: sourceURL)
+        return .video(UUID(), preparedURL, "video/mp4", "legend-video.mp4", nil)
     }
 
     static func image(
@@ -2239,17 +2238,14 @@ private enum LegendSocialMediaDraft: Identifiable {
     static func video(
         from sourceURL: URL,
         sourceAssetIdentifier: String
-    ) throws -> LegendSocialMediaDraft {
-        let representation = videoRepresentation(for: sourceURL)
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("legend-library-\(UUID().uuidString)")
-            .appendingPathExtension(sourceURL.pathExtension)
-        try FileManager.default.copyItem(at: sourceURL, to: destination)
+    ) async throws -> LegendSocialMediaDraft {
+        let destination = try await LegendSocialVideoPreparation
+            .prepareForPublication(from: sourceURL)
         return .video(
             UUID(),
             destination,
-            representation.mimeType,
-            representation.fileName,
+            "video/mp4",
+            "legend-video.mp4",
             sourceAssetIdentifier)
     }
 
@@ -2263,16 +2259,6 @@ private enum LegendSocialMediaDraft: Identifiable {
         return ("image/jpeg", "legend-image.jpg")
     }
 
-    private static func videoRepresentation(
-        for fileURL: URL
-    ) -> (mimeType: String, fileName: String) {
-        let extensionValue = fileURL.pathExtension.lowercased()
-        switch extensionValue {
-        case "mov": return ("video/quicktime", "legend-video.mov")
-        case "webm": return ("video/webm", "legend-video.webm")
-        default: return ("video/mp4", "legend-video.mp4")
-        }
-    }
 }
 
 private enum LegendSocialMediaLoadingError: Error {
@@ -2706,13 +2692,14 @@ extension LegendSocialCameraViewController: AVCapturePhotoCaptureDelegate, AVCap
             return
         }
 
-        do {
-            let draft = try LegendSocialMediaDraft.video(from: outputFileURL)
-            try? FileManager.default.removeItem(at: outputFileURL)
-            finish(with: .success(draft))
-        } catch {
-            try? FileManager.default.removeItem(at: outputFileURL)
-            finish(with: .failure(error))
+        Task { [weak self] in
+            defer { try? FileManager.default.removeItem(at: outputFileURL) }
+            do {
+                let draft = try await LegendSocialMediaDraft.video(from: outputFileURL)
+                self?.finish(with: .success(draft))
+            } catch {
+                self?.finish(with: .failure(error))
+            }
         }
     }
 }
@@ -3159,7 +3146,7 @@ final class LegendPhotoLibraryAccess: NSObject, ObservableObject {
             throw LegendSocialMediaLoadingError.unsupported
         }
         let sourceURL = try await videoURL(for: asset)
-        return try LegendSocialMediaDraft.video(
+        return try await LegendSocialMediaDraft.video(
             from: sourceURL,
             sourceAssetIdentifier: descriptor.id)
     }
