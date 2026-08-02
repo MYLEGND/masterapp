@@ -7044,6 +7044,14 @@ private struct LegendProfileGridTile: View {
                     )
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .clipped()
+                } else if let video = post.media.first(where: \.isVideo) {
+                    LegendSocialVideoPoster(
+                        media: video,
+                        social: social,
+                        contentMode: .fill,
+                        usesRoundedCorners: false)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
                 } else {
                     LinearGradient(
                         colors: [

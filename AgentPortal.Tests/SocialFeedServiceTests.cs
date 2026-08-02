@@ -630,6 +630,58 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task HacCreatorSelectedPreview_IsStoredReadAndDeletedWithItsVideo()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client("hac-preview-client", "Hac", "Preview");
+        db.ClientProfiles.Add(client);
+        await db.SaveChangesAsync();
+
+        var storage = new InMemoryTestSocialMediaStorage();
+        var service = CreateService(db, storage);
+        var videoBytes = MinimalMp4();
+        var previewBytes = new byte[] { 0xFF, 0xD8, 0xFF, 0xD9 };
+        await using var video = new MemoryStream(videoBytes);
+        await using var preview = new MemoryStream(previewBytes);
+
+        var created = await service.CreateMediaPostAsync(
+            new CreateSocialMediaPostCommand(
+                ClientActor(client),
+                SocialPostContentTypes.Reel,
+                "A Hac with a selected poster.",
+                [new SocialMediaUpload("hac.mp4", video.Length, video, null)],
+                PreviewImage: new SocialMediaUpload(
+                    "legend-hac-preview.jpg",
+                    preview.Length,
+                    preview,
+                    null)));
+
+        Assert.True(created.Succeeded);
+        var media = Assert.Single(created.Value!.Media);
+        Assert.True(media.HasPreviewImage);
+        Assert.Equal(2, storage.StoredMediaCount);
+
+        var retrievedPreview = await service.GetMediaPreviewAsync(
+            ClientActor(client),
+            media.Id);
+
+        Assert.True(retrievedPreview.Succeeded);
+        Assert.Equal("image/jpeg", retrievedPreview.Value!.MimeType);
+        await using (var received = retrievedPreview.Value.Content)
+        using (var buffer = new MemoryStream())
+        {
+            await received.CopyToAsync(buffer);
+            Assert.Equal(previewBytes, buffer.ToArray());
+        }
+
+        var deleted = await service.DeletePostAsync(
+            new SocialPostMutationCommand(ClientActor(client), created.Value.Id));
+
+        Assert.True(deleted.Succeeded);
+        Assert.Equal(0, storage.StoredMediaCount);
+    }
+
+    [Fact]
     public async Task ActiveStory_IsReturnedThroughTheHomeFeedWithReadableMedia()
     {
         await using var db = ControllerTestHelpers.BuildDb();
