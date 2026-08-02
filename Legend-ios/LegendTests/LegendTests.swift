@@ -29,8 +29,6 @@ final class LegendTests: XCTestCase {
                 profileID: UUID(),
                 displayName: "Activity User"),
             messaging: MobileMessagingSummary(unreadCount: 3, conversationCount: 3),
-            subscription: nil,
-            entitlement: nil,
             journey: nil,
             upcomingAppointments: [
                 MobileUpcomingAppointment(
@@ -43,12 +41,6 @@ final class LegendTests: XCTestCase {
                     id: UUID(), title: "Review policy", status: "Open", priority: "High", dueDateUTC: date(2, 10)),
                 MobileActionItem(
                     id: UUID(), title: "Past due task", status: "Open", priority: "High", dueDateUTC: date(1, 10))
-            ],
-            notifications: [
-                MobileBillingNotification(
-                    id: UUID(), kind: "Payment", subject: "Membership payment received", occurredUTC: date(2, 8)),
-                MobileBillingNotification(
-                    id: UUID(), kind: "Payment", subject: "Yesterday's notice", occurredUTC: date(1, 8))
             ],
             dailyScripture: MobileDailyScripture(
                 date: "2026-08-02", reference: "Psalm 23", translation: "KJV", verses: [], text: ""),
@@ -76,7 +68,7 @@ final class LegendTests: XCTestCase {
 
         XCTAssertEqual(
             Set(projection.today.map(\.source)),
-            [.account, .action, .appointment, .billing, .calendar])
+            [.account, .action, .appointment, .calendar])
         XCTAssertEqual(
             Set(projection.pastDue.map(\.source)),
             [.action, .reminder])

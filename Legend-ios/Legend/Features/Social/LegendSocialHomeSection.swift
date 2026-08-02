@@ -56,7 +56,10 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 social: social)
         }
         .sheet(isPresented: $isPresentingActivity) {
-            LegendDailyActivitySheet(activity: activity)
+            LegendDailyActivitySheet(
+                activity: activity,
+                currentIdentity: session.actor.identity,
+                social: social)
         }
         .sheet(item: $postInsight) { insight in
             LegendPostInsightsSheet(insight: insight)

@@ -56,6 +56,32 @@ struct MobileConfiguration: Equatable, Sendable {
     let redirectScheme: String?
     let scope: String?
     let audience: String?
+    let agentOnlineAccountURL: URL?
+    let clientOnlineAccountURL: URL?
+
+    init(
+        bundleIdentifier: String,
+        apiBaseURL: URL?,
+        authorizationEndpoint: URL?,
+        tokenEndpoint: URL?,
+        clientID: String?,
+        redirectScheme: String?,
+        scope: String?,
+        audience: String?,
+        agentOnlineAccountURL: URL? = nil,
+        clientOnlineAccountURL: URL? = nil
+    ) {
+        self.bundleIdentifier = bundleIdentifier
+        self.apiBaseURL = apiBaseURL
+        self.authorizationEndpoint = authorizationEndpoint
+        self.tokenEndpoint = tokenEndpoint
+        self.clientID = clientID
+        self.redirectScheme = redirectScheme
+        self.scope = scope
+        self.audience = audience
+        self.agentOnlineAccountURL = agentOnlineAccountURL
+        self.clientOnlineAccountURL = clientOnlineAccountURL
+    }
 
     static var current: MobileConfiguration {
         MobileConfigurationProvider().load()
@@ -101,7 +127,11 @@ struct MobileConfigurationProvider: Sendable {
             clientID: stringValue(for: .clientID),
             redirectScheme: stringValue(for: .redirectScheme),
             scope: stringValue(for: .scope),
-            audience: stringValue(for: .audience)
+            audience: stringValue(for: .audience),
+            agentOnlineAccountURL: urlValue(
+                forInfoDictionaryKey: "LegendAgentOnlineAccountURL"),
+            clientOnlineAccountURL: urlValue(
+                forInfoDictionaryKey: "LegendClientOnlineAccountURL")
         )
     }
 
@@ -116,14 +146,43 @@ struct MobileConfigurationProvider: Sendable {
 
     private func urlValue(for key: MobileConfigurationKey) -> URL? {
         guard key.requiresHTTPSURL,
-              let value = stringValue(for: key),
-              let url = URL(string: value),
+              let value = stringValue(for: key) else {
+            return nil
+        }
+        return httpsURL(from: value)
+    }
+
+    private func urlValue(forInfoDictionaryKey key: String) -> URL? {
+        guard let value = bundle.object(forInfoDictionaryKey: key) as? String else {
+            return nil
+        }
+        return httpsURL(from: value)
+    }
+
+    private func httpsURL(from value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard MobileConfiguration.isConfigured(trimmed),
+              let url = URL(string: trimmed),
               let scheme = url.scheme?.lowercased(),
               scheme == "https",
               url.host != nil else {
             return nil
         }
         return url
+    }
+}
+
+extension MobileConfiguration {
+    /// The mobile app never owns a commercial account flow. These signed-in
+    /// browser destinations are configured per web application and kept out of
+    /// the mobile API contract, analytics, and local cache.
+    func onlineAccountURL(for participantType: ParticipantType) -> URL? {
+        switch participantType {
+        case .agent:
+            agentOnlineAccountURL
+        case .client:
+            clientOnlineAccountURL
+        }
     }
 }
 

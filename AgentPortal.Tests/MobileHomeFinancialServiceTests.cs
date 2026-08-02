@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Domain.Billing;
 using Domain.Entities;
 using Domain.FinancialIntelligence;
 using Domain.JourneyCircles;
@@ -54,27 +53,11 @@ public sealed class MobileHomeFinancialServiceTests
             MockBehavior.Strict);
         var financialOperatingSystem = new Mock<
             IMobileFinancialOperatingSystemProjectionService>(MockBehavior.Strict);
-        var entitlements = new Mock<IBillingEntitlementService>(MockBehavior.Strict);
-        entitlements
-            .Setup(service => service.EvaluateAsync(
-                It.IsAny<BillingEntitlementEvaluationRequest>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BillingEntitlementEvaluationResult(
-                ClientEntitlementStatus.Active,
-                DateTime.UtcNow,
-                DateTime.UtcNow.AddDays(30),
-                null,
-                null,
-                ClientEntitlementSourceType.Subscription,
-                "test",
-                "Active"));
-
         var service = new MobileHomeService(
             db,
             messaging.Object,
             journey.Object,
             financialIntelligence.Object,
-            entitlements.Object,
             financialOperatingSystem.Object,
             new Infrastructure.DailyScripture.DailyScriptureService());
 
@@ -87,7 +70,6 @@ public sealed class MobileHomeFinancialServiceTests
         Assert.NotNull(result.Home);
         messaging.VerifyAll();
         journey.VerifyAll();
-        entitlements.VerifyAll();
         financialIntelligence.VerifyNoOtherCalls();
         financialOperatingSystem.VerifyNoOtherCalls();
     }
@@ -284,7 +266,6 @@ public sealed class MobileHomeFinancialServiceTests
             new Mock<IMessagingService>().Object,
             new Mock<IJourneyCirclesService>().Object,
             financialIntelligence.Object,
-            new Mock<IBillingEntitlementService>().Object,
             operatingSystemService.Object,
             new Mock<Infrastructure.DailyScripture.IDailyScriptureService>().Object);
     }

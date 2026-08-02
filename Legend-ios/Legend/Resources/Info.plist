@@ -31,6 +31,8 @@
 	<string>1</string>
 	<key>LegendAPIBaseURL</key>
 	<string>$(LEGEND_API_BASE_URL)</string>
+	<key>LegendAgentOnlineAccountURL</key>
+	<string>$(LEGEND_AGENT_ONLINE_ACCOUNT_URL)</string>
 	<key>LegendAuthAudience</key>
 	<string>$(LEGEND_AUTH_AUDIENCE)</string>
 	<key>LegendAuthClientID</key>
@@ -41,6 +43,8 @@
 	<string>$(LEGEND_AUTH_SCOPE)</string>
 	<key>LegendAuthorizationEndpoint</key>
 	<string>$(LEGEND_AUTHORIZATION_ENDPOINT)</string>
+	<key>LegendClientOnlineAccountURL</key>
+	<string>$(LEGEND_CLIENT_ONLINE_ACCOUNT_URL)</string>
 	<key>LegendTokenEndpoint</key>
 	<string>$(LEGEND_TOKEN_ENDPOINT)</string>
 	<key>LSApplicationQueriesSchemes</key>

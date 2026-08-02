@@ -496,6 +496,26 @@ final class LegendDailyActivityStore: ObservableObject {
         planner.dismissFailure()
     }
 
+    /// Resolve Activity links from the same loaded social snapshot that created
+    /// the item. The Activity layer does not create a second post or profile
+    /// cache merely to support navigation.
+    func post(for id: UUID) -> MobileSocialPost? {
+        guard let snapshot = socialSnapshot else { return nil }
+        return (snapshot.posts + snapshot.hacs + snapshot.stories)
+            .first { $0.id == id }
+    }
+
+    func profileRoute(for author: MobileSocialAuthor) -> LegendPublicProfileRoute {
+        let matchingPost = socialSnapshot.flatMap { snapshot in
+            (snapshot.posts + snapshot.hacs + snapshot.stories)
+                .first { $0.author.identity == author.identity }
+        }
+        return LegendPublicProfileRoute(
+            profile: author,
+            isFollowing: matchingPost?.followedByCurrentActor ?? false,
+            isFollowRequestPending: matchingPost?.followRequestPending ?? false)
+    }
+
     private func observeSources() {
         home.$state
             .sink { [weak self] _ in self?.rebuild() }
@@ -632,8 +652,13 @@ struct LegendTodayActivitySummaryPill: View {
 
 struct LegendDailyActivitySheet: View {
     @ObservedObject var activity: LegendDailyActivityStore
+    let currentIdentity: LogicalParticipantIdentity
+    @ObservedObject var social: MobileSocialStore
     @Environment(\.dismiss) private var dismiss
     @State private var showsPastDue = false
+    @State private var selectedPost: MobileSocialPost?
+    @State private var selectedProfile: LegendPublicProfileRoute?
+    @State private var selectedDetail: LegendDailyActivityItem?
 
     var body: some View {
         NavigationStack {
@@ -672,6 +697,10 @@ struct LegendDailyActivitySheet: View {
                                 isCompleted: activity.isCompleted(item),
                                 toggleCompletion: {
                                     activity.toggleCompletion(for: item)
+                                },
+                                openEvent: { openEvent(item) },
+                                openProfile: item.actor.map { actor in
+                                    { openProfile(actor) }
                                 })
                         }
                     }
@@ -681,6 +710,44 @@ struct LegendDailyActivitySheet: View {
             }
             .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(
+                isPresented: Binding(
+                    get: { selectedPost != nil },
+                    set: { if !$0 { selectedPost = nil } }
+                )
+            ) {
+                if let selectedPost {
+                    LegendPostDetailView(
+                        post: selectedPost,
+                        currentIdentity: currentIdentity,
+                        social: social)
+                }
+            }
+            .navigationDestination(
+                isPresented: Binding(
+                    get: { selectedProfile != nil },
+                    set: { if !$0 { selectedProfile = nil } }
+                )
+            ) {
+                if let selectedProfile {
+                    LegendPublicProfileView(
+                        profile: selectedProfile.profile,
+                        currentIdentity: currentIdentity,
+                        social: social,
+                        isFollowing: selectedProfile.isFollowing,
+                        isFollowRequestPending: selectedProfile.isFollowRequestPending)
+                }
+            }
+            .navigationDestination(
+                isPresented: Binding(
+                    get: { selectedDetail != nil },
+                    set: { if !$0 { selectedDetail = nil } }
+                )
+            ) {
+                if let selectedDetail {
+                    LegendDailyActivityDetailView(item: selectedDetail)
+                }
+            }
         }
         .alert(
             "Apple planner unavailable",
@@ -699,6 +766,25 @@ struct LegendDailyActivitySheet: View {
             await activity.refreshApplePlanner()
         }
         .legendNextSheetChrome(detents: [.large])
+    }
+
+    private func openProfile(_ author: MobileSocialAuthor) {
+        selectedProfile = activity.profileRoute(for: author)
+    }
+
+    private func openEvent(_ item: LegendDailyActivityItem) {
+        if let sourcePostID = item.sourcePostID,
+           let post = activity.post(for: sourcePostID) {
+            selectedPost = post
+            return
+        }
+
+        if let actor = item.actor {
+            openProfile(actor)
+            return
+        }
+
+        selectedDetail = item
     }
 
     private var activityModePicker: some View {
@@ -840,46 +926,47 @@ private struct LegendDailyActivityRow: View {
     let item: LegendDailyActivityItem
     let isCompleted: Bool
     let toggleCompletion: () -> Void
+    let openEvent: () -> Void
+    let openProfile: (() -> Void)?
 
     var body: some View {
         LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
             HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
-                Image(systemName: item.source.systemImage)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(toneColor)
-                    .frame(width: 38, height: 38)
-                    .background(toneColor.opacity(0.12), in: Circle())
+                sourceAvatar
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: LegendNextSpacing.micro) {
-                        Text(item.source.title.uppercased())
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.7)
-                            .foregroundStyle(toneColor)
-                        if item.isPastDue {
-                            Text("PAST DUE")
+                Button(action: openEvent) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: LegendNextSpacing.micro) {
+                            Text(item.source.title.uppercased())
                                 .font(.caption2.weight(.bold))
-                                .foregroundStyle(LegendNextColor.danger)
+                                .tracking(0.7)
+                                .foregroundStyle(toneColor)
+                            if item.isPastDue {
+                                Text("PAST DUE")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(LegendNextColor.danger)
+                            }
                         }
+
+                        Text(item.title)
+                            .font(LegendNextTypography.bodyEmphasis)
+                            .foregroundStyle(LegendNextColor.textPrimary)
+                            .strikethrough(isCompleted, color: LegendNextColor.textSecondary)
+                            .lineLimit(2)
+
+                        Text(item.detail)
+                            .font(LegendNextTypography.caption)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                            .lineLimit(2)
+
+                        Text(item.occurredAt, format: .dateTime.hour().minute())
+                            .font(.caption2)
+                            .foregroundStyle(LegendNextColor.textTertiary)
                     }
-
-                    Text(item.title)
-                        .font(LegendNextTypography.bodyEmphasis)
-                        .foregroundStyle(LegendNextColor.textPrimary)
-                        .strikethrough(isCompleted, color: LegendNextColor.textSecondary)
-                        .lineLimit(2)
-
-                    Text(item.detail)
-                        .font(LegendNextTypography.caption)
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                        .lineLimit(2)
-
-                    Text(item.occurredAt, format: .dateTime.hour().minute())
-                        .font(.caption2)
-                        .foregroundStyle(LegendNextColor.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                Spacer(minLength: LegendNextSpacing.micro)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open \(item.title)")
 
                 if item.isCompletable {
                     Button(action: toggleCompletion) {
@@ -895,10 +982,35 @@ private struct LegendDailyActivityRow: View {
                     .accessibilityLabel(isCompleted
                         ? "Mark \(item.title) incomplete"
                         : "Mark \(item.title) complete")
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(LegendNextColor.textTertiary)
+                        .padding(.top, 4)
                 }
             }
         }
         .opacity(isCompleted ? 0.66 : 1)
+    }
+
+    @ViewBuilder
+    private var sourceAvatar: some View {
+        if let actor = item.actor, let openProfile {
+            Button(action: openProfile) {
+                LegendProfileAvatar(
+                    avatar: actor.avatar,
+                    displayName: actor.displayName,
+                    size: 38)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open \(actor.displayName)'s profile")
+        } else {
+            Image(systemName: item.source.systemImage)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(toneColor)
+                .frame(width: 38, height: 38)
+                .background(toneColor.opacity(0.12), in: Circle())
+        }
     }
 
     private var toneColor: Color {
@@ -911,5 +1023,56 @@ private struct LegendDailyActivityRow: View {
         case .warning: return LegendNextColor.warning
         case .danger: return LegendNextColor.danger
         }
+    }
+}
+
+private struct LegendDailyActivityDetailView: View {
+    let item: LegendDailyActivityItem
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        LegendScrollView(tracksNavigationChrome: false) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                Button {
+                    dismiss()
+                } label: {
+                    Label("Back to activity", systemImage: "chevron.left")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.royal)
+                }
+                .buttonStyle(.plain)
+
+                LegendNextSurface(style: .elevated, padding: LegendNextSpacing.md) {
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                        Label(item.source.title.uppercased(), systemImage: item.source.systemImage)
+                            .font(LegendNextTypography.eyebrow)
+                            .tracking(0.8)
+                            .foregroundStyle(LegendNextColor.gold)
+
+                        Text(item.title)
+                            .font(LegendNextTypography.title)
+                            .foregroundStyle(LegendNextColor.textPrimary)
+
+                        Text(item.detail)
+                            .font(LegendNextTypography.body)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        LegendNextDivider()
+
+                        Label(
+                            item.occurredAt.formatted(
+                                .dateTime.weekday(.wide).month(.wide).day().hour().minute()),
+                            systemImage: "clock")
+                            .font(LegendNextTypography.caption)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                }
+            }
+            .padding(LegendNextSpacing.md)
+            .padding(.bottom, LegendNextSpacing.xl)
+        }
+        .background(LegendNextCanvas())
+        .toolbar(.hidden, for: .navigationBar)
     }
 }

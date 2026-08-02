@@ -84,7 +84,7 @@ private struct RoleSelectionView: View {
             ScrollView {
                 VStack(spacing: LegendNextSpacing.lg) {
                     LegendNextHero(
-                        eyebrow: "Legend membership",
+                        eyebrow: "Legend account",
                         title: "Choose your experience",
                         detail: "Choose the account you want to use. Legend will reopen this account next time."
                     )

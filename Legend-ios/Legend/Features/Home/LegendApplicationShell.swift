@@ -5765,6 +5765,11 @@ private struct LegendAccountView: View {
                         }
                     }
 
+                    LegendProfileSettingsSection(title: "Online account") {
+                        LegendOnlineAccountSettingsRow(
+                            participantType: currentSession.actor.identity.participantType)
+                    }
+
                     LegendProfileSettingsSection(title: "Privacy") {
                         VStack(spacing: 0) {
                             LegendProfileSettingsRow(
@@ -7331,6 +7336,36 @@ private struct LegendProfileSettingsSection<Content: View>: View {
             LegendNextSurface(style: .profileSettings, padding: LegendNextSpacing.xs) {
                 content
             }
+        }
+    }
+}
+
+/// One neutral handoff to the account-specific web application. This mobile
+/// surface has no commerce state, price, purchase, payment, or notice data.
+private struct LegendOnlineAccountSettingsRow: View {
+    let participantType: ParticipantType
+
+    private var destination: URL? {
+        MobileConfiguration.current.onlineAccountURL(for: participantType)
+    }
+
+    var body: some View {
+        if let destination {
+            Link(destination: destination) {
+                LegendProfileSettingsRow(
+                    title: "Manage online account",
+                    detail: "Open your secure Legend account in the browser",
+                    systemImage: "safari",
+                    showsChevron: true)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens your Legend web account outside the app")
+        } else {
+            LegendProfileSettingsRow(
+                title: "Online account unavailable",
+                detail: "This build is missing its secure web account address",
+                systemImage: "exclamationmark.triangle",
+                showsChevron: false)
         }
     }
 }

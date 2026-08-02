@@ -420,12 +420,9 @@ private struct BootstrapFixture {
                 profileID: profileID,
                 displayName: "Bootstrap User"),
             messaging: MobileMessagingSummary(unreadCount: 0, conversationCount: 0),
-            subscription: nil,
-            entitlement: nil,
             journey: nil,
             upcomingAppointments: [],
             actions: [],
-            notifications: [],
             dailyScripture: MobileDailyScripture(
                 date: "2026-07-29",
                 reference: "Psalm 1:1",

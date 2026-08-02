@@ -3,12 +3,9 @@ import Foundation
 struct MobileHomeResponse: Codable, Equatable, Sendable {
     let identity: MobileHomeIdentity
     let messaging: MobileMessagingSummary
-    let subscription: MobileSubscriptionSummary?
-    let entitlement: MobileEntitlementSummary?
     let journey: MobileJourneySummary?
     let upcomingAppointments: [MobileUpcomingAppointment]
     let actions: [MobileActionItem]
-    let notifications: [MobileBillingNotification]
     let dailyScripture: MobileDailyScripture
     let activeClientCount: Int
 }
@@ -38,43 +35,6 @@ struct MobileHomeIdentity: Codable, Equatable, Sendable {
 struct MobileMessagingSummary: Codable, Equatable, Sendable {
     let unreadCount: Int
     let conversationCount: Int
-}
-
-struct MobileSubscriptionSummary: Codable, Equatable, Sendable {
-    let id: UUID
-    let status: String
-    let paymentStanding: String
-    let monthlyAmountCents: Int
-    let currency: String
-    let nextBillingDateUTC: Date?
-    let currentPeriodStartUTC: Date?
-    let currentPeriodEndUTC: Date?
-    let cancelAtPeriodEnd: Bool
-
-    private enum CodingKeys: String, CodingKey {
-        case id, status, paymentStanding, monthlyAmountCents, currency, cancelAtPeriodEnd
-        case nextBillingDateUTC = "nextBillingDateUtc"
-        case currentPeriodStartUTC = "currentPeriodStartUtc"
-        case currentPeriodEndUTC = "currentPeriodEndUtc"
-    }
-
-    var monthlyAmount: Decimal { Decimal(monthlyAmountCents) / 100 }
-}
-
-struct MobileEntitlementSummary: Codable, Equatable, Sendable {
-    let status: String
-    let effectiveUTC: Date?
-    let expirationUTC: Date?
-    let graceOrSuspensionUTC: Date?
-    let reasonCode: String?
-    let summary: String
-
-    private enum CodingKeys: String, CodingKey {
-        case status, reasonCode, summary
-        case effectiveUTC = "effectiveUtc"
-        case expirationUTC = "expirationUtc"
-        case graceOrSuspensionUTC = "graceOrSuspensionUtc"
-    }
 }
 
 struct MobileJourneySummary: Codable, Equatable, Sendable {
@@ -107,18 +67,6 @@ struct MobileActionItem: Codable, Equatable, Identifiable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, title, status, priority
         case dueDateUTC = "dueDateUtc"
-    }
-}
-
-struct MobileBillingNotification: Codable, Equatable, Identifiable, Sendable {
-    let id: UUID
-    let kind: String
-    let subject: String
-    let occurredUTC: Date
-
-    private enum CodingKeys: String, CodingKey {
-        case id, kind, subject
-        case occurredUTC = "occurredUtc"
     }
 }
 

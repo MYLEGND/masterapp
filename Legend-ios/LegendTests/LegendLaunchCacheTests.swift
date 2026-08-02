@@ -350,12 +350,9 @@ final class LegendLaunchCacheTests: XCTestCase {
                 profileID: UUID(),
                 displayName: "Client One"),
             messaging: MobileMessagingSummary(unreadCount: 0, conversationCount: 0),
-            subscription: nil,
-            entitlement: nil,
             journey: nil,
             upcomingAppointments: [],
             actions: [],
-            notifications: [],
             dailyScripture: MobileDailyScripture(
                 date: "2026-07-31",
                 reference: "Psalm 1:1",

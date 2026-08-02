@@ -1,4 +1,3 @@
-using Domain.Billing;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.FinancialIntelligence;
@@ -25,7 +24,7 @@ public interface IMobileHomeService
 
 /// <summary>
 /// Read-only composition layer for the native application. It never owns
-/// profile, subscription, financial, messaging, or Journey Circles state;
+/// profile, financial, messaging, or Journey Circles state;
 /// every value is projected from an existing authoritative service or table.
 /// </summary>
 public sealed class MobileHomeService : IMobileHomeService
@@ -34,7 +33,6 @@ public sealed class MobileHomeService : IMobileHomeService
     private readonly IMessagingService _messaging;
     private readonly IJourneyCirclesService _journeyCircles;
     private readonly IFinancialIntelligenceEvaluationService _financialIntelligence;
-    private readonly IBillingEntitlementService _entitlements;
     private readonly IMobileFinancialOperatingSystemProjectionService _financialOperatingSystem;
     private readonly IDailyScriptureService _dailyScripture;
 
@@ -43,7 +41,6 @@ public sealed class MobileHomeService : IMobileHomeService
         IMessagingService messaging,
         IJourneyCirclesService journeyCircles,
         IFinancialIntelligenceEvaluationService financialIntelligence,
-        IBillingEntitlementService entitlements,
         IMobileFinancialOperatingSystemProjectionService financialOperatingSystem,
         IDailyScriptureService dailyScripture)
     {
@@ -51,7 +48,6 @@ public sealed class MobileHomeService : IMobileHomeService
         _messaging = messaging;
         _journeyCircles = journeyCircles;
         _financialIntelligence = financialIntelligence;
-        _entitlements = entitlements;
         _financialOperatingSystem = financialOperatingSystem;
         _dailyScripture = dailyScripture;
     }
@@ -414,54 +410,12 @@ public sealed class MobileHomeService : IMobileHomeService
         MobileMessagingSummary messaging,
         CancellationToken cancellationToken)
     {
-        var subscription = await _db.ClientSubscriptions
-            .AsNoTracking()
-            .Where(item => item.ClientProfileId == actor.ProfileId)
-            .OrderByDescending(item => item.UpdatedUtc)
-            .Select(item => new MobileSubscription(
-                item.Id,
-                item.Status.ToString(),
-                item.PaymentStanding.ToString(),
-                item.MonthlyAmountCents,
-                item.Currency,
-                item.NextBillingDateUtc,
-                item.CurrentPeriodStartUtc,
-                item.CurrentPeriodEndUtc,
-                item.CancelAtPeriodEnd))
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var entitlement = await _entitlements.EvaluateAsync(
-            new BillingEntitlementEvaluationRequest(
-                actor.ProfileId,
-                BillingEntitlementKeys.ClientAppFullAccess,
-                DateTime.UtcNow),
-            cancellationToken);
-
         var journey = await _journeyCircles.GetDashboardAsync(actor.Actor.UserId, cancellationToken);
         var appointments = await QueryAppointmentsForClientAsync(actor.ProfileId, cancellationToken);
-        var notifications = await _db.ClientBillingNotifications
-            .AsNoTracking()
-            .Where(notification => notification.ClientProfileId == actor.ProfileId)
-            .OrderByDescending(notification => notification.SentUtc ?? notification.NotBeforeUtc)
-            .Take(8)
-            .Select(notification => new MobileBillingNotification(
-                notification.Id,
-                notification.Kind.ToString(),
-                notification.Subject,
-                notification.SentUtc ?? notification.NotBeforeUtc))
-            .ToListAsync(cancellationToken);
 
         return new MobileHome(
             MobileHomeIdentity.From(actor),
             messaging,
-            subscription,
-            new MobileEntitlement(
-                entitlement.Status.ToString(),
-                entitlement.EffectiveUtc,
-                entitlement.ExpirationUtc,
-                entitlement.GraceOrSuspensionUtc,
-                entitlement.ReasonCode,
-                entitlement.Summary),
             new MobileJourneySummary(
                 journey.Profile is not null,
                 journey.Recommendations.Count,
@@ -469,7 +423,6 @@ public sealed class MobileHomeService : IMobileHomeService
                 journey.Requests.Count),
             appointments,
             Array.Empty<MobileActionItem>(),
-            notifications,
             ToMobileDailyScripture(_dailyScripture.GetTodayUtc()),
             0);
     }
@@ -519,11 +472,8 @@ public sealed class MobileHomeService : IMobileHomeService
             MobileHomeIdentity.From(actor),
             messaging,
             null,
-            null,
-            null,
             appointments,
             actions,
-            Array.Empty<MobileBillingNotification>(),
             ToMobileDailyScripture(_dailyScripture.GetTodayUtc()),
             activeClientCount);
     }
@@ -606,12 +556,9 @@ public sealed record MobileAgentLeadsResult(bool Succeeded, string? ErrorCode, s
 public sealed record MobileHome(
     MobileHomeIdentity Identity,
     MobileMessagingSummary Messaging,
-    MobileSubscription? Subscription,
-    MobileEntitlement? Entitlement,
     MobileJourneySummary? Journey,
     IReadOnlyList<MobileUpcomingAppointment> UpcomingAppointments,
     IReadOnlyList<MobileActionItem> Actions,
-    IReadOnlyList<MobileBillingNotification> Notifications,
     MobileDailyScripture DailyScripture,
     int ActiveClientCount);
 
@@ -625,12 +572,9 @@ public sealed record MobileHomeIdentity(string UserId, string ParticipantType, G
 }
 
 public sealed record MobileMessagingSummary(int UnreadCount, int ConversationCount);
-public sealed record MobileSubscription(Guid Id, string Status, string PaymentStanding, int MonthlyAmountCents, string Currency, DateTime? NextBillingDateUtc, DateTime? CurrentPeriodStartUtc, DateTime? CurrentPeriodEndUtc, bool CancelAtPeriodEnd);
-public sealed record MobileEntitlement(string Status, DateTime? EffectiveUtc, DateTime? ExpirationUtc, DateTime? GraceOrSuspensionUtc, string? ReasonCode, string Summary);
 public sealed record MobileJourneySummary(bool HasProfile, int RecommendationCount, int ConnectedPeerCount, int PendingRequestCount);
 public sealed record MobileUpcomingAppointment(Guid Id, DateTime StartUtc, DateTime? EndUtc, string Status);
 public sealed record MobileActionItem(Guid Id, string Title, string Status, string Priority, DateTime? DueDateUtc);
-public sealed record MobileBillingNotification(Guid Id, string Kind, string Subject, DateTime OccurredUtc);
 public sealed record MobileDailyScripture(string Date, string Reference, string Translation, IReadOnlyList<string> Verses, string Text);
 public sealed record MobileFinancialSnapshot(
     MobileFinancialPosition? Position,
