@@ -1759,9 +1759,12 @@ public sealed class SocialFeedService : ISocialFeedService
         CancellationToken cancellationToken)
     {
         var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+        var actorUserIds = await AuthorUserIdFormsAsync(actorKey, cancellationToken);
         var ownPostIds = await _db.SocialPosts
             .AsNoTracking()
-            .Where(post => post.AuthorUserId == actorKey.UserId && post.AuthorParticipantType == actorKey.ParticipantType && post.DeletedUtc == null)
+            .Where(post => actorUserIds.Contains(post.AuthorUserId) &&
+                           post.AuthorParticipantType == actorKey.ParticipantType &&
+                           post.DeletedUtc == null)
             .Select(post => post.Id)
             .ToListAsync(cancellationToken);
         if (ownPostIds.Count == 0)
@@ -1770,20 +1773,22 @@ public sealed class SocialFeedService : ISocialFeedService
         var reactions = await _db.SocialPostReactions
             .AsNoTracking()
             .Where(reaction => ownPostIds.Contains(reaction.SocialPostId) &&
-                               (reaction.ActorUserId != actorKey.UserId || reaction.ActorParticipantType != actorKey.ParticipantType))
+                               (!actorUserIds.Contains(reaction.ActorUserId) ||
+                                reaction.ActorParticipantType != actorKey.ParticipantType))
             .OrderByDescending(reaction => reaction.CreatedUtc)
             .Take(MaximumActivityItems)
             .ToListAsync(cancellationToken);
         var comments = await _db.SocialPostComments
             .AsNoTracking()
             .Where(comment => ownPostIds.Contains(comment.SocialPostId) && comment.DeletedUtc == null &&
-                              (comment.AuthorUserId != actorKey.UserId || comment.AuthorParticipantType != actorKey.ParticipantType))
+                              (!actorUserIds.Contains(comment.AuthorUserId) ||
+                               comment.AuthorParticipantType != actorKey.ParticipantType))
             .OrderByDescending(comment => comment.CreatedUtc)
             .Take(MaximumActivityItems)
             .ToListAsync(cancellationToken);
         var follows = await _db.SocialFollows
             .AsNoTracking()
-            .Where(follow => follow.FollowedUserId == actorKey.UserId &&
+            .Where(follow => actorUserIds.Contains(follow.FollowedUserId) &&
                              follow.FollowedParticipantType == actorKey.ParticipantType &&
                              follow.Status == SocialFollowStatuses.Accepted)
             .OrderByDescending(follow => follow.CreatedUtc)
@@ -1925,7 +1930,9 @@ public sealed class SocialFeedService : ISocialFeedService
 
         return profile is null
             ? [key.UserId]
-            : ClientIdentityForms(profile.ClientUserId, profile.ExternalIdentityObjectId).ToArray();
+            : LogicalParticipantIdentity.ClientUserIdForms(
+                profile.ClientUserId,
+                profile.ExternalIdentityObjectId);
     }
 
     /// <summary>
@@ -2029,7 +2036,9 @@ public sealed class SocialFeedService : ISocialFeedService
             .ToArrayAsync(cancellationToken);
         foreach (var client in clients)
         {
-            foreach (var userId in ClientIdentityForms(client.ClientUserId, client.ExternalIdentityObjectId))
+            foreach (var userId in LogicalParticipantIdentity.ClientUserIdForms(
+                         client.ClientUserId,
+                         client.ExternalIdentityObjectId))
                 active.Add(AuthorKey.From(userId, MessagingParticipantTypes.Client));
         }
 
@@ -2097,7 +2106,9 @@ public sealed class SocialFeedService : ISocialFeedService
                     canonicalUserId, MessagingParticipantTypes.Client, profile.Id, name,
                     Phone: profile.Phone);
 
-                foreach (var identityForm in ClientIdentityForms(profile.ClientUserId, profile.ExternalIdentityObjectId))
+                foreach (var identityForm in LogicalParticipantIdentity.ClientUserIdForms(
+                             profile.ClientUserId,
+                             profile.ExternalIdentityObjectId))
                     result[AuthorKey.From(identityForm, MessagingParticipantTypes.Client)] = author;
             }
         }
@@ -2134,20 +2145,6 @@ public sealed class SocialFeedService : ISocialFeedService
         PublicPhone = mobileProfile.IsPhoneVisible ? author.Phone : null,
         IsPrivate = mobileProfile.IsPrivate
     };
-
-    /// <summary>
-    /// Every normalized identity form a client profile can legitimately be stored under.
-    /// </summary>
-    private static IEnumerable<string> ClientIdentityForms(string? clientUserId, string? externalIdentityObjectId)
-    {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var candidate in new[] { clientUserId, externalIdentityObjectId })
-        {
-            var normalized = Normalize(candidate);
-            if (!string.IsNullOrWhiteSpace(normalized) && seen.Add(normalized))
-                yield return normalized;
-        }
-    }
 
     private static SocialAuthor ToAuthor(SocialFeedActor actor) => new(
         Normalize(actor.Identity.UserId),

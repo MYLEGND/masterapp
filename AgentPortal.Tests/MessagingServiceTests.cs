@@ -450,6 +450,67 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task ActivityNotifications_ResolveBothClientIdentityForms()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: false, grantClientToAgent: false);
+        var client = await db.ClientProfiles.SingleAsync();
+        client.ExternalIdentityObjectId = "client-azure-object-id";
+        db.MobileActivityNotifications.Add(new MobileActivityNotification
+        {
+            Id = Guid.NewGuid(),
+            RecipientUserId = client.ClientUserId,
+            RecipientParticipantType = MessagingParticipantTypes.Client,
+            Kind = "ControlledResourceApproved",
+            Title = "Legend verification approved",
+            Detail = "Your Legend verification was approved.",
+            OccurredUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var result = await CreateService(db).ListActivityNotificationsAsync(
+            new MessagingActor(client.ExternalIdentityObjectId, MessagingParticipantTypes.Client));
+
+        Assert.True(result.Succeeded);
+        var notification = Assert.Single(result.Notifications);
+        Assert.Equal("ControlledResourceApproved", notification.Kind);
+    }
+
+    [Fact]
+    public async Task ClientAzureIdentity_ReceivesLegacyConversationWithoutCreatingANewThread()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var client = await db.ClientProfiles.SingleAsync();
+        client.ExternalIdentityObjectId = "client-azure-object-id";
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var started = await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                new MessagingActor("agent-1", MessagingParticipantTypes.Agent),
+                client.ClientUserId,
+                MessagingParticipantTypes.Client,
+                InitialMessageBody: "Your Legend update is ready."));
+
+        var azureClient = new MessagingActor(
+            client.ExternalIdentityObjectId,
+            MessagingParticipantTypes.Client);
+        var inbox = await service.ListConversationsAsync(
+            azureClient,
+            new MessagingConversationListQuery());
+        var detail = await service.GetConversationAsync(
+            azureClient,
+            started.Conversation!.Id);
+
+        Assert.True(started.Succeeded);
+        Assert.True(inbox.Succeeded);
+        Assert.Single(inbox.Conversations);
+        Assert.True(detail.Succeeded);
+        Assert.Single(detail.Conversation!.Messages);
+    }
+
+    [Fact]
     public async Task MessageTranslation_CachesHaitianCreoleWithoutReplacingTheOriginalMessage()
     {
         await using var db = ControllerTestHelpers.BuildDb();

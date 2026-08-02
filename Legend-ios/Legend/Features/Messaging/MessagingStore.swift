@@ -81,12 +81,15 @@ final class MessagingStore: ObservableObject {
         }
         Task {
             _ = await loadIfNeeded()
-            await refreshActivityNotifications()
         }
     }
 
     func loadIfNeeded() async -> MobileStoreLoadResult {
-        hasCachedConversations ? .loaded : await requestConversationList(preservingCachedValue: false)
+        let result = hasCachedConversations
+            ? MobileStoreLoadResult.loaded
+            : await requestConversationList(preservingCachedValue: false)
+        await refreshActivityNotifications()
+        return result
     }
 
     func refresh() async -> MobileStoreLoadResult {

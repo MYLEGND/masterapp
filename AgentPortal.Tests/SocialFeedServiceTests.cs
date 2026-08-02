@@ -94,6 +94,52 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task Activity_UsesAllStoredClientIdentityFormsForTheSamePerson()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "client-legacy-id",
+            ExternalIdentityObjectId = "client-azure-object-id",
+            FirstName = "Owner",
+            LastName = "Client",
+            Email = "owner@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        };
+        var peer = Client("client-peer-id", "Peer", "Client");
+        db.ClientProfiles.AddRange(owner, peer);
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var legacyOwner = new SocialFeedActor(
+            new MessagingActor(owner.ClientUserId, MessagingParticipantTypes.Client),
+            owner.Id,
+            "Owner Client");
+        var azureOwner = new SocialFeedActor(
+            new MessagingActor(owner.ExternalIdentityObjectId!, MessagingParticipantTypes.Client),
+            owner.Id,
+            "Owner Client");
+        var peerActor = ClientActor(peer);
+
+        var post = await service.CreatePostAsync(new CreateSocialPostCommand(
+            legacyOwner,
+            SocialPostContentTypes.Post,
+            "A legacy profile update"));
+        var reaction = await service.ToggleReactionAsync(
+            new SocialPostMutationCommand(peerActor, post.Value!.Id));
+
+        var feed = await service.GetFeedAsync(azureOwner);
+
+        Assert.True(post.Succeeded);
+        Assert.True(reaction.Succeeded);
+        Assert.True(feed.Succeeded);
+        var activity = Assert.Single(feed.Value!.Activity);
+        Assert.Equal("reaction", activity.Kind);
+        Assert.Equal(peer.ClientUserId, activity.Actor.UserId);
+    }
+
+    [Fact]
     public async Task FeedVisibility_ReusesTheActiveClientMessagingAuthority()
     {
         await using var db = ControllerTestHelpers.BuildDb();

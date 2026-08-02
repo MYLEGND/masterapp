@@ -57,6 +57,42 @@ private enum LegendAppTab: String, Identifiable {
     }
 }
 
+/// Local read state is intentionally keyed by the authenticated, typed Legend
+/// identity. Account activity remains recipient-scoped on the server; this only
+/// controls the in-app badge after that recipient has opened Activity.
+enum LegendAccountActivityState {
+    static func unreadCount(
+        for notifications: [MobileActivityNotification],
+        identity: LogicalParticipantIdentity
+    ) -> Int {
+        guard let seenThroughUTC = UserDefaults.standard.object(
+            forKey: seenKey(for: identity)
+        ) as? Date else {
+            return notifications.count
+        }
+
+        return notifications.count { $0.occurredUTC > seenThroughUTC }
+    }
+
+    static func markSeen(
+        notifications: [MobileActivityNotification],
+        identity: LogicalParticipantIdentity
+    ) {
+        guard let latestUTC = notifications.map(\.occurredUTC).max() else {
+            return
+        }
+
+        UserDefaults.standard.set(latestUTC, forKey: seenKey(for: identity))
+    }
+
+    private static func seenKey(for identity: LogicalParticipantIdentity) -> String {
+        "legend.account.activity.seen." +
+            identity.participantType.rawValue +
+            "." +
+            identity.userID
+    }
+}
+
 struct LegendApplicationShell: View {
     @EnvironmentObject private var scrollChrome: LegendScrollChrome
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -259,8 +295,11 @@ struct LegendApplicationShell: View {
     }
 
     private var homeActivityCount: Int {
+        let accountActivityCount = LegendAccountActivityState.unreadCount(
+            for: messages.activityNotifications,
+            identity: currentSession.actor.identity)
         guard case .loaded(let snapshot) = social.state else {
-            return 0
+            return accountActivityCount
         }
 
         let activitySeenKey =
@@ -272,14 +311,15 @@ struct LegendApplicationShell: View {
         guard let seenThroughUTC = UserDefaults.standard.object(
             forKey: activitySeenKey
         ) as? Date else {
-            return snapshot.activityCount
+            return snapshot.activityCount + accountActivityCount
         }
 
-        return snapshot.activity.reduce(into: 0) { count, activity in
+        let unseenNetworkActivity = snapshot.activity.reduce(into: 0) { count, activity in
             if activity.occurredUTC > seenThroughUTC {
                 count += 1
             }
         }
+        return unseenNetworkActivity + accountActivityCount
     }
 
     private func select(_ tab: LegendAppTab) {

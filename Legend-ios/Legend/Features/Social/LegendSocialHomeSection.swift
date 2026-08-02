@@ -122,9 +122,6 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         .onAppear {
             handleHomeChromeAction(scrollChrome.pendingHomeAction)
         }
-        .task {
-            await messages.refreshActivityNotifications()
-        }
         .onChange(of: scrollChrome.pendingHomeAction) { _, request in
             handleHomeChromeAction(request)
         }
@@ -166,6 +163,9 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 forKey: activitySeenKey
             )
         }
+        LegendAccountActivityState.markSeen(
+            notifications: messages.activityNotifications,
+            identity: session.actor.identity)
 
         isPresentingActivity = true
     }

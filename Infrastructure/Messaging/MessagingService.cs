@@ -59,8 +59,8 @@ internal sealed class MessagingService : IMessagingService
         if (!Fits(search, MaximumConversationSubjectLength))
             return MessagingConversationListResult.Failure("MESSAGING_SEARCH_INVALID", "The conversation search text is too long.");
 
-        var actorUserId = NormalizeUserId(actor.UserId);
         var actorParticipantType = NormalizeRequired(actor.ParticipantType);
+        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
         var conversationsQuery = await AuthorizedConversationsQueryAsync(actor, cancellationToken);
 
         // Removing a conversation is actor-scoped. It remains available to the
@@ -68,7 +68,7 @@ internal sealed class MessagingService : IMessagingService
         conversationsQuery = conversationsQuery.Where(conversation =>
             conversation.Participants.Any(participant =>
                 participant.IsActive &&
-                participant.UserId.ToLower() == actorUserId &&
+                actorUserIds.Contains(participant.UserId.ToLower()) &&
                 participant.ParticipantType == actorParticipantType &&
                 (participant.HiddenUtc == null ||
                  conversation.Messages.Any(message =>
@@ -98,7 +98,7 @@ internal sealed class MessagingService : IMessagingService
                 join participant in _db.MessageConversationParticipants.AsNoTracking()
                     on conversation.Id equals participant.ConversationId
                 where participant.IsActive &&
-                      participant.UserId.ToLower() == actorUserId &&
+                      actorUserIds.Contains(participant.UserId.ToLower()) &&
                       participant.ParticipantType == actorParticipantType
                 select new
                 {
@@ -181,12 +181,12 @@ internal sealed class MessagingService : IMessagingService
                 .Where(x => x.ConversationId == conversation.Id)
                 .ToList();
             var currentParticipant = conversationParticipants.FirstOrDefault(x =>
-                IsSameParticipant(x.UserId, x.ParticipantType, actorUserId, actorParticipantType));
+                IsCurrentActor(x.UserId, x.ParticipantType, actorUserIds, actorParticipantType));
             if (currentParticipant is null)
                 continue;
 
             var counterparty = conversationParticipants.FirstOrDefault(x =>
-                !IsSameParticipant(x.UserId, x.ParticipantType, actorUserId, actorParticipantType));
+                !IsCurrentActor(x.UserId, x.ParticipantType, actorUserIds, actorParticipantType));
             if (counterparty is null)
                 continue;
 
@@ -196,7 +196,7 @@ internal sealed class MessagingService : IMessagingService
                 .ToList();
             var unreadCount = conversationMessages.Count(x =>
                 !x.IsDeleted &&
-                !IsSameParticipant(x.SenderUserId, x.SenderType, actorUserId, actorParticipantType) &&
+                !IsCurrentActor(x.SenderUserId, x.SenderType, actorUserIds, actorParticipantType) &&
                 (!currentParticipant.LastReadUtc.HasValue || x.SentUtc > currentParticipant.LastReadUtc.Value));
             var latest = conversationMessages.FirstOrDefault(x => !x.IsDeleted);
             var isArchivedMembership =
@@ -365,8 +365,9 @@ internal sealed class MessagingService : IMessagingService
                     request.ResourceType))
                 .ToListAsync(cancellationToken))
                 .ToDictionary(request => request.Id);
+        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
         var currentParticipant = participants.FirstOrDefault(x =>
-            IsSameParticipant(x.UserId, x.ParticipantType, actor.UserId, actor.ParticipantType));
+            IsCurrentActor(x.UserId, x.ParticipantType, actorUserIds, actor.ParticipantType));
         var isArchivedMembership =
             conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
             !await ConversationHasActiveClientMembershipAsync(conversation.Id, cancellationToken);
@@ -839,12 +840,12 @@ internal sealed class MessagingService : IMessagingService
                 "Activity is not available for this user.");
         }
 
-        var actorUserId = NormalizeUserId(actor.UserId);
         var actorParticipantType = NormalizeRequired(actor.ParticipantType);
+        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
         var notifications = await _db.MobileActivityNotifications
             .AsNoTracking()
             .Where(notification =>
-                notification.RecipientUserId.ToLower() == actorUserId &&
+                actorUserIds.Contains(notification.RecipientUserId.ToLower()) &&
                 notification.RecipientParticipantType == actorParticipantType)
             .OrderByDescending(notification => notification.OccurredUtc)
             .ThenByDescending(notification => notification.Id)
@@ -1391,11 +1392,12 @@ internal sealed class MessagingService : IMessagingService
         if (conversation is null)
             return MessagingOperationResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The requested conversation was not found.");
 
+        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
         var participant = await _db.MessageConversationParticipants
             .FirstOrDefaultAsync(x =>
                 x.ConversationId == command.ConversationId &&
                 x.IsActive &&
-                x.UserId == actor.UserId &&
+                actorUserIds.Contains(x.UserId.ToLower()) &&
                 x.ParticipantType == actor.ParticipantType,
                 cancellationToken);
         if (participant is null)
@@ -1447,10 +1449,11 @@ internal sealed class MessagingService : IMessagingService
 
         if (command.IsPinned && !participant.PinnedUtc.HasValue)
         {
+            var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
             var pinnedCount = await _db.MessageConversationParticipants
                 .CountAsync(candidate =>
                     candidate.IsActive &&
-                    candidate.UserId.ToLower() == actor.UserId &&
+                    actorUserIds.Contains(candidate.UserId.ToLower()) &&
                     candidate.ParticipantType == actor.ParticipantType &&
                     candidate.PinnedUtc != null,
                     cancellationToken);
@@ -1757,16 +1760,16 @@ internal sealed class MessagingService : IMessagingService
     {
         var actorUserId = NormalizeRequired(actor.UserId);
         var actorParticipantType = NormalizeRequired(actor.ParticipantType);
+        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
         var participantConversations = _db.MessageConversations.Where(conversation =>
             conversation.Participants.Any(participant =>
                 participant.IsActive &&
-                participant.UserId.ToLower() == actorUserId &&
+                actorUserIds.Contains(participant.UserId.ToLower()) &&
                 participant.ParticipantType == actorParticipantType));
 
         var activeAgentUserIds = ActiveMessagingAgentProfilesQuery()
             .Select(profile => profile.AgentUserId.ToLower());
-        var activeClientUserIds = ActiveMessagingClientProfilesQuery()
-            .Select(profile => profile.ClientUserId.ToLower());
+        var activeClientUserIds = ActiveClientMembershipUserIdsQuery();
 
         var clientJourneyConversations = participantConversations.Where(conversation =>
             conversation.ConversationType == MessagingConversationTypes.ClientJourney &&
@@ -1845,9 +1848,10 @@ internal sealed class MessagingService : IMessagingService
         if (!isAuthorized)
             return null;
 
+        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
         return await _db.MessageConversationParticipants.FirstOrDefaultAsync(x =>
             x.ConversationId == conversationId && x.IsActive &&
-            x.UserId.ToLower() == actor.UserId && x.ParticipantType == actor.ParticipantType,
+            actorUserIds.Contains(x.UserId.ToLower()) && x.ParticipantType == actor.ParticipantType,
             cancellationToken);
     }
 
@@ -1866,10 +1870,13 @@ internal sealed class MessagingService : IMessagingService
         if (keyedConversation is not null)
             return keyedConversation;
 
-        var actorUserId = NormalizeUserId(actor.UserId);
         var actorParticipantType = NormalizeRequired(actor.ParticipantType);
         targetUserId = NormalizeUserId(targetUserId);
         targetParticipantType = NormalizeRequired(targetParticipantType);
+        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
+        var targetUserIds = await ParticipantUserIdFormsAsync(
+            new MessagingActor(targetUserId, targetParticipantType),
+            cancellationToken);
 
         // The original direct-key migration intentionally left existing rows
         // nullable. Without this participant-identity fallback, opening a
@@ -1881,11 +1888,11 @@ internal sealed class MessagingService : IMessagingService
                 conversation.Participants.Count(participant => participant.IsActive) == 2 &&
                 conversation.Participants.Any(participant =>
                     participant.IsActive &&
-                    participant.UserId.ToLower() == actorUserId &&
+                    actorUserIds.Contains(participant.UserId.ToLower()) &&
                     participant.ParticipantType == actorParticipantType) &&
                 conversation.Participants.Any(participant =>
                     participant.IsActive &&
-                    participant.UserId.ToLower() == targetUserId &&
+                    targetUserIds.Contains(participant.UserId.ToLower()) &&
                     participant.ParticipantType == targetParticipantType))
             .OrderByDescending(conversation => conversation.LastMessageUtc ?? conversation.CreatedUtc)
             .ThenByDescending(conversation => conversation.Id)
@@ -1978,6 +1985,46 @@ internal sealed class MessagingService : IMessagingService
             _ => false
         };
     }
+
+    /// <summary>
+    /// Resolves the persisted identities for one logical actor before any
+    /// recipient, activity, or conversation query is evaluated. Azure-backed
+    /// clients may have both their legacy ClientUserId and external object ID
+    /// in existing rows; treating either as a different person drops valid
+    /// delivery and inbox state.
+    /// </summary>
+    private async Task<string[]> ParticipantUserIdFormsAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken)
+    {
+        if (actor.ParticipantType != MessagingParticipantTypes.Client)
+            return [actor.UserId];
+
+        var profile = await ActiveMessagingClientProfilesQuery()
+            .Where(candidate => candidate.ClientUserId.ToLower() == actor.UserId ||
+                                (candidate.ExternalIdentityObjectId != null &&
+                                 candidate.ExternalIdentityObjectId.ToLower() == actor.UserId))
+            .Select(candidate => new
+            {
+                candidate.ClientUserId,
+                candidate.ExternalIdentityObjectId
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return profile is null
+            ? [actor.UserId]
+            : LogicalParticipantIdentity.ClientUserIdForms(
+                profile.ClientUserId,
+                profile.ExternalIdentityObjectId);
+    }
+
+    private static bool IsCurrentActor(
+        string userId,
+        string participantType,
+        IReadOnlyCollection<string> actorUserIds,
+        string actorParticipantType) =>
+        participantType == actorParticipantType &&
+        actorUserIds.Contains(NormalizeUserId(userId), StringComparer.Ordinal);
 
     private async Task<List<MessagingRecipientSummary>> ListAuthorizedRecipientsAsync(
         MessagingActor actor,
@@ -2253,6 +2300,7 @@ internal sealed class MessagingService : IMessagingService
             .Select(recipient => recipient.UserId)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
         var conversations = await _db.MessageConversationParticipants
             .AsNoTracking()
             .Where(participant =>
@@ -2262,7 +2310,7 @@ internal sealed class MessagingService : IMessagingService
                 conversationParticipant.IsActive) == 2)
             .Where(participant => participant.Conversation.Participants.Any(conversationParticipant =>
                 conversationParticipant.IsActive &&
-                conversationParticipant.UserId.ToLower() == actor.UserId &&
+                actorUserIds.Contains(conversationParticipant.UserId.ToLower()) &&
                 conversationParticipant.ParticipantType == actor.ParticipantType))
             .OrderByDescending(participant => participant.Conversation.LastMessageUtc ?? participant.Conversation.CreatedUtc)
             .Select(participant => new ExistingConversationRow(
@@ -2318,7 +2366,21 @@ internal sealed class MessagingService : IMessagingService
         return _db.ClientAgentMessagingGrants.AsNoTracking().Where(grant => grant.IsActive && grant.AgentUserId.ToLower() == agentKey);
     }
 
-    private IQueryable<string> AuthorizedClientIdsForAgentQuery(string agentUserId) =>
+    private IQueryable<string> AuthorizedClientIdsForAgentQuery(string agentUserId)
+    {
+        var canonicalClientIds = AuthorizedCanonicalClientIdsForAgentQuery(agentUserId);
+        var authorizedProfiles = ActiveMessagingClientProfilesQuery()
+            .Where(profile => canonicalClientIds.Contains(profile.ClientUserId.ToLower()));
+
+        return authorizedProfiles
+            .Select(profile => profile.ClientUserId.ToLower())
+            .Union(authorizedProfiles
+                .Where(profile => profile.ExternalIdentityObjectId != null)
+                .Select(profile => profile.ExternalIdentityObjectId!.ToLower()))
+            .Distinct();
+    }
+
+    private IQueryable<string> AuthorizedCanonicalClientIdsForAgentQuery(string agentUserId) =>
         PrimaryClientAgentLinksForAgent(agentUserId)
             .Select(link => link.ClientUserId.ToLower())
             .Union(ActiveMessagingGrantsForAgent(agentUserId)
@@ -2363,7 +2425,11 @@ internal sealed class MessagingService : IMessagingService
 
     private IQueryable<string> ActiveClientMembershipUserIdsQuery() =>
         ActiveMessagingClientProfilesQuery()
-            .Select(profile => profile.ClientUserId.ToLower());
+            .Select(profile => profile.ClientUserId.ToLower())
+            .Union(ActiveMessagingClientProfilesQuery()
+                .Where(profile => profile.ExternalIdentityObjectId != null)
+                .Select(profile => profile.ExternalIdentityObjectId!.ToLower()))
+            .Distinct();
 
     private async Task<bool> ConversationHasActiveClientMembershipAsync(
         Guid conversationId,
