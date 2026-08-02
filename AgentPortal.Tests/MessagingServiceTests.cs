@@ -559,6 +559,51 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task MessageTranslation_UsesTheSameGrantForAzureAndLegacyClientIdentityForms()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var clientProfile = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");
+        clientProfile.ExternalIdentityObjectId = "client-azure-object-id";
+        db.ControlledResourceGrants.Add(new ControlledResourceGrant
+        {
+            UserId = clientProfile.ClientUserId,
+            ParticipantType = MessagingParticipantTypes.Client,
+            ResourceType = ControlledResourceTypes.LanguageTranslation,
+            IsActive = true,
+            GrantedUtc = DateTime.UtcNow,
+            GrantedByUserId = "zac-founder-oid"
+        });
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            ProfileId = clientProfile.Id,
+            ParticipantType = MessagingParticipantTypes.Client,
+            PreferredCommunicationLanguage = "ht"
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            new MessagingActor("agent-1", MessagingParticipantTypes.Agent),
+            clientProfile.ClientUserId,
+            MessagingParticipantTypes.Client,
+            InitialMessageBody: "Welcome to Legend"));
+        var azureClient = new MessagingActor(
+            clientProfile.ExternalIdentityObjectId,
+            MessagingParticipantTypes.Client);
+
+        var translatedView = await service.GetConversationAsync(
+            azureClient,
+            opened.Conversation!.Id);
+
+        Assert.True(translatedView.Succeeded);
+        var message = Assert.Single(translatedView.Conversation!.Messages);
+        Assert.Equal("Welcome to Legend (ht)", message.Body);
+        Assert.Equal("Welcome to Legend", message.OriginalBody);
+        Assert.Equal("ht", message.Translation!.TargetLanguage);
+    }
+
+    [Fact]
     public async Task AgentAndClient_CompleteConversationFlow_TracksBothUnreadStates()
     {
         await using var db = ControllerTestHelpers.BuildDb();

@@ -45,6 +45,7 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
             return new ControlledResourceAccess(resourceType, ControlledResourceAccessStates.NotGranted, false);
 
         var canManage = await IsFounderManagerAsync(actor, cancellationToken);
+        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
         var granted = resourceType switch
         {
             ControlledResourceTypes.VerificationBadge => await IsVerificationGrantedAsync(actor, cancellationToken),
@@ -53,7 +54,7 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
                 .AnyAsync(grant =>
                     grant.IsActive &&
                     grant.ResourceType == ControlledResourceTypes.LanguageTranslation &&
-                    grant.UserId.ToLower() == actor.UserId &&
+                    actorUserIds.Contains(grant.UserId.ToLower()) &&
                     grant.ParticipantType == actor.ParticipantType,
                     cancellationToken),
             _ => false
@@ -67,7 +68,7 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
             .AnyAsync(request =>
                 request.ResourceType == resourceType &&
                 request.Status == VerificationReviewStatuses.Pending &&
-                request.RequesterUserId.ToLower() == actor.UserId &&
+                actorUserIds.Contains(request.RequesterUserId.ToLower()) &&
                 request.RequesterParticipantType == actor.ParticipantType,
                 cancellationToken);
 
@@ -128,9 +129,11 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
 
     private async Task<bool> IsVerificationGrantedAsync(
         MessagingActor actor,
-        CancellationToken cancellationToken) => actor.ParticipantType switch
+        CancellationToken cancellationToken)
+    {
+        if (actor.ParticipantType == MessagingParticipantTypes.Agent)
         {
-            MessagingParticipantTypes.Agent => await _db.AgentProfiles.AsNoTracking().AnyAsync(profile =>
+            return await _db.AgentProfiles.AsNoTracking().AnyAsync(profile =>
                 profile.IsActive &&
                 profile.AgentUserId.ToLower() == actor.UserId &&
                 (profile.IsVerified ||
@@ -139,14 +142,47 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
                  (profile.AgentUpn != null &&
                   (profile.AgentUpn.ToLower() == LegendVerifiedIdentity.FounderEmail ||
                    profile.AgentUpn.ToLower() == LegendVerifiedIdentity.LegendEmail))),
-                cancellationToken),
-            MessagingParticipantTypes.Client => await _db.ClientProfiles.AsNoTracking().AnyAsync(profile =>
-                (profile.ClientUserId.ToLower() == actor.UserId ||
-                 (profile.ExternalIdentityObjectId != null && profile.ExternalIdentityObjectId.ToLower() == actor.UserId)) &&
+                cancellationToken);
+        }
+
+        if (actor.ParticipantType == MessagingParticipantTypes.Client)
+        {
+            var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
+            return await _db.ClientProfiles.AsNoTracking().AnyAsync(profile =>
+                (actorUserIds.Contains(profile.ClientUserId.ToLower()) ||
+                 (profile.ExternalIdentityObjectId != null &&
+                  actorUserIds.Contains(profile.ExternalIdentityObjectId.ToLower()))) &&
                 profile.IsVerified,
-                cancellationToken),
-            _ => false
-        };
+                cancellationToken);
+        }
+
+        return false;
+    }
+
+    private async Task<string[]> ParticipantUserIdFormsAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken)
+    {
+        if (actor.ParticipantType != MessagingParticipantTypes.Client)
+            return [actor.UserId];
+
+        var profile = await _db.ClientProfiles.AsNoTracking()
+            .Where(candidate => candidate.ClientUserId.ToLower() == actor.UserId ||
+                                (candidate.ExternalIdentityObjectId != null &&
+                                 candidate.ExternalIdentityObjectId.ToLower() == actor.UserId))
+            .Select(candidate => new
+            {
+                candidate.ClientUserId,
+                candidate.ExternalIdentityObjectId
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return profile is null
+            ? [actor.UserId]
+            : LogicalParticipantIdentity.ClientUserIdForms(
+                profile.ClientUserId,
+                profile.ExternalIdentityObjectId);
+    }
 
     private static MessagingActor Normalize(MessagingActor actor) => new(
         actor.UserId.Trim().ToLowerInvariant(),

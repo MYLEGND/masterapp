@@ -1138,11 +1138,12 @@ internal sealed class MessagingService : IMessagingService
         if (!await SetResourceGrantCoreAsync(actor, resourceType, target.UserId, target.ParticipantType, command.IsGranted, cancellationToken))
             return MessagingOperationResult.Failure("MESSAGING_RESOURCE_RECIPIENT_UNAVAILABLE", "This person is no longer available.");
 
+        var targetUserIds = await ParticipantUserIdFormsAsync(target, cancellationToken);
         var pending = await _db.VerificationReviewRequests
             .Where(request =>
                 request.ResourceType == resourceType &&
                 request.Status == VerificationReviewStatuses.Pending &&
-                request.RequesterUserId.ToLower() == target.UserId &&
+                targetUserIds.Contains(request.RequesterUserId.ToLower()) &&
                 request.RequesterParticipantType == target.ParticipantType)
             .ToListAsync(cancellationToken);
         var nowUtc = DateTime.UtcNow;
@@ -2614,16 +2615,19 @@ internal sealed class MessagingService : IMessagingService
     private async Task<VerificationReviewRequest?> FindPendingControlledResourceRequestAsync(
         MessagingActor actor,
         string resourceType,
-        CancellationToken cancellationToken) =>
-        await _db.VerificationReviewRequests
+        CancellationToken cancellationToken)
+    {
+        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
+        return await _db.VerificationReviewRequests
             .AsNoTracking()
             .Where(request =>
-                request.RequesterUserId.ToLower() == actor.UserId &&
+                actorUserIds.Contains(request.RequesterUserId.ToLower()) &&
                 request.RequesterParticipantType == actor.ParticipantType &&
                 request.ResourceType == resourceType &&
                 request.Status == VerificationReviewStatuses.Pending)
             .OrderByDescending(request => request.RequestedUtc)
             .FirstOrDefaultAsync(cancellationToken);
+    }
 
     private async Task<MessageConversation?> GetOrCreateControlledResourceReviewConversationAsync(
         MessagingActor requester,
