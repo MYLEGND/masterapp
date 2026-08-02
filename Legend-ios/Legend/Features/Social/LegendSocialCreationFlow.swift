@@ -263,6 +263,8 @@ struct LegendSocialComposer: View {
     @State private var selectedMusic: LegendSocialMusicDraft?
     @State private var activeEditorTool: LegendSocialEditingTool = .text
     @State private var ownsMediaAfterDismissal = false
+    @State private var selectedHacPreviewData: Data?
+    @State private var isSelectingHacPreview = false
 
     init(
         type: MobileSocialContentType,
@@ -315,6 +317,19 @@ struct LegendSocialComposer: View {
                 cancel: {
                     stage = musicReturnStage
                 })
+        }
+        .sheet(isPresented: $isSelectingHacPreview) {
+            if let sourceURL = selectedMedia.first?.videoFileURL {
+                LegendHacPreviewSelector(
+                    sourceURL: sourceURL,
+                    save: { previewData in
+                        selectedHacPreviewData = previewData
+                        isSelectingHacPreview = false
+                    },
+                    cancel: {
+                        isSelectingHacPreview = false
+                    })
+            }
         }
         .fullScreenCover(isPresented: cameraPresented) {
             LegendSocialCameraCapture(
@@ -1152,6 +1167,13 @@ struct LegendSocialComposer: View {
 
                     musicRow
 
+                    if type.requiresVideo {
+                        Divider()
+                            .padding(.leading, 56)
+
+                        hacPreviewRow
+                    }
+
                     Divider()
                         .padding(.leading, 56)
 
@@ -1425,6 +1447,63 @@ struct LegendSocialComposer: View {
         )
     }
 
+    @ViewBuilder
+    private var hacPreviewRow: some View {
+        if type.requiresVideo,
+           let sourceURL = selectedMedia.first?.videoFileURL {
+            Button {
+                // The picker reads the same prepared MP4 that will be uploaded,
+                // so the selected frame always represents the published Hac.
+                guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+                    mediaSelectionError = "Legend could not read this video preview. Choose the video again and try once more."
+                    return
+                }
+                isSelectingHacPreview = true
+            } label: {
+                HStack(spacing: 14) {
+                    Group {
+                        if let selectedHacPreviewData,
+                           let preview = UIImage(data: selectedHacPreviewData) {
+                            Image(uiImage: preview)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            Image(systemName: "film")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(LegendNextColor.goldBright)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(LegendNextColor.navy)
+                        }
+                    }
+                    .frame(width: 38, height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Preview frame")
+                            .font(.system(size: 15))
+                            .foregroundStyle(LegendNextColor.textPrimary)
+                        Text("Choose what appears in home and your profile")
+                            .font(.system(size: 12))
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(LegendNextColor.textSecondary.opacity(0.55))
+                }
+                .padding(.horizontal, 16)
+                .frame(minHeight: 62)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .background(LegendNextColor.surface)
+            .accessibilityLabel("Choose Hac preview frame")
+        }
+    }
+
     private var accessibilityRow: some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: "accessibility")
@@ -1586,6 +1665,7 @@ struct LegendSocialComposer: View {
                 } else {
                     selectedMedia.append(media)
                 }
+                refreshDefaultHacPreview(for: media)
             } catch {
                 mediaSelectionError = "Legend could not prepare this media. The draft was kept intact."
             }
@@ -1596,6 +1676,9 @@ struct LegendSocialComposer: View {
     private func remove(_ media: LegendSocialMediaDraft) {
         selectedMedia.removeAll { $0.id == media.id }
         media.discardTemporaryFile()
+        if media.isVideo {
+            selectedHacPreviewData = nil
+        }
     }
 
     private func addCapturedMedia(_ result: Result<LegendSocialMediaDraft, Error>) {
@@ -1612,6 +1695,7 @@ struct LegendSocialComposer: View {
             let previous = selectedMedia
             selectedMedia = [media]
             previous.forEach { $0.discardTemporaryFile() }
+            refreshDefaultHacPreview(for: media)
             mediaSelectionError = nil
             stage = .library
 
@@ -1630,7 +1714,8 @@ struct LegendSocialComposer: View {
             music: selectedMusic?.selection,
             audience: .authorizedNetwork,
             location: normalizedLocation,
-            commentsEnabled: commentsEnabled)
+            commentsEnabled: commentsEnabled,
+            previewImage: hacPreviewMultipartFile)
 
         if social.beginPublication(request) {
             ownsMediaAfterDismissal = true
@@ -1663,6 +1748,30 @@ struct LegendSocialComposer: View {
         let value = shareLocation.trimmingCharacters(
             in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : String(value.prefix(200))
+    }
+
+    private var hacPreviewMultipartFile: MultipartFormFile? {
+        guard type.requiresVideo,
+              let selectedHacPreviewData else {
+            return nil
+        }
+
+        return MultipartFormFile(
+            fieldName: "preview",
+            fileName: "legend-hac-preview.jpg",
+            mimeType: "image/jpeg",
+            data: selectedHacPreviewData)
+    }
+
+    private func refreshDefaultHacPreview(for media: LegendSocialMediaDraft) {
+        guard type.requiresVideo,
+              let sourceURL = media.videoFileURL else {
+            selectedHacPreviewData = nil
+            return
+        }
+        selectedHacPreviewData = LegendHacPreviewFrame.jpegData(
+            from: sourceURL,
+            at: 0)
     }
 
     private func discardTemporaryMedia() {
@@ -2235,6 +2344,11 @@ private enum LegendSocialMediaDraft: Identifiable {
         return false
     }
 
+    var videoFileURL: URL? {
+        guard case .video(_, let fileURL, _, _, _) = self else { return nil }
+        return fileURL
+    }
+
     var sourceAssetIdentifier: String? {
         switch self {
         case .image(_, _, _, _, let identifier), .video(_, _, _, _, let identifier):
@@ -2316,6 +2430,150 @@ private enum LegendSocialMediaDraft: Identifiable {
         return ("image/jpeg", "legend-image.jpg")
     }
 
+}
+
+/// A compact, local frame picker. It uses the prepared MP4 rather than an
+/// independently rendered copy, which keeps the exact creator-selected frame
+/// aligned with the video ultimately sent to the server.
+private struct LegendHacPreviewSelector: View {
+    let sourceURL: URL
+    let save: (Data) -> Void
+    let cancel: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer
+    @State private var duration: Double = 1
+    @State private var selectedSeconds: Double = 0
+
+    init(
+        sourceURL: URL,
+        save: @escaping (Data) -> Void,
+        cancel: @escaping () -> Void
+    ) {
+        self.sourceURL = sourceURL
+        self.save = save
+        self.cancel = cancel
+        _player = State(initialValue: AVPlayer(url: sourceURL))
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
+                VideoPlayer(player: player)
+                    .aspectRatio(9 / 16, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(
+                        cornerRadius: LegendNextRadius.card,
+                        style: .continuous))
+
+                VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                    Text("Scroll to choose the preview frame")
+                        .font(LegendNextTypography.section)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+
+                    Slider(
+                        value: $selectedSeconds,
+                        in: 0 ... max(duration, 0.1))
+                    .tint(LegendNextColor.goldBright)
+                    .onChange(of: selectedSeconds) { _, seconds in
+                        player.seek(
+                            to: CMTime(seconds: seconds, preferredTimescale: 600),
+                            toleranceBefore: .zero,
+                            toleranceAfter: .zero)
+                    }
+
+                    Text(LegendHacPreviewFrame.timeLabel(selectedSeconds))
+                        .font(LegendNextTypography.caption.monospacedDigit())
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(LegendNextSpacing.md)
+            .background(LegendNextColor.canvas)
+            .navigationTitle("Hac preview")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        player.pause()
+                        cancel()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Use frame") {
+                        if let imageData = LegendHacPreviewFrame.jpegData(
+                            from: sourceURL,
+                            at: selectedSeconds) {
+                            player.pause()
+                            save(imageData)
+                            dismiss()
+                        }
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .task {
+                duration = await LegendHacPreviewFrame.duration(of: sourceURL)
+                await player.seek(to: .zero)
+            }
+            .onDisappear {
+                player.pause()
+            }
+        }
+    }
+}
+
+/// One JPEG-generation authority for the Hac publishing flow. The 1080px cap
+/// and progressive compression keep a user-selected poster below the server's
+/// 1 MB ingress limit without changing the source video.
+private enum LegendHacPreviewFrame {
+    private static let maximumEdge: CGFloat = 1_080
+    private static let maximumBytes = 1_024 * 1_024
+
+    static func duration(of url: URL) async -> Double {
+        let asset = AVURLAsset(url: url)
+        let seconds = (try? await asset.load(.duration))?.seconds ?? 0
+        return seconds.isFinite && seconds > 0 ? seconds : 1
+    }
+
+    static func jpegData(from url: URL, at seconds: Double) -> Data? {
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+
+        let time = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+        guard let image = try? generator.copyCGImage(at: time, actualTime: nil) else {
+            return nil
+        }
+
+        let source = UIImage(cgImage: image)
+        let largestSide = max(source.size.width, source.size.height)
+        let scale = largestSide > maximumEdge ? maximumEdge / largestSide : 1
+        let targetSize = CGSize(
+            width: max(1, (source.size.width * scale).rounded()),
+            height: max(1, (source.size.height * scale).rounded()))
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let normalized = renderer.image { _ in
+            source.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+
+        for quality in [CGFloat(0.82), 0.70, 0.58] {
+            if let data = normalized.jpegData(compressionQuality: quality),
+               data.count <= maximumBytes {
+                return data
+            }
+        }
+        return nil
+    }
+
+    static func timeLabel(_ seconds: Double) -> String {
+        let wholeSeconds = max(0, Int(seconds.rounded(.down)))
+        return String(format: "%d:%02d", wholeSeconds / 60, wholeSeconds % 60)
+    }
 }
 
 private enum LegendSocialMediaLoadingError: Error {

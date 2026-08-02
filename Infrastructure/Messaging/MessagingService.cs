@@ -2671,8 +2671,7 @@ internal sealed class MessagingService : IMessagingService
                 MessagingParticipantTypes.Agent));
         }
 
-        if (staff.Distinct().Count() != 2 || staff.Any(member =>
-                IsSameParticipant(member.UserId, member.ParticipantType, requester.UserId, requester.ParticipantType)))
+        if (staff.Distinct().Count() != 2)
         {
             return null;
         }

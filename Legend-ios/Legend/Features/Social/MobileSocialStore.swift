@@ -239,6 +239,19 @@ protocol MobileSocialAPI: Sendable {
         type: MobileSocialContentType,
         body: String,
         files: [MultipartFormFile],
+        previewImage: MultipartFormFile?,
+        accessibilityText: String?,
+        music: MobileSocialMusicSelection?,
+        audience: MobileSocialAudience,
+        location: String?,
+        commentsEnabled: Bool,
+        uploadProgress: @escaping @Sendable (Double) -> Void,
+        accessToken: String
+    ) async throws -> MobileSocialPost
+    func createMediaPost(
+        type: MobileSocialContentType,
+        body: String,
+        files: [MultipartFormFile],
         accessibilityText: String?,
         music: MobileSocialMusicSelection?,
         audience: MobileSocialAudience,
@@ -267,6 +280,40 @@ protocol MobileSocialAPI: Sendable {
 }
 
 extension MobileSocialAPI {
+    /// Backwards-compatible API seam for a creator-selected Hac poster. Test
+    /// doubles that only model the original endpoint continue to work, while
+    /// the production implementation submits the image as a separate form part.
+    func createMediaPost(
+        type: MobileSocialContentType,
+        body: String,
+        files: [MultipartFormFile],
+        accessibilityText: String?,
+        music: MobileSocialMusicSelection?,
+        audience: MobileSocialAudience,
+        location: String?,
+        commentsEnabled: Bool,
+        uploadProgress: @escaping @Sendable (Double) -> Void,
+        accessToken: String
+    ) async throws -> MobileSocialPost {
+        try await createMediaPost(
+            type: type,
+            body: body,
+            files: files,
+            accessibilityText: accessibilityText,
+            music: music,
+            audience: audience,
+            location: location,
+            commentsEnabled: commentsEnabled,
+            uploadProgress: uploadProgress,
+            accessToken: accessToken)
+    }
+
+    /// API doubles can keep providing the primary media bytes. Production uses
+    /// the protected poster endpoint when the server reports one is available.
+    func previewData(assetID: UUID, accessToken: String) async throws -> Data {
+        try await mediaData(assetID: assetID, accessToken: accessToken)
+    }
+
     /// API doubles can keep supplying bytes. The production API overrides this
     /// with URLSession's file-backed download path for video playback.
     func downloadMedia(assetID: UUID, accessToken: String) async throws -> URL {
@@ -318,6 +365,33 @@ struct MobileUnavailableSocialAPI: MobileSocialAPI {
         type: MobileSocialContentType,
         body: String,
         files: [MultipartFormFile],
+        accessibilityText: String?,
+        music: MobileSocialMusicSelection?,
+        audience: MobileSocialAudience,
+        location: String?,
+        commentsEnabled: Bool,
+        uploadProgress: @escaping @Sendable (Double) -> Void,
+        accessToken: String
+    ) async throws -> MobileSocialPost {
+        try await createMediaPost(
+            type: type,
+            body: body,
+            files: files,
+            previewImage: nil,
+            accessibilityText: accessibilityText,
+            music: music,
+            audience: audience,
+            location: location,
+            commentsEnabled: commentsEnabled,
+            uploadProgress: uploadProgress,
+            accessToken: accessToken)
+    }
+
+    func createMediaPost(
+        type: MobileSocialContentType,
+        body: String,
+        files: [MultipartFormFile],
+        previewImage: MultipartFormFile?,
         accessibilityText: String?,
         music: MobileSocialMusicSelection?,
         audience: MobileSocialAudience,
@@ -421,6 +495,33 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
         uploadProgress: @escaping @Sendable (Double) -> Void,
         accessToken: String
     ) async throws -> MobileSocialPost {
+        try await createMediaPost(
+            type: type,
+            body: body,
+            files: files,
+            previewImage: nil,
+            accessibilityText: accessibilityText,
+            music: music,
+            audience: audience,
+            location: location,
+            commentsEnabled: commentsEnabled,
+            uploadProgress: uploadProgress,
+            accessToken: accessToken)
+    }
+
+    func createMediaPost(
+        type: MobileSocialContentType,
+        body: String,
+        files: [MultipartFormFile],
+        previewImage: MultipartFormFile?,
+        accessibilityText: String?,
+        music: MobileSocialMusicSelection?,
+        audience: MobileSocialAudience,
+        location: String?,
+        commentsEnabled: Bool,
+        uploadProgress: @escaping @Sendable (Double) -> Void,
+        accessToken: String
+    ) async throws -> MobileSocialPost {
 
         var fields = [
             "contentType": type.rawValue,
@@ -443,7 +544,7 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
             "/api/v1/mobile/social/posts/media",
             accessToken: accessToken,
             fields: fields,
-            files: files,
+            files: files + (previewImage.map { [$0] } ?? []),
             headers: participantHeader,
             uploadProgress: uploadProgress,
             response: MobileSocialPost.self
@@ -453,6 +554,14 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data {
         try await client.getData(
             "/api/v1/mobile/social/media/\(assetID.uuidString)",
+            accessToken: accessToken,
+            headers: participantHeader
+        )
+    }
+
+    func previewData(assetID: UUID, accessToken: String) async throws -> Data {
+        try await client.getData(
+            "/api/v1/mobile/social/media/\(assetID.uuidString)/preview",
             accessToken: accessToken,
             headers: participantHeader
         )
@@ -588,8 +697,10 @@ final class MobileSocialStore: ObservableObject {
     private let diagnostics: LegendDiagnostics
     private let persistence: LegendStorePersistence<MobileSocialSnapshot>
     private let mediaCache = NSCache<NSUUID, NSData>()
+    private let previewCache = NSCache<NSUUID, NSData>()
     private var mediaFileCache: [UUID: CachedMediaFile] = [:]
     private var mediaLoadTasks: [UUID: Task<Data?, Never>] = [:]
+    private var previewLoadTasks: [UUID: Task<Data?, Never>] = [:]
     private var mediaFileLoadTasks: [UUID: Task<URL?, Never>] = [:]
     private var inFlightMutationKeys: Set<String> = []
     private var pendingPublicationRequest: MobileSocialPublishRequest?
@@ -608,6 +719,8 @@ final class MobileSocialStore: ObservableObject {
         self.persistence = persistence
         mediaCache.countLimit = 48
         mediaCache.totalCostLimit = 32 * 1_024 * 1_024
+        previewCache.countLimit = 72
+        previewCache.totalCostLimit = 12 * 1_024 * 1_024
 
         // The feed shows last-known posts immediately rather than a spinner, then
         // refreshes underneath.
@@ -618,6 +731,7 @@ final class MobileSocialStore: ObservableObject {
 
     deinit {
         mediaLoadTasks.values.forEach { $0.cancel() }
+        previewLoadTasks.values.forEach { $0.cancel() }
         mediaFileLoadTasks.values.forEach { $0.cancel() }
         for cached in mediaFileCache.values {
             try? FileManager.default.removeItem(at: cached.url)
@@ -809,6 +923,42 @@ final class MobileSocialStore: ObservableObject {
         mediaLoadTasks[assetID] = task
         let data = await task.value
         mediaLoadTasks.removeValue(forKey: assetID)
+        return data
+    }
+
+    /// Retrieves a server-selected Hac poster without opening or playing the
+    /// underlying video. This is the shared preview source for home and profile
+    /// grids, so their thumbnails never create their own video players.
+    func previewData(for assetID: UUID, forceRefresh: Bool = false) async -> Data? {
+        if forceRefresh {
+            previewCache.removeObject(forKey: assetID as NSUUID)
+        } else if let cached = previewCache.object(forKey: assetID as NSUUID) {
+            return cached as Data
+        }
+
+        if let existingTask = previewLoadTasks[assetID] {
+            return await existingTask.value
+        }
+
+        let task = Task { [weak self] () -> Data? in
+            guard let self else { return nil }
+            do {
+                let token = try await self.accessTokenProvider()
+                let data = try await self.api.previewData(
+                    assetID: assetID,
+                    accessToken: token)
+                self.previewCache.setObject(
+                    data as NSData,
+                    forKey: assetID as NSUUID,
+                    cost: data.count)
+                return data
+            } catch {
+                return nil
+            }
+        }
+        previewLoadTasks[assetID] = task
+        let data = await task.value
+        previewLoadTasks.removeValue(forKey: assetID)
         return data
     }
 
@@ -1162,6 +1312,7 @@ final class MobileSocialStore: ObservableObject {
             type: request.contentType,
             body: body,
             files: request.files,
+            previewImage: request.previewImage,
             accessibilityText: request.accessibilityText,
             music: request.music,
             audience: request.audience,

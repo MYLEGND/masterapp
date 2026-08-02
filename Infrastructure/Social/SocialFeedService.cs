@@ -260,6 +260,21 @@ public sealed class SocialFeedService : ISocialFeedService
                 "Legend Hacs require a prepared MP4 video. Choose the video again and try publishing.");
         }
 
+        var previewImage = command.PreviewImage;
+        if (previewImage is not null &&
+            (contentType != SocialPostContentTypes.Reel ||
+             previewImage.DeclaredSizeBytes <= 0 ||
+             previewImage.DeclaredSizeBytes > SocialMediaUploadLimits.MaximumPreviewImageBytes ||
+             !string.Equals(
+                 Path.GetExtension(previewImage.OriginalFileName?.Trim() ?? string.Empty),
+                 ".jpg",
+                 StringComparison.OrdinalIgnoreCase)))
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_media_preview_invalid",
+                "A Hac preview must be a JPEG image no larger than 1 MB.");
+        }
+
         var details = command.Details ?? new SocialPostDetails();
 
         var music = await ResolveMusicAsync(command.Music, cancellationToken);
@@ -271,7 +286,7 @@ public sealed class SocialFeedService : ISocialFeedService
         }
 
         var postId = Guid.NewGuid();
-        var storedKeys = new List<string>(uploads.Length);
+        var storedKeys = new List<string>(uploads.Length + (previewImage is null ? 0 : 1));
         var mediaAssets = new List<SocialPostMediaAsset>(uploads.Length);
 
         try
@@ -334,6 +349,47 @@ public sealed class SocialFeedService : ISocialFeedService
                 return SocialOperationResult<SocialPostView>.Failure(
                     "social_media_post_invalid",
                     MediaValidationMessage(contentType));
+            }
+
+            var selectedPreview = previewImage;
+            if (selectedPreview is not null)
+            {
+                var previewResult = await _mediaStorage.StoreAsync(
+                    Guid.NewGuid(),
+                    selectedPreview.OriginalFileName,
+                    selectedPreview.DeclaredSizeBytes,
+                    selectedPreview.Content,
+                    cancellationToken);
+
+                if (!previewResult.Succeeded || previewResult.Media is null ||
+                    !string.Equals(
+                        previewResult.Media.MediaKind,
+                        "Image",
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(
+                        previewResult.Media.MimeType,
+                        "image/jpeg",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    if (previewResult.Media is not null)
+                        storedKeys.Add(previewResult.Media.StorageKey);
+                    await DeleteStoredMediaAsync(storedKeys, CancellationToken.None);
+
+                    return SocialOperationResult<SocialPostView>.Failure(
+                        previewResult.ErrorCode ?? "social_media_preview_invalid",
+                        previewResult.ErrorMessage ?? "Legend could not store the selected Hac preview.");
+                }
+
+                storedKeys.Add(previewResult.Media.StorageKey);
+                if (!await CanReadStoredMediaAsync(previewResult.Media, cancellationToken))
+                {
+                    await DeleteStoredMediaAsync(storedKeys, CancellationToken.None);
+                    return SocialOperationResult<SocialPostView>.Failure(
+                        "social_media_storage_unavailable",
+                        "Legend could not verify the selected Hac preview in secure storage.");
+                }
+
+                mediaAssets.Single().ThumbnailStorageKey = previewResult.Media.StorageKey;
             }
 
             var now = DateTime.UtcNow;
@@ -509,6 +565,19 @@ public sealed class SocialFeedService : ISocialFeedService
         SocialFeedActor actor,
         Guid mediaAssetId,
         CancellationToken cancellationToken = default)
+        => await GetMediaStreamAsync(actor, mediaAssetId, includePreview: false, cancellationToken);
+
+    public async Task<SocialOperationResult<SocialMediaStream>> GetMediaPreviewAsync(
+        SocialFeedActor actor,
+        Guid mediaAssetId,
+        CancellationToken cancellationToken = default)
+        => await GetMediaStreamAsync(actor, mediaAssetId, includePreview: true, cancellationToken);
+
+    private async Task<SocialOperationResult<SocialMediaStream>> GetMediaStreamAsync(
+        SocialFeedActor actor,
+        Guid mediaAssetId,
+        bool includePreview,
+        CancellationToken cancellationToken)
     {
         if (!await IsValidActorAsync(actor, cancellationToken))
         {
@@ -553,8 +622,18 @@ public sealed class SocialFeedService : ISocialFeedService
                 "This media is not available to your mobile identity.");
         }
 
+        var storageKey = includePreview
+            ? media.ThumbnailStorageKey
+            : media.StorageKey;
+        if (string.IsNullOrWhiteSpace(storageKey))
+        {
+            return SocialOperationResult<SocialMediaStream>.Failure(
+                "social_media_unavailable",
+                "This media preview is not available to your mobile identity.");
+        }
+
         var storedMedia = await _mediaStorage.OpenReadAsync(
-            media.StorageKey,
+            storageKey,
             cancellationToken);
 
         if (storedMedia.Status == SocialMediaReadStatus.Unavailable)
@@ -575,7 +654,7 @@ public sealed class SocialFeedService : ISocialFeedService
         return SocialOperationResult<SocialMediaStream>.Success(
             new SocialMediaStream(
                 storedMedia.Content,
-                media.MimeType));
+                includePreview ? "image/jpeg" : media.MimeType));
     }
 
     private async Task<bool> CanReadStoredMediaAsync(
@@ -1785,7 +1864,8 @@ public sealed class SocialFeedService : ISocialFeedService
                         media.AspectRatio,
                         media.DurationSeconds,
                         media.ProcessingState,
-                        media.AccessibilityText))
+                        media.AccessibilityText,
+                        !string.IsNullOrWhiteSpace(media.ThumbnailStorageKey)))
                     .ToArray(),
                 postComments);
         }).ToArray();

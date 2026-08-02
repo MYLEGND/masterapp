@@ -1101,11 +1101,10 @@ private struct LegendSocialPostCard: View {
                                 placeholderHeight: nil,
                                 usesRoundedCorners: false)
                         } else if media.isVideo {
-                            LegendSocialMediaVideo(
-                                postID: post.id,
+                            LegendSocialVideoPoster(
                                 media: media,
-                                music: post.music,
                                 social: social,
+                                contentMode: .fill,
                                 usesRoundedCorners: false)
                         }
                     }
@@ -1730,8 +1729,6 @@ struct LegendHacViewportFeed: View {
     @StateObject private var playback = LegendHacPlaybackCoordinator()
     @State private var selectedPostID: UUID?
     @State private var commentTarget: MobileSocialPost?
-    @State private var editingPost: MobileSocialPost?
-    @State private var deletionTarget: MobileSocialPost?
     @State private var publicProfile: LegendPublicProfileRoute?
 
     init(
@@ -1807,8 +1804,6 @@ struct LegendHacViewportFeed: View {
             }
         }
         .background(Color.black.ignoresSafeArea())
-        .navigationTitle("For You")
-        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if presentsDismissControl {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1818,29 +1813,6 @@ struct LegendHacViewportFeed: View {
                         Image(systemName: "chevron.backward")
                     }
                     .accessibilityLabel("Back")
-                }
-            }
-
-            if let selectedPost,
-               selectedPost.author.identity == currentIdentity {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            editingPost = selectedPost
-                        } label: {
-                            Label("Edit Hac", systemImage: "pencil")
-                        }
-
-                        Button(role: .destructive) {
-                            deletionTarget = selectedPost
-                        } label: {
-                            Label("Delete Hac", systemImage: "trash")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.body.weight(.semibold))
-                    }
-                    .accessibilityLabel("Hac options")
                 }
             }
         }
@@ -1860,35 +1832,6 @@ struct LegendHacViewportFeed: View {
                     isFollowRequestPending: route.isFollowRequestPending)
             }
         }
-        .sheet(item: $editingPost) { post in
-            LegendSocialPostEditor(
-                post: post,
-                social: social,
-                onSaved: { editingPost = nil })
-        }
-        .confirmationDialog(
-            "Delete this Hac?",
-            isPresented: Binding(
-                get: { deletionTarget != nil },
-                set: { if !$0 { deletionTarget = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            if let deletionTarget {
-                Button("Delete Hac", role: .destructive) {
-                    Task {
-                        guard await social.deletePost(postID: deletionTarget.id) else { return }
-                        self.deletionTarget = nil
-                        if posts.count == 1 {
-                            dismiss()
-                        }
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) { deletionTarget = nil }
-        } message: {
-            Text("This removes the Hac from your Legend profile and feed.")
-        }
         .alert(
             social.actionFailure?.title ?? "Legend update unavailable",
             isPresented: Binding(
@@ -1902,10 +1845,6 @@ struct LegendHacViewportFeed: View {
                 Text(social.actionFailure?.message ?? "The request could not be completed.")
             }
         )
-    }
-
-    private var selectedPost: MobileSocialPost? {
-        posts.first { $0.id == selectedPostID }
     }
 
     private func selectInitialPost() {
@@ -1951,6 +1890,20 @@ private struct LegendHacViewportPage: View {
                         }
                 }
 
+                // This is the only tap target that controls playback. It sits
+                // above the video but below all interactive overlays, so liking,
+                // commenting, sharing, saving, or opening a profile never pauses
+                // the Hac.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(
+                        TapGesture(count: 2)
+                            .onEnded { appreciate() }
+                            .exclusively(before: TapGesture().onEnded {
+                                playback.togglePlayback()
+                            })
+                    )
+
                 LinearGradient(
                     colors: [.clear, .black.opacity(0.18), .black.opacity(0.76)],
                     startPoint: .center,
@@ -1966,6 +1919,10 @@ private struct LegendHacViewportPage: View {
                 .allowsHitTesting(false)
 
                 hacOverlay
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity,
+                        alignment: .bottom)
                     .padding(.horizontal, LegendNextSpacing.md)
                     .padding(.bottom, LegendNextSpacing.lg)
 
@@ -1978,14 +1935,6 @@ private struct LegendHacViewportPage: View {
                         .allowsHitTesting(false)
                 }
             }
-            .contentShape(Rectangle())
-            .gesture(
-                TapGesture(count: 2)
-                    .onEnded { appreciate() }
-                    .exclusively(before: TapGesture().onEnded {
-                        playback.togglePlayback()
-                    })
-            )
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Hac by \(post.author.displayName)")
@@ -2635,12 +2584,85 @@ struct LegendSocialMediaImage: View {
             message: "This protected image could not be displayed. Try again shortly.",
             correlationID: nil)
     }
+}
 
-    private enum ImageState {
-        case loading
-        case loaded(UIImage)
-        case unavailable
+/// The one still-image renderer for published Hacs outside the fullscreen
+/// player. A Hac's creator-selected JPEG is delivered by the protected social
+/// media API, so home and profile surfaces do not spin up their own AVPlayer
+/// just to render a preview.
+struct LegendSocialVideoPoster: View {
+    let media: MobileSocialMedia
+    @ObservedObject var social: MobileSocialStore
+    let contentMode: ContentMode
+    let usesRoundedCorners: Bool
+
+    @State private var poster: UIImage?
+    @State private var finishedLoading = false
+
+    init(
+        media: MobileSocialMedia,
+        social: MobileSocialStore,
+        contentMode: ContentMode = .fill,
+        usesRoundedCorners: Bool = true
+    ) {
+        self.media = media
+        _social = ObservedObject(wrappedValue: social)
+        self.contentMode = contentMode
+        self.usesRoundedCorners = usesRoundedCorners
     }
+
+    var body: some View {
+        Group {
+            if let poster {
+                Image(uiImage: poster)
+                    .resizable()
+                    .aspectRatio(contentMode: contentMode)
+            } else {
+                ZStack {
+                    LinearGradient(
+                        colors: [
+                            LegendNextColor.navy,
+                            LegendNextColor.midnight
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing)
+
+                    if !finishedLoading && media.hasPreviewImage {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "play.rectangle.fill")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.goldBright)
+                    }
+                }
+            }
+        }
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: usesRoundedCorners ? LegendNextRadius.control : 0,
+                style: .continuous))
+        .frame(maxWidth: .infinity)
+        .task(id: media.id) {
+            poster = nil
+            finishedLoading = false
+            guard media.hasPreviewImage,
+                  let data = await social.previewData(for: media.id),
+                  let image = UIImage(data: data) else {
+                finishedLoading = true
+                return
+            }
+            poster = image
+            finishedLoading = true
+        }
+        .accessibilityLabel(media.accessibilityText ?? "Hac preview")
+    }
+}
+
+private enum ImageState {
+    case loading
+    case loaded(UIImage)
+    case unavailable
 }
 
 private struct LegendSocialPublicationBanner: View {

@@ -541,6 +541,61 @@ struct MobileSocialMedia: Codable, Equatable, Identifiable, Sendable {
     let durationSeconds: Decimal?
     let processingState: String
     let accessibilityText: String?
+    /// The server owns whether a protected creator-selected Hac poster exists.
+    /// It is intentionally metadata only; the image is fetched through the
+    /// same authorized social-media boundary as the video.
+    let hasPreviewImage: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id, displayOrder, mediaKind, mimeType, fileSizeBytes, width, height
+        case aspectRatio, durationSeconds, processingState, accessibilityText
+        case hasPreviewImage
+    }
+
+    init(
+        id: UUID,
+        displayOrder: Int,
+        mediaKind: String,
+        mimeType: String,
+        fileSizeBytes: Int64,
+        width: Int?,
+        height: Int?,
+        aspectRatio: Decimal?,
+        durationSeconds: Decimal?,
+        processingState: String,
+        accessibilityText: String?,
+        hasPreviewImage: Bool = false
+    ) {
+        self.id = id
+        self.displayOrder = displayOrder
+        self.mediaKind = mediaKind
+        self.mimeType = mimeType
+        self.fileSizeBytes = fileSizeBytes
+        self.width = width
+        self.height = height
+        self.aspectRatio = aspectRatio
+        self.durationSeconds = durationSeconds
+        self.processingState = processingState
+        self.accessibilityText = accessibilityText
+        self.hasPreviewImage = hasPreviewImage
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try values.decode(UUID.self, forKey: .id),
+            displayOrder: try values.decode(Int.self, forKey: .displayOrder),
+            mediaKind: try values.decode(String.self, forKey: .mediaKind),
+            mimeType: try values.decode(String.self, forKey: .mimeType),
+            fileSizeBytes: try values.decode(Int64.self, forKey: .fileSizeBytes),
+            width: try values.decodeIfPresent(Int.self, forKey: .width),
+            height: try values.decodeIfPresent(Int.self, forKey: .height),
+            aspectRatio: try values.decodeIfPresent(Decimal.self, forKey: .aspectRatio),
+            durationSeconds: try values.decodeIfPresent(Decimal.self, forKey: .durationSeconds),
+            processingState: try values.decode(String.self, forKey: .processingState),
+            accessibilityText: try values.decodeIfPresent(String.self, forKey: .accessibilityText),
+            hasPreviewImage: try values.decodeIfPresent(Bool.self, forKey: .hasPreviewImage) ?? false)
+    }
 
     var isImage: Bool {
         mediaKind.caseInsensitiveCompare("Image") == .orderedSame
@@ -658,6 +713,31 @@ struct MobileSocialPublishRequest: Sendable {
     let audience: MobileSocialAudience
     let location: String?
     let commentsEnabled: Bool
+    /// JPEG still selected by the creator for a Hac. It is not counted as post
+    /// media and is sent in the `preview` multipart field.
+    let previewImage: MultipartFormFile?
+
+    init(
+        contentType: MobileSocialContentType,
+        body: String,
+        files: [MultipartFormFile],
+        accessibilityText: String?,
+        music: MobileSocialMusicSelection?,
+        audience: MobileSocialAudience,
+        location: String?,
+        commentsEnabled: Bool,
+        previewImage: MultipartFormFile? = nil
+    ) {
+        self.contentType = contentType
+        self.body = body
+        self.files = files
+        self.accessibilityText = accessibilityText
+        self.music = music
+        self.audience = audience
+        self.location = location
+        self.commentsEnabled = commentsEnabled
+        self.previewImage = previewImage
+    }
 }
 
 /// The creation surface has one explicit progression.  Media, captions, and

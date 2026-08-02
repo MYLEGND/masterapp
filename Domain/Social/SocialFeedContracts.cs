@@ -18,9 +18,15 @@ public static class SocialPostContentTypes
 public static class SocialMediaUploadLimits
 {
     public const long MaximumMediaBytes = 100L * 1024L * 1024L;
+    /// <summary>
+    /// A creator-selected Hac poster is a small JPEG that travels with the
+    /// video upload. Keeping this independently bounded preserves the existing
+    /// video allowance.
+    /// </summary>
+    public const long MaximumPreviewImageBytes = 1L * 1024L * 1024L;
     public const long MultipartEnvelopeBytes = 1024L * 1024L;
     public const long MaximumMultipartRequestBytes =
-        MaximumMediaBytes + MultipartEnvelopeBytes;
+        MaximumMediaBytes + MaximumPreviewImageBytes + MultipartEnvelopeBytes;
     public const int MaximumFormValueLength = 2_000;
 
     /// Hacs are normalized on iOS to H.264/AAC MP4 before upload. Requiring
@@ -164,7 +170,8 @@ public sealed record SocialMediaAssetView(
     decimal? AspectRatio,
     decimal? DurationSeconds,
     string ProcessingState,
-    string? AccessibilityText);
+    string? AccessibilityText,
+    bool HasPreviewImage);
 
 public sealed record SocialPostView(
     Guid Id,
@@ -222,7 +229,8 @@ public sealed record CreateSocialMediaPostCommand(
     string Body,
     IReadOnlyList<SocialMediaUpload> Media,
     SocialMusicSelection? Music = null,
-    SocialPostDetails? Details = null);
+    SocialPostDetails? Details = null,
+    SocialMediaUpload? PreviewImage = null);
 
 public sealed record SocialMediaStream(
     Stream Content,
@@ -331,6 +339,7 @@ public interface ISocialFeedService
     Task<SocialOperationResult<SocialPostView>> UpdatePostAsync(UpdateSocialPostCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<bool>> DeletePostAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialMediaStream>> GetMediaAsync(SocialFeedActor actor, Guid mediaAssetId, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<SocialMediaStream>> GetMediaPreviewAsync(SocialFeedActor actor, Guid mediaAssetId, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostView>> ToggleReactionAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialCommentView>> AddCommentAsync(CreateSocialCommentCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialFollowResult>> ToggleFollowAsync(SocialFollowCommand command, CancellationToken cancellationToken = default);

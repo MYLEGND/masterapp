@@ -198,7 +198,15 @@ public sealed class MobileSocialController : MobileApiControllerBase
                 "Attach at least one supported image or video.");
         }
 
-        var openedStreams = new List<Stream>(files.Length);
+        var preview = request?.Preview;
+        if (preview is { Length: > SocialMediaUploadLimits.MaximumPreviewImageBytes })
+        {
+            return SocialFailure(
+                "social_media_preview_invalid",
+                "The selected Hac preview is too large. Choose another frame and try again.");
+        }
+
+        var openedStreams = new List<Stream>(files.Length + (preview is { Length: > 0 } ? 1 : 0));
 
         try
         {
@@ -216,6 +224,18 @@ public sealed class MobileSocialController : MobileApiControllerBase
                     request?.AccessibilityText));
             }
 
+            SocialMediaUpload? previewUpload = null;
+            if (preview is { Length: > 0 })
+            {
+                var previewStream = preview.OpenReadStream();
+                openedStreams.Add(previewStream);
+                previewUpload = new SocialMediaUpload(
+                    preview.FileName,
+                    preview.Length,
+                    previewStream,
+                    null);
+            }
+
             var result = await _social.CreateMediaPostAsync(
                 new CreateSocialMediaPostCommand(
                     resolved.Actor!,
@@ -226,7 +246,8 @@ public sealed class MobileSocialController : MobileApiControllerBase
                     new SocialPostDetails(
                         request?.Audience,
                         request?.Location,
-                        request?.CommentsEnabled ?? true)),
+                        request?.CommentsEnabled ?? true),
+                    previewUpload),
                 cancellationToken);
 
             return result.Succeeded && result.Value is not null
@@ -250,6 +271,33 @@ public sealed class MobileSocialController : MobileApiControllerBase
             return resolved.Error;
 
         var result = await _social.GetMediaAsync(
+            resolved.Actor!,
+            mediaAssetId,
+            cancellationToken);
+
+        if (!result.Succeeded || result.Value is null)
+        {
+            return result.ErrorCode is "social_actor_invalid" or "social_media_storage_unavailable"
+                ? SocialFailure(result.ErrorCode, result.ErrorMessage)
+                : NotFound();
+        }
+
+        return File(
+            result.Value.Content,
+            result.Value.MimeType,
+            enableRangeProcessing: true);
+    }
+
+    [HttpGet("media/{mediaAssetId:guid}/preview")]
+    public async Task<IActionResult> GetMediaPreview(
+        Guid mediaAssetId,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _social.GetMediaPreviewAsync(
             resolved.Actor!,
             mediaAssetId,
             cancellationToken);
@@ -576,7 +624,8 @@ public sealed class MobileSocialController : MobileApiControllerBase
             media.AspectRatio,
             media.DurationSeconds,
             media.ProcessingState,
-            media.AccessibilityText)).ToArray(),
+            media.AccessibilityText,
+            media.HasPreviewImage)).ToArray(),
         await ToCommentDtosAsync(post.Comments, cancellationToken));
 
     private async Task<IReadOnlyList<MobileSocialCommentDto>> ToCommentDtosAsync(
@@ -809,6 +858,7 @@ public sealed class MobileCreateSocialMediaPostRequest
     public string? Audience { get; init; }
     public string? Location { get; init; }
     public bool? CommentsEnabled { get; init; }
+    public IFormFile? Preview { get; init; }
     public string? MusicProviderId { get; init; }
     public string? MusicTrackId { get; init; }
     public decimal? MusicTrimStartSeconds { get; init; }
@@ -854,7 +904,8 @@ public sealed record MobileSocialMediaDto(
     decimal? AspectRatio,
     decimal? DurationSeconds,
     string ProcessingState,
-    string? AccessibilityText);
+    string? AccessibilityText,
+    bool HasPreviewImage);
 
 public sealed record MobileSocialPostDto(
     Guid Id,

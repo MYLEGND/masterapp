@@ -728,6 +728,77 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task LanguageTranslationRequest_AgentCanUseSharedControlledResourceRequest()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        db.AgentProfiles.AddRange(
+            new AgentProfile
+            {
+                AgentUserId = "zac-founder-oid",
+                AgentUpn = LegendVerifiedIdentity.FounderEmail,
+                NormalizedEmail = LegendVerifiedIdentity.FounderEmail,
+                FullName = "Zac Owen",
+                IsActive = true
+            },
+            new AgentProfile
+            {
+                AgentUserId = "legend-oid",
+                AgentUpn = LegendVerifiedIdentity.LegendEmail,
+                NormalizedEmail = LegendVerifiedIdentity.LegendEmail,
+                FullName = "Legend™",
+                IsActive = true
+            },
+            new AgentProfile
+            {
+                AgentUserId = "requesting-agent",
+                AgentUpn = "requesting.agent@example.test",
+                NormalizedEmail = "requesting.agent@example.test",
+                FullName = "Requesting Agent",
+                IsActive = true
+            });
+
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+
+        var result = await service.StartControlledResourceRequestAsync(
+            new StartControlledResourceRequestCommand(
+                new MessagingActor(
+                    "requesting-agent",
+                    MessagingParticipantTypes.Agent),
+                ControlledResourceTypes.LanguageTranslation));
+
+        Assert.True(result.Succeeded);
+
+        var request = Assert.IsType<MessagingVerificationReview>(result.Request);
+
+        Assert.Equal(
+            ControlledResourceTypes.LanguageTranslation,
+            request.ResourceType);
+
+        var persisted = Assert.Single(
+            await db.VerificationReviewRequests
+                .Where(x =>
+                    x.RequesterUserId == "requesting-agent" &&
+                    x.RequesterParticipantType == MessagingParticipantTypes.Agent &&
+                    x.ResourceType == ControlledResourceTypes.LanguageTranslation)
+                .ToListAsync());
+
+        Assert.Equal(
+            VerificationReviewStatuses.Pending,
+            persisted.Status);
+
+        Assert.Empty(
+            await db.ControlledResourceGrants
+                .Where(x =>
+                    x.UserId == "requesting-agent" &&
+                    x.ParticipantType == MessagingParticipantTypes.Agent &&
+                    x.ResourceType == ControlledResourceTypes.LanguageTranslation)
+                .ToListAsync());
+    }
+
+    [Fact]
     public async Task MessageTranslation_DoesNotTreatSenderPreferredLanguageAsMessageLanguage()
     {
         await using var db = ControllerTestHelpers.BuildDb();
