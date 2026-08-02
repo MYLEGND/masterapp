@@ -18,6 +18,57 @@ namespace AgentPortal.Tests;
 public sealed class SocialMediaStorageTests
 {
     [Fact]
+    public async Task LocalVideoUpload_DoesNotPublishWhenFfmpegCannotProduceTheOptimizedReplacement()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            $"legend-social-media-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Social:Media:RootPath"] = root,
+                    ["Social:Media:MaximumBytes"] = "104857600",
+                    ["Social:Media:FFmpeg:ExecutablePath"] = Path.Combine(root, "missing-ffmpeg")
+                })
+                .Build();
+            var storage = new SocialMediaStorage(
+                configuration,
+                NullLogger<SocialMediaStorage>.Instance);
+            var content = new byte[]
+            {
+                0, 0, 0, 24,
+                (byte)'f', (byte)'t', (byte)'y', (byte)'p',
+                (byte)'i', (byte)'s', (byte)'o', (byte)'m',
+                0, 0, 0, 0,
+                (byte)'i', (byte)'s', (byte)'o', (byte)'m'
+            };
+
+            await using var stream = new MemoryStream(content);
+            var result = await storage.StoreAsync(
+                Guid.NewGuid(),
+                "legend-hac.mp4",
+                content.Length,
+                stream);
+
+            Assert.False(result.Succeeded);
+            Assert.Equal("SOCIAL_VIDEO_PROCESSING_UNAVAILABLE", result.ErrorCode);
+            Assert.Empty(Directory.EnumerateFiles(
+                root,
+                "*",
+                SearchOption.AllDirectories));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task BlobUpload_UsesThePreProvisionedContainer_WithoutAttemptingContainerManagement()
     {
         using var handler = new RecordingBlobHandler();

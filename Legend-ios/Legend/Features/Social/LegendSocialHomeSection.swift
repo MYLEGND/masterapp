@@ -794,6 +794,20 @@ struct LegendPostDetailView: View {
     }
 
     var body: some View {
+        if post.isVideoHac {
+            // A Hac is always opened in the dedicated vertical-video surface.
+            // Ordinary posts intentionally stay in the post detail presentation.
+            LegendHacViewportFeed(
+                posts: postsInProfileFeed.filter(\.isVideoHac),
+                currentIdentity: currentIdentity,
+                social: social,
+                initialPostID: post.id)
+        } else {
+            standardPostDetail
+        }
+    }
+
+    private var standardPostDetail: some View {
         LegendScrollView {
             LazyVStack(spacing: LegendNextSpacing.xs) {
                 ForEach(postsInProfileFeed) { feedPost in
@@ -1290,9 +1304,9 @@ private struct LegendSocialPostCard: View {
     }
 
     private var mediaAspectRatio: CGFloat {
-        if post.contentType == MobileSocialContentType.story.rawValue ||
-            post.contentType == MobileSocialContentType.hac.rawValue {
-            return 9 / 16
+        if let contentType = MobileSocialContentType(rawValue: post.contentType),
+           contentType.format.usesFixedCanvasAspectRatio {
+            return CGFloat(contentType.format.mediaAspectRatio)
         }
 
         guard let aspectRatio = post.media.first?.aspectRatio else { return 1 }
@@ -1314,14 +1328,6 @@ struct LegendForYouView: View {
     let initialPostID: UUID?
     let presentsDismissControl: Bool
 
-    @Environment(\.dismiss) private var dismiss
-    @State private var selectedPostID: UUID?
-    @State private var commentTarget: MobileSocialPost?
-    @State private var postInsight: MobileSocialPostInsight?
-    @State private var editingPost: MobileSocialPost?
-    @State private var deletionTarget: MobileSocialPost?
-    @State private var publicProfile: LegendPublicProfileRoute?
-
     init(
         currentIdentity: LogicalParticipantIdentity,
         social: MobileSocialStore,
@@ -1332,7 +1338,6 @@ struct LegendForYouView: View {
         _social = ObservedObject(wrappedValue: social)
         self.initialPostID = initialPostID
         self.presentsDismissControl = presentsDismissControl
-        _selectedPostID = State(initialValue: initialPostID)
     }
 
     var body: some View {
@@ -1353,10 +1358,455 @@ struct LegendForYouView: View {
                 .padding(LegendNextSpacing.sm)
 
             case .loaded(let snapshot):
-                feed(snapshot.hacs.filter(\.isVideoHac))
+                LegendHacViewportFeed(
+                    posts: snapshot.hacs.filter(\.isVideoHac),
+                    currentIdentity: currentIdentity,
+                    social: social,
+                    initialPostID: initialPostID,
+                    presentsDismissControl: presentsDismissControl)
             }
         }
-        .background(LegendNextCanvas())
+    }
+}
+
+/// The viewport-retention contract for native Hac playback. The feed owns
+/// exactly three hardware decoders: the active Hac and the next two Hacs in the
+/// vertical sequence. Everything behind the active Hac is released immediately
+/// and recreated only if the member scrolls back. Network media itself remains
+/// owned by `MobileSocialStore`'s secure disk cache, so FYP and a profile's Hac
+/// feed cannot form competing caches.
+enum LegendHacPlaybackWindow {
+    static let maximumPlayerCount = 3
+
+    static func retainedIndexes(activeIndex: Int, count: Int) -> [Int] {
+        guard count > 0 else { return [] }
+        let upperBound = min(count - 1, activeIndex + maximumPlayerCount - 1)
+        return Array(activeIndex...upperBound)
+    }
+
+    static func prefetchIndexes(activeIndex: Int, count: Int) -> [Int] {
+        guard count > 0 else { return [] }
+        let lowerBound = max(0, activeIndex + 1)
+        let upperBound = min(count - 1, activeIndex + 2)
+        guard lowerBound <= upperBound else { return [] }
+        return Array(lowerBound...upperBound)
+    }
+}
+
+/// One ownership boundary for Hac decoders, playback state, prewarming, and
+/// measured watch time. A `LegendHacViewportFeed` owns exactly one coordinator
+/// regardless of whether it is opened from FYP or a member profile.
+@MainActor
+private final class LegendHacPlaybackCoordinator: ObservableObject {
+    @Published private(set) var activePostID: UUID?
+    @Published private(set) var isPlaying = false
+    @Published private(set) var isMuted = false
+    @Published private(set) var readyMediaIDs = Set<UUID>()
+    @Published private(set) var failures: [UUID: UserFacingFailure] = [:]
+
+    private var players: [UUID: AVPlayer] = [:]
+    private var itemStatusObservations: [UUID: NSKeyValueObservation] = [:]
+    private var itemEndObservers: [UUID: NSObjectProtocol] = [:]
+    private var retainedMediaIDs = Set<UUID>()
+    private var activeMediaID: UUID?
+    private var activePost: MobileSocialPost?
+    private var activationID: UUID?
+    private var socialStore: MobileSocialStore?
+
+    func player(for mediaID: UUID) -> AVPlayer? {
+        players[mediaID]
+    }
+
+    func failure(for mediaID: UUID) -> UserFacingFailure? {
+        failures[mediaID]
+    }
+
+    func activate(
+        posts: [MobileSocialPost],
+        postID: UUID,
+        social: MobileSocialStore
+    ) async {
+        guard let activeIndex = posts.firstIndex(where: { $0.id == postID }),
+              let activeMedia = posts[activeIndex].media.first else {
+            stop(social: social)
+            return
+        }
+
+        let requestID = UUID()
+        activationID = requestID
+        socialStore = social
+        recordActivePlayback(with: social)
+        pauseActivePlayback()
+
+        activePostID = postID
+        activePost = posts[activeIndex]
+        activeMediaID = activeMedia.id
+        isPlaying = false
+
+        retainedMediaIDs = Set(
+            LegendHacPlaybackWindow.retainedIndexes(
+                activeIndex: activeIndex,
+                count: posts.count
+            )
+            .compactMap { posts[$0].media.first?.id }
+        )
+        releasePlayersOutsideRetainedWindow()
+
+        await prepare(activeMedia, social: social)
+        guard activationID == requestID,
+              activeMediaID == activeMedia.id else {
+            return
+        }
+        playActive()
+
+        for index in LegendHacPlaybackWindow.prefetchIndexes(
+            activeIndex: activeIndex,
+            count: posts.count
+        ) {
+            guard let media = posts[index].media.first else { continue }
+            Task { [weak self] in
+                guard let self else { return }
+                await self.prepare(media, social: social)
+            }
+        }
+    }
+
+    func togglePlayback() {
+        if isPlaying {
+            pauseActivePlayback()
+        } else {
+            playActive()
+        }
+    }
+
+    func toggleMute() {
+        isMuted.toggle()
+        players.values.forEach { $0.isMuted = isMuted }
+
+        guard let activeMediaID else { return }
+        if isMuted {
+            LegendSocialAudioSession.endPlayback(for: .hac(activeMediaID))
+        } else if isPlaying {
+            _ = beginAudio(for: activeMediaID)
+        }
+    }
+
+    func retry(
+        posts: [MobileSocialPost],
+        postID: UUID,
+        social: MobileSocialStore
+    ) async {
+        guard let post = posts.first(where: { $0.id == postID }),
+              let media = post.media.first else { return }
+
+        releasePlayer(media.id)
+        failures.removeValue(forKey: media.id)
+        _ = await social.mediaFile(for: media, forceRefresh: true)
+        await activate(posts: posts, postID: postID, social: social)
+    }
+
+    func stop(social: MobileSocialStore) {
+        recordActivePlayback(with: social)
+        activationID = nil
+        pauseActivePlayback()
+        if let activeMediaID {
+            LegendSocialAudioSession.endPlayback(for: .hac(activeMediaID))
+        }
+
+        Array(players.keys).forEach(releasePlayer)
+        players.removeAll()
+        itemStatusObservations.removeAll()
+        readyMediaIDs.removeAll()
+        retainedMediaIDs.removeAll()
+        activePostID = nil
+        activePost = nil
+        activeMediaID = nil
+        socialStore = nil
+    }
+
+    private func prepare(_ media: MobileSocialMedia, social: MobileSocialStore) async {
+        guard retainedMediaIDs.contains(media.id), players[media.id] == nil else { return }
+
+        guard let url = await social.mediaFile(for: media) else {
+            guard retainedMediaIDs.contains(media.id) else { return }
+            failures[media.id] = social.mediaFailure(for: media.id) ?? UserFacingFailure(
+                title: "Video unavailable",
+                message: "This Hac could not be prepared for playback. Please try again.",
+                correlationID: nil)
+            return
+        }
+
+        guard retainedMediaIDs.contains(media.id) else { return }
+        let item = AVPlayerItem(url: url)
+        let player = AVPlayer(playerItem: item)
+        player.actionAtItemEnd = .none
+        player.isMuted = isMuted
+
+        players[media.id] = player
+        failures.removeValue(forKey: media.id)
+
+        // AVPlayerItem construction does not mean the asset is ready for
+        // playback. Drive readiness, preroll, and active playback from the
+        // item's authoritative AVFoundation status transition.
+        itemStatusObservations[media.id] = item.observe(
+            \.status,
+            options: [.new, .initial]
+        ) { [weak self, weak item] observedItem, _ in
+            Task { @MainActor [weak self, weak item] in
+                guard let self,
+                      let item,
+                      observedItem === item,
+                      self.players[media.id]?.currentItem === item,
+                      self.retainedMediaIDs.contains(media.id) else {
+                    return
+                }
+
+                switch observedItem.status {
+                case .unknown:
+                    // Waiting for AVFoundation to finish preparing the item.
+                    // Preroll is invalid in this state.
+                    self.readyMediaIDs.remove(media.id)
+
+                case .readyToPlay:
+                    self.readyMediaIDs.insert(media.id)
+
+                    if media.id == self.activeMediaID {
+                        // The active Hac may have been selected while its item
+                        // was still preparing. Start it only if it remains the
+                        // current activation when AVFoundation becomes ready.
+                        self.playActive()
+                    } else {
+                        // Neighboring retained Hacs are prewarmed only after
+                        // AVFoundation declares them ready. They never acquire
+                        // audio ownership or become active here.
+                        player.preroll(atRate: 0) { _ in }
+                    }
+
+                case .failed:
+                    self.readyMediaIDs.remove(media.id)
+                    let message = observedItem.error?.localizedDescription
+                        ?? "This Hac could not be played. Please try again."
+                    self.handlePlaybackFailure(
+                        mediaID: media.id,
+                        message: message)
+
+                @unknown default:
+                    self.readyMediaIDs.remove(media.id)
+                }
+            }
+        }
+
+        itemEndObservers[media.id] = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.loopActiveMediaIfNeeded(media.id)
+            }
+        }
+    }
+
+    private func playActive() {
+        guard let activeMediaID,
+              let player = players[activeMediaID],
+              let item = player.currentItem,
+              item.status == .readyToPlay,
+              readyMediaIDs.contains(activeMediaID) else {
+            // Activation may legitimately arrive before AVFoundation has
+            // prepared the item. The status observer will call playActive()
+            // when this same active item reaches .readyToPlay.
+            return
+        }
+
+        if !isMuted, !beginAudio(for: activeMediaID) {
+            return
+        }
+
+        player.play()
+        isPlaying = true
+    }
+
+    private func pauseActivePlayback() {
+        guard let activeMediaID else { return }
+        players[activeMediaID]?.pause()
+        LegendSocialAudioSession.endPlayback(for: .hac(activeMediaID))
+        isPlaying = false
+    }
+
+    private func beginAudio(for mediaID: UUID) -> Bool {
+        do {
+            try LegendSocialAudioSession.beginPlayback(for: .hac(mediaID))
+            return true
+        } catch {
+            failures[mediaID] = UserFacingFailure(
+                title: "Hac audio unavailable",
+                message: "Legend could not prepare audio playback for this Hac. Please try again.",
+                correlationID: nil)
+            return false
+        }
+    }
+
+    private func loopActiveMediaIfNeeded(_ mediaID: UUID) {
+        guard mediaID == activeMediaID,
+              isPlaying,
+              let player = players[mediaID] else { return }
+        recordActivePlayback(completed: true, with: socialStore)
+        player.seek(to: .zero) { [weak self] finished in
+            guard finished else { return }
+            Task { @MainActor [weak self] in
+                guard self?.isPlaying == true else { return }
+                self?.players[mediaID]?.play()
+            }
+        }
+    }
+
+    private func handlePlaybackFailure(mediaID: UUID, message: String) {
+        players[mediaID]?.pause()
+        if mediaID == activeMediaID {
+            LegendSocialAudioSession.endPlayback(for: .hac(mediaID))
+            isPlaying = false
+        }
+        failures[mediaID] = UserFacingFailure(
+            title: "Video unavailable",
+            message: message,
+            correlationID: nil)
+    }
+
+    private func recordActivePlayback(
+        completed: Bool = false,
+        with social: MobileSocialStore?
+    ) {
+        guard let social,
+              let activePost,
+              let activeMediaID,
+              let player = players[activeMediaID] else { return }
+
+        let watchSeconds = max(0, player.currentTime().seconds)
+        let duration = player.currentItem?.duration.seconds
+        let completion: Double?
+        if completed {
+            completion = 100
+        } else if let duration, duration.isFinite, duration > 0 {
+            completion = min(100, max(0, (watchSeconds / duration) * 100))
+        } else {
+            completion = nil
+        }
+
+        social.recordView(
+            postID: activePost.id,
+            watchDurationSeconds: Decimal(watchSeconds),
+            watchCompletionPercentage: completion.map { Decimal($0) })
+    }
+
+    private func releasePlayersOutsideRetainedWindow() {
+        let obsoleteMediaIDs = players.keys.filter { !retainedMediaIDs.contains($0) }
+        obsoleteMediaIDs.forEach(releasePlayer)
+    }
+
+    private func releasePlayer(_ mediaID: UUID) {
+        players[mediaID]?.pause()
+        players[mediaID]?.replaceCurrentItem(with: nil)
+        players.removeValue(forKey: mediaID)
+        itemStatusObservations.removeValue(forKey: mediaID)
+        if let observer = itemEndObservers.removeValue(forKey: mediaID) {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        readyMediaIDs.remove(mediaID)
+    }
+}
+
+/// Shared full-viewport Hac experience for the FYP and a profile's Hac grid.
+/// It does not reuse the regular post card, which prevents portrait video from
+/// inheriting a narrow card proposal or a second playback implementation.
+struct LegendHacViewportFeed: View {
+    let posts: [MobileSocialPost]
+    let currentIdentity: LogicalParticipantIdentity
+    @ObservedObject var social: MobileSocialStore
+    let initialPostID: UUID?
+    let presentsDismissControl: Bool
+
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var playback = LegendHacPlaybackCoordinator()
+    @State private var selectedPostID: UUID?
+    @State private var commentTarget: MobileSocialPost?
+    @State private var editingPost: MobileSocialPost?
+    @State private var deletionTarget: MobileSocialPost?
+    @State private var publicProfile: LegendPublicProfileRoute?
+
+    init(
+        posts: [MobileSocialPost],
+        currentIdentity: LogicalParticipantIdentity,
+        social: MobileSocialStore,
+        initialPostID: UUID? = nil,
+        presentsDismissControl: Bool = false
+    ) {
+        self.posts = posts
+        self.currentIdentity = currentIdentity
+        _social = ObservedObject(wrappedValue: social)
+        self.initialPostID = initialPostID
+        self.presentsDismissControl = presentsDismissControl
+        _selectedPostID = State(initialValue: initialPostID ?? posts.first?.id)
+    }
+
+    var body: some View {
+        Group {
+            if posts.isEmpty {
+                LegendNextEmptyState(
+                    title: "No Hacs yet",
+                    message: "Video Hacs will appear here as they are shared.",
+                    systemImage: "play.rectangle.on.rectangle")
+            } else {
+                LegendScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(posts) { post in
+                            LegendHacViewportPage(
+                                post: post,
+                                social: social,
+                                playback: playback,
+                                comment: { commentTarget = post },
+                                retry: {
+                                    Task {
+                                        await playback.retry(
+                                            posts: posts,
+                                            postID: post.id,
+                                            social: social)
+                                    }
+                                },
+                                openProfile: {
+                                    publicProfile = LegendPublicProfileRoute(
+                                        profile: post.author,
+                                        isFollowing: post.followedByCurrentActor,
+                                        isFollowRequestPending: post.followRequestPending ?? false)
+                                }
+                            )
+                            .containerRelativeFrame(.vertical)
+                            .id(post.id)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $selectedPostID)
+                .task(id: selectedPostID) {
+                    guard let selectedPostID else { return }
+                    await playback.activate(
+                        posts: posts,
+                        postID: selectedPostID,
+                        social: social)
+                }
+                .onAppear {
+                    selectInitialPost()
+                }
+                .onChange(of: posts.map(\.id)) {
+                    selectInitialPost()
+                }
+                .onDisappear {
+                    playback.stop(social: social)
+                }
+            }
+        }
+        .background(Color.black.ignoresSafeArea())
         .navigationTitle("For You")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -1367,7 +1817,7 @@ struct LegendForYouView: View {
                     } label: {
                         Image(systemName: "chevron.backward")
                     }
-                    .accessibilityLabel("Back to home feed")
+                    .accessibilityLabel("Back")
                 }
             }
 
@@ -1378,31 +1828,27 @@ struct LegendForYouView: View {
                         Button {
                             editingPost = selectedPost
                         } label: {
-                            Label("Edit \(selectedPost.displayContentType)", systemImage: "pencil")
+                            Label("Edit Hac", systemImage: "pencil")
                         }
 
                         Button(role: .destructive) {
                             deletionTarget = selectedPost
                         } label: {
-                            Label("Delete \(selectedPost.displayContentType)", systemImage: "trash")
+                            Label("Delete Hac", systemImage: "trash")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.body.weight(.semibold))
                     }
-                    .accessibilityLabel("\(selectedPost.displayContentType) options")
+                    .accessibilityLabel("Hac options")
                 }
             }
         }
-.sheet(item: $commentTarget) { post in
+        .sheet(item: $commentTarget) { post in
             LegendCommentComposer(
                 postID: post.id,
                 social: social,
-                cancel: { commentTarget = nil }
-            )
-        }
-        .sheet(item: $postInsight) { insight in
-            LegendPostInsightsSheet(insight: insight)
+                cancel: { commentTarget = nil })
         }
         .sheet(item: $publicProfile) { route in
             NavigationStack {
@@ -1418,32 +1864,30 @@ struct LegendForYouView: View {
             LegendSocialPostEditor(
                 post: post,
                 social: social,
-                onSaved: { editingPost = nil }
-            )
+                onSaved: { editingPost = nil })
         }
         .confirmationDialog(
-            "Delete this \(deletionTargetDisplayName)?",
+            "Delete this Hac?",
             isPresented: Binding(
                 get: { deletionTarget != nil },
                 set: { if !$0 { deletionTarget = nil } }
             ),
             titleVisibility: .visible
         ) {
-            if let post = deletionTarget {
-                Button("Delete \(post.displayContentType)", role: .destructive) {
+            if let deletionTarget {
+                Button("Delete Hac", role: .destructive) {
                     Task {
-                        if await social.deletePost(postID: post.id) {
-                            deletionTarget = nil
+                        guard await social.deletePost(postID: deletionTarget.id) else { return }
+                        self.deletionTarget = nil
+                        if posts.count == 1 {
+                            dismiss()
                         }
                     }
                 }
             }
-
-            Button("Cancel", role: .cancel) {
-                deletionTarget = nil
-            }
+            Button("Cancel", role: .cancel) { deletionTarget = nil }
         } message: {
-            Text("This removes the \(deletionTargetDisplayName) from your Legend profile and feed.")
+            Text("This removes the Hac from your Legend profile and feed.")
         }
         .alert(
             social.actionFailure?.title ?? "Legend update unavailable",
@@ -1452,9 +1896,7 @@ struct LegendForYouView: View {
                 set: { if !$0 { social.dismissActionFailure() } }
             ),
             actions: {
-                Button("OK", role: .cancel) {
-                    social.dismissActionFailure()
-                }
+                Button("OK", role: .cancel) { social.dismissActionFailure() }
             },
             message: {
                 Text(social.actionFailure?.message ?? "The request could not be completed.")
@@ -1462,86 +1904,274 @@ struct LegendForYouView: View {
         )
     }
 
-    @ViewBuilder
-    private func feed(_ posts: [MobileSocialPost]) -> some View {
-        if posts.isEmpty {
-            LegendNextEmptyState(
-                title: "No updates yet",
-                message: "Video Hacs matched to your Legend activity will appear here.",
-                systemImage: "play.rectangle.on.rectangle"
+    private var selectedPost: MobileSocialPost? {
+        posts.first { $0.id == selectedPostID }
+    }
+
+    private func selectInitialPost() {
+        guard !posts.contains(where: { $0.id == selectedPostID }) else { return }
+        selectedPostID = initialPostID.flatMap { requestedID in
+            posts.contains(where: { $0.id == requestedID }) ? requestedID : nil
+        } ?? posts.first?.id
+    }
+}
+
+private struct LegendHacViewportPage: View {
+    let post: MobileSocialPost
+    @ObservedObject var social: MobileSocialStore
+    @ObservedObject var playback: LegendHacPlaybackCoordinator
+    let comment: () -> Void
+    let retry: () -> Void
+    let openProfile: () -> Void
+
+    @State private var showsAppreciation = false
+
+    private var video: MobileSocialMedia? {
+        post.media.first(where: \.isVideo)
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Color.black
+
+                if let video,
+                   let player = playback.player(for: video.id) {
+                    LegendHacVideoCanvas(player: player)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                } else if let video,
+                          let failure = playback.failure(for: video.id) {
+                    unavailableVideo(failure)
+                } else {
+                    LegendNextColor.midnight
+                        .overlay {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(1.15)
+                        }
+                }
+
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.18), .black.opacity(0.76)],
+                    startPoint: .center,
+                    endPoint: .bottom
+                )
+                .allowsHitTesting(false)
+
+                LinearGradient(
+                    colors: [.black.opacity(0.26), .clear],
+                    startPoint: .trailing,
+                    endPoint: .leading
+                )
+                .allowsHitTesting(false)
+
+                hacOverlay
+                    .padding(.horizontal, LegendNextSpacing.md)
+                    .padding(.bottom, LegendNextSpacing.lg)
+
+                if showsAppreciation {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 82, weight: .bold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.32), radius: 12, y: 4)
+                        .transition(.scale.combined(with: .opacity))
+                        .allowsHitTesting(false)
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                TapGesture(count: 2)
+                    .onEnded { appreciate() }
+                    .exclusively(before: TapGesture().onEnded {
+                        playback.togglePlayback()
+                    })
             )
-        } else {
-            LegendScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(posts) { post in
-                        LegendSocialPostCard(
-                            post: post,
-                            currentIdentity: currentIdentity,
-                            social: social,
-                            react: {
-                                social.toggleReaction(postID: post.id)
-                            },
-                            comment: {
-                                commentTarget = post
-                            },
-                            follow: {
-                                social.toggleFollow(
-                                    author: post.author,
-                                    sourcePostID: post.id
-                                )
-                            },
-                            insights: {
-                                Task {
-                                    postInsight = await social.postInsights(postID: post.id)
-                                }
-                            },
-                            presentation: .immersive,
-                            open: {},
-                            openProfile: {
-                                publicProfile = LegendPublicProfileRoute(
-                                    profile: post.author,
-                                    isFollowing: post.followedByCurrentActor,
-                                    isFollowRequestPending: post.followRequestPending ?? false)
-                            }
-                        )
-                        // The For You feed is intentionally vertical. Each Hac
-                        // owns a viewport, so a scroll advances through videos
-                        // instead of entering an unrelated horizontal pager.
-                        .containerRelativeFrame(.vertical)
-                        .id(post.id)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Hac by \(post.author.displayName)")
+    }
+
+    private var hacOverlay: some View {
+        HStack(alignment: .bottom, spacing: LegendNextSpacing.sm) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                Button(action: openProfile) {
+                    HStack(spacing: LegendNextSpacing.xs) {
+                        LegendProfileAvatar(
+                            avatar: post.author.avatar,
+                            displayName: post.author.displayName,
+                            size: 38)
+                        LegendVerifiedName(
+                            post.author.displayName,
+                            isVerified: post.author.isVerified == true,
+                            font: .subheadline.weight(.bold),
+                            badgePlacement: .alongsideProfileImage)
+                            .foregroundStyle(.white)
                     }
                 }
-                .scrollTargetLayout()
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open \(post.author.displayName)'s profile")
+
+                if !post.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(post.body)
+                        .font(.subheadline)
+                        .foregroundStyle(.white)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let music = post.music {
+                    Label(
+                        "\(music.trackTitle) · \(music.artistName)",
+                        systemImage: "music.note")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
+                }
             }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: $selectedPostID)
-            .onAppear {
-                selectInitialPost(from: posts)
-            }
-            .onChange(of: posts.map(\.id)) {
-                selectInitialPost(from: posts)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(spacing: LegendNextSpacing.sm) {
+                hacAction(
+                    symbol: post.reactedByCurrentActor ? "heart.fill" : "heart",
+                    count: post.metrics.reactionCount,
+                    title: post.reactedByCurrentActor ? "Remove appreciation" : "Appreciate",
+                    tint: post.reactedByCurrentActor ? LegendNextColor.danger : .white,
+                    action: appreciate)
+
+                hacAction(
+                    symbol: "bubble.right",
+                    count: post.metrics.commentCount,
+                    title: "Comment",
+                    action: comment)
+
+                hacAction(
+                    symbol: post.savedByCurrentActor ? "bookmark.fill" : "bookmark",
+                    count: post.metrics.saveCount,
+                    title: post.savedByCurrentActor ? "Remove saved Hac" : "Save Hac",
+                    tint: post.savedByCurrentActor ? LegendNextColor.gold : .white,
+                    action: { social.toggleSave(postID: post.id) })
+
+                hacAction(
+                    symbol: "arrow.2.squarepath",
+                    count: post.metrics.repostCount,
+                    title: post.repostedByCurrentActor ? "Remove repost" : "Repost",
+                    tint: post.repostedByCurrentActor ? LegendNextColor.information : .white,
+                    action: { social.toggleRepost(postID: post.id) })
+
+                ShareLink(
+                    item: post.body.isEmpty
+                        ? "Legend Hac by \(post.author.displayName)"
+                        : post.body
+                ) {
+                    hacActionLabel(
+                        symbol: "paperplane",
+                        count: post.metrics.shareCount,
+                        tint: .white)
+                }
+                .simultaneousGesture(TapGesture().onEnded {
+                    social.recordShare(postID: post.id)
+                })
+                .accessibilityLabel("Share Hac")
+
+                hacAction(
+                    symbol: playback.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                    count: nil,
+                    title: playback.isMuted ? "Unmute Hac" : "Mute Hac",
+                    action: playback.toggleMute)
             }
         }
     }
 
-    private func selectInitialPost(from posts: [MobileSocialPost]) {
-        guard posts.contains(where: { $0.id == selectedPostID }) else {
-            selectedPostID = initialPostID.flatMap { requestedID in
-                posts.contains(where: { $0.id == requestedID }) ? requestedID : nil
-            } ?? posts.first?.id
-            return
+    private func hacAction(
+        symbol: String,
+        count: Int?,
+        title: String,
+        tint: Color = .white,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            hacActionLabel(symbol: symbol, count: count, tint: tint)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+
+    private func hacActionLabel(
+        symbol: String,
+        count: Int?,
+        tint: Color
+    ) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: symbol)
+                .font(.system(size: 20, weight: .semibold))
+                .frame(width: 42, height: 42)
+                .background(LegendNextColor.navy.opacity(0.72), in: Circle())
+            if let count, count > 0 {
+                Text(count.formatted())
+                    .font(.caption2.weight(.bold))
+                    .monospacedDigit()
+            }
+        }
+        .foregroundStyle(tint)
+    }
+
+    private func appreciate() {
+        social.toggleReaction(postID: post.id)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.62)) {
+            showsAppreciation = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.62) {
+            withAnimation(.easeOut(duration: 0.16)) {
+                showsAppreciation = false
+            }
         }
     }
 
-    private var selectedPost: MobileSocialPost? {
-        guard case .loaded(let snapshot) = social.state else { return nil }
-        return snapshot.hacs.first { $0.id == selectedPostID }
+    private func unavailableVideo(_ failure: UserFacingFailure) -> some View {
+        VStack(spacing: LegendNextSpacing.sm) {
+            Image(systemName: "video.slash")
+                .font(.title2.weight(.semibold))
+            Text(failure.message)
+                .font(LegendNextTypography.supporting)
+                .multilineTextAlignment(.center)
+            Button("Retry video", action: retry)
+            .buttonStyle(LegendNextButtonStyle(kind: .secondary))
+        }
+        .foregroundStyle(.white)
+        .padding(LegendNextSpacing.lg)
+    }
+}
+
+private final class LegendHacPlayerLayerView: UIView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+
+    var playerLayer: AVPlayerLayer {
+        guard let layer = layer as? AVPlayerLayer else {
+            fatalError("Legend Hac player requires AVPlayerLayer")
+        }
+        return layer
+    }
+}
+
+/// AVPlayerLayer is used instead of `VideoPlayer` for Hacs so the canvas owns
+/// the complete viewport with `.resizeAspectFill`; the native player controls
+/// cannot constrain portrait video to the leading side of a card.
+private struct LegendHacVideoCanvas: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> LegendHacPlayerLayerView {
+        let view = LegendHacPlayerLayerView()
+        view.backgroundColor = .black
+        view.playerLayer.videoGravity = .resizeAspectFill
+        view.playerLayer.player = player
+        return view
     }
 
-    private var deletionTargetDisplayName: String {
-        deletionTarget?.displayContentType ?? "Post"
+    func updateUIView(_ view: LegendHacPlayerLayerView, context: Context) {
+        view.playerLayer.videoGravity = .resizeAspectFill
+        view.playerLayer.player = player
     }
-
 }
 
 struct LegendSocialPostEditor: View {

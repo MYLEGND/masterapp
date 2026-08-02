@@ -6841,6 +6841,7 @@ struct LegendPublicProfileView: View {
                     ForEach(posts) { post in
                         LegendPublicProfilePost(
                             post: post,
+                            profilePosts: posts,
                             currentIdentity: currentIdentity,
                             social: social)
                     }
@@ -6925,15 +6926,25 @@ struct LegendPublicProfileView: View {
 /// remote-media handling for profile pages.
 private struct LegendPublicProfilePost: View {
     let post: MobileSocialPost
+    let profilePosts: [MobileSocialPost]
     let currentIdentity: LogicalParticipantIdentity
     @ObservedObject var social: MobileSocialStore
 
     var body: some View {
         NavigationLink {
-            LegendPostDetailView(
-                post: post,
-                currentIdentity: currentIdentity,
-                social: social)
+            if post.isVideoHac {
+                LegendHacViewportFeed(
+                    posts: profilePosts.filter(\.isVideoHac),
+                    currentIdentity: currentIdentity,
+                    social: social,
+                    initialPostID: post.id)
+            } else {
+                LegendPostDetailView(
+                    post: post,
+                    currentIdentity: currentIdentity,
+                    social: social,
+                    profilePosts: profilePosts)
+            }
         } label: {
             LegendNextSurface {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {

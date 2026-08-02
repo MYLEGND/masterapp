@@ -273,6 +273,46 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertTrue(MobileSocialContentType.hac.requiresVideo)
     }
 
+    func testHacPlaybackWindowOwnsExactlyTheActiveHacAndNextTwo() {
+        XCTAssertEqual(LegendHacPlaybackWindow.maximumPlayerCount, 3)
+        XCTAssertEqual(
+            LegendHacPlaybackWindow.retainedIndexes(activeIndex: 2, count: 7),
+            [2, 3, 4])
+        XCTAssertEqual(
+            LegendHacPlaybackWindow.prefetchIndexes(activeIndex: 2, count: 7),
+            [3, 4])
+        XCTAssertEqual(
+            LegendHacPlaybackWindow.retainedIndexes(activeIndex: 0, count: 2),
+            [0, 1])
+        XCTAssertEqual(
+            LegendHacPlaybackWindow.prefetchIndexes(activeIndex: 1, count: 2),
+            [])
+    }
+
+    func testCreationFormatsKeepCanvasAndCaptureRulesInOneAuthority() {
+        let post = MobileSocialContentType.post.format
+        let story = MobileSocialContentType.story.format
+        let hac = MobileSocialContentType.hac.format
+
+        XCTAssertEqual(post.mediaAspectRatio, 1)
+        XCTAssertFalse(post.usesFixedCanvasAspectRatio)
+        XCTAssertTrue(post.allowsTextOnlyPublication)
+        XCTAssertEqual(post.maximumVideoDurationSeconds, 60)
+
+        XCTAssertEqual(story.mediaAspectRatio, 9.0 / 16.0)
+        XCTAssertTrue(story.usesFixedCanvasAspectRatio)
+        XCTAssertFalse(story.allowsTextOnlyPublication)
+        XCTAssertTrue(story.acceptsVideo(duration: 60))
+        XCTAssertFalse(story.acceptsVideo(duration: 60.01))
+
+        XCTAssertEqual(hac.mediaAspectRatio, 9.0 / 16.0)
+        XCTAssertTrue(hac.usesFixedCanvasAspectRatio)
+        XCTAssertFalse(hac.allowsTextOnlyPublication)
+        XCTAssertEqual(hac.maximumVideoDurationSeconds, 90)
+        XCTAssertTrue(hac.acceptsVideo(duration: 90))
+        XCTAssertFalse(hac.acceptsVideo(duration: 90.01))
+    }
+
     func testStoryCollectionsUseTheCompleteLogicalOwnerIdentity() throws {
         let sharedUserID = "shared-user"
         let agent = MobileSocialAuthor(

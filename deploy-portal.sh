@@ -9,6 +9,18 @@ PROJECT="/Users/zacowen/MASTERAPP/AgentPortal/AgentPortal.csproj"
 PUBLISH_DIR="/tmp/masterapp-portal-publish"
 ZIP_PATH="/tmp/masterapp-portal.zip"
 
+# The Azure target is Windows App Service, so Linux package-manager commands
+# cannot provision FFmpeg on the host. Package this pinned LGPL static build
+# with every release instead. The SHA-256 is verified before it enters the ZIP.
+FFMPEG_RELEASE_TAG="autobuild-2026-07-31-14-10"
+FFMPEG_ARCHIVE_NAME="ffmpeg-N-125875-g5d4d3bdc61-win64-lgpl.zip"
+FFMPEG_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/${FFMPEG_RELEASE_TAG}/${FFMPEG_ARCHIVE_NAME}"
+FFMPEG_SHA256="5d65df0c0ca5346d82df8ade9c2e12db45d1f978f18ff908b42f03f5223dfc90"
+FFMPEG_ARCHIVE="/tmp/${FFMPEG_ARCHIVE_NAME}"
+FFMPEG_EXTRACT_DIR="/tmp/masterapp-ffmpeg-win64-lgpl"
+FFMPEG_SOURCE="${FFMPEG_EXTRACT_DIR}/ffmpeg-N-125875-g5d4d3bdc61-win64-lgpl/bin/ffmpeg.exe"
+FFMPEG_PUBLISH_DIR="${PUBLISH_DIR}/tools/ffmpeg"
+
 echo "▶ Setting subscription..."
 az account set --subscription "$SUBSCRIPTION"
 
@@ -17,6 +29,18 @@ rm -rf "$PUBLISH_DIR" "$ZIP_PATH"
 
 echo "▶ Publishing..."
 dotnet publish "$PROJECT" -c Release -o "$PUBLISH_DIR"
+
+echo "▶ Adding verified FFmpeg runtime..."
+rm -rf "$FFMPEG_EXTRACT_DIR"
+rm -f "$FFMPEG_ARCHIVE"
+curl --fail --location --retry 3 --retry-delay 2 "$FFMPEG_URL" -o "$FFMPEG_ARCHIVE"
+printf "%s  %s\n" "$FFMPEG_SHA256" "$FFMPEG_ARCHIVE" | shasum -a 256 -c -
+unzip -tq "$FFMPEG_ARCHIVE"
+unzip -q "$FFMPEG_ARCHIVE" -d "$FFMPEG_EXTRACT_DIR"
+test -s "$FFMPEG_SOURCE"
+mkdir -p "$FFMPEG_PUBLISH_DIR"
+cp "$FFMPEG_SOURCE" "$FFMPEG_PUBLISH_DIR/ffmpeg.exe"
+test -s "$FFMPEG_PUBLISH_DIR/ffmpeg.exe"
 
 echo "▶ Zipping..."
 cd "$PUBLISH_DIR"
@@ -50,5 +74,14 @@ az webapp restart \
   --subscription "$SUBSCRIPTION" \
   --resource-group "$RESOURCE_GROUP" \
   --name "$APP_NAME"
+
+echo "▶ Verifying deployed FFmpeg runtime..."
+FFMPEG_CHECK_PAYLOAD=$(python3 -c 'import json; print(json.dumps({"command": r"D:\\home\\site\\wwwroot\\tools\\ffmpeg\\ffmpeg.exe -version", "dir": r"D:\\home\\site\\wwwroot"}))')
+FFMPEG_CHECK=$(curl -sS --fail \
+  -u "${DEPLOY_USER}:${DEPLOY_PASS}" \
+  -H "Content-Type: application/json" \
+  --data "$FFMPEG_CHECK_PAYLOAD" \
+  "https://${APP_NAME}.scm.azurewebsites.net/api/command")
+printf "%s" "$FFMPEG_CHECK" | python3 -c 'import json,sys; result=json.load(sys.stdin); output=result.get("Output", ""); exit_code=result.get("ExitCode"); assert exit_code == 0 and "ffmpeg version" in output.lower(), output'
 
 echo "✓ Done → https://${APP_NAME}.azurewebsites.net"

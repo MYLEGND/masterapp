@@ -770,6 +770,45 @@ struct MobileSocialFollowRequestDecision: Codable, Sendable {
     let approve: Bool
 }
 
+/// The creation and playback contract for one Legend social format.
+///
+/// This is deliberately presentation-framework agnostic so the library picker,
+/// editor canvas, camera, feed card, and validation layer use the same rules.
+/// `Reel` remains the persisted API value for backwards compatibility; the
+/// product vocabulary exposed to members is always **Hac**.
+struct LegendSocialContentFormat: Equatable, Sendable {
+    let maximumMediaItems: Int
+    let allowsTextOnlyPublication: Bool
+    let acceptsImages: Bool
+    let acceptsVideos: Bool
+    let maximumVideoDurationSeconds: Double?
+    let mediaAspectRatio: Double
+    let featuredPreviewWidth: Double
+    let featuredPreviewHeight: Double
+    let companionPreviewWidth: Double
+    let companionPreviewHeight: Double
+    let emptyPreviewHeight: Double
+    let editorMaximumWidth: Double
+    /// Stories and Hacs use an intentional 9:16 canvas. Posts retain the
+    /// source media's measured aspect ratio in their feed card.
+    let usesFixedCanvasAspectRatio: Bool
+
+    var requiresVideo: Bool {
+        acceptsVideos && !acceptsImages
+    }
+
+    func acceptsVideo(duration: TimeInterval) -> Bool {
+        guard acceptsVideos else { return false }
+        guard let maximumVideoDurationSeconds else { return true }
+        return duration <= maximumVideoDurationSeconds
+    }
+
+    var maximumVideoDurationDescription: String? {
+        guard let maximumVideoDurationSeconds else { return nil }
+        return "up to \(Int(maximumVideoDurationSeconds)) seconds"
+    }
+}
+
 enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
     case post = "Post"
     case story = "Story"
@@ -817,25 +856,75 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    var maximumMediaItems: Int {
+    /// The only iOS format authority. Do not recreate any of these values in
+    /// individual views: doing so is how pickers, canvases, and playback cards
+    /// drift into incompatible layouts.
+    var format: LegendSocialContentFormat {
         switch self {
         case .post:
-            10
-        case .story, .hac:
-            1
+            LegendSocialContentFormat(
+                maximumMediaItems: 10,
+                allowsTextOnlyPublication: true,
+                acceptsImages: true,
+                acceptsVideos: true,
+                maximumVideoDurationSeconds: 60,
+                mediaAspectRatio: 1,
+                featuredPreviewWidth: 286,
+                featuredPreviewHeight: 286,
+                companionPreviewWidth: 132,
+                companionPreviewHeight: 132,
+                emptyPreviewHeight: 286,
+                editorMaximumWidth: 390,
+                usesFixedCanvasAspectRatio: false)
+
+        case .story:
+            LegendSocialContentFormat(
+                maximumMediaItems: 1,
+                allowsTextOnlyPublication: false,
+                acceptsImages: true,
+                acceptsVideos: true,
+                maximumVideoDurationSeconds: 60,
+                mediaAspectRatio: 9.0 / 16.0,
+                featuredPreviewWidth: 248,
+                featuredPreviewHeight: 440,
+                companionPreviewWidth: 124,
+                companionPreviewHeight: 220,
+                emptyPreviewHeight: 440,
+                editorMaximumWidth: 350,
+                usesFixedCanvasAspectRatio: true)
+
+        case .hac:
+            LegendSocialContentFormat(
+                maximumMediaItems: 1,
+                allowsTextOnlyPublication: false,
+                acceptsImages: false,
+                acceptsVideos: true,
+                maximumVideoDurationSeconds: 90,
+                mediaAspectRatio: 9.0 / 16.0,
+                featuredPreviewWidth: 248,
+                featuredPreviewHeight: 440,
+                companionPreviewWidth: 124,
+                companionPreviewHeight: 220,
+                emptyPreviewHeight: 440,
+                editorMaximumWidth: 350,
+                usesFixedCanvasAspectRatio: true)
         }
     }
 
+    var maximumMediaItems: Int {
+        format.maximumMediaItems
+    }
+
     var acceptsImages: Bool {
-        self != .hac
+        format.acceptsImages
     }
 
     var acceptsVideos: Bool {
-        true
+        format.acceptsVideos
     }
 
     var requiresVideo: Bool {
-        self == .hac
+        format.requiresVideo
     }
 
     var mediaSelectionTitle: String {
@@ -850,13 +939,16 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
     }
 
     var mediaSelectionHint: String {
+        let maximumItems = format.maximumMediaItems
+        let duration = format.maximumVideoDurationDescription ?? "the supported duration"
+
         switch self {
         case .post:
-            "Choose up to 10 photos or videos from your library, or capture a new moment."
+            return "Choose up to \(maximumItems) photos or videos. Videos can be \(duration)."
         case .story:
-            "Share one visual moment that disappears after 24 hours."
+            return "Share one visual moment that disappears after 24 hours. Videos can be \(duration)."
         case .hac:
-            "Choose one video for your Hac from your library, or record one with your camera."
+            return "Choose one vertical video \(duration) for your Hac, or record one with your camera."
         }
     }
 

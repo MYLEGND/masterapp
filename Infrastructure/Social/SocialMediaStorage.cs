@@ -35,7 +35,9 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
     private readonly string _rootPath;
     private readonly long _maximumMediaBytes;
     private readonly BlobContainerClient? _blobContainer;
+    private readonly BlobContainerClient? _legacyBlobContainer;
     private readonly ILogger<SocialMediaStorage> _logger;
+    private readonly LocalFfmpegSocialVideoProcessor _videoProcessor;
 
     public SocialMediaStorage(
         IConfiguration configuration,
@@ -45,15 +47,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(logger);
 
-        var configuredRoot = configuration["Social:Media:RootPath"];
-
-        _rootPath = Path.GetFullPath(
-            string.IsNullOrWhiteSpace(configuredRoot)
-                ? Path.Combine(
-                    Directory.GetCurrentDirectory(),
-                    "App_Data",
-                    "social-media")
-                : configuredRoot.Trim());
+        _rootPath = ResolveRootPath(configuration["Social:Media:RootPath"]);
 
         _maximumMediaBytes = ParseMaximumMediaBytes(
             configuration["Social:Media:MaximumBytes"]);
@@ -61,7 +55,13 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         _blobContainer = BuildBlobContainerClient(
             configuration,
             blobClientOptions);
+        _legacyBlobContainer = BuildLegacyBlobContainerClient(
+            configuration,
+            blobClientOptions);
         _logger = logger;
+        _videoProcessor = new LocalFfmpegSocialVideoProcessor(
+            configuration,
+            logger);
     }
 
     public async Task<SocialMediaStorageResult> StoreAsync(
@@ -122,6 +122,18 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         var utcNow = DateTime.UtcNow;
         var storageKey =
             $"originals/{utcNow:yyyy}/{utcNow:MM}/{mediaAssetId:N}/{storedFileName}";
+
+        // Video normalization deliberately executes against the local file that
+        // has just completed its multipart write. Blob-only writes cannot meet
+        // the single-server FFmpeg contract, so they are rejected instead of
+        // silently publishing audio that missed normalization.
+        if (_blobContainer is not null &&
+            string.Equals(supportedType.MediaKind, "Video", StringComparison.Ordinal))
+        {
+            return SocialMediaStorageResult.Failure(
+                "SOCIAL_VIDEO_PROCESSING_LOCAL_REQUIRED",
+                "Legend video optimization requires local media storage on this server.");
+        }
 
         return _blobContainer is not null
             ? await StoreInBlobAsync(
@@ -259,28 +271,45 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         {
             Directory.CreateDirectory(Path.GetDirectoryName(physicalPath)!);
 
-            await using var destination = new FileStream(
+            long actualSizeBytes;
+            await using (var destination = new FileStream(
                 physicalPath,
                 FileMode.CreateNew,
                 FileAccess.Write,
                 FileShare.None,
                 CopyBufferSize,
-                useAsync: true);
-
-            var actualSizeBytes = await CopyWithLimitAsync(
-                content,
-                destination,
-                _maximumMediaBytes,
-                cancellationToken);
+                useAsync: true))
+            {
+                actualSizeBytes = await CopyWithLimitAsync(
+                    content,
+                    destination,
+                    _maximumMediaBytes,
+                    cancellationToken);
+            }
 
             if (actualSizeBytes != declaredSizeBytes)
             {
-                await destination.DisposeAsync();
                 TryDeletePhysicalFile(physicalPath);
 
                 return SocialMediaStorageResult.Failure(
                     "SOCIAL_MEDIA_SIZE_MISMATCH",
                     "The uploaded social media size did not match the request.");
+            }
+
+            if (string.Equals(supportedType.MediaKind, "Video", StringComparison.Ordinal))
+            {
+                var processing = await _videoProcessor.OptimizeAsync(
+                    physicalPath,
+                    cancellationToken);
+                if (!processing.Succeeded || processing.FileSizeBytes is null)
+                {
+                    TryDeletePhysicalFile(physicalPath);
+                    return SocialMediaStorageResult.Failure(
+                        processing.ErrorCode ?? "SOCIAL_VIDEO_PROCESSING_FAILED",
+                        processing.ErrorMessage ?? "Legend could not optimize this video for playback.");
+                }
+
+                actualSizeBytes = processing.FileSizeBytes.Value;
             }
 
             return CreateStoredMediaResult(
@@ -326,7 +355,15 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         cancellationToken.ThrowIfCancellationRequested();
 
         if (_blobContainer is null)
-            return await OpenReadFromFileSystem(storageKey);
+        {
+            var local = await OpenReadFromFileSystem(storageKey);
+            return local.Status == SocialMediaReadStatus.Missing &&
+                   _legacyBlobContainer is not null
+                ? await MigrateLegacyBlobToFileSystemAsync(
+                    storageKey,
+                    cancellationToken)
+                : local;
+        }
 
         var blobClient = _blobContainer.GetBlobClient(storageKey);
 
@@ -365,7 +402,87 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
                 _blobContainer.GetBlobClient(storageKey));
         }
 
+        // A legacy Blob object is retained only until it has been read through
+        // to the local single-server store. Deletion must remove it too, so a
+        // deleted post can never be revived by the compatibility bridge.
+        if (_legacyBlobContainer is not null)
+        {
+            await DeleteBlobIfExistsAsync(
+                _legacyBlobContainer.GetBlobClient(storageKey));
+        }
+
         DeleteFromFileSystem(storageKey);
+    }
+
+    private async Task<SocialMediaReadResult> MigrateLegacyBlobToFileSystemAsync(
+        string storageKey,
+        CancellationToken cancellationToken)
+    {
+        var physicalPath = ResolvePhysicalPath(storageKey);
+        if (physicalPath is null)
+            return SocialMediaReadResult.Missing();
+
+        var stagedPath = $"{physicalPath}.legacy-{Guid.NewGuid():N}";
+        var blobClient = _legacyBlobContainer!.GetBlobClient(storageKey);
+
+        try
+        {
+            var download = await blobClient.DownloadStreamingAsync(
+                cancellationToken: cancellationToken);
+            Directory.CreateDirectory(Path.GetDirectoryName(physicalPath)!);
+
+            await using (var source = download.Value.Content)
+            await using (var destination = new FileStream(
+                stagedPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                CopyBufferSize,
+                useAsync: true))
+            {
+                await CopyWithLimitAsync(
+                    source,
+                    destination,
+                    _maximumMediaBytes,
+                    cancellationToken);
+            }
+
+            try
+            {
+                // The staging file and target are under the same persistent
+                // root, so the promotion is atomic. A concurrent request that
+                // won the race simply serves the already-promoted local copy.
+                File.Move(stagedPath, physicalPath);
+            }
+            catch (IOException) when (File.Exists(physicalPath))
+            {
+                TryDeletePhysicalFile(stagedPath);
+            }
+
+            return await OpenReadFromFileSystem(storageKey);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return SocialMediaReadResult.Missing();
+        }
+        catch (SocialMediaMaximumSizeExceededException)
+        {
+            TryDeletePhysicalFile(stagedPath);
+            _logger.LogWarning(
+                "Legacy social media exceeds the configured limit. StorageKey={StorageKey}",
+                storageKey);
+            return SocialMediaReadResult.Unavailable();
+        }
+        catch (Exception ex)
+            when (ex is RequestFailedException or IOException or UnauthorizedAccessException)
+        {
+            TryDeletePhysicalFile(stagedPath);
+            _logger.LogError(
+                ex,
+                "Legacy social media could not be migrated to local storage. StorageKey={StorageKey}",
+                storageKey);
+            return SocialMediaReadResult.Unavailable();
+        }
     }
 
     private async Task<SocialMediaReadResult> MigrateLegacyFileAsync(
@@ -505,6 +622,43 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
                 new DefaultAzureCredential(),
                 blobClientOptions)
             : null;
+    }
+
+    private static BlobContainerClient? BuildLegacyBlobContainerClient(
+        IConfiguration configuration,
+        BlobClientOptions? blobClientOptions)
+    {
+        var containerUrl = configuration["Social:Media:LegacyBlobContainerUrl"];
+        return Uri.TryCreate(containerUrl, UriKind.Absolute, out var uri)
+            ? new BlobContainerClient(
+                uri,
+                new DefaultAzureCredential(),
+                blobClientOptions)
+            : null;
+    }
+
+    private static string ResolveRootPath(string? configuredRoot)
+    {
+        if (!string.IsNullOrWhiteSpace(configuredRoot))
+            return Path.GetFullPath(configuredRoot.Trim());
+
+        var azureHome = Environment.GetEnvironmentVariable("HOME");
+        var azureSiteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
+        if (!string.IsNullOrWhiteSpace(azureHome) &&
+            !string.IsNullOrWhiteSpace(azureSiteName))
+        {
+            // %HOME%/data survives ZipDeploy. Do not store user media below
+            // wwwroot: deployment cleanup would otherwise remove it.
+            return Path.GetFullPath(Path.Combine(
+                azureHome,
+                "data",
+                "legend-social-media"));
+        }
+
+        return Path.GetFullPath(Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "App_Data",
+            "social-media"));
     }
 
     private async Task DeleteBlobIfExistsAsync(BlobClient blobClient)

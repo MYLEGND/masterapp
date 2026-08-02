@@ -174,6 +174,77 @@ private struct LegendSocialCreationModeRail: View {
     }
 }
 
+/// Shared progression chrome for every creation surface. The user is always
+/// editing one draft, moving through Media → Edit → Share; the view never
+/// manufactures a second route or a parallel draft state.
+private struct LegendSocialCreationProgress: View {
+    private enum Step: Int, CaseIterable {
+        case media
+        case edit
+        case share
+
+        var title: String {
+            switch self {
+            case .media: "Media"
+            case .edit: "Edit"
+            case .share: "Share"
+            }
+        }
+    }
+
+    let stage: LegendSocialCreationStage
+    let isDark: Bool
+
+    private var currentStep: Step {
+        switch stage {
+        case .library, .preparingMedia, .camera, .failed:
+            .media
+        case .metadata, .music:
+            .edit
+        case .share, .handedOff:
+            .share
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: LegendNextSpacing.xs) {
+            ForEach(Step.allCases, id: \.rawValue) { step in
+                HStack(spacing: LegendNextSpacing.micro) {
+                    Image(systemName: step.rawValue < currentStep.rawValue
+                          ? "checkmark"
+                          : "circle.fill")
+                        .font(.system(size: step.rawValue < currentStep.rawValue ? 9 : 6, weight: .bold))
+                    Text(step.title)
+                        .font(.caption2.weight(.bold))
+                }
+                .foregroundStyle(foreground(for: step))
+
+                if step != .share {
+                    Capsule()
+                        .fill(connectorColor(after: step))
+                        .frame(width: 24, height: 2)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Creation step \(currentStep.rawValue + 1) of 3: \(currentStep.title)")
+    }
+
+    private func foreground(for step: Step) -> Color {
+        guard step.rawValue <= currentStep.rawValue else {
+            return isDark ? Color.white.opacity(0.38) : LegendNextColor.textSecondary.opacity(0.58)
+        }
+        return isDark ? LegendNextColor.goldBright : LegendNextColor.royal
+    }
+
+    private func connectorColor(after step: Step) -> Color {
+        step.rawValue < currentStep.rawValue
+            ? foreground(for: step)
+            : (isDark ? Color.white.opacity(0.22) : LegendNextColor.separator)
+    }
+}
+
 struct LegendSocialComposer: View {
     @ObservedObject var social: MobileSocialStore
     let dismiss: () -> Void
@@ -190,7 +261,7 @@ struct LegendSocialComposer: View {
     @State private var stage: LegendSocialCreationStage = .library
     @State private var musicReturnStage: LegendSocialCreationStage = .metadata
     @State private var selectedMusic: LegendSocialMusicDraft?
-    @State private var activeStoryTool: LegendSocialStoryEditingTool = .text
+    @State private var activeEditorTool: LegendSocialEditingTool = .text
     @State private var ownsMediaAfterDismissal = false
 
     init(
@@ -247,7 +318,9 @@ struct LegendSocialComposer: View {
         }
         .fullScreenCover(isPresented: cameraPresented) {
             LegendSocialCameraCapture(
-                capturesVideo: type.requiresVideo,
+                allowsPhotos: type.format.acceptsImages,
+                allowsVideos: type.format.acceptsVideos,
+                maximumVideoDuration: type.format.maximumVideoDurationSeconds,
                 captured: { result in
                     addCapturedMedia(result)
                 },
@@ -287,7 +360,7 @@ struct LegendSocialComposer: View {
     private var canContinue: Bool {
         switch stage {
         case .library, .preparingMedia, .camera:
-            return hasValidSelection || type == .post
+            return hasValidSelection || type.format.allowsTextOnlyPublication
 
         case .metadata, .share:
             // A failed publication no longer counts as in-flight, so a recoverable
@@ -362,38 +435,42 @@ struct LegendSocialComposer: View {
     }
 
     private var libraryHeader: some View {
-        HStack {
-            Button(action: cancel) {
-                Image(systemName: "xmark")
-                    .font(.title3.weight(.semibold))
-                    .frame(
-                        width: LegendNextSize.prominentControlHeight,
-                        height: LegendNextSize.prominentControlHeight)
-                    .background(Color.white.opacity(0.12), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .accessibilityLabel("Close creator")
-
-            Spacer()
-
-            Text(type.newContentTitle)
-                .font(LegendNextTypography.section)
+        VStack(spacing: LegendNextSpacing.micro) {
+            HStack {
+                Button(action: cancel) {
+                    Image(systemName: "xmark")
+                        .font(.title3.weight(.semibold))
+                        .frame(
+                            width: LegendNextSize.prominentControlHeight,
+                            height: LegendNextSize.prominentControlHeight)
+                        .background(Color.white.opacity(0.12), in: Circle())
+                }
+                .buttonStyle(.plain)
                 .foregroundStyle(.white)
+                .accessibilityLabel("Close creator")
 
-            Spacer()
+                Spacer()
 
-            Button(action: primaryAction) {
-                Text(primaryActionTitle)
-                    .font(LegendNextTypography.label)
-                    .foregroundStyle(canContinue ? LegendNextColor.goldBright : Color.white.opacity(0.38))
-                    .frame(
-                        width: LegendNextSize.prominentControlHeight,
-                        height: LegendNextSize.prominentControlHeight)
+                Text(type.newContentTitle)
+                    .font(LegendNextTypography.section)
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                Button(action: primaryAction) {
+                    Text(primaryActionTitle)
+                        .font(LegendNextTypography.label)
+                        .foregroundStyle(canContinue ? LegendNextColor.goldBright : Color.white.opacity(0.38))
+                        .frame(
+                            width: LegendNextSize.prominentControlHeight,
+                            height: LegendNextSize.prominentControlHeight)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canContinue)
+                .accessibilityLabel("Continue to \(type.displayName) details")
             }
-            .buttonStyle(.plain)
-            .disabled(!canContinue)
-            .accessibilityLabel("Continue to \(type.displayName) details")
+
+            LegendSocialCreationProgress(stage: stage, isDark: true)
         }
         .padding(.horizontal, LegendNextSpacing.md)
         .padding(.vertical, LegendNextSpacing.sm)
@@ -408,39 +485,23 @@ struct LegendSocialComposer: View {
     }
 
     private var selectionAspectRatio: CGFloat {
-        switch type {
-        case .post:
-            1
-        case .story, .hac:
-            9 / 16
-        }
+        CGFloat(type.format.mediaAspectRatio)
     }
 
     private var emptyPreviewHeight: CGFloat {
-        switch type {
-        case .post:
-            286
-        case .story, .hac:
-            440
-        }
+        CGFloat(type.format.emptyPreviewHeight)
     }
 
     private var primaryPreviewSize: CGSize {
-        switch type {
-        case .post:
-            CGSize(width: 286, height: 286)
-        case .story, .hac:
-            CGSize(width: 248, height: 440)
-        }
+        CGSize(
+            width: CGFloat(type.format.featuredPreviewWidth),
+            height: CGFloat(type.format.featuredPreviewHeight))
     }
 
     private var companionPreviewSize: CGSize {
-        switch type {
-        case .post:
-            CGSize(width: 132, height: 132)
-        case .story, .hac:
-            CGSize(width: 124, height: 220)
-        }
+        CGSize(
+            width: CGFloat(type.format.companionPreviewWidth),
+            height: CGFloat(type.format.companionPreviewHeight))
     }
 
     @ViewBuilder
@@ -515,7 +576,7 @@ struct LegendSocialComposer: View {
         isDark: Bool,
         overlayText: String? = nil
     ) -> some View {
-        if type == .post {
+        if type.format.maximumMediaItems > 1 {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(
                     alignment: .top,
@@ -618,7 +679,7 @@ struct LegendSocialComposer: View {
                     select: { select(asset) }
                 )
                 .aspectRatio(
-                    type == .post ? 1 : selectionAspectRatio,
+                    selectionAspectRatio,
                     contentMode: .fit
                 )
                 .clipped()
@@ -634,7 +695,7 @@ struct LegendSocialComposer: View {
                 LegendSkeletonShape(cornerRadius: 2)
                     .frame(maxWidth: .infinity)
                     .aspectRatio(
-                        type == .post ? 1 : selectionAspectRatio,
+                        selectionAspectRatio,
                         contentMode: .fit
                     )
                     .accessibilityLabel("Loading more media")
@@ -727,21 +788,11 @@ struct LegendSocialComposer: View {
     }
 
     private var editorCanvasAspectRatio: CGFloat {
-        switch type {
-        case .post:
-            1
-        case .story, .hac:
-            9 / 16
-        }
+        CGFloat(type.format.mediaAspectRatio)
     }
 
     private var editorCanvasMaximumWidth: CGFloat {
-        switch type {
-        case .post:
-            390
-        case .story, .hac:
-            350
-        }
+        CGFloat(type.format.editorMaximumWidth)
     }
 
     private var immersiveEditingContent: some View {
@@ -818,12 +869,39 @@ struct LegendSocialComposer: View {
     }
 
     private var immersiveEditorHeader: some View {
-        HStack {
-            Button {
-                stage = .library
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.title2.weight(.medium))
+        VStack(spacing: LegendNextSpacing.micro) {
+            HStack {
+                Button {
+                    stage = .library
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.title2.weight(.medium))
+                        .frame(
+                            width:
+                                LegendNextSize
+                                    .prominentControlHeight,
+                            height:
+                                LegendNextSize
+                                    .prominentControlHeight
+                        )
+                        .background(
+                            Color.white.opacity(0.20),
+                            in: Circle()
+                        )
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .accessibilityLabel("Back to media selection")
+
+                Spacer(minLength: 0)
+
+                Text(type.editingTitle)
+                    .font(LegendNextTypography.section)
+                    .foregroundStyle(.white)
+
+                Spacer(minLength: 0)
+
+                Color.clear
                     .frame(
                         width:
                             LegendNextSize
@@ -832,32 +910,9 @@ struct LegendSocialComposer: View {
                             LegendNextSize
                                 .prominentControlHeight
                     )
-                    .background(
-                        Color.white.opacity(0.20),
-                        in: Circle()
-                    )
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white)
-            .accessibilityLabel("Back to media selection")
 
-            Spacer(minLength: 0)
-
-            Text(type.editingTitle)
-                .font(LegendNextTypography.section)
-                .foregroundStyle(.white)
-
-            Spacer(minLength: 0)
-
-            Color.clear
-                .frame(
-                    width:
-                        LegendNextSize
-                            .prominentControlHeight,
-                    height:
-                        LegendNextSize
-                            .prominentControlHeight
-                )
+            LegendSocialCreationProgress(stage: stage, isDark: true)
         }
         .padding(.horizontal, LegendNextSpacing.md)
         .padding(.vertical, LegendNextSpacing.sm)
@@ -904,7 +959,7 @@ struct LegendSocialComposer: View {
                     .clipped()
                 }
 
-                if type == .post &&
+                if type.format.maximumMediaItems > 1 &&
                     selectedMedia.count > 1 {
                     VStack {
                         Spacer()
@@ -943,17 +998,17 @@ struct LegendSocialComposer: View {
 
     private var immersiveToolRail: some View {
         VStack(spacing: LegendNextSpacing.xs) {
-            ForEach(LegendSocialStoryEditingTool.allCases) { tool in
+            ForEach(LegendSocialEditingTool.allCases) { tool in
                 editorToolButton(tool: tool)
             }
         }
     }
 
     private func editorToolButton(
-        tool: LegendSocialStoryEditingTool
+        tool: LegendSocialEditingTool
     ) -> some View {
         Button {
-            activeStoryTool = tool
+            activeEditorTool = tool
 
             if tool == .audio {
                 musicReturnStage = .metadata
@@ -964,12 +1019,12 @@ struct LegendSocialComposer: View {
                 .font(.title3.weight(.semibold))
                 .frame(width: 50, height: 50)
                 .foregroundStyle(
-                    activeStoryTool == tool
+                    activeEditorTool == tool
                         ? LegendNextColor.midnight
                         : .white
                 )
                 .background(
-                    activeStoryTool == tool
+                    activeEditorTool == tool
                         ? LegendNextColor.goldBright
                         : LegendNextColor.midnight.opacity(0.56),
                     in: Circle()
@@ -985,7 +1040,7 @@ struct LegendSocialComposer: View {
         .buttonStyle(.plain)
         .accessibilityLabel(tool.title)
         .accessibilityAddTraits(
-            activeStoryTool == tool
+            activeEditorTool == tool
                 ? .isSelected
                 : []
         )
@@ -993,7 +1048,7 @@ struct LegendSocialComposer: View {
 
     @ViewBuilder
     private var immersiveToolDetail: some View {
-        switch activeStoryTool {
+        switch activeEditorTool {
         case .audio:
             EmptyView()
 
@@ -1118,46 +1173,50 @@ struct LegendSocialComposer: View {
     }
 
     private var shareHeader: some View {
-        HStack(spacing: 12) {
-            Button {
-                stage = .metadata
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 20, weight: .semibold))
-                    .frame(width: 32, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(LegendNextColor.textPrimary)
-            .accessibilityLabel("Back to media editing")
-
-            Spacer(minLength: 0)
-
-            Text(type.newContentTitle)
-                .font(.headline)
+        VStack(spacing: LegendNextSpacing.micro) {
+            HStack(spacing: 12) {
+                Button {
+                    stage = .metadata
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 20, weight: .semibold))
+                        .frame(width: 32, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
                 .foregroundStyle(LegendNextColor.textPrimary)
+                .accessibilityLabel("Back to media editing")
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
 
-            Button(action: publish) {
-                Text("Share")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(minWidth: 44, minHeight: 44)
-                    .contentShape(Rectangle())
+                Text(type.newContentTitle)
+                    .font(.headline)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+
+                Spacer(minLength: 0)
+
+                Button(action: publish) {
+                    Text("Share")
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(
+                    canPublish && !social.isPublishing
+                        ? LegendNextColor.goldBright
+                        : LegendNextColor.textSecondary.opacity(0.45)
+                )
+                .disabled(!canPublish || social.isPublishing)
+                .accessibilityLabel(
+                    "Publish \(type.displayName)"
+                )
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(
-                canPublish && !social.isPublishing
-                    ? LegendNextColor.goldBright
-                    : LegendNextColor.textSecondary.opacity(0.45)
-            )
-            .disabled(!canPublish || social.isPublishing)
-            .accessibilityLabel(
-                "Publish \(type.displayName)"
-            )
+
+            LegendSocialCreationProgress(stage: stage, isDark: false)
         }
         .padding(.horizontal, 12)
-        .frame(height: 52)
+        .padding(.vertical, LegendNextSpacing.micro)
         .background(LegendNextColor.surface)
     }
 
@@ -1211,7 +1270,7 @@ struct LegendSocialComposer: View {
             )
             .frame(
                 width: 68,
-                height: type == .post ? 68 : 88
+                height: type.format.usesFixedCanvasAspectRatio ? 88 : 68
             )
             .clipShape(
                 RoundedRectangle(
@@ -1498,10 +1557,8 @@ struct LegendSocialComposer: View {
     }
 
     private func select(_ asset: LegendPhotoLibraryAsset) {
-        guard type.accepts(asset) else {
-            mediaSelectionError = type.requiresVideo
-                ? "Hacs use one video. Choose a video to continue."
-                : "This media is not available for the selected format."
+        if let rejection = type.selectionRejection(for: asset) {
+            mediaSelectionError = rejection
             return
         }
 
@@ -1993,7 +2050,7 @@ private struct LegendSocialMusicArtwork: View {
 /// the same caption field as `text`, and `filter` rendered a fixed "Original
 /// presentation" label with no filter pipeline behind it. Adjustment, crop, and filter
 /// tooling returns when the rendering pipeline that backs it exists.
-private enum LegendSocialStoryEditingTool: CaseIterable, Identifiable {
+private enum LegendSocialEditingTool: CaseIterable, Identifiable {
     case audio
     case text
     case describe
@@ -2267,13 +2324,17 @@ private enum LegendSocialMediaLoadingError: Error {
 }
 
 private struct LegendSocialCameraCapture: UIViewControllerRepresentable {
-    let capturesVideo: Bool
+    let allowsPhotos: Bool
+    let allowsVideos: Bool
+    let maximumVideoDuration: Double?
     let captured: (Result<LegendSocialMediaDraft, Error>) -> Void
     let cancelled: () -> Void
 
     func makeUIViewController(context: Context) -> LegendSocialCameraViewController {
         LegendSocialCameraViewController(
-            capturesVideo: capturesVideo,
+            allowsPhotos: allowsPhotos,
+            allowsVideos: allowsVideos,
+            maximumVideoDuration: maximumVideoDuration,
             captured: captured,
             cancelled: cancelled)
     }
@@ -2302,7 +2363,9 @@ private enum LegendSocialCameraError: LocalizedError {
 }
 
 private final class LegendSocialCameraViewController: UIViewController {
-    private let capturesVideo: Bool
+    private let allowsPhotos: Bool
+    private let allowsVideos: Bool
+    private let maximumVideoDuration: Double?
     private let captured: (Result<LegendSocialMediaDraft, Error>) -> Void
     private let cancelled: () -> Void
 
@@ -2316,6 +2379,7 @@ private final class LegendSocialCameraViewController: UIViewController {
     private let flashButton = UIButton(type: .system)
     private let closeButton = UIButton(type: .system)
     private let libraryButton = UIButton(type: .system)
+    private let captureModeButton = UIButton(type: .system)
     private let statusLabel = UILabel()
 
     private var videoInput: AVCaptureDeviceInput?
@@ -2324,15 +2388,21 @@ private final class LegendSocialCameraViewController: UIViewController {
     private var isCancellingRecording = false
     private var flashEnabled = false
     private var recordingURL: URL?
+    private var capturesVideo: Bool
 
     init(
-        capturesVideo: Bool,
+        allowsPhotos: Bool,
+        allowsVideos: Bool,
+        maximumVideoDuration: Double?,
         captured: @escaping (Result<LegendSocialMediaDraft, Error>) -> Void,
         cancelled: @escaping () -> Void
     ) {
-        self.capturesVideo = capturesVideo
+        self.allowsPhotos = allowsPhotos
+        self.allowsVideos = allowsVideos
+        self.maximumVideoDuration = maximumVideoDuration
         self.captured = captured
         self.cancelled = cancelled
+        capturesVideo = allowsVideos && !allowsPhotos
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -2375,18 +2445,21 @@ private final class LegendSocialCameraViewController: UIViewController {
         configureIconButton(flashButton, symbol: "bolt.slash.fill", tint: controlTint, background: chrome)
         configureIconButton(cameraButton, symbol: "camera.rotate.fill", tint: controlTint, background: chrome)
         configureIconButton(libraryButton, symbol: "photo.on.rectangle", tint: controlTint, background: chrome)
+        configureIconButton(captureModeButton, symbol: "video.fill", tint: controlTint, background: chrome)
 
         closeButton.addTarget(self, action: #selector(close), for: .touchUpInside)
         flashButton.addTarget(self, action: #selector(toggleFlash), for: .touchUpInside)
         cameraButton.addTarget(self, action: #selector(switchCamera), for: .touchUpInside)
         libraryButton.addTarget(self, action: #selector(returnToLibrary), for: .touchUpInside)
+        captureModeButton.addTarget(self, action: #selector(toggleCaptureMode), for: .touchUpInside)
+        captureModeButton.isHidden = !(allowsPhotos && allowsVideos)
 
         captureButton.translatesAutoresizingMaskIntoConstraints = false
         captureButton.backgroundColor = .white
         captureButton.layer.cornerRadius = 36
         captureButton.layer.borderColor = UIColor.white.withAlphaComponent(0.55).cgColor
         captureButton.layer.borderWidth = 6
-        captureButton.accessibilityLabel = capturesVideo ? "Start video recording" : "Capture photo"
+        updateCaptureModeAppearance()
         captureButton.addTarget(self, action: #selector(capture), for: .touchUpInside)
 
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -2396,7 +2469,7 @@ private final class LegendSocialCameraViewController: UIViewController {
         statusLabel.adjustsFontForContentSizeCategory = true
         statusLabel.numberOfLines = 2
 
-        [closeButton, flashButton, cameraButton, libraryButton, captureButton, statusLabel]
+        [closeButton, flashButton, cameraButton, libraryButton, captureModeButton, captureButton, statusLabel]
             .forEach(view.addSubview)
 
         NSLayoutConstraint.activate([
@@ -2408,6 +2481,8 @@ private final class LegendSocialCameraViewController: UIViewController {
             cameraButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 14),
             libraryButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
             libraryButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
+            captureModeButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            captureModeButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
             captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
             captureButton.widthAnchor.constraint(equalToConstant: 72),
@@ -2416,7 +2491,7 @@ private final class LegendSocialCameraViewController: UIViewController {
             statusLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32),
             statusLabel.bottomAnchor.constraint(equalTo: captureButton.topAnchor, constant: -18)
         ])
-        setStatus(capturesVideo ? "Video capture" : "Photo capture")
+        setStatus(captureStatus)
     }
 
     private func configureIconButton(
@@ -2443,7 +2518,7 @@ private final class LegendSocialCameraViewController: UIViewController {
                 return
             }
 
-            if self.capturesVideo {
+            if self.allowsVideos {
                 self.requestMicrophoneAccess { _ in
                     self.configureSession()
                 }
@@ -2491,7 +2566,7 @@ private final class LegendSocialCameraViewController: UIViewController {
                 return
             }
 
-            if self.capturesVideo {
+            if self.allowsVideos {
                 if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
                    let microphone = AVCaptureDevice.default(for: .audio),
                    let audioInput = try? AVCaptureDeviceInput(device: microphone),
@@ -2500,9 +2575,15 @@ private final class LegendSocialCameraViewController: UIViewController {
                 }
                 if self.session.canAddOutput(self.movieOutput) {
                     self.session.addOutput(self.movieOutput)
-                    self.movieOutput.maxRecordedDuration = CMTime(seconds: 60, preferredTimescale: 600)
+                    if let maximumVideoDuration = self.maximumVideoDuration {
+                        self.movieOutput.maxRecordedDuration = CMTime(
+                            seconds: maximumVideoDuration,
+                            preferredTimescale: 600)
+                    }
                 }
-            } else if self.session.canAddOutput(self.photoOutput) {
+            }
+
+            if self.allowsPhotos, self.session.canAddOutput(self.photoOutput) {
                 self.session.addOutput(self.photoOutput)
             }
 
@@ -2510,7 +2591,7 @@ private final class LegendSocialCameraViewController: UIViewController {
             self.configured = true
             DispatchQueue.main.async {
                 self.previewLayer.session = self.session
-                self.setStatus(self.capturesVideo ? "Video capture · up to 60 seconds" : "Photo capture")
+                self.setStatus(self.captureStatus)
                 self.startSessionIfNeeded()
             }
         }
@@ -2558,6 +2639,15 @@ private final class LegendSocialCameraViewController: UIViewController {
         } else {
             capturePhoto()
         }
+    }
+
+    @objc private func toggleCaptureMode() {
+        guard allowsPhotos,
+              allowsVideos,
+              !movieOutput.isRecording else { return }
+        capturesVideo.toggle()
+        updateCaptureModeAppearance()
+        setStatus(captureStatus)
     }
 
     private func capturePhoto() {
@@ -2620,7 +2710,26 @@ private final class LegendSocialCameraViewController: UIViewController {
     private func setRecordingAppearance(_ recording: Bool) {
         captureButton.backgroundColor = recording ? .systemRed : .white
         captureButton.accessibilityLabel = recording ? "Stop video recording" : "Start video recording"
-        setStatus(recording ? "Recording · tap to finish" : "Video capture · up to 60 seconds")
+        setStatus(recording ? "Recording · tap to finish" : captureStatus)
+    }
+
+    private var captureStatus: String {
+        guard capturesVideo else { return "Photo capture" }
+        let audioIsAvailable = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        let mode = audioIsAvailable ? "Video capture" : "Video capture without audio"
+        guard let maximumVideoDuration else { return mode }
+        return "\(mode) · up to \(Int(maximumVideoDuration)) seconds"
+    }
+
+    private func updateCaptureModeAppearance() {
+        let nextModeSymbol = capturesVideo ? "camera.fill" : "video.fill"
+        captureModeButton.setImage(UIImage(systemName: nextModeSymbol), for: .normal)
+        captureModeButton.accessibilityLabel = capturesVideo
+            ? "Switch to photo capture"
+            : "Switch to video capture"
+        captureButton.accessibilityLabel = capturesVideo
+            ? "Start video recording"
+            : "Capture photo"
     }
 
     private func setStatus(_ message: String) {
@@ -2710,7 +2819,27 @@ private extension MobileSocialContentType {
     }
 
     func accepts(_ asset: LegendPhotoLibraryAsset) -> Bool {
-        asset.isVideo ? acceptsVideos : acceptsImages
+        selectionRejection(for: asset) == nil
+    }
+
+    func selectionRejection(for asset: LegendPhotoLibraryAsset) -> String? {
+        guard asset.isVideo else {
+            return acceptsImages
+                ? nil
+                : "Hacs use one video. Choose a video to continue."
+        }
+
+        guard acceptsVideos else {
+            return "This media is not available for the selected format."
+        }
+
+        guard format.acceptsVideo(duration: asset.duration) else {
+            let duration = Int(asset.duration.rounded())
+            let maximum = Int(format.maximumVideoDurationSeconds ?? 0)
+            return "This video is \(duration) seconds. \(displayName) videos can be up to \(maximum) seconds."
+        }
+
+        return nil
     }
 }
 
@@ -3094,9 +3223,7 @@ final class LegendPhotoLibraryAccess: NSObject, ObservableObject {
     private func filteredAssets(
         for contentType: MobileSocialContentType
     ) -> [LegendPhotoLibraryAsset] {
-        contentType.requiresVideo
-            ? allAssets.filter(\.isVideo)
-            : allAssets
+        allAssets.filter(contentType.accepts)
     }
 
     func thumbnailRequest(
