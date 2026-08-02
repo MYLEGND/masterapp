@@ -57,42 +57,6 @@ private enum LegendAppTab: String, Identifiable {
     }
 }
 
-/// Local read state is intentionally keyed by the authenticated, typed Legend
-/// identity. Account activity remains recipient-scoped on the server; this only
-/// controls the in-app badge after that recipient has opened Activity.
-enum LegendAccountActivityState {
-    static func unreadCount(
-        for notifications: [MobileActivityNotification],
-        identity: LogicalParticipantIdentity
-    ) -> Int {
-        guard let seenThroughUTC = UserDefaults.standard.object(
-            forKey: seenKey(for: identity)
-        ) as? Date else {
-            return notifications.count
-        }
-
-        return notifications.count { $0.occurredUTC > seenThroughUTC }
-    }
-
-    static func markSeen(
-        notifications: [MobileActivityNotification],
-        identity: LogicalParticipantIdentity
-    ) {
-        guard let latestUTC = notifications.map(\.occurredUTC).max() else {
-            return
-        }
-
-        UserDefaults.standard.set(latestUTC, forKey: seenKey(for: identity))
-    }
-
-    private static func seenKey(for identity: LogicalParticipantIdentity) -> String {
-        "legend.account.activity.seen." +
-            identity.participantType.rawValue +
-            "." +
-            identity.userID
-    }
-}
-
 struct LegendApplicationShell: View {
     @EnvironmentObject private var scrollChrome: LegendScrollChrome
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -103,6 +67,7 @@ struct LegendApplicationShell: View {
     @State private var selectedTab: LegendAppTab = .home
     @ObservedObject private var messages: MessagingStore
     @ObservedObject private var social: MobileSocialStore
+    @ObservedObject private var activity: LegendDailyActivityStore
     @State private var isMessageThreadActive = false
     @State private var pendingMessageConversationID: UUID?
 
@@ -116,6 +81,7 @@ struct LegendApplicationShell: View {
         _bootstrap = ObservedObject(wrappedValue: bootstrap)
         _messages = ObservedObject(wrappedValue: bootstrap.stores.messaging)
         _social = ObservedObject(wrappedValue: bootstrap.stores.social)
+        _activity = ObservedObject(wrappedValue: bootstrap.activity)
     }
 
     var body: some View {
@@ -187,6 +153,7 @@ struct LegendApplicationShell: View {
                     store: bootstrap.stores.home,
                     social: social,
                     messages: messages,
+                    activity: activity,
                     bootstrap: bootstrap,
                     selectedTab: $selectedTab
                 )
@@ -295,31 +262,7 @@ struct LegendApplicationShell: View {
     }
 
     private var homeActivityCount: Int {
-        let accountActivityCount = LegendAccountActivityState.unreadCount(
-            for: messages.activityNotifications,
-            identity: currentSession.actor.identity)
-        guard case .loaded(let snapshot) = social.state else {
-            return accountActivityCount
-        }
-
-        let activitySeenKey =
-            "legend.social.activity.seen." +
-            currentSession.actor.identity.participantType.rawValue +
-            "." +
-            currentSession.actor.identity.userID
-
-        guard let seenThroughUTC = UserDefaults.standard.object(
-            forKey: activitySeenKey
-        ) as? Date else {
-            return snapshot.activityCount + accountActivityCount
-        }
-
-        let unseenNetworkActivity = snapshot.activity.reduce(into: 0) { count, activity in
-            if activity.occurredUTC > seenThroughUTC {
-                count += 1
-            }
-        }
-        return unseenNetworkActivity + accountActivityCount
+        activity.unreadBadgeCount
     }
 
     private func select(_ tab: LegendAppTab) {
@@ -1429,9 +1372,11 @@ private struct LegendHomeView: View {
     let currentSession: MobileSession
 
     @Binding private var selectedTab: LegendAppTab
+    @EnvironmentObject private var scrollChrome: LegendScrollChrome
     @ObservedObject private var store: MobileHomeStore
     @ObservedObject private var social: MobileSocialStore
     @ObservedObject private var messages: MessagingStore
+    @ObservedObject private var activity: LegendDailyActivityStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     @State private var presentedScripture: MobileDailyScripture? = nil
 
@@ -1440,6 +1385,7 @@ private struct LegendHomeView: View {
         store: MobileHomeStore,
         social: MobileSocialStore,
         messages: MessagingStore,
+        activity: LegendDailyActivityStore,
         bootstrap: LegendApplicationBootstrapCoordinator,
         selectedTab: Binding<LegendAppTab>
     ) {
@@ -1448,6 +1394,7 @@ private struct LegendHomeView: View {
         _store = ObservedObject(wrappedValue: store)
         _social = ObservedObject(wrappedValue: social)
         _messages = ObservedObject(wrappedValue: messages)
+        _activity = ObservedObject(wrappedValue: activity)
         _bootstrap = ObservedObject(wrappedValue: bootstrap)
         _presentedScripture = State(initialValue: nil)
     }
@@ -1495,10 +1442,7 @@ private struct LegendHomeView: View {
                     session: currentSession,
                     home: home,
                     social: social,
-                    messages: messages,
-                    openMessages: {
-                        open(.messages)
-                    },
+                    activity: activity,
                     openCircles: {
                         open(.discover)
                     },
@@ -1507,9 +1451,8 @@ private struct LegendHomeView: View {
                     }
                 ) {
                     homeHero(home)
-
-                    if hasPriorityContent(home) {
-                        prioritySection(home)
+                    LegendTodayActivitySummaryPill(activity: activity) {
+                        scrollChrome.requestHomeAction(.activity)
                     }
                 }
             }
@@ -1683,314 +1626,16 @@ private struct LegendHomeView: View {
                         .buttonStyle(.plain)
                     }
 
-                    if let subscription = home.subscription {
-                        LegendNextMetricTile(
-                            title: "Membership",
-                            value: subscription.status,
-                            detail: subscription.paymentStanding,
-                            systemImage: "crown.fill",
-                            tone: membershipTone(subscription)
-                        )
-                    } else {
-                        LegendNextMetricTile(
-                            title: "Appointments",
-                            value: "\(home.upcomingAppointments.count)",
-                            detail: "Upcoming meetings",
-                            systemImage: "calendar",
-                            tone: .gold
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func prioritySection(
-        _ home: MobileHomeResponse
-    ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.xs
-        ) {
-            LegendNextSurface(
-                style: .elevated,
-                cornerRadius: LegendNextRadius.prominentCard
-            ) {
-                VStack(
-                    alignment: .leading,
-                    spacing: LegendNextSpacing.xs
-                ) {
-                    if home.messaging.unreadCount > 0 {
-                        priorityRow(
-                            title: "Respond to messages",
-                            detail: "\(home.messaging.unreadCount) unread conversation\(home.messaging.unreadCount == 1 ? "" : "s")",
-                            systemImage: "message.fill",
-                            tone: .information
-                        ) {
-                            open(.messages)
-                        }
-                    }
-
-                    if let action = home.actions.first {
-                        priorityRow(
-                            title: action.title,
-                            detail: actionDueDetail(action),
-                            systemImage: "checkmark.circle.fill",
-                            tone: priorityTone(action.priority)
-                        )
-                    }
-
-                    if let appointment = home.upcomingAppointments.first {
-                        priorityRow(
-                            title: "Upcoming appointment",
-                            detail: appointment.startUTC.formatted(
-                                .dateTime
-                                    .month(.abbreviated)
-                                    .day()
-                                    .hour()
-                                    .minute()
-                            ),
-                            systemImage: "calendar.badge.clock",
-                            tone: .gold
-                        )
-                    }
-
-                    if let notification = home.notifications.first {
-                        priorityRow(
-                            title: notification.subject,
-                            detail: notification.occurredUTC.formatted(
-                                .dateTime
-                                    .month(.abbreviated)
-                                    .day()
-                                    .hour()
-                                    .minute()
-                            ),
-                            systemImage: "bell.badge.fill",
-                            tone: .warning
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    private func priorityRow(
-        title: String,
-        detail: String,
-        systemImage: String,
-        tone: LegendNextTone,
-        action: (() -> Void)? = nil
-    ) -> some View {
-        Group {
-            if let action {
-                Button(action: action) {
-                    priorityRowContent(
-                        title: title,
-                        detail: detail,
-                        systemImage: systemImage,
-                        tone: tone,
-                        showsChevron: true
+                    LegendNextMetricTile(
+                        title: "Appointments",
+                        value: "\(home.upcomingAppointments.count)",
+                        detail: "Upcoming meetings",
+                        systemImage: "calendar",
+                        tone: .gold
                     )
                 }
-                .buttonStyle(.plain)
-            } else {
-                priorityRowContent(
-                    title: title,
-                    detail: detail,
-                    systemImage: systemImage,
-                    tone: tone,
-                    showsChevron: false
-                )
             }
         }
-    }
-
-    private func priorityRowContent(
-        title: String,
-        detail: String,
-        systemImage: String,
-        tone: LegendNextTone,
-        showsChevron: Bool
-    ) -> some View {
-        HStack(
-            alignment: .center,
-            spacing: LegendNextSpacing.xs
-        ) {
-            Image(systemName: systemImage)
-                .font(
-                    .system(
-                        size: 16,
-                        weight: .semibold
-                    )
-                )
-                .foregroundStyle(toneColor(tone))
-                .frame(width: 40, height: 40)
-                .background(
-                    toneColor(tone).opacity(0.10),
-                    in: Circle()
-                )
-
-            VStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.micro
-            ) {
-                Text(title)
-                    .font(LegendNextTypography.bodyEmphasis)
-                    .foregroundStyle(LegendNextColor.textPrimary)
-                    .lineLimit(2)
-
-                Text(detail)
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(LegendNextColor.textSecondary)
-                    .lineLimit(2)
-            }
-
-            Spacer(minLength: LegendNextSpacing.sm)
-
-            if showsChevron {
-                Image(systemName: "chevron.right")
-                    .font(
-                        .system(
-                            size: 13,
-                            weight: .semibold
-                        )
-                    )
-                    .foregroundStyle(LegendNextColor.textSecondary)
-            }
-        }
-        .contentShape(Rectangle())
-    }
-
-    private func subscriptionCard(
-        _ subscription: MobileSubscriptionSummary,
-        entitlement: MobileEntitlementSummary?
-    ) -> some View {
-        LegendNextSurface(
-            style: .gold,
-            cornerRadius: LegendNextRadius.prominentCard,
-            padding: LegendNextSpacing.sm
-        ) {
-            VStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.xs
-            ) {
-                HStack(
-                    alignment: .top,
-                    spacing: LegendNextSpacing.xs
-                ) {
-                    VStack(
-                        alignment: .leading,
-                        spacing: LegendNextSpacing.micro
-                    ) {
-                        Text("MEMBERSHIP")
-                            .font(LegendNextTypography.eyebrow)
-                            .tracking(0.9)
-                            .foregroundStyle(
-                                LegendNextColor.midnight.opacity(0.68)
-                            )
-
-                        Text(subscription.status)
-                            .font(LegendNextTypography.section)
-                            .foregroundStyle(LegendNextColor.midnight)
-                    }
-
-                    Spacer(minLength: LegendNextSpacing.sm)
-
-                    Image(systemName: "crown.fill")
-                        .font(
-                            .system(
-                                size: 20,
-                                weight: .semibold
-                            )
-                        )
-                        .foregroundStyle(LegendNextColor.midnight)
-                        .frame(width: 44, height: 44)
-                        .background(
-                            Color.white.opacity(0.28),
-                            in: Circle()
-                        )
-                }
-
-                HStack(
-                    alignment: .top,
-                    spacing: LegendNextSpacing.xs
-                ) {
-                    membershipValue(
-                        title: "Monthly",
-                        value: subscription.monthlyAmount.formatted(
-                            .currency(code: subscription.currency)
-                        ),
-                        detail: subscription.paymentStanding
-                    )
-
-                    if let nextBilling = subscription.nextBillingDateUTC {
-                        membershipValue(
-                            title: subscription.cancelAtPeriodEnd
-                                ? "Access through"
-                                : "Next billing",
-                            value: nextBilling.formatted(
-                                .dateTime
-                                    .month(.abbreviated)
-                                    .day()
-                            ),
-                            detail: subscription.cancelAtPeriodEnd
-                                ? "Ends after this period"
-                                : "Scheduled"
-                        )
-                    }
-                }
-
-                if let entitlement {
-                    Text(entitlement.summary)
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(
-                            LegendNextColor.midnight.opacity(0.74)
-                        )
-                        .fixedSize(
-                            horizontal: false,
-                            vertical: true
-                        )
-                }
-            }
-        }
-    }
-
-    private func membershipValue(
-        title: String,
-        value: String,
-        detail: String?
-    ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.micro
-        ) {
-            Text(title.uppercased())
-                .font(LegendNextTypography.eyebrow)
-                .tracking(0.6)
-                .foregroundStyle(
-                    LegendNextColor.midnight.opacity(0.60)
-                )
-
-            Text(value)
-                .font(LegendNextTypography.metric)
-                .foregroundStyle(LegendNextColor.midnight)
-                .lineLimit(1)
-                .minimumScaleFactor(0.68)
-
-            if let detail, !detail.isEmpty {
-                Text(detail)
-                    .font(LegendNextTypography.caption)
-                    .foregroundStyle(
-                        LegendNextColor.midnight.opacity(0.68)
-                    )
-                    .lineLimit(2)
-            }
-        }
-        .frame(
-            maxWidth: .infinity,
-            alignment: .leading
-        )
     }
 
     private func journeyCard(
@@ -2267,88 +1912,6 @@ private struct LegendHomeView: View {
         }
     }
 
-    private func notificationsCard(
-        _ notifications: [MobileBillingNotification]
-    ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.xs
-        ) {
-            LegendNextSectionHeader(
-                eyebrow: "Membership",
-                title: "Notices",
-                detail: "Recent billing and access updates."
-            )
-
-            LegendNextSurface(style: .elevated) {
-                VStack(
-                    alignment: .leading,
-                    spacing: LegendNextSpacing.xs
-                ) {
-                    ForEach(
-                        Array(notifications.prefix(4).enumerated()),
-                        id: \.element.id
-                    ) { index, notification in
-                        if index > 0 {
-                            LegendNextDivider()
-                        }
-
-                        HStack(
-                            alignment: .top,
-                            spacing: LegendNextSpacing.xs
-                        ) {
-                            Image(systemName: "bell.fill")
-                                .font(
-                                    .system(
-                                        size: 15,
-                                        weight: .semibold
-                                    )
-                                )
-                                .foregroundStyle(
-                                    LegendNextColor.warning
-                                )
-                                .frame(width: 38, height: 38)
-                                .background(
-                                    LegendNextColor.warning.opacity(0.10),
-                                    in: Circle()
-                                )
-
-                            VStack(
-                                alignment: .leading,
-                                spacing: LegendNextSpacing.micro
-                            ) {
-                                Text(notification.subject)
-                                    .font(
-                                        LegendNextTypography.bodyEmphasis
-                                    )
-                                    .foregroundStyle(
-                                        LegendNextColor.textPrimary
-                                    )
-                                    .lineLimit(2)
-
-                                Text(
-                                    notification.occurredUTC.formatted(
-                                        .dateTime
-                                            .month(.abbreviated)
-                                            .day()
-                                            .hour()
-                                            .minute()
-                                    )
-                                )
-                                .font(
-                                    LegendNextTypography.supporting
-                                )
-                                .foregroundStyle(
-                                    LegendNextColor.textSecondary
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private func quickActions(
         _ home: MobileHomeResponse
     ) -> some View {
@@ -2521,15 +2084,6 @@ private struct LegendHomeView: View {
         return "Continue building the protection, community, and legacy behind your journey."
     }
 
-    private func hasPriorityContent(
-        _ home: MobileHomeResponse
-    ) -> Bool {
-        return home.messaging.unreadCount > 0
-            || !home.actions.isEmpty
-            || !home.upcomingAppointments.isEmpty
-            || !home.notifications.isEmpty
-    }
-
     private func actionDueDetail(
         _ action: MobileActionItem
     ) -> String {
@@ -2538,34 +2092,6 @@ private struct LegendHomeView: View {
         }
 
         return "\(action.priority) priority"
-    }
-
-    private func membershipTone(
-        _ subscription: MobileSubscriptionSummary
-    ) -> LegendNextTone {
-        let combined = "\(subscription.status) \(subscription.paymentStanding)"
-            .lowercased()
-
-        if combined.contains("active")
-            || combined.contains("current")
-            || combined.contains("paid") {
-            return .success
-        }
-
-        if combined.contains("past")
-            || combined.contains("failed")
-            || combined.contains("overdue")
-            || combined.contains("cancel") {
-            return .danger
-        }
-
-        if combined.contains("pending")
-            || combined.contains("grace")
-            || combined.contains("due") {
-            return .warning
-        }
-
-        return .gold
     }
 
     private func priorityTone(

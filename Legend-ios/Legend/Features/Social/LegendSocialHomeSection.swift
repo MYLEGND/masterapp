@@ -12,16 +12,13 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     let session: MobileSession
     let home: MobileHomeResponse
     @ObservedObject var social: MobileSocialStore
-    @ObservedObject var messages: MessagingStore
-    let openMessages: () -> Void
+    @ObservedObject var activity: LegendDailyActivityStore
     let openCircles: () -> Void
     let refreshSocial: () async -> Void
     let dashboardContent: DashboardContent
 
     @State private var creationRoute: LegendSocialCreationRoute?
     @State private var isPresentingActivity = false
-    @State private var activitySeenThroughUTC: Date?
-    private let activitySeenKey: String
     @State private var commentTarget: MobileSocialPost?
     @State private var postInsight: MobileSocialPostInsight?
     @State private var storyCollection: MobileSocialStoryCollection?
@@ -32,31 +29,16 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         session: MobileSession,
         home: MobileHomeResponse,
         social: MobileSocialStore,
-        messages: MessagingStore,
-        openMessages: @escaping () -> Void,
+        activity: LegendDailyActivityStore,
         openCircles: @escaping () -> Void,
         refreshSocial: @escaping () async -> Void,
         @ViewBuilder dashboardContent: () -> DashboardContent
     ) {
         self.session = session
 
-        let activitySeenKey =
-            "legend.social.activity.seen." +
-            session.actor.identity.participantType.rawValue +
-            "." +
-            session.actor.identity.userID
-
-        self.activitySeenKey = activitySeenKey
-        _activitySeenThroughUTC = State(
-            initialValue: UserDefaults.standard.object(
-                forKey: activitySeenKey
-            ) as? Date
-        )
-
         self.home = home
         _social = ObservedObject(wrappedValue: social)
-        _messages = ObservedObject(wrappedValue: messages)
-        self.openMessages = openMessages
+        _activity = ObservedObject(wrappedValue: activity)
         self.openCircles = openCircles
         self.refreshSocial = refreshSocial
         self.dashboardContent = dashboardContent()
@@ -74,9 +56,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 social: social)
         }
         .sheet(isPresented: $isPresentingActivity) {
-            LegendActivitySheet(
-                activity: activity,
-                systemNotifications: messages.activityNotifications)
+            LegendDailyActivitySheet(activity: activity)
         }
         .sheet(item: $postInsight) { insight in
             LegendPostInsightsSheet(insight: insight)
@@ -136,11 +116,6 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
             })
     }
 
-    private var activity: [MobileSocialActivity] {
-        guard case .loaded(let snapshot) = social.state else { return [] }
-        return snapshot.activity
-    }
-
     private func handleHomeChromeAction(
         _ request: LegendHomeChromeActionRequest?
     ) {
@@ -156,17 +131,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     }
 
     private func openActivity() {
-        if let latestActivityUTC = activity.map(\.occurredUTC).max() {
-            activitySeenThroughUTC = latestActivityUTC
-            UserDefaults.standard.set(
-                latestActivityUTC,
-                forKey: activitySeenKey
-            )
-        }
-        LegendAccountActivityState.markSeen(
-            notifications: messages.activityNotifications,
-            identity: session.actor.identity)
-
+        activity.markTodayViewed()
         isPresentingActivity = true
     }
 
@@ -2481,106 +2446,6 @@ private struct LegendCommentComposer: View {
 
         composerFocused = true
     }
-}
-
-private struct LegendActivitySheet: View {
-    let activity: [MobileSocialActivity]
-    let systemNotifications: [MobileActivityNotification]
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            LegendScrollView(tracksNavigationChrome: false) {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                    LegendNextSheetHeader(
-                        eyebrow: "Legend network",
-                        title: "Activity",
-                        detail: "Recent interactions across your Legend updates.",
-                        dismiss: { dismiss() }
-                    )
-
-                if activity.isEmpty && systemNotifications.isEmpty {
-                    LegendNextEmptyState(
-                        title: "No activity yet",
-                        message: "Account updates, appreciations, comments, and follows appear here.",
-                        systemImage: "heart")
-                } else {
-                    if !systemNotifications.isEmpty {
-                        Text("Account updates")
-                            .font(LegendNextTypography.eyebrow)
-                            .foregroundStyle(LegendNextColor.goldBright)
-
-                        ForEach(systemNotifications) { item in
-                            LegendNextSurface(style: .navy, padding: LegendNextSpacing.sm) {
-                                HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
-                                    Image(systemName: item.kind == "ControlledResourceApproved"
-                                        ? "checkmark.seal.fill"
-                                        : "xmark.seal.fill")
-                                        .font(.title3.weight(.semibold))
-                                        .foregroundStyle(item.kind == "ControlledResourceApproved"
-                                            ? LegendNextColor.success
-                                            : LegendNextColor.danger)
-                                        .frame(width: 28)
-
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(item.title)
-                                            .font(.subheadline.weight(.bold))
-                                            .foregroundStyle(.white)
-                                        Text(item.detail)
-                                            .font(LegendNextTypography.caption)
-                                            .foregroundStyle(.white.opacity(0.76))
-                                            .fixedSize(horizontal: false, vertical: true)
-                                        Text(item.occurredUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
-                                            .font(.caption2)
-                                            .foregroundStyle(.white.opacity(0.58))
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if !activity.isEmpty {
-                        if !systemNotifications.isEmpty {
-                            Text("Legend network")
-                                .font(LegendNextTypography.eyebrow)
-                                .foregroundStyle(LegendNextColor.goldBright)
-                        }
-
-                    ForEach(activity) { item in
-                        LegendContactCard(
-                            displayName: item.actor.displayName,
-                            subtitle: item.actor.identity.participantType == .agent
-                                ? item.actor.roleLabel
-                                : item.summary,
-                            detail: item.actor.identity.participantType == .agent
-                                ? item.summary
-                                : nil,
-                            isVerified: item.actor.isVerified == true,
-                            avatar: {
-                                LegendProfileAvatar(
-                                    avatar: item.actor.avatar,
-                                    displayName: item.actor.displayName,
-                                    size: 42)
-                            },
-                            action: {
-                                Text(item.occurredUTC, format: .dateTime.month(.abbreviated).day().hour().minute())
-                                    .font(.caption2)
-                                    .foregroundStyle(LegendNextColor.contactSupporting)
-                            }
-                        )
-                    }
-                    }
-                }
-            }
-            .padding(LegendNextSpacing.md)
-            .padding(.bottom, LegendNextSpacing.xl)
-            }
-            .background(LegendNextCanvas())
-            .toolbar(.hidden, for: .navigationBar)
-        }
-        .legendNextSheetChrome()
-    }
-
 }
 
 struct LegendCreatorInsightsSheet: View {

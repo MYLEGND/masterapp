@@ -76,6 +76,10 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
 
     let currentSession: MobileSession
     let stores: LegendApplicationStores
+    /// One account-scoped activity authority shared by the Home summary and
+    /// the Activity modal. It observes the protected stores; it never owns a
+    /// second copy of social, messaging, or home data.
+    let activity: LegendDailyActivityStore
 
     private let authenticationFailureHandler: (UserFacingFailure) -> Void
     private var bootstrapTask: Task<Void, Never>?
@@ -88,6 +92,11 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
         self.stores = LegendApplicationStores(
             currentSession: currentSession,
             coordinator: coordinator)
+        self.activity = LegendDailyActivityStore(
+            identity: currentSession.actor.identity,
+            home: stores.home,
+            social: stores.social,
+            messages: stores.messaging)
         self.authenticationFailureHandler = coordinator.handleAuthenticationFailure
     }
 
@@ -98,6 +107,11 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
     ) {
         self.currentSession = currentSession
         self.stores = stores
+        self.activity = LegendDailyActivityStore(
+            identity: currentSession.actor.identity,
+            home: stores.home,
+            social: stores.social,
+            messages: stores.messaging)
         self.authenticationFailureHandler = authenticationFailureHandler
     }
 
