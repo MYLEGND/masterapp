@@ -863,15 +863,18 @@ struct LegendSocialContentFormat: Equatable, Sendable {
     let acceptsVideos: Bool
     let maximumVideoDurationSeconds: Double?
     let mediaAspectRatio: Double
-    let featuredPreviewWidth: Double
-    let featuredPreviewHeight: Double
-    let companionPreviewWidth: Double
-    let companionPreviewHeight: Double
+    /// All library and selection thumbnails are intentionally square. The
+    /// publication canvas is the only place media adopts an output ratio.
+    let selectionThumbnailSide: Double
     let emptyPreviewHeight: Double
     let editorMaximumWidth: Double
     /// Stories and Hacs use an intentional 9:16 canvas. Posts retain the
     /// source media's measured aspect ratio in their feed card.
     let usesFixedCanvasAspectRatio: Bool
+
+    /// Posts support Instagram-standard square and portrait canvases; Stories
+    /// and Hacs have one fixed full-screen canvas.
+    let supportedCanvasAspectRatios: [Double]
 
     var requiresVideo: Bool {
         acceptsVideos && !acceptsImages
@@ -889,6 +892,20 @@ struct LegendSocialContentFormat: Equatable, Sendable {
             return "10 minutes or less"
         }
         return "up to \(Int(maximumVideoDurationSeconds)) seconds"
+    }
+}
+
+enum LegendSocialPostCanvas: Double, CaseIterable, Identifiable, Sendable {
+    case square = 1
+    case portrait = 0.8
+
+    var id: Double { rawValue }
+
+    var title: String {
+        switch self {
+        case .square: "1:1"
+        case .portrait: "4:5"
+        }
     }
 }
 
@@ -951,14 +968,12 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
                 acceptsImages: true,
                 acceptsVideos: true,
                 maximumVideoDurationSeconds: LegendSocialVideoUploadPolicy.maximumDurationSeconds,
-                mediaAspectRatio: 1,
-                featuredPreviewWidth: 286,
-                featuredPreviewHeight: 286,
-                companionPreviewWidth: 132,
-                companionPreviewHeight: 132,
-                emptyPreviewHeight: 286,
+                mediaAspectRatio: LegendSocialPostCanvas.portrait.rawValue,
+                selectionThumbnailSide: 112,
+                emptyPreviewHeight: 132,
                 editorMaximumWidth: 390,
-                usesFixedCanvasAspectRatio: false)
+                usesFixedCanvasAspectRatio: false,
+                supportedCanvasAspectRatios: LegendSocialPostCanvas.allCases.map(\.rawValue))
 
         case .story:
             LegendSocialContentFormat(
@@ -968,13 +983,11 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
                 acceptsVideos: true,
                 maximumVideoDurationSeconds: LegendSocialVideoUploadPolicy.maximumDurationSeconds,
                 mediaAspectRatio: 9.0 / 16.0,
-                featuredPreviewWidth: 248,
-                featuredPreviewHeight: 440,
-                companionPreviewWidth: 124,
-                companionPreviewHeight: 220,
-                emptyPreviewHeight: 440,
+                selectionThumbnailSide: 112,
+                emptyPreviewHeight: 132,
                 editorMaximumWidth: 350,
-                usesFixedCanvasAspectRatio: true)
+                usesFixedCanvasAspectRatio: true,
+                supportedCanvasAspectRatios: [9.0 / 16.0])
 
         case .hac:
             LegendSocialContentFormat(
@@ -984,13 +997,11 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
                 acceptsVideos: true,
                 maximumVideoDurationSeconds: LegendSocialVideoUploadPolicy.maximumDurationSeconds,
                 mediaAspectRatio: 9.0 / 16.0,
-                featuredPreviewWidth: 248,
-                featuredPreviewHeight: 440,
-                companionPreviewWidth: 124,
-                companionPreviewHeight: 220,
-                emptyPreviewHeight: 440,
+                selectionThumbnailSide: 112,
+                emptyPreviewHeight: 132,
                 editorMaximumWidth: 350,
-                usesFixedCanvasAspectRatio: true)
+                usesFixedCanvasAspectRatio: true,
+                supportedCanvasAspectRatios: [9.0 / 16.0])
         }
     }
 

@@ -25,6 +25,28 @@ public interface ISocialMediaStorage
 }
 
 /// <summary>
+/// The local-media implementation is the sole authority allowed to finalize a
+/// stored video. Upload requests only persist complete source bytes; this
+/// contract is consumed by the single hosted processing queue after the
+/// request has been released.
+/// </summary>
+public interface ISocialMediaVideoProcessor
+{
+    Task<SocialMediaVideoProcessingResult> ProcessAsync(
+        string storageKey,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// In-memory signal for the durable media lifecycle. The database state remains
+/// the recovery authority, so dropping a signal can never lose a video job.
+/// </summary>
+public interface ISocialMediaProcessingQueue
+{
+    void Enqueue(Guid mediaAssetId);
+}
+
+/// <summary>
 /// The result of resolving a protected social-media object. A missing object
 /// and an unavailable storage provider are deliberately distinct: the former
 /// remains hidden from unauthorized callers, while the latter lets an already
@@ -72,4 +94,20 @@ public sealed record SocialStoredMedia(
     string MediaKind,
     string MimeType,
     long FileSizeBytes,
-    string StorageKey);
+    string StorageKey,
+    bool RequiresBackgroundProcessing = false);
+
+public sealed record SocialMediaVideoProcessingResult(
+    bool Succeeded,
+    long? FileSizeBytes,
+    string? ErrorCode,
+    string? ErrorMessage)
+{
+    public static SocialMediaVideoProcessingResult Success(long fileSizeBytes) =>
+        new(true, fileSizeBytes, null, null);
+
+    public static SocialMediaVideoProcessingResult Failure(
+        string errorCode,
+        string errorMessage) =>
+        new(false, null, errorCode, errorMessage);
+}

@@ -7,9 +7,10 @@ using Microsoft.Extensions.Logging;
 namespace Infrastructure.Social;
 
 /// <summary>
-/// The single-server post-upload video processor. It runs inside the upload
-/// request only after the complete MP4 has been durably written to local
-/// storage. No worker, playlist, or second delivery pipeline is involved.
+/// The single-server post-upload video processor. It runs only after the
+/// complete MP4 has been durably written to local storage by the one hosted
+/// social-media worker. Delivery remains a single optimized MP4 over HTTP
+/// byte ranges; no playlist or external media pipeline is involved.
 /// </summary>
 internal sealed class LocalFfmpegSocialVideoProcessor
 {

@@ -463,6 +463,69 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertTrue(conversations.isEmpty)
     }
 
+    func testMessagingStoreReloadsTheServerInboxWhenMessagesTabIsReentered() async {
+        let conversationID = UUID()
+        let api = InboxReconciliationMessagingAPI(conversationID: conversationID)
+        let store = MessagingStore(
+            api: api,
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics(),
+            actorParticipantType: .client)
+
+        store.load()
+        try? await Task.sleep(for: .milliseconds(50))
+        guard case .loaded(let initial) = store.state else {
+            return XCTFail("Expected the initial server inbox")
+        }
+        XCTAssertTrue(initial.isEmpty)
+
+        api.makeConversationVisible()
+        store.load()
+        try? await Task.sleep(for: .milliseconds(50))
+
+        guard case .loaded(let refreshed) = store.state else {
+            return XCTFail("Expected the refreshed server inbox")
+        }
+        XCTAssertEqual(refreshed.map(\.id), [conversationID])
+        XCTAssertGreaterThanOrEqual(api.conversationListCallCount, 2)
+    }
+
+    func testMessagingStoreFirstSuccessfulSendReconcilesPreviousMessagesFromServer() async {
+        let conversationID = UUID()
+        let api = InboxReconciliationMessagingAPI(conversationID: conversationID)
+        let store = MessagingStore(
+            api: api,
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics(),
+            actorParticipantType: .client)
+
+        store.load()
+        try? await Task.sleep(for: .milliseconds(50))
+
+        let recipient = api.recipient
+        let started = expectation(description: "Starts blank canonical conversation")
+        store.startConversation(with: recipient) { id in
+            XCTAssertEqual(id, conversationID)
+            started.fulfill()
+        }
+        await fulfillment(of: [started], timeout: 1)
+
+        guard case .loaded(let beforeFirstMessage) = store.state else {
+            return XCTFail("Expected a loaded inbox before first message")
+        }
+        XCTAssertTrue(beforeFirstMessage.isEmpty)
+
+        let sent = await store.send(body: "First persisted message")
+        XCTAssertNotNil(sent)
+
+        guard case .loaded(let afterFirstMessage) = store.state else {
+            return XCTFail("Expected the server-authoritative inbox after first message")
+        }
+        XCTAssertEqual(afterFirstMessage.map(\.id), [conversationID])
+        XCTAssertEqual(afterFirstMessage.first?.lastMessagePreview, "First persisted message")
+    }
+
+
     func testMessagingStoreShowsOfflineStateForNetworkFailure() async {
         let store = MessagingStore(
             api: OfflineMessagingAPI(),
@@ -810,6 +873,116 @@ private struct StubMessagingAPI: MessagingAPI {
     func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] { throw MobileMessagingContractError.unavailable }
     func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
     func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment { throw MobileMessagingContractError.unavailable }
+    func markRead(conversationID: UUID, accessToken: String) async throws {}
+}
+
+private final class InboxReconciliationMessagingAPI: MessagingAPI, @unchecked Sendable {
+    let conversationID: UUID
+    let recipient: MessagingRecipient
+    private(set) var conversationListCallCount = 0
+    private var isVisibleInInbox = false
+    private var lastMessage: ConversationMessage?
+
+    init(conversationID: UUID) {
+        self.conversationID = conversationID
+        self.recipient = MessagingRecipient(
+            identity: try! LogicalParticipantIdentity(
+                userID: "agent-1",
+                participantType: .agent),
+            profileID: UUID().uuidString,
+            displayName: "Agent One",
+            email: "agent.one@example.test",
+            roleLabel: nil,
+            relationshipLabel: "Agent",
+            existingConversationID: nil,
+            avatar: nil)
+    }
+
+    func makeConversationVisible() {
+        isVisibleInInbox = true
+    }
+
+    func conversations(accessToken: String) async throws -> [ConversationSummary] {
+        conversationListCallCount += 1
+        guard isVisibleInInbox else { return [] }
+        return [ConversationSummary(
+            id: conversationID,
+            conversationType: "ClientAgent",
+            counterparty: MessagingParticipant(
+                identity: recipient.identity,
+                profileID: recipient.profileID,
+                displayName: recipient.displayName,
+                roleLabel: recipient.roleLabel,
+                avatar: recipient.avatar,
+                isVerified: false),
+            title: recipient.displayName,
+            lastMessagePreview: lastMessage?.body ?? "Incoming message",
+            lastMessageUTC: lastMessage?.sentUTC ?? .now,
+            unreadCount: 0,
+            isClosed: false,
+            purpose: nil,
+            groupAvatar: nil)]
+    }
+
+    func recipients(search: String?, scope: MessagingRecipientScope?, accessToken: String) async throws -> [MessagingRecipient] {
+        [recipient]
+    }
+
+    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
+        ConversationDetail(
+            id: conversationID,
+            conversationType: "ClientAgent",
+            title: recipient.displayName,
+            participants: [],
+            messages: [],
+            isMuted: false,
+            isClosed: false,
+            canManageMembers: false)
+    }
+
+    func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail {
+        ConversationDetail(
+            id: conversationID,
+            conversationType: "ClientAgent",
+            title: recipient.displayName,
+            participants: [],
+            messages: lastMessage.map { [$0] } ?? [],
+            isMuted: false,
+            isClosed: false,
+            canManageMembers: false)
+    }
+
+    func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] {
+        lastMessage.map { [$0] } ?? []
+    }
+
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage {
+        let message = ConversationMessage(
+            id: UUID(),
+            conversationID: conversationID,
+            sender: MessagingParticipant(
+                identity: try! LogicalParticipantIdentity(
+                    userID: "client-1",
+                    participantType: .client),
+                profileID: UUID().uuidString,
+                displayName: "Client One",
+                roleLabel: nil,
+                avatar: nil,
+                isVerified: false),
+            body: body,
+            sentUTC: .now,
+            attachments: [],
+            isMine: true,
+            reply: nil)
+        lastMessage = message
+        isVisibleInInbox = true
+        return message
+    }
+
+    func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment {
+        throw MobileMessagingContractError.unavailable
+    }
+
     func markRead(conversationID: UUID, accessToken: String) async throws {}
 }
 

@@ -62,7 +62,8 @@ public static class MasterAppSqliteSchemaBootstrapper
         new("SubscriptionPayments", "ClaimToken", "TEXT"),
         new("SubscriptionPayments", "RetryNotBeforeUtc", "TEXT"),
         new("SubscriptionPayments", "Retryable", "INTEGER NOT NULL DEFAULT 0"),
-        new("SubscriptionPayments", "ProviderRequestId", "TEXT")
+        new("SubscriptionPayments", "ProviderRequestId", "TEXT"),
+        new("SocialPosts", "PublicationState", "TEXT NOT NULL DEFAULT 'Published'")
     };
 
     private static readonly IndexPatch[] AnalyticsDriftAlertIndexes =

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Social;
 
-internal sealed class SocialMediaStorage : ISocialMediaStorage
+internal sealed class SocialMediaStorage : ISocialMediaStorage, ISocialMediaVideoProcessor
 {
     private const long DefaultMaximumMediaBytes =
         SocialMediaUploadLimits.MaximumMediaBytes;
@@ -123,10 +123,10 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         var storageKey =
             $"originals/{utcNow:yyyy}/{utcNow:MM}/{mediaAssetId:N}/{storedFileName}";
 
-        // Video normalization deliberately executes against the local file that
-        // has just completed its multipart write. Blob-only writes cannot meet
-        // the single-server FFmpeg contract, so they are rejected instead of
-        // silently publishing audio that missed normalization.
+        // Video normalization deliberately executes against the local file
+        // after the multipart request has completed. Blob-only writes cannot
+        // meet the single-server FFmpeg contract, so they are rejected instead
+        // of silently publishing audio that missed normalization.
         if (_blobContainer is not null &&
             string.Equals(supportedType.MediaKind, "Video", StringComparison.Ordinal))
         {
@@ -304,22 +304,6 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
                     "The uploaded social media size did not match the request.");
             }
 
-            if (string.Equals(supportedType.MediaKind, "Video", StringComparison.Ordinal))
-            {
-                var processing = await _videoProcessor.OptimizeAsync(
-                    physicalPath,
-                    cancellationToken);
-                if (!processing.Succeeded || processing.FileSizeBytes is null)
-                {
-                    TryDeletePhysicalFile(physicalPath);
-                    return SocialMediaStorageResult.Failure(
-                        processing.ErrorCode ?? "SOCIAL_VIDEO_PROCESSING_FAILED",
-                        processing.ErrorMessage ?? "Legend could not optimize this video for playback.");
-                }
-
-                actualSizeBytes = processing.FileSizeBytes.Value;
-            }
-
             return CreateStoredMediaResult(
                 originalFileName,
                 storedFileName,
@@ -404,6 +388,40 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
                 storageKey);
             return SocialMediaReadResult.Unavailable();
         }
+    }
+
+    /// <summary>
+    /// Finalizes one already-persisted local MP4. This is intentionally separate
+    /// from StoreAsync so a request releases its socket as soon as storage is
+    /// durable, while exactly one hosted worker owns FFmpeg execution.
+    /// </summary>
+    public async Task<SocialMediaVideoProcessingResult> ProcessAsync(
+        string storageKey,
+        CancellationToken cancellationToken = default)
+    {
+        if (_blobContainer is not null)
+        {
+            return SocialMediaVideoProcessingResult.Failure(
+                "SOCIAL_VIDEO_PROCESSING_LOCAL_REQUIRED",
+                "Legend video optimization requires local media storage on this server.");
+        }
+
+        var physicalPath = ResolvePhysicalPath(storageKey);
+        if (physicalPath is null)
+        {
+            return SocialMediaVideoProcessingResult.Failure(
+                "SOCIAL_VIDEO_PATH_INVALID",
+                "Legend could not prepare the uploaded video for delivery.");
+        }
+
+        var result = await _videoProcessor.OptimizeAsync(
+            physicalPath,
+            cancellationToken);
+        return result.Succeeded && result.FileSizeBytes is { } size
+            ? SocialMediaVideoProcessingResult.Success(size)
+            : SocialMediaVideoProcessingResult.Failure(
+                result.ErrorCode ?? "SOCIAL_VIDEO_PROCESSING_FAILED",
+                result.ErrorMessage ?? "Legend could not optimize this video for playback.");
     }
 
     public async Task DeleteAsync(
@@ -613,7 +631,11 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
                 supportedType.MediaKind,
                 supportedType.MimeType,
                 actualSizeBytes,
-                storageKey));
+                storageKey,
+                RequiresBackgroundProcessing: string.Equals(
+                    supportedType.MediaKind,
+                    "Video",
+                    StringComparison.Ordinal)));
 
     private static BlobContainerClient? BuildBlobContainerClient(
         IConfiguration configuration,

@@ -19,7 +19,7 @@ namespace AgentPortal.Tests;
 public sealed class SocialMediaStorageTests
 {
     [Fact]
-    public async Task LocalVideoUpload_DoesNotPublishWhenDurationCannotBeVerified()
+    public async Task LocalVideoUpload_DefersFfmpegUntilTheHostedLifecycle()
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -55,11 +55,11 @@ public sealed class SocialMediaStorageTests
                 content.Length,
                 stream);
 
-            Assert.False(result.Succeeded);
-            Assert.Equal("SOCIAL_VIDEO_DURATION_INVALID", result.ErrorCode);
-            Assert.Empty(Directory.EnumerateFiles(
+            Assert.True(result.Succeeded);
+            Assert.True(result.Media!.RequiresBackgroundProcessing);
+            Assert.Single(Directory.EnumerateFiles(
                 root,
-                "*",
+                "*.mp4",
                 SearchOption.AllDirectories));
         }
         finally

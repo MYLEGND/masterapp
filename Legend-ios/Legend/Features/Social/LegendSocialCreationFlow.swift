@@ -265,6 +265,7 @@ struct LegendSocialComposer: View {
     @State private var ownsMediaAfterDismissal = false
     @State private var selectedHacPreviewData: Data?
     @State private var isSelectingHacPreview = false
+    @State private var postCanvas = LegendSocialPostCanvas.portrait
 
     init(
         type: MobileSocialContentType,
@@ -355,6 +356,9 @@ struct LegendSocialComposer: View {
         }
         .onChange(of: type) { _, updatedType in
             validateSelection(for: updatedType)
+            if updatedType != .post {
+                postCanvas = .portrait
+            }
         }
         .onDisappear {
             if !ownsMediaAfterDismissal {
@@ -500,23 +504,15 @@ struct LegendSocialComposer: View {
     }
 
     private var selectionAspectRatio: CGFloat {
-        CGFloat(type.format.mediaAspectRatio)
+        1
     }
 
     private var emptyPreviewHeight: CGFloat {
         CGFloat(type.format.emptyPreviewHeight)
     }
 
-    private var primaryPreviewSize: CGSize {
-        CGSize(
-            width: CGFloat(type.format.featuredPreviewWidth),
-            height: CGFloat(type.format.featuredPreviewHeight))
-    }
-
-    private var companionPreviewSize: CGSize {
-        CGSize(
-            width: CGFloat(type.format.companionPreviewWidth),
-            height: CGFloat(type.format.companionPreviewHeight))
+    private var selectionPreviewSide: CGFloat {
+        CGFloat(type.format.selectionThumbnailSide)
     }
 
     @ViewBuilder
@@ -591,76 +587,27 @@ struct LegendSocialComposer: View {
         isDark: Bool,
         overlayText: String? = nil
     ) -> some View {
-        if type.format.maximumMediaItems > 1 {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(
-                    alignment: .top,
-                    spacing: LegendNextSpacing.xs
-                ) {
-                    if let primaryMedia = selectedMedia.first {
-                        LegendSocialMediaPreview(
-                            media: primaryMedia,
-                            presentation: .featured,
-                            overlayText: overlayText,
-                            remove: { remove(primaryMedia) }
-                        )
-                        .frame(
-                            width: primaryPreviewSize.width,
-                            height: primaryPreviewSize.height
-                        )
-                    }
-
-                    ForEach(Array(selectedMedia.dropFirst())) { media in
-                        LegendSocialMediaPreview(
-                            media: media,
-                            presentation: .companion,
-                            remove: { remove(media) }
-                        )
-                        .frame(
-                            width: companionPreviewSize.width,
-                            height: companionPreviewSize.height
-                        )
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-            .scrollIndicators(.hidden)
-            .background(
-                isDark ? Color.clear : LegendNextColor.surfaceInset,
-                in: RoundedRectangle(
-                    cornerRadius: LegendNextRadius.card,
-                    style: .continuous
-                )
-            )
-        } else {
-            HStack {
-                Spacer(minLength: 0)
-
-                if let primaryMedia = selectedMedia.first {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: LegendNextSpacing.xs) {
+                ForEach(selectedMedia) { media in
                     LegendSocialMediaPreview(
-                        media: primaryMedia,
-                        presentation: .featured,
+                        media: media,
+                        presentation: .selection,
                         overlayText: overlayText,
-                        remove: { remove(primaryMedia) }
-                    )
-                    .frame(
-                        width: primaryPreviewSize.width,
-                        height: primaryPreviewSize.height
-                    )
+                        remove: { remove(media) })
+                    .frame(width: selectionPreviewSide, height: selectionPreviewSide)
                 }
-
-                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity)
             .padding(.vertical, 2)
-            .background(
-                isDark ? Color.clear : LegendNextColor.surfaceInset,
-                in: RoundedRectangle(
-                    cornerRadius: LegendNextRadius.card,
-                    style: .continuous
-                )
-            )
         }
+        .scrollIndicators(.hidden)
+        .background(
+            isDark ? Color.clear : LegendNextColor.surfaceInset,
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.card,
+                style: .continuous
+            )
+        )
     }
 
     /// The full eligible library, laid out inline so the enclosing ScrollView owns the
@@ -803,7 +750,9 @@ struct LegendSocialComposer: View {
     }
 
     private var editorCanvasAspectRatio: CGFloat {
-        CGFloat(type.format.mediaAspectRatio)
+        type == .post
+            ? CGFloat(postCanvas.rawValue)
+            : CGFloat(type.format.mediaAspectRatio)
     }
 
     private var editorCanvasMaximumWidth: CGFloat {
@@ -960,9 +909,10 @@ struct LegendSocialComposer: View {
                 if let primaryMedia = selectedMedia.first {
                     LegendSocialMediaPreview(
                         media: primaryMedia,
-                        presentation: .featured,
+                        presentation: .canvas,
                         overlayText:
                             editorOverlayText,
+                        dimmingEdges: type.format.usesFixedCanvasAspectRatio,
                         remove: {
                             remove(primaryMedia)
                         }
@@ -1105,6 +1055,34 @@ struct LegendSocialComposer: View {
 
     private var immersiveEditorFooter: some View {
         VStack(spacing: LegendNextSpacing.sm) {
+            if type == .post {
+                HStack(spacing: LegendNextSpacing.xs) {
+                    Text("Post format")
+                        .font(LegendNextTypography.label)
+                        .foregroundStyle(Color.white.opacity(0.72))
+                    Spacer(minLength: 0)
+                    ForEach(LegendSocialPostCanvas.allCases) { canvas in
+                        Button(canvas.title) {
+                            postCanvas = canvas
+                        }
+                        .font(LegendNextTypography.label)
+                        .foregroundStyle(
+                            postCanvas == canvas
+                                ? LegendNextColor.midnight
+                                : .white)
+                        .padding(.horizontal, LegendNextSpacing.sm)
+                        .frame(height: LegendNextSize.compactControlHeight)
+                        .background(
+                            postCanvas == canvas
+                                ? LegendNextColor.goldBright
+                                : Color.white.opacity(0.12),
+                            in: Capsule())
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(
+                            postCanvas == canvas ? .isSelected : [])
+                    }
+                }
+            }
             immersiveToolDetail
             publicationFailure
 
@@ -1287,7 +1265,7 @@ struct LegendSocialComposer: View {
         if let primaryMedia = selectedMedia.first {
             LegendSocialMediaPreview(
                 media: primaryMedia,
-                presentation: .companion,
+                presentation: .thumbnail,
                 remove: {}
             )
             .frame(
@@ -2184,25 +2162,29 @@ private enum LegendSocialEditingTool: CaseIterable, Identifiable {
 }
 
 private enum LegendSocialMediaPreviewPresentation {
-    case featured
-    case companion
+    case selection
+    case canvas
+    case thumbnail
 }
 
 private struct LegendSocialMediaPreview: View {
     let media: LegendSocialMediaDraft
     let presentation: LegendSocialMediaPreviewPresentation
     let overlayText: String?
+    let dimmingEdges: Bool
     let remove: () -> Void
 
     init(
         media: LegendSocialMediaDraft,
         presentation: LegendSocialMediaPreviewPresentation,
         overlayText: String? = nil,
+        dimmingEdges: Bool = false,
         remove: @escaping () -> Void
     ) {
         self.media = media
         self.presentation = presentation
         self.overlayText = overlayText
+        self.dimmingEdges = dimmingEdges
         self.remove = remove
     }
 
@@ -2216,9 +2198,27 @@ private struct LegendSocialMediaPreview: View {
                 .clipped()
                 .background(LegendNextColor.midnight.opacity(0.16))
 
-            if presentation == .companion {
+            if dimmingEdges {
                 LinearGradient(
-                colors: [.clear, LegendNextColor.midnight.opacity(0.68)],
+                    colors: [
+                        .clear,
+                        LegendNextColor.midnight.opacity(0.30)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom)
+
+                LinearGradient(
+                    colors: [
+                        .clear,
+                        LegendNextColor.midnight.opacity(0.30)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing)
+            }
+
+            if presentation == .thumbnail {
+                LinearGradient(
+                    colors: [.clear, LegendNextColor.midnight.opacity(0.68)],
                     startPoint: .center,
                     endPoint: .bottom)
 
@@ -2235,7 +2235,7 @@ private struct LegendSocialMediaPreview: View {
                 .padding(LegendNextSpacing.sm)
             }
 
-            if presentation == .featured,
+            if presentation == .canvas,
                let overlayText,
                !overlayText.isEmpty {
                 Text(overlayText)
@@ -2250,15 +2250,17 @@ private struct LegendSocialMediaPreview: View {
                     .accessibilityLabel("Story text: \(overlayText)")
             }
 
-            Button(action: remove) {
-                Image(systemName: "xmark")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(LegendNextColor.midnight)
-                    .frame(width: 30, height: 30)
-                    .background(.white, in: Circle())
+            if presentation == .selection {
+                Button(action: remove) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(LegendNextColor.midnight)
+                        .frame(width: 30, height: 30)
+                        .background(.white, in: Circle())
+                }
+                .padding(LegendNextSpacing.xs)
+                .accessibilityLabel("Remove selected media")
             }
-            .padding(LegendNextSpacing.xs)
-            .accessibilityLabel("Remove selected media")
         }
         .clipShape(
             RoundedRectangle(

@@ -17,6 +17,13 @@ public static class SocialServiceCollectionExtensions
         services.AddScoped<ISocialFeedService, SocialFeedService>();
         services.AddScoped<ISocialDiscoveryService, SocialDiscoveryService>();
         services.AddSingleton<ISocialMediaStorage, SocialMediaStorage>();
+        services.AddSingleton<ISocialMediaVideoProcessor>(serviceProvider =>
+            (SocialMediaStorage)serviceProvider.GetRequiredService<ISocialMediaStorage>());
+        services.AddSingleton<SocialMediaProcessingWorker>();
+        services.AddSingleton<ISocialMediaProcessingQueue>(serviceProvider =>
+            serviceProvider.GetRequiredService<SocialMediaProcessingWorker>());
+        services.AddHostedService(serviceProvider =>
+            serviceProvider.GetRequiredService<SocialMediaProcessingWorker>());
         services.AddSingleton<ISocialMusicCatalog, CuratedOpenMusicCatalog>();
 
         return services;

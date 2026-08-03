@@ -85,6 +85,60 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task FirstPersistedMessage_MakesTheCanonicalConversationVisibleToBothParticipants()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+
+        var opened = await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                agent,
+                client.UserId,
+                client.ParticipantType));
+
+        Assert.True(opened.Succeeded);
+        var conversation = Assert.IsType<MessagingConversationDetail>(opened.Conversation);
+        Assert.Empty(conversation.Messages);
+        Assert.Empty((await service.ListConversationsAsync(
+            agent,
+            new MessagingConversationListQuery())).Conversations);
+        Assert.Empty((await service.ListConversationsAsync(
+            client,
+            new MessagingConversationListQuery())).Conversations);
+
+        var sent = await service.SendMessageAsync(
+            new SendMessagingMessageCommand(
+                agent,
+                conversation.Id,
+                "This first message establishes the inbox thread.",
+                "first-message-establishes-inbox"));
+
+        Assert.True(sent.Succeeded);
+        var agentInbox = await service.ListConversationsAsync(
+            agent,
+            new MessagingConversationListQuery());
+        var clientInbox = await service.ListConversationsAsync(
+            client,
+            new MessagingConversationListQuery());
+
+        Assert.Equal(conversation.Id, Assert.Single(agentInbox.Conversations).Id);
+        Assert.Equal(conversation.Id, Assert.Single(clientInbox.Conversations).Id);
+        Assert.Equal(
+            "This first message establishes the inbox thread.",
+            Assert.Single(agentInbox.Conversations).LastMessagePreview);
+        Assert.Equal(
+            "This first message establishes the inbox thread.",
+            Assert.Single(clientInbox.Conversations).LastMessagePreview);
+        Assert.Equal(2, await db.MessageConversationParticipants.CountAsync(
+            participant => participant.ConversationId == conversation.Id && participant.IsActive));
+        Assert.Single(await db.InternalMessages.Where(
+            message => message.ConversationId == conversation.Id).ToListAsync());
+    }
+
+    [Fact]
     public async Task ConversationInboxControls_AreScopedToTheActorAndRestoreOnANewMessage()
     {
         await using var db = ControllerTestHelpers.BuildDb();

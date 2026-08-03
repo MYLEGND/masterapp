@@ -76,11 +76,11 @@ final class MessagingStore: ObservableObject {
 
     func load() {
         guard conversationListTask == nil else { return }
-        if !hasCachedConversations {
-            state = .loading
-        }
         Task {
-            _ = await loadIfNeeded()
+            // Entering Messages must always reconcile with the server-owned inbox.
+            // A cached empty/non-empty list is only a presentation cache; it must
+            // never prevent a newly persisted conversation from becoming visible.
+            _ = await refresh()
         }
     }
 
@@ -436,6 +436,14 @@ final class MessagingStore: ObservableObject {
                 replyToMessageID: replyTarget?.id,
                 accessToken: try await accessTokenProvider())
             append(message: message, to: conversationID)
+
+            // The server conversation/participant/message projection is the one
+            // inbox source of truth. This is critical for the first message: the
+            // blank conversation is intentionally absent from Previous Messages
+            // until the first message is persisted, so reconcile immediately after
+            // a successful send instead of maintaining a second local recent-chat list.
+            _ = await requestConversationList(
+                preservingCachedValue: hasCachedConversations)
             return message
         } catch {
             sendFailure = failure(for: error, title: "Message not sent")

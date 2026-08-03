@@ -11,6 +11,36 @@ public static class SocialPostContentTypes
 }
 
 /// <summary>
+/// The post-level boundary between a durable creator draft and content that is
+/// eligible for Legend audiences. Media processing is intentionally a separate
+/// asset lifecycle; publishing never makes an unfinished video playable.
+/// </summary>
+public static class SocialPostPublicationStates
+{
+    public const string Draft = "Draft";
+    public const string Published = "Published";
+
+    public static bool IsPublished(string? state) =>
+        string.Equals(state, Published, StringComparison.Ordinal);
+}
+
+/// <summary>
+/// One persisted lifecycle for every social media asset. Video moves through
+/// this state machine after its multipart source file has been durably saved;
+/// images enter Ready immediately because they do not require FFmpeg.
+/// </summary>
+public static class SocialMediaProcessingStates
+{
+    public const string PendingProcessing = "PendingProcessing";
+    public const string Processing = "Processing";
+    public const string Ready = "Ready";
+    public const string Failed = "Failed";
+
+    public static bool IsReady(string? state) =>
+        string.Equals(state, Ready, StringComparison.Ordinal);
+}
+
+/// <summary>
 /// Canonical ingress limits for social media. The request allowance includes a
 /// small multipart envelope so the maximum accepted video itself remains the
 /// same size as the secure-media storage policy.
@@ -237,6 +267,20 @@ public sealed record CreateSocialMediaPostCommand(
     IReadOnlyList<SocialMediaUpload> Media,
     SocialMusicSelection? Music = null,
     SocialPostDetails? Details = null,
+    SocialMediaUpload? PreviewImage = null,
+    bool PublishImmediately = true);
+
+/// <summary>
+/// Finalizes the one durable media draft created while the member was editing.
+/// It changes post visibility and optional metadata; it never uploads the
+/// primary source media a second time.
+/// </summary>
+public sealed record PublishStagedSocialMediaPostCommand(
+    SocialFeedActor Actor,
+    Guid PostId,
+    string Body,
+    SocialMusicSelection? Music = null,
+    SocialPostDetails? Details = null,
     SocialMediaUpload? PreviewImage = null);
 
 public sealed record SocialMediaStream(
@@ -343,6 +387,7 @@ public interface ISocialFeedService
     Task<SocialOperationResult<IReadOnlyList<SocialPostView>>> GetPublicProfilePostsAsync(SocialFeedActor actor, SocialAuthor profile, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostView>> CreatePostAsync(CreateSocialPostCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostView>> CreateMediaPostAsync(CreateSocialMediaPostCommand command, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<SocialPostView>> PublishStagedMediaPostAsync(PublishStagedSocialMediaPostCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostView>> UpdatePostAsync(UpdateSocialPostCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<bool>> DeletePostAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialMediaStream>> GetMediaAsync(SocialFeedActor actor, Guid mediaAssetId, CancellationToken cancellationToken = default);

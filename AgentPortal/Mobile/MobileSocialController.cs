@@ -182,6 +182,75 @@ public sealed class MobileSocialController : MobileApiControllerBase
     public async Task<IActionResult> CreateMediaPost(
         [FromForm] MobileCreateSocialMediaPostRequest? request,
         CancellationToken cancellationToken)
+        => await CreateMediaPostCore(request, publishImmediately: true, cancellationToken);
+
+    /// <summary>
+    /// Accepts a durable, non-public media draft while the member is still
+    /// editing. It intentionally shares the exact validation and persistence
+    /// path used by direct publishing below.
+    /// </summary>
+    [HttpPost("posts/media/stage")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(SocialMediaUploadLimits.MaximumMultipartRequestBytes)]
+    [RequestFormLimits(
+        MultipartBodyLengthLimit = SocialMediaUploadLimits.MaximumMultipartRequestBytes,
+        ValueLengthLimit = SocialMediaUploadLimits.MaximumFormValueLength)]
+    public async Task<IActionResult> StageMediaPost(
+        [FromForm] MobileCreateSocialMediaPostRequest? request,
+        CancellationToken cancellationToken)
+        => await CreateMediaPostCore(request, publishImmediately: false, cancellationToken);
+
+    [HttpPost("posts/{postId:guid}/publish")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(SocialMediaUploadLimits.MaximumPreviewImageBytes + SocialMediaUploadLimits.MultipartEnvelopeBytes)]
+    [RequestFormLimits(
+        MultipartBodyLengthLimit = SocialMediaUploadLimits.MaximumPreviewImageBytes + SocialMediaUploadLimits.MultipartEnvelopeBytes,
+        ValueLengthLimit = SocialMediaUploadLimits.MaximumFormValueLength)]
+    public async Task<IActionResult> PublishStagedMediaPost(
+        Guid postId,
+        [FromForm] MobilePublishStagedSocialMediaPostRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var preview = request?.Preview;
+        await using var previewStream = preview is { Length: > 0 }
+            ? preview.OpenReadStream()
+            : null;
+        var previewUpload = previewStream is null
+            ? null
+            : new SocialMediaUpload(
+                preview!.FileName,
+                preview.Length,
+                previewStream,
+                null);
+
+        var result = await _social.PublishStagedMediaPostAsync(
+            new PublishStagedSocialMediaPostCommand(
+                resolved.Actor!,
+                postId,
+                request?.Body ?? string.Empty,
+                ToMusicSelection(request),
+                new SocialPostDetails(
+                    request?.Audience,
+                    request?.Location,
+                    request?.CommentsEnabled ?? true),
+                previewUpload),
+            cancellationToken);
+
+        return result.Succeeded && result.Value is not null
+            ? StatusCode(
+                StatusCodes.Status202Accepted,
+                await ToPostDtoAsync(result.Value, cancellationToken))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    private async Task<IActionResult> CreateMediaPostCore(
+        MobileCreateSocialMediaPostRequest? request,
+        bool publishImmediately,
+        CancellationToken cancellationToken)
     {
         var resolved = await ResolveSocialActorAsync(cancellationToken);
         if (resolved.Error is not null)
@@ -247,11 +316,17 @@ public sealed class MobileSocialController : MobileApiControllerBase
                         request?.Audience,
                         request?.Location,
                         request?.CommentsEnabled ?? true),
-                    previewUpload),
+                    previewUpload,
+                    publishImmediately),
                 cancellationToken);
 
+            // Multipart bytes are durable at this point. Video normalization
+            // continues through the single hosted lifecycle, so do not retain
+            // the iOS upload socket while FFmpeg runs.
             return result.Succeeded && result.Value is not null
-                ? Ok(await ToPostDtoAsync(result.Value, cancellationToken))
+                ? StatusCode(
+                    StatusCodes.Status202Accepted,
+                    await ToPostDtoAsync(result.Value, cancellationToken))
                 : SocialFailure(result.ErrorCode, result.ErrorMessage);
         }
         finally
@@ -792,16 +867,40 @@ public sealed class MobileSocialController : MobileApiControllerBase
         insights.TopVideos.Select(ToPostInsightDto).ToArray(),
         insights.TopStories.Select(ToPostInsightDto).ToArray());
 
-    private static SocialMusicSelection? ToMusicSelection(MobileCreateSocialMediaPostRequest? request) =>
-        string.IsNullOrWhiteSpace(request?.MusicProviderId) || string.IsNullOrWhiteSpace(request?.MusicTrackId)
+    private static SocialMusicSelection? ToMusicSelection(
+        string? providerId,
+        string? trackId,
+        decimal? trimStartSeconds,
+        decimal? trimEndSeconds,
+        decimal? musicVolume,
+        decimal? originalAudioVolume) =>
+        string.IsNullOrWhiteSpace(providerId) || string.IsNullOrWhiteSpace(trackId)
             ? null
             : new SocialMusicSelection(
-                request.MusicProviderId,
-                request.MusicTrackId,
-                request.MusicTrimStartSeconds ?? 0,
-                request.MusicTrimEndSeconds ?? 0,
-                request.MusicVolume ?? 1,
-                request.OriginalAudioVolume ?? 1);
+                providerId,
+                trackId,
+                trimStartSeconds ?? 0,
+                trimEndSeconds ?? 0,
+                musicVolume ?? 1,
+                originalAudioVolume ?? 1);
+
+    private static SocialMusicSelection? ToMusicSelection(MobileCreateSocialMediaPostRequest? request) =>
+        ToMusicSelection(
+            request?.MusicProviderId,
+            request?.MusicTrackId,
+            request?.MusicTrimStartSeconds,
+            request?.MusicTrimEndSeconds,
+            request?.MusicVolume,
+            request?.OriginalAudioVolume);
+
+    private static SocialMusicSelection? ToMusicSelection(MobilePublishStagedSocialMediaPostRequest? request) =>
+        ToMusicSelection(
+            request?.MusicProviderId,
+            request?.MusicTrackId,
+            request?.MusicTrimStartSeconds,
+            request?.MusicTrimEndSeconds,
+            request?.MusicVolume,
+            request?.OriginalAudioVolume);
 
     private IActionResult SocialFailure(string? errorCode, string? errorMessage)
     {
@@ -809,6 +908,8 @@ public sealed class MobileSocialController : MobileApiControllerBase
             "social_post_invalid" or
             "social_post_edit_invalid" or
             "social_media_post_invalid" or
+            "social_media_preview_invalid" or
+            "social_media_draft_unavailable" or
             "social_comment_invalid" or
             "social_comment_parent_unavailable" or
             "social_comments_disabled" or
@@ -868,6 +969,21 @@ public sealed class MobileCreateSocialMediaPostRequest
     public decimal? MusicVolume { get; init; }
     public decimal? OriginalAudioVolume { get; init; }
     public List<IFormFile> Files { get; init; } = [];
+}
+
+public sealed class MobilePublishStagedSocialMediaPostRequest
+{
+    public string? Body { get; init; }
+    public string? Audience { get; init; }
+    public string? Location { get; init; }
+    public bool? CommentsEnabled { get; init; }
+    public IFormFile? Preview { get; init; }
+    public string? MusicProviderId { get; init; }
+    public string? MusicTrackId { get; init; }
+    public decimal? MusicTrimStartSeconds { get; init; }
+    public decimal? MusicTrimEndSeconds { get; init; }
+    public decimal? MusicVolume { get; init; }
+    public decimal? OriginalAudioVolume { get; init; }
 }
 
 public sealed record MobileCreateSocialCommentRequest(string? Body, Guid? ParentCommentId);

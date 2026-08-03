@@ -37,6 +37,7 @@ public sealed class SocialFeedService : ISocialFeedService
 
     private readonly MasterAppDbContext _db;
     private readonly ISocialMediaStorage _mediaStorage;
+    private readonly ISocialMediaProcessingQueue? _mediaProcessingQueue;
     private readonly ISocialMusicCatalog _musicCatalog;
     private readonly IMemoryCache _memoryCache;
 
@@ -44,10 +45,12 @@ public sealed class SocialFeedService : ISocialFeedService
         MasterAppDbContext db,
         ISocialMediaStorage mediaStorage,
         ISocialMusicCatalog musicCatalog,
-        IMemoryCache memoryCache)
+        IMemoryCache memoryCache,
+        ISocialMediaProcessingQueue? mediaProcessingQueue = null)
     {
         _db = db;
         _mediaStorage = mediaStorage;
+        _mediaProcessingQueue = mediaProcessingQueue;
         _musicCatalog = musicCatalog;
         _memoryCache = memoryCache;
     }
@@ -78,7 +81,13 @@ public sealed class SocialFeedService : ISocialFeedService
         // vertical-video surface.
         var visiblePosts = _db.SocialPosts
             .AsNoTracking()
-            .Where(post => post.DeletedUtc == null && (post.ExpiresUtc == null || post.ExpiresUtc > now))
+            .Where(post => post.PublicationState == SocialPostPublicationStates.Published &&
+                           post.DeletedUtc == null &&
+                           (post.ExpiresUtc == null || post.ExpiresUtc > now))
+            // Source bytes are never publicly visible while the one persisted
+            // video lifecycle is still pending or has failed.
+            .Where(post => !post.MediaAssets.Any(media =>
+                media.ProcessingState != SocialMediaProcessingStates.Ready))
             .Where(post =>
                 (post.AuthorParticipantType == MessagingParticipantTypes.Agent &&
                  visibleAgentUserIds.Contains(post.AuthorUserId.ToLower())) ||
@@ -168,6 +177,7 @@ public sealed class SocialFeedService : ISocialFeedService
             .AsNoTracking()
             .Where(post => authorUserIds.Contains(post.AuthorUserId) &&
                            post.AuthorParticipantType == author.ParticipantType &&
+                           post.PublicationState == SocialPostPublicationStates.Published &&
                            post.DeletedUtc == null &&
                            (post.ExpiresUtc == null || post.ExpiresUtc > now))
             .OrderByDescending(post => post.PostedUtc)
@@ -202,8 +212,11 @@ public sealed class SocialFeedService : ISocialFeedService
             .Where(post => targetUserIds.Contains(post.AuthorUserId)
                            && post.AuthorParticipantType == resolved.Value.TargetKey.ParticipantType
                            && post.ContentType != SocialPostContentTypes.Story
+                           && post.PublicationState == SocialPostPublicationStates.Published
                            && post.DeletedUtc == null
-                           && (post.ExpiresUtc == null || post.ExpiresUtc > now))
+                           && (post.ExpiresUtc == null || post.ExpiresUtc > now)
+                           && !post.MediaAssets.Any(media =>
+                               media.ProcessingState != SocialMediaProcessingStates.Ready))
             .OrderByDescending(post => post.PostedUtc)
             .ToArrayAsync(cancellationToken);
         var audience = await LoadAudienceGraphAsync(actor, cancellationToken);
@@ -236,6 +249,7 @@ public sealed class SocialFeedService : ISocialFeedService
             AuthorParticipantType = command.Actor.Identity.ParticipantType,
             AuthorProfileId = command.Actor.ProfileId,
             ContentType = contentType,
+            PublicationState = SocialPostPublicationStates.Published,
             Audience = SocialPostAudiences.AuthorizedNetwork,
             Location = NormalizeOptionalText(details.Location, MaximumLocationLength),
             CommentsEnabled = details.CommentsEnabled,
@@ -288,14 +302,7 @@ public sealed class SocialFeedService : ISocialFeedService
         }
 
         var previewImage = command.PreviewImage;
-        if (previewImage is not null &&
-            (contentType != SocialPostContentTypes.Reel ||
-             previewImage.DeclaredSizeBytes <= 0 ||
-             previewImage.DeclaredSizeBytes > SocialMediaUploadLimits.MaximumPreviewImageBytes ||
-             !string.Equals(
-                 Path.GetExtension(previewImage.OriginalFileName?.Trim() ?? string.Empty),
-                 ".jpg",
-                 StringComparison.OrdinalIgnoreCase)))
+        if (!IsValidHacPreview(contentType, previewImage))
         {
             return SocialOperationResult<SocialPostView>.Failure(
                 "social_media_preview_invalid",
@@ -303,18 +310,24 @@ public sealed class SocialFeedService : ISocialFeedService
         }
 
         var details = command.Details ?? new SocialPostDetails();
-
-        var music = await ResolveMusicAsync(command.Music, cancellationToken);
-        if (!music.Succeeded)
+        SocialPostMusicAttachment? musicAttachment = null;
+        if (command.PublishImmediately)
         {
-            return SocialOperationResult<SocialPostView>.Failure(
-                music.ErrorCode ?? "social_music_invalid",
-                music.ErrorMessage ?? "The selected music could not be verified.");
+            var music = await ResolveMusicAsync(command.Music, cancellationToken);
+            if (!music.Succeeded)
+            {
+                return SocialOperationResult<SocialPostView>.Failure(
+                    music.ErrorCode ?? "social_music_invalid",
+                    music.ErrorMessage ?? "The selected music could not be verified.");
+            }
+
+            musicAttachment = music.Value;
         }
 
         var postId = Guid.NewGuid();
         var storedKeys = new List<string>(uploads.Length + (previewImage is null ? 0 : 1));
         var mediaAssets = new List<SocialPostMediaAsset>(uploads.Length);
+        var pendingVideoAssetIds = new List<Guid>();
 
         try
         {
@@ -360,13 +373,18 @@ public sealed class SocialFeedService : ISocialFeedService
                     StorageKey = stored.StorageKey,
                     MimeType = stored.MimeType,
                     FileSizeBytes = stored.FileSizeBytes,
-                    ProcessingState = "Ready",
+                    ProcessingState = stored.RequiresBackgroundProcessing
+                        ? SocialMediaProcessingStates.PendingProcessing
+                        : SocialMediaProcessingStates.Ready,
                     AccessibilityText = NormalizeOptionalText(
                         upload.AccessibilityText,
                         MaximumAccessibilityTextLength),
                     CreatedUtc = DateTime.UtcNow,
                     UpdatedUtc = DateTime.UtcNow
                 });
+
+                if (stored.RequiresBackgroundProcessing)
+                    pendingVideoAssetIds.Add(mediaAssetId);
             }
 
             if (!HasValidMediaForContentType(contentType, mediaAssets))
@@ -378,45 +396,19 @@ public sealed class SocialFeedService : ISocialFeedService
                     MediaValidationMessage(contentType));
             }
 
-            var selectedPreview = previewImage;
-            if (selectedPreview is not null)
+            if (previewImage is not null)
             {
-                var previewResult = await _mediaStorage.StoreAsync(
-                    Guid.NewGuid(),
-                    selectedPreview.OriginalFileName ?? string.Empty,
-                    selectedPreview.DeclaredSizeBytes,
-                    selectedPreview.Content,
-                    cancellationToken);
-
-                if (!previewResult.Succeeded || previewResult.Media is null ||
-                    !string.Equals(
-                        previewResult.Media.MediaKind,
-                        "Image",
-                        StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(
-                        previewResult.Media.MimeType,
-                        "image/jpeg",
-                        StringComparison.OrdinalIgnoreCase))
+                var previewResult = await StoreHacPreviewAsync(previewImage, cancellationToken);
+                if (!previewResult.Succeeded || previewResult.Value is null)
                 {
-                    if (previewResult.Media is not null)
-                        storedKeys.Add(previewResult.Media.StorageKey);
                     await DeleteStoredMediaAsync(storedKeys, CancellationToken.None);
-
                     return SocialOperationResult<SocialPostView>.Failure(
                         previewResult.ErrorCode ?? "social_media_preview_invalid",
                         previewResult.ErrorMessage ?? "Legend could not store the selected Hac preview.");
                 }
 
-                storedKeys.Add(previewResult.Media.StorageKey);
-                if (!await CanReadStoredMediaAsync(previewResult.Media, cancellationToken))
-                {
-                    await DeleteStoredMediaAsync(storedKeys, CancellationToken.None);
-                    return SocialOperationResult<SocialPostView>.Failure(
-                        "social_media_storage_unavailable",
-                        "Legend could not verify the selected Hac preview in secure storage.");
-                }
-
-                mediaAssets.Single().ThumbnailStorageKey = previewResult.Media.StorageKey;
+                storedKeys.Add(previewResult.Value.StorageKey);
+                mediaAssets.Single().ThumbnailStorageKey = previewResult.Value.StorageKey;
             }
 
             var now = DateTime.UtcNow;
@@ -427,20 +419,29 @@ public sealed class SocialFeedService : ISocialFeedService
                 AuthorParticipantType = command.Actor.Identity.ParticipantType,
                 AuthorProfileId = command.Actor.ProfileId,
                 ContentType = contentType,
+                PublicationState = command.PublishImmediately
+                    ? SocialPostPublicationStates.Published
+                    : SocialPostPublicationStates.Draft,
                 Audience = SocialPostAudiences.AuthorizedNetwork,
                 Location = NormalizeOptionalText(details.Location, MaximumLocationLength),
                 CommentsEnabled = details.CommentsEnabled,
                 Body = body,
                 PostedUtc = now,
-                ExpiresUtc = contentType == SocialPostContentTypes.Story
+                ExpiresUtc = command.PublishImmediately && contentType == SocialPostContentTypes.Story
                     ? now.AddHours(24)
                     : null,
                 MediaAssets = mediaAssets,
-                MusicAttachment = music.Value
+                MusicAttachment = musicAttachment
             };
 
             _db.SocialPosts.Add(post);
             await _db.SaveChangesAsync(cancellationToken);
+
+            // This signal is deliberately non-blocking. The persisted media
+            // state remains the recovery authority if an App Service recycle
+            // occurs before the worker reads it.
+            foreach (var pendingVideoAssetId in pendingVideoAssetIds)
+                _mediaProcessingQueue?.Enqueue(pendingVideoAssetId);
 
             return SocialOperationResult<SocialPostView>.Success(
                 await BuildPostViewAsync(
@@ -464,6 +465,129 @@ public sealed class SocialFeedService : ISocialFeedService
         }
     }
 
+    public async Task<SocialOperationResult<SocialPostView>> PublishStagedMediaPostAsync(
+        PublishStagedSocialMediaPostCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(command.Actor, cancellationToken))
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_actor_invalid",
+                "Your mobile identity is not available for Legend updates.");
+        }
+
+        var author = AuthorKey.From(command.Actor.Identity.UserId, command.Actor.Identity.ParticipantType);
+        var post = await _db.SocialPosts
+            .Include(item => item.MediaAssets)
+            .Include(item => item.MusicAttachment)
+            .SingleOrDefaultAsync(
+                item => item.Id == command.PostId &&
+                        item.AuthorUserId == author.UserId &&
+                        item.AuthorParticipantType == author.ParticipantType &&
+                        item.DeletedUtc == null,
+                cancellationToken);
+        if (post is null || post.PublicationState != SocialPostPublicationStates.Draft)
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_media_draft_unavailable",
+                "This media draft is no longer available. Choose the media again and try publishing.");
+        }
+
+        if (!HasValidMediaForContentType(post.ContentType, post.MediaAssets.ToArray()))
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_media_post_invalid",
+                MediaValidationMessage(post.ContentType));
+        }
+
+        var body = NormalizeBody(command.Body, MaximumPostLength);
+        if ((command.Body ?? string.Empty).Trim().Length > 0 && string.IsNullOrWhiteSpace(body))
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_media_post_invalid",
+                "The caption is too long. Keep it within the Legend update limit.");
+        }
+
+        if (!IsValidHacPreview(post.ContentType, command.PreviewImage))
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_media_preview_invalid",
+                "A Hac preview must be a JPEG image no larger than 1 MB.");
+        }
+
+        var music = await ResolveMusicAsync(command.Music, cancellationToken);
+        if (!music.Succeeded)
+        {
+            return SocialOperationResult<SocialPostView>.Failure(
+                music.ErrorCode ?? "social_music_invalid",
+                music.ErrorMessage ?? "The selected music could not be verified.");
+        }
+
+        string? newlyStoredPreviewKey = null;
+        string? replacedPreviewKey = null;
+        try
+        {
+            if (command.PreviewImage is not null)
+            {
+                var preview = await StoreHacPreviewAsync(command.PreviewImage, cancellationToken);
+                if (!preview.Succeeded || preview.Value is null)
+                {
+                    return SocialOperationResult<SocialPostView>.Failure(
+                        preview.ErrorCode ?? "social_media_preview_invalid",
+                        preview.ErrorMessage ?? "Legend could not store the selected Hac preview.");
+                }
+
+                var video = post.MediaAssets.Single();
+                newlyStoredPreviewKey = preview.Value.StorageKey;
+                replacedPreviewKey = video.ThumbnailStorageKey;
+                video.ThumbnailStorageKey = newlyStoredPreviewKey;
+            }
+
+            var details = command.Details ?? new SocialPostDetails();
+            var now = DateTime.UtcNow;
+            post.Body = body;
+            post.Audience = SocialPostAudiences.AuthorizedNetwork;
+            post.Location = NormalizeOptionalText(details.Location, MaximumLocationLength);
+            post.CommentsEnabled = details.CommentsEnabled;
+            post.PostedUtc = now;
+            post.ExpiresUtc = post.ContentType == SocialPostContentTypes.Story
+                ? now.AddHours(24)
+                : null;
+            post.PublicationState = SocialPostPublicationStates.Published;
+
+            if (post.MusicAttachment is not null)
+                _db.SocialPostMusicAttachments.Remove(post.MusicAttachment);
+            post.MusicAttachment = music.Value;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(replacedPreviewKey) &&
+                !string.Equals(replacedPreviewKey, newlyStoredPreviewKey, StringComparison.Ordinal))
+            {
+                await DeleteStoredMediaAsync([replacedPreviewKey], CancellationToken.None);
+            }
+
+            return SocialOperationResult<SocialPostView>.Success(
+                await BuildPostViewAsync(post, command.Actor, cancellationToken));
+        }
+        catch (OperationCanceledException)
+        {
+            if (!string.IsNullOrWhiteSpace(newlyStoredPreviewKey))
+                await DeleteStoredMediaAsync([newlyStoredPreviewKey], CancellationToken.None);
+            throw;
+        }
+        catch (DbUpdateException)
+        {
+            _db.ChangeTracker.Clear();
+            if (!string.IsNullOrWhiteSpace(newlyStoredPreviewKey))
+                await DeleteStoredMediaAsync([newlyStoredPreviewKey], CancellationToken.None);
+
+            return SocialOperationResult<SocialPostView>.Failure(
+                "social_media_persistence_failed",
+                "Legend could not publish this media draft. Please try again.");
+        }
+    }
+
     public async Task<SocialOperationResult<SocialPostView>> UpdatePostAsync(
         UpdateSocialPostCommand command,
         CancellationToken cancellationToken = default)
@@ -479,6 +603,7 @@ public sealed class SocialFeedService : ISocialFeedService
         var post = await _db.SocialPosts.SingleOrDefaultAsync(
             item => item.Id == command.PostId &&
                     item.DeletedUtc == null &&
+                    item.PublicationState == SocialPostPublicationStates.Published &&
                     item.AuthorUserId == author.UserId &&
                     item.AuthorParticipantType == author.ParticipantType,
             cancellationToken);
@@ -639,10 +764,7 @@ public sealed class SocialFeedService : ISocialFeedService
             cancellationToken);
 
         if (visiblePost is null ||
-            !string.Equals(
-                media.ProcessingState,
-                "Ready",
-                StringComparison.OrdinalIgnoreCase))
+            !SocialMediaProcessingStates.IsReady(media.ProcessingState))
         {
             return SocialOperationResult<SocialMediaStream>.Failure(
                 "social_media_unavailable",
@@ -730,6 +852,44 @@ public sealed class SocialFeedService : ISocialFeedService
         header[5] == (byte)'t' &&
         header[6] == (byte)'y' &&
         header[7] == (byte)'p';
+
+    /// <summary>
+    /// Stores the one optional Hac poster through the same media authority as
+    /// primary uploads. Both draft creation and publication reuse this method;
+    /// no second preview-storage route exists.
+    /// </summary>
+    private async Task<SocialOperationResult<SocialStoredMedia>> StoreHacPreviewAsync(
+        SocialMediaUpload preview,
+        CancellationToken cancellationToken)
+    {
+        var result = await _mediaStorage.StoreAsync(
+            Guid.NewGuid(),
+            preview.OriginalFileName ?? string.Empty,
+            preview.DeclaredSizeBytes,
+            preview.Content,
+            cancellationToken);
+        if (!result.Succeeded || result.Media is null ||
+            !string.Equals(result.Media.MediaKind, "Image", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(result.Media.MimeType, "image/jpeg", StringComparison.OrdinalIgnoreCase))
+        {
+            if (result.Media is not null)
+                await DeleteStoredMediaAsync([result.Media.StorageKey], CancellationToken.None);
+
+            return SocialOperationResult<SocialStoredMedia>.Failure(
+                result.ErrorCode ?? "social_media_preview_invalid",
+                result.ErrorMessage ?? "Legend could not store the selected Hac preview.");
+        }
+
+        if (!await CanReadStoredMediaAsync(result.Media, cancellationToken))
+        {
+            await DeleteStoredMediaAsync([result.Media.StorageKey], CancellationToken.None);
+            return SocialOperationResult<SocialStoredMedia>.Failure(
+                "social_media_storage_unavailable",
+                "Legend could not verify the selected Hac preview in secure storage.");
+        }
+
+        return SocialOperationResult<SocialStoredMedia>.Success(result.Media);
+    }
 
     public async Task<SocialOperationResult<SocialPostView>> ToggleReactionAsync(
         SocialPostMutationCommand command,
@@ -1190,6 +1350,7 @@ public sealed class SocialFeedService : ISocialFeedService
         var posts = await _db.SocialPosts.AsNoTracking()
             .Where(post => targetUserIds.Contains(post.AuthorUserId) &&
                            post.AuthorParticipantType == targetKey.ParticipantType &&
+                           post.PublicationState == SocialPostPublicationStates.Published &&
                            post.DeletedUtc == null &&
                            (post.ExpiresUtc == null || post.ExpiresUtc > now))
             .Select(post => new { post.Id, post.ContentType })
@@ -1296,6 +1457,7 @@ public sealed class SocialFeedService : ISocialFeedService
         var posts = await _db.SocialPosts.AsNoTracking()
             .Where(post => actorUserIds.Contains(post.AuthorUserId) &&
                            post.AuthorParticipantType == actorKey.ParticipantType &&
+                           post.PublicationState == SocialPostPublicationStates.Published &&
                            post.DeletedUtc == null)
             .OrderByDescending(post => post.PostedUtc)
             .Select(post => new { post.Id, post.ContentType, post.PostedUtc })
@@ -1351,6 +1513,7 @@ public sealed class SocialFeedService : ISocialFeedService
         var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
         var post = await _db.SocialPosts.AsNoTracking().SingleOrDefaultAsync(item =>
             item.Id == postId && item.DeletedUtc == null &&
+            item.PublicationState == SocialPostPublicationStates.Published &&
             item.AuthorUserId == actorKey.UserId &&
             item.AuthorParticipantType == actorKey.ParticipantType,
             cancellationToken);
@@ -1489,7 +1652,8 @@ public sealed class SocialFeedService : ISocialFeedService
         var actorUserIds = await AuthorUserIdFormsAsync(actorKey, cancellationToken);
         var socialPosts = _db.SocialPosts
             .AsNoTracking()
-            .Where(post => post.DeletedUtc == null);
+            .Where(post => post.PublicationState == SocialPostPublicationStates.Published &&
+                           post.DeletedUtc == null);
         var authorAffinity = new Dictionary<Guid, decimal>();
 
         void AddAffinity(Guid authorProfileId, decimal value)
@@ -1661,7 +1825,11 @@ public sealed class SocialFeedService : ISocialFeedService
             return null;
 
         var post = await _db.SocialPosts.SingleOrDefaultAsync(
-            item => item.Id == postId && item.DeletedUtc == null && (item.ExpiresUtc == null || item.ExpiresUtc > DateTime.UtcNow),
+            item => item.Id == postId && item.DeletedUtc == null &&
+                    item.PublicationState == SocialPostPublicationStates.Published &&
+                    (item.ExpiresUtc == null || item.ExpiresUtc > DateTime.UtcNow) &&
+                    !item.MediaAssets.Any(media =>
+                        media.ProcessingState != SocialMediaProcessingStates.Ready),
             cancellationToken);
         if (post is null)
             return null;
@@ -1999,6 +2167,7 @@ public sealed class SocialFeedService : ISocialFeedService
             .AsNoTracking()
             .Where(post => actorUserIds.Contains(post.AuthorUserId) &&
                            post.AuthorParticipantType == actorKey.ParticipantType &&
+                           post.PublicationState == SocialPostPublicationStates.Published &&
                            post.DeletedUtc == null)
             .Select(post => post.Id)
             .ToListAsync(cancellationToken);
@@ -2455,6 +2624,18 @@ public sealed class SocialFeedService : ISocialFeedService
             _ =>
                 $"Posts require between 1 and {MaximumMediaItemsPerPost} supported media files."
         };
+
+    private static bool IsValidHacPreview(
+        string contentType,
+        SocialMediaUpload? previewImage) =>
+        previewImage is null ||
+        (contentType == SocialPostContentTypes.Reel &&
+         previewImage.DeclaredSizeBytes > 0 &&
+         previewImage.DeclaredSizeBytes <= SocialMediaUploadLimits.MaximumPreviewImageBytes &&
+         string.Equals(
+             Path.GetExtension(previewImage.OriginalFileName?.Trim() ?? string.Empty),
+             ".jpg",
+             StringComparison.OrdinalIgnoreCase));
 
     private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;
 

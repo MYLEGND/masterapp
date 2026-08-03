@@ -1,3 +1,5 @@
+using Domain.Social;
+
 namespace Domain.Entities;
 
 /// <summary>
@@ -11,6 +13,13 @@ public sealed class SocialPost
     public string AuthorParticipantType { get; set; } = string.Empty;
     public Guid AuthorProfileId { get; set; }
     public string ContentType { get; set; } = string.Empty;
+    /// <summary>
+    /// Draft media is durable while the creator finishes the caption, but it
+    /// is never eligible for a profile, feed, metric, or interaction query
+    /// until the creator explicitly publishes it.
+    /// </summary>
+    public string PublicationState { get; set; } =
+        SocialPostPublicationStates.Published;
     public string Audience { get; set; } = string.Empty;
     public Guid? RepostOfSocialPostId { get; set; }
     public string Body { get; set; } = string.Empty;
