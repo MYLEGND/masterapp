@@ -97,6 +97,21 @@ public interface IMessagingService
         DeleteMessagingGroupCommand command,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Founder-only promotion for an eligible Founder-owned normal group.
+    /// Returns the canonical conversation projection after the state change.
+    /// </summary>
+    Task<MessagingConversationResult> SetGroupPromotionAsync(
+        SetMessagingGroupPromotionCommand command,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Idempotently adds the actor to an actively promoted Founder-owned group.
+    /// </summary>
+    Task<MessagingConversationResult> JoinPromotedGroupAsync(
+        JoinPromotedMessagingGroupCommand command,
+        CancellationToken cancellationToken = default);
+
     Task<MessagingMessageResult> SendMessageAsync(
         SendMessagingMessageCommand command,
         CancellationToken cancellationToken = default);

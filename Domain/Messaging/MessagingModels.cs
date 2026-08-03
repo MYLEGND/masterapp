@@ -166,6 +166,15 @@ public sealed record DeleteMessagingGroupCommand(
     MessagingActor Actor,
     Guid ConversationId);
 
+public sealed record SetMessagingGroupPromotionCommand(
+    MessagingActor Actor,
+    Guid ConversationId,
+    bool IsPromoted);
+
+public sealed record JoinPromotedMessagingGroupCommand(
+    MessagingActor Actor,
+    Guid ConversationId);
+
 public sealed record ResolveVerificationReviewRequestCommand(
     MessagingActor Actor,
     Guid RequestId,
@@ -441,7 +450,11 @@ public sealed record MessagingConversationDetail(
     string? Purpose = null,
     MessagingGroupImage? GroupImage = null,
     bool CanManageCollaborators = false,
-    bool CanDeleteGroup = false);
+    bool CanDeleteGroup = false,
+    bool IsPromoted = false,
+    DateTime? PromotionStartedUtc = null,
+    DateTime? PromotionEndedUtc = null,
+    bool CanManagePromotion = false);
 
 public sealed record MessagingParticipantSummary(
     string UserId,

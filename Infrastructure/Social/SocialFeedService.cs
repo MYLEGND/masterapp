@@ -5,6 +5,7 @@ using Domain.Social;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Shared.Auth;
 
 namespace Infrastructure.Social;
 
@@ -40,19 +41,24 @@ public sealed class SocialFeedService : ISocialFeedService
     private readonly ISocialMediaProcessingQueue? _mediaProcessingQueue;
     private readonly ISocialMusicCatalog _musicCatalog;
     private readonly IMemoryCache _memoryCache;
+    private readonly string? _configuredFounderOid;
 
     public SocialFeedService(
         MasterAppDbContext db,
         ISocialMediaStorage mediaStorage,
         ISocialMusicCatalog musicCatalog,
         IMemoryCache memoryCache,
-        ISocialMediaProcessingQueue? mediaProcessingQueue = null)
+        ISocialMediaProcessingQueue? mediaProcessingQueue = null,
+        string? configuredFounderOid = null)
     {
         _db = db;
         _mediaStorage = mediaStorage;
         _mediaProcessingQueue = mediaProcessingQueue;
         _musicCatalog = musicCatalog;
         _memoryCache = memoryCache;
+        _configuredFounderOid = configuredFounderOid ??
+            Environment.GetEnvironmentVariable("FOUNDER_OID") ??
+            Environment.GetEnvironmentVariable("FounderOid");
     }
 
     public async Task<SocialOperationResult<SocialFeedSnapshot>> GetFeedAsync(
@@ -137,6 +143,7 @@ public sealed class SocialFeedService : ISocialFeedService
             now,
             cancellationToken);
         var activity = await GetActivityAsync(actor, cancellationToken);
+        var promotedGroups = await GetPromotedGroupsAsync(actor, activeAuthors, cancellationToken);
 
         var profileMetrics = await GetProfileMetricsAsync(actor, cancellationToken: cancellationToken);
         var creatorInsights = await GetCreatorInsightsAsync(actor, cancellationToken);
@@ -156,7 +163,10 @@ public sealed class SocialFeedService : ISocialFeedService
                 activity,
                 activity.Count,
                 profileMetrics.Value,
-                creatorInsights.Value));
+                creatorInsights.Value)
+            {
+                PromotedGroups = promotedGroups
+            });
     }
 
     public async Task<SocialOperationResult<IReadOnlyList<SocialPostView>>> GetCurrentProfilePostsAsync(
@@ -2015,6 +2025,92 @@ public sealed class SocialFeedService : ISocialFeedService
     private static decimal? Maximum(decimal? existing, decimal? candidate) =>
         !existing.HasValue ? candidate : !candidate.HasValue ? existing : Math.Max(existing.Value, candidate.Value);
 
+    private async Task<IReadOnlyList<SocialPromotedGroupView>> GetPromotedGroupsAsync(
+        SocialFeedActor actor,
+        IReadOnlySet<AuthorKey> activeAuthors,
+        CancellationToken cancellationToken)
+    {
+        var founderObjectId = FounderAuthority.GetConfiguredObjectId(
+            _configuredFounderOid);
+        if (founderObjectId is null)
+            return Array.Empty<SocialPromotedGroupView>();
+
+        var rows = await _db.MessageConversations
+            .AsNoTracking()
+            .Where(conversation =>
+                conversation.ConversationType == MessagingConversationTypes.Group &&
+                conversation.Purpose == null &&
+                !conversation.IsClosed &&
+                conversation.IsPromoted &&
+                conversation.PromotionStartedUtc != null &&
+                (conversation.OwnerParticipantType == MessagingParticipantTypes.Agent ||
+                 conversation.OwnerParticipantType == MessagingParticipantTypes.Client) &&
+                conversation.OwnerUserId != null &&
+                conversation.OwnerUserId.ToLower() == founderObjectId)
+            .OrderByDescending(conversation => conversation.PromotionStartedUtc)
+            .ThenBy(conversation => conversation.Id)
+            .Select(conversation => new PromotedGroupRow(
+                conversation.Id,
+                conversation.Subject,
+                conversation.OwnerUserId!,
+                conversation.OwnerParticipantType!,
+                conversation.GroupImageContent,
+                conversation.GroupImageContentType,
+                conversation.Participants.Count(participant => participant.IsActive),
+                conversation.PromotionStartedUtc!.Value))
+            .ToArrayAsync(cancellationToken);
+        if (rows.Length == 0)
+            return Array.Empty<SocialPromotedGroupView>();
+
+        var visibleRows = rows
+            .Where(row => activeAuthors.Contains(AuthorKey.From(row.OwnerUserId, row.OwnerParticipantType)))
+            .ToArray();
+        if (visibleRows.Length == 0)
+            return Array.Empty<SocialPromotedGroupView>();
+
+        var owners = await ResolveAuthorsAsync(
+            visibleRows.Select(row => new AuthorReference(
+                row.OwnerUserId,
+                row.OwnerParticipantType,
+                Guid.Empty)),
+            cancellationToken);
+        var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+        var actorUserIds = await AuthorUserIdFormsAsync(actorKey, cancellationToken);
+        var visibleConversationIds = visibleRows.Select(row => row.ConversationId).ToArray();
+        var joinedConversationIds = await _db.MessageConversationParticipants
+            .AsNoTracking()
+            .Where(participant =>
+                participant.IsActive &&
+                participant.ParticipantType == actorKey.ParticipantType &&
+                actorUserIds.Contains(participant.UserId.ToLower()) &&
+                visibleConversationIds.Contains(participant.ConversationId))
+            .Select(participant => participant.ConversationId)
+            .ToHashSetAsync(cancellationToken);
+
+        return visibleRows
+            .Select(row =>
+            {
+                var ownerKey = AuthorKey.From(row.OwnerUserId, row.OwnerParticipantType);
+                return owners.TryGetValue(ownerKey, out var owner)
+                    ? new SocialPromotedGroupView(
+                        row.ConversationId,
+                        FirstNonEmpty(row.Subject, "Legend group"),
+                        owner,
+                        ToPromotedGroupImage(row.GroupImageContent, row.GroupImageContentType),
+                        row.ActiveMemberCount,
+                        joinedConversationIds.Contains(row.ConversationId),
+                        row.PromotionStartedUtc)
+                    : null;
+            })
+            .OfType<SocialPromotedGroupView>()
+            .ToArray();
+    }
+
+    private static MessagingGroupImage? ToPromotedGroupImage(byte[]? content, string? contentType) =>
+        content is { Length: > 0 } && !string.IsNullOrWhiteSpace(contentType)
+            ? new MessagingGroupImage(content, contentType)
+            : null;
+
     private Task<bool> IsValidActorAsync(SocialFeedActor actor, CancellationToken cancellationToken)
     {
         var identity = actor.Identity;
@@ -2684,4 +2780,14 @@ public sealed class SocialFeedService : ISocialFeedService
         string UserId,
         string ParticipantType,
         DateTime CreatedUtc);
+
+    private sealed record PromotedGroupRow(
+        Guid ConversationId,
+        string? Subject,
+        string OwnerUserId,
+        string OwnerParticipantType,
+        byte[]? GroupImageContent,
+        string? GroupImageContentType,
+        int ActiveMemberCount,
+        DateTime PromotionStartedUtc);
 }

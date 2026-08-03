@@ -501,7 +501,8 @@ final class MobileSessionCoordinator: ObservableObject {
                 api: MobileContractUnavailableMessagingAPI(),
                 accessTokenProvider: { throw MobileMessagingContractError.unavailable },
                 diagnostics: diagnostics,
-                actorParticipantType: .client
+                actorParticipantType: .client,
+                isFounder: false
             )
         }
 
@@ -514,7 +515,8 @@ final class MobileSessionCoordinator: ObservableObject {
                 return try await self.accessTokenForRequest()
             },
             diagnostics: diagnostics,
-            actorParticipantType: currentSession.actor.identity.participantType
+            actorParticipantType: currentSession.actor.identity.participantType,
+            isFounder: currentSession.capabilities.contains("founder")
         )
     }
 
@@ -702,7 +704,7 @@ final class MobileSessionCoordinator: ObservableObject {
         }
         let session = MobileSession(
             actor: actor,
-            capabilities: response.capabilities.messaging ? ["messaging"] : [],
+            capabilities: response.capabilities.sessionCapabilities,
             permittedParticipantTypes: response.permittedParticipantTypes)
         commitConfirmedSession(session, reason: "Authenticated mobile session decoded")
     }
@@ -721,7 +723,7 @@ final class MobileSessionCoordinator: ObservableObject {
 
         let session = MobileSession(
             actor: response.actor,
-            capabilities: ["messaging"],
+            capabilities: response.capabilities?.sessionCapabilities ?? ["messaging"],
             permittedParticipantTypes: response.permittedParticipantTypes)
         if clearCachedLaunch {
             launchCache.clear()
@@ -1240,6 +1242,30 @@ struct MobileBootstrapResponse: Decodable {
 
 struct MobileCapabilities: Decodable {
     let messaging: Bool
+    let isFounder: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case messaging, isFounder
+    }
+
+    init(messaging: Bool, isFounder: Bool = false) {
+        self.messaging = messaging
+        self.isFounder = isFounder
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        messaging = try container.decodeIfPresent(Bool.self, forKey: .messaging) ?? false
+        isFounder = try container.decodeIfPresent(Bool.self, forKey: .isFounder) ?? false
+    }
+
+    var sessionCapabilities: Set<String> {
+        var capabilities: Set<String> = messaging ? ["messaging"] : []
+        if isFounder {
+            capabilities.insert("founder")
+        }
+        return capabilities
+    }
 }
 
 struct MobileRoleSelectionRequest: Encodable {
@@ -1250,10 +1276,24 @@ struct MobileRoleSelectionResponse: Decodable {
     let actor: MobileActor
     let permittedParticipantTypes: [ParticipantType]
     let correlationID: String
+    let capabilities: MobileCapabilities?
+
+    init(
+        actor: MobileActor,
+        permittedParticipantTypes: [ParticipantType],
+        correlationID: String,
+        capabilities: MobileCapabilities? = nil
+    ) {
+        self.actor = actor
+        self.permittedParticipantTypes = permittedParticipantTypes
+        self.correlationID = correlationID
+        self.capabilities = capabilities
+    }
 
     private enum CodingKeys: String, CodingKey {
         case actor
         case permittedParticipantTypes
         case correlationID = "correlationId"
+        case capabilities
     }
 }

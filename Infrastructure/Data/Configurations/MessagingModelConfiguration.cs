@@ -69,6 +69,8 @@ internal static class MessagingModelConfiguration
         entity.Property(x => x.OwnerUserId)
             .HasMaxLength(450);
 
+        entity.HasIndex(x => new { x.IsPromoted, x.PromotionStartedUtc });
+
         entity.HasIndex(x => new { x.Purpose, x.CreatedByUserId, x.OwnerParticipantType });
 
         // There is exactly one staff-only verification review conversation for

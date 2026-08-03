@@ -45,6 +45,17 @@ public class MessageConversation
 
     public string? OwnerParticipantType { get; set; }
 
+    /// <summary>
+    /// Founder-owned normal groups may be promoted as a public invitation. The
+    /// conversation remains the sole durable authority; promotion never creates
+    /// a separate social record or membership model.
+    /// </summary>
+    public bool IsPromoted { get; set; }
+
+    public DateTime? PromotionStartedUtc { get; set; }
+
+    public DateTime? PromotionEndedUtc { get; set; }
+
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 
 

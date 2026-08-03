@@ -51,6 +51,7 @@ final class MessagingStore: ObservableObject {
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
     private let actorParticipantType: ParticipantType
+    let isFounder: Bool
     private var conversationListTask: Task<MobileStoreLoadResult, Never>?
     private var recipientSearchTask: Task<Void, Never>?
     private var recipientRequestGeneration = 0
@@ -59,12 +60,14 @@ final class MessagingStore: ObservableObject {
         api: any MessagingAPI,
         accessTokenProvider: @escaping () async throws -> String,
         diagnostics: LegendDiagnostics,
-        actorParticipantType: ParticipantType
+        actorParticipantType: ParticipantType,
+        isFounder: Bool = false
     ) {
         self.api = api
         self.accessTokenProvider = accessTokenProvider
         self.diagnostics = diagnostics
         self.actorParticipantType = actorParticipantType
+        self.isFounder = isFounder
         selectedRecipientScope = .clients
     }
 
@@ -374,6 +377,47 @@ final class MessagingStore: ObservableObject {
                     for: error,
                     title: "Group not deleted")
             }
+        }
+    }
+
+    func setGroupPromotion(conversationID: UUID, isPromoted: Bool) {
+        guard isFounder, !isCreatingGroup else { return }
+        isCreatingGroup = true
+        sendFailure = nil
+
+        Task {
+            defer { isCreatingGroup = false }
+            do {
+                let conversation = try await api.setGroupPromotion(
+                    conversationID: conversationID,
+                    isPromoted: isPromoted,
+                    accessToken: try await accessTokenProvider())
+                detailState = .loaded(conversation)
+                _ = await refresh()
+            } catch {
+                sendFailure = failure(for: error, title: "Group promotion not updated")
+            }
+        }
+    }
+
+    @discardableResult
+    func joinPromotedGroup(conversationID: UUID) async -> Bool {
+        guard !isCreatingGroup else { return false }
+        isCreatingGroup = true
+        sendFailure = nil
+        defer { isCreatingGroup = false }
+
+        do {
+            let conversation = try await api.joinPromotedGroup(
+                conversationID: conversationID,
+                accessToken: try await accessTokenProvider())
+            detailState = .loaded(conversation)
+            selectedConversationID = conversation.id
+            _ = await refresh()
+            return true
+        } catch {
+            sendFailure = failure(for: error, title: "Group not joined")
+            return false
         }
     }
 

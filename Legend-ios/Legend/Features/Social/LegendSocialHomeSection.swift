@@ -12,8 +12,10 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     let session: MobileSession
     let home: MobileHomeResponse
     @ObservedObject var social: MobileSocialStore
+    @ObservedObject var messaging: MessagingStore
     @ObservedObject var activity: LegendDailyActivityStore
     let openCircles: () -> Void
+    let openJoinedGroup: (UUID) -> Void
     let refreshSocial: () async -> Void
     let dashboardContent: DashboardContent
 
@@ -29,8 +31,10 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         session: MobileSession,
         home: MobileHomeResponse,
         social: MobileSocialStore,
+        messaging: MessagingStore,
         activity: LegendDailyActivityStore,
         openCircles: @escaping () -> Void,
+        openJoinedGroup: @escaping (UUID) -> Void,
         refreshSocial: @escaping () async -> Void,
         @ViewBuilder dashboardContent: () -> DashboardContent
     ) {
@@ -38,8 +42,10 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
 
         self.home = home
         _social = ObservedObject(wrappedValue: social)
+        _messaging = ObservedObject(wrappedValue: messaging)
         _activity = ObservedObject(wrappedValue: activity)
         self.openCircles = openCircles
+        self.openJoinedGroup = openJoinedGroup
         self.refreshSocial = refreshSocial
         self.dashboardContent = dashboardContent()
     }
@@ -216,6 +222,23 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 title: "Latest from Legend"
             )
 
+            ForEach(snapshot.promotedGroups) { group in
+                LegendPromotedGroupCard(
+                    group: group,
+                    isJoining: messaging.isCreatingGroup,
+                    join: {
+                        guard !group.isJoinedByCurrentActor else { return }
+                        Task {
+                            if await messaging.joinPromotedGroup(
+                                conversationID: group.conversationID)
+                            {
+                                await refreshSocial()
+                                openJoinedGroup(group.conversationID)
+                            }
+                        }
+                    })
+            }
+
             if let publication = social.publication {
                 LegendSocialPublicationBanner(
                     publication: publication,
@@ -223,7 +246,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                     dismiss: social.dismissPublication)
             }
 
-            if snapshot.posts.isEmpty {
+            if snapshot.posts.isEmpty && snapshot.promotedGroups.isEmpty {
                 LegendSocialEmptyFeed {
                     creationRoute = .menu
                 }
@@ -263,6 +286,74 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         }
     }
 
+}
+
+/// A safe invitation projection, not a conversation preview. The group must be
+/// joined through Messaging before the normal conversation API can reveal any
+/// history.
+private struct LegendPromotedGroupCard: View {
+    let group: MobileSocialPromotedGroup
+    let isJoining: Bool
+    let join: () -> Void
+
+    var body: some View {
+        LegendNextSurface(style: .navy, cornerRadius: LegendNextRadius.prominentCard) {
+            HStack(alignment: .center, spacing: LegendNextSpacing.md) {
+                groupAvatar
+
+                VStack(alignment: .leading, spacing: LegendNextSpacing.tiny) {
+                    Text("FEATURED GROUP")
+                        .font(.caption2.weight(.bold))
+                        .tracking(1.1)
+                        .foregroundStyle(LegendNextColor.goldBright)
+
+                    Text(group.subject)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+
+                    Text("Hosted by \(group.owner.displayName) · \(group.activeMemberCount) members")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.72))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                Button(group.isJoinedByCurrentActor ? "Joined" : "Join") {
+                    join()
+                }
+                .font(.subheadline.weight(.bold))
+                .buttonStyle(.borderedProminent)
+                .tint(group.isJoinedByCurrentActor ? .white.opacity(0.18) : LegendNextColor.gold)
+                .foregroundStyle(group.isJoinedByCurrentActor ? .white : LegendNextColor.midnight)
+                .disabled(group.isJoinedByCurrentActor || isJoining)
+                .accessibilityLabel(
+                    group.isJoinedByCurrentActor
+                        ? "Joined \(group.subject)"
+                        : "Join \(group.subject)")
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var groupAvatar: some View {
+        if let data = group.groupAvatar?.imageData,
+           let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 54, height: 54)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        } else {
+            Image(systemName: "person.3.fill")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(LegendNextColor.midnight)
+                .frame(width: 54, height: 54)
+                .background(LegendNextGradient.gold, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
 }
 
 private struct LegendStoryRail: View {

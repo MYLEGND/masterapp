@@ -5,6 +5,7 @@ using Domain.Messaging;
 using Domain.Social;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Shared.Auth;
 
 namespace Infrastructure.Social;
 
@@ -40,10 +41,16 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
     private const int RankingWindow = 500;
 
     private readonly MasterAppDbContext _db;
+    private readonly string? _configuredFounderOid;
 
-    public SocialDiscoveryService(MasterAppDbContext db)
+    public SocialDiscoveryService(
+        MasterAppDbContext db,
+        string? configuredFounderOid = null)
     {
         _db = db;
+        _configuredFounderOid = configuredFounderOid ??
+            Environment.GetEnvironmentVariable("FOUNDER_OID") ??
+            Environment.GetEnvironmentVariable("FounderOid");
     }
 
     public async Task<SocialOperationResult<SocialDiscoveryPage>> SearchAsync(
@@ -98,6 +105,21 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             return SocialOperationResult<SocialDiscoveryPage>.Failure(
                 "social_actor_invalid",
                 "Your mobile identity is not available for Discover.");
+        }
+
+        // A Founder is deliberately not constrained to the compatibility
+        // recommendation window. This stays inside the existing directory
+        // pipeline (filters, sort, paging, and safe projection) and is the
+        // only Client-facing expansion of the normal discovery behavior.
+        if (IsFounderIdentity(actor.Identity.UserId))
+        {
+            return await SearchActiveDirectoryAsync(
+                actor,
+                searchText,
+                offset,
+                pageSize,
+                SocialDiscoveryScopes.Community,
+                cancellationToken);
         }
 
         var blockedIds = await BlockedProfileIdsAsync(viewer.Id, cancellationToken);
@@ -275,13 +297,36 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         CancellationToken cancellationToken)
     {
         var isClient = actor.Identity.ParticipantType == MessagingParticipantTypes.Client;
+        var isFounder = IsFounderIdentity(actor.Identity.UserId);
         var blockedIds = isClient
             ? await BlockedProfileIdsAsync(actor.ProfileId, cancellationToken)
             : [];
 
-        var clientRows = isClient
-            ? await ActiveClientDirectoryRowsAsync(actor.ProfileId, blockedIds, cancellationToken)
-            : await OwnedClientDirectoryRowsAsync(actor.Identity.UserId, cancellationToken);
+        var clientRows = isFounder
+            ? await ActiveClientDirectoryRowsAsync(
+                isClient ? actor.ProfileId : null,
+                blockedIds,
+                cancellationToken)
+            : isClient
+                ? await ActiveClientDirectoryRowsAsync(actor.ProfileId, blockedIds, cancellationToken)
+                : await OwnedClientDirectoryRowsAsync(actor.Identity.UserId, cancellationToken);
+
+        // Agents ordinarily see only their owned clients. The configured Founder
+        // Client profile is the single organizational exception and is added to
+        // that existing candidate set before the normal dedupe, search, ranking,
+        // and presentation pipeline runs. Client-to-client blocks remain in the
+        // active-directory query above; agents have no corresponding block rule.
+        if (!isFounder && !isClient)
+        {
+            var founderClientRows = await ActiveClientDirectoryRowsAsync(
+                viewerProfileId: null,
+                blockedIds: [],
+                cancellationToken: cancellationToken);
+            clientRows = clientRows
+                .Concat(founderClientRows.Where(row => IsFounderIdentity(CanonicalUserId(row.Client))))
+                .ToArray();
+        }
+
         var clients = clientRows
             .GroupBy(row => row.Client.Id)
             .Select(group => ToDirectoryCandidate(group.First()))
@@ -343,14 +388,14 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
     }
 
     private Task<ClientDirectoryRow[]> ActiveClientDirectoryRowsAsync(
-        Guid viewerProfileId,
+        Guid? viewerProfileId,
         IReadOnlyCollection<Guid> blockedIds,
         CancellationToken cancellationToken) =>
         (from client in _db.ClientProfiles.AsNoTracking()
          join journey in _db.JourneyCircleProfiles.AsNoTracking()
              on client.Id equals journey.ClientProfileId into journeys
          from journey in journeys.DefaultIfEmpty()
-         where client.Id != viewerProfileId
+         where (!viewerProfileId.HasValue || client.Id != viewerProfileId.Value)
                && !blockedIds.Contains(client.Id)
                && (client.CrmStatus == null || client.CrmStatus == "Active")
                && _db.ClientEntitlements.Any(entitlement =>
@@ -806,6 +851,11 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         Normalize(string.IsNullOrWhiteSpace(profile.ExternalIdentityObjectId)
             ? profile.ClientUserId
             : profile.ExternalIdentityObjectId);
+
+    private bool IsFounderIdentity(string? userId) =>
+        FounderAuthority.IsConfiguredFounderIdentity(
+            userId,
+            _configuredFounderOid);
 
     private static string ResolveSortMode(string? requested, string? searchText)
     {

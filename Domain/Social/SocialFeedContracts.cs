@@ -234,6 +234,19 @@ public sealed record SocialPostView(
 
 public sealed record SocialActivityView(Guid Id, string Kind, SocialAuthor Actor, Guid? PostId, DateTime OccurredUtc);
 
+/// <summary>
+/// Safe public invitation metadata for a promoted Founder-owned group. It
+/// deliberately contains no conversation messages or participant identities.
+/// </summary>
+public sealed record SocialPromotedGroupView(
+    Guid ConversationId,
+    string Subject,
+    SocialAuthor Owner,
+    MessagingGroupImage? GroupImage,
+    int ActiveMemberCount,
+    bool IsJoinedByCurrentActor,
+    DateTime PromotionStartedUtc);
+
 public sealed record SocialFeedSnapshot(
     IReadOnlyList<SocialPostView> Stories,
     IReadOnlyList<SocialPostView> Posts,
@@ -241,7 +254,15 @@ public sealed record SocialFeedSnapshot(
     IReadOnlyList<SocialActivityView> Activity,
     int ActivityCount,
     SocialProfileMetrics CurrentProfileMetrics,
-    SocialCreatorInsights CreatorInsights);
+    SocialCreatorInsights CreatorInsights)
+{
+    /// <summary>
+    /// Active Founder-owned group invitations are ordered by the server ahead
+    /// of normal posts. They are a projection of MessageConversation, never a
+    /// SocialPost representation.
+    /// </summary>
+    public IReadOnlyList<SocialPromotedGroupView> PromotedGroups { get; init; } = [];
+}
 
 public sealed record SocialPostDetails(
     string? Audience = null,

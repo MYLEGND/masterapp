@@ -2651,6 +2651,126 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task FounderPromotion_ReusesTheCanonicalGroupAndIdempotentlyJoinsMembers()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: false, grantClientToAgent: false);
+        var founderObjectId = Guid.NewGuid().ToString();
+        var founder = new MessagingActor(founderObjectId, MessagingParticipantTypes.Agent);
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = founderObjectId,
+            AgentUpn = "founder@example.test",
+            FullName = "Founder",
+            IsActive = true
+        });
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "client-2",
+            ExternalIdentityObjectId = "client-2",
+            FirstName = "Client",
+            LastName = "Two",
+            Email = "client.two@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        });
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "client-3",
+            ExternalIdentityObjectId = "client-3",
+            FirstName = "Client",
+            LastName = "Three",
+            Email = "client.three@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        });
+        await db.SaveChangesAsync();
+        var service = CreateService(db, configuredFounderOid: founderObjectId);
+
+        var created = await service.CreateGroupAsync(new CreateMessagingGroupCommand(
+            founder,
+            [
+                new MessagingParticipantReference("client-1", MessagingParticipantTypes.Client),
+                new MessagingParticipantReference("client-2", MessagingParticipantTypes.Client)
+            ],
+            "Founder office hours"));
+        Assert.True(created.Succeeded);
+        var conversationId = created.Conversation!.Id;
+
+        var denied = await service.SetGroupPromotionAsync(new SetMessagingGroupPromotionCommand(
+            new MessagingActor("agent-1", MessagingParticipantTypes.Agent), conversationId, true));
+        Assert.False(denied.Succeeded);
+        Assert.Equal("MESSAGING_GROUP_PROMOTION_FORBIDDEN", denied.ErrorCode);
+
+        var promoted = await service.SetGroupPromotionAsync(new SetMessagingGroupPromotionCommand(
+            founder, conversationId, true));
+        Assert.True(promoted.Succeeded);
+        Assert.True(promoted.Conversation!.IsPromoted);
+        Assert.True(promoted.Conversation.CanManagePromotion);
+        Assert.NotNull(promoted.Conversation.PromotionStartedUtc);
+        Assert.Equal(conversationId, promoted.Conversation.Id);
+
+        var joiner = new MessagingActor("client-3", MessagingParticipantTypes.Client);
+        Assert.True((await service.JoinPromotedGroupAsync(
+            new JoinPromotedMessagingGroupCommand(joiner, conversationId))).Succeeded);
+        Assert.True((await service.JoinPromotedGroupAsync(
+            new JoinPromotedMessagingGroupCommand(joiner, conversationId))).Succeeded);
+        Assert.Single(await db.MessageConversationParticipants.Where(participant =>
+            participant.ConversationId == conversationId &&
+            participant.UserId == joiner.UserId &&
+            participant.ParticipantType == joiner.ParticipantType).ToListAsync());
+
+        var stopped = await service.SetGroupPromotionAsync(new SetMessagingGroupPromotionCommand(
+            founder, conversationId, false));
+        Assert.True(stopped.Succeeded);
+        Assert.False(stopped.Conversation!.IsPromoted);
+        Assert.NotNull(stopped.Conversation.PromotionEndedUtc);
+        var unavailable = await service.JoinPromotedGroupAsync(
+            new JoinPromotedMessagingGroupCommand(new MessagingActor("client-1", MessagingParticipantTypes.Client), conversationId));
+        Assert.False(unavailable.Succeeded);
+        Assert.Equal("MESSAGING_PROMOTED_GROUP_UNAVAILABLE", unavailable.ErrorCode);
+    }
+
+    [Fact]
+    public async Task OrdinaryAgent_CanMessageTheFounderClientUsingItsCanonicalObjectId()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: false, grantClientToAgent: false);
+        var founderObjectId = Guid.NewGuid().ToString();
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "founder-client-legacy-id",
+            ExternalIdentityObjectId = founderObjectId,
+            FirstName = "Founder",
+            LastName = "Client",
+            Email = "founder.client@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        });
+        await db.SaveChangesAsync();
+        var service = CreateService(db, configuredFounderOid: founderObjectId);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+
+        var recipient = await service.GetAuthorizedParticipantAsync(
+            agent,
+            founderObjectId,
+            MessagingParticipantTypes.Client);
+        var conversation = await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                agent,
+                founderObjectId,
+                MessagingParticipantTypes.Client,
+                InitialMessageBody: "Welcome to the team."));
+
+        Assert.True(recipient.Succeeded);
+        Assert.Equal("founder-client-legacy-id", recipient.Recipient!.UserId);
+        Assert.True(conversation.Succeeded, $"{conversation.ErrorCode}: {conversation.ErrorMessage}");
+        Assert.Equal("founder-client-legacy-id", conversation.Conversation!.Participants
+            .Single(participant => participant.ParticipantType == MessagingParticipantTypes.Client).UserId);
+    }
+
+    [Fact]
     public void AddMasterAppMessaging_RegistersTheSingleMessagingService()
     {
         var services = new ServiceCollection();
@@ -2671,7 +2791,8 @@ public sealed class MessagingServiceTests
 
     private static MessagingService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
-        TestTranslationService? translation = null)
+        TestTranslationService? translation = null,
+        string? configuredFounderOid = null)
     {
         var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
         var images = new MessagingProfileImageResolver(
@@ -2683,7 +2804,8 @@ public sealed class MessagingServiceTests
             moderation,
             images,
             new ControlledResourceAccessService(db),
-            translation ?? new TestTranslationService());
+            translation ?? new TestTranslationService(),
+            configuredFounderOid);
     }
 
     private sealed class TestTranslationService : ITranslationService

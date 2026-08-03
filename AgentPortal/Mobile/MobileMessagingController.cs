@@ -1,5 +1,6 @@
 using Domain.Entities;
 using Domain.Messaging;
+using AgentPortal.Security;
 using Infrastructure.Messaging;
 using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Authorization;
@@ -45,7 +46,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             resolution.Actor is null ? null : await ToActorDtoAsync(resolution.Actor, cancellationToken),
             resolution.PermittedActors.Select(actor => actor.Actor.ParticipantType).ToArray(),
             resolution.RequiresParticipantSelection,
-            new MobileCapabilitiesDto(true),
+            new MobileCapabilitiesDto(true, FounderGuard.IsFounder(User)),
             CorrelationId()));
     }
 
@@ -64,7 +65,8 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         return Ok(new MobileRoleSelectionResponse(
             await ToActorDtoAsync(resolution.SelectedActor, cancellationToken),
             resolution.PermittedActors.Select(actor => actor.Actor.ParticipantType).ToArray(),
-            CorrelationId()));
+            CorrelationId(),
+            new MobileCapabilitiesDto(true, FounderGuard.IsFounder(User))));
     }
 
     [HttpGet("messaging/conversations")]
@@ -488,6 +490,46 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             : MessagingFailure(result.ErrorCode, result.ErrorMessage);
     }
 
+    [HttpPut("messaging/groups/{conversationId:guid}/promotion")]
+    public async Task<IActionResult> SetGroupPromotion(
+        Guid conversationId,
+        [FromBody] MobileGroupPromotionRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+        if (request?.IsPromoted is null)
+            return Error(StatusCodes.Status400BadRequest, "mobile_group_promotion_invalid", "Choose whether to promote this group.");
+
+        var result = await _messaging.SetGroupPromotionAsync(
+            new SetMessagingGroupPromotionCommand(
+                resolved.Actor!.Actor,
+                conversationId,
+                request.IsPromoted.Value),
+            cancellationToken);
+        return result.Succeeded && result.Conversation is not null
+            ? Ok(await ToConversationDtoAsync(result.Conversation, resolved.Actor.Actor, cancellationToken))
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpPost("messaging/groups/{conversationId:guid}/join")]
+    public async Task<IActionResult> JoinPromotedGroup(
+        Guid conversationId,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.JoinPromotedGroupAsync(
+            new JoinPromotedMessagingGroupCommand(resolved.Actor!.Actor, conversationId),
+            cancellationToken);
+        return result.Succeeded && result.Conversation is not null
+            ? Ok(await ToConversationDtoAsync(result.Conversation, resolved.Actor.Actor, cancellationToken))
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
     [HttpGet("messaging/conversations/{conversationId:guid}")]
     public async Task<IActionResult> Conversation(Guid conversationId, CancellationToken cancellationToken)
     {
@@ -771,7 +813,11 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             ToGroupAvatarDto(conversation.GroupImage)) with
         {
             CanManageCollaborators = conversation.CanManageCollaborators,
-            CanDeleteGroup = conversation.CanDeleteGroup
+            CanDeleteGroup = conversation.CanDeleteGroup,
+            IsPromoted = conversation.IsPromoted,
+            PromotionStartedUtc = conversation.PromotionStartedUtc,
+            PromotionEndedUtc = conversation.PromotionEndedUtc,
+            CanManagePromotion = conversation.CanManagePromotion
         };
     }
 
@@ -963,12 +1009,13 @@ public sealed record MobileSessionResponse(
     MobileCapabilitiesDto Capabilities,
     string CorrelationId);
 
-public sealed record MobileCapabilitiesDto(bool Messaging);
+public sealed record MobileCapabilitiesDto(bool Messaging, bool IsFounder = false);
 
 public sealed record MobileRoleSelectionResponse(
     MobileActorDto Actor,
     IReadOnlyList<string> PermittedParticipantTypes,
-    string CorrelationId);
+    string CorrelationId,
+    MobileCapabilitiesDto? Capabilities = null);
 
 public sealed record MobileSelectRoleRequest(string? ParticipantType);
 
@@ -1000,6 +1047,10 @@ public sealed record MobileConversationDetailDto(
 {
     public bool CanManageCollaborators { get; init; }
     public bool CanDeleteGroup { get; init; }
+    public bool IsPromoted { get; init; }
+    public DateTime? PromotionStartedUtc { get; init; }
+    public DateTime? PromotionEndedUtc { get; init; }
+    public bool CanManagePromotion { get; init; }
 }
 
 public sealed record MobileMessageDto(
@@ -1069,6 +1120,8 @@ public sealed record MobileCreateGroupRequest(
 public sealed record MobileUpdateMessagingGroupRequest(
     string? Subject,
     MobileGroupImageRequest? GroupImage = null);
+
+public sealed record MobileGroupPromotionRequest(bool? IsPromoted);
 
 public sealed record MobileGroupImageRequest(
     string? ContentType,

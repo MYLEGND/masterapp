@@ -8,9 +8,10 @@ struct MobileSocialSnapshot: Codable, Equatable, Sendable {
     let activityCount: Int
     let currentProfileMetrics: MobileSocialProfileMetrics
     let creatorInsights: MobileSocialCreatorInsights
+    let promotedGroups: [MobileSocialPromotedGroup]
 
     private enum CodingKeys: String, CodingKey {
-        case stories, posts, hacs, activity, activityCount, currentProfileMetrics, creatorInsights
+        case stories, posts, hacs, activity, activityCount, currentProfileMetrics, creatorInsights, promotedGroups
     }
 
     init(
@@ -20,7 +21,8 @@ struct MobileSocialSnapshot: Codable, Equatable, Sendable {
         activity: [MobileSocialActivity],
         activityCount: Int,
         currentProfileMetrics: MobileSocialProfileMetrics,
-        creatorInsights: MobileSocialCreatorInsights
+        creatorInsights: MobileSocialCreatorInsights,
+        promotedGroups: [MobileSocialPromotedGroup] = []
     ) {
         self.stories = stories
         self.posts = posts
@@ -29,6 +31,7 @@ struct MobileSocialSnapshot: Codable, Equatable, Sendable {
         self.activityCount = activityCount
         self.currentProfileMetrics = currentProfileMetrics
         self.creatorInsights = creatorInsights
+        self.promotedGroups = promotedGroups
     }
 
     /// Older on-device feed caches predate the dedicated HACS collection. Decode
@@ -47,6 +50,29 @@ struct MobileSocialSnapshot: Codable, Equatable, Sendable {
         creatorInsights = try container.decode(
             MobileSocialCreatorInsights.self,
             forKey: .creatorInsights)
+        promotedGroups = try container.decodeIfPresent(
+            [MobileSocialPromotedGroup].self,
+            forKey: .promotedGroups) ?? []
+    }
+}
+
+/// Public invitation metadata projected from MessageConversation. It carries no
+/// private message content and is refreshed from the server after joining.
+struct MobileSocialPromotedGroup: Codable, Equatable, Identifiable, Sendable {
+    let conversationID: UUID
+    let subject: String
+    let owner: MobileSocialAuthor
+    let groupAvatar: ProfileAvatar?
+    let activeMemberCount: Int
+    let isJoinedByCurrentActor: Bool
+    let promotionStartedUTC: Date
+
+    var id: UUID { conversationID }
+
+    private enum CodingKeys: String, CodingKey {
+        case conversationID = "conversationId"
+        case subject, owner, groupAvatar, activeMemberCount, isJoinedByCurrentActor
+        case promotionStartedUTC = "promotionStartedUtc"
     }
 }
 

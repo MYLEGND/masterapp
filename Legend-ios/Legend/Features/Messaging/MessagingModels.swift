@@ -109,6 +109,18 @@ struct ConversationDetail: Codable, Equatable, Sendable {
     let groupAvatar: ProfileAvatar?
     let canManageCollaborators: Bool?
     let canDeleteGroup: Bool?
+    let isPromoted: Bool?
+    let promotionStartedUTC: Date?
+    let promotionEndedUTC: Date?
+    let canManagePromotion: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, conversationType, title, participants, messages, isMuted, isClosed
+        case canManageMembers, purpose, groupAvatar, canManageCollaborators
+        case canDeleteGroup, isPromoted, canManagePromotion
+        case promotionStartedUTC = "promotionStartedUtc"
+        case promotionEndedUTC = "promotionEndedUtc"
+    }
 
     init(
         id: UUID,
@@ -122,7 +134,11 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         purpose: String? = nil,
         groupAvatar: ProfileAvatar? = nil,
         canManageCollaborators: Bool? = nil,
-        canDeleteGroup: Bool? = nil
+        canDeleteGroup: Bool? = nil,
+        isPromoted: Bool? = nil,
+        promotionStartedUTC: Date? = nil,
+        promotionEndedUTC: Date? = nil,
+        canManagePromotion: Bool? = nil
     ) {
         self.id = id
         self.conversationType = conversationType
@@ -136,6 +152,10 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         self.groupAvatar = groupAvatar
         self.canManageCollaborators = canManageCollaborators
         self.canDeleteGroup = canDeleteGroup
+        self.isPromoted = isPromoted
+        self.promotionStartedUTC = promotionStartedUTC
+        self.promotionEndedUTC = promotionEndedUTC
+        self.canManagePromotion = canManagePromotion
     }
 }
 
@@ -515,6 +535,10 @@ struct UpdateMessagingGroupRequest: Encodable, Sendable {
     let groupImage: MessagingGroupImageRequest?
 }
 
+struct MessagingGroupPromotionRequest: Encodable, Sendable {
+    let isPromoted: Bool
+}
+
 struct ConversationPinnedRequest: Encodable, Sendable {
     let isPinned: Bool
 }
@@ -601,6 +625,15 @@ protocol MessagingAPI: Sendable {
         conversationID: UUID,
         accessToken: String
     ) async throws
+    func setGroupPromotion(
+        conversationID: UUID,
+        isPromoted: Bool,
+        accessToken: String
+    ) async throws -> ConversationDetail
+    func joinPromotedGroup(
+        conversationID: UUID,
+        accessToken: String
+    ) async throws -> ConversationDetail
     func resolveVerificationRequest(
         requestID: UUID,
         approve: Bool,
@@ -713,6 +746,21 @@ extension MessagingAPI {
         conversationID: UUID,
         accessToken: String
     ) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func setGroupPromotion(
+        conversationID: UUID,
+        isPromoted: Bool,
+        accessToken: String
+    ) async throws -> ConversationDetail {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func joinPromotedGroup(
+        conversationID: UUID,
+        accessToken: String
+    ) async throws -> ConversationDetail {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -1047,6 +1095,32 @@ struct URLSessionMessagingAPI: MessagingAPI {
             "/api/v1/mobile/messaging/groups/\(conversationID.uuidString)",
             accessToken: accessToken,
             headers: participantHeader)
+    }
+
+    func setGroupPromotion(
+        conversationID: UUID,
+        isPromoted: Bool,
+        accessToken: String
+    ) async throws -> ConversationDetail {
+        try await client.put(
+            "/api/v1/mobile/messaging/groups/\(conversationID.uuidString)/promotion",
+            body: MessagingGroupPromotionRequest(isPromoted: isPromoted),
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: ConversationDetail.self)
+    }
+
+    func joinPromotedGroup(
+        conversationID: UUID,
+        accessToken: String
+    ) async throws -> ConversationDetail {
+        try await client.post(
+            "/api/v1/mobile/messaging/groups/\(conversationID.uuidString)/join",
+            body: EmptyMobileRequest(),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader,
+            response: ConversationDetail.self)
     }
 
     func resolveVerificationRequest(

@@ -1528,16 +1528,71 @@ public sealed class SocialFeedServiceTests
         Assert.Equal(SocialPostAudiences.AuthorizedNetwork, created.Value!.Audience);
     }
 
+    [Fact]
+    public async Task PromotedGroups_AreSafelyProjectedWithoutCreatingSocialPosts()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founderObjectId = Guid.NewGuid().ToString();
+        var founder = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = founderObjectId,
+            AgentUpn = "founder@example.test",
+            FullName = "Founder",
+            IsActive = true
+        };
+        var viewer = Client("promoted-group-viewer", "Group", "Viewer");
+        var conversation = new MessageConversation
+        {
+            Id = Guid.NewGuid(),
+            ConversationType = MessagingConversationTypes.Group,
+            Subject = "Founder office hours",
+            CreatedByUserId = founderObjectId,
+            OwnerUserId = founderObjectId,
+            OwnerParticipantType = MessagingParticipantTypes.Agent,
+            IsPromoted = true,
+            PromotionStartedUtc = DateTime.UtcNow.AddMinutes(-10),
+            CreatedUtc = DateTime.UtcNow.AddMinutes(-10),
+            UpdatedUtc = DateTime.UtcNow.AddMinutes(-10)
+        };
+        db.AgentProfiles.Add(founder);
+        db.ClientProfiles.Add(viewer);
+        db.MessageConversations.Add(conversation);
+        db.MessageConversationParticipants.Add(new MessageConversationParticipant
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = conversation.Id,
+            UserId = founderObjectId,
+            ParticipantType = MessagingParticipantTypes.Agent,
+            IsActive = true,
+            JoinedUtc = conversation.CreatedUtc
+        });
+        await db.SaveChangesAsync();
+
+        var feed = await CreateService(db, configuredFounderOid: founderObjectId)
+            .GetFeedAsync(ClientActor(viewer));
+
+        Assert.True(feed.Succeeded);
+        Assert.Empty(feed.Value!.Posts);
+        var group = Assert.Single(feed.Value.PromotedGroups);
+        Assert.Equal(conversation.Id, group.ConversationId);
+        Assert.Equal("Founder office hours", group.Subject);
+        Assert.Equal(founderObjectId, group.Owner.UserId);
+        Assert.False(group.IsJoinedByCurrentActor);
+    }
+
     private static SocialFeedService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
         ISocialMediaStorage? mediaStorage = null,
-        ISocialMusicCatalog? musicCatalog = null)
+        ISocialMusicCatalog? musicCatalog = null,
+        string? configuredFounderOid = null)
     {
         return new SocialFeedService(
             db,
             mediaStorage ?? new UnavailableTestSocialMediaStorage(),
             musicCatalog ?? new CuratedOpenMusicCatalog(),
-            new MemoryCache(new MemoryCacheOptions()));
+            new MemoryCache(new MemoryCacheOptions()),
+            configuredFounderOid: configuredFounderOid);
     }
 
     // Minimal ISO base media header. The social service now verifies that a

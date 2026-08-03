@@ -466,6 +466,63 @@ public sealed class SocialDiscoveryServiceTests
         Assert.False(result.Relationship.CanRequestConnection);
     }
 
+    [Fact]
+    public async Task FounderAgentDirectory_UsesTheExistingDirectoryForAllEligibleClients()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founderObjectId = Guid.NewGuid().ToString();
+        var founder = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = founderObjectId,
+            AgentUpn = "founder@example.test",
+            FullName = "Founder",
+            IsActive = true
+        };
+        var unassignedMember = Member(db, "unassigned-member", "Unaffiliated Member");
+        db.AgentProfiles.Add(founder);
+        await db.SaveChangesAsync();
+
+        var founderActor = new SocialFeedActor(
+            new MessagingActor(founderObjectId, MessagingParticipantTypes.Agent),
+            founder.Id,
+            founder.FullName!);
+        var page = await new SocialDiscoveryService(db, founderObjectId).SearchAsync(
+            new SocialDiscoveryQuery(founderActor, "Unaffiliated", 0, 20));
+
+        Assert.True(page.Succeeded);
+        Assert.Contains(page.Value!.Results, result => result.ClientProfileId == unassignedMember.Id);
+    }
+
+    [Fact]
+    public async Task FounderClientDefaultDiscovery_UsesTheCompleteEligibleDirectory()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founderObjectId = Guid.NewGuid().ToString();
+        var founder = Member(db, founderObjectId, "Founder Client");
+        var directoryOnlyClient = Member(db, "directory-only-client", "Directory Client");
+        directoryOnlyClient.Journey.ConsentAffirmedUtc = null;
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "directory-agent",
+            AgentUpn = "directory.agent@example.test",
+            FullName = "Directory Agent",
+            IsActive = true
+        };
+        db.AgentProfiles.Add(agent);
+        await db.SaveChangesAsync();
+
+        var page = await new SocialDiscoveryService(db, founderObjectId).SearchAsync(
+            new SocialDiscoveryQuery(Actor(founder), null, 0, 20));
+
+        Assert.True(page.Succeeded);
+        Assert.Contains(page.Value!.Results, result => result.ClientProfileId == directoryOnlyClient.Id);
+        Assert.Contains(page.Value.Results, result =>
+            result.UserId == agent.AgentUserId &&
+            result.ParticipantType == MessagingParticipantTypes.Agent);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private sealed record TestMember(ClientProfile Client, JourneyCircleProfile Journey)

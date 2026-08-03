@@ -1701,6 +1701,12 @@ struct ConversationThreadView: View {
                 deleteGroup: {
                     isConfirmingDeleteGroup = true
                 },
+                setGroupPromotion: { isPromoted in
+                    store.setGroupPromotion(
+                        conversationID: conversationID,
+                        isPromoted: isPromoted)
+                },
+                isFounder: store.isFounder,
                 startCall: { isPresentingCallSheet = true }
             )
 
@@ -2365,6 +2371,8 @@ private struct LegendConversationHeader: View {
     let editGroup: () -> Void
     let manageCollaborators: () -> Void
     let deleteGroup: () -> Void
+    let setGroupPromotion: (Bool) -> Void
+    let isFounder: Bool
     let startCall: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -2433,7 +2441,8 @@ private struct LegendConversationHeader: View {
                 (
                     conversation.canManageMembers ||
                     conversation.canManageCollaborators == true ||
-                    conversation.canDeleteGroup == true
+                    conversation.canDeleteGroup == true ||
+                    (isFounder && conversation.canManagePromotion == true)
                 ) {
                 Menu {
                     if conversation.canManageMembers {
@@ -2465,6 +2474,22 @@ private struct LegendConversationHeader: View {
                             Label(
                                 "Delete Group",
                                 systemImage: "trash")
+                        }
+                    }
+
+                    if isFounder, conversation.canManagePromotion == true {
+                        Divider()
+
+                        Button {
+                            setGroupPromotion(!(conversation.isPromoted ?? false))
+                        } label: {
+                            Label(
+                                conversation.isPromoted == true
+                                    ? "Stop Promoting Group"
+                                    : "Promote Group",
+                                systemImage: conversation.isPromoted == true
+                                    ? "megaphone.fill"
+                                    : "megaphone")
                         }
                     }
                 } label: {

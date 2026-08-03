@@ -1602,7 +1602,8 @@ final class MobileSocialStore: ObservableObject {
                 activity: snapshot.activity,
                 activityCount: snapshot.activityCount,
                 currentProfileMetrics: profileMetrics,
-                creatorInsights: snapshot.creatorInsights)
+                creatorInsights: snapshot.creatorInsights,
+                promotedGroups: snapshot.promotedGroups)
         } else if post.contentType == MobileSocialContentType.hac.rawValue {
             snapshot = MobileSocialSnapshot(
                 stories: snapshot.stories,
@@ -1611,7 +1612,8 @@ final class MobileSocialStore: ObservableObject {
                 activity: snapshot.activity,
                 activityCount: snapshot.activityCount,
                 currentProfileMetrics: profileMetrics,
-                creatorInsights: snapshot.creatorInsights)
+                creatorInsights: snapshot.creatorInsights,
+                promotedGroups: snapshot.promotedGroups)
         } else {
             snapshot = MobileSocialSnapshot(
                 stories: snapshot.stories,
@@ -1620,7 +1622,8 @@ final class MobileSocialStore: ObservableObject {
                 activity: snapshot.activity,
                 activityCount: snapshot.activityCount,
                 currentProfileMetrics: profileMetrics,
-                creatorInsights: snapshot.creatorInsights)
+                creatorInsights: snapshot.creatorInsights,
+                promotedGroups: snapshot.promotedGroups)
         }
         state = .loaded(snapshot)
         insertProfilePost(post)
@@ -1646,7 +1649,8 @@ final class MobileSocialStore: ObservableObject {
                 currentProfileMetrics: removedPost.map {
                     metrics(snapshot.currentProfileMetrics, adjustedFor: $0, by: -1)
                 } ?? snapshot.currentProfileMetrics,
-                creatorInsights: snapshot.creatorInsights))
+                creatorInsights: snapshot.creatorInsights,
+                promotedGroups: snapshot.promotedGroups))
         }
 
         if case .loaded(let posts) = profileContentState {
@@ -1710,7 +1714,8 @@ final class MobileSocialStore: ObservableObject {
                 followerCountBy: followerCountBy,
                 followingCountBy: followingCountBy
             ),
-            creatorInsights: snapshot.creatorInsights
+            creatorInsights: snapshot.creatorInsights,
+            promotedGroups: snapshot.promotedGroups
         ))
     }
 
@@ -1753,7 +1758,8 @@ final class MobileSocialStore: ObservableObject {
                 activity: snapshot.activity,
                 activityCount: snapshot.activityCount,
                 currentProfileMetrics: snapshot.currentProfileMetrics,
-                creatorInsights: snapshot.creatorInsights))
+                creatorInsights: snapshot.creatorInsights,
+                promotedGroups: snapshot.promotedGroups))
         }
 
         if case .loaded(let posts) = profileContentState {

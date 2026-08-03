@@ -615,7 +615,33 @@ public sealed class MobileSocialController : MobileApiControllerBase
         await ToActivityDtosAsync(snapshot.Activity, cancellationToken),
         snapshot.ActivityCount,
         await ToProfileMetricsDtoAsync(snapshot.CurrentProfileMetrics, cancellationToken),
-        ToCreatorInsightsDto(snapshot.CreatorInsights));
+        ToCreatorInsightsDto(snapshot.CreatorInsights),
+        await ToPromotedGroupDtosAsync(snapshot.PromotedGroups, cancellationToken));
+
+    private async Task<IReadOnlyList<MobileSocialPromotedGroupDto>> ToPromotedGroupDtosAsync(
+        IEnumerable<SocialPromotedGroupView> groups,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<MobileSocialPromotedGroupDto>();
+        foreach (var group in groups)
+        {
+            result.Add(new MobileSocialPromotedGroupDto(
+                group.ConversationId,
+                group.Subject,
+                await ToAuthorDtoAsync(group.Owner, cancellationToken),
+                ToGroupAvatarDto(group.GroupImage),
+                group.ActiveMemberCount,
+                group.IsJoinedByCurrentActor,
+                group.PromotionStartedUtc));
+        }
+
+        return result;
+    }
+
+    private static MobileAvatarDto? ToGroupAvatarDto(MessagingGroupImage? image) =>
+        image is { Content.Length: > 0 } && !string.IsNullOrWhiteSpace(image.ContentType)
+            ? new MobileAvatarDto("inline", image.ContentType, Convert.ToBase64String(image.Content))
+            : null;
 
     // Avatar resolution uses the request-scoped MasterAppDbContext. EF Core permits one
     // operation at a time per context, so all DTO projection stays sequential.
@@ -1054,7 +1080,16 @@ public sealed record MobileSocialSnapshotDto(
     IReadOnlyList<MobileSocialActivityDto> Activity,
     int ActivityCount,
     MobileSocialProfileMetricsDto CurrentProfileMetrics,
-    MobileSocialCreatorInsightsDto CreatorInsights);
+    MobileSocialCreatorInsightsDto CreatorInsights,
+    IReadOnlyList<MobileSocialPromotedGroupDto> PromotedGroups);
+public sealed record MobileSocialPromotedGroupDto(
+    Guid ConversationId,
+    string Subject,
+    MobileSocialAuthorDto Owner,
+    MobileAvatarDto? GroupAvatar,
+    int ActiveMemberCount,
+    bool IsJoinedByCurrentActor,
+    DateTime PromotionStartedUtc);
 
 public sealed record MobileSocialPostMetricsDto(
     int ViewCount,

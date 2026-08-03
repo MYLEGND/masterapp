@@ -6,6 +6,7 @@ using Infrastructure.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Shared.Auth;
 
 namespace Infrastructure.Messaging;
 
@@ -28,6 +29,7 @@ internal sealed class MessagingService : IMessagingService
     private readonly IMessagingProfileImageResolver _participantIdentities;
     private readonly IControlledResourceAccessService _controlledResources;
     private readonly ITranslationService _translation;
+    private readonly string? _configuredFounderOid;
 
     public MessagingService(
         MasterAppDbContext db,
@@ -35,7 +37,8 @@ internal sealed class MessagingService : IMessagingService
         ICommunityTextModerationService moderation,
         IMessagingProfileImageResolver participantIdentities,
         IControlledResourceAccessService controlledResources,
-        ITranslationService translation)
+        ITranslationService translation,
+        string? configuredFounderOid = null)
     {
         _db = db;
         _logger = logger;
@@ -43,6 +46,9 @@ internal sealed class MessagingService : IMessagingService
         _participantIdentities = participantIdentities;
         _controlledResources = controlledResources;
         _translation = translation;
+        _configuredFounderOid = configuredFounderOid ??
+            Environment.GetEnvironmentVariable("FOUNDER_OID") ??
+            Environment.GetEnvironmentVariable("FounderOid");
     }
 
     public async Task<MessagingConversationListResult> ListConversationsAsync(
@@ -317,7 +323,10 @@ internal sealed class MessagingService : IMessagingService
                 x.OwnerParticipantType,
                 x.Purpose,
                 x.GroupImageContent,
-                x.GroupImageContentType))
+                x.GroupImageContentType,
+                x.IsPromoted,
+                x.PromotionStartedUtc,
+                x.PromotionEndedUtc))
             .FirstOrDefaultAsync(cancellationToken);
         if (conversation is null)
             return MessagingConversationResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The requested conversation was not found.");
@@ -435,6 +444,17 @@ internal sealed class MessagingService : IMessagingService
             conversation.Purpose == null &&
             currentParticipant?.IsGroupManager == true;
 
+        var canManagePromotion =
+            IsFounderActor(actor) &&
+            conversation.ConversationType == MessagingConversationTypes.Group &&
+            conversation.Purpose == null &&
+            !conversation.IsClosed &&
+            IsSameParticipant(
+                conversation.OwnerUserId ?? string.Empty,
+                conversation.OwnerParticipantType ?? string.Empty,
+                actor.UserId,
+                actor.ParticipantType);
+
         var detail = new MessagingConversationDetail(
             conversation.Id,
             conversation.ConversationType,
@@ -455,7 +475,11 @@ internal sealed class MessagingService : IMessagingService
             conversation.Purpose,
             ToGroupImage(conversation.GroupImageContent, conversation.GroupImageContentType),
             isGroupOwner && conversation.Purpose == null,
-            isGroupOwner && conversation.Purpose == null);
+            isGroupOwner && conversation.Purpose == null,
+            conversation.IsPromoted,
+            conversation.PromotionStartedUtc,
+            conversation.PromotionEndedUtc,
+            canManagePromotion);
 
         return new MessagingConversationResult(true, null, null, detail);
     }
@@ -501,10 +525,26 @@ internal sealed class MessagingService : IMessagingService
         if (string.IsNullOrWhiteSpace(normalizedUserId) || !IsParticipantType(normalizedParticipantType))
             return MessagingRecipientResult.Failure("MESSAGING_RECIPIENT_NOT_FOUND", "The requested participant is not available.");
 
-        var participant = (await ListAuthorizedRecipientsAsync(actor, recipientScope: null, cancellationToken))
+        var recipients = await ListAuthorizedRecipientsAsync(actor, recipientScope: null, cancellationToken);
+        var participant = recipients
             .FirstOrDefault(x =>
                 string.Equals(x.UserId, normalizedUserId, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(x.ParticipantType, normalizedParticipantType, StringComparison.Ordinal));
+
+        // Discovery and mobile authentication project the canonical Entra object
+        // ID when a Client has one, while existing messaging rows can still use
+        // the legacy ClientUserId. Resolve that one profile's known forms only
+        // after the standard recipient list has authorized it.
+        if (participant is null && normalizedParticipantType == MessagingParticipantTypes.Client)
+        {
+            var userIdForms = await ParticipantUserIdFormsAsync(
+                new MessagingActor(normalizedUserId, normalizedParticipantType),
+                cancellationToken);
+            participant = recipients.FirstOrDefault(candidate =>
+                candidate.ParticipantType == normalizedParticipantType &&
+                userIdForms.Contains(NormalizeUserId(candidate.UserId), StringComparer.Ordinal));
+        }
+
         return participant is null
             ? MessagingRecipientResult.Failure("MESSAGING_RECIPIENT_NOT_FOUND", "The requested participant is not available.")
             : new MessagingRecipientResult(true, null, null, participant);
@@ -557,6 +597,19 @@ internal sealed class MessagingService : IMessagingService
             cancellationToken);
         if (!authorizedRecipient.Succeeded)
             return MessagingConversationResult.Failure("MESSAGING_RECIPIENT_FORBIDDEN", "Messaging is not permitted for the requested recipient.");
+
+        // Persist and key direct conversations by the canonical recipient
+        // returned from the central authorization service. A caller may have
+        // selected an active Client through its Entra object ID while legacy
+        // messaging rows use ClientUserId; both must resolve to one thread.
+        targetUserId = NormalizeUserId(authorizedRecipient.Recipient!.UserId);
+        targetParticipantType = NormalizeRequired(authorizedRecipient.Recipient.ParticipantType);
+        if (!TryBuildDirectParticipants(actor, targetUserId, targetParticipantType, out participants))
+        {
+            return MessagingConversationResult.Failure(
+                "MESSAGING_CONVERSATION_INVALID",
+                "The requested conversation is invalid.");
+        }
 
         var directConversationKey = BuildDirectConversationKey(
             conversationType,
@@ -1192,6 +1245,148 @@ internal sealed class MessagingService : IMessagingService
             actor.UserId,
             conversation.Id,
             cancellationToken);
+    }
+
+    public async Task<MessagingConversationResult> SetGroupPromotionAsync(
+        SetMessagingGroupPromotionCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = NormalizeActor(command.Actor);
+        if (!await IsValidActorAsync(actor, cancellationToken))
+        {
+            return MessagingConversationResult.Failure(
+                "MESSAGING_ACTOR_INVALID",
+                "Messaging is not available for this user.");
+        }
+
+        var conversation = await _db.MessageConversations
+            .FirstOrDefaultAsync(candidate => candidate.Id == command.ConversationId, cancellationToken);
+        if (!IsEligibleForFounderPromotion(conversation) || !IsFounderActor(actor))
+        {
+            return MessagingConversationResult.Failure(
+                "MESSAGING_GROUP_PROMOTION_FORBIDDEN",
+                "Only the Founder can promote an active Founder-owned group.");
+        }
+
+        if (!IsSameParticipant(
+                conversation!.OwnerUserId,
+                conversation.OwnerParticipantType,
+                actor.UserId,
+                actor.ParticipantType))
+        {
+            return MessagingConversationResult.Failure(
+                "MESSAGING_GROUP_OWNER_REQUIRED",
+                "Only the canonical Founder group owner can change promotion.");
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        var changed = false;
+        if (command.IsPromoted && !conversation.IsPromoted)
+        {
+            conversation.IsPromoted = true;
+            conversation.PromotionStartedUtc = nowUtc;
+            conversation.PromotionEndedUtc = null;
+            conversation.UpdatedUtc = nowUtc;
+            AddAudit(actor.UserId, "GroupPromotionEnabled", conversation.Id, null, null, null, nowUtc);
+            changed = true;
+        }
+        else if (!command.IsPromoted && conversation.IsPromoted)
+        {
+            conversation.IsPromoted = false;
+            conversation.PromotionEndedUtc = nowUtc;
+            conversation.UpdatedUtc = nowUtc;
+            AddAudit(actor.UserId, "GroupPromotionDisabled", conversation.Id, null, null, null, nowUtc);
+            changed = true;
+        }
+
+        if (changed)
+        {
+            var saved = await SaveOperationAsync(
+                command.IsPromoted ? "GroupPromotionEnabled" : "GroupPromotionDisabled",
+                actor.UserId,
+                conversation.Id,
+                cancellationToken);
+            if (!saved.Succeeded)
+            {
+                return MessagingConversationResult.Failure(
+                    saved.ErrorCode ?? "MESSAGING_OPERATION_SAVE_FAILED",
+                    saved.ErrorMessage ?? "The group promotion could not be saved.");
+            }
+        }
+
+        return await GetConversationAsync(actor, conversation.Id, cancellationToken);
+    }
+
+    public async Task<MessagingConversationResult> JoinPromotedGroupAsync(
+        JoinPromotedMessagingGroupCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = NormalizeActor(command.Actor);
+        if (!await IsValidActorAsync(actor, cancellationToken))
+        {
+            return MessagingConversationResult.Failure(
+                "MESSAGING_ACTOR_INVALID",
+                "Messaging is not available for this user.");
+        }
+
+        var conversation = await _db.MessageConversations
+            .Include(candidate => candidate.Participants)
+            .FirstOrDefaultAsync(candidate => candidate.Id == command.ConversationId, cancellationToken);
+        if (!IsEligibleForFounderPromotion(conversation) || !conversation!.IsPromoted ||
+            !await IsValidActorAsync(
+                new MessagingActor(conversation.OwnerUserId!, conversation.OwnerParticipantType!),
+                cancellationToken))
+        {
+            return MessagingConversationResult.Failure(
+                "MESSAGING_PROMOTED_GROUP_UNAVAILABLE",
+                "This promoted group is no longer available to join.");
+        }
+
+        if (!await CanJoinPromotedGroupAsync(actor, conversation, cancellationToken))
+        {
+            return MessagingConversationResult.Failure(
+                "MESSAGING_PROMOTED_GROUP_FORBIDDEN",
+                "This promoted group is not available to your profile.");
+        }
+
+        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
+        var member = conversation.Participants.FirstOrDefault(participant =>
+            participant.ParticipantType == actor.ParticipantType &&
+            actorUserIds.Contains(NormalizeUserId(participant.UserId), StringComparer.Ordinal));
+        if (member?.IsActive == true)
+            return await GetConversationAsync(actor, conversation.Id, cancellationToken);
+
+        var nowUtc = DateTime.UtcNow;
+        if (member is null)
+        {
+            _db.MessageConversationParticipants.Add(new MessageConversationParticipant
+            {
+                Id = Guid.NewGuid(),
+                ConversationId = conversation.Id,
+                UserId = actor.UserId,
+                ParticipantType = actor.ParticipantType,
+                IsActive = true,
+                JoinedUtc = nowUtc
+            });
+        }
+        else
+        {
+            member.IsActive = true;
+            member.JoinedUtc = nowUtc;
+            member.LeftUtc = null;
+        }
+
+        conversation.UpdatedUtc = nowUtc;
+        AddAudit(actor.UserId, "PromotedGroupJoined", conversation.Id, null, null, null, nowUtc);
+        var saved = await SaveOperationAsync("PromotedGroupJoined", actor.UserId, conversation.Id, cancellationToken);
+        if (!saved.Succeeded)
+        {
+            return MessagingConversationResult.Failure(
+                saved.ErrorCode ?? "MESSAGING_OPERATION_SAVE_FAILED",
+                saved.ErrorMessage ?? "The promoted group could not be joined.");
+        }
+
+        return await GetConversationAsync(actor, conversation.Id, cancellationToken);
     }
 
     public async Task<MessagingOperationResult> UpdateGroupProfileAsync(
@@ -2060,6 +2255,17 @@ internal sealed class MessagingService : IMessagingService
         {
             var authorizedClientIds = AuthorizedClientIdsForAgentQuery(actorUserId);
             var activeLeadUserIds = await ActiveLeadUserIdsAsync(cancellationToken);
+            var founderObjectId = FounderAuthority.GetConfiguredObjectId(_configuredFounderOid);
+            var founderClientUserIds = ActiveMessagingClientProfilesQuery()
+                .Where(profile => founderObjectId != null &&
+                    profile.ExternalIdentityObjectId != null &&
+                    profile.ExternalIdentityObjectId.ToLower() == founderObjectId)
+                .Select(profile => profile.ClientUserId.ToLower())
+                .Union(ActiveMessagingClientProfilesQuery()
+                    .Where(profile => founderObjectId != null &&
+                        profile.ExternalIdentityObjectId != null &&
+                        profile.ExternalIdentityObjectId.ToLower() == founderObjectId)
+                    .Select(profile => profile.ExternalIdentityObjectId!.ToLower()));
             var agentDirectConversations = participantConversations.Where(conversation =>
                 conversation.ConversationType == MessagingConversationTypes.AgentDirect &&
                 conversation.Participants.All(participant =>
@@ -2074,7 +2280,8 @@ internal sealed class MessagingService : IMessagingService
                     .All(client => activeClientUserIds.Contains(client.UserId.ToLower())) &&
                 conversation.Participants.Where(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client)
                     .Any(client => authorizedClientIds.Contains(client.UserId.ToLower()) ||
-                        activeLeadUserIds.Contains(client.UserId.ToLower())));
+                        activeLeadUserIds.Contains(client.UserId.ToLower()) ||
+                        founderClientUserIds.Contains(client.UserId.ToLower())));
             return agentDirectConversations
                 .Union(clientAgentConversations)
                 .Union(groupConversations);
@@ -2290,8 +2497,9 @@ internal sealed class MessagingService : IMessagingService
         string? recipientScope,
         CancellationToken cancellationToken)
     {
+        var isFounder = IsFounderActor(actor);
         var candidates = actor.ParticipantType == MessagingParticipantTypes.Agent
-            ? await ListAgentRecipientsAsync(actor.UserId, recipientScope, cancellationToken)
+            ? await ListAgentRecipientsAsync(actor.UserId, recipientScope, isFounder, cancellationToken)
             : await ListClientRecipientsAsync(actor.UserId, recipientScope, cancellationToken);
         var recipients = await ResolveRecipientIdentitiesAsync(
             CollapseAuthorizedRecipients(actor, candidates),
@@ -2358,6 +2566,7 @@ internal sealed class MessagingService : IMessagingService
     private async Task<List<MessagingRecipientSummary>> ListAgentRecipientsAsync(
         string agentUserId,
         string? recipientScope,
+        bool isFounder,
         CancellationToken cancellationToken)
     {
         var recipients = new List<MessagingRecipientSummary>();
@@ -2380,22 +2589,35 @@ internal sealed class MessagingService : IMessagingService
 
         if (recipientScope is not MessagingRecipientScopes.Agents)
         {
-            var linkedClientIds = await AuthorizedClientIdsForAgentQuery(agentUserId)
-                .ToListAsync(cancellationToken);
+            var linkedClientIds = isFounder
+                ? new List<string>()
+                : await AuthorizedClientIdsForAgentQuery(agentUserId)
+                    .ToListAsync(cancellationToken);
             var clientRows = await ActiveMessagingClientProfilesQuery()
-                .Select(x => new RecipientClientRow(x.ClientUserId, x.FirstName, x.LastName, x.Email, x.CrmNotes, x.CrmStatus))
+                .Select(x => new RecipientClientRow(
+                    x.ClientUserId,
+                    x.FirstName,
+                    x.LastName,
+                    x.Email,
+                    x.CrmNotes,
+                    x.CrmStatus,
+                    x.ExternalIdentityObjectId))
                 .ToListAsync(cancellationToken);
 
             recipients.AddRange(clientRows
                 .Where(x => recipientScope switch
                 {
                     MessagingRecipientScopes.Clients =>
-                        linkedClientIds.Contains(x.UserId.ToLower()) &&
+                        (isFounder ||
+                         linkedClientIds.Contains(x.UserId.ToLower()) ||
+                         IsFounderIdentity(x.ExternalIdentityObjectId)) &&
                         ClientRecordClassification.IsClientOrBusinessClient(x.UserId, x.CrmNotes, x.CrmStatus),
                     MessagingRecipientScopes.Leads => ClientRecordClassification.IsLead(x.UserId, x.CrmNotes, x.CrmStatus),
                     _ =>
                         ClientRecordClassification.IsLead(x.UserId, x.CrmNotes, x.CrmStatus) ||
-                        (linkedClientIds.Contains(x.UserId.ToLower()) &&
+                        ((isFounder ||
+                          linkedClientIds.Contains(x.UserId.ToLower()) ||
+                          IsFounderIdentity(x.ExternalIdentityObjectId)) &&
                          ClientRecordClassification.IsClientOrBusinessClient(x.UserId, x.CrmNotes, x.CrmStatus))
                 })
                 .Select(x => new MessagingRecipientSummary(
@@ -2843,6 +3065,60 @@ internal sealed class MessagingService : IMessagingService
         }
     }
 
+    private bool IsEligibleForFounderPromotion(MessageConversation? conversation) =>
+        conversation is not null &&
+        conversation.ConversationType == MessagingConversationTypes.Group &&
+        conversation.Purpose is null &&
+        !conversation.IsClosed &&
+        !string.IsNullOrWhiteSpace(conversation.OwnerUserId) &&
+        conversation.OwnerParticipantType is not null &&
+        IsParticipantType(conversation.OwnerParticipantType) &&
+        IsFounderIdentity(conversation.OwnerUserId);
+
+    /// <summary>
+    /// Promotion is an organizational invitation, not a bypass around the
+    /// existing client-to-client block boundary. No equivalent block relation
+    /// exists for an Agent owner, so the normal active-profile rule is enough
+    /// for those groups.
+    /// </summary>
+    private async Task<bool> CanJoinPromotedGroupAsync(
+        MessagingActor actor,
+        MessageConversation conversation,
+        CancellationToken cancellationToken)
+    {
+        if (actor.ParticipantType != MessagingParticipantTypes.Client ||
+            conversation.OwnerParticipantType != MessagingParticipantTypes.Client)
+        {
+            return true;
+        }
+
+        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
+        var ownerUserIds = await ParticipantUserIdFormsAsync(
+            new MessagingActor(conversation.OwnerUserId!, conversation.OwnerParticipantType!),
+            cancellationToken);
+        var actorProfileIds = await ActiveMessagingClientProfilesQuery()
+            .Where(profile => actorUserIds.Contains(profile.ClientUserId.ToLower()) ||
+                              (profile.ExternalIdentityObjectId != null &&
+                               actorUserIds.Contains(profile.ExternalIdentityObjectId.ToLower())))
+            .Select(profile => profile.Id)
+            .ToArrayAsync(cancellationToken);
+        var ownerProfileIds = await ActiveMessagingClientProfilesQuery()
+            .Where(profile => ownerUserIds.Contains(profile.ClientUserId.ToLower()) ||
+                              (profile.ExternalIdentityObjectId != null &&
+                               ownerUserIds.Contains(profile.ExternalIdentityObjectId.ToLower())))
+            .Select(profile => profile.Id)
+            .ToArrayAsync(cancellationToken);
+        if (actorProfileIds.Length == 0 || ownerProfileIds.Length == 0)
+            return false;
+
+        return !await _db.JourneyCircleBlocks.AsNoTracking().AnyAsync(block =>
+            (actorProfileIds.Contains(block.BlockerClientProfileId) &&
+             ownerProfileIds.Contains(block.BlockedClientProfileId)) ||
+            (actorProfileIds.Contains(block.BlockedClientProfileId) &&
+             ownerProfileIds.Contains(block.BlockerClientProfileId)),
+            cancellationToken);
+    }
+
     private void AddAudit(
         string actorUserId,
         string action,
@@ -3180,6 +3456,14 @@ internal sealed class MessagingService : IMessagingService
     private static MessagingActor NormalizeActor(MessagingActor actor) => new(
         NormalizeUserId(actor.UserId),
         NormalizeRequired(actor.ParticipantType));
+
+    private bool IsFounderActor(MessagingActor actor) =>
+        IsFounderIdentity(actor.UserId);
+
+    private bool IsFounderIdentity(string? userId) =>
+        FounderAuthority.IsConfiguredFounderIdentity(
+            userId,
+            _configuredFounderOid);
 
     private static string? GetConversationType(string actorParticipantType, string targetParticipantType)
     {
@@ -3625,7 +3909,10 @@ internal sealed class MessagingService : IMessagingService
         string? OwnerParticipantType,
         string? Purpose,
         byte[]? GroupImageContent,
-        string? GroupImageContentType);
+        string? GroupImageContentType,
+        bool IsPromoted,
+        DateTime? PromotionStartedUtc,
+        DateTime? PromotionEndedUtc);
 
     private sealed record ParticipantRow(
         Guid ConversationId,
@@ -3693,5 +3980,12 @@ internal sealed class MessagingService : IMessagingService
         DateTime CreatedUtc,
         DateTime UpdatedUtc);
 
-    private sealed record RecipientClientRow(string UserId, string? FirstName, string? LastName, string? Email, string? CrmNotes, string? CrmStatus);
+    private sealed record RecipientClientRow(
+        string UserId,
+        string? FirstName,
+        string? LastName,
+        string? Email,
+        string? CrmNotes,
+        string? CrmStatus,
+        string? ExternalIdentityObjectId = null);
 }

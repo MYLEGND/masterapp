@@ -155,7 +155,8 @@ struct LegendApplicationShell: View {
                     messages: messages,
                     activity: activity,
                     bootstrap: bootstrap,
-                    selectedTab: $selectedTab
+                    selectedTab: $selectedTab,
+                    pendingMessageConversationID: $pendingMessageConversationID
                 )
             }
             .task {
@@ -1372,6 +1373,7 @@ private struct LegendHomeView: View {
     let currentSession: MobileSession
 
     @Binding private var selectedTab: LegendAppTab
+    @Binding private var pendingMessageConversationID: UUID?
     @EnvironmentObject private var scrollChrome: LegendScrollChrome
     @ObservedObject private var store: MobileHomeStore
     @ObservedObject private var social: MobileSocialStore
@@ -1387,10 +1389,12 @@ private struct LegendHomeView: View {
         messages: MessagingStore,
         activity: LegendDailyActivityStore,
         bootstrap: LegendApplicationBootstrapCoordinator,
-        selectedTab: Binding<LegendAppTab>
+        selectedTab: Binding<LegendAppTab>,
+        pendingMessageConversationID: Binding<UUID?>
     ) {
         self.currentSession = currentSession
         _selectedTab = selectedTab
+        _pendingMessageConversationID = pendingMessageConversationID
         _store = ObservedObject(wrappedValue: store)
         _social = ObservedObject(wrappedValue: social)
         _messages = ObservedObject(wrappedValue: messages)
@@ -1442,9 +1446,14 @@ private struct LegendHomeView: View {
                     session: currentSession,
                     home: home,
                     social: social,
+                    messaging: messages,
                     activity: activity,
                     openCircles: {
                         open(.discover)
+                    },
+                    openJoinedGroup: { conversationID in
+                        pendingMessageConversationID = conversationID
+                        open(.messages)
                     },
                     refreshSocial: {
                         await bootstrap.refreshSocial()

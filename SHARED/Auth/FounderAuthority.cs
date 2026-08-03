@@ -46,9 +46,7 @@ public static class FounderAuthority
         // Authoritative path: canonical Object ID must match a valid configured OID.
         if (valid)
         {
-            var oid = user.GetCanonicalUserId(); // oid-only, normalized
-            return !string.IsNullOrWhiteSpace(oid) &&
-                   string.Equals(oid, founderOid, StringComparison.Ordinal);
+            return IsConfiguredFounderIdentity(user.GetCanonicalUserId(), founderOid);
         }
 
         // FOUNDER_OID missing or malformed:
@@ -70,6 +68,35 @@ public static class FounderAuthority
     {
         var founderOid = Normalize(configuredFounderOid);
         return !string.IsNullOrWhiteSpace(founderOid) && Guid.TryParse(founderOid, out _);
+    }
+
+    /// <summary>
+    /// Returns the normalized configured Entra object ID only when it is present
+    /// and valid. Service boundaries that already receive a server-resolved
+    /// canonical object ID use this instead of recreating founder parsing.
+    /// </summary>
+    public static string? GetConfiguredObjectId(string? configuredFounderOid)
+    {
+        var founderOid = Normalize(configuredFounderOid);
+        return !string.IsNullOrWhiteSpace(founderOid) && Guid.TryParse(founderOid, out _)
+            ? founderOid
+            : null;
+    }
+
+    /// <summary>
+    /// Matches a server-resolved canonical Entra object ID to the configured
+    /// founder identity. Both inputs must be valid GUIDs, so malformed or
+    /// absent configuration always fails closed.
+    /// </summary>
+    public static bool IsConfiguredFounderIdentity(
+        string? canonicalUserId,
+        string? configuredFounderOid)
+    {
+        var founderOid = GetConfiguredObjectId(configuredFounderOid);
+        var userId = Normalize(canonicalUserId);
+        return founderOid is not null &&
+               Guid.TryParse(userId, out _) &&
+               string.Equals(userId, founderOid, StringComparison.Ordinal);
     }
 
     /// <summary>
