@@ -5170,6 +5170,8 @@ private struct LegendAccountView: View {
     @State private var isConfirmingSignOut = false
     @State private var creationRoute: LegendSocialCreationRoute?
     @State private var selectedPost: MobileSocialPost?
+    @State private var editingHac: MobileSocialPost?
+    @State private var deletionTarget: MobileSocialPost?
     @State private var profilePage = 0
     @State private var isFinancialIntelligencePresented = false
     @State private var controlledResourceRequestFeedback: LegendRequestSubmissionFeedback?
@@ -5242,6 +5244,12 @@ private struct LegendAccountView: View {
                 route: $creationRoute,
                 social: social)
         }
+        .sheet(item: $editingHac) { post in
+            LegendSocialPostEditor(
+                post: post,
+                social: social,
+                onSaved: { editingHac = nil })
+        }
         .navigationDestination(
             isPresented: Binding(
                 get: { selectedPost != nil },
@@ -5268,6 +5276,28 @@ private struct LegendAccountView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You will need to securely sign in again to access your account.")
+        }
+        .confirmationDialog(
+            "Delete this Hac?",
+            isPresented: Binding(
+                get: { deletionTarget != nil },
+                set: { if !$0 { deletionTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Hac", role: .destructive) {
+                guard let post = deletionTarget else { return }
+                deletionTarget = nil
+                Task {
+                    _ = await social.deletePost(postID: post.id)
+                }
+            }
+
+            Button("Cancel", role: .cancel) {
+                deletionTarget = nil
+            }
+        } message: {
+            Text("This permanently removes the Hac and its media from Legend.")
         }
         .alert(
             account.actionFailure?.title ?? "Account update unavailable",
@@ -5665,7 +5695,25 @@ private struct LegendAccountView: View {
                             }
                         }
                         .buttonStyle(.plain)
-                        .accessibilityHint("Open post options")
+                        .contextMenu {
+                            if post.isVideoHac {
+                                Button {
+                                    editingHac = post
+                                } label: {
+                                    Label("Edit Hac", systemImage: "pencil")
+                                }
+
+                                Button(role: .destructive) {
+                                    deletionTarget = post
+                                } label: {
+                                    Label("Delete Hac", systemImage: "trash")
+                                }
+                            }
+                        }
+                        .accessibilityHint(
+                            post.isVideoHac
+                                ? "Open this Hac. Touch and hold to edit or delete it."
+                                : "Open post options")
                     }
                 }
             }
@@ -6937,7 +6985,8 @@ private struct LegendPublicProfilePost: View {
                     posts: profilePosts.filter(\.isVideoHac),
                     currentIdentity: currentIdentity,
                     social: social,
-                    initialPostID: post.id)
+                    initialPostID: post.id,
+                    presentsDismissControl: true)
             } else {
                 LegendPostDetailView(
                     post: post,

@@ -801,7 +801,8 @@ struct LegendPostDetailView: View {
                 posts: postsInProfileFeed.filter(\.isVideoHac),
                 currentIdentity: currentIdentity,
                 social: social,
-                initialPostID: post.id)
+                initialPostID: post.id,
+                presentsDismissControl: true)
         } else {
             standardPostDetail
         }
@@ -1393,6 +1394,197 @@ enum LegendHacPlaybackWindow {
     }
 }
 
+/// Bridges AVFoundation's custom resource-loader callbacks to the existing
+/// authenticated media endpoint. The server already supports HTTP 206 range
+/// responses, so this keeps the single MP4 pipeline intact while allowing the
+/// player to fetch only the moov atom and the samples it needs for playback.
+///
+/// The loader is retained for exactly as long as its AVURLAsset is retained by
+/// the three-player window. It never caches a second full video file.
+private final class LegendHacMediaResourceLoader: NSObject, AVAssetResourceLoaderDelegate, URLSessionDataDelegate {
+    let assetURL: URL
+    let callbackQueue = DispatchQueue(label: "com.mylegnd.hac-resource-loader")
+
+    private let source: MobileSocialMediaStream
+    private let delegateQueue: OperationQueue
+    private let lock = NSLock()
+    private var session: URLSession!
+    private var loadingRequests: [Int: AVAssetResourceLoadingRequest] = [:]
+
+    init(source: MobileSocialMediaStream) {
+        self.source = source
+
+        var components = URLComponents(url: source.url, resolvingAgainstBaseURL: false)
+        components?.scheme = "legend-media"
+        self.assetURL = components?.url ?? source.url
+
+        let queue = OperationQueue()
+        queue.name = "com.mylegnd.hac-resource-loader.network"
+        queue.maxConcurrentOperationCount = 1
+        self.delegateQueue = queue
+        super.init()
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForResource = 120
+        session = URLSession(
+            configuration: configuration,
+            delegate: self,
+            delegateQueue: delegateQueue)
+    }
+
+    deinit {
+        session.invalidateAndCancel()
+    }
+
+    func resourceLoader(
+        _ resourceLoader: AVAssetResourceLoader,
+        shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest
+    ) -> Bool {
+        var request = URLRequest(url: source.url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 60
+        source.headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+
+        let dataRequest = loadingRequest.dataRequest
+        let start = dataRequest.map {
+            max($0.currentOffset, $0.requestedOffset)
+        } ?? 0
+        if dataRequest?.requestsAllDataToEndOfResource == true {
+            request.setValue("bytes=\(start)-", forHTTPHeaderField: "Range")
+        } else {
+            // AVFoundation may first request only content information. Fetch a
+            // tiny leading range in that case; the response establishes MIME
+            // type, full length, and range support without downloading media.
+            let requestedLength = max(1, Int64(dataRequest?.requestedLength ?? 2))
+            let end = start + requestedLength - 1
+            request.setValue("bytes=\(start)-\(end)", forHTTPHeaderField: "Range")
+        }
+
+        let task = session.dataTask(with: request)
+        lock.lock()
+        loadingRequests[task.taskIdentifier] = loadingRequest
+        lock.unlock()
+        task.resume()
+        return true
+    }
+
+    func resourceLoader(
+        _ resourceLoader: AVAssetResourceLoader,
+        didCancel loadingRequest: AVAssetResourceLoadingRequest
+    ) {
+        let taskIdentifier: Int? = withLock {
+            loadingRequests.first(where: { $0.value === loadingRequest })?.key
+        }
+        guard let taskIdentifier else { return }
+
+        _ = withLock {
+            loadingRequests.removeValue(forKey: taskIdentifier)
+        }
+        session.getAllTasks { tasks in
+            tasks.first(where: { $0.taskIdentifier == taskIdentifier })?.cancel()
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let request = loadingRequest(for: dataTask.taskIdentifier),
+              let response = response as? HTTPURLResponse else {
+            completionHandler(.cancel)
+            return
+        }
+
+        guard (200...299).contains(response.statusCode) else {
+            finish(
+                request: request,
+                taskIdentifier: dataTask.taskIdentifier,
+                error: streamError(
+                    code: response.statusCode,
+                    message: "Legend could not load this Hac stream."))
+            completionHandler(.cancel)
+            return
+        }
+
+        if let information = request.contentInformationRequest {
+            // `contentType` is an AVFoundation file-type identifier, not an
+            // HTTP MIME value. Supplying "video/mp4" here makes otherwise
+            // valid protected MP4s fail during metadata preparation.
+            information.contentType = AVFileType.mp4.rawValue
+            information.contentLength = totalLength(from: response)
+            information.isByteRangeAccessSupported = response.statusCode == 206
+                || response.value(forHTTPHeaderField: "Accept-Ranges")?.lowercased().contains("bytes") == true
+        }
+        completionHandler(.allow)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive data: Data
+    ) {
+        loadingRequest(for: dataTask.taskIdentifier)?.dataRequest?.respond(with: data)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        guard let request = removeLoadingRequest(for: task.taskIdentifier) else { return }
+        if let error {
+            request.finishLoading(with: error)
+        } else {
+            request.finishLoading()
+        }
+    }
+
+    private func loadingRequest(for taskIdentifier: Int) -> AVAssetResourceLoadingRequest? {
+        withLock { loadingRequests[taskIdentifier] }
+    }
+
+    private func removeLoadingRequest(for taskIdentifier: Int) -> AVAssetResourceLoadingRequest? {
+        withLock { loadingRequests.removeValue(forKey: taskIdentifier) }
+    }
+
+    private func finish(
+        request: AVAssetResourceLoadingRequest,
+        taskIdentifier: Int,
+        error: Error
+    ) {
+        _ = withLock {
+            loadingRequests.removeValue(forKey: taskIdentifier)
+        }
+        request.finishLoading(with: error)
+    }
+
+    private func totalLength(from response: HTTPURLResponse) -> Int64 {
+        guard let contentRange = response.value(forHTTPHeaderField: "Content-Range"),
+              let slash = contentRange.lastIndex(of: "/"),
+              let length = Int64(contentRange[contentRange.index(after: slash)...]) else {
+            return max(0, response.expectedContentLength)
+        }
+        return length
+    }
+
+    private func streamError(code: Int, message: String) -> NSError {
+        NSError(
+            domain: "com.mylegnd.hac-stream",
+            code: code,
+            userInfo: [NSLocalizedDescriptionKey: message])
+    }
+
+    private func withLock<T>(_ operation: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return operation()
+    }
+}
+
 /// One ownership boundary for Hac decoders, playback state, prewarming, and
 /// measured watch time. A `LegendHacViewportFeed` owns exactly one coordinator
 /// regardless of whether it is opened from FYP or a member profile.
@@ -1406,6 +1598,7 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
 
     private var players: [UUID: AVPlayer] = [:]
     private var assets: [UUID: AVURLAsset] = [:]
+    private var resourceLoaders: [UUID: LegendHacMediaResourceLoader] = [:]
     private var assetPreloadTasks: [UUID: Task<AVURLAsset?, Never>] = [:]
     private var itemStatusObservations: [UUID: NSKeyValueObservation] = [:]
     private var itemEndObservers: [UUID: NSObjectProtocol] = [:]
@@ -1567,10 +1760,11 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
 
         releasePlayer(media.id)
         assets.removeValue(forKey: media.id)
+        resourceLoaders.removeValue(forKey: media.id)
         assetPreloadTasks[media.id]?.cancel()
         assetPreloadTasks.removeValue(forKey: media.id)
         failures.removeValue(forKey: media.id)
-        _ = await social.mediaFile(for: media, forceRefresh: true)
+        _ = await social.mediaStream(for: media, forceRefresh: true)
         await activate(posts: posts, postID: postID, social: social)
     }
 
@@ -1587,6 +1781,7 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
         readyMediaIDs.removeAll()
         retainedMediaIDs.removeAll()
         assets.removeAll()
+        resourceLoaders.removeAll()
         assetPreloadTasks.removeAll()
         retainedAssetIDs.removeAll()
         activePostID = nil
@@ -1676,10 +1871,11 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
         }
     }
 
-    /// Resolves the protected local media file and warms AVURLAsset metadata
-    /// before an AVPlayerItem is ever constructed. The task runs independently
-    /// of a page swipe; the coordinator only reads its prepared result during
-    /// the later window-maintenance task.
+    /// Warms AVURLAsset metadata before an AVPlayerItem is ever constructed.
+    /// Production Hacs use the authenticated range loader below, allowing the
+    /// fast-start MP4 to yield its first frame without a complete local-file
+    /// download. The existing materialized-file path remains a compatibility
+    /// fallback for test and offline API implementations.
     private func preloadAsset(
         for media: MobileSocialMedia,
         social: MobileSocialStore
@@ -1691,17 +1887,46 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
         }
 
         assetPreloadTasks[media.id] = Task { [weak self] in
-            guard let self,
-                  let url = await social.mediaFile(for: media),
-                  !Task.isCancelled,
-                  self.retainedAssetIDs.contains(media.id) else {
+            guard let self else { return nil }
+
+            var asset: AVURLAsset?
+            if let stream = await social.mediaStream(for: media) {
+                let loader = LegendHacMediaResourceLoader(source: stream)
+                let streamingAsset = AVURLAsset(url: loader.assetURL)
+                // AVURLAsset does not retain its resource-loader delegate.
+                // Keep the delegate in the same bounded window as this asset.
+                self.resourceLoaders[media.id] = loader
+                streamingAsset.resourceLoader.setDelegate(
+                    loader,
+                    queue: loader.callbackQueue)
+                if await self.loadPlaybackMetadata(for: streamingAsset) {
+                    asset = streamingAsset
+                } else {
+                    // Range playback is the production path. If a legacy
+                    // proxy or server configuration cannot satisfy the
+                    // AVFoundation resource-loader contract, use the same
+                    // authenticated media source through the established
+                    // bounded file resolver rather than leaving the Hac
+                    // permanently unplayable.
+                    self.resourceLoaders.removeValue(forKey: media.id)
+                }
+            }
+
+            if asset == nil,
+               let url = await social.mediaFile(for: media) {
+                let fallbackAsset = AVURLAsset(url: url)
+                if await self.loadPlaybackMetadata(for: fallbackAsset) {
+                    asset = fallbackAsset
+                }
+            }
+
+            guard let asset else {
                 return nil
             }
 
-            let asset = AVURLAsset(url: url)
-            guard await self.loadPlaybackMetadata(for: asset),
-                  !Task.isCancelled,
+            guard !Task.isCancelled,
                   self.retainedAssetIDs.contains(media.id) else {
+                self.resourceLoaders.removeValue(forKey: media.id)
                 return nil
             }
 
@@ -1876,12 +2101,16 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
 
     private func releaseAssetsOutsideRetainedWindow() {
         let obsoleteAssetIDs = assets.keys.filter { !retainedAssetIDs.contains($0) }
-        obsoleteAssetIDs.forEach { assets.removeValue(forKey: $0) }
+        obsoleteAssetIDs.forEach {
+            assets.removeValue(forKey: $0)
+            resourceLoaders.removeValue(forKey: $0)
+        }
 
         let obsoleteTaskIDs = assetPreloadTasks.keys.filter { !retainedAssetIDs.contains($0) }
         obsoleteTaskIDs.forEach {
             assetPreloadTasks[$0]?.cancel()
             assetPreloadTasks.removeValue(forKey: $0)
+            resourceLoaders.removeValue(forKey: $0)
         }
     }
 
@@ -2004,22 +2233,30 @@ struct LegendHacViewportFeed: View {
             }
         }
         .background(Color.black.ignoresSafeArea())
-        .toolbar {
+        // The full Hac canvas owns its top edge. A NavigationStack toolbar
+        // would reserve an empty black strip after the permanent LEGEND banner
+        // even when the old title content is gone.
+        .toolbar(.hidden, for: .navigationBar)
+        .overlay(alignment: .topLeading) {
             if presentsDismissControl {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.backward")
-                    }
-                    .accessibilityLabel("Back")
+                Button(action: dismiss.callAsFunction) {
+                    Image(systemName: "chevron.backward")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 46, height: 46)
+                        .background(.black.opacity(0.58), in: Circle())
                 }
+                .buttonStyle(.plain)
+                .padding(.leading, LegendNextSpacing.md)
+                .padding(.top, LegendNextSpacing.md)
+                .accessibilityLabel("Back")
             }
         }
         .sheet(item: $commentTarget) { post in
             LegendCommentComposer(
                 postID: post.id,
                 social: social,
+                focusesComposerOnPresentation: true,
                 cancel: { commentTarget = nil })
         }
         .sheet(item: $publicProfile) { route in
@@ -2059,6 +2296,7 @@ private struct LegendHacViewportPage: View {
     let post: MobileSocialPost
     @ObservedObject var social: MobileSocialStore
     @ObservedObject var playback: LegendHacPlaybackCoordinator
+    @EnvironmentObject private var scrollChrome: LegendScrollChrome
     let comment: () -> Void
     let retry: () -> Void
     let openProfile: () -> Void
@@ -2118,13 +2356,19 @@ private struct LegendHacViewportPage: View {
                 )
                 .allowsHitTesting(false)
 
-                hacOverlay
+                hacOverlay(
+                    bottomNavigationVisible: scrollChrome.isBottomNavigationVisible,
+                    safeAreaBottom: proxy.safeAreaInsets.bottom)
                     .frame(
                         maxWidth: .infinity,
                         maxHeight: .infinity,
                         alignment: .bottom)
                     .padding(.horizontal, LegendNextSpacing.md)
-                    .padding(.bottom, LegendNextSpacing.lg)
+                    .padding(
+                        .bottom,
+                        overlayBottomInset(
+                            bottomNavigationVisible: scrollChrome.isBottomNavigationVisible,
+                            safeAreaBottom: proxy.safeAreaInsets.bottom))
 
                 if showsAppreciation {
                     Image(systemName: "heart.fill")
@@ -2140,46 +2384,89 @@ private struct LegendHacViewportPage: View {
         .accessibilityLabel("Hac by \(post.author.displayName)")
     }
 
-    private var hacOverlay: some View {
-        HStack(alignment: .bottom, spacing: LegendNextSpacing.sm) {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                Button(action: openProfile) {
-                    HStack(spacing: LegendNextSpacing.xs) {
-                        LegendProfileAvatar(
-                            avatar: post.author.avatar,
-                            displayName: post.author.displayName,
-                            size: 38)
-                        LegendVerifiedName(
-                            post.author.displayName,
-                            isVerified: post.author.isVerified == true,
-                            font: .subheadline.weight(.bold),
-                            badgePlacement: .alongsideProfileImage)
+    private func hacOverlay(
+        bottomNavigationVisible: Bool,
+        safeAreaBottom: CGFloat
+    ) -> some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+            HStack(alignment: .bottom, spacing: LegendNextSpacing.sm) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                    Button(action: openProfile) {
+                        HStack(spacing: LegendNextSpacing.xs) {
+                            LegendProfileAvatar(
+                                avatar: post.author.avatar,
+                                displayName: post.author.displayName,
+                                size: 38)
+                            LegendVerifiedName(
+                                post.author.displayName,
+                                isVerified: post.author.isVerified == true,
+                                font: .subheadline.weight(.bold),
+                                badgePlacement: .alongsideProfileImage)
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open \(post.author.displayName)'s profile")
+
+                    if !post.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(post.body)
+                            .font(.subheadline)
                             .foregroundStyle(.white)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if let music = post.music {
+                        Label(
+                            "\(music.trackTitle) · \(music.artistName)",
+                            systemImage: "music.note")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .lineLimit(1)
                     }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open \(post.author.displayName)'s profile")
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                if !post.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(post.body)
-                        .font(.subheadline)
-                        .foregroundStyle(.white)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                hacActionRail
+            }
 
-                if let music = post.music {
-                    Label(
-                        "\(music.trackTitle) · \(music.artistName)",
-                        systemImage: "music.note")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .lineLimit(1)
+            if !bottomNavigationVisible {
+                HStack(spacing: LegendNextSpacing.sm) {
+                    Button(action: comment) {
+                        HStack(spacing: LegendNextSpacing.xs) {
+                            Image(systemName: "bubble.right")
+                            Text("Add comment…")
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.96))
+                        .padding(.horizontal, LegendNextSpacing.md)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(.black.opacity(0.62), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Add a comment")
+
+                    Button {
+                        social.toggleSave(postID: post.id)
+                    } label: {
+                        Image(systemName: post.savedByCurrentActor ? "bookmark.fill" : "bookmark")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(post.savedByCurrentActor ? LegendNextColor.gold : .white)
+                            .frame(width: 48, height: 48)
+                            .background(LegendNextColor.navy.opacity(0.82), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(post.savedByCurrentActor ? "Remove saved Hac" : "Save Hac")
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.bottom, safeAreaBottom == 0 ? 0 : LegendNextSpacing.micro)
+    }
 
-            VStack(spacing: LegendNextSpacing.sm) {
+    private var hacActionRail: some View {
+        VStack(spacing: LegendNextSpacing.sm) {
                 hacAction(
                     symbol: post.reactedByCurrentActor ? "heart.fill" : "heart",
                     count: post.metrics.reactionCount,
@@ -2192,13 +2479,6 @@ private struct LegendHacViewportPage: View {
                     count: post.metrics.commentCount,
                     title: "Comment",
                     action: comment)
-
-                hacAction(
-                    symbol: post.savedByCurrentActor ? "bookmark.fill" : "bookmark",
-                    count: post.metrics.saveCount,
-                    title: post.savedByCurrentActor ? "Remove saved Hac" : "Save Hac",
-                    tint: post.savedByCurrentActor ? LegendNextColor.gold : .white,
-                    action: { social.toggleSave(postID: post.id) })
 
                 hacAction(
                     symbol: "arrow.2.squarepath",
@@ -2227,8 +2507,19 @@ private struct LegendHacViewportPage: View {
                     count: nil,
                     title: playback.isMuted ? "Unmute Hac" : "Mute Hac",
                     action: playback.toggleMute)
-            }
         }
+    }
+
+    private func overlayBottomInset(
+        bottomNavigationVisible: Bool,
+        safeAreaBottom: CGFloat
+    ) -> CGFloat {
+        // The permanent app tab bar is visually over the Hac canvas. Keep the
+        // creator and action rail above it; when it hides on a downward scroll,
+        // the compact comment composer can take the true bottom position.
+        bottomNavigationVisible
+            ? 104 + safeAreaBottom
+            : max(LegendNextSpacing.sm, safeAreaBottom)
     }
 
     private func hacAction(
@@ -3001,11 +3292,25 @@ private struct LegendCommentComposer: View {
     let postID: UUID
     @ObservedObject var social: MobileSocialStore
     let cancel: () -> Void
+    private let focusesComposerOnPresentation: Bool
 
     @FocusState private var composerFocused: Bool
     @State private var draft = ""
     @State private var replyTarget: MobileSocialComment?
     @State private var selectedDetent: PresentationDetent = .medium
+
+    init(
+        postID: UUID,
+        social: MobileSocialStore,
+        focusesComposerOnPresentation: Bool = false,
+        cancel: @escaping () -> Void
+    ) {
+        self.postID = postID
+        _social = ObservedObject(wrappedValue: social)
+        self.focusesComposerOnPresentation = focusesComposerOnPresentation
+        self.cancel = cancel
+        _selectedDetent = State(initialValue: focusesComposerOnPresentation ? .large : .medium)
+    }
 
     private var post: MobileSocialPost? {
         guard case .loaded(let snapshot) = social.state else {
@@ -3069,6 +3374,10 @@ private struct LegendCommentComposer: View {
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(LegendNextRadius.sheet)
         .legendNextBrandedSheetAppearance()
+        .onAppear {
+            guard focusesComposerOnPresentation else { return }
+            composerFocused = true
+        }
     }
 
     private func postPreview(

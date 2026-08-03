@@ -33,8 +33,9 @@ dotnet publish "$PROJECT" -c Release -o "$PUBLISH_DIR"
 
 echo "▶ Adding verified FFmpeg runtime..."
 rm -rf "$FFMPEG_EXTRACT_DIR"
-rm -f "$FFMPEG_ARCHIVE"
-curl --fail --location --retry 3 --retry-delay 2 "$FFMPEG_URL" -o "$FFMPEG_ARCHIVE"
+if ! printf "%s  %s\n" "$FFMPEG_SHA256" "$FFMPEG_ARCHIVE" | shasum -a 256 -c - >/dev/null 2>&1; then
+  curl --fail --location --retry 3 --retry-delay 2 --continue-at - "$FFMPEG_URL" -o "$FFMPEG_ARCHIVE"
+fi
 printf "%s  %s\n" "$FFMPEG_SHA256" "$FFMPEG_ARCHIVE" | shasum -a 256 -c -
 unzip -tq "$FFMPEG_ARCHIVE"
 unzip -q "$FFMPEG_ARCHIVE" -d "$FFMPEG_EXTRACT_DIR"
@@ -51,7 +52,7 @@ PORTAL_CONNECTION_STRING=$(az webapp config connection-string list \
   --resource-group "$RESOURCE_GROUP" \
   --name "$APP_NAME" \
   --subscription "$SUBSCRIPTION" \
-  --query "MasterAppDb.value" -o tsv)
+  --query "[?name=='MasterAppDb'].value | [0]" -o tsv)
 if [ -z "$PORTAL_CONNECTION_STRING" ]; then
   PORTAL_CONNECTION_STRING=$(az webapp config appsettings list \
     --resource-group "$RESOURCE_GROUP" \

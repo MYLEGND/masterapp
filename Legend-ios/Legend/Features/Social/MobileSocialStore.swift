@@ -1,6 +1,14 @@
 import AVFoundation
 import Foundation
 
+/// The authenticated HTTP source for one protected social video.  It is not a
+/// second cache or a public URL: the native resource loader owns it solely to
+/// issue authenticated byte-range requests to the existing media endpoint.
+struct MobileSocialMediaStream: Sendable {
+    let url: URL
+    let headers: [String: String]
+}
+
 /// Native creation policy shared by the picker and the file preparer. It is
 /// deliberately non-UI isolated because the picker reads it before any video
 /// export begins.
@@ -282,6 +290,7 @@ protocol MobileSocialAPI: Sendable {
     func deletePost(postID: UUID, accessToken: String) async throws
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data
     func downloadMedia(assetID: UUID, accessToken: String) async throws -> URL
+    func mediaStream(assetID: UUID, accessToken: String) async throws -> MobileSocialMediaStream?
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost
     func addComment(postID: UUID, request: MobileCreateSocialComment, accessToken: String) async throws -> MobileSocialComment
     func toggleFollow(_ request: MobileToggleSocialFollow, accessToken: String) async throws -> MobileSocialFollowResult
@@ -341,6 +350,16 @@ extension MobileSocialAPI {
             .appendingPathComponent("legend-social-download-\(assetID.uuidString)")
         try data.write(to: url, options: .atomic)
         return url
+    }
+
+    /// Test and offline implementations retain the file-backed fallback.  The
+    /// production client supplies a stream source so Hac playback does not wait
+    /// for a complete protected MP4 download.
+    func mediaStream(
+        assetID: UUID,
+        accessToken: String
+    ) async throws -> MobileSocialMediaStream? {
+        nil
     }
 
     /// Optional for API doubles that do not exercise profile relationships. The
@@ -593,6 +612,16 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
             headers: participantHeader)
     }
 
+    func mediaStream(
+        assetID: UUID,
+        accessToken: String
+    ) async throws -> MobileSocialMediaStream? {
+        try client.protectedMediaStream(
+            "/api/v1/mobile/social/media/\(assetID.uuidString)",
+            accessToken: accessToken,
+            headers: participantHeader)
+    }
+
 
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost {
         try await client.post("/api/v1/mobile/social/posts/\(postID.uuidString)/reaction", body: EmptyMobileRequest(), accessToken: accessToken, headers: participantHeader, response: MobileSocialPost.self)
@@ -718,6 +747,7 @@ final class MobileSocialStore: ObservableObject {
     private let mediaCache = NSCache<NSUUID, NSData>()
     private let previewCache = NSCache<NSUUID, NSData>()
     private var mediaFileCache: [UUID: CachedMediaFile] = [:]
+    private var mediaStreamCache: [UUID: MobileSocialMediaStream] = [:]
     private var mediaLoadTasks: [UUID: Task<Data?, Never>] = [:]
     private var previewLoadTasks: [UUID: Task<Data?, Never>] = [:]
     private var mediaFileLoadTasks: [UUID: Task<URL?, Never>] = [:]
@@ -1012,6 +1042,37 @@ final class MobileSocialStore: ObservableObject {
         let fileURL = await task.value
         mediaFileLoadTasks.removeValue(forKey: media.id)
         return fileURL
+    }
+
+    /// Returns the one protected source used by the shared Hac playback
+    /// coordinator.  AVFoundation consumes this through range requests; it
+    /// does not materialize the complete MP4 before it can render frame one.
+    func mediaStream(
+        for media: MobileSocialMedia,
+        forceRefresh: Bool = false
+    ) async -> MobileSocialMediaStream? {
+        if forceRefresh {
+            mediaStreamCache.removeValue(forKey: media.id)
+            mediaFailures.removeValue(forKey: media.id)
+        } else if let cached = mediaStreamCache[media.id] {
+            return cached
+        }
+
+        do {
+            let token = try await accessTokenProvider()
+            guard let stream = try await api.mediaStream(
+                assetID: media.id,
+                accessToken: token) else {
+                return nil
+            }
+            mediaStreamCache[media.id] = stream
+            mediaFailures.removeValue(forKey: media.id)
+            return stream
+        } catch {
+            // Preserve the established local-file fallback for an API double
+            // or a deployment that has not yet enabled stream sources.
+            return nil
+        }
     }
 
     func mediaFailure(for assetID: UUID) -> UserFacingFailure? {

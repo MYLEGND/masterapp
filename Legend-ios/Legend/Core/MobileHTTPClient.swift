@@ -86,6 +86,24 @@ struct MobileHTTPClient: Sendable {
         self.session = session
     }
 
+    /// A protected media location for AVFoundation's byte-range loader.  The
+    /// loader, rather than a full-file URLSession download, applies these
+    /// headers to every range request so playback can begin as soon as the MP4
+    /// fast-start metadata and first samples arrive.
+    func protectedMediaStream(
+        _ path: String,
+        accessToken: String,
+        headers: [String: String] = [:]
+    ) throws -> MobileSocialMediaStream {
+        var requestHeaders = headers
+        requestHeaders["Authorization"] = "Bearer \(accessToken)"
+        requestHeaders["Accept"] = "video/*"
+
+        return MobileSocialMediaStream(
+            url: try endpointURL(path, queryItems: []),
+            headers: requestHeaders)
+    }
+
     func get<Response: Decodable>(
         _ path: String,
         accessToken: String,
