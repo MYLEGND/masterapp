@@ -146,6 +146,38 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(message.sentUTC.timeIntervalSince1970, 1_785_065_221.1234567, accuracy: 0.001)
     }
 
+    func testConversationMessagePreservesTheServerProvidedTranslationPresentation() throws {
+        let data = Data("""
+        {
+          "id": "00000000-0000-0000-0000-000000000011",
+          "conversationId": "00000000-0000-0000-0000-000000000010",
+          "sender": {
+            "identity": { "userId": "agent-oid", "participantType": "Agent" },
+            "profileId": "00000000-0000-0000-0000-000000000001",
+            "displayName": "Agent One",
+            "avatar": null
+          },
+          "body": "Èske ou resevwa tout bagay ki te klase epi rezoud?",
+          "originalBody": "Did you get everything all sorted out and resolved?",
+          "translation": {
+            "originalLanguage": "en",
+            "targetLanguage": "ht",
+            "provider": "AzureTranslator"
+          },
+          "sentUtc": "2026-08-03T00:31:53Z",
+          "attachments": [],
+          "isMine": false
+        }
+        """.utf8)
+
+        let message = try JSONDecoder.mobile.decode(ConversationMessage.self, from: data)
+
+        XCTAssertEqual(message.body, "Èske ou resevwa tout bagay ki te klase epi rezoud?")
+        XCTAssertEqual(message.originalBody, "Did you get everything all sorted out and resolved?")
+        XCTAssertEqual(message.translation?.originalLanguage, "en")
+        XCTAssertEqual(message.translation?.targetLanguage, "ht")
+    }
+
     func testMessageAttachmentDTOUsesTheServerScanState() throws {
         let data = Data("""
         {

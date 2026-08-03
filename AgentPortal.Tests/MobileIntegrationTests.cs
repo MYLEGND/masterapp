@@ -528,11 +528,16 @@ public sealed class MobileIntegrationTests
                     conversationId,
                     "client-oid",
                     MessagingParticipantTypes.Client,
-                    "Server-authorized message",
+                    "Mesaj sèvè a tradui",
                     DateTime.UtcNow,
                     null,
                     false,
-                    Array.Empty<MessagingAttachmentSummary>())
+                    Array.Empty<MessagingAttachmentSummary>(),
+                    Translation: new MessagingTranslationPresentation(
+                        "en",
+                        "ht",
+                        "AzureTranslator"),
+                    OriginalBody: "Server-authorized message")
             ]);
         var messaging = new Mock<IMessagingService>(MockBehavior.Strict);
         messaging.Setup(x => x.GetConversationAsync(actor, conversationId, It.IsAny<CancellationToken>()))
@@ -552,7 +557,11 @@ public sealed class MobileIntegrationTests
         var messagesResult = await controller.Messages(conversationId, CancellationToken.None);
         var messages = Assert.IsAssignableFrom<IReadOnlyList<MobileMessageDto>>(Assert.IsType<OkObjectResult>(messagesResult).Value);
         Assert.Single(messages);
-        Assert.Equal("Server-authorized message", messages[0].Body);
+        Assert.Equal("Mesaj sèvè a tradui", messages[0].Body);
+        Assert.Equal("Server-authorized message", messages[0].OriginalBody);
+        var translation = Assert.IsType<MobileMessageTranslationDto>(messages[0].Translation);
+        Assert.Equal("en", translation.OriginalLanguage);
+        Assert.Equal("ht", translation.TargetLanguage);
 
         var readResult = await controller.MarkRead(conversationId, CancellationToken.None);
         Assert.IsType<NoContentResult>(readResult);

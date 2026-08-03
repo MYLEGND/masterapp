@@ -157,8 +157,10 @@ internal sealed class MessagingService : IMessagingService
                 x.SenderUserId,
                 x.SenderType,
                 x.Body,
+                x.OriginalLanguage,
                 x.SentUtc,
-                x.IsDeleted))
+                x.IsDeleted,
+                x.VerificationReviewRequestId))
             .ToListAsync(cancellationToken);
 
         var clientParticipantIds = participants
@@ -175,6 +177,7 @@ internal sealed class MessagingService : IMessagingService
 
         var displayNames = await LoadDisplayNamesAsync(participants, cancellationToken);
         var result = new List<MessagingConversationSummary>(conversations.Count);
+        var latestMessagesByConversation = new Dictionary<Guid, MessageListRow>();
         foreach (var conversation in conversations)
         {
             var conversationParticipants = participants
@@ -199,6 +202,8 @@ internal sealed class MessagingService : IMessagingService
                 !IsCurrentActor(x.SenderUserId, x.SenderType, actorUserIds, actorParticipantType) &&
                 (!currentParticipant.LastReadUtc.HasValue || x.SentUtc > currentParticipant.LastReadUtc.Value));
             var latest = conversationMessages.FirstOrDefault(x => !x.IsDeleted);
+            if (latest is not null)
+                latestMessagesByConversation[conversation.Id] = latest;
             var isArchivedMembership =
                 conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
                 conversationParticipants
@@ -219,6 +224,33 @@ internal sealed class MessagingService : IMessagingService
                 ToGroupImage(conversation.GroupImageContent, conversation.GroupImageContentType),
                 currentParticipant.PinnedUtc.HasValue,
                 currentParticipant.IsMuted));
+        }
+
+        if (latestMessagesByConversation.Count > 0)
+        {
+            var latestMessages = latestMessagesByConversation.Values
+                .Where(message => !message.VerificationReviewRequestId.HasValue)
+                .ToArray();
+            if (latestMessages.Length > 0)
+            {
+                var translated = await ApplyTranslationPresentationAsync(
+                    actor,
+                    latestMessages.Select(ToPreviewMessageSummary).ToArray(),
+                    latestMessages.Select(ToPreviewMessageDetailRow).ToArray(),
+                    cancellationToken);
+                var previewsByMessageId = translated.ToDictionary(message => message.Id, message => message.Body);
+
+                result = result.Select(conversation =>
+                {
+                    if (!latestMessagesByConversation.TryGetValue(conversation.Id, out var latest) ||
+                        !previewsByMessageId.TryGetValue(latest.Id, out var preview))
+                    {
+                        return conversation;
+                    }
+
+                    return conversation with { LastMessagePreview = Preview(preview) };
+                }).ToList();
+            }
         }
 
         // Legacy data can contain more than one direct conversation for the
@@ -3253,6 +3285,31 @@ internal sealed class MessagingService : IMessagingService
         attachment.CreatedUtc,
         string.Equals(attachment.ScanStatus, MessagingAttachmentScanStatuses.Clean, StringComparison.OrdinalIgnoreCase));
 
+    private static MessagingMessageSummary ToPreviewMessageSummary(MessageListRow message) => new(
+        message.Id,
+        message.ConversationId,
+        message.SenderUserId,
+        message.SenderType,
+        message.Body,
+        message.SentUtc,
+        null,
+        message.IsDeleted,
+        Array.Empty<MessagingAttachmentSummary>());
+
+    private static MessageDetailRow ToPreviewMessageDetailRow(MessageListRow message) => new(
+        message.Id,
+        message.ConversationId,
+        message.SenderUserId,
+        message.SenderType,
+        message.Body,
+        message.OriginalLanguage,
+        message.SentUtc,
+        null,
+        message.IsDeleted,
+        null,
+        null,
+        null);
+
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim() ?? string.Empty;
 
@@ -3359,8 +3416,10 @@ internal sealed class MessagingService : IMessagingService
         string SenderUserId,
         string SenderType,
         string Body,
+        string? OriginalLanguage,
         DateTime SentUtc,
-        bool IsDeleted);
+        bool IsDeleted,
+        Guid? VerificationReviewRequestId);
 
     private sealed record MessageDetailRow(
         Guid Id,
