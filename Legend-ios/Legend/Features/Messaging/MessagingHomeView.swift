@@ -705,6 +705,7 @@ private struct LegendRecipientPicker: View {
     @State private var isCreatingGroup = false
     @State private var groupSubject = ""
     @State private var groupRecipients: [LogicalParticipantIdentity: MessagingRecipient] = [:]
+    @State private var groupMeetingDraft = LegendGroupMeetingDraft()
     @State private var selectedGroupPhoto: PhotosPickerItem?
     @State private var groupPhotoData: Data?
 
@@ -764,6 +765,7 @@ private struct LegendRecipientPicker: View {
                     isCreatingGroup.toggle()
                     groupRecipients.removeAll()
                     groupSubject = ""
+                    groupMeetingDraft = LegendGroupMeetingDraft()
                     groupPhotoData = nil
                     selectedGroupPhoto = nil
                 } label: {
@@ -878,12 +880,18 @@ private struct LegendRecipientPicker: View {
                     )
             }
 
+            LegendGroupMeetingEditor(
+                draft: $groupMeetingDraft,
+                hostOptions: groupHostOptions,
+                canManageMeeting: true)
+
             Button(store.isCreatingGroup ? "Creating group…" : "Create group (\(groupRecipients.count))") {
                 let recipients = Array(groupRecipients.values)
                 store.createGroup(
                     subject: groupSubject,
                     recipients: recipients,
-                    groupImage: legendMessagingGroupImageRequest(from: groupPhotoData)) { conversationID in
+                    groupImage: legendMessagingGroupImageRequest(from: groupPhotoData),
+                    meeting: groupMeetingDraft.request) { conversationID in
                     selectConversation(conversationID)
                 }
             }
@@ -891,7 +899,8 @@ private struct LegendRecipientPicker: View {
             .disabled(
                 store.isCreatingGroup ||
                 groupSubject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                groupRecipients.count < 2
+                groupRecipients.count < 2 ||
+                !groupMeetingDraft.isValid
             )
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -903,6 +912,17 @@ private struct LegendRecipientPicker: View {
                 selectedGroupPhoto = nil
             }
         }
+    }
+
+    private var groupHostOptions: [LegendGroupHostOption] {
+        groupRecipients.values
+            .map { recipient in
+                LegendGroupHostOption(
+                    identity: recipient.identity,
+                    displayName: recipient.displayName,
+                    detail: recipient.relationshipLabel ?? "Group member")
+            }
+            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
 
     private var recipientScopes: some View {
@@ -1088,6 +1108,9 @@ private struct LegendRecipientPicker: View {
             groupRecipients[recipient.identity] = recipient
         } else {
             groupRecipients.removeValue(forKey: recipient.identity)
+            if groupMeetingDraft.hostIdentity == recipient.identity {
+                groupMeetingDraft.hostIdentity = nil
+            }
         }
     }
 
@@ -1447,12 +1470,356 @@ private struct LegendGroupCollaboratorSheet: View {
     }
 }
 
+private enum LegendGroupMeetingFrequency: String, CaseIterable, Identifiable {
+    case oneTime = "OneTime"
+    case daily = "Daily"
+    case weekly = "Weekly"
+    case biweekly = "Biweekly"
+    case monthly = "Monthly"
+    case custom = "Custom"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .oneTime: return "One time"
+        case .daily: return "Daily"
+        case .weekly: return "Weekly"
+        case .biweekly: return "Every other week"
+        case .monthly: return "Monthly"
+        case .custom: return "Custom"
+        }
+    }
+
+    var usesLocalTime: Bool {
+        self != .oneTime && self != .custom
+    }
+
+    var needsWeekday: Bool {
+        self == .weekly || self == .biweekly
+    }
+}
+
+private enum LegendGroupMeetingWeekday: String, CaseIterable, Identifiable {
+    case sunday = "Sunday"
+    case monday = "Monday"
+    case tuesday = "Tuesday"
+    case wednesday = "Wednesday"
+    case thursday = "Thursday"
+    case friday = "Friday"
+    case saturday = "Saturday"
+
+    var id: String { rawValue }
+}
+
+private struct LegendGroupHostOption: Identifiable {
+    let identity: LogicalParticipantIdentity
+    let displayName: String
+    let detail: String
+
+    var id: LogicalParticipantIdentity { identity }
+}
+
+private struct LegendGroupMeetingDraft {
+    var hostIdentity: LogicalParticipantIdentity?
+    var isMeetingEnabled: Bool
+    var linkLabel: String
+    var linkURL: String
+    var isScheduleEnabled: Bool
+    var frequency: LegendGroupMeetingFrequency
+    var weekday: LegendGroupMeetingWeekday
+    var time: Date
+    var timeZoneID: String
+    var startDate: Date
+    var customDescription: String
+
+    init(meeting: MessagingGroupMeeting? = nil) {
+        hostIdentity = meeting?.host.identity
+        isMeetingEnabled = meeting?.linkLabel != nil || meeting?.linkURL != nil
+        linkLabel = meeting?.linkLabel ?? ""
+        linkURL = meeting?.linkURL ?? ""
+        isScheduleEnabled = meeting?.schedule != nil
+        frequency = meeting?.schedule.flatMap {
+            LegendGroupMeetingFrequency(rawValue: $0.frequency)
+        } ?? .weekly
+        weekday = meeting?.schedule?.weekdays.first.flatMap {
+            LegendGroupMeetingWeekday(rawValue: $0)
+        } ?? .wednesday
+        time = Self.date(for: meeting?.schedule?.localTime) ?? Date()
+        timeZoneID = meeting?.schedule?.timeZoneID ?? TimeZone.current.identifier
+        startDate = meeting?.schedule?.startsUTC ?? Date()
+        customDescription = meeting?.schedule?.customDescription ?? ""
+    }
+
+    var isValid: Bool {
+        guard isMeetingEnabled else { return true }
+        let label = normalized(linkLabel)
+        let urlValue = normalized(linkURL)
+        guard label != nil,
+              let urlValue,
+              let url = URL(string: urlValue),
+              ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
+              url.host?.isEmpty == false else {
+            return false
+        }
+
+        guard isScheduleEnabled else { return true }
+        if frequency.usesLocalTime && normalized(timeZoneID) == nil {
+            return false
+        }
+        if frequency == .custom && normalized(customDescription) == nil {
+            return false
+        }
+        return true
+    }
+
+    var request: MessagingGroupMeetingRequest {
+        let includesMeeting = isMeetingEnabled
+        let schedule: MessagingGroupMeetingScheduleRequest?
+        if includesMeeting && isScheduleEnabled {
+            schedule = MessagingGroupMeetingScheduleRequest(
+                frequency: frequency.rawValue,
+                weekdays: frequency.needsWeekday ? [weekday.rawValue] : [],
+                localTime: frequency.usesLocalTime ? Self.timeString(from: time) : nil,
+                timeZoneID: frequency.usesLocalTime ? normalized(timeZoneID) : nil,
+                startsUTC: frequency == .oneTime || frequency == .monthly
+                    ? startDate
+                    : nil,
+                customDescription: frequency == .custom
+                    ? normalized(customDescription)
+                    : nil)
+        } else {
+            schedule = nil
+        }
+
+        return MessagingGroupMeetingRequest(
+            host: hostIdentity.map {
+                MessagingGroupMemberRequest(
+                    userID: $0.userID,
+                    participantType: $0.participantType)
+            },
+            linkLabel: includesMeeting ? normalized(linkLabel) : nil,
+            linkURL: includesMeeting ? normalized(linkURL) : nil,
+            schedule: schedule)
+    }
+
+    private static func date(for localTime: String?) -> Date? {
+        guard let localTime else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter.date(from: localTime)
+    }
+
+    private static func timeString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private func normalized(_ value: String) -> String? {
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+}
+
+private struct LegendGroupMeetingEditor: View {
+    @Binding var draft: LegendGroupMeetingDraft
+    let hostOptions: [LegendGroupHostOption]
+    let canManageMeeting: Bool
+
+    @State private var isPresentingHostPicker = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Group host")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                    Text(hostName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                }
+
+                Spacer()
+
+                Button("Choose by name") {
+                    isPresentingHostPicker = true
+                }
+                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.bordered)
+            }
+
+            Toggle("Add an online meeting", isOn: $draft.isMeetingEnabled)
+                .font(.subheadline.weight(.semibold))
+                .tint(LegendNextColor.gold)
+
+            if draft.isMeetingEnabled {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                    TextField("Meeting link name (for example, Wednesday Zoom)", text: $draft.linkLabel)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                    TextField("Zoom, Teams, or Google Meet URL", text: $draft.linkURL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                .font(.subheadline)
+                .padding(LegendNextSpacing.sm)
+                .background(
+                    LegendNextColor.surfaceElevated,
+                    in: RoundedRectangle(
+                        cornerRadius: LegendNextRadius.compact,
+                        style: .continuous))
+
+                Toggle("Add a recurring schedule", isOn: $draft.isScheduleEnabled)
+                    .font(.subheadline.weight(.semibold))
+                    .tint(LegendNextColor.gold)
+
+                if draft.isScheduleEnabled {
+                    meetingScheduleControls
+                }
+            }
+        }
+        .padding(LegendNextSpacing.sm)
+        .background(
+            LegendNextColor.surfaceElevated.opacity(0.65),
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous))
+        .disabled(!canManageMeeting)
+        .sheet(isPresented: $isPresentingHostPicker) {
+            LegendGroupHostPicker(
+                options: hostOptions,
+                selectedHost: $draft.hostIdentity)
+        }
+    }
+
+    @ViewBuilder
+    private var meetingScheduleControls: some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            Picker("Frequency", selection: $draft.frequency) {
+                ForEach(LegendGroupMeetingFrequency.allCases) { frequency in
+                    Text(frequency.title).tag(frequency)
+                }
+            }
+            .pickerStyle(.menu)
+
+            if draft.frequency.needsWeekday {
+                Picker("Day", selection: $draft.weekday) {
+                    ForEach(LegendGroupMeetingWeekday.allCases) { weekday in
+                        Text(weekday.rawValue).tag(weekday)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
+            if draft.frequency == .oneTime {
+                DatePicker(
+                    "Date and time",
+                    selection: $draft.startDate,
+                    displayedComponents: [.date, .hourAndMinute])
+            } else if draft.frequency == .monthly {
+                DatePicker("Starts", selection: $draft.startDate, displayedComponents: .date)
+            }
+
+            if draft.frequency.usesLocalTime {
+                DatePicker("Time", selection: $draft.time, displayedComponents: .hourAndMinute)
+                TextField("Time zone", text: $draft.timeZoneID)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+
+            if draft.frequency == .custom {
+                TextField(
+                    "Custom schedule (for example, first and third Wednesday)",
+                    text: $draft.customDescription,
+                    axis: .vertical)
+                    .lineLimit(2...4)
+            }
+        }
+        .font(.subheadline)
+        .padding(LegendNextSpacing.sm)
+        .background(
+            LegendNextColor.canvas,
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.compact,
+                style: .continuous))
+    }
+
+    private var hostName: String {
+        guard let hostIdentity = draft.hostIdentity else {
+            return "You (group owner)"
+        }
+        return hostOptions.first(where: { $0.identity == hostIdentity })?.displayName
+            ?? "Selected group member"
+    }
+}
+
+private struct LegendGroupHostPicker: View {
+    let options: [LegendGroupHostOption]
+    @Binding var selectedHost: LogicalParticipantIdentity?
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var search = ""
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Button {
+                    selectedHost = nil
+                    dismiss()
+                } label: {
+                    Label("You (group owner)", systemImage: "person.crop.circle")
+                }
+
+                ForEach(filteredOptions) { option in
+                    Button {
+                        selectedHost = option.identity
+                        dismiss()
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(option.displayName)
+                                .font(.body.weight(.semibold))
+                            Text(option.detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .searchable(text: $search, prompt: "Search group members by name")
+            .navigationTitle("Choose group host")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private var filteredOptions: [LegendGroupHostOption] {
+        let search = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !search.isEmpty else { return options }
+        return options.filter {
+            $0.displayName.localizedCaseInsensitiveContains(search) ||
+                $0.detail.localizedCaseInsensitiveContains(search)
+        }
+    }
+}
+
 private struct LegendGroupProfileEditor: View {
     @ObservedObject var store: MessagingStore
     let conversation: ConversationDetail
     let dismiss: () -> Void
 
     @State private var subject: String
+    @State private var meetingDraft: LegendGroupMeetingDraft
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var replacementPhotoData: Data?
 
@@ -1465,6 +1832,7 @@ private struct LegendGroupProfileEditor: View {
         self.conversation = conversation
         self.dismiss = dismiss
         _subject = State(initialValue: conversation.title)
+        _meetingDraft = State(initialValue: LegendGroupMeetingDraft(meeting: conversation.meeting))
     }
 
     var body: some View {
@@ -1498,9 +1866,17 @@ private struct LegendGroupProfileEditor: View {
                                     style: .continuous))
                     }
 
+                    if conversation.canManageMeeting == true {
+                        LegendGroupMeetingEditor(
+                            draft: $meetingDraft,
+                            hostOptions: hostOptions,
+                            canManageMeeting: true)
+                    }
+
                     Text(
-                        "Group owners and collaborators can manage "
-                        + "the group name, photo, and membership.")
+                        conversation.canManageMeeting == true
+                            ? "Only the group owner can set the host, meeting link, and schedule. Collaborators can still manage the group name, photo, and membership."
+                            : "Group owners and collaborators can manage the group name, photo, and membership.")
                         .font(.footnote)
                         .foregroundStyle(LegendNextColor.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1513,7 +1889,9 @@ private struct LegendGroupProfileEditor: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: dismiss)
+                    Button("Cancel") {
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(store.isCreatingGroup ? "Saving…" : "Save") {
@@ -1521,11 +1899,15 @@ private struct LegendGroupProfileEditor: View {
                             conversationID: conversation.id,
                             subject: subject,
                             groupImage: legendMessagingGroupImageRequest(from: replacementPhotoData),
+                            meeting: conversation.canManageMeeting == true
+                                ? meetingDraft.request
+                                : nil,
                             completion: dismiss)
                     }
                     .disabled(
                         store.isCreatingGroup ||
-                        subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                        (conversation.canManageMeeting == true && !meetingDraft.isValid))
                 }
             }
             .onChange(of: selectedPhoto) { _, item in
@@ -1545,6 +1927,17 @@ private struct LegendGroupProfileEditor: View {
                 contentType: "image/jpeg",
                 base64Content: $0.base64EncodedString())
         }
+    }
+
+    private var hostOptions: [LegendGroupHostOption] {
+        conversation.participants
+            .map { participant in
+                LegendGroupHostOption(
+                    identity: participant.identity,
+                    displayName: participant.displayName,
+                    detail: participant.roleLabel ?? "Group member")
+            }
+            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
 }
 
@@ -2421,17 +2814,36 @@ private struct LegendConversationHeader: View {
                     textColor: .white,
                     badgePlacement: .alongsideProfileImage)
 
-                HStack(spacing: 5) {
-                    Image(systemName: "lock.shield.fill")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.goldBright)
+                if isGroup {
+                    HStack(spacing: 5) {
+                        Image(systemName: "lock.shield.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.goldBright)
 
-                    Text(conversation.isClosed
-                         ? "Closed Legend conversation"
-                         : relationshipSubtitle)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.72))
-                        .lineLimit(1)
+                        Text(conversation.isClosed
+                             ? "CLOSED LEGEND CONVERSATION"
+                             : "PRIVATE GROUP CHAT")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(1)
+                    }
+
+                    if let meeting = conversation.meeting {
+                        LegendGroupMeetingHeaderDetail(meeting: meeting)
+                    }
+                } else {
+                    HStack(spacing: 5) {
+                        Image(systemName: "lock.shield.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.goldBright)
+
+                        Text(conversation.isClosed
+                             ? "Closed Legend conversation"
+                             : relationshipSubtitle)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(1)
+                    }
                 }
             }
 
@@ -2533,10 +2945,6 @@ private struct LegendConversationHeader: View {
     }
 
     private var relationshipSubtitle: String {
-        if isGroup {
-            return "Private group chat"
-        }
-
         guard let counterparty else {
             return "Private Legend conversation"
         }
@@ -2564,6 +2972,96 @@ private struct LegendConversationHeader: View {
             return nil
         }
 
+        return value
+    }
+}
+
+private struct LegendGroupMeetingHeaderDetail: View {
+    let meeting: MessagingGroupMeeting
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let link = meetingLink {
+                Link(destination: link.url) {
+                    Label(link.label, systemImage: "video.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(LegendNextColor.goldBright)
+                        .lineLimit(1)
+                }
+                .accessibilityLabel("Open \(link.label)")
+            }
+
+            Text(detail)
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.66))
+                .lineLimit(2)
+        }
+        .padding(.top, 1)
+    }
+
+    private var meetingLink: (label: String, url: URL)? {
+        guard let label = normalized(meeting.linkLabel),
+              let value = normalized(meeting.linkURL),
+              let url = URL(string: value),
+              ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
+              url.host?.isEmpty == false else {
+            return nil
+        }
+        return (label, url)
+    }
+
+    private var detail: String {
+        let host = "Hosted by \(meeting.host.displayName)"
+        guard let schedule = meeting.schedule else { return host }
+        return "\(host) · \(scheduleDescription(schedule))"
+    }
+
+    private func scheduleDescription(_ schedule: MessagingGroupMeetingSchedule) -> String {
+        let time = displayTime(schedule.localTime)
+        let zone = normalized(schedule.timeZoneID)
+        let timeDetail = [time, zone].compactMap { $0 }.joined(separator: " ")
+
+        switch schedule.frequency {
+        case "OneTime":
+            if let startsUTC = schedule.startsUTC {
+                return startsUTC.formatted(date: .abbreviated, time: .shortened)
+            }
+            return "One-time meeting"
+        case "Daily":
+            return "Daily\(timeDetail.isEmpty ? "" : " at \(timeDetail)")"
+        case "Weekly":
+            return "Weekly on \(weekdayText(schedule))\(timeDetail.isEmpty ? "" : " at \(timeDetail)")"
+        case "Biweekly":
+            return "Every other \(weekdayText(schedule))\(timeDetail.isEmpty ? "" : " at \(timeDetail)")"
+        case "Monthly":
+            return "Monthly\(timeDetail.isEmpty ? "" : " at \(timeDetail)")"
+        case "Custom":
+            return normalized(schedule.customDescription) ?? "Custom schedule"
+        default:
+            return "Scheduled meeting"
+        }
+    }
+
+    private func weekdayText(_ schedule: MessagingGroupMeetingSchedule) -> String {
+        schedule.weekdays.isEmpty ? "selected days" : schedule.weekdays.joined(separator: ", ")
+    }
+
+    private func displayTime(_ value: String?) -> String? {
+        guard let value = normalized(value) else { return nil }
+        let parser = DateFormatter()
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.dateFormat = "HH:mm"
+        guard let date = parser.date(from: value) else { return value }
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    private func normalized(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
         return value
     }
 }

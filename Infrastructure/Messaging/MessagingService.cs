@@ -21,6 +21,11 @@ internal sealed class MessagingService : IMessagingService
     private const int MaximumAuditDetailLength = 1_000;
     private const int MaximumResolutionNoteLength = 1_000;
     private const int MaximumGroupImageBytes = 512 * 1_024;
+    private const int MaximumMeetingLinkLabelLength = 100;
+    private const int MaximumMeetingLinkUrlLength = 2_048;
+    private const int MaximumMeetingWeekdaysLength = 100;
+    private const int MaximumMeetingTimeZoneIdLength = 100;
+    private const int MaximumMeetingCustomDescriptionLength = 240;
     private const int MaximumPinnedConversations = 6;
 
     private readonly MasterAppDbContext _db;
@@ -326,7 +331,17 @@ internal sealed class MessagingService : IMessagingService
                 x.GroupImageContentType,
                 x.IsPromoted,
                 x.PromotionStartedUtc,
-                x.PromotionEndedUtc))
+                x.PromotionEndedUtc,
+                x.HostUserId,
+                x.HostParticipantType,
+                x.MeetingLinkLabel,
+                x.MeetingLinkUrl,
+                x.MeetingFrequency,
+                x.MeetingWeekdays,
+                x.MeetingLocalTime,
+                x.MeetingTimeZoneId,
+                x.MeetingStartsUtc,
+                x.MeetingCustomDescription))
             .FirstOrDefaultAsync(cancellationToken);
         if (conversation is null)
             return MessagingConversationResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The requested conversation was not found.");
@@ -389,9 +404,12 @@ internal sealed class MessagingService : IMessagingService
                     message.Reply!.SenderUserId,
                     message.Reply.SenderType)))
             .ToArray();
+        var hostIdentity = GroupMeetingHostReference(conversation);
         var displayNames = await LoadDisplayNamesAsync(
             participants,
-            messageParticipants,
+            hostIdentity is null
+                ? messageParticipants
+                : messageParticipants.Append(hostIdentity).ToArray(),
             cancellationToken);
         var reviewRequestIds = messages
             .Where(message => message.VerificationReviewRequestId.HasValue)
@@ -455,6 +473,17 @@ internal sealed class MessagingService : IMessagingService
                 actor.UserId,
                 actor.ParticipantType);
 
+        var participantSummaries = participants
+            .Select(x => ToParticipantSummary(x, displayNames) with
+            {
+                IsGroupManager = x.IsGroupManager
+            })
+            .ToList();
+        var meeting = ToGroupMeeting(
+            conversation,
+            participantSummaries,
+            displayNames);
+
         var detail = new MessagingConversationDetail(
             conversation.Id,
             conversation.ConversationType,
@@ -464,12 +493,7 @@ internal sealed class MessagingService : IMessagingService
             conversation.IsClosed,
             isArchivedMembership,
             currentParticipant?.IsMuted == true,
-            participants
-                .Select(x => ToParticipantSummary(x, displayNames) with
-                {
-                    IsGroupManager = x.IsGroupManager
-                })
-                .ToList(),
+            participantSummaries,
             messageSummaries,
             isGroupOwner || isGroupManager,
             conversation.Purpose,
@@ -479,7 +503,9 @@ internal sealed class MessagingService : IMessagingService
             conversation.IsPromoted,
             conversation.PromotionStartedUtc,
             conversation.PromotionEndedUtc,
-            canManagePromotion);
+            canManagePromotion,
+            meeting,
+            isGroupOwner && conversation.Purpose is null);
 
         return new MessagingConversationResult(true, null, null, detail);
     }
@@ -826,6 +852,20 @@ internal sealed class MessagingService : IMessagingService
                 "The group members are invalid.");
         }
 
+        if (!TryNormalizeGroupMeeting(
+                command.Meeting,
+                authorizedParticipants.Append(new MessagingParticipantReference(
+                    actor.UserId,
+                    actor.ParticipantType)).ToArray(),
+                new MessagingParticipantReference(actor.UserId, actor.ParticipantType),
+                out var meeting,
+                out var meetingError))
+        {
+            return MessagingConversationResult.Failure(
+                "MESSAGING_GROUP_MEETING_INVALID",
+                meetingError);
+        }
+
         return await CreateGroupConversationCoreAsync(
             actor,
             authorizedParticipants,
@@ -835,6 +875,7 @@ internal sealed class MessagingService : IMessagingService
             purpose: null,
             owner: new MessagingParticipantReference(actor.UserId, actor.ParticipantType),
             groupImage: command.GroupImage,
+            meeting: meeting,
             cancellationToken: cancellationToken);
     }
 
@@ -1441,12 +1482,48 @@ internal sealed class MessagingService : IMessagingService
                 "Only the group owner or a collaborator can edit this group.");
         }
 
+        NormalizedGroupMeeting? meeting = null;
+        if (command.Meeting is not null)
+        {
+            if (!isGroupOwner || conversation.Purpose is not null)
+            {
+                return MessagingOperationResult.Failure(
+                    "MESSAGING_GROUP_OWNER_REQUIRED",
+                    "Only the group owner can update the host or meeting details.");
+            }
+
+            var allowedHosts = conversation.Participants
+                .Where(participant => participant.IsActive)
+                .Select(participant => new MessagingParticipantReference(
+                    participant.UserId,
+                    participant.ParticipantType))
+                .ToArray();
+            var fallbackHost = new MessagingParticipantReference(
+                conversation.OwnerUserId ?? string.Empty,
+                conversation.OwnerParticipantType ?? string.Empty);
+            if (!TryNormalizeGroupMeeting(
+                    command.Meeting,
+                    allowedHosts,
+                    fallbackHost,
+                    out var normalizedMeeting,
+                    out var meetingError))
+            {
+                return MessagingOperationResult.Failure(
+                    "MESSAGING_GROUP_MEETING_INVALID",
+                    meetingError);
+            }
+
+            meeting = normalizedMeeting;
+        }
+
         conversation.Subject = subject;
         if (command.GroupImage is not null)
         {
             conversation.GroupImageContent = command.GroupImage.Content;
             conversation.GroupImageContentType = command.GroupImage.ContentType;
         }
+        if (meeting is not null)
+            ApplyGroupMeeting(conversation, meeting);
         conversation.UpdatedUtc = DateTime.UtcNow;
         AddAudit(actor.UserId, "GroupProfileUpdated", conversation.Id, null, null, null, conversation.UpdatedUtc);
         return await SaveOperationAsync("GroupProfileUpdated", actor.UserId, conversation.Id, cancellationToken);
@@ -2937,6 +3014,7 @@ internal sealed class MessagingService : IMessagingService
         string? purpose,
         MessagingParticipantReference owner,
         MessagingGroupImage? groupImage,
+        NormalizedGroupMeeting meeting,
         CancellationToken cancellationToken)
     {
         if (!IsValidGroupImage(groupImage))
@@ -2967,7 +3045,17 @@ internal sealed class MessagingService : IMessagingService
             OwnerUserId = owner.UserId,
             OwnerParticipantType = owner.ParticipantType,
             GroupImageContent = groupImage?.Content,
-            GroupImageContentType = groupImage?.ContentType
+            GroupImageContentType = groupImage?.ContentType,
+            HostUserId = meeting.HostUserId,
+            HostParticipantType = meeting.HostParticipantType,
+            MeetingLinkLabel = meeting.LinkLabel,
+            MeetingLinkUrl = meeting.LinkUrl,
+            MeetingFrequency = meeting.Schedule?.Frequency,
+            MeetingWeekdays = meeting.Schedule?.Weekdays,
+            MeetingLocalTime = meeting.Schedule?.LocalTime,
+            MeetingTimeZoneId = meeting.Schedule?.TimeZoneId,
+            MeetingStartsUtc = meeting.Schedule?.StartsUtc,
+            MeetingCustomDescription = meeting.Schedule?.CustomDescription
         };
         _db.MessageConversations.Add(conversation);
 
@@ -3453,6 +3541,289 @@ internal sealed class MessagingService : IMessagingService
           string.Equals(image.ContentType, "image/png", StringComparison.OrdinalIgnoreCase) ||
           string.Equals(image.ContentType, "image/heic", StringComparison.OrdinalIgnoreCase)));
 
+    private static bool TryNormalizeGroupMeeting(
+        MessagingGroupMeetingSetup? requested,
+        IReadOnlyCollection<MessagingParticipantReference> allowedHosts,
+        MessagingParticipantReference fallbackHost,
+        out NormalizedGroupMeeting meeting,
+        out string error)
+    {
+        meeting = default!;
+        error = "Choose a valid group host and meeting configuration.";
+
+        var requestedHost = requested?.Host ?? fallbackHost;
+        var hostUserId = NormalizeUserId(requestedHost.UserId);
+        var hostParticipantType = NormalizeRequired(requestedHost.ParticipantType);
+        if (string.IsNullOrWhiteSpace(hostUserId) ||
+            !Fits(hostUserId, 450) ||
+            !IsParticipantType(hostParticipantType) ||
+            !allowedHosts.Any(candidate => IsSameParticipant(
+                candidate.UserId,
+                candidate.ParticipantType,
+                hostUserId,
+                hostParticipantType)))
+        {
+            error = "Choose a host who is a current member of this group.";
+            return false;
+        }
+
+        var linkLabel = NormalizeOptional(requested?.LinkLabel);
+        var linkUrl = NormalizeOptional(requested?.LinkUrl);
+        if (!Fits(linkLabel, MaximumMeetingLinkLabelLength) ||
+            !Fits(linkUrl, MaximumMeetingLinkUrlLength) ||
+            (linkLabel is null) != (linkUrl is null))
+        {
+            error = "Provide both a concise meeting-link name and a valid link.";
+            return false;
+        }
+
+        if (linkUrl is not null)
+        {
+            if (!Uri.TryCreate(linkUrl, UriKind.Absolute, out var uri) ||
+                !uri.IsWellFormedOriginalString() ||
+                (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp) ||
+                string.IsNullOrWhiteSpace(uri.Host) ||
+                !string.IsNullOrEmpty(uri.UserInfo))
+            {
+                error = "The meeting link must be a complete HTTP or HTTPS URL.";
+                return false;
+            }
+
+            linkUrl = uri.AbsoluteUri;
+        }
+
+        NormalizedGroupMeetingSchedule? schedule = null;
+        if (requested?.Schedule is not null)
+        {
+            if (linkUrl is null)
+            {
+                error = "Add the meeting link before setting its frequency.";
+                return false;
+            }
+
+            if (!TryNormalizeGroupMeetingSchedule(requested.Schedule, out schedule, out error))
+                return false;
+        }
+
+        meeting = new NormalizedGroupMeeting(
+            hostUserId,
+            hostParticipantType,
+            linkLabel,
+            linkUrl,
+            schedule);
+        return true;
+    }
+
+    private static bool TryNormalizeGroupMeetingSchedule(
+        MessagingGroupMeetingSchedule requested,
+        out NormalizedGroupMeetingSchedule schedule,
+        out string error)
+    {
+        schedule = default!;
+        error = "Choose a valid meeting frequency.";
+
+        var frequency = NormalizeMeetingFrequency(requested.Frequency);
+        if (frequency is null)
+            return false;
+
+        var weekdays = new List<DayOfWeek>();
+        foreach (var value in requested.Weekdays ?? Array.Empty<string>())
+        {
+            if (!Enum.TryParse<DayOfWeek>(NormalizeRequired(value), ignoreCase: true, out var weekday) ||
+                weekdays.Contains(weekday))
+            {
+                error = "Choose valid meeting weekdays.";
+                return false;
+            }
+
+            weekdays.Add(weekday);
+        }
+
+        var localTime = NormalizeOptional(requested.LocalTime);
+        if (localTime is not null)
+        {
+            if (!TimeOnly.TryParseExact(
+                    localTime,
+                    "HH:mm",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None,
+                    out var parsedTime))
+            {
+                error = "Choose a valid local meeting time.";
+                return false;
+            }
+
+            localTime = parsedTime.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        var timeZoneId = NormalizeOptional(requested.TimeZoneId);
+        if (!Fits(timeZoneId, MaximumMeetingTimeZoneIdLength) ||
+            timeZoneId?.Any(char.IsControl) == true)
+        {
+            error = "Choose a valid meeting time zone.";
+            return false;
+        }
+
+        var customDescription = NormalizeOptional(requested.CustomDescription);
+        if (!Fits(customDescription, MaximumMeetingCustomDescriptionLength))
+        {
+            error = "The custom schedule is too long.";
+            return false;
+        }
+
+        var startsUtc = requested.StartsUtc?.ToUniversalTime();
+        if (startsUtc == DateTime.MinValue)
+        {
+            error = "Choose a valid meeting date.";
+            return false;
+        }
+
+        var usesLocalTime = frequency is MessagingGroupMeetingFrequencies.Daily or
+            MessagingGroupMeetingFrequencies.Weekly or
+            MessagingGroupMeetingFrequencies.Biweekly or
+            MessagingGroupMeetingFrequencies.Monthly;
+        if (usesLocalTime && (localTime is null || timeZoneId is null))
+        {
+            error = "Choose both a local time and time zone for this recurrence.";
+            return false;
+        }
+        if (!usesLocalTime && (localTime is not null || timeZoneId is not null))
+        {
+            error = "Use the selected date for a one-time meeting, or choose a recurring frequency.";
+            return false;
+        }
+
+        var requiresWeekday = frequency is MessagingGroupMeetingFrequencies.Weekly or
+            MessagingGroupMeetingFrequencies.Biweekly;
+        if (requiresWeekday && weekdays.Count == 0)
+        {
+            error = "Choose at least one weekday for this recurrence.";
+            return false;
+        }
+        if (!requiresWeekday && weekdays.Count > 0)
+        {
+            error = "Weekdays can only be selected for weekly recurrences.";
+            return false;
+        }
+
+        if (frequency == MessagingGroupMeetingFrequencies.OneTime && startsUtc is null)
+        {
+            error = "Choose the date and time for this meeting.";
+            return false;
+        }
+        if (frequency == MessagingGroupMeetingFrequencies.Monthly && startsUtc is null)
+        {
+            error = "Choose the monthly meeting start date.";
+            return false;
+        }
+        if (frequency == MessagingGroupMeetingFrequencies.Custom && customDescription is null)
+        {
+            error = "Describe the custom meeting schedule.";
+            return false;
+        }
+
+        var weekdaysValue = weekdays.Count == 0
+            ? null
+            : string.Join(',', weekdays.Select(weekday => weekday.ToString()));
+        if (!Fits(weekdaysValue, MaximumMeetingWeekdaysLength))
+        {
+            error = "Choose fewer meeting weekdays.";
+            return false;
+        }
+
+        schedule = new NormalizedGroupMeetingSchedule(
+            frequency,
+            weekdaysValue,
+            localTime,
+            timeZoneId,
+            startsUtc,
+            customDescription);
+        return true;
+    }
+
+    private static string? NormalizeMeetingFrequency(string? value) =>
+        NormalizeRequired(value).ToLowerInvariant() switch
+        {
+            "onetime" => MessagingGroupMeetingFrequencies.OneTime,
+            "daily" => MessagingGroupMeetingFrequencies.Daily,
+            "weekly" => MessagingGroupMeetingFrequencies.Weekly,
+            "biweekly" => MessagingGroupMeetingFrequencies.Biweekly,
+            "monthly" => MessagingGroupMeetingFrequencies.Monthly,
+            "custom" => MessagingGroupMeetingFrequencies.Custom,
+            _ => null
+        };
+
+    private static void ApplyGroupMeeting(
+        MessageConversation conversation,
+        NormalizedGroupMeeting meeting)
+    {
+        conversation.HostUserId = meeting.HostUserId;
+        conversation.HostParticipantType = meeting.HostParticipantType;
+        conversation.MeetingLinkLabel = meeting.LinkLabel;
+        conversation.MeetingLinkUrl = meeting.LinkUrl;
+        conversation.MeetingFrequency = meeting.Schedule?.Frequency;
+        conversation.MeetingWeekdays = meeting.Schedule?.Weekdays;
+        conversation.MeetingLocalTime = meeting.Schedule?.LocalTime;
+        conversation.MeetingTimeZoneId = meeting.Schedule?.TimeZoneId;
+        conversation.MeetingStartsUtc = meeting.Schedule?.StartsUtc;
+        conversation.MeetingCustomDescription = meeting.Schedule?.CustomDescription;
+    }
+
+    private static MessagingParticipantReference? GroupMeetingHostReference(
+        ConversationDetailRow conversation)
+    {
+        if (conversation.ConversationType != MessagingConversationTypes.Group ||
+            conversation.Purpose is not null)
+        {
+            return null;
+        }
+
+        var userId = NormalizeUserId(conversation.HostUserId ?? conversation.OwnerUserId);
+        var participantType = NormalizeRequired(
+            conversation.HostParticipantType ?? conversation.OwnerParticipantType);
+        return string.IsNullOrWhiteSpace(userId) || !IsParticipantType(participantType)
+            ? null
+            : new MessagingParticipantReference(userId, participantType);
+    }
+
+    private static MessagingGroupMeeting? ToGroupMeeting(
+        ConversationDetailRow conversation,
+        IReadOnlyCollection<MessagingParticipantSummary> participantSummaries,
+        IReadOnlyDictionary<(string UserId, string ParticipantType), string> displayNames)
+    {
+        var hostReference = GroupMeetingHostReference(conversation);
+        if (hostReference is null)
+            return null;
+
+        var host = participantSummaries.FirstOrDefault(candidate => IsSameParticipant(
+                candidate.UserId,
+                candidate.ParticipantType,
+                hostReference.UserId,
+                hostReference.ParticipantType)) ??
+            new MessagingParticipantSummary(
+                hostReference.UserId,
+                hostReference.ParticipantType,
+                displayNames.TryGetValue((hostReference.UserId, hostReference.ParticipantType), out var displayName)
+                    ? displayName
+                    : hostReference.ParticipantType);
+        var schedule = conversation.MeetingFrequency is null
+            ? null
+            : new MessagingGroupMeetingSchedule(
+                conversation.MeetingFrequency,
+                string.IsNullOrWhiteSpace(conversation.MeetingWeekdays)
+                    ? Array.Empty<string>()
+                    : conversation.MeetingWeekdays.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                conversation.MeetingLocalTime,
+                conversation.MeetingTimeZoneId,
+                conversation.MeetingStartsUtc,
+                conversation.MeetingCustomDescription);
+        return new MessagingGroupMeeting(
+            host,
+            conversation.MeetingLinkLabel,
+            conversation.MeetingLinkUrl,
+            schedule);
+    }
+
     private static MessagingActor NormalizeActor(MessagingActor actor) => new(
         NormalizeUserId(actor.UserId),
         NormalizeRequired(actor.ParticipantType));
@@ -3912,7 +4283,32 @@ internal sealed class MessagingService : IMessagingService
         string? GroupImageContentType,
         bool IsPromoted,
         DateTime? PromotionStartedUtc,
-        DateTime? PromotionEndedUtc);
+        DateTime? PromotionEndedUtc,
+        string? HostUserId,
+        string? HostParticipantType,
+        string? MeetingLinkLabel,
+        string? MeetingLinkUrl,
+        string? MeetingFrequency,
+        string? MeetingWeekdays,
+        string? MeetingLocalTime,
+        string? MeetingTimeZoneId,
+        DateTime? MeetingStartsUtc,
+        string? MeetingCustomDescription);
+
+    private sealed record NormalizedGroupMeeting(
+        string HostUserId,
+        string HostParticipantType,
+        string? LinkLabel,
+        string? LinkUrl,
+        NormalizedGroupMeetingSchedule? Schedule);
+
+    private sealed record NormalizedGroupMeetingSchedule(
+        string Frequency,
+        string? Weekdays,
+        string? LocalTime,
+        string? TimeZoneId,
+        DateTime? StartsUtc,
+        string? CustomDescription);
 
     private sealed record ParticipantRow(
         Guid ConversationId,

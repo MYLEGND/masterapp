@@ -69,6 +69,33 @@ internal static class MessagingModelConfiguration
         entity.Property(x => x.OwnerUserId)
             .HasMaxLength(450);
 
+        entity.Property(x => x.HostUserId)
+            .HasMaxLength(450);
+
+        entity.Property(x => x.HostParticipantType)
+            .HasMaxLength(40);
+
+        entity.Property(x => x.MeetingLinkLabel)
+            .HasMaxLength(100);
+
+        entity.Property(x => x.MeetingLinkUrl)
+            .HasMaxLength(2_048);
+
+        entity.Property(x => x.MeetingFrequency)
+            .HasMaxLength(24);
+
+        entity.Property(x => x.MeetingWeekdays)
+            .HasMaxLength(100);
+
+        entity.Property(x => x.MeetingLocalTime)
+            .HasMaxLength(5);
+
+        entity.Property(x => x.MeetingTimeZoneId)
+            .HasMaxLength(100);
+
+        entity.Property(x => x.MeetingCustomDescription)
+            .HasMaxLength(240);
+
         entity.HasIndex(x => new { x.IsPromoted, x.PromotionStartedUtc });
 
         entity.HasIndex(x => new { x.Purpose, x.CreatedByUserId, x.OwnerParticipantType });

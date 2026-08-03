@@ -46,6 +46,36 @@ public class MessageConversation
     public string? OwnerParticipantType { get; set; }
 
     /// <summary>
+    /// The selected host for a normal group. This is separate from ownership so
+    /// a founder or owner can assign a member to host without transferring the
+    /// authority to edit or delete the group.
+    /// </summary>
+    public string? HostUserId { get; set; }
+
+    public string? HostParticipantType { get; set; }
+
+    /// <summary>
+    /// Optional owner-controlled online meeting details. The normalized URL,
+    /// label, and recurrence stay with the group conversation as their single
+    /// durable source of truth.
+    /// </summary>
+    public string? MeetingLinkLabel { get; set; }
+
+    public string? MeetingLinkUrl { get; set; }
+
+    public string? MeetingFrequency { get; set; }
+
+    public string? MeetingWeekdays { get; set; }
+
+    public string? MeetingLocalTime { get; set; }
+
+    public string? MeetingTimeZoneId { get; set; }
+
+    public DateTime? MeetingStartsUtc { get; set; }
+
+    public string? MeetingCustomDescription { get; set; }
+
+    /// <summary>
     /// Founder-owned normal groups may be promoted as a public invitation. The
     /// conversation remains the sole durable authority; promotion never creates
     /// a separate social record or membership model.

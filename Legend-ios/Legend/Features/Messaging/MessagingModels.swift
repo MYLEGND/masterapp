@@ -113,11 +113,13 @@ struct ConversationDetail: Codable, Equatable, Sendable {
     let promotionStartedUTC: Date?
     let promotionEndedUTC: Date?
     let canManagePromotion: Bool?
+    let meeting: MessagingGroupMeeting?
+    let canManageMeeting: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case id, conversationType, title, participants, messages, isMuted, isClosed
         case canManageMembers, purpose, groupAvatar, canManageCollaborators
-        case canDeleteGroup, isPromoted, canManagePromotion
+        case canDeleteGroup, isPromoted, canManagePromotion, meeting, canManageMeeting
         case promotionStartedUTC = "promotionStartedUtc"
         case promotionEndedUTC = "promotionEndedUtc"
     }
@@ -138,7 +140,9 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         isPromoted: Bool? = nil,
         promotionStartedUTC: Date? = nil,
         promotionEndedUTC: Date? = nil,
-        canManagePromotion: Bool? = nil
+        canManagePromotion: Bool? = nil,
+        meeting: MessagingGroupMeeting? = nil,
+        canManageMeeting: Bool? = nil
     ) {
         self.id = id
         self.conversationType = conversationType
@@ -156,6 +160,35 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         self.promotionStartedUTC = promotionStartedUTC
         self.promotionEndedUTC = promotionEndedUTC
         self.canManagePromotion = canManagePromotion
+        self.meeting = meeting
+        self.canManageMeeting = canManageMeeting
+    }
+}
+
+struct MessagingGroupMeeting: Codable, Equatable, Sendable {
+    let host: MessagingParticipant
+    let linkLabel: String?
+    let linkURL: String?
+    let schedule: MessagingGroupMeetingSchedule?
+
+    private enum CodingKeys: String, CodingKey {
+        case host, linkLabel, schedule
+        case linkURL = "linkUrl"
+    }
+}
+
+struct MessagingGroupMeetingSchedule: Codable, Equatable, Sendable {
+    let frequency: String
+    let weekdays: [String]
+    let localTime: String?
+    let timeZoneID: String?
+    let startsUTC: Date?
+    let customDescription: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case frequency, weekdays, localTime, customDescription
+        case timeZoneID = "timeZoneId"
+        case startsUTC = "startsUtc"
     }
 }
 
@@ -519,9 +552,10 @@ struct CreateMessagingGroupRequest: Encodable, Sendable {
     let participants: [MessagingGroupMemberRequest]
     let initialMessageBody: String?
     let groupImage: MessagingGroupImageRequest?
+    let meeting: MessagingGroupMeetingRequest?
 
     private enum CodingKeys: String, CodingKey {
-        case subject, participants, initialMessageBody, groupImage
+        case subject, participants, initialMessageBody, groupImage, meeting
     }
 }
 
@@ -533,6 +567,34 @@ struct MessagingGroupImageRequest: Codable, Sendable {
 struct UpdateMessagingGroupRequest: Encodable, Sendable {
     let subject: String
     let groupImage: MessagingGroupImageRequest?
+    let meeting: MessagingGroupMeetingRequest?
+}
+
+struct MessagingGroupMeetingRequest: Encodable, Sendable {
+    let host: MessagingGroupMemberRequest?
+    let linkLabel: String?
+    let linkURL: String?
+    let schedule: MessagingGroupMeetingScheduleRequest?
+
+    private enum CodingKeys: String, CodingKey {
+        case host, linkLabel, schedule
+        case linkURL = "linkUrl"
+    }
+}
+
+struct MessagingGroupMeetingScheduleRequest: Encodable, Sendable {
+    let frequency: String
+    let weekdays: [String]
+    let localTime: String?
+    let timeZoneID: String?
+    let startsUTC: Date?
+    let customDescription: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case frequency, weekdays, localTime, customDescription
+        case timeZoneID = "timeZoneId"
+        case startsUTC = "startsUtc"
+    }
 }
 
 struct MessagingGroupPromotionRequest: Encodable, Sendable {
@@ -580,6 +642,13 @@ protocol MessagingAPI: Sendable {
         groupImage: MessagingGroupImageRequest?,
         accessToken: String
     ) async throws -> ConversationDetail
+    func createGroup(
+        subject: String,
+        recipients: [MessagingRecipient],
+        groupImage: MessagingGroupImageRequest?,
+        meeting: MessagingGroupMeetingRequest?,
+        accessToken: String
+    ) async throws -> ConversationDetail
     func startVerificationRequest(accessToken: String) async throws -> VerificationRequestSubmission
     func startControlledResourceRequest(
         resourceType: ControlledResourceType,
@@ -608,6 +677,13 @@ protocol MessagingAPI: Sendable {
         conversationID: UUID,
         subject: String,
         groupImage: MessagingGroupImageRequest?,
+        accessToken: String
+    ) async throws
+    func updateGroup(
+        conversationID: UUID,
+        subject: String,
+        groupImage: MessagingGroupImageRequest?,
+        meeting: MessagingGroupMeetingRequest?,
         accessToken: String
     ) async throws
     func addGroupParticipant(
@@ -665,6 +741,20 @@ extension MessagingAPI {
     func createGroup(
         subject: String,
         recipients: [MessagingRecipient],
+        groupImage: MessagingGroupImageRequest?,
+        meeting: MessagingGroupMeetingRequest?,
+        accessToken: String
+    ) async throws -> ConversationDetail {
+        try await createGroup(
+            subject: subject,
+            recipients: recipients,
+            groupImage: groupImage,
+            accessToken: accessToken)
+    }
+
+    func createGroup(
+        subject: String,
+        recipients: [MessagingRecipient],
         groupImage: MessagingGroupImageRequest? = nil,
         accessToken: String
     ) async throws -> ConversationDetail {
@@ -714,6 +804,20 @@ extension MessagingAPI {
         accessToken: String
     ) async throws {
         throw MobileMessagingContractError.unavailable
+    }
+
+    func updateGroup(
+        conversationID: UUID,
+        subject: String,
+        groupImage: MessagingGroupImageRequest?,
+        meeting: MessagingGroupMeetingRequest?,
+        accessToken: String
+    ) async throws {
+        try await updateGroup(
+            conversationID: conversationID,
+            subject: subject,
+            groupImage: groupImage,
+            accessToken: accessToken)
     }
 
     func updateGroup(
@@ -940,6 +1044,21 @@ struct URLSessionMessagingAPI: MessagingAPI {
         groupImage: MessagingGroupImageRequest?,
         accessToken: String
     ) async throws -> ConversationDetail {
+        try await createGroup(
+            subject: subject,
+            recipients: recipients,
+            groupImage: groupImage,
+            meeting: nil,
+            accessToken: accessToken)
+    }
+
+    func createGroup(
+        subject: String,
+        recipients: [MessagingRecipient],
+        groupImage: MessagingGroupImageRequest?,
+        meeting: MessagingGroupMeetingRequest?,
+        accessToken: String
+    ) async throws -> ConversationDetail {
         try await client.post(
             "/api/v1/mobile/messaging/groups",
             body: CreateMessagingGroupRequest(
@@ -950,7 +1069,8 @@ struct URLSessionMessagingAPI: MessagingAPI {
                         participantType: $0.identity.participantType)
                 },
                 initialMessageBody: nil,
-                groupImage: groupImage),
+                groupImage: groupImage,
+                meeting: meeting),
             accessToken: accessToken,
             idempotencyKey: UUID(),
             headers: participantHeader,
@@ -1049,9 +1169,27 @@ struct URLSessionMessagingAPI: MessagingAPI {
         groupImage: MessagingGroupImageRequest?,
         accessToken: String
     ) async throws {
+        try await updateGroup(
+            conversationID: conversationID,
+            subject: subject,
+            groupImage: groupImage,
+            meeting: nil,
+            accessToken: accessToken)
+    }
+
+    func updateGroup(
+        conversationID: UUID,
+        subject: String,
+        groupImage: MessagingGroupImageRequest?,
+        meeting: MessagingGroupMeetingRequest?,
+        accessToken: String
+    ) async throws {
         try await client.put(
             "/api/v1/mobile/messaging/groups/\(conversationID.uuidString)",
-            body: UpdateMessagingGroupRequest(subject: subject, groupImage: groupImage),
+            body: UpdateMessagingGroupRequest(
+                subject: subject,
+                groupImage: groupImage,
+                meeting: meeting),
             accessToken: accessToken,
             headers: participantHeader)
     }

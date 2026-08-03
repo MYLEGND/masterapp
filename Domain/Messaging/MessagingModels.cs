@@ -137,7 +137,8 @@ public sealed record CreateMessagingGroupCommand(
     string Subject,
     string? InitialMessageBody = null,
     string? ClientMessageId = null,
-    MessagingGroupImage? GroupImage = null);
+    MessagingGroupImage? GroupImage = null,
+    MessagingGroupMeetingSetup? Meeting = null);
 
 public sealed record MessagingGroupImage(
     byte[] Content,
@@ -147,7 +148,40 @@ public sealed record UpdateMessagingGroupProfileCommand(
     MessagingActor Actor,
     Guid ConversationId,
     string Subject,
-    MessagingGroupImage? GroupImage);
+    MessagingGroupImage? GroupImage,
+    MessagingGroupMeetingSetup? Meeting = null);
+
+/// <summary>
+/// The owner-controlled group meeting configuration. A group always has a
+/// typed host, while the online link and its schedule are optional.
+/// </summary>
+public sealed record MessagingGroupMeetingSetup(
+    MessagingParticipantReference? Host = null,
+    string? LinkLabel = null,
+    string? LinkUrl = null,
+    MessagingGroupMeetingSchedule? Schedule = null);
+
+/// <summary>
+/// A portable recurring schedule expressed in the organizer's local time.
+/// Weekdays use the full English day names (for example, "Wednesday").
+/// </summary>
+public sealed record MessagingGroupMeetingSchedule(
+    string Frequency,
+    IReadOnlyList<string>? Weekdays = null,
+    string? LocalTime = null,
+    string? TimeZoneId = null,
+    DateTime? StartsUtc = null,
+    string? CustomDescription = null);
+
+public static class MessagingGroupMeetingFrequencies
+{
+    public const string OneTime = "OneTime";
+    public const string Daily = "Daily";
+    public const string Weekly = "Weekly";
+    public const string Biweekly = "Biweekly";
+    public const string Monthly = "Monthly";
+    public const string Custom = "Custom";
+}
 
 public sealed record AddMessagingGroupParticipantCommand(
     MessagingActor Actor,
@@ -454,7 +488,19 @@ public sealed record MessagingConversationDetail(
     bool IsPromoted = false,
     DateTime? PromotionStartedUtc = null,
     DateTime? PromotionEndedUtc = null,
-    bool CanManagePromotion = false);
+    bool CanManagePromotion = false,
+    MessagingGroupMeeting? Meeting = null,
+    bool CanManageMeeting = false);
+
+/// <summary>
+/// The resolved meeting presentation for a group conversation. Host identity
+/// is typed and resolved through the same profile source as all participants.
+/// </summary>
+public sealed record MessagingGroupMeeting(
+    MessagingParticipantSummary Host,
+    string? LinkLabel,
+    string? LinkUrl,
+    MessagingGroupMeetingSchedule? Schedule);
 
 public sealed record MessagingParticipantSummary(
     string UserId,

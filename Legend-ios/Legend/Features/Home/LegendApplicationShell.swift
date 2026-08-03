@@ -1444,13 +1444,9 @@ private struct LegendHomeView: View {
             ) {
                 LegendSocialHomeSection(
                     session: currentSession,
-                    home: home,
                     social: social,
                     messaging: messages,
                     activity: activity,
-                    openCircles: {
-                        open(.discover)
-                    },
                     openJoinedGroup: { conversationID in
                         pendingMessageConversationID = conversationID
                         open(.messages)
@@ -1645,78 +1641,6 @@ private struct LegendHomeView: View {
                 }
             }
         }
-    }
-
-    private func journeyCard(
-        _ journey: MobileJourneySummary
-    ) -> some View {
-        Button {
-            open(.discover)
-        } label: {
-            LegendNextSurface(
-                style: .elevated,
-                cornerRadius: LegendNextRadius.prominentCard
-            ) {
-                HStack(
-                    alignment: .center,
-                    spacing: LegendNextSpacing.xs
-                ) {
-                    Image(systemName: "person.3.fill")
-                        .font(
-                            .system(
-                                size: 20,
-                                weight: .semibold
-                            )
-                        )
-                        .foregroundStyle(LegendNextColor.gold)
-                        .frame(width: 50, height: 50)
-                        .background(
-                            LegendNextColor.gold.opacity(0.11),
-                            in: Circle()
-                        )
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: LegendNextSpacing.micro
-                    ) {
-                        Text("Discover")
-                            .font(LegendNextTypography.cardTitle)
-                            .foregroundStyle(
-                                LegendNextColor.textPrimary
-                            )
-
-                        Text(
-                            journey.hasProfile
-                                ? "\(journey.connectedPeerCount) connections · \(journey.recommendationCount) recommendations"
-                                : "Complete your Discover profile to receive relevant member recommendations and connection requests."
-                        )
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(
-                            LegendNextColor.textSecondary
-                        )
-                        .fixedSize(
-                            horizontal: false,
-                            vertical: true
-                        )
-                    }
-
-                    Spacer(minLength: LegendNextSpacing.sm)
-
-                    Image(systemName: "chevron.right")
-                        .font(
-                            .system(
-                                size: 14,
-                                weight: .semibold
-                            )
-                        )
-                        .foregroundStyle(
-                            LegendNextColor.textSecondary
-                        )
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Open Journey Circles")
     }
 
     private func appointmentsCard(

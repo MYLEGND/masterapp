@@ -10,11 +10,9 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     @EnvironmentObject private var scrollChrome: LegendScrollChrome
 
     let session: MobileSession
-    let home: MobileHomeResponse
     @ObservedObject var social: MobileSocialStore
     @ObservedObject var messaging: MessagingStore
     @ObservedObject var activity: LegendDailyActivityStore
-    let openCircles: () -> Void
     let openJoinedGroup: (UUID) -> Void
     let refreshSocial: () async -> Void
     let dashboardContent: DashboardContent
@@ -29,22 +27,17 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
 
     init(
         session: MobileSession,
-        home: MobileHomeResponse,
         social: MobileSocialStore,
         messaging: MessagingStore,
         activity: LegendDailyActivityStore,
-        openCircles: @escaping () -> Void,
         openJoinedGroup: @escaping (UUID) -> Void,
         refreshSocial: @escaping () async -> Void,
         @ViewBuilder dashboardContent: () -> DashboardContent
     ) {
         self.session = session
-
-        self.home = home
         _social = ObservedObject(wrappedValue: social)
         _messaging = ObservedObject(wrappedValue: messaging)
         _activity = ObservedObject(wrappedValue: activity)
-        self.openCircles = openCircles
         self.openJoinedGroup = openJoinedGroup
         self.refreshSocial = refreshSocial
         self.dashboardContent = dashboardContent()

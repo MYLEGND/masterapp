@@ -310,7 +310,16 @@ public sealed class MessagingServiceTests
             ],
             "Protection review team",
             "Welcome to the review.",
-            GroupImage: new MessagingGroupImage([1, 2, 3], "image/png")));
+            GroupImage: new MessagingGroupImage([1, 2, 3], "image/png"),
+            Meeting: new MessagingGroupMeetingSetup(
+                new MessagingParticipantReference("client-1", MessagingParticipantTypes.Client),
+                "Wednesday Zoom",
+                "https://zoom.us/j/123456789",
+                new MessagingGroupMeetingSchedule(
+                    MessagingGroupMeetingFrequencies.Biweekly,
+                    ["Wednesday"],
+                    "18:30",
+                    "America/Phoenix"))));
 
         var conversation = Assert.IsType<MessagingConversationDetail>(created.Conversation);
         Assert.True(created.Succeeded);
@@ -318,18 +327,34 @@ public sealed class MessagingServiceTests
         Assert.True(conversation.CanManageMembers);
         Assert.Equal(3, conversation.Participants.Count);
         Assert.Equal("image/png", conversation.GroupImage?.ContentType);
+        Assert.Equal("Client One", conversation.Meeting?.Host.DisplayName);
+        Assert.Equal("Wednesday Zoom", conversation.Meeting?.LinkLabel);
+        Assert.Equal(MessagingGroupMeetingFrequencies.Biweekly, conversation.Meeting?.Schedule?.Frequency);
+        Assert.Equal("Wednesday", Assert.Single(conversation.Meeting?.Schedule?.Weekdays ?? []));
 
         var updateGroup = await service.UpdateGroupProfileAsync(
             new UpdateMessagingGroupProfileCommand(
                 owner,
                 conversation.Id,
                 "Protection review leaders",
-                new MessagingGroupImage([4, 5, 6], "image/jpeg")));
+                new MessagingGroupImage([4, 5, 6], "image/jpeg"),
+                new MessagingGroupMeetingSetup(
+                    new MessagingParticipantReference("client-2", MessagingParticipantTypes.Client),
+                    "Weekly Teams room",
+                    "https://teams.microsoft.com/l/meetup-join/example",
+                    new MessagingGroupMeetingSchedule(
+                        MessagingGroupMeetingFrequencies.Weekly,
+                        ["Tuesday"],
+                        "09:00",
+                        "America/Phoenix"))));
         Assert.True(updateGroup.Succeeded);
         var updatedGroup = Assert.IsType<MessagingConversationDetail>(
             (await service.GetConversationAsync(owner, conversation.Id)).Conversation);
         Assert.Equal("Protection review leaders", updatedGroup.Subject);
         Assert.Equal("image/jpeg", updatedGroup.GroupImage?.ContentType);
+        Assert.Equal("Client Two", updatedGroup.Meeting?.Host.DisplayName);
+        Assert.Equal("Weekly Teams room", updatedGroup.Meeting?.LinkLabel);
+        Assert.Equal("Tuesday", Assert.Single(updatedGroup.Meeting?.Schedule?.Weekdays ?? []));
 
         var addMember = await service.AddGroupParticipantAsync(
             new AddMessagingGroupParticipantCommand(
@@ -341,9 +366,30 @@ public sealed class MessagingServiceTests
         Assert.Equal(4, Assert.IsType<MessagingConversationDetail>(
             (await service.GetConversationAsync(owner, conversation.Id)).Conversation).Participants.Count);
 
+        var makeCollaborator = await service.SetGroupManagerAsync(
+            new SetMessagingGroupManagerCommand(
+                owner,
+                conversation.Id,
+                "client-1",
+                MessagingParticipantTypes.Client,
+                true));
+        Assert.True(makeCollaborator.Succeeded);
+        var collaboratorMeetingUpdate = await service.UpdateGroupProfileAsync(
+            new UpdateMessagingGroupProfileCommand(
+                new MessagingActor("client-1", MessagingParticipantTypes.Client),
+                conversation.Id,
+                "Protection review leaders",
+                null,
+                new MessagingGroupMeetingSetup(
+                    new MessagingParticipantReference("client-1", MessagingParticipantTypes.Client),
+                    "Unauthorized meeting",
+                    "https://meet.google.com/example")));
+        Assert.False(collaboratorMeetingUpdate.Succeeded);
+        Assert.Equal("MESSAGING_GROUP_OWNER_REQUIRED", collaboratorMeetingUpdate.ErrorCode);
+
         var nonOwner = await service.AddGroupParticipantAsync(
             new AddMessagingGroupParticipantCommand(
-                new MessagingActor("client-1", MessagingParticipantTypes.Client),
+                new MessagingActor("client-2", MessagingParticipantTypes.Client),
                 conversation.Id,
                 "client-3",
                 MessagingParticipantTypes.Client));
@@ -352,7 +398,7 @@ public sealed class MessagingServiceTests
 
         var nonOwnerUpdate = await service.UpdateGroupProfileAsync(
             new UpdateMessagingGroupProfileCommand(
-                new MessagingActor("client-1", MessagingParticipantTypes.Client),
+                new MessagingActor("client-2", MessagingParticipantTypes.Client),
                 conversation.Id,
                 "Not allowed",
                 null));

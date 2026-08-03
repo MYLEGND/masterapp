@@ -196,7 +196,8 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 members,
                 request?.Subject ?? string.Empty,
                 request?.InitialMessageBody,
-                GroupImage: groupImage),
+                GroupImage: groupImage,
+                Meeting: ToGroupMeetingSetup(request?.Meeting)),
             cancellationToken);
         if (!result.Succeeded || result.Conversation is null)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
@@ -417,7 +418,8 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 resolved.Actor!.Actor,
                 conversationId,
                 request?.Subject ?? string.Empty,
-                groupImage),
+                groupImage,
+                ToGroupMeetingSetup(request?.Meeting)),
             cancellationToken);
         return result.Succeeded
             ? NoContent()
@@ -800,6 +802,27 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         foreach (var message in conversation.Messages)
             messages.Add(await ToMessageDtoAsync(message, actor, identities, cancellationToken));
 
+        MobileGroupMeetingDto? meeting = null;
+        if (conversation.Meeting is not null)
+        {
+            meeting = new MobileGroupMeetingDto(
+                await ToParticipantDtoAsync(
+                    conversation.Meeting.Host,
+                    identities,
+                    cancellationToken),
+                conversation.Meeting.LinkLabel,
+                conversation.Meeting.LinkUrl,
+                conversation.Meeting.Schedule is null
+                    ? null
+                    : new MobileGroupMeetingScheduleDto(
+                        conversation.Meeting.Schedule.Frequency,
+                        conversation.Meeting.Schedule.Weekdays ?? Array.Empty<string>(),
+                        conversation.Meeting.Schedule.LocalTime,
+                        conversation.Meeting.Schedule.TimeZoneId,
+                        conversation.Meeting.Schedule.StartsUtc,
+                        conversation.Meeting.Schedule.CustomDescription));
+        }
+
         return new MobileConversationDetailDto(
             conversation.Id,
             conversation.ConversationType,
@@ -817,7 +840,9 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             IsPromoted = conversation.IsPromoted,
             PromotionStartedUtc = conversation.PromotionStartedUtc,
             PromotionEndedUtc = conversation.PromotionEndedUtc,
-            CanManagePromotion = conversation.CanManagePromotion
+            CanManagePromotion = conversation.CanManagePromotion,
+            Meeting = meeting,
+            CanManageMeeting = conversation.CanManageMeeting
         };
     }
 
@@ -828,12 +853,37 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 message.SenderUserId,
                 message.SenderType,
                 string.Empty))).Concat(
-            conversation.Messages
+        conversation.Messages
                 .Where(message => message.Reply is not null)
                 .Select(message => new MessagingParticipantSummary(
                     message.Reply!.SenderUserId,
                     message.Reply.SenderType,
-                    string.Empty)));
+                    string.Empty))).Concat(
+            conversation.Meeting is null
+                ? Array.Empty<MessagingParticipantSummary>()
+                : [conversation.Meeting.Host]);
+
+    private static MessagingGroupMeetingSetup? ToGroupMeetingSetup(
+        MobileGroupMeetingRequest? request) =>
+        request is null
+            ? null
+            : new MessagingGroupMeetingSetup(
+                request.Host is null
+                    ? null
+                    : new MessagingParticipantReference(
+                        request.Host.UserId ?? string.Empty,
+                        request.Host.ParticipantType ?? string.Empty),
+                request.LinkLabel,
+                request.LinkUrl,
+                request.Schedule is null
+                    ? null
+                    : new MessagingGroupMeetingSchedule(
+                        request.Schedule.Frequency ?? string.Empty,
+                        request.Schedule.Weekdays,
+                        request.Schedule.LocalTime,
+                        request.Schedule.TimeZoneId,
+                        request.Schedule.StartsUtc,
+                        request.Schedule.CustomDescription));
 
     private async Task<IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity>> ResolveParticipantIdentitiesAsync(
         IEnumerable<MessagingParticipantSummary> participants,
@@ -1051,7 +1101,23 @@ public sealed record MobileConversationDetailDto(
     public DateTime? PromotionStartedUtc { get; init; }
     public DateTime? PromotionEndedUtc { get; init; }
     public bool CanManagePromotion { get; init; }
+    public MobileGroupMeetingDto? Meeting { get; init; }
+    public bool CanManageMeeting { get; init; }
 }
+
+public sealed record MobileGroupMeetingDto(
+    MobileParticipantDto Host,
+    string? LinkLabel,
+    string? LinkUrl,
+    MobileGroupMeetingScheduleDto? Schedule);
+
+public sealed record MobileGroupMeetingScheduleDto(
+    string Frequency,
+    IReadOnlyList<string> Weekdays,
+    string? LocalTime,
+    string? TimeZoneId,
+    DateTime? StartsUtc,
+    string? CustomDescription);
 
 public sealed record MobileMessageDto(
     Guid Id,
@@ -1115,11 +1181,13 @@ public sealed record MobileCreateGroupRequest(
     string? Subject,
     IReadOnlyList<MobileGroupParticipantRequest>? Participants,
     string? InitialMessageBody = null,
-    MobileGroupImageRequest? GroupImage = null);
+    MobileGroupImageRequest? GroupImage = null,
+    MobileGroupMeetingRequest? Meeting = null);
 
 public sealed record MobileUpdateMessagingGroupRequest(
     string? Subject,
-    MobileGroupImageRequest? GroupImage = null);
+    MobileGroupImageRequest? GroupImage = null,
+    MobileGroupMeetingRequest? Meeting = null);
 
 public sealed record MobileGroupPromotionRequest(bool? IsPromoted);
 
@@ -1158,6 +1226,20 @@ public sealed record MobileGroupCollaboratorRequest(
 public sealed record MobileGroupParticipantRequest(
     string? UserId,
     string? ParticipantType);
+
+public sealed record MobileGroupMeetingRequest(
+    MobileGroupParticipantRequest? Host = null,
+    string? LinkLabel = null,
+    string? LinkUrl = null,
+    MobileGroupMeetingScheduleRequest? Schedule = null);
+
+public sealed record MobileGroupMeetingScheduleRequest(
+    string? Frequency,
+    IReadOnlyList<string>? Weekdays = null,
+    string? LocalTime = null,
+    string? TimeZoneId = null,
+    DateTime? StartsUtc = null,
+    string? CustomDescription = null);
 
 public sealed record MobileMessagingRecipientDto(
     MobileLogicalIdentityDto Identity,

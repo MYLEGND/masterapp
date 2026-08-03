@@ -470,6 +470,7 @@ final class MessagingStore: ObservableObject {
         subject: String,
         recipients: [MessagingRecipient],
         groupImage: MessagingGroupImageRequest?,
+        meeting: MessagingGroupMeetingRequest?,
         completion: @escaping (UUID) -> Void
     ) {
         guard !isCreatingGroup else { return }
@@ -482,6 +483,7 @@ final class MessagingStore: ObservableObject {
                     subject: subject,
                     recipients: recipients,
                     groupImage: groupImage,
+                    meeting: meeting,
                     accessToken: try await accessTokenProvider())
                 detailState = .loaded(conversation)
                 selectedConversationID = conversation.id
@@ -718,6 +720,7 @@ final class MessagingStore: ObservableObject {
         conversationID: UUID,
         subject: String,
         groupImage: MessagingGroupImageRequest?,
+        meeting: MessagingGroupMeetingRequest?,
         completion: @escaping () -> Void
     ) {
         guard !isCreatingGroup else { return }
@@ -730,6 +733,7 @@ final class MessagingStore: ObservableObject {
                     conversationID: conversationID,
                     subject: subject,
                     groupImage: groupImage,
+                    meeting: meeting,
                     accessToken: try await accessTokenProvider())
                 let conversation = try await api.conversation(
                     id: conversationID,
