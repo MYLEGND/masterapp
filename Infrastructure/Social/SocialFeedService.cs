@@ -1,8 +1,10 @@
+using System.Collections.Frozen;
 using Domain.Entities;
 using Domain.Messaging;
 using Domain.Social;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Infrastructure.Social;
 
@@ -30,19 +32,24 @@ public sealed class SocialFeedService : ISocialFeedService
     private const int MaximumStoryInteractionCount = 20;
     private const int MaximumWatchDurationSeconds = 86_400;
     private const int TopInsightItemCount = 5;
+    private static readonly TimeSpan AudienceGraphCacheDuration = TimeSpan.FromMinutes(3);
+    private const string AudienceGraphCachePrefix = "legend.social.audience.v1";
 
     private readonly MasterAppDbContext _db;
     private readonly ISocialMediaStorage _mediaStorage;
     private readonly ISocialMusicCatalog _musicCatalog;
+    private readonly IMemoryCache _memoryCache;
 
     public SocialFeedService(
         MasterAppDbContext db,
         ISocialMediaStorage mediaStorage,
-        ISocialMusicCatalog musicCatalog)
+        ISocialMusicCatalog musicCatalog,
+        IMemoryCache memoryCache)
     {
         _db = db;
         _mediaStorage = mediaStorage;
         _musicCatalog = musicCatalog;
+        _memoryCache = memoryCache;
     }
 
     public async Task<SocialOperationResult<SocialFeedSnapshot>> GetFeedAsync(
@@ -63,7 +70,7 @@ public sealed class SocialFeedService : ISocialFeedService
             .Select(key => key.UserId)
             .ToArray();
         var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
-        var audience = await LoadAudienceGraphAsync(actorKey, cancellationToken);
+        var audience = await LoadAudienceGraphAsync(actor, cancellationToken);
 
         // Each surface has its own source collection. Home carries regular posts,
         // Stories remain ephemeral, and Hacs are video-only candidates for the FYP.
@@ -199,7 +206,7 @@ public sealed class SocialFeedService : ISocialFeedService
                            && (post.ExpiresUtc == null || post.ExpiresUtc > now))
             .OrderByDescending(post => post.PostedUtc)
             .ToArrayAsync(cancellationToken);
-        var audience = await LoadAudienceGraphAsync(resolved.Value.ActorKey, cancellationToken);
+        var audience = await LoadAudienceGraphAsync(actor, cancellationToken);
         var posts = (await FilterPostsForViewerAsync(candidates, resolved.Value.ActorKey, audience, cancellationToken))
             .Take(MaximumProfilePosts)
             .ToArray();
@@ -889,12 +896,14 @@ public sealed class SocialFeedService : ISocialFeedService
                 RespondedUtc = status == SocialFollowStatuses.Accepted ? DateTime.UtcNow : null
             });
             await _db.SaveChangesAsync(cancellationToken);
+            InvalidateAudienceGraphCache(command.Actor.ProfileId, target.ProfileId);
             return SocialOperationResult<SocialFollowResult>.Success(
                 new SocialFollowResult(status == SocialFollowStatuses.Accepted, status == SocialFollowStatuses.Pending));
         }
 
         _db.SocialFollows.Remove(existing);
         await _db.SaveChangesAsync(cancellationToken);
+        InvalidateAudienceGraphCache(command.Actor.ProfileId, target.ProfileId);
         return SocialOperationResult<SocialFollowResult>.Success(new SocialFollowResult(false, false));
     }
 
@@ -980,11 +989,23 @@ public sealed class SocialFeedService : ISocialFeedService
             request.Status = SocialFollowStatuses.Accepted;
             request.RespondedUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
+            var requester = await ResolveAuthorsAsync(
+                [new AuthorReference(request.FollowerUserId, request.FollowerParticipantType, Guid.Empty)],
+                cancellationToken);
+            InvalidateAudienceGraphCache(
+                command.Actor.ProfileId,
+                requester.GetValueOrDefault(AuthorKey.From(request.FollowerUserId, request.FollowerParticipantType))?.ProfileId ?? Guid.Empty);
             return SocialOperationResult<SocialFollowResult>.Success(new SocialFollowResult(true, false));
         }
 
         _db.SocialFollows.Remove(request);
         await _db.SaveChangesAsync(cancellationToken);
+        var declinedRequester = await ResolveAuthorsAsync(
+            [new AuthorReference(request.FollowerUserId, request.FollowerParticipantType, Guid.Empty)],
+            cancellationToken);
+        InvalidateAudienceGraphCache(
+            command.Actor.ProfileId,
+            declinedRequester.GetValueOrDefault(AuthorKey.From(request.FollowerUserId, request.FollowerParticipantType))?.ProfileId ?? Guid.Empty);
         return SocialOperationResult<SocialFollowResult>.Success(new SocialFollowResult(false, false));
     }
 
@@ -1650,7 +1671,7 @@ public sealed class SocialFeedService : ISocialFeedService
             return null;
 
         var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
-        var audience = await LoadAudienceGraphAsync(actorKey, cancellationToken);
+        var audience = await LoadAudienceGraphAsync(actor, cancellationToken);
         return (await FilterPostsForViewerAsync([post], actorKey, audience, cancellationToken)).SingleOrDefault();
     }
 
@@ -2042,11 +2063,25 @@ public sealed class SocialFeedService : ISocialFeedService
     /// deliberately back the tiers so legacy and Entra identity forms resolve to
     /// the same relationship rather than producing a second ranking path.
     /// </summary>
-    private readonly record struct AudienceGraph(
-        HashSet<Guid> FollowedProfileIds,
-        HashSet<Guid> MutualFollowedProfileIds);
+    private sealed record AudienceGraph(
+        FrozenSet<Guid> FollowedProfileIds,
+        FrozenSet<Guid> MutualFollowedProfileIds);
 
     private async Task<AudienceGraph> LoadAudienceGraphAsync(
+        SocialFeedActor actor,
+        CancellationToken cancellationToken)
+    {
+        var cacheKey = AudienceGraphCacheKey(actor.ProfileId);
+        if (_memoryCache.TryGetValue(cacheKey, out AudienceGraph? cached) && cached is not null)
+            return cached;
+
+        var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+        var audience = await BuildAudienceGraphAsync(actorKey, cancellationToken);
+        _memoryCache.Set(cacheKey, audience, AudienceGraphCacheDuration);
+        return audience;
+    }
+
+    private async Task<AudienceGraph> BuildAudienceGraphAsync(
         AuthorKey actorKey,
         CancellationToken cancellationToken)
     {
@@ -2089,8 +2124,17 @@ public sealed class SocialFeedService : ISocialFeedService
             .ToHashSet();
 
         return new AudienceGraph(
-            followedProfileIds,
-            followedProfileIds.Intersect(followerProfileIds).ToHashSet());
+            followedProfileIds.ToFrozenSet(),
+            followedProfileIds.Intersect(followerProfileIds).ToFrozenSet());
+    }
+
+    private static string AudienceGraphCacheKey(Guid profileId) =>
+        $"{AudienceGraphCachePrefix}:{profileId:N}";
+
+    private void InvalidateAudienceGraphCache(params Guid[] profileIds)
+    {
+        foreach (var profileId in profileIds.Where(profileId => profileId != Guid.Empty).Distinct())
+            _memoryCache.Remove(AudienceGraphCacheKey(profileId));
     }
 
     private async Task<SocialPost[]> FilterPostsForViewerAsync(

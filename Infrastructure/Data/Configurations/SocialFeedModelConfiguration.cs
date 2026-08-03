@@ -129,8 +129,24 @@ internal static class SocialFeedModelConfiguration
                 follow.FollowedUserId,
                 follow.FollowedParticipantType
             }).IsUnique();
-            entity.HasIndex(follow => new { follow.FollowedUserId, follow.FollowedParticipantType });
-            entity.HasIndex(follow => new { follow.FollowedUserId, follow.FollowedParticipantType, follow.Status });
+            // The feed ranks relationship tiers from both directions of the
+            // accepted follow graph. These indexes keep that candidate lookup
+            // seekable and preserve the chronological ordering used by the
+            // profile follow lists without storing a second "mutual" state.
+            entity.HasIndex(follow => new
+            {
+                follow.FollowerUserId,
+                follow.FollowerParticipantType,
+                follow.Status,
+                follow.CreatedUtc
+            });
+            entity.HasIndex(follow => new
+            {
+                follow.FollowedUserId,
+                follow.FollowedParticipantType,
+                follow.Status,
+                follow.CreatedUtc
+            });
             entity.HasIndex(follow => follow.SourceSocialPostId);
         });
 

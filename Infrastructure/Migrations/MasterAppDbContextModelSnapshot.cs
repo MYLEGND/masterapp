@@ -5727,9 +5727,9 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("SourceSocialPostId");
 
-                    b.HasIndex("FollowedUserId", "FollowedParticipantType");
+                    b.HasIndex("FollowedUserId", "FollowedParticipantType", "Status", "CreatedUtc");
 
-                    b.HasIndex("FollowedUserId", "FollowedParticipantType", "Status");
+                    b.HasIndex("FollowerUserId", "FollowerParticipantType", "Status", "CreatedUtc");
 
                     b.HasIndex("FollowerUserId", "FollowerParticipantType", "FollowedUserId", "FollowedParticipantType")
                         .IsUnique();

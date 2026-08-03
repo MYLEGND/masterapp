@@ -13,6 +13,7 @@ using Infrastructure.Social;
 using Infrastructure.Social.OpenMusic;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -1535,7 +1536,8 @@ public sealed class SocialFeedServiceTests
         return new SocialFeedService(
             db,
             mediaStorage ?? new UnavailableTestSocialMediaStorage(),
-            musicCatalog ?? new CuratedOpenMusicCatalog());
+            musicCatalog ?? new CuratedOpenMusicCatalog(),
+            new MemoryCache(new MemoryCacheOptions()));
     }
 
     // Minimal ISO base media header. The social service now verifies that a
