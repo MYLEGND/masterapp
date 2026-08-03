@@ -85,6 +85,50 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task ConversationPage_ReturnsABoundedNewestWindowAndPreservesOlderHistory()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent,
+            client.UserId,
+            client.ParticipantType,
+            InitialMessageBody: "Message one."));
+        var conversationId = Assert.IsType<MessagingConversationDetail>(opened.Conversation).Id;
+
+        foreach (var body in new[] { "Message two.", "Message three.", "Message four." })
+        {
+            Assert.True((await service.SendMessageAsync(new SendMessagingMessageCommand(
+                client,
+                conversationId,
+                body))).Succeeded);
+        }
+
+        var newestPage = await service.GetConversationPageAsync(
+            agent,
+            conversationId,
+            new MessagingConversationMessagePageQuery(Take: 2));
+        var newest = Assert.IsType<MessagingConversationDetail>(newestPage.Conversation);
+        Assert.Equal(["Message three.", "Message four."], newest.Messages.Select(message => message.Body));
+        Assert.True(newest.HasOlderMessages);
+
+        var olderPage = await service.GetConversationPageAsync(
+            agent,
+            conversationId,
+            new MessagingConversationMessagePageQuery(newest.Messages[0].SentUtc, Take: 2));
+        var older = Assert.IsType<MessagingConversationDetail>(olderPage.Conversation);
+        Assert.Equal(["Message one.", "Message two."], older.Messages.Select(message => message.Body));
+        Assert.False(older.HasOlderMessages);
+
+        var fullConversation = await service.GetConversationAsync(agent, conversationId);
+        Assert.Equal(4, Assert.IsType<MessagingConversationDetail>(fullConversation.Conversation).Messages.Count);
+    }
+
+    [Fact]
     public async Task FirstPersistedMessage_MakesTheCanonicalConversationVisibleToBothParticipants()
     {
         await using var db = ControllerTestHelpers.BuildDb();

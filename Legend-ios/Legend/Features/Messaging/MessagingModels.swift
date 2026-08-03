@@ -115,11 +115,13 @@ struct ConversationDetail: Codable, Equatable, Sendable {
     let canManagePromotion: Bool?
     let meeting: MessagingGroupMeeting?
     let canManageMeeting: Bool?
+    let hasOlderMessages: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case id, conversationType, title, participants, messages, isMuted, isClosed
         case canManageMembers, purpose, groupAvatar, canManageCollaborators
         case canDeleteGroup, isPromoted, canManagePromotion, meeting, canManageMeeting
+        case hasOlderMessages
         case promotionStartedUTC = "promotionStartedUtc"
         case promotionEndedUTC = "promotionEndedUtc"
     }
@@ -142,7 +144,8 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         promotionEndedUTC: Date? = nil,
         canManagePromotion: Bool? = nil,
         meeting: MessagingGroupMeeting? = nil,
-        canManageMeeting: Bool? = nil
+        canManageMeeting: Bool? = nil,
+        hasOlderMessages: Bool? = nil
     ) {
         self.id = id
         self.conversationType = conversationType
@@ -162,6 +165,7 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         self.canManagePromotion = canManagePromotion
         self.meeting = meeting
         self.canManageMeeting = canManageMeeting
+        self.hasOlderMessages = hasOlderMessages
     }
 }
 
@@ -738,6 +742,14 @@ protocol MessagingAPI: Sendable {
 }
 
 extension MessagingAPI {
+    func conversation(
+        id: UUID,
+        beforeUTC: Date?,
+        accessToken: String
+    ) async throws -> ConversationDetail {
+        try await conversation(id: id, accessToken: accessToken)
+    }
+
     func createGroup(
         subject: String,
         recipients: [MessagingRecipient],
@@ -1275,9 +1287,27 @@ struct URLSessionMessagingAPI: MessagingAPI {
     }
 
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail {
-        try await client.get(
+        try await conversation(
+            id: id,
+            beforeUTC: nil,
+            accessToken: accessToken)
+    }
+
+    func conversation(
+        id: UUID,
+        beforeUTC: Date?,
+        accessToken: String
+    ) async throws -> ConversationDetail {
+        var queryItems = [URLQueryItem(name: "take", value: "60")]
+        if let beforeUTC {
+            queryItems.append(URLQueryItem(
+                name: "beforeUtc",
+                value: ISO8601DateFormatter().string(from: beforeUTC)))
+        }
+        return try await client.get(
             "/api/v1/mobile/messaging/conversations/\(id.uuidString)",
             accessToken: accessToken,
+            queryItems: queryItems,
             headers: participantHeader,
             response: ConversationDetail.self
         )
@@ -1287,6 +1317,7 @@ struct URLSessionMessagingAPI: MessagingAPI {
         try await client.get(
             "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/messages",
             accessToken: accessToken,
+            queryItems: [URLQueryItem(name: "take", value: "60")],
             headers: participantHeader,
             response: [ConversationMessage].self
         )

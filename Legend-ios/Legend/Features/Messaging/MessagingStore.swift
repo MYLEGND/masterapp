@@ -287,6 +287,7 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var selectedConversationID: UUID?
     @Published private(set) var isSending = false
     @Published private(set) var isUploadingAttachment = false
+    @Published private(set) var isLoadingOlderMessages = false
     @Published private(set) var sendFailure: UserFacingFailure?
     @Published private(set) var recipientState: MobileDataLoadState<[MessagingRecipient]> = .idle
     @Published private(set) var selectedRecipientScope: MessagingRecipientScope
@@ -304,6 +305,12 @@ final class MessagingStore: ObservableObject {
     private let realtime: (any MessagingRealtimeTransport)?
     let isFounder: Bool
     private var conversationListTask: Task<MobileStoreLoadResult, Never>?
+    private var conversationDetailTasks: [UUID: Task<ConversationDetail, Error>] = [:]
+    /// Conversation details are a bounded, account-scoped presentation cache.
+    /// The API remains authoritative and every cached thread is revalidated as
+    /// soon as it is selected or receives a realtime event.
+    private var conversationDetailCache: [UUID: ConversationDetail] = [:]
+    private var conversationDetailCacheOrder: [UUID] = []
     private var recipientSearchTask: Task<Void, Never>?
     private var recipientRequestGeneration = 0
     /// Recipient search is an in-memory, account-scoped presentation cache. It
@@ -313,6 +320,8 @@ final class MessagingStore: ObservableObject {
 
     private static let recipientSearchDebounceNanoseconds: UInt64 = 90_000_000
     private static let maximumCachedRecipientSearches = 20
+    private static let maximumCachedConversationDetails = 12
+    private static let detailPrefetchCount = 4
 
     init(
         api: any MessagingAPI,
@@ -379,18 +388,22 @@ final class MessagingStore: ObservableObject {
 
     func openConversation(_ conversationID: UUID) {
         selectedConversationID = conversationID
-        detailState = .loading
         sendFailure = nil
+
+        if let cached = cachedConversationDetail(for: conversationID) {
+            // Navigation never waits for a revalidation request. The last
+            // server-authorized projection is rendered synchronously, then
+            // refreshed in place if anything has changed.
+            detailState = .loaded(cached)
+        } else {
+            detailState = .loading
+        }
+
         Task {
-            do {
-                let accessToken = try await accessTokenProvider()
-                let conversation = try await api.conversation(id: conversationID, accessToken: accessToken)
-                detailState = .loaded(conversation)
-                try await api.markRead(conversationID: conversationID, accessToken: accessToken)
-                updateUnreadCount(for: conversationID)
-            } catch {
-                detailState = detailFailureState(for: error)
-            }
+            await refreshConversation(
+                conversationID,
+                presentsResult: true,
+                marksRead: true)
         }
     }
 
@@ -485,7 +498,7 @@ final class MessagingStore: ObservableObject {
                     groupImage: groupImage,
                     meeting: meeting,
                     accessToken: try await accessTokenProvider())
-                detailState = .loaded(conversation)
+                presentConversation(conversation)
                 selectedConversationID = conversation.id
                 _ = await refresh()
                 completion(conversation.id)
@@ -603,7 +616,7 @@ final class MessagingStore: ObservableObject {
                 let conversation = try await api.conversation(
                     id: conversationID,
                     accessToken: try await accessTokenProvider())
-                detailState = .loaded(conversation)
+                presentConversation(conversation)
                 _ = await refresh()
                 completion()
             } catch {
@@ -636,7 +649,7 @@ final class MessagingStore: ObservableObject {
                     id: conversationID,
                     accessToken: try await accessTokenProvider())
 
-                detailState = .loaded(conversation)
+                presentConversation(conversation)
                 _ = await refresh()
             } catch {
                 sendFailure = failure(
@@ -664,6 +677,8 @@ final class MessagingStore: ObservableObject {
                     selectedConversationID = nil
                 }
 
+                conversationDetailCache.removeValue(forKey: conversationID)
+                conversationDetailCacheOrder.removeAll { $0 == conversationID }
                 detailState = .idle
                 _ = await refresh()
                 completion()
@@ -687,7 +702,7 @@ final class MessagingStore: ObservableObject {
                     conversationID: conversationID,
                     isPromoted: isPromoted,
                     accessToken: try await accessTokenProvider())
-                detailState = .loaded(conversation)
+                presentConversation(conversation)
                 _ = await refresh()
             } catch {
                 sendFailure = failure(for: error, title: "Group promotion not updated")
@@ -706,7 +721,7 @@ final class MessagingStore: ObservableObject {
             let conversation = try await api.joinPromotedGroup(
                 conversationID: conversationID,
                 accessToken: try await accessTokenProvider())
-            detailState = .loaded(conversation)
+            presentConversation(conversation)
             selectedConversationID = conversation.id
             _ = await refresh()
             return true
@@ -738,7 +753,7 @@ final class MessagingStore: ObservableObject {
                 let conversation = try await api.conversation(
                     id: conversationID,
                     accessToken: try await accessTokenProvider())
-                detailState = .loaded(conversation)
+                presentConversation(conversation)
                 _ = await refresh()
                 completion()
             } catch {
@@ -766,7 +781,7 @@ final class MessagingStore: ObservableObject {
                 let conversation = try await api.conversation(
                     id: conversationID,
                     accessToken: try await accessTokenProvider())
-                detailState = .loaded(conversation)
+                presentConversation(conversation)
             }
             _ = await refresh()
             return true
@@ -809,7 +824,7 @@ final class MessagingStore: ObservableObject {
                 let conversation = try await api.start(
                     recipient: recipient,
                     accessToken: try await accessTokenProvider())
-                detailState = .loaded(conversation)
+                presentConversation(conversation)
                 selectedConversationID = conversation.id
                 _ = await refresh()
                 completion(conversation.id)
@@ -994,33 +1009,58 @@ final class MessagingStore: ObservableObject {
         }
     }
 
+    func loadOlderMessages() {
+        guard !isLoadingOlderMessages,
+              case .loaded(let conversation) = detailState,
+              conversation.hasOlderMessages == true,
+              let oldestMessageUTC = conversation.messages.first?.sentUTC else {
+            return
+        }
+
+        isLoadingOlderMessages = true
+        Task {
+            defer { isLoadingOlderMessages = false }
+            do {
+                let olderPage = try await api.conversation(
+                    id: conversation.id,
+                    beforeUTC: oldestMessageUTC,
+                    accessToken: try await accessTokenProvider())
+                guard selectedConversationID == conversation.id,
+                      case .loaded(let currentConversation) = detailState,
+                      currentConversation.id == conversation.id else {
+                    return
+                }
+
+                let mergedMessages = (olderPage.messages + currentConversation.messages)
+                    .reduce(into: [UUID: ConversationMessage]()) { messages, message in
+                        messages[message.id] = message
+                    }
+                    .values
+                    .sorted { $0.sentUTC < $1.sentUTC }
+                presentConversation(copyConversation(
+                    currentConversation,
+                    messages: mergedMessages,
+                    hasOlderMessages: olderPage.hasOlderMessages))
+            } catch {
+                sendFailure = failure(for: error, title: "Earlier messages unavailable")
+            }
+        }
+    }
+
     private func append(message: ConversationMessage, to conversationID: UUID) {
         guard case .loaded(let conversation) = detailState,
               conversation.id == conversationID else {
             return
         }
-        detailState = .loaded(ConversationDetail(
-            id: conversation.id,
-            conversationType: conversation.conversationType,
-            title: conversation.title,
-            participants: conversation.participants,
-            messages: conversation.messages + [message],
-            isMuted: conversation.isMuted,
-            isClosed: conversation.isClosed,
-            canManageMembers: conversation.canManageMembers,
-            purpose: conversation.purpose,
-            groupAvatar: conversation.groupAvatar,
-            canManageCollaborators: conversation.canManageCollaborators,
-            canDeleteGroup: conversation.canDeleteGroup))
+        presentConversation(copyConversation(
+            conversation,
+            messages: conversation.messages + [message]))
     }
 
     private func append(attachment: MessagingAttachment, to messageID: UUID) {
         guard case .loaded(let conversation) = detailState else { return }
-        detailState = .loaded(ConversationDetail(
-            id: conversation.id,
-            conversationType: conversation.conversationType,
-            title: conversation.title,
-            participants: conversation.participants,
+        presentConversation(copyConversation(
+            conversation,
             messages: conversation.messages.map { message in
                 guard message.id == messageID else { return message }
                 return ConversationMessage(
@@ -1033,14 +1073,7 @@ final class MessagingStore: ObservableObject {
                     isMine: message.isMine,
                     reply: message.reply,
                     verificationReview: message.verificationReview)
-            },
-            isMuted: conversation.isMuted,
-            isClosed: conversation.isClosed,
-            canManageMembers: conversation.canManageMembers,
-            purpose: conversation.purpose,
-            groupAvatar: conversation.groupAvatar,
-            canManageCollaborators: conversation.canManageCollaborators,
-            canDeleteGroup: conversation.canDeleteGroup))
+            }))
     }
 
     private func updateConversation(
@@ -1062,26 +1095,142 @@ final class MessagingStore: ObservableObject {
         transform: (ConversationMessage) -> ConversationMessage
     ) {
         guard case .loaded(let conversation) = detailState else { return }
-        detailState = .loaded(ConversationDetail(
+        presentConversation(copyConversation(
+            conversation,
+            messages: conversation.messages.map {
+                $0.id == messageID ? transform($0) : $0
+            }))
+    }
+
+    private func copyConversation(
+        _ conversation: ConversationDetail,
+        messages: [ConversationMessage],
+        hasOlderMessages: Bool? = nil
+    ) -> ConversationDetail {
+        ConversationDetail(
             id: conversation.id,
             conversationType: conversation.conversationType,
             title: conversation.title,
             participants: conversation.participants,
-            messages: conversation.messages.map {
-                $0.id == messageID ? transform($0) : $0
-            },
+            messages: messages,
             isMuted: conversation.isMuted,
             isClosed: conversation.isClosed,
             canManageMembers: conversation.canManageMembers,
             purpose: conversation.purpose,
             groupAvatar: conversation.groupAvatar,
             canManageCollaborators: conversation.canManageCollaborators,
-            canDeleteGroup: conversation.canDeleteGroup))
+            canDeleteGroup: conversation.canDeleteGroup,
+            isPromoted: conversation.isPromoted,
+            promotionStartedUTC: conversation.promotionStartedUTC,
+            promotionEndedUTC: conversation.promotionEndedUTC,
+            canManagePromotion: conversation.canManagePromotion,
+            meeting: conversation.meeting,
+            canManageMeeting: conversation.canManageMeeting,
+            hasOlderMessages: hasOlderMessages ?? conversation.hasOlderMessages)
     }
 
     private var hasCachedConversations: Bool {
         if case .loaded = state { return true }
         return false
+    }
+
+    private func refreshConversation(
+        _ conversationID: UUID,
+        presentsResult: Bool,
+        marksRead: Bool
+    ) async {
+        do {
+            let conversation = try await conversationDetail(for: conversationID)
+            cacheConversationDetail(conversation)
+
+            guard !presentsResult || selectedConversationID == conversationID else {
+                return
+            }
+            if presentsResult {
+                presentConversation(conversation)
+            }
+
+            guard marksRead else { return }
+            // Read acknowledgement is deliberately after presentation. It is
+            // important for inbox state, but must never hold up the thread.
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await self.api.markRead(
+                        conversationID: conversationID,
+                        accessToken: try await self.accessTokenProvider())
+                    guard self.selectedConversationID == conversationID else { return }
+                    self.updateUnreadCount(for: conversationID)
+                } catch {
+                    // A later inbox refresh reconciles the read status. The
+                    // already-authorized thread remains usable either way.
+                }
+            }
+        } catch {
+            guard presentsResult, selectedConversationID == conversationID else {
+                return
+            }
+            if cachedConversationDetail(for: conversationID) == nil {
+                detailState = detailFailureState(for: error)
+            }
+        }
+    }
+
+    private func conversationDetail(for conversationID: UUID) async throws -> ConversationDetail {
+        if let existingTask = conversationDetailTasks[conversationID] {
+            return try await existingTask.value
+        }
+
+        let task = Task { [api, accessTokenProvider] in
+            try await api.conversation(
+                id: conversationID,
+                accessToken: try await accessTokenProvider())
+        }
+        conversationDetailTasks[conversationID] = task
+        defer { conversationDetailTasks[conversationID] = nil }
+        return try await task.value
+    }
+
+    private func cachedConversationDetail(for conversationID: UUID) -> ConversationDetail? {
+        guard let cached = conversationDetailCache[conversationID] else { return nil }
+        touchConversationDetail(conversationID)
+        return cached
+    }
+
+    private func presentConversation(_ conversation: ConversationDetail) {
+        detailState = .loaded(conversation)
+        cacheConversationDetail(conversation)
+    }
+
+    private func cacheConversationDetail(_ conversation: ConversationDetail) {
+        conversationDetailCache[conversation.id] = conversation
+        touchConversationDetail(conversation.id)
+
+        while conversationDetailCacheOrder.count > Self.maximumCachedConversationDetails {
+            let evictedConversationID = conversationDetailCacheOrder.removeFirst()
+            conversationDetailCache.removeValue(forKey: evictedConversationID)
+        }
+    }
+
+    private func touchConversationDetail(_ conversationID: UUID) {
+        conversationDetailCacheOrder.removeAll { $0 == conversationID }
+        conversationDetailCacheOrder.append(conversationID)
+    }
+
+    private func prefetchConversationDetails(_ conversations: [ConversationSummary]) {
+        for conversation in conversations.prefix(Self.detailPrefetchCount) {
+            guard conversationDetailCache[conversation.id] == nil,
+                  conversationDetailTasks[conversation.id] == nil else {
+                continue
+            }
+
+            Task { [weak self] in
+                await self?.refreshConversation(
+                    conversation.id,
+                    presentsResult: false,
+                    marksRead: false)
+            }
+        }
     }
 
     private func requestConversationList(
@@ -1130,6 +1279,7 @@ final class MessagingStore: ObservableObject {
             // conversation that belongs in this actor's inbox.
             state = .loaded(conversations)
             refreshFailure = nil
+            prefetchConversationDetails(conversations)
             NativeUnreadBadge.update(
                 with: conversations.reduce(0) {
                     $0 + max(0, $1.unreadCount)
@@ -1161,7 +1311,9 @@ final class MessagingStore: ObservableObject {
                 unreadCount: 0,
                 isClosed: conversation.isClosed,
                 purpose: conversation.purpose,
-                groupAvatar: conversation.groupAvatar)
+                groupAvatar: conversation.groupAvatar,
+                isPinned: conversation.isPinned,
+                isMuted: conversation.isMuted)
         })
         if case .loaded(let updatedConversations) = state {
             NativeUnreadBadge.update(with: updatedConversations.reduce(0) { $0 + max(0, $1.unreadCount) })
@@ -1182,17 +1334,10 @@ final class MessagingStore: ObservableObject {
 
     private func refreshSelectedConversation(ifSelected conversationID: UUID) async {
         guard selectedConversationID == conversationID else { return }
-
-        do {
-            let conversation = try await api.conversation(
-                id: conversationID,
-                accessToken: try await accessTokenProvider())
-            guard selectedConversationID == conversationID else { return }
-            detailState = .loaded(conversation)
-        } catch {
-            // The inbox refresh has its own resilient failure handling. Keep the
-            // last readable thread on a transient event reconciliation failure.
-        }
+        await refreshConversation(
+            conversationID,
+            presentsResult: true,
+            marksRead: false)
     }
 
     private func listFailureState(

@@ -66,6 +66,7 @@ internal sealed class MessagingService : IMessagingService
             return MessagingConversationListResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
 
         var take = Math.Clamp(query.Take, 1, 100);
+        var includeGroupImages = query.IncludeGroupImages;
         var search = NormalizeOptional(query.Search);
         if (!Fits(search, MaximumConversationSubjectLength))
             return MessagingConversationListResult.Failure("MESSAGING_SEARCH_INVALID", "The conversation search text is too long.");
@@ -126,8 +127,12 @@ internal sealed class MessagingService : IMessagingService
                     conversation.LastMessageUtc,
                     conversation.IsClosed,
                     conversation.Purpose,
-                    conversation.GroupImageContent,
-                    conversation.GroupImageContentType,
+                    GroupImageContent = includeGroupImages
+                        ? conversation.GroupImageContent
+                        : null,
+                    GroupImageContentType = includeGroupImages
+                        ? conversation.GroupImageContentType
+                        : null,
                     participant.PinnedUtc
                 })
             .OrderByDescending(x => x.PinnedUtc.HasValue)
@@ -167,20 +172,70 @@ internal sealed class MessagingService : IMessagingService
                 x.IsGroupManager))
             .ToListAsync(cancellationToken);
 
-        var messages = await _db.InternalMessages
+        // The inbox only needs one preview and one unread aggregate per
+        // conversation. Loading every historic message here made opening the
+        // Messages tab grow linearly with a member's entire message history.
+        // Keep those two projections in the database, where their indexes can
+        // do the work, and keep the native response bounded by the inbox take.
+        var latestMessageTimestamps = _db.InternalMessages
             .AsNoTracking()
-            .Where(x => conversationIds.Contains(x.ConversationId))
-            .Select(x => new MessageListRow(
-                x.Id,
-                x.ConversationId,
-                x.SenderUserId,
-                x.SenderType,
-                x.Body,
-                x.OriginalLanguage,
-                x.SentUtc,
-                x.IsDeleted,
-                x.VerificationReviewRequestId))
+            .Where(message =>
+                conversationIds.Contains(message.ConversationId) &&
+                !message.IsDeleted)
+            .GroupBy(message => message.ConversationId)
+            .Select(group => new
+            {
+                ConversationId = group.Key,
+                SentUtc = group.Max(message => message.SentUtc)
+            });
+        var latestMessageCandidates = await (
+                from message in _db.InternalMessages.AsNoTracking()
+                join latest in latestMessageTimestamps
+                    on new { message.ConversationId, message.SentUtc }
+                    equals new { latest.ConversationId, latest.SentUtc }
+                where !message.IsDeleted
+                select new MessageListRow(
+                    message.Id,
+                    message.ConversationId,
+                    message.SenderUserId,
+                    message.SenderType,
+                    message.Body,
+                    message.OriginalLanguage,
+                    message.SentUtc,
+                    message.IsDeleted,
+                    message.VerificationReviewRequestId))
             .ToListAsync(cancellationToken);
+        var latestMessagesByConversation = latestMessageCandidates
+            .GroupBy(message => message.ConversationId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderByDescending(message => message.Id)
+                    .First());
+
+        var unreadCountsByConversation = await (
+                from message in _db.InternalMessages.AsNoTracking()
+                join participant in _db.MessageConversationParticipants.AsNoTracking()
+                    on message.ConversationId equals participant.ConversationId
+                where conversationIds.Contains(message.ConversationId) &&
+                      participant.IsActive &&
+                      actorUserIds.Contains(participant.UserId.ToLower()) &&
+                      participant.ParticipantType == actorParticipantType &&
+                      !message.IsDeleted &&
+                      (message.SenderType != actorParticipantType ||
+                       !actorUserIds.Contains(message.SenderUserId.ToLower())) &&
+                      (!participant.LastReadUtc.HasValue ||
+                       message.SentUtc > participant.LastReadUtc.Value)
+                group message by message.ConversationId into unreadGroup
+                select new
+                {
+                    ConversationId = unreadGroup.Key,
+                    Count = unreadGroup.Count()
+                })
+            .ToDictionaryAsync(
+                row => row.ConversationId,
+                row => row.Count,
+                cancellationToken);
 
         var clientParticipantIds = participants
             .Where(x => x.ParticipantType == MessagingParticipantTypes.Client)
@@ -196,7 +251,6 @@ internal sealed class MessagingService : IMessagingService
 
         var displayNames = await LoadDisplayNamesAsync(participants, cancellationToken);
         var result = new List<MessagingConversationSummary>(conversations.Count);
-        var latestMessagesByConversation = new Dictionary<Guid, MessageListRow>();
         foreach (var conversation in conversations)
         {
             var conversationParticipants = participants
@@ -212,17 +266,8 @@ internal sealed class MessagingService : IMessagingService
             if (counterparty is null)
                 continue;
 
-            var conversationMessages = messages
-                .Where(x => x.ConversationId == conversation.Id)
-                .OrderByDescending(x => x.SentUtc)
-                .ToList();
-            var unreadCount = conversationMessages.Count(x =>
-                !x.IsDeleted &&
-                !IsCurrentActor(x.SenderUserId, x.SenderType, actorUserIds, actorParticipantType) &&
-                (!currentParticipant.LastReadUtc.HasValue || x.SentUtc > currentParticipant.LastReadUtc.Value));
-            var latest = conversationMessages.FirstOrDefault(x => !x.IsDeleted);
-            if (latest is not null)
-                latestMessagesByConversation[conversation.Id] = latest;
+            var unreadCount = unreadCountsByConversation.GetValueOrDefault(conversation.Id);
+            latestMessagesByConversation.TryGetValue(conversation.Id, out var latest);
             var isArchivedMembership =
                 conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
                 conversationParticipants
@@ -306,12 +351,27 @@ internal sealed class MessagingService : IMessagingService
             canonicalConversations);
     }
 
-    public async Task<MessagingConversationResult> GetConversationAsync(
+    public Task<MessagingConversationResult> GetConversationAsync(
         MessagingActor actor,
         Guid conversationId,
         CancellationToken cancellationToken = default)
+        => GetConversationProjectionAsync(actor, conversationId, null, cancellationToken);
+
+    public Task<MessagingConversationResult> GetConversationPageAsync(
+        MessagingActor actor,
+        Guid conversationId,
+        MessagingConversationMessagePageQuery query,
+        CancellationToken cancellationToken = default)
+        => GetConversationProjectionAsync(actor, conversationId, query, cancellationToken);
+
+    private async Task<MessagingConversationResult> GetConversationProjectionAsync(
+        MessagingActor actor,
+        Guid conversationId,
+        MessagingConversationMessagePageQuery? messagePage,
+        CancellationToken cancellationToken)
     {
         actor = NormalizeActor(actor);
+        var includeGroupImage = messagePage?.IncludeGroupImage ?? true;
         if (!await IsValidActorAsync(actor, cancellationToken))
             return MessagingConversationResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
 
@@ -327,8 +387,8 @@ internal sealed class MessagingService : IMessagingService
                 x.OwnerUserId,
                 x.OwnerParticipantType,
                 x.Purpose,
-                x.GroupImageContent,
-                x.GroupImageContentType,
+                includeGroupImage ? x.GroupImageContent : null,
+                includeGroupImage ? x.GroupImageContentType : null,
                 x.IsPromoted,
                 x.PromotionStartedUtc,
                 x.PromotionEndedUtc,
@@ -359,22 +419,21 @@ internal sealed class MessagingService : IMessagingService
                 x.HiddenUtc,
                 x.IsGroupManager))
             .ToListAsync(cancellationToken);
-        var attachments = await _db.MessageAttachments
+        var take = messagePage is null
+            ? (int?)null
+            : Math.Clamp(messagePage.Take, 1, 80);
+        var messagesQuery = _db.InternalMessages
             .AsNoTracking()
-            .Where(x => x.InternalMessage.ConversationId == conversationId)
-            .Select(x => new AttachmentRow(
-                x.Id,
-                x.InternalMessageId,
-                x.OriginalFileName,
-                x.ContentType,
-                x.SizeBytes,
-                x.ScanStatus,
-                x.CreatedUtc))
-            .ToListAsync(cancellationToken);
-        var messages = await _db.InternalMessages
-            .AsNoTracking()
-            .Where(x => x.ConversationId == conversationId)
-            .OrderBy(x => x.SentUtc)
+            .Where(message => message.ConversationId == conversationId);
+        if (messagePage?.BeforeUtc is DateTime beforeUtc)
+        {
+            messagesQuery = messagesQuery.Where(message => message.SentUtc < beforeUtc);
+        }
+
+        var newestMessages = await messagesQuery
+            .OrderByDescending(message => message.SentUtc)
+            .ThenByDescending(message => message.Id)
+            .Take(take ?? int.MaxValue)
             .Select(x => new MessageDetailRow(
                 x.Id,
                 x.ConversationId,
@@ -396,6 +455,33 @@ internal sealed class MessagingService : IMessagingService
                         x.ReplyToMessage.Body,
                         x.ReplyToMessage.IsDeleted)))
             .ToListAsync(cancellationToken);
+        var messages = newestMessages
+            .OrderBy(message => message.SentUtc)
+            .ThenBy(message => message.Id)
+            .ToList();
+        var hasOlderMessages = false;
+        if (take.HasValue && messages.Count > 0)
+        {
+            var oldestSentUtc = messages[0].SentUtc;
+            hasOlderMessages = await messagesQuery
+                .AnyAsync(message => message.SentUtc < oldestSentUtc, cancellationToken);
+        }
+
+        var messageIds = messages.Select(message => message.Id).ToArray();
+        var attachments = messageIds.Length == 0
+            ? new List<AttachmentRow>()
+            : await _db.MessageAttachments
+                .AsNoTracking()
+                .Where(attachment => messageIds.Contains(attachment.InternalMessageId))
+                .Select(attachment => new AttachmentRow(
+                    attachment.Id,
+                    attachment.InternalMessageId,
+                    attachment.OriginalFileName,
+                    attachment.ContentType,
+                    attachment.SizeBytes,
+                    attachment.ScanStatus,
+                    attachment.CreatedUtc))
+                .ToListAsync(cancellationToken);
         var messageParticipants = messages
             .Select(message => new MessagingParticipantReference(message.SenderUserId, message.SenderType))
             .Concat(messages
@@ -505,7 +591,8 @@ internal sealed class MessagingService : IMessagingService
             conversation.PromotionEndedUtc,
             canManagePromotion,
             meeting,
-            isGroupOwner && conversation.Purpose is null);
+            isGroupOwner && conversation.Purpose is null,
+            hasOlderMessages);
 
         return new MessagingConversationResult(true, null, null, detail);
     }

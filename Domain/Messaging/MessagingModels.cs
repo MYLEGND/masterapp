@@ -121,7 +121,18 @@ public sealed record MessagingActor(string UserId, string ParticipantType);
 public sealed record MessagingConversationListQuery(
     string? Search = null,
     bool IncludeClosed = false,
-    int Take = 50);
+    int Take = 50,
+    bool IncludeGroupImages = true);
+
+/// <summary>
+/// A bounded history window for a conversation. The caller may only page a
+/// conversation it is already authorized to read; this controls projection
+/// size, never access.
+/// </summary>
+public sealed record MessagingConversationMessagePageQuery(
+    DateTime? BeforeUtc = null,
+    int Take = 60,
+    bool IncludeGroupImage = true);
 
 public sealed record StartMessagingConversationCommand(
     MessagingActor Actor,
@@ -490,7 +501,8 @@ public sealed record MessagingConversationDetail(
     DateTime? PromotionEndedUtc = null,
     bool CanManagePromotion = false,
     MessagingGroupMeeting? Meeting = null,
-    bool CanManageMeeting = false);
+    bool CanManageMeeting = false,
+    bool HasOlderMessages = false);
 
 /// <summary>
 /// The resolved meeting presentation for a group conversation. Host identity

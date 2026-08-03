@@ -1349,6 +1349,10 @@ private struct LegendMessagesTab: View {
             MessagingHomeView(
                 store: messages,
                 openConversation: { conversationID in
+                    // Begin the single-flight detail request before SwiftUI
+                    // schedules the navigation destination. This removes a
+                    // frame-cycle of avoidable latency on every thread open.
+                    messages.openConversation(conversationID)
                     navigationPath = [conversationID]
                     isThreadActive = true
                 })
@@ -1362,6 +1366,7 @@ private struct LegendMessagesTab: View {
         }
         .onChange(of: pendingConversationID) { _, conversationID in
             guard let conversationID else { return }
+            messages.openConversation(conversationID)
             navigationPath = [conversationID]
             isThreadActive = true
             pendingConversationID = nil

@@ -2105,6 +2105,9 @@ struct ConversationThreadView: View {
 
             LegendMessageTimeline(
                 messages: conversation.messages,
+                hasOlderMessages: conversation.hasOlderMessages == true,
+                isLoadingOlderMessages: store.isLoadingOlderMessages,
+                loadOlderMessages: { store.loadOlderMessages() },
                 onReply: { message in
                     replyingToMessage = message
                     composerIsFocused = true
@@ -3107,6 +3110,9 @@ private struct LegendConversationFallbackHeader: View {
 
 private struct LegendMessageTimeline: View {
     let messages: [ConversationMessage]
+    let hasOlderMessages: Bool
+    let isLoadingOlderMessages: Bool
+    let loadOlderMessages: () -> Void
     let onReply: (ConversationMessage) -> Void
     let onDelete: (ConversationMessage) -> Void
     let onOpenVerificationProfile: (ConversationMessage) -> Void
@@ -3115,6 +3121,21 @@ private struct LegendMessageTimeline: View {
         ScrollViewReader { proxy in
             LegendScrollView(tracksNavigationChrome: false) {
                 LazyVStack(spacing: 2) {
+                    if hasOlderMessages {
+                        Button(action: loadOlderMessages) {
+                            if isLoadingOlderMessages {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Label("Load earlier messages", systemImage: "arrow.up.circle")
+                                    .font(.caption.weight(.semibold))
+                            }
+                        }
+                        .foregroundStyle(LegendNextColor.gold)
+                        .disabled(isLoadingOlderMessages)
+                        .padding(.vertical, LegendNextSpacing.sm)
+                    }
+
                     if messages.isEmpty {
                         LegendMessagingEmptyState(
                             symbol: "bubble.left.and.bubble.right.fill",
@@ -3171,7 +3192,7 @@ private struct LegendMessageTimeline: View {
             .onAppear {
                 scrollToBottom(proxy, animated: false)
             }
-            .onChange(of: messages.count) { _, _ in
+            .onChange(of: messages.last?.id) { _, _ in
                 scrollToBottom(proxy, animated: true)
             }
         }

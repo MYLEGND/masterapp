@@ -540,7 +540,14 @@ public sealed class MobileIntegrationTests
                     OriginalBody: "Server-authorized message")
             ]);
         var messaging = new Mock<IMessagingService>(MockBehavior.Strict);
-        messaging.Setup(x => x.GetConversationAsync(actor, conversationId, It.IsAny<CancellationToken>()))
+        messaging.Setup(x => x.GetConversationPageAsync(
+                actor,
+                conversationId,
+                It.Is<MessagingConversationMessagePageQuery>(query =>
+                    query.BeforeUtc == null &&
+                    query.Take == 60 &&
+                    !query.IncludeGroupImage),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MessagingConversationResult(true, null, null, detail));
         messaging.Setup(x => x.MarkConversationReadAsync(
                 It.Is<MessagingConversationActionCommand>(command => command.Actor == actor && command.ConversationId == conversationId),
@@ -548,13 +555,21 @@ public sealed class MobileIntegrationTests
             .ReturnsAsync(MessagingOperationResult.Success());
         var controller = CreateController(db, messaging.Object, Principal("agent-oid"));
 
-        var conversationResult = await controller.Conversation(conversationId, CancellationToken.None);
+        var conversationResult = await controller.Conversation(
+            conversationId,
+            null,
+            null,
+            CancellationToken.None);
         var conversation = Assert.IsType<OkObjectResult>(conversationResult).Value as MobileConversationDetailDto;
         Assert.NotNull(conversation);
         Assert.Single(conversation!.Messages);
         Assert.False(conversation.Messages[0].IsMine);
 
-        var messagesResult = await controller.Messages(conversationId, CancellationToken.None);
+        var messagesResult = await controller.Messages(
+            conversationId,
+            null,
+            null,
+            CancellationToken.None);
         var messages = Assert.IsAssignableFrom<IReadOnlyList<MobileMessageDto>>(Assert.IsType<OkObjectResult>(messagesResult).Value);
         Assert.Single(messages);
         Assert.Equal("Mesaj sèvè a tradui", messages[0].Body);

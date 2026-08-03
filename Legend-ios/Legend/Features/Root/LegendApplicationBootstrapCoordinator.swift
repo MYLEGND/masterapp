@@ -279,6 +279,11 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
     /// Home renders only its own projection and social feed. Financial Intelligence
     /// stays dormant until the user opens the hidden Profile drawer.
     private func loadCriticalFeatures() async -> [(LegendBootstrapFeature, MobileStoreLoadResult)] {
+        // The inbox is not part of the Home rendering gate, but warming its
+        // authoritative projection here lets Messages render immediately when
+        // the user switches tabs. `MessagingStore` coalesces this with the
+        // deferred pass and any manual refresh into one request.
+        stores.messaging.load()
         async let home = stores.home.loadIfNeeded()
         async let social = stores.social.loadIfNeeded()
         let values = await (home, social)

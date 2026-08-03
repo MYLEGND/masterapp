@@ -178,75 +178,194 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
             )
 
         case .loaded(let snapshot):
-            LegendNextSectionHeader(
-                eyebrow: "Network",
-                title: "Latest from Legend"
-            )
+            VStack(alignment: .leading, spacing: 0) {
+                LegendNetworkFeedHero(
+                    postCount: snapshot.posts.count,
+                    promotedGroupCount: snapshot.promotedGroups.count)
 
-            ForEach(snapshot.promotedGroups) { group in
-                LegendPromotedGroupCard(
-                    group: group,
-                    isJoining: messaging.isCreatingGroup,
-                    join: {
-                        guard !group.isJoinedByCurrentActor else { return }
-                        Task {
-                            if await messaging.joinPromotedGroup(
-                                conversationID: group.conversationID)
-                            {
-                                await refreshSocial()
-                                openJoinedGroup(group.conversationID)
-                            }
-                        }
-                    })
-            }
-
-            if let publication = social.publication {
-                LegendSocialPublicationBanner(
-                    publication: publication,
-                    retry: social.retryPublication,
-                    dismiss: social.dismissPublication)
-            }
-
-            if snapshot.posts.isEmpty && snapshot.promotedGroups.isEmpty {
-                LegendSocialEmptyFeed {
-                    creationRoute = .menu
-                }
-            } else {
-                ForEach(snapshot.posts) { post in
-                    LegendSocialPostCard(
-                        post: post,
-                        currentIdentity: session.actor.identity,
-                        social: social,
-                        react: {
-                            social.toggleReaction(postID: post.id)
-                        },
-                        comment: {
-                            commentTarget = post
-                        },
-                        follow: {
-                            social.toggleFollow(author: post.author, sourcePostID: post.id)
-                        },
-                        insights: {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                ForEach(snapshot.promotedGroups) { group in
+                    LegendPromotedGroupCard(
+                        group: group,
+                        isJoining: messaging.isCreatingGroup,
+                        join: {
+                            guard !group.isJoinedByCurrentActor else { return }
                             Task {
-                                postInsight = await social.postInsights(postID: post.id)
+                                if await messaging.joinPromotedGroup(
+                                    conversationID: group.conversationID)
+                                {
+                                    await refreshSocial()
+                                    openJoinedGroup(group.conversationID)
+                                }
                             }
-                        },
-                        presentation: .preview,
-                        open: {
-                            selectedPost = post
-                        },
-                        openProfile: {
-                            publicProfile = LegendPublicProfileRoute(
-                                profile: post.author,
-                                isFollowing: post.followedByCurrentActor,
-                                isFollowRequestPending: post.followRequestPending ?? false)
-                        }
-                    )
+                        })
+                }
+
+                if let publication = social.publication {
+                    LegendSocialPublicationBanner(
+                        publication: publication,
+                        retry: social.retryPublication,
+                        dismiss: social.dismissPublication)
+                }
+
+                if snapshot.posts.isEmpty && snapshot.promotedGroups.isEmpty {
+                    LegendSocialEmptyFeed {
+                        creationRoute = .menu
+                    }
+                } else {
+                    ForEach(snapshot.posts) { post in
+                        LegendSocialPostCard(
+                            post: post,
+                            currentIdentity: session.actor.identity,
+                            social: social,
+                            react: {
+                                social.toggleReaction(postID: post.id)
+                            },
+                            comment: {
+                                commentTarget = post
+                            },
+                            follow: {
+                                social.toggleFollow(author: post.author, sourcePostID: post.id)
+                            },
+                            insights: {
+                                Task {
+                                    postInsight = await social.postInsights(postID: post.id)
+                                }
+                            },
+                            presentation: .preview,
+                            open: {
+                                selectedPost = post
+                            },
+                            openProfile: {
+                                publicProfile = LegendPublicProfileRoute(
+                                    profile: post.author,
+                                    isFollowing: post.followedByCurrentActor,
+                                    isFollowRequestPending: post.followRequestPending ?? false)
+                            }
+                        )
+                    }
+                }
                 }
             }
         }
     }
 
+}
+
+/// The feed's single premium entry treatment. It gives the network content a
+/// strong visual handoff from Home into live community posts without creating a
+/// second styling system for the cards that follow.
+private struct LegendNetworkFeedHero: View {
+    let postCount: Int
+    let promotedGroupCount: Int
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var updateLabel: String {
+        let updateCount = postCount + promotedGroupCount
+        return updateCount == 0
+            ? "NETWORK READY"
+            : "\(updateCount) FRESH UPDATE\(updateCount == 1 ? "" : "S")"
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.prominentCard,
+                style: .continuous)
+                .fill(LegendNextColor.midnight.opacity(0.92))
+                .offset(y: 7)
+
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.prominentCard,
+                style: .continuous)
+                .fill(LegendNextGradient.hero)
+                .overlay(LegendNextGradient.heroGlow)
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius: LegendNextRadius.prominentCard,
+                        style: .continuous)
+                        .strokeBorder(LegendNextGradient.premiumStroke, lineWidth: 1.2)
+                }
+
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                HStack(spacing: LegendNextSpacing.sm) {
+                    Label("LEGEND NETWORK", systemImage: "person.3.sequence.fill")
+                        .font(.caption2.weight(.bold))
+                        .tracking(1.15)
+                        .foregroundStyle(LegendNextColor.goldBright)
+
+                    Spacer(minLength: LegendNextSpacing.sm)
+
+                    Text(updateLabel)
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.7)
+                        .foregroundStyle(.white.opacity(0.86))
+                        .padding(.horizontal, LegendNextSpacing.sm)
+                        .padding(.vertical, LegendNextSpacing.tiny)
+                        .background(.white.opacity(0.12), in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+                        }
+                }
+
+                HStack(alignment: .bottom, spacing: LegendNextSpacing.md) {
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                        Text("Latest from Legend")
+                            .font(LegendNextTypography.hero)
+                            .foregroundStyle(.white)
+
+                        Text("Your people, groups, and moments—alive right now.")
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(.white.opacity(0.74))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    ZStack {
+                        Circle()
+                            .fill(LegendNextGradient.gold)
+                        Image(systemName: "sparkles")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(LegendNextColor.midnight)
+                    }
+                    .frame(width: 48, height: 48)
+                    .shadow(
+                        color: LegendNextColor.gold.opacity(0.35),
+                        radius: 10,
+                        y: 4)
+                }
+
+                HStack(spacing: LegendNextSpacing.sm) {
+                    Circle()
+                        .fill(LegendNextColor.goldBright)
+                        .frame(width: 6, height: 6)
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    LegendNextColor.goldBright.opacity(0.82),
+                                    .white.opacity(0.14)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing))
+                        .frame(height: 1)
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(LegendNextColor.goldBright)
+                }
+                .padding(.top, LegendNextSpacing.tiny)
+            }
+            .padding(LegendNextSpacing.intermediate)
+        }
+        .shadow(
+            color: LegendNextColor.elevatedShadow(for: colorScheme).opacity(0.92),
+            radius: LegendNextElevation.cardRadius,
+            y: LegendNextElevation.cardY)
+        .padding(.bottom, LegendNextSpacing.xs)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Legend network. \(updateLabel.lowercased()). Latest from Legend.")
+    }
 }
 
 /// A safe invitation projection, not a conversation preview. The group must be

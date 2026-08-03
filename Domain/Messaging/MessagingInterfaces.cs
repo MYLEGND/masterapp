@@ -24,6 +24,12 @@ public interface IMessagingService
         Guid conversationId,
         CancellationToken cancellationToken = default);
 
+    Task<MessagingConversationResult> GetConversationPageAsync(
+        MessagingActor actor,
+        Guid conversationId,
+        MessagingConversationMessagePageQuery query,
+        CancellationToken cancellationToken = default);
+
     Task<MessagingConversationResult> StartConversationAsync(
         StartMessagingConversationCommand command,
         CancellationToken cancellationToken = default);
