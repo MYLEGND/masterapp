@@ -74,7 +74,14 @@ internal sealed class MessagingService : IMessagingService
                  conversation.Messages.Any(message =>
                      !message.IsDeleted && message.SentUtc > participant.HiddenUtc))));
 
+        // Empty direct conversations are discovery/start drafts and remain
+        // hidden until their first persisted message. A normal user-created
+        // group, however, is an intentional durable conversation as soon as
+        // group creation succeeds. Internal/review groups carry a Purpose and
+        // are intentionally excluded from this no-message visibility rule.
         conversationsQuery = conversationsQuery.Where(conversation =>
+            (conversation.ConversationType == MessagingConversationTypes.Group &&
+             conversation.Purpose == null) ||
             conversation.Messages.Any(message => !message.IsDeleted));
 
         if (!query.IncludeClosed)
@@ -717,6 +724,7 @@ internal sealed class MessagingService : IMessagingService
             return MessagingConversationResult.Failure("MESSAGING_GROUP_INVALID", "The group members are invalid.");
         }
 
+        var authorizedParticipants = new List<MessagingParticipantReference>(participants.Length);
         foreach (var participant in participants)
         {
             var authorized = await GetAuthorizedParticipantAsync(
@@ -724,17 +732,33 @@ internal sealed class MessagingService : IMessagingService
                 participant.UserId,
                 participant.ParticipantType,
                 cancellationToken);
-            if (!authorized.Succeeded)
+            if (!authorized.Succeeded || authorized.Recipient is null)
             {
                 return MessagingConversationResult.Failure(
                     "MESSAGING_RECIPIENT_FORBIDDEN",
                     "A selected member is no longer one of your available connections.");
             }
+
+            authorizedParticipants.Add(new MessagingParticipantReference(
+                NormalizeUserId(authorized.Recipient.UserId),
+                NormalizeRequired(authorized.Recipient.ParticipantType)));
+        }
+
+        if (authorizedParticipants.Any(participant => IsSameParticipant(
+                participant.UserId,
+                participant.ParticipantType,
+                actor.UserId,
+                actor.ParticipantType)) ||
+            authorizedParticipants.Distinct().Count() != authorizedParticipants.Count)
+        {
+            return MessagingConversationResult.Failure(
+                "MESSAGING_GROUP_INVALID",
+                "The group members are invalid.");
         }
 
         return await CreateGroupConversationCoreAsync(
             actor,
-            participants,
+            authorizedParticipants,
             subject,
             initialMessage,
             clientMessageId,
