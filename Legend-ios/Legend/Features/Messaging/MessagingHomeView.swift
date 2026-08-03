@@ -1279,8 +1279,174 @@ private struct LegendGroupMemberPicker: View {
     }
 }
 
-/// Group ownership is enforced by the server. This sheet only exposes the
-/// owner-authorized profile fields shared by regular and staff groups.
+/// Group management authority is enforced by the server. Owners and
+/// delegated collaborators may edit the profile when CanManageMembers is true.
+private struct LegendGroupCollaboratorSheet: View {
+    @ObservedObject var store: MessagingStore
+    let conversation: ConversationDetail
+    let currentIdentity: LogicalParticipantIdentity
+    let dismiss: () -> Void
+
+    private var manageableParticipants: [MessagingParticipant] {
+        conversation.participants
+            .filter { $0.identity != currentIdentity }
+            .sorted {
+                $0.displayName.localizedCaseInsensitiveCompare(
+                    $1.displayName) == .orderedAscending
+            }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LegendNextCanvas()
+
+                VStack(spacing: 0) {
+                    header
+
+                    if let failure = store.sendFailure {
+                        LegendMessagingStatusBanner(
+                            symbol: "exclamationmark.circle.fill",
+                            title: failure.title,
+                            message: failure.message
+                        )
+                        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+                        .padding(.top, LegendNextSpacing.sm)
+                    }
+
+                    LegendScrollView(tracksNavigationChrome: false) {
+                        LazyVStack(spacing: LegendNextSpacing.sm) {
+                            explanatoryCard
+
+                            ForEach(manageableParticipants) { participant in
+                                collaboratorRow(participant)
+                            }
+                        }
+                        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+                        .padding(.top, LegendNextSpacing.sm)
+                        .padding(.bottom, LegendNextSpacing.xxl)
+                    }
+                    .scrollIndicators(.hidden)
+                }
+            }
+            .toolbar(.hidden, for: .navigationBar)
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            Button("Done", action: dismiss)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+
+            Spacer()
+
+            VStack(spacing: 2) {
+                Text("Collaborators")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+
+                Text("Co-manage this group")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.68))
+            }
+
+            Spacer()
+
+            Color.clear
+                .frame(width: 42, height: 1)
+        }
+        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+        .padding(.vertical, LegendNextSpacing.md)
+        .background(LegendNextGradient.hero)
+    }
+
+    private var explanatoryCard: some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            Label(
+                "Owner-controlled access",
+                systemImage: "lock.shield.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(LegendNextColor.textPrimary)
+
+            Text(
+                "Collaborators can edit the group and add members. "
+                + "They cannot appoint other collaborators or delete the group."
+            )
+            .font(.footnote)
+            .foregroundStyle(LegendNextColor.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(LegendNextSpacing.md)
+        .background(
+            LegendNextColor.surfaceElevated,
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous))
+    }
+
+    private func collaboratorRow(
+        _ participant: MessagingParticipant
+    ) -> some View {
+        let isManager = participant.isGroupManager == true
+
+        return Button {
+            store.setGroupCollaborator(
+                participant,
+                in: conversation.id,
+                isManager: !isManager)
+        } label: {
+            LegendContactCard(
+                displayName: participant.displayName,
+                subtitle: participant.identity.participantType == .agent
+                    ? publicAgentRoleLabel(roleLabel: participant.roleLabel)
+                    : "Group member",
+                detail: isManager
+                    ? "Collaborator · Can co-manage this group"
+                    : "Member",
+                isVerified: participant.isVerified == true,
+                avatar: {
+                    LegendMessagingAvatar(
+                        participant: participant,
+                        size: 46,
+                        showsGoldRing: true)
+                },
+                action: {
+                    if store.isCreatingGroup {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(LegendNextColor.gold)
+                    } else {
+                        HStack(spacing: 5) {
+                            Image(
+                                systemName: isManager
+                                    ? "checkmark.shield.fill"
+                                    : "person.badge.plus")
+                                .font(.caption.weight(.bold))
+
+                            Text(
+                                isManager
+                                    ? "Collaborator"
+                                    : "Make collaborator")
+                                .font(.caption.weight(.bold))
+                        }
+                        .foregroundStyle(
+                            isManager
+                                ? LegendNextColor.success
+                                : LegendNextColor.gold)
+                    }
+                }
+            )
+        }
+        .buttonStyle(LegendMessagingPressButtonStyle())
+        .disabled(store.isCreatingGroup)
+        .accessibilityLabel(
+            isManager
+                ? "Remove \(participant.displayName) as collaborator"
+                : "Make \(participant.displayName) a collaborator")
+    }
+}
+
 private struct LegendGroupProfileEditor: View {
     @ObservedObject var store: MessagingStore
     let conversation: ConversationDetail
@@ -1332,7 +1498,9 @@ private struct LegendGroupProfileEditor: View {
                                     style: .continuous))
                     }
 
-                    Text("You manage this group’s members, name, and photo.")
+                    Text(
+                        "Group owners and collaborators can manage "
+                        + "the group name, photo, and membership.")
                         .font(.footnote)
                         .foregroundStyle(LegendNextColor.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1389,6 +1557,7 @@ struct ConversationThreadView: View {
     @ObservedObject var social: MobileSocialStore
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismissThread
     @FocusState private var composerIsFocused: Bool
     @State private var draft = ""
     @State private var stagedAttachments: [MessagingAttachmentDraft] = []
@@ -1398,6 +1567,8 @@ struct ConversationThreadView: View {
     @State private var replyingToMessage: ConversationMessage?
     @State private var isPresentingAddMember = false
     @State private var isPresentingGroupProfile = false
+    @State private var isPresentingGroupCollaborators = false
+    @State private var isConfirmingDeleteGroup = false
     @State private var isPresentingCallSheet = false
     @State private var verificationProfile: LegendVerificationProfileRoute?
 
@@ -1429,6 +1600,38 @@ struct ConversationThreadView: View {
                     dismiss: { isPresentingGroupProfile = false })
                 .legendNextSheetChrome(detents: [.large])
             }
+        }
+        .sheet(isPresented: $isPresentingGroupCollaborators) {
+            if case .loaded(let conversation) = store.detailState,
+               conversation.canManageCollaborators == true {
+                LegendGroupCollaboratorSheet(
+                    store: store,
+                    conversation: conversation,
+                    currentIdentity: currentIdentity,
+                    dismiss: {
+                        isPresentingGroupCollaborators = false
+                    }
+                )
+                .legendNextSheetChrome(detents: [.large])
+            }
+        }
+        .confirmationDialog(
+            "Delete this group?",
+            isPresented: $isConfirmingDeleteGroup,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Group for Everyone", role: .destructive) {
+                store.deleteGroup(conversationID: conversationID) {
+                    dismissThread()
+                }
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "This permanently closes the group for every member. "
+                + "Only the group owner can perform this action."
+            )
         }
         .sheet(isPresented: $isPresentingCallSheet) {
             if case .loaded(let conversation) = store.detailState {
@@ -1492,6 +1695,12 @@ struct ConversationThreadView: View {
                 conversation: conversation,
                 addMember: { isPresentingAddMember = true },
                 editGroup: { isPresentingGroupProfile = true },
+                manageCollaborators: {
+                    isPresentingGroupCollaborators = true
+                },
+                deleteGroup: {
+                    isConfirmingDeleteGroup = true
+                },
                 startCall: { isPresentingCallSheet = true }
             )
 
@@ -2154,6 +2363,8 @@ private struct LegendConversationHeader: View {
     let conversation: ConversationDetail
     let addMember: () -> Void
     let editGroup: () -> Void
+    let manageCollaborators: () -> Void
+    let deleteGroup: () -> Void
     let startCall: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -2218,28 +2429,53 @@ private struct LegendConversationHeader: View {
 
             Spacer()
 
-            if isGroup && conversation.canManageMembers {
-                HStack(spacing: LegendNextSpacing.xs) {
-                    Button(action: editGroup) {
-                        Image(systemName: "pencil")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(LegendNextColor.midnight)
-                            .frame(width: 38, height: 38)
-                            .background(LegendNextGradient.gold, in: Circle())
-                    }
-                    .buttonStyle(LegendMessagingPressButtonStyle())
-                    .accessibilityLabel("Edit group profile")
+            if isGroup &&
+                (
+                    conversation.canManageMembers ||
+                    conversation.canManageCollaborators == true ||
+                    conversation.canDeleteGroup == true
+                ) {
+                Menu {
+                    if conversation.canManageMembers {
+                        Button(action: editGroup) {
+                            Label("Edit Group", systemImage: "pencil")
+                        }
 
-                    Button(action: addMember) {
-                        Image(systemName: "person.badge.plus")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(LegendNextColor.midnight)
-                            .frame(width: 38, height: 38)
-                            .background(LegendNextGradient.gold, in: Circle())
+                        Button(action: addMember) {
+                            Label(
+                                "Add Members",
+                                systemImage: "person.badge.plus")
+                        }
                     }
-                    .buttonStyle(LegendMessagingPressButtonStyle())
-                    .accessibilityLabel("Add group member")
+
+                    if conversation.canManageCollaborators == true {
+                        Divider()
+
+                        Button(action: manageCollaborators) {
+                            Label(
+                                "Collaborators",
+                                systemImage: "person.2.badge.gearshape")
+                        }
+                    }
+
+                    if conversation.canDeleteGroup == true {
+                        Divider()
+
+                        Button(role: .destructive, action: deleteGroup) {
+                            Label(
+                                "Delete Group",
+                                systemImage: "trash")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(LegendNextColor.midnight)
+                        .frame(width: 38, height: 38)
+                        .background(LegendNextGradient.gold, in: Circle())
                 }
+                .buttonStyle(LegendMessagingPressButtonStyle())
+                .accessibilityLabel("Group management")
             } else if !isGroup {
                 Button(action: startCall) {
                     Image(systemName: "phone.fill")

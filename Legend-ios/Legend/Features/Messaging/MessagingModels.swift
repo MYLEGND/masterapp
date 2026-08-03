@@ -7,6 +7,7 @@ struct MessagingParticipant: Codable, Equatable, Identifiable, Sendable {
     let roleLabel: String?
     let avatar: ProfileAvatar?
     var isVerified: Bool? = nil
+    var isGroupManager: Bool? = nil
 
     var id: LogicalParticipantIdentity { identity }
 
@@ -17,6 +18,7 @@ struct MessagingParticipant: Codable, Equatable, Identifiable, Sendable {
         case roleLabel
         case avatar
         case isVerified
+        case isGroupManager
     }
 }
 
@@ -105,6 +107,8 @@ struct ConversationDetail: Codable, Equatable, Sendable {
     let canManageMembers: Bool
     let purpose: String?
     let groupAvatar: ProfileAvatar?
+    let canManageCollaborators: Bool?
+    let canDeleteGroup: Bool?
 
     init(
         id: UUID,
@@ -116,7 +120,9 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         isClosed: Bool,
         canManageMembers: Bool,
         purpose: String? = nil,
-        groupAvatar: ProfileAvatar? = nil
+        groupAvatar: ProfileAvatar? = nil,
+        canManageCollaborators: Bool? = nil,
+        canDeleteGroup: Bool? = nil
     ) {
         self.id = id
         self.conversationType = conversationType
@@ -128,6 +134,8 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         self.canManageMembers = canManageMembers
         self.purpose = purpose
         self.groupAvatar = groupAvatar
+        self.canManageCollaborators = canManageCollaborators
+        self.canDeleteGroup = canDeleteGroup
     }
 }
 
@@ -474,6 +482,18 @@ struct MessagingGroupMemberRequest: Encodable, Sendable {
     }
 }
 
+struct MessagingGroupCollaboratorRequest: Encodable, Sendable {
+    let userID: String
+    let participantType: ParticipantType
+    let isManager: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case userID = "userId"
+        case participantType
+        case isManager
+    }
+}
+
 struct CreateMessagingGroupRequest: Encodable, Sendable {
     let subject: String
     let participants: [MessagingGroupMemberRequest]
@@ -571,6 +591,16 @@ protocol MessagingAPI: Sendable {
         recipient: MessagingRecipient,
         accessToken: String
     ) async throws
+    func setGroupCollaborator(
+        conversationID: UUID,
+        participant: LogicalParticipantIdentity,
+        isManager: Bool,
+        accessToken: String
+    ) async throws
+    func deleteGroup(
+        conversationID: UUID,
+        accessToken: String
+    ) async throws
     func resolveVerificationRequest(
         requestID: UUID,
         approve: Bool,
@@ -665,6 +695,22 @@ extension MessagingAPI {
     func addGroupParticipant(
         conversationID: UUID,
         recipient: MessagingRecipient,
+        accessToken: String
+    ) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func setGroupCollaborator(
+        conversationID: UUID,
+        participant: LogicalParticipantIdentity,
+        isManager: Bool,
+        accessToken: String
+    ) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func deleteGroup(
+        conversationID: UUID,
         accessToken: String
     ) async throws {
         throw MobileMessagingContractError.unavailable
@@ -974,6 +1020,32 @@ struct URLSessionMessagingAPI: MessagingAPI {
                 participantType: recipient.identity.participantType),
             accessToken: accessToken,
             idempotencyKey: UUID(),
+            headers: participantHeader)
+    }
+
+    func setGroupCollaborator(
+        conversationID: UUID,
+        participant: LogicalParticipantIdentity,
+        isManager: Bool,
+        accessToken: String
+    ) async throws {
+        try await client.put(
+            "/api/v1/mobile/messaging/groups/\(conversationID.uuidString)/collaborators",
+            body: MessagingGroupCollaboratorRequest(
+                userID: participant.userID,
+                participantType: participant.participantType,
+                isManager: isManager),
+            accessToken: accessToken,
+            headers: participantHeader)
+    }
+
+    func deleteGroup(
+        conversationID: UUID,
+        accessToken: String
+    ) async throws {
+        try await client.delete(
+            "/api/v1/mobile/messaging/groups/\(conversationID.uuidString)",
+            accessToken: accessToken,
             headers: participantHeader)
     }
 

@@ -89,6 +89,14 @@ public interface IMessagingService
         AddMessagingGroupParticipantCommand command,
         CancellationToken cancellationToken = default);
 
+    Task<MessagingOperationResult> SetGroupManagerAsync(
+        SetMessagingGroupManagerCommand command,
+        CancellationToken cancellationToken = default);
+
+    Task<MessagingOperationResult> DeleteGroupAsync(
+        DeleteMessagingGroupCommand command,
+        CancellationToken cancellationToken = default);
+
     Task<MessagingMessageResult> SendMessageAsync(
         SendMessagingMessageCommand command,
         CancellationToken cancellationToken = default);

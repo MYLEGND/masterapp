@@ -444,6 +444,50 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             : MessagingFailure(result.ErrorCode, result.ErrorMessage);
     }
 
+    [HttpPut("messaging/groups/{conversationId:guid}/collaborators")]
+    public async Task<IActionResult> SetGroupCollaborator(
+        Guid conversationId,
+        [FromBody] MobileGroupCollaboratorRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.SetGroupManagerAsync(
+            new SetMessagingGroupManagerCommand(
+                resolved.Actor!.Actor,
+                conversationId,
+                request?.UserId ?? string.Empty,
+                request?.ParticipantType ?? string.Empty,
+                request?.IsManager == true),
+            cancellationToken);
+
+        return result.Succeeded
+            ? NoContent()
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpDelete("messaging/groups/{conversationId:guid}")]
+    public async Task<IActionResult> DeleteGroup(
+        Guid conversationId,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.DeleteGroupAsync(
+            new DeleteMessagingGroupCommand(
+                resolved.Actor!.Actor,
+                conversationId),
+            cancellationToken);
+
+        return result.Succeeded
+            ? NoContent()
+            : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
     [HttpGet("messaging/conversations/{conversationId:guid}")]
     public async Task<IActionResult> Conversation(Guid conversationId, CancellationToken cancellationToken)
     {
@@ -698,7 +742,17 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             cancellationToken);
         var participants = new List<MobileParticipantDto>();
         foreach (var participant in conversation.Participants)
-            participants.Add(await ToParticipantDtoAsync(participant, identities, cancellationToken));
+        {
+            var participantDto = await ToParticipantDtoAsync(
+                participant,
+                identities,
+                cancellationToken);
+
+            participants.Add(participantDto with
+            {
+                IsGroupManager = participant.IsGroupManager
+            });
+        }
 
         var messages = new List<MobileMessageDto>();
         foreach (var message in conversation.Messages)
@@ -714,7 +768,11 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             conversation.IsClosed,
             conversation.CanManageMembers,
             conversation.Purpose,
-            ToGroupAvatarDto(conversation.GroupImage));
+            ToGroupAvatarDto(conversation.GroupImage)) with
+        {
+            CanManageCollaborators = conversation.CanManageCollaborators,
+            CanDeleteGroup = conversation.CanDeleteGroup
+        };
     }
 
     private static IEnumerable<MessagingParticipantSummary> ConversationIdentities(
@@ -894,6 +952,7 @@ public sealed record MobileParticipantDto(
 {
     public string? RoleLabel { get; init; }
     public bool IsVerified { get; init; }
+    public bool IsGroupManager { get; init; }
 }
 
 public sealed record MobileSessionResponse(
@@ -937,7 +996,11 @@ public sealed record MobileConversationDetailDto(
     bool IsClosed,
     bool CanManageMembers,
     string? Purpose,
-    MobileAvatarDto? GroupAvatar);
+    MobileAvatarDto? GroupAvatar)
+{
+    public bool CanManageCollaborators { get; init; }
+    public bool CanDeleteGroup { get; init; }
+}
 
 public sealed record MobileMessageDto(
     Guid Id,
@@ -1033,6 +1096,11 @@ public sealed record MobileControlledResourceGrantRequest(
     bool? IsGranted);
 
 public sealed record MobileCommunicationLanguageDto(string Code, string DisplayName);
+
+public sealed record MobileGroupCollaboratorRequest(
+    string UserId,
+    string ParticipantType,
+    bool IsManager);
 
 public sealed record MobileGroupParticipantRequest(
     string? UserId,

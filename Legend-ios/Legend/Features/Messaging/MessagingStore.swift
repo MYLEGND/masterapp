@@ -314,6 +314,69 @@ final class MessagingStore: ObservableObject {
         }
     }
 
+    func setGroupCollaborator(
+        _ participant: MessagingParticipant,
+        in conversationID: UUID,
+        isManager: Bool
+    ) {
+        guard !isCreatingGroup else { return }
+
+        isCreatingGroup = true
+        sendFailure = nil
+
+        Task {
+            defer { isCreatingGroup = false }
+
+            do {
+                try await api.setGroupCollaborator(
+                    conversationID: conversationID,
+                    participant: participant.identity,
+                    isManager: isManager,
+                    accessToken: try await accessTokenProvider())
+
+                let conversation = try await api.conversation(
+                    id: conversationID,
+                    accessToken: try await accessTokenProvider())
+
+                detailState = .loaded(conversation)
+                _ = await refresh()
+            } catch {
+                sendFailure = failure(
+                    for: error,
+                    title: isManager
+                        ? "Collaborator not added"
+                        : "Collaborator not removed")
+            }
+        }
+    }
+
+    func deleteGroup(
+        conversationID: UUID,
+        completion: @escaping () -> Void
+    ) {
+        sendFailure = nil
+
+        Task {
+            do {
+                try await api.deleteGroup(
+                    conversationID: conversationID,
+                    accessToken: try await accessTokenProvider())
+
+                if selectedConversationID == conversationID {
+                    selectedConversationID = nil
+                }
+
+                detailState = .idle
+                _ = await refresh()
+                completion()
+            } catch {
+                sendFailure = failure(
+                    for: error,
+                    title: "Group not deleted")
+            }
+        }
+    }
+
     func updateGroup(
         conversationID: UUID,
         subject: String,
@@ -605,7 +668,9 @@ final class MessagingStore: ObservableObject {
             isClosed: conversation.isClosed,
             canManageMembers: conversation.canManageMembers,
             purpose: conversation.purpose,
-            groupAvatar: conversation.groupAvatar))
+            groupAvatar: conversation.groupAvatar,
+            canManageCollaborators: conversation.canManageCollaborators,
+            canDeleteGroup: conversation.canDeleteGroup))
     }
 
     private func append(attachment: MessagingAttachment, to messageID: UUID) {
@@ -632,7 +697,9 @@ final class MessagingStore: ObservableObject {
             isClosed: conversation.isClosed,
             canManageMembers: conversation.canManageMembers,
             purpose: conversation.purpose,
-            groupAvatar: conversation.groupAvatar))
+            groupAvatar: conversation.groupAvatar,
+            canManageCollaborators: conversation.canManageCollaborators,
+            canDeleteGroup: conversation.canDeleteGroup))
     }
 
     private func updateConversation(
@@ -666,7 +733,9 @@ final class MessagingStore: ObservableObject {
             isClosed: conversation.isClosed,
             canManageMembers: conversation.canManageMembers,
             purpose: conversation.purpose,
-            groupAvatar: conversation.groupAvatar))
+            groupAvatar: conversation.groupAvatar,
+            canManageCollaborators: conversation.canManageCollaborators,
+            canDeleteGroup: conversation.canDeleteGroup))
     }
 
     private var hasCachedConversations: Bool {
@@ -713,14 +782,15 @@ final class MessagingStore: ObservableObject {
             let conversations = try await api.conversations(
                 accessToken: accessToken
             )
-            let persistedConversations = conversations.filter {
-                $0.lastMessageUTC != nil
-            }
-
-            state = .loaded(persistedConversations)
+            // The server-owned messaging service is the sole authority for
+            // inbox visibility. Do not apply a second client-side persistence
+            // rule here. The server intentionally hides empty direct drafts,
+            // while allowing explicit user-created groups and every persisted
+            // conversation that belongs in this actor's inbox.
+            state = .loaded(conversations)
             refreshFailure = nil
             NativeUnreadBadge.update(
-                with: persistedConversations.reduce(0) {
+                with: conversations.reduce(0) {
                     $0 + max(0, $1.unreadCount)
                 }
             )

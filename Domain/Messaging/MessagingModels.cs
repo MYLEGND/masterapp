@@ -155,6 +155,17 @@ public sealed record AddMessagingGroupParticipantCommand(
     string UserId,
     string ParticipantType);
 
+public sealed record SetMessagingGroupManagerCommand(
+    MessagingActor Actor,
+    Guid ConversationId,
+    string UserId,
+    string ParticipantType,
+    bool IsManager);
+
+public sealed record DeleteMessagingGroupCommand(
+    MessagingActor Actor,
+    Guid ConversationId);
+
 public sealed record ResolveVerificationReviewRequestCommand(
     MessagingActor Actor,
     Guid RequestId,
@@ -428,12 +439,15 @@ public sealed record MessagingConversationDetail(
     IReadOnlyList<MessagingMessageSummary> Messages,
     bool CanManageMembers = false,
     string? Purpose = null,
-    MessagingGroupImage? GroupImage = null);
+    MessagingGroupImage? GroupImage = null,
+    bool CanManageCollaborators = false,
+    bool CanDeleteGroup = false);
 
 public sealed record MessagingParticipantSummary(
     string UserId,
     string ParticipantType,
-    string DisplayName);
+    string DisplayName,
+    bool IsGroupManager = false);
 
 /// <summary>
 /// A typed messaging identity reference. The user ID is interpreted only with its

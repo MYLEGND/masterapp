@@ -152,7 +152,8 @@ internal sealed class MessagingService : IMessagingService
                 x.LastReadUtc,
                 x.IsMuted,
                 x.PinnedUtc,
-                x.HiddenUtc))
+                x.HiddenUtc,
+                x.IsGroupManager))
             .ToListAsync(cancellationToken);
 
         var messages = await _db.InternalMessages
@@ -331,7 +332,8 @@ internal sealed class MessagingService : IMessagingService
                 x.LastReadUtc,
                 x.IsMuted,
                 x.PinnedUtc,
-                x.HiddenUtc))
+                x.HiddenUtc,
+                x.IsGroupManager))
             .ToListAsync(cancellationToken);
         var attachments = await _db.MessageAttachments
             .AsNoTracking()
@@ -420,6 +422,19 @@ internal sealed class MessagingService : IMessagingService
             messages,
             cancellationToken);
 
+        var isGroupOwner =
+            conversation.ConversationType == MessagingConversationTypes.Group &&
+            IsSameParticipant(
+                conversation.OwnerUserId ?? string.Empty,
+                conversation.OwnerParticipantType ?? string.Empty,
+                actor.UserId,
+                actor.ParticipantType);
+
+        var isGroupManager =
+            conversation.ConversationType == MessagingConversationTypes.Group &&
+            conversation.Purpose == null &&
+            currentParticipant?.IsGroupManager == true;
+
         var detail = new MessagingConversationDetail(
             conversation.Id,
             conversation.ConversationType,
@@ -429,16 +444,18 @@ internal sealed class MessagingService : IMessagingService
             conversation.IsClosed,
             isArchivedMembership,
             currentParticipant?.IsMuted == true,
-            participants.Select(x => ToParticipantSummary(x, displayNames)).ToList(),
+            participants
+                .Select(x => ToParticipantSummary(x, displayNames) with
+                {
+                    IsGroupManager = x.IsGroupManager
+                })
+                .ToList(),
             messageSummaries,
-            conversation.ConversationType == MessagingConversationTypes.Group &&
-            IsSameParticipant(
-                conversation.OwnerUserId ?? string.Empty,
-                conversation.OwnerParticipantType ?? string.Empty,
-                actor.UserId,
-                actor.ParticipantType),
+            isGroupOwner || isGroupManager,
             conversation.Purpose,
-            ToGroupImage(conversation.GroupImageContent, conversation.GroupImageContentType));
+            ToGroupImage(conversation.GroupImageContent, conversation.GroupImageContentType),
+            isGroupOwner && conversation.Purpose == null,
+            isGroupOwner && conversation.Purpose == null);
 
         return new MessagingConversationResult(true, null, null, detail);
     }
@@ -944,14 +961,35 @@ internal sealed class MessagingService : IMessagingService
             .Include(candidate => candidate.Participants)
             .FirstOrDefaultAsync(candidate => candidate.Id == command.ConversationId, cancellationToken);
         if (conversation is null ||
-            conversation.ConversationType != MessagingConversationTypes.Group ||
-            !IsSameParticipant(
-                conversation.OwnerUserId ?? string.Empty,
-                conversation.OwnerParticipantType ?? string.Empty,
-                actor.UserId,
-                actor.ParticipantType))
+            conversation.ConversationType != MessagingConversationTypes.Group)
         {
-            return MessagingOperationResult.Failure("MESSAGING_GROUP_OWNER_REQUIRED", "Only the group owner can add members.");
+            return MessagingOperationResult.Failure(
+                "MESSAGING_CONVERSATION_NOT_FOUND",
+                "The requested group was not found.");
+        }
+
+        var isGroupOwner = IsSameParticipant(
+            conversation.OwnerUserId ?? string.Empty,
+            conversation.OwnerParticipantType ?? string.Empty,
+            actor.UserId,
+            actor.ParticipantType);
+
+        var isGroupManager =
+            conversation.Purpose == null &&
+            conversation.Participants.Any(participant =>
+                participant.IsActive &&
+                participant.IsGroupManager &&
+                IsSameParticipant(
+                    participant.UserId,
+                    participant.ParticipantType,
+                    actor.UserId,
+                    actor.ParticipantType));
+
+        if (!isGroupOwner && !isGroupManager)
+        {
+            return MessagingOperationResult.Failure(
+                "MESSAGING_GROUP_MANAGER_REQUIRED",
+                "Only the group owner or a collaborator can add members.");
         }
 
         var authorizedConversation = await (await AuthorizedConversationsQueryAsync(actor, cancellationToken))
@@ -1017,6 +1055,145 @@ internal sealed class MessagingService : IMessagingService
         return await SaveOperationAsync("GroupMemberAdded", actor.UserId, conversation.Id, cancellationToken);
     }
 
+    public async Task<MessagingOperationResult> SetGroupManagerAsync(
+        SetMessagingGroupManagerCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = NormalizeActor(command.Actor);
+        var requestedUserId = NormalizeUserId(command.UserId);
+        var requestedType = NormalizeRequired(command.ParticipantType);
+
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return MessagingOperationResult.Failure(
+                "MESSAGING_ACTOR_INVALID",
+                "Messaging is not available for this user.");
+
+        var conversation = await _db.MessageConversations
+            .Include(x => x.Participants)
+            .FirstOrDefaultAsync(
+                x => x.Id == command.ConversationId,
+                cancellationToken);
+
+        if (conversation is null ||
+            conversation.ConversationType != MessagingConversationTypes.Group ||
+            conversation.Purpose != null ||
+            conversation.IsClosed)
+        {
+            return MessagingOperationResult.Failure(
+                "MESSAGING_GROUP_COLLABORATOR_FORBIDDEN",
+                "Collaborators are available only for active user-created groups.");
+        }
+
+        if (!IsSameParticipant(
+                conversation.OwnerUserId ?? string.Empty,
+                conversation.OwnerParticipantType ?? string.Empty,
+                actor.UserId,
+                actor.ParticipantType))
+        {
+            return MessagingOperationResult.Failure(
+                "MESSAGING_GROUP_OWNER_REQUIRED",
+                "Only the group owner can manage collaborators.");
+        }
+
+        if (IsSameParticipant(
+                conversation.OwnerUserId ?? string.Empty,
+                conversation.OwnerParticipantType ?? string.Empty,
+                requestedUserId,
+                requestedType))
+        {
+            return MessagingOperationResult.Failure(
+                "MESSAGING_GROUP_COLLABORATOR_INVALID",
+                "The owner already has full group authority.");
+        }
+
+        var participant = conversation.Participants.FirstOrDefault(x =>
+            x.IsActive &&
+            IsSameParticipant(
+                x.UserId,
+                x.ParticipantType,
+                requestedUserId,
+                requestedType));
+
+        if (participant is null)
+        {
+            return MessagingOperationResult.Failure(
+                "MESSAGING_GROUP_MEMBER_REQUIRED",
+                "Only an active group member can become a collaborator.");
+        }
+
+        participant.IsGroupManager = command.IsManager;
+        conversation.UpdatedUtc = DateTime.UtcNow;
+
+        return await SaveOperationAsync(
+            command.IsManager
+                ? "GroupManagerGranted"
+                : "GroupManagerRevoked",
+            actor.UserId,
+            conversation.Id,
+            cancellationToken);
+    }
+
+    public async Task<MessagingOperationResult> DeleteGroupAsync(
+        DeleteMessagingGroupCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var actor = NormalizeActor(command.Actor);
+
+        if (!await IsValidActorAsync(actor, cancellationToken))
+            return MessagingOperationResult.Failure(
+                "MESSAGING_ACTOR_INVALID",
+                "Messaging is not available for this user.");
+
+        var conversation = await _db.MessageConversations
+            .Include(x => x.Participants)
+            .FirstOrDefaultAsync(
+                x => x.Id == command.ConversationId,
+                cancellationToken);
+
+        if (conversation is null ||
+            conversation.ConversationType != MessagingConversationTypes.Group ||
+            conversation.Purpose != null)
+        {
+            return MessagingOperationResult.Failure(
+                "MESSAGING_GROUP_DELETE_FORBIDDEN",
+                "Only a normal user-created group can be deleted.");
+        }
+
+        if (!IsSameParticipant(
+                conversation.OwnerUserId ?? string.Empty,
+                conversation.OwnerParticipantType ?? string.Empty,
+                actor.UserId,
+                actor.ParticipantType))
+        {
+            return MessagingOperationResult.Failure(
+                "MESSAGING_GROUP_OWNER_REQUIRED",
+                "Only the group owner can delete this group.");
+        }
+
+        if (conversation.IsClosed)
+            return MessagingOperationResult.Success();
+
+        var nowUtc = DateTime.UtcNow;
+
+        conversation.IsClosed = true;
+        conversation.ClosedUtc = nowUtc;
+        conversation.UpdatedUtc = nowUtc;
+
+        foreach (var participant in conversation.Participants)
+        {
+            participant.IsActive = false;
+            participant.IsGroupManager = false;
+            participant.LeftUtc ??= nowUtc;
+            participant.PinnedUtc = null;
+        }
+
+        return await SaveOperationAsync(
+            "GroupDeleted",
+            actor.UserId,
+            conversation.Id,
+            cancellationToken);
+    }
+
     public async Task<MessagingOperationResult> UpdateGroupProfileAsync(
         UpdateMessagingGroupProfileCommand command,
         CancellationToken cancellationToken = default)
@@ -1031,17 +1208,42 @@ internal sealed class MessagingService : IMessagingService
             return MessagingOperationResult.Failure("MESSAGING_GROUP_PROFILE_INVALID", "Choose a valid group name and image.");
         }
 
-        var conversation = await _db.MessageConversations.FirstOrDefaultAsync(
-            candidate => candidate.Id == command.ConversationId,
-            cancellationToken);
-        if (conversation is null || conversation.ConversationType != MessagingConversationTypes.Group ||
-            !IsSameParticipant(
-                conversation.OwnerUserId,
-                conversation.OwnerParticipantType,
-                actor.UserId,
-                actor.ParticipantType))
+        var conversation = await _db.MessageConversations
+            .Include(candidate => candidate.Participants)
+            .FirstOrDefaultAsync(
+                candidate => candidate.Id == command.ConversationId,
+                cancellationToken);
+
+        if (conversation is null ||
+            conversation.ConversationType != MessagingConversationTypes.Group)
         {
-            return MessagingOperationResult.Failure("MESSAGING_GROUP_OWNER_REQUIRED", "Only the group owner can edit this group.");
+            return MessagingOperationResult.Failure(
+                "MESSAGING_CONVERSATION_NOT_FOUND",
+                "The requested group was not found.");
+        }
+
+        var isGroupOwner = IsSameParticipant(
+            conversation.OwnerUserId,
+            conversation.OwnerParticipantType,
+            actor.UserId,
+            actor.ParticipantType);
+
+        var isGroupManager =
+            conversation.Purpose == null &&
+            conversation.Participants.Any(participant =>
+                participant.IsActive &&
+                participant.IsGroupManager &&
+                IsSameParticipant(
+                    participant.UserId,
+                    participant.ParticipantType,
+                    actor.UserId,
+                    actor.ParticipantType));
+
+        if (!isGroupOwner && !isGroupManager)
+        {
+            return MessagingOperationResult.Failure(
+                "MESSAGING_GROUP_MANAGER_REQUIRED",
+                "Only the group owner or a collaborator can edit this group.");
         }
 
         conversation.Subject = subject;
@@ -3432,7 +3634,8 @@ internal sealed class MessagingService : IMessagingService
         DateTime? LastReadUtc,
         bool IsMuted,
         DateTime? PinnedUtc,
-        DateTime? HiddenUtc);
+        DateTime? HiddenUtc,
+        bool IsGroupManager);
 
     private sealed record MessageListRow(
         Guid Id,

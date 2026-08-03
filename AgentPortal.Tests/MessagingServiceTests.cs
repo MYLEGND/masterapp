@@ -274,7 +274,7 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
-    public async Task GroupConversation_UsesAuthorizedRecipientsAndOnlyOwnerCanAddMembers()
+    public async Task GroupConversation_UsesAuthorizedRecipientsAndRejectsNonManagers()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
@@ -348,7 +348,7 @@ public sealed class MessagingServiceTests
                 "client-3",
                 MessagingParticipantTypes.Client));
         Assert.False(nonOwner.Succeeded);
-        Assert.Equal("MESSAGING_GROUP_OWNER_REQUIRED", nonOwner.ErrorCode);
+        Assert.Equal("MESSAGING_GROUP_MANAGER_REQUIRED", nonOwner.ErrorCode);
 
         var nonOwnerUpdate = await service.UpdateGroupProfileAsync(
             new UpdateMessagingGroupProfileCommand(
@@ -357,7 +357,7 @@ public sealed class MessagingServiceTests
                 "Not allowed",
                 null));
         Assert.False(nonOwnerUpdate.Succeeded);
-        Assert.Equal("MESSAGING_GROUP_OWNER_REQUIRED", nonOwnerUpdate.ErrorCode);
+        Assert.Equal("MESSAGING_GROUP_MANAGER_REQUIRED", nonOwnerUpdate.ErrorCode);
     }
 
     [Fact]
