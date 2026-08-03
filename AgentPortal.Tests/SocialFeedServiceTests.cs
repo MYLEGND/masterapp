@@ -1217,6 +1217,101 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task FeedRanking_PrioritizesMutualThenFollowedAuthorsBeforePublicForPostsAndHacs()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var viewer = Client("priority-viewer", "Priority", "Viewer");
+        var mutual = Client("priority-mutual", "Mutual", "Creator");
+        var followed = Client("priority-followed", "Followed", "Creator");
+        var publicAuthor = Client("priority-public", "Public", "Creator");
+        db.ClientProfiles.AddRange(viewer, mutual, followed, publicAuthor);
+
+        var now = DateTime.UtcNow;
+        db.SocialFollows.AddRange(
+            Follow(viewer, mutual),
+            Follow(mutual, viewer),
+            Follow(viewer, followed));
+
+        var mutualPost = TextPost(mutual, "Mutual post", now.AddDays(-3));
+        var followedPost = TextPost(followed, "Followed post", now.AddDays(-2));
+        var publicPost = TextPost(publicAuthor, "Public post", now.AddDays(-1));
+        var mutualHac = VideoHac(mutual, "Mutual Hac", now.AddDays(-3));
+        var followedHac = VideoHac(followed, "Followed Hac", now.AddDays(-2));
+        var publicHac = VideoHac(publicAuthor, "Public Hac", now.AddDays(-1));
+        db.SocialPosts.AddRange(
+            mutualPost,
+            followedPost,
+            publicPost,
+            mutualHac,
+            followedHac,
+            publicHac);
+        await db.SaveChangesAsync();
+
+        var feed = await CreateService(db).GetFeedAsync(ClientActor(viewer));
+
+        Assert.True(feed.Succeeded);
+        var rankedPostIds = feed.Value!.Posts.Take(3).Select(post => post.Id).ToArray();
+        Assert.Equal(mutualPost.Id, rankedPostIds[0]);
+        Assert.Equal(followedPost.Id, rankedPostIds[1]);
+        Assert.Equal(publicPost.Id, rankedPostIds[2]);
+
+        var rankedHacIds = feed.Value.Hacs.Take(3).Select(post => post.Id).ToArray();
+        Assert.Equal(mutualHac.Id, rankedHacIds[0]);
+        Assert.Equal(followedHac.Id, rankedHacIds[1]);
+        Assert.Equal(publicHac.Id, rankedHacIds[2]);
+
+        SocialFollow Follow(ClientProfile follower, ClientProfile target) => new()
+        {
+            Id = Guid.NewGuid(),
+            FollowerUserId = follower.ClientUserId,
+            FollowerParticipantType = MessagingParticipantTypes.Client,
+            FollowedUserId = target.ClientUserId,
+            FollowedParticipantType = MessagingParticipantTypes.Client,
+            Status = SocialFollowStatuses.Accepted,
+            CreatedUtc = now
+        };
+
+        static SocialPost TextPost(ClientProfile author, string body, DateTime postedUtc) => new()
+        {
+            Id = Guid.NewGuid(),
+            AuthorUserId = author.ClientUserId,
+            AuthorParticipantType = MessagingParticipantTypes.Client,
+            AuthorProfileId = author.Id,
+            ContentType = SocialPostContentTypes.Post,
+            Audience = SocialPostAudiences.AuthorizedNetwork,
+            Body = body,
+            PostedUtc = postedUtc
+        };
+
+        SocialPost VideoHac(ClientProfile author, string body, DateTime postedUtc)
+        {
+            var post = new SocialPost
+            {
+                Id = Guid.NewGuid(),
+                AuthorUserId = author.ClientUserId,
+                AuthorParticipantType = MessagingParticipantTypes.Client,
+                AuthorProfileId = author.Id,
+                ContentType = SocialPostContentTypes.Reel,
+                Audience = SocialPostAudiences.AuthorizedNetwork,
+                Body = body,
+                PostedUtc = postedUtc
+            };
+            db.SocialPostMediaAssets.Add(new SocialPostMediaAsset
+            {
+                Id = Guid.NewGuid(),
+                SocialPostId = post.Id,
+                DisplayOrder = 0,
+                MediaKind = "Video",
+                MimeType = "video/mp4",
+                FileSizeBytes = 1,
+                StorageKey = $"test/{post.Id:N}.mp4",
+                ProcessingState = "Ready"
+            });
+            return post;
+        }
+    }
+
+    [Fact]
     public async Task StoryRail_SurvivesABurstOfFeedPostsThatWouldFillACombinedPage()
     {
         await using var db = ControllerTestHelpers.BuildDb();

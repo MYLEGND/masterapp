@@ -273,11 +273,11 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertTrue(MobileSocialContentType.hac.requiresVideo)
     }
 
-    func testHacPlaybackWindowOwnsExactlyTheActiveHacAndNextTwo() {
+    func testHacPlaybackWindowOwnsExactlyThePreviousActiveAndNextHac() {
         XCTAssertEqual(LegendHacPlaybackWindow.maximumPlayerCount, 3)
         XCTAssertEqual(
             LegendHacPlaybackWindow.retainedIndexes(activeIndex: 2, count: 7),
-            [2, 3, 4])
+            [1, 2, 3])
         XCTAssertEqual(
             LegendHacPlaybackWindow.prefetchIndexes(activeIndex: 2, count: 7),
             [3, 4])
@@ -297,20 +297,23 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertEqual(post.mediaAspectRatio, 1)
         XCTAssertFalse(post.usesFixedCanvasAspectRatio)
         XCTAssertTrue(post.allowsTextOnlyPublication)
-        XCTAssertEqual(post.maximumVideoDurationSeconds, 60)
+        XCTAssertEqual(post.maximumVideoDurationSeconds, 600)
 
         XCTAssertEqual(story.mediaAspectRatio, 9.0 / 16.0)
         XCTAssertTrue(story.usesFixedCanvasAspectRatio)
         XCTAssertFalse(story.allowsTextOnlyPublication)
-        XCTAssertTrue(story.acceptsVideo(duration: 60))
-        XCTAssertFalse(story.acceptsVideo(duration: 60.01))
+        XCTAssertTrue(story.acceptsVideo(duration: 600))
+        XCTAssertFalse(story.acceptsVideo(duration: 600.01))
 
         XCTAssertEqual(hac.mediaAspectRatio, 9.0 / 16.0)
         XCTAssertTrue(hac.usesFixedCanvasAspectRatio)
         XCTAssertFalse(hac.allowsTextOnlyPublication)
-        XCTAssertEqual(hac.maximumVideoDurationSeconds, 90)
-        XCTAssertTrue(hac.acceptsVideo(duration: 90))
-        XCTAssertFalse(hac.acceptsVideo(duration: 90.01))
+        XCTAssertEqual(hac.maximumVideoDurationSeconds, 600)
+        XCTAssertTrue(hac.acceptsVideo(duration: 600))
+        XCTAssertFalse(hac.acceptsVideo(duration: 600.01))
+        XCTAssertEqual(
+            LegendSocialVideoPreparation.PreparationError.exceedsDurationLimit.errorDescription,
+            "Videos must be 10 minutes or less.")
     }
 
     func testStoryCollectionsUseTheCompleteLogicalOwnerIdentity() throws {

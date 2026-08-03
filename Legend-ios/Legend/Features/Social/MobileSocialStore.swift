@@ -1,6 +1,13 @@
 import AVFoundation
 import Foundation
 
+/// Native creation policy shared by the picker and the file preparer. It is
+/// deliberately non-UI isolated because the picker reads it before any video
+/// export begins.
+enum LegendSocialVideoUploadPolicy {
+    static let maximumDurationSeconds: TimeInterval = 600
+}
+
 /// The one mobile-video preparation path for Legend social media. It produces
 /// a network-optimized H.264/AAC MP4 before the file reaches the upload queue,
 /// so Hacs do not depend on the original device's HEVC, MOV, HDR, or editing
@@ -20,6 +27,7 @@ enum LegendSocialVideoPreparation {
         case noCompatibleExport
         case exportFailed
         case exceedsUploadLimit
+        case exceedsDurationLimit
 
         var errorDescription: String? {
             switch self {
@@ -33,6 +41,8 @@ enum LegendSocialVideoPreparation {
                 "Legend could not finish preparing this video. Please try again."
             case .exceedsUploadLimit:
                 "This video is still too large after optimization. Choose a shorter video and try again."
+            case .exceedsDurationLimit:
+                "Videos must be 10 minutes or less."
             }
         }
     }
@@ -42,7 +52,7 @@ enum LegendSocialVideoPreparation {
     /// and is verified before the composer is allowed to publish it.
     static func prepareForPublication(from sourceURL: URL) async throws -> URL {
         let asset = AVURLAsset(url: sourceURL)
-        try await validate(asset: asset)
+        try await validate(asset: asset, enforcingPublicationDuration: true)
         let sourceHasAudio = try await hasAudioTrack(in: asset)
 
         for preset in preferredExportPresets {
@@ -111,14 +121,17 @@ enum LegendSocialVideoPreparation {
     static func isPlayableVideo(at url: URL) async -> Bool {
         let asset = AVURLAsset(url: url)
         do {
-            try await validate(asset: asset)
+            try await validate(asset: asset, enforcingPublicationDuration: false)
             return true
         } catch {
             return false
         }
     }
 
-    private static func validate(asset: AVURLAsset) async throws {
+    private static func validate(
+        asset: AVURLAsset,
+        enforcingPublicationDuration: Bool
+    ) async throws {
         guard try await asset.load(.isPlayable) else {
             throw PreparationError.unreadableSource
         }
@@ -126,6 +139,11 @@ enum LegendSocialVideoPreparation {
         let duration = try await asset.load(.duration).seconds
         guard duration.isFinite, duration > 0 else {
             throw PreparationError.unreadableSource
+        }
+
+        if enforcingPublicationDuration,
+           duration > LegendSocialVideoUploadPolicy.maximumDurationSeconds {
+            throw PreparationError.exceedsDurationLimit
         }
 
         let tracks = try await asset.loadTracks(withMediaType: .video)

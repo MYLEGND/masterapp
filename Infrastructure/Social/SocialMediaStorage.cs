@@ -187,7 +187,8 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
                     content,
                     destination,
                     _maximumMediaBytes,
-                    cancellationToken);
+                    durationProbe: null,
+                    cancellationToken: cancellationToken);
             }
 
             if (actualSizeBytes != declaredSizeBytes)
@@ -280,10 +281,17 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
                 CopyBufferSize,
                 useAsync: true))
             {
+                var durationProbe = string.Equals(
+                    supportedType.MediaKind,
+                    "Video",
+                    StringComparison.Ordinal)
+                    ? new Mp4HeaderDurationProbe()
+                    : null;
                 actualSizeBytes = await CopyWithLimitAsync(
                     content,
                     destination,
                     _maximumMediaBytes,
+                    durationProbe,
                     cancellationToken);
             }
 
@@ -326,6 +334,14 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
             return SocialMediaStorageResult.Failure(
                 "SOCIAL_MEDIA_SIZE_INVALID",
                 "The social media file size is not permitted.");
+        }
+        catch (SocialVideoDurationExceededException)
+        {
+            TryDeletePhysicalFile(physicalPath);
+
+            return SocialMediaStorageResult.Failure(
+                "SOCIAL_VIDEO_DURATION_EXCEEDED",
+                "Videos must be 10 minutes or less.");
         }
         catch (OperationCanceledException)
         {
@@ -444,7 +460,8 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
                     source,
                     destination,
                     _maximumMediaBytes,
-                    cancellationToken);
+                    durationProbe: null,
+                    cancellationToken: cancellationToken);
             }
 
             try
@@ -714,6 +731,7 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         Stream source,
         Stream destination,
         long maximumBytes,
+        Mp4HeaderDurationProbe? durationProbe,
         CancellationToken cancellationToken)
     {
         var buffer = new byte[CopyBufferSize];
@@ -732,6 +750,10 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
 
             if (totalBytes > maximumBytes)
                 throw new SocialMediaMaximumSizeExceededException();
+
+            durationProbe?.Inspect(buffer.AsSpan(0, bytesRead));
+            if (durationProbe?.DurationSeconds > SocialMediaUploadLimits.MaximumVideoDurationSeconds)
+                throw new SocialVideoDurationExceededException();
 
             await destination.WriteAsync(
                 buffer.AsMemory(0, bytesRead),
@@ -806,6 +828,10 @@ internal sealed class SocialMediaStorage : ISocialMediaStorage
         string MimeType);
 
     private sealed class SocialMediaMaximumSizeExceededException : Exception
+    {
+    }
+
+    private sealed class SocialVideoDurationExceededException : Exception
     {
     }
 }

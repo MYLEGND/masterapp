@@ -17,7 +17,8 @@ public sealed class SocialFeedService : ISocialFeedService
     private const int MaximumCommentLength = 800;
     private const int MaximumFeedPosts = 80;
     private const int MaximumHacPosts = 80;
-    private const int MaximumHacAffinitySignalsPerType = 250;
+    private const int FeedCandidateWindowDays = 7;
+    private const int MaximumAffinitySignalsPerType = 250;
     private const int MaximumStoryPosts = 30;
     private const int MaximumProfilePosts = 120;
     private const int MaximumCommentsPerPost = 4;
@@ -82,24 +83,43 @@ public sealed class SocialFeedService : ISocialFeedService
             .OrderByDescending(post => post.PostedUtc)
             .Take(MaximumStoryPosts)
             .ToArrayAsync(cancellationToken);
-        var feedPosts = await visiblePosts
-            .Where(post => post.ContentType == SocialPostContentTypes.Post)
-            .OrderByDescending(post => post.PostedUtc)
-            .Take(MaximumFeedPosts)
-            .ToArrayAsync(cancellationToken);
-        var hacPosts = await visiblePosts
+        var candidateSince = now.AddDays(-FeedCandidateWindowDays);
+        var feedPosts = await LoadRankableCandidatesAsync(
+            visiblePosts
+            .Where(post =>
+                post.ContentType == SocialPostContentTypes.Post &&
+                post.PostedUtc >= candidateSince),
+            actor,
+            audience,
+            MaximumFeedPosts,
+            cancellationToken);
+        var hacPosts = await LoadRankableCandidatesAsync(
+            visiblePosts
             .Where(post =>
                 post.ContentType == SocialPostContentTypes.Reel &&
                 post.MediaAssets.Count == 1 &&
-                post.MediaAssets.Any(media => media.MediaKind == "Video"))
-            .OrderByDescending(post => post.PostedUtc)
-            .Take(MaximumHacPosts)
-            .ToArrayAsync(cancellationToken);
+                post.MediaAssets.Any(media => media.MediaKind == "Video") &&
+                post.PostedUtc >= candidateSince),
+            actor,
+            audience,
+            MaximumHacPosts,
+            cancellationToken);
 
         var stories = await FilterPostsForViewerAsync(storyPosts, actorKey, audience, cancellationToken);
         var feed = await FilterPostsForViewerAsync(feedPosts, actorKey, audience, cancellationToken);
         var hacs = await FilterPostsForViewerAsync(hacPosts, actorKey, audience, cancellationToken);
-        var rankedHacs = await RankHacsForViewerAsync(hacs, actorKey, now, cancellationToken);
+        var rankedFeed = await RankFeedCandidatesForViewerAsync(
+            feed,
+            actor,
+            audience,
+            now,
+            cancellationToken);
+        var rankedHacs = await RankFeedCandidatesForViewerAsync(
+            hacs,
+            actor,
+            audience,
+            now,
+            cancellationToken);
         var activity = await GetActivityAsync(actor, cancellationToken);
 
         var profileMetrics = await GetProfileMetricsAsync(actor, cancellationToken: cancellationToken);
@@ -115,8 +135,8 @@ public sealed class SocialFeedService : ISocialFeedService
         return SocialOperationResult<SocialFeedSnapshot>.Success(
             new SocialFeedSnapshot(
                 await BuildPostViewsAsync(stories, actor, cancellationToken),
-                await BuildPostViewsAsync(feed, actor, cancellationToken),
-                await BuildPostViewsAsync(rankedHacs, actor, cancellationToken),
+                await BuildPostViewsAsync(rankedFeed.Take(MaximumFeedPosts).ToArray(), actor, cancellationToken),
+                await BuildPostViewsAsync(rankedHacs.Take(MaximumHacPosts).ToArray(), actor, cancellationToken),
                 activity,
                 activity.Count,
                 profileMetrics.Value,
@@ -356,7 +376,7 @@ public sealed class SocialFeedService : ISocialFeedService
             {
                 var previewResult = await _mediaStorage.StoreAsync(
                     Guid.NewGuid(),
-                    selectedPreview.OriginalFileName,
+                    selectedPreview.OriginalFileName ?? string.Empty,
                     selectedPreview.DeclaredSizeBytes,
                     selectedPreview.Content,
                     cancellationToken);
@@ -1394,127 +1414,187 @@ public sealed class SocialFeedService : ISocialFeedService
     }
 
     /// <summary>
-    /// Orders video Hacs from server-recorded engagement. The model deliberately
-    /// relies on durable interaction signals only: completed watches, reactions,
-    /// comments, saves, reposts, and shares. It first learns the authors a viewer
-    /// engages with most, then balances that affinity with each candidate's community
-    /// engagement and recency. The client only renders this authoritative order.
+    /// Bounds a seven-day candidate pool without allowing public volume to push
+    /// followed members out before the authoritative ranker sees their content.
+    /// The direct-relationship slice is deliberately independent of the public
+    /// discovery slice; output ordering is still decided only by the ranker.
     /// </summary>
-    private async Task<IReadOnlyList<SocialPost>> RankHacsForViewerAsync(
-        IReadOnlyList<SocialPost> hacs,
-        AuthorKey actorKey,
+    private async Task<SocialPost[]> LoadRankableCandidatesAsync(
+        IQueryable<SocialPost> candidates,
+        SocialFeedActor actor,
+        AudienceGraph audience,
+        int outputLimit,
+        CancellationToken cancellationToken)
+    {
+        var prioritizedProfileIds = audience.FollowedProfileIds
+            .Append(actor.ProfileId)
+            .Distinct()
+            .ToArray();
+        var relationshipCandidates = await candidates
+            .Where(post => prioritizedProfileIds.Contains(post.AuthorProfileId))
+            .OrderByDescending(post => post.PostedUtc)
+            .Take(outputLimit)
+            .ToArrayAsync(cancellationToken);
+        var publicCandidates = await candidates
+            .Where(post => !prioritizedProfileIds.Contains(post.AuthorProfileId))
+            .OrderByDescending(post => post.PostedUtc)
+            .Take(outputLimit * 4)
+            .ToArrayAsync(cancellationToken);
+
+        return relationshipCandidates
+            .Concat(publicCandidates)
+            .DistinctBy(post => post.Id)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// The single ranking authority for home posts and the Hac FYP. It applies
+    /// relationship tiers before engagement ranking: mutual follows, then accounts
+    /// the member follows, always precede public discovery candidates. Within a tier,
+    /// durable watch, interaction, profile-visit, community-engagement, and recency
+    /// signals decide the order. The iOS app only renders this server authority.
+    /// </summary>
+    private async Task<IReadOnlyList<SocialPost>> RankFeedCandidatesForViewerAsync(
+        IReadOnlyList<SocialPost> posts,
+        SocialFeedActor actor,
+        AudienceGraph audience,
         DateTime now,
         CancellationToken cancellationToken)
     {
-        if (hacs.Count == 0)
+        if (posts.Count == 0)
             return Array.Empty<SocialPost>();
 
-        var hacPosts = _db.SocialPosts
+        var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+        var actorUserIds = await AuthorUserIdFormsAsync(actorKey, cancellationToken);
+        var socialPosts = _db.SocialPosts
             .AsNoTracking()
-            .Where(post => post.ContentType == SocialPostContentTypes.Reel);
-        var authorAffinity = new Dictionary<AuthorKey, decimal>();
+            .Where(post => post.DeletedUtc == null);
+        var authorAffinity = new Dictionary<Guid, decimal>();
 
-        void AddAffinity(string authorUserId, string authorParticipantType, decimal value)
+        void AddAffinity(Guid authorProfileId, decimal value)
         {
-            var author = AuthorKey.From(authorUserId, authorParticipantType);
-            if (author == actorKey)
+            if (authorProfileId == Guid.Empty || authorProfileId == actor.ProfileId)
                 return;
 
-            authorAffinity[author] = authorAffinity.GetValueOrDefault(author) + value;
+            authorAffinity[authorProfileId] = authorAffinity.GetValueOrDefault(authorProfileId) + value;
         }
 
-        var watchedHacs = await (
+        var watchedPosts = await (
             from view in _db.SocialPostViews.AsNoTracking()
-            join post in hacPosts on view.SocialPostId equals post.Id
-            where view.ViewerUserId == actorKey.UserId &&
+            join post in socialPosts on view.SocialPostId equals post.Id
+            where actorUserIds.Contains(view.ViewerUserId) &&
                   view.ViewerParticipantType == actorKey.ParticipantType
             select new
             {
-                post.AuthorUserId,
-                post.AuthorParticipantType,
+                post.AuthorProfileId,
                 view.MaximumWatchDurationSeconds,
                 view.MaximumWatchCompletionPercentage,
                 view.LastViewedUtc
             }).OrderByDescending(view => view.LastViewedUtc)
-            .Take(MaximumHacAffinitySignalsPerType)
+            .Take(MaximumAffinitySignalsPerType)
             .ToArrayAsync(cancellationToken);
-        foreach (var view in watchedHacs)
+        foreach (var view in watchedPosts)
         {
             var completion = Math.Min(1m, (view.MaximumWatchCompletionPercentage ?? 0m) / 100m);
             var duration = Math.Min(2m, (view.MaximumWatchDurationSeconds ?? 0m) / 30m);
-            AddAffinity(view.AuthorUserId, view.AuthorParticipantType, 1m + completion * 8m + duration * 2m);
+            var watchAffinity = completion < 0.20m
+                ? -3m
+                : 1m + completion * 8m + duration * 2m;
+            AddAffinity(view.AuthorProfileId, watchAffinity);
         }
 
         var reactions = await (
             from reaction in _db.SocialPostReactions.AsNoTracking()
-            join post in hacPosts on reaction.SocialPostId equals post.Id
-            where reaction.ActorUserId == actorKey.UserId &&
+            join post in socialPosts on reaction.SocialPostId equals post.Id
+            where actorUserIds.Contains(reaction.ActorUserId) &&
                   reaction.ActorParticipantType == actorKey.ParticipantType
-            select new { post.AuthorUserId, post.AuthorParticipantType, reaction.CreatedUtc })
+            select new { post.AuthorProfileId, reaction.CreatedUtc })
             .OrderByDescending(reaction => reaction.CreatedUtc)
-            .Take(MaximumHacAffinitySignalsPerType)
+            .Take(MaximumAffinitySignalsPerType)
             .ToArrayAsync(cancellationToken);
         foreach (var reaction in reactions)
-            AddAffinity(reaction.AuthorUserId, reaction.AuthorParticipantType, 5m);
+            AddAffinity(reaction.AuthorProfileId, 5m);
 
         var comments = await (
             from comment in _db.SocialPostComments.AsNoTracking()
-            join post in hacPosts on comment.SocialPostId equals post.Id
-            where comment.AuthorUserId == actorKey.UserId &&
+            join post in socialPosts on comment.SocialPostId equals post.Id
+            where actorUserIds.Contains(comment.AuthorUserId) &&
                   comment.AuthorParticipantType == actorKey.ParticipantType &&
                   comment.DeletedUtc == null
-            select new { post.AuthorUserId, post.AuthorParticipantType, comment.CreatedUtc })
+            select new { post.AuthorProfileId, comment.CreatedUtc })
             .OrderByDescending(comment => comment.CreatedUtc)
-            .Take(MaximumHacAffinitySignalsPerType)
+            .Take(MaximumAffinitySignalsPerType)
             .ToArrayAsync(cancellationToken);
         foreach (var comment in comments)
-            AddAffinity(comment.AuthorUserId, comment.AuthorParticipantType, 8m);
+            AddAffinity(comment.AuthorProfileId, 8m);
 
         var saves = await (
             from save in _db.SocialPostSaves.AsNoTracking()
-            join post in hacPosts on save.SocialPostId equals post.Id
-            where save.ActorUserId == actorKey.UserId &&
+            join post in socialPosts on save.SocialPostId equals post.Id
+            where actorUserIds.Contains(save.ActorUserId) &&
                   save.ActorParticipantType == actorKey.ParticipantType
-            select new { post.AuthorUserId, post.AuthorParticipantType, save.CreatedUtc })
+            select new { post.AuthorProfileId, save.CreatedUtc })
             .OrderByDescending(save => save.CreatedUtc)
-            .Take(MaximumHacAffinitySignalsPerType)
+            .Take(MaximumAffinitySignalsPerType)
             .ToArrayAsync(cancellationToken);
         foreach (var save in saves)
-            AddAffinity(save.AuthorUserId, save.AuthorParticipantType, 10m);
+            AddAffinity(save.AuthorProfileId, 10m);
 
         var reposts = await (
             from repost in _db.SocialPostReposts.AsNoTracking()
-            join post in hacPosts on repost.SocialPostId equals post.Id
-            where repost.ActorUserId == actorKey.UserId &&
+            join post in socialPosts on repost.SocialPostId equals post.Id
+            where actorUserIds.Contains(repost.ActorUserId) &&
                   repost.ActorParticipantType == actorKey.ParticipantType
-            select new { post.AuthorUserId, post.AuthorParticipantType, repost.CreatedUtc })
+            select new { post.AuthorProfileId, repost.CreatedUtc })
             .OrderByDescending(repost => repost.CreatedUtc)
-            .Take(MaximumHacAffinitySignalsPerType)
+            .Take(MaximumAffinitySignalsPerType)
             .ToArrayAsync(cancellationToken);
         foreach (var repost in reposts)
-            AddAffinity(repost.AuthorUserId, repost.AuthorParticipantType, 12m);
+            AddAffinity(repost.AuthorProfileId, 12m);
 
         var shares = await (
             from share in _db.SocialPostShares.AsNoTracking()
-            join post in hacPosts on share.SocialPostId equals post.Id
-            where share.ActorUserId == actorKey.UserId &&
+            join post in socialPosts on share.SocialPostId equals post.Id
+            where actorUserIds.Contains(share.ActorUserId) &&
                   share.ActorParticipantType == actorKey.ParticipantType
-            select new { post.AuthorUserId, post.AuthorParticipantType, share.CreatedUtc })
+            select new { post.AuthorProfileId, share.CreatedUtc })
             .OrderByDescending(share => share.CreatedUtc)
-            .Take(MaximumHacAffinitySignalsPerType)
+            .Take(MaximumAffinitySignalsPerType)
             .ToArrayAsync(cancellationToken);
         foreach (var share in shares)
-            AddAffinity(share.AuthorUserId, share.AuthorParticipantType, 8m);
+            AddAffinity(share.AuthorProfileId, 8m);
+
+        var profileVisits = await _db.SocialProfileVisits
+            .AsNoTracking()
+            .Where(visit => actorUserIds.Contains(visit.VisitorUserId) &&
+                            visit.VisitorParticipantType == actorKey.ParticipantType)
+            .OrderByDescending(visit => visit.LastVisitedUtc)
+            .Take(MaximumAffinitySignalsPerType)
+            .Select(visit => new AuthorReference(
+                visit.TargetUserId,
+                visit.TargetParticipantType,
+                Guid.Empty))
+            .ToArrayAsync(cancellationToken);
+        if (profileVisits.Length > 0)
+        {
+            var visitedAuthors = await ResolveAuthorsAsync(profileVisits, cancellationToken);
+            foreach (var visit in profileVisits)
+            {
+                var author = visitedAuthors.GetValueOrDefault(
+                    AuthorKey.From(visit.UserId, visit.ParticipantType));
+                if (author is not null)
+                    AddAffinity(author.ProfileId, 4m);
+            }
+        }
 
         var metricsByPost = await LoadPostMetricsAsync(
-            hacs.Select(post => post.Id).ToArray(),
+            posts.Select(post => post.Id).ToArray(),
             cancellationToken);
 
         decimal Score(SocialPost post)
         {
             var metrics = metricsByPost[post.Id];
-            var author = AuthorKey.From(post.AuthorUserId, post.AuthorParticipantType);
-            var affinity = authorAffinity.GetValueOrDefault(author);
+            var affinity = authorAffinity.GetValueOrDefault(post.AuthorProfileId);
             var engagement = Math.Min(
                 40m,
                 metrics.ReactionCount * 2m +
@@ -1526,16 +1606,30 @@ public sealed class SocialFeedService : ISocialFeedService
                 4m,
                 (metrics.AverageWatchCompletionPercentage ?? 0m) / 25m);
             var ageHours = Math.Max(0d, (now - post.PostedUtc).TotalHours);
-            var recency = (decimal)Math.Max(0d, 6d - ageHours / 24d);
+            var timeDecay = (decimal)(1d / Math.Pow(ageHours + 2d, 1.5d));
+            var rawScore = 1m + affinity * 10m + engagement + watchCompletion;
 
-            return affinity * 10m + engagement + watchCompletion + recency;
+            return rawScore * timeDecay;
         }
 
-        return hacs
-            .OrderByDescending(Score)
+        return posts
+            .OrderByDescending(post => RelationshipTier(post, actor, audience))
+            .ThenByDescending(Score)
             .ThenByDescending(post => post.PostedUtc)
             .ToArray();
     }
+
+    private static int RelationshipTier(
+        SocialPost post,
+        SocialFeedActor actor,
+        AudienceGraph audience) =>
+        post.AuthorProfileId == actor.ProfileId
+            ? 3
+            : audience.MutualFollowedProfileIds.Contains(post.AuthorProfileId)
+                ? 2
+                : audience.FollowedProfileIds.Contains(post.AuthorProfileId)
+                    ? 1
+                    : 0;
 
     private async Task<SocialPost?> GetVisiblePostAsync(
         SocialFeedActor actor,
@@ -1944,22 +2038,22 @@ public sealed class SocialFeedService : ISocialFeedService
     }
 
     /// <summary>
-    /// The follow edges needed to evaluate narrowed post audiences for one viewer.
+    /// The authoritative follow graph for visibility and ranking. Profile IDs
+    /// deliberately back the tiers so legacy and Entra identity forms resolve to
+    /// the same relationship rather than producing a second ranking path.
     /// </summary>
     private readonly record struct AudienceGraph(
-        string[] FollowedAgentIds,
-        string[] FollowedClientIds,
-        string[] FollowerAgentIds,
-        string[] FollowerClientIds,
-        Guid[] FollowedProfileIds);
+        HashSet<Guid> FollowedProfileIds,
+        HashSet<Guid> MutualFollowedProfileIds);
 
     private async Task<AudienceGraph> LoadAudienceGraphAsync(
         AuthorKey actorKey,
         CancellationToken cancellationToken)
     {
+        var actorUserIds = await AuthorUserIdFormsAsync(actorKey, cancellationToken);
         var followedByActor = await _db.SocialFollows
             .AsNoTracking()
-            .Where(follow => follow.FollowerUserId == actorKey.UserId &&
+            .Where(follow => actorUserIds.Contains(follow.FollowerUserId) &&
                              follow.FollowerParticipantType == actorKey.ParticipantType &&
                              follow.Status == SocialFollowStatuses.Accepted)
             .Select(follow => new { follow.FollowedUserId, follow.FollowedParticipantType })
@@ -1967,36 +2061,36 @@ public sealed class SocialFeedService : ISocialFeedService
 
         var followersOfActor = await _db.SocialFollows
             .AsNoTracking()
-            .Where(follow => follow.FollowedUserId == actorKey.UserId &&
+            .Where(follow => actorUserIds.Contains(follow.FollowedUserId) &&
                              follow.FollowedParticipantType == actorKey.ParticipantType &&
                              follow.Status == SocialFollowStatuses.Accepted)
             .Select(follow => new { follow.FollowerUserId, follow.FollowerParticipantType })
             .ToArrayAsync(cancellationToken);
-        var followedAuthors = await ResolveAuthorsAsync(
-            followedByActor.Select(follow => new AuthorReference(
+        var relationReferences = followedByActor
+            .Select(follow => new AuthorReference(
                 follow.FollowedUserId,
                 follow.FollowedParticipantType,
-                Guid.Empty)),
-            cancellationToken);
+                Guid.Empty))
+            .Concat(followersOfActor.Select(follow => new AuthorReference(
+                follow.FollowerUserId,
+                follow.FollowerParticipantType,
+                Guid.Empty)))
+            .ToArray();
+        var authors = await ResolveAuthorsAsync(relationReferences, cancellationToken);
+        var followedProfileIds = followedByActor
+            .Select(follow => authors.GetValueOrDefault(
+                AuthorKey.From(follow.FollowedUserId, follow.FollowedParticipantType))?.ProfileId ?? Guid.Empty)
+            .Where(profileId => profileId != Guid.Empty)
+            .ToHashSet();
+        var followerProfileIds = followersOfActor
+            .Select(follow => authors.GetValueOrDefault(
+                AuthorKey.From(follow.FollowerUserId, follow.FollowerParticipantType))?.ProfileId ?? Guid.Empty)
+            .Where(profileId => profileId != Guid.Empty)
+            .ToHashSet();
 
         return new AudienceGraph(
-            followedByActor
-                .Where(follow => follow.FollowedParticipantType == MessagingParticipantTypes.Agent)
-                .Select(follow => follow.FollowedUserId).Distinct().ToArray(),
-            followedByActor
-                .Where(follow => follow.FollowedParticipantType == MessagingParticipantTypes.Client)
-                .Select(follow => follow.FollowedUserId).Distinct().ToArray(),
-            followersOfActor
-                .Where(follow => follow.FollowerParticipantType == MessagingParticipantTypes.Agent)
-                .Select(follow => follow.FollowerUserId).Distinct().ToArray(),
-            followersOfActor
-                .Where(follow => follow.FollowerParticipantType == MessagingParticipantTypes.Client)
-                .Select(follow => follow.FollowerUserId).Distinct().ToArray(),
-            followedAuthors.Values
-                .Select(author => author.ProfileId)
-                .Where(profileId => profileId != Guid.Empty)
-                .Distinct()
-                .ToArray());
+            followedProfileIds,
+            followedProfileIds.Intersect(followerProfileIds).ToHashSet());
     }
 
     private async Task<SocialPost[]> FilterPostsForViewerAsync(

@@ -13,16 +13,31 @@ enum LegendSocialAudioSession {
     }
 
     private static var activeOwners = Set<Owner>()
+    private static var isConfigured = false
+    private static var isActive = false
     static let activeHacDidChange = Notification.Name(
         "LegendSocialAudioSession.activeHacDidChange")
 
-    static func beginPlayback(for owner: Owner) throws {
+    /// Seeds one process-wide playback route. Hac paging deliberately keeps
+    /// this route active while it changes players, avoiding a hardware audio
+    /// restart at every vertical transition.
+    static func prepareForPlayback() throws {
         let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(
-            .playback,
-            mode: .moviePlayback,
-            options: [.mixWithOthers])
-        try audioSession.setActive(true)
+        if !isConfigured {
+            try audioSession.setCategory(
+                .playback,
+                mode: .moviePlayback,
+                options: [.mixWithOthers])
+            isConfigured = true
+        }
+        if !isActive {
+            try audioSession.setActive(true)
+            isActive = true
+        }
+    }
+
+    static func beginPlayback(for owner: Owner) throws {
+        try prepareForPlayback()
 
         if case let .hac(mediaID) = owner {
             // A vertical feed can keep adjacent views alive while scrolling.
@@ -46,6 +61,7 @@ enum LegendSocialAudioSession {
         try? AVAudioSession.sharedInstance().setActive(
             false,
             options: .notifyOthersOnDeactivation)
+        isActive = false
     }
 }
 

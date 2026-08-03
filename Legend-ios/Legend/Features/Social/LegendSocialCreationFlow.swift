@@ -3092,9 +3092,7 @@ private extension MobileSocialContentType {
         }
 
         guard format.acceptsVideo(duration: asset.duration) else {
-            let duration = Int(asset.duration.rounded())
-            let maximum = Int(format.maximumVideoDurationSeconds ?? 0)
-            return "This video is \(duration) seconds. \(displayName) videos can be up to \(maximum) seconds."
+            return "Videos must be 10 minutes or less."
         }
 
         return nil

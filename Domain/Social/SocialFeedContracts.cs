@@ -19,6 +19,13 @@ public static class SocialMediaUploadLimits
 {
     public const long MaximumMediaBytes = 100L * 1024L * 1024L;
     /// <summary>
+    /// The single server-authoritative duration ceiling for every uploaded
+    /// Legend video. Native clients apply the same limit before constructing a
+    /// multipart body, while storage verifies it before FFmpeg is allowed to
+    /// consume CPU.
+    /// </summary>
+    public const double MaximumVideoDurationSeconds = 600d;
+    /// <summary>
     /// A creator-selected Hac poster is a small JPEG that travels with the
     /// video upload. Keeping this independently bounded preserves the existing
     /// video allowance.

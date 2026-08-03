@@ -1369,18 +1369,19 @@ struct LegendForYouView: View {
 }
 
 /// The viewport-retention contract for native Hac playback. The feed owns
-/// exactly three hardware decoders: the active Hac and the next two Hacs in the
-/// vertical sequence. Everything behind the active Hac is released immediately
-/// and recreated only if the member scrolls back. Network media itself remains
-/// owned by `MobileSocialStore`'s secure disk cache, so FYP and a profile's Hac
-/// feed cannot form competing caches.
+/// exactly three hardware decoders: the previous, active, and next Hac in the
+/// vertical sequence. The following Hac's asset metadata is warmed separately,
+/// without allocating a fourth player. Network media itself remains owned by
+/// `MobileSocialStore`'s secure disk cache, so FYP and a profile's Hac feed
+/// cannot form competing caches.
 enum LegendHacPlaybackWindow {
     static let maximumPlayerCount = 3
 
     static func retainedIndexes(activeIndex: Int, count: Int) -> [Int] {
         guard count > 0 else { return [] }
-        let upperBound = min(count - 1, activeIndex + maximumPlayerCount - 1)
-        return Array(activeIndex...upperBound)
+        let lowerBound = max(0, activeIndex - 1)
+        let upperBound = min(count - 1, activeIndex + 1)
+        return Array(lowerBound...upperBound)
     }
 
     static func prefetchIndexes(activeIndex: Int, count: Int) -> [Int] {
@@ -1404,12 +1405,14 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
     @Published private(set) var failures: [UUID: UserFacingFailure] = [:]
 
     private var players: [UUID: AVPlayer] = [:]
+    private var assets: [UUID: AVURLAsset] = [:]
+    private var assetPreloadTasks: [UUID: Task<AVURLAsset?, Never>] = [:]
     private var itemStatusObservations: [UUID: NSKeyValueObservation] = [:]
     private var itemEndObservers: [UUID: NSObjectProtocol] = [:]
     private var retainedMediaIDs = Set<UUID>()
+    private var retainedAssetIDs = Set<UUID>()
     private var activeMediaID: UUID?
     private var activePost: MobileSocialPost?
-    private var activationID: UUID?
     private var socialStore: MobileSocialStore?
 
     func player(for mediaID: UUID) -> AVPlayer? {
@@ -1425,49 +1428,114 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
         postID: UUID,
         social: MobileSocialStore
     ) async {
+        commitActive(posts: posts, postID: postID, social: social)
+        await prepareWindow(posts: posts, postID: postID, social: social)
+    }
+
+    /// Performs only the asynchronous player-window maintenance after a paging
+    /// commit has already started the adjacent preloaded player.
+    func refreshWindow(
+        posts: [MobileSocialPost],
+        postID: UUID,
+        social: MobileSocialStore
+    ) async {
+        await prepareWindow(posts: posts, postID: postID, social: social)
+    }
+
+    /// Runs on the same main-actor turn as SwiftUI's paging selection update.
+    /// It has no network work, task dispatch, player construction, or layout
+    /// work: the already-prerolled neighbor is simply made audible and played.
+    func commitActive(
+        posts: [MobileSocialPost],
+        postID: UUID,
+        social: MobileSocialStore
+    ) {
         guard let activeIndex = posts.firstIndex(where: { $0.id == postID }),
               let activeMedia = posts[activeIndex].media.first else {
             stop(social: social)
             return
         }
 
-        let requestID = UUID()
-        activationID = requestID
-        socialStore = social
-        recordActivePlayback(with: social)
-        pauseActivePlayback()
+        let previousMediaID = activeMediaID
+        if previousMediaID != activeMedia.id {
+            recordActivePlayback(with: social)
+            if let previousMediaID {
+                players[previousMediaID]?.pause()
+            }
+        }
 
+        socialStore = social
+        configureRetentionWindow(posts: posts, activeIndex: activeIndex)
         activePostID = postID
         activePost = posts[activeIndex]
         activeMediaID = activeMedia.id
-        isPlaying = false
+        isPlaying = true
 
-        retainedMediaIDs = Set(
-            LegendHacPlaybackWindow.retainedIndexes(
-                activeIndex: activeIndex,
-                count: posts.count
-            )
-            .compactMap { posts[$0].media.first?.id }
-        )
-        releasePlayersOutsideRetainedWindow()
+        // Configure and activate the hardware route before the new player is
+        // audible. The session remains alive while adjacent Hacs rotate.
+        if !seedAudio(for: activeMedia.id) {
+            isPlaying = false
+            return
+        }
 
-        await prepare(activeMedia, social: social)
-        guard activationID == requestID,
+        synchronizePlayerAudibility()
+        playActive()
+    }
+
+    /// Starts asset metadata work immediately for N+1 and N+2, then creates
+    /// player items only for the strict previous/active/next player window.
+    /// Every await occurs outside the scroll-commit path.
+    private func prepareWindow(
+        posts: [MobileSocialPost],
+        postID: UUID,
+        social: MobileSocialStore
+    ) async {
+        guard let activeIndex = posts.firstIndex(where: { $0.id == postID }),
+              let activeMedia = posts[activeIndex].media.first,
               activeMediaID == activeMedia.id else {
             return
         }
-        playActive()
+
+        configureRetentionWindow(posts: posts, activeIndex: activeIndex)
 
         for index in LegendHacPlaybackWindow.prefetchIndexes(
             activeIndex: activeIndex,
             count: posts.count
         ) {
             guard let media = posts[index].media.first else { continue }
-            Task { [weak self] in
-                guard let self else { return }
-                await self.prepare(media, social: social)
-            }
+            preloadAsset(for: media, social: social)
         }
+
+        // Active first, then the nearest neighbors. This preserves the strict
+        // three-player cap while making both swipe directions ready to commit.
+        let playerIndexes = LegendHacPlaybackWindow.retainedIndexes(
+            activeIndex: activeIndex,
+            count: posts.count)
+        let prioritizedIndexes = [activeIndex] + playerIndexes.filter { $0 != activeIndex }
+        for index in prioritizedIndexes {
+            guard let media = posts[index].media.first else { continue }
+            await preparePlayer(for: media, social: social)
+        }
+    }
+
+    private func configureRetentionWindow(
+        posts: [MobileSocialPost],
+        activeIndex: Int
+    ) {
+        retainedMediaIDs = Set(
+            LegendHacPlaybackWindow.retainedIndexes(
+                activeIndex: activeIndex,
+                count: posts.count
+            )
+            .compactMap { posts[$0].media.first?.id })
+        retainedAssetIDs = retainedMediaIDs.union(
+            LegendHacPlaybackWindow.prefetchIndexes(
+                activeIndex: activeIndex,
+                count: posts.count
+            )
+            .compactMap { posts[$0].media.first?.id })
+        releasePlayersOutsideRetainedWindow()
+        releaseAssetsOutsideRetainedWindow()
     }
 
     func togglePlayback() {
@@ -1480,13 +1548,12 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
 
     func toggleMute() {
         isMuted.toggle()
-        players.values.forEach { $0.isMuted = isMuted }
+        synchronizePlayerAudibility()
 
-        guard let activeMediaID else { return }
-        if isMuted {
-            LegendSocialAudioSession.endPlayback(for: .hac(activeMediaID))
-        } else if isPlaying {
-            _ = beginAudio(for: activeMediaID)
+        if !isMuted,
+           isPlaying,
+           let activeMediaID {
+            _ = seedAudio(for: activeMediaID)
         }
     }
 
@@ -1499,6 +1566,9 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
               let media = post.media.first else { return }
 
         releasePlayer(media.id)
+        assets.removeValue(forKey: media.id)
+        assetPreloadTasks[media.id]?.cancel()
+        assetPreloadTasks.removeValue(forKey: media.id)
         failures.removeValue(forKey: media.id)
         _ = await social.mediaFile(for: media, forceRefresh: true)
         await activate(posts: posts, postID: postID, social: social)
@@ -1506,7 +1576,6 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
 
     func stop(social: MobileSocialStore) {
         recordActivePlayback(with: social)
-        activationID = nil
         pauseActivePlayback()
         if let activeMediaID {
             LegendSocialAudioSession.endPlayback(for: .hac(activeMediaID))
@@ -1517,16 +1586,22 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
         itemStatusObservations.removeAll()
         readyMediaIDs.removeAll()
         retainedMediaIDs.removeAll()
+        assets.removeAll()
+        assetPreloadTasks.removeAll()
+        retainedAssetIDs.removeAll()
         activePostID = nil
         activePost = nil
         activeMediaID = nil
         socialStore = nil
     }
 
-    private func prepare(_ media: MobileSocialMedia, social: MobileSocialStore) async {
+    private func preparePlayer(
+        for media: MobileSocialMedia,
+        social: MobileSocialStore
+    ) async {
         guard retainedMediaIDs.contains(media.id), players[media.id] == nil else { return }
 
-        guard let url = await social.mediaFile(for: media) else {
+        guard let asset = await asset(for: media, social: social) else {
             guard retainedMediaIDs.contains(media.id) else { return }
             failures[media.id] = social.mediaFailure(for: media.id) ?? UserFacingFailure(
                 title: "Video unavailable",
@@ -1536,10 +1611,12 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
         }
 
         guard retainedMediaIDs.contains(media.id) else { return }
-        let item = AVPlayerItem(url: url)
+        let item = AVPlayerItem(asset: asset)
+        item.preferredForwardBufferDuration = 3
         let player = AVPlayer(playerItem: item)
         player.actionAtItemEnd = .none
-        player.isMuted = isMuted
+        player.automaticallyWaitsToMinimizeStalling = false
+        player.isMuted = media.id != activeMediaID || isMuted
 
         players[media.id] = player
         failures.removeValue(forKey: media.id)
@@ -1568,18 +1645,11 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
 
                 case .readyToPlay:
                     self.readyMediaIDs.insert(media.id)
-
-                    if media.id == self.activeMediaID {
-                        // The active Hac may have been selected while its item
-                        // was still preparing. Start it only if it remains the
-                        // current activation when AVFoundation becomes ready.
-                        self.playActive()
-                    } else {
-                        // Neighboring retained Hacs are prewarmed only after
-                        // AVFoundation declares them ready. They never acquire
-                        // audio ownership or become active here.
-                        player.preroll(atRate: 0) { _ in }
-                    }
+                    // Seeking precisely to frame zero and prerolling at the
+                    // intended rate warms the decoder/GPU before a paging
+                    // gesture commits this player. Neighbors remain muted and
+                    // paused until they become the active item.
+                    self.preroll(player, mediaID: media.id)
 
                 case .failed:
                     self.readyMediaIDs.remove(media.id)
@@ -1606,6 +1676,105 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
         }
     }
 
+    /// Resolves the protected local media file and warms AVURLAsset metadata
+    /// before an AVPlayerItem is ever constructed. The task runs independently
+    /// of a page swipe; the coordinator only reads its prepared result during
+    /// the later window-maintenance task.
+    private func preloadAsset(
+        for media: MobileSocialMedia,
+        social: MobileSocialStore
+    ) {
+        guard retainedAssetIDs.contains(media.id),
+              assets[media.id] == nil,
+              assetPreloadTasks[media.id] == nil else {
+            return
+        }
+
+        assetPreloadTasks[media.id] = Task { [weak self] in
+            guard let self,
+                  let url = await social.mediaFile(for: media),
+                  !Task.isCancelled,
+                  self.retainedAssetIDs.contains(media.id) else {
+                return nil
+            }
+
+            let asset = AVURLAsset(url: url)
+            guard await self.loadPlaybackMetadata(for: asset),
+                  !Task.isCancelled,
+                  self.retainedAssetIDs.contains(media.id) else {
+                return nil
+            }
+
+            self.assets[media.id] = asset
+            return asset
+        }
+    }
+
+    private func asset(
+        for media: MobileSocialMedia,
+        social: MobileSocialStore
+    ) async -> AVURLAsset? {
+        if let asset = assets[media.id] {
+            return asset
+        }
+
+        preloadAsset(for: media, social: social)
+        guard let task = assetPreloadTasks[media.id] else { return nil }
+        return await task.value
+    }
+
+    /// The MP4 is fast-start optimized on the server, so metadata can be
+    /// requested immediately and asynchronously without scanning the full
+    /// source. This is AVFoundation's current typed equivalent of
+    /// `loadValuesAsynchronously(forKeys:)`, without deprecated calls.
+    private func loadPlaybackMetadata(for asset: AVURLAsset) async -> Bool {
+        do {
+            let (_, _, isPlayable) = try await asset.load(
+                .tracks,
+                .duration,
+                .isPlayable)
+            return isPlayable
+        } catch {
+            return false
+        }
+    }
+
+    private func preroll(_ player: AVPlayer, mediaID: UUID) {
+        player.seek(
+            to: .zero,
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        ) { [weak self, weak player] finished in
+            guard finished, let player else { return }
+            // A rate of one exercises the same hardware decode path used by
+            // playback while preserving the paused, muted neighbor state.
+            player.preroll(atRate: 1) { [weak self, weak player] finished in
+                guard finished else { return }
+                Task { @MainActor [weak self, weak player] in
+                    guard let self,
+                          let player,
+                          self.players[mediaID] === player,
+                          self.activeMediaID == mediaID,
+                          self.isPlaying else {
+                        return
+                    }
+                    self.playActive()
+                }
+            }
+        }
+    }
+
+    private func synchronizePlayerAudibility() {
+        for (mediaID, player) in players {
+            guard mediaID == activeMediaID else {
+                player.pause()
+                player.isMuted = true
+                continue
+            }
+            player.isMuted = isMuted
+        }
+    }
+
     private func playActive() {
         guard let activeMediaID,
               let player = players[activeMediaID],
@@ -1618,7 +1787,8 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
             return
         }
 
-        if !isMuted, !beginAudio(for: activeMediaID) {
+        player.isMuted = isMuted
+        if !isMuted, !seedAudio(for: activeMediaID) {
             return
         }
 
@@ -1626,14 +1796,15 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
         isPlaying = true
     }
 
+    /// Pausing between Hacs never deactivates the shared audio route. Only the
+    /// coordinator's terminal `stop` releases that route.
     private func pauseActivePlayback() {
         guard let activeMediaID else { return }
         players[activeMediaID]?.pause()
-        LegendSocialAudioSession.endPlayback(for: .hac(activeMediaID))
         isPlaying = false
     }
 
-    private func beginAudio(for mediaID: UUID) -> Bool {
+    private func seedAudio(for mediaID: UUID) -> Bool {
         do {
             try LegendSocialAudioSession.beginPlayback(for: .hac(mediaID))
             return true
@@ -1701,6 +1872,17 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
     private func releasePlayersOutsideRetainedWindow() {
         let obsoleteMediaIDs = players.keys.filter { !retainedMediaIDs.contains($0) }
         obsoleteMediaIDs.forEach(releasePlayer)
+    }
+
+    private func releaseAssetsOutsideRetainedWindow() {
+        let obsoleteAssetIDs = assets.keys.filter { !retainedAssetIDs.contains($0) }
+        obsoleteAssetIDs.forEach { assets.removeValue(forKey: $0) }
+
+        let obsoleteTaskIDs = assetPreloadTasks.keys.filter { !retainedAssetIDs.contains($0) }
+        obsoleteTaskIDs.forEach {
+            assetPreloadTasks[$0]?.cancel()
+            assetPreloadTasks.removeValue(forKey: $0)
+        }
     }
 
     private func releasePlayer(_ mediaID: UUID) {
@@ -1785,12 +1967,30 @@ struct LegendHacViewportFeed: View {
                 }
                 .scrollTargetBehavior(.paging)
                 .scrollPosition(id: $selectedPostID)
-                .task(id: selectedPostID) {
+                .task {
                     guard let selectedPostID else { return }
                     await playback.activate(
                         posts: posts,
                         postID: selectedPostID,
                         social: social)
+                }
+                .onChange(of: selectedPostID) { _, postID in
+                    guard let postID else { return }
+
+                    // This is intentionally synchronous: the selected
+                    // neighbor was preloaded and prerolled before the swipe,
+                    // so playback begins in the same run-loop turn that paging
+                    // commits rather than after an async layout/task hop.
+                    playback.commitActive(
+                        posts: posts,
+                        postID: postID,
+                        social: social)
+                    Task {
+                        await playback.refreshWindow(
+                            posts: posts,
+                            postID: postID,
+                            social: social)
+                    }
                 }
                 .onAppear {
                     selectInitialPost()

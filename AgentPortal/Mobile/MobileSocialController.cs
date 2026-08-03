@@ -825,6 +825,8 @@ public sealed class MobileSocialController : MobileApiControllerBase
             "SOCIAL_MEDIA_CONTENT_INVALID" or
             "SOCIAL_MEDIA_SIZE_INVALID" or
             "SOCIAL_MEDIA_SIZE_MISMATCH" or
+            "SOCIAL_VIDEO_DURATION_EXCEEDED" or
+            "SOCIAL_VIDEO_DURATION_INVALID" or
             "SOCIAL_MEDIA_NAME_INVALID" or
             "SOCIAL_MEDIA_TYPE_INVALID"
                 ? StatusCodes.Status400BadRequest

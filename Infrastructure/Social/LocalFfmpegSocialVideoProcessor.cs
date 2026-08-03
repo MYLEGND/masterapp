@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Globalization;
+using Domain.Social;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -15,9 +17,11 @@ internal sealed class LocalFfmpegSocialVideoProcessor
     // Keep the application-owned timeout below the gateway allowance so an
     // upload ends with a controlled Legend error instead of a dropped socket.
     private const int DefaultTimeoutSeconds = 110;
+    private const int DurationProbeTimeoutSeconds = 10;
     private const int MaximumDiagnosticLength = 2_000;
 
     private readonly string _executablePath;
+    private readonly string _probeExecutablePath;
     private readonly TimeSpan _timeout;
     private readonly long _maximumOutputBytes;
     private readonly ILogger _logger;
@@ -31,6 +35,9 @@ internal sealed class LocalFfmpegSocialVideoProcessor
 
         _executablePath = ResolveExecutablePath(configuration[
             "Social:Media:FFmpeg:ExecutablePath"]);
+        _probeExecutablePath = ResolveProbeExecutablePath(
+            _executablePath,
+            configuration["Social:Media:FFmpeg:ProbeExecutablePath"]);
         _timeout = TimeSpan.FromSeconds(ParsePositiveInt(
             configuration["Social:Media:FFmpeg:TimeoutSeconds"],
             DefaultTimeoutSeconds));
@@ -71,8 +78,23 @@ internal sealed class LocalFfmpegSocialVideoProcessor
 
         try
         {
+            var duration = await ProbeDurationAsync(sourcePath, cancellationToken);
+            if (!duration.Succeeded)
+            {
+                return SocialVideoProcessingResult.Failure(
+                    duration.ErrorCode ?? "SOCIAL_VIDEO_DURATION_INVALID",
+                    duration.ErrorMessage ?? "Legend could not verify this video's duration.");
+            }
+
+            if (duration.DurationSeconds > SocialMediaUploadLimits.MaximumVideoDurationSeconds)
+            {
+                return SocialVideoProcessingResult.Failure(
+                    "SOCIAL_VIDEO_DURATION_EXCEEDED",
+                    "Videos must be 10 minutes or less.");
+            }
+
             // Equivalent command, passed as structured arguments for safety:
-            // ffmpeg -nostdin -y -i input.mp4 -c:v copy
+            // ffmpeg -threads 1 -nostdin -y -i input.mp4 -c:v copy -preset superfast
             //   -af loudnorm=I=-14:TP=-1:LRA=11 -c:a aac -b:a 128k
             //   -movflags +faststart output.mp4
             using var process = new Process
@@ -194,12 +216,16 @@ internal sealed class LocalFfmpegSocialVideoProcessor
             RedirectStandardError = true,
             CreateNoWindow = true
         };
+        startInfo.ArgumentList.Add("-threads");
+        startInfo.ArgumentList.Add("1");
         startInfo.ArgumentList.Add("-nostdin");
         startInfo.ArgumentList.Add("-y");
         startInfo.ArgumentList.Add("-i");
         startInfo.ArgumentList.Add(sourcePath);
         startInfo.ArgumentList.Add("-c:v");
         startInfo.ArgumentList.Add("copy");
+        startInfo.ArgumentList.Add("-preset");
+        startInfo.ArgumentList.Add("superfast");
         startInfo.ArgumentList.Add("-af");
         startInfo.ArgumentList.Add("loudnorm=I=-14:TP=-1:LRA=11");
         startInfo.ArgumentList.Add("-c:a");
@@ -209,6 +235,112 @@ internal sealed class LocalFfmpegSocialVideoProcessor
         startInfo.ArgumentList.Add("-movflags");
         startInfo.ArgumentList.Add("+faststart");
         startInfo.ArgumentList.Add(outputPath);
+        return startInfo;
+    }
+
+    /// <summary>
+    /// The full-file confirmation follows the bounded header check in storage.
+    /// It is intentionally separate from the transcode so malformed or
+    /// non-fast-start videos never spend FFmpeg encoding time before their
+    /// duration is known.
+    /// </summary>
+    private async Task<SocialVideoDurationProbeResult> ProbeDurationAsync(
+        string sourcePath,
+        CancellationToken cancellationToken)
+    {
+        using var process = new Process
+        {
+            StartInfo = CreateProbeStartInfo(sourcePath),
+            EnableRaisingEvents = false
+        };
+
+        try
+        {
+            if (!process.Start())
+            {
+                return SocialVideoDurationProbeResult.Failure(
+                    "SOCIAL_VIDEO_DURATION_INVALID",
+                    "Legend could not verify this video's duration.");
+            }
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            _logger.LogError(
+                ex,
+                "FFprobe could not be started for local social video validation. Executable={Executable}",
+                _probeExecutablePath);
+            return SocialVideoDurationProbeResult.Failure(
+                "SOCIAL_VIDEO_DURATION_INVALID",
+                "Legend could not verify this video's duration.");
+        }
+
+        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        var standardError = process.StandardError.ReadToEndAsync();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(DurationProbeTimeoutSeconds));
+
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            TryStop(process);
+            await AwaitProcessOutputAsync(standardOutput, standardError);
+            return SocialVideoDurationProbeResult.Failure(
+                "SOCIAL_VIDEO_DURATION_INVALID",
+                "Legend could not verify this video's duration.");
+        }
+        catch (OperationCanceledException)
+        {
+            TryStop(process);
+            await AwaitProcessOutputAsync(standardOutput, standardError);
+            throw;
+        }
+
+        var output = (await standardOutput).Trim();
+        var diagnostics = (await standardError).Trim();
+        if (process.ExitCode != 0 ||
+            !double.TryParse(
+                output,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var durationSeconds) ||
+            !double.IsFinite(durationSeconds) ||
+            durationSeconds <= 0)
+        {
+            _logger.LogWarning(
+                "FFprobe could not read a valid social video duration. ExitCode={ExitCode} Source={SourcePath} Diagnostics={Diagnostics}",
+                process.ExitCode,
+                sourcePath,
+                diagnostics.Length <= MaximumDiagnosticLength
+                    ? diagnostics
+                    : diagnostics[..MaximumDiagnosticLength]);
+            return SocialVideoDurationProbeResult.Failure(
+                "SOCIAL_VIDEO_DURATION_INVALID",
+                "Legend could not verify this video's duration.");
+        }
+
+        return SocialVideoDurationProbeResult.Success(durationSeconds);
+    }
+
+    private ProcessStartInfo CreateProbeStartInfo(string sourcePath)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = _probeExecutablePath,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add("-v");
+        startInfo.ArgumentList.Add("error");
+        startInfo.ArgumentList.Add("-show_entries");
+        startInfo.ArgumentList.Add("format=duration");
+        startInfo.ArgumentList.Add("-of");
+        startInfo.ArgumentList.Add("default=noprint_wrappers=1:nokey=1");
+        startInfo.ArgumentList.Add(sourcePath);
         return startInfo;
     }
 
@@ -283,16 +415,36 @@ internal sealed class LocalFfmpegSocialVideoProcessor
         return Path.GetFullPath(path, AppContext.BaseDirectory);
     }
 
+    private static string ResolveProbeExecutablePath(
+        string ffmpegPath,
+        string? configuredPath)
+    {
+        var configured = configuredPath?.Trim();
+        if (!string.IsNullOrWhiteSpace(configured))
+            return ResolveExecutablePath(configured);
+
+        var siblingName = OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe";
+        var directory = Path.GetDirectoryName(ffmpegPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            var sibling = Path.Combine(directory, siblingName);
+            if (File.Exists(sibling))
+                return sibling;
+        }
+
+        return ResolvePackagedOrPath(siblingName);
+    }
+
     private static string ResolvePackagedOrPath(string executableName)
     {
         var packagedPath = Path.Combine(
             AppContext.BaseDirectory,
             "tools",
             "ffmpeg",
-            OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
+            Path.GetFileName(executableName));
 
-        // Production deployment packages the verified Windows executable here.
-        // Developers retain the conventional PATH-based ffmpeg workflow.
+        // Production deployment packages FFmpeg and FFprobe together here.
+        // Developers retain the conventional PATH-based workflow.
         return File.Exists(packagedPath) ? packagedPath : executableName;
     }
 
@@ -315,4 +467,19 @@ internal sealed record SocialVideoProcessingResult(
         string errorCode,
         string errorMessage) =>
         new(false, null, errorCode, errorMessage);
+}
+
+internal sealed record SocialVideoDurationProbeResult(
+    bool Succeeded,
+    double DurationSeconds,
+    string? ErrorCode,
+    string? ErrorMessage)
+{
+    public static SocialVideoDurationProbeResult Success(double durationSeconds) =>
+        new(true, durationSeconds, null, null);
+
+    public static SocialVideoDurationProbeResult Failure(
+        string errorCode,
+        string errorMessage) =>
+        new(false, 0, errorCode, errorMessage);
 }

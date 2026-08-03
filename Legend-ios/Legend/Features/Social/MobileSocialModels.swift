@@ -885,6 +885,9 @@ struct LegendSocialContentFormat: Equatable, Sendable {
 
     var maximumVideoDurationDescription: String? {
         guard let maximumVideoDurationSeconds else { return nil }
+        if maximumVideoDurationSeconds == LegendSocialVideoUploadPolicy.maximumDurationSeconds {
+            return "10 minutes or less"
+        }
         return "up to \(Int(maximumVideoDurationSeconds)) seconds"
     }
 }
@@ -947,7 +950,7 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
                 allowsTextOnlyPublication: true,
                 acceptsImages: true,
                 acceptsVideos: true,
-                maximumVideoDurationSeconds: 60,
+                maximumVideoDurationSeconds: LegendSocialVideoUploadPolicy.maximumDurationSeconds,
                 mediaAspectRatio: 1,
                 featuredPreviewWidth: 286,
                 featuredPreviewHeight: 286,
@@ -963,7 +966,7 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
                 allowsTextOnlyPublication: false,
                 acceptsImages: true,
                 acceptsVideos: true,
-                maximumVideoDurationSeconds: 60,
+                maximumVideoDurationSeconds: LegendSocialVideoUploadPolicy.maximumDurationSeconds,
                 mediaAspectRatio: 9.0 / 16.0,
                 featuredPreviewWidth: 248,
                 featuredPreviewHeight: 440,
@@ -979,7 +982,7 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
                 allowsTextOnlyPublication: false,
                 acceptsImages: false,
                 acceptsVideos: true,
-                maximumVideoDurationSeconds: 90,
+                maximumVideoDurationSeconds: LegendSocialVideoUploadPolicy.maximumDurationSeconds,
                 mediaAspectRatio: 9.0 / 16.0,
                 featuredPreviewWidth: 248,
                 featuredPreviewHeight: 440,
