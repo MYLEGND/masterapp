@@ -751,6 +751,7 @@ final class MobileSocialStore: ObservableObject {
     private var mediaLoadTasks: [UUID: Task<Data?, Never>] = [:]
     private var previewLoadTasks: [UUID: Task<Data?, Never>] = [:]
     private var mediaFileLoadTasks: [UUID: Task<URL?, Never>] = [:]
+    private var mediaStreamLoadTasks: [UUID: Task<MobileSocialMediaStream?, Never>] = [:]
     private var inFlightMutationKeys: Set<String> = []
     private var pendingPublicationRequest: MobileSocialPublishRequest?
     private var feedLoadTask: Task<MobileStoreLoadResult, Never>?
@@ -782,6 +783,7 @@ final class MobileSocialStore: ObservableObject {
         mediaLoadTasks.values.forEach { $0.cancel() }
         previewLoadTasks.values.forEach { $0.cancel() }
         mediaFileLoadTasks.values.forEach { $0.cancel() }
+        mediaStreamLoadTasks.values.forEach { $0.cancel() }
         for cached in mediaFileCache.values {
             try? FileManager.default.removeItem(at: cached.url)
         }
@@ -1058,21 +1060,32 @@ final class MobileSocialStore: ObservableObject {
             return cached
         }
 
-        do {
-            let token = try await accessTokenProvider()
-            guard let stream = try await api.mediaStream(
-                assetID: media.id,
-                accessToken: token) else {
+        if let existingTask = mediaStreamLoadTasks[media.id] {
+            return await existingTask.value
+        }
+
+        let task = Task { [weak self] () -> MobileSocialMediaStream? in
+            guard let self else { return nil }
+            do {
+                let token = try await self.accessTokenProvider()
+                guard let stream = try await self.api.mediaStream(
+                    assetID: media.id,
+                    accessToken: token) else {
+                    return nil
+                }
+                self.mediaStreamCache[media.id] = stream
+                self.mediaFailures.removeValue(forKey: media.id)
+                return stream
+            } catch {
+                // Preserve the established local-file fallback for an API double
+                // or a deployment that has not yet enabled stream sources.
                 return nil
             }
-            mediaStreamCache[media.id] = stream
-            mediaFailures.removeValue(forKey: media.id)
-            return stream
-        } catch {
-            // Preserve the established local-file fallback for an API double
-            // or a deployment that has not yet enabled stream sources.
-            return nil
         }
+        mediaStreamLoadTasks[media.id] = task
+        let stream = await task.value
+        mediaStreamLoadTasks.removeValue(forKey: media.id)
+        return stream
     }
 
     func mediaFailure(for assetID: UUID) -> UserFacingFailure? {

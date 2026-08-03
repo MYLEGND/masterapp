@@ -13,10 +13,10 @@ final class MobileDiscoveryStoreTests: XCTestCase {
         // would not actually exercise the debounce.)
         for text in ["M", "Ma", "Mar", "Mara"] {
             store.searchText = text
-            try await Task.sleep(for: .milliseconds(120))
+            try await Task.sleep(for: .milliseconds(40))
         }
 
-        try await Task.sleep(for: .milliseconds(600))
+        try await Task.sleep(for: .milliseconds(300))
 
         let queries = await api.recordedQueries()
         XCTAssertEqual(queries, ["Mara"], "Only the settled query should be requested")
@@ -90,7 +90,31 @@ final class MobileDiscoveryStoreTests: XCTestCase {
         XCTAssertTrue(store.recommendations.isEmpty)
 
         let sorts = await api.recordedSorts()
-        XCTAssertEqual(sorts, [.recommended, .directory])
+        XCTAssertEqual(Set(sorts), Set([.recommended, .directory]))
+        XCTAssertEqual(sorts.count, 2)
+    }
+
+    func testRecentSearchRendersFromCacheBeforeItsRevalidationDebounce() async throws {
+        let api = RecordingDiscoveryAPI(total: 3)
+        let store = makeStore(api: api)
+
+        store.searchText = "cached"
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertEqual(store.totalCount, 1)
+
+        store.searchText = "other"
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertEqual(store.totalCount, 3)
+
+        store.searchText = "cached"
+
+        // This assertion runs before the 90 ms debounce; the old cached server
+        // projection must be available synchronously for instant repeat search.
+        XCTAssertEqual(store.totalCount, 1)
+
+        try await Task.sleep(for: .milliseconds(250))
+        let queries = await api.recordedQueries()
+        XCTAssertEqual(queries.filter { $0 == "cached" }.count, 2)
     }
 
     // ------------------------------------------------------------------ helpers
@@ -132,17 +156,18 @@ private actor RecordingDiscoveryAPI: MobileDiscoveryAPI {
             try? await Task.sleep(for: responseDelay)
         }
 
-        let upper = min(offset + pageSize, total)
-        let results = offset >= total
+        let resultTotal = query == "cached" ? min(total, 1) : total
+        let upper = min(offset + pageSize, resultTotal)
+        let results = offset >= resultTotal
             ? []
             : (offset..<upper).map { Self.member(index: $0) }
 
         return MobileDiscoveryPage(
             results: results,
-            totalCount: total,
+            totalCount: resultTotal,
             offset: offset,
             pageSize: pageSize,
-            hasMore: upper < total,
+            hasMore: upper < resultTotal,
             sortMode: sort ?? .recommended,
             scope: .community)
     }

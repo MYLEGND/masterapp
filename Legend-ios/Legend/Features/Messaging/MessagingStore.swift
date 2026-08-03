@@ -30,6 +30,256 @@ enum MessagingControlledResourceRequestSubmission {
     case failed(UserFacingFailure)
 }
 
+/// A deliberately small client boundary over the server's existing SignalR
+/// contract. The event contains only the identifiers needed to reconcile the
+/// server-owned inbox and an already-open conversation.
+struct MobileMessagingRealtimeEvent: Decodable, Sendable {
+    let conversationID: UUID
+    let messageID: UUID?
+    let occurredUTC: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case conversationID = "conversationId"
+        case messageID = "messageId"
+        case occurredUTC = "occurredUtc"
+    }
+}
+
+@MainActor
+protocol MessagingRealtimeTransport: AnyObject {
+    var onEvent: ((MobileMessagingRealtimeEvent) -> Void)? { get set }
+    func start()
+    func stop()
+}
+
+/// Native WebSocket transport for the existing ASP.NET Core SignalR JSON
+/// protocol. It intentionally carries no message body or inbox copy: each event
+/// triggers a bounded REST reconciliation with the same server projection used
+/// for normal loading and recovery after reconnects.
+@MainActor
+final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
+    var onEvent: ((MobileMessagingRealtimeEvent) -> Void)?
+
+    private static let recordSeparator = "\u{001E}"
+    private static let reconnectDelays: [Duration] = [
+        .seconds(1), .seconds(2), .seconds(5), .seconds(10), .seconds(30)
+    ]
+
+    private let hubURL: URL
+    private let accessTokenProvider: () async throws -> String
+    private let participantType: ParticipantType
+    private var socket: URLSessionWebSocketTask?
+    private var connectionTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
+    private var generation = 0
+    private var reconnectAttempt = 0
+    private var shouldRemainConnected = false
+
+    init?(
+        apiBaseURL: URL,
+        participantType: ParticipantType,
+        accessTokenProvider: @escaping () async throws -> String
+    ) {
+        guard let hubURL = Self.makeHubURL(from: apiBaseURL) else { return nil }
+        self.hubURL = hubURL
+        self.participantType = participantType
+        self.accessTokenProvider = accessTokenProvider
+    }
+
+    deinit {
+        socket?.cancel(with: .goingAway, reason: nil)
+        connectionTask?.cancel()
+        reconnectTask?.cancel()
+    }
+
+    func start() {
+        guard !shouldRemainConnected else { return }
+        shouldRemainConnected = true
+        reconnectAttempt = 0
+        startConnection()
+    }
+
+    func stop() {
+        shouldRemainConnected = false
+        generation += 1
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        connectionTask?.cancel()
+        connectionTask = nil
+        socket?.cancel(with: .goingAway, reason: nil)
+        socket = nil
+    }
+
+    private func startConnection() {
+        guard shouldRemainConnected,
+              connectionTask == nil,
+              socket == nil else { return }
+
+        let connectionGeneration = generation
+        connectionTask = Task { [weak self] in
+            await self?.openConnection(generation: connectionGeneration)
+        }
+    }
+
+    private func openConnection(generation connectionGeneration: Int) async {
+        defer {
+            if connectionGeneration == generation {
+                connectionTask = nil
+            }
+        }
+
+        do {
+            let token = try await accessTokenProvider()
+            guard shouldRemainConnected,
+                  connectionGeneration == generation else { return }
+
+            var request = URLRequest(url: hubURL)
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue(
+                participantType.rawValue,
+                forHTTPHeaderField: "X-Legend-Participant-Type")
+            let newSocket = URLSession.shared.webSocketTask(with: request)
+            socket = newSocket
+            newSocket.resume()
+
+            try await newSocket.send(.string(
+                "{\"protocol\":\"json\",\"version\":1}\(Self.recordSeparator)"))
+            let handshake = try await newSocket.receive()
+            guard isSuccessfulHandshake(handshake) else {
+                throw MobileMessagingRealtimeError.invalidHandshake
+            }
+
+            reconnectAttempt = 0
+            try await receiveEvents(from: newSocket, generation: connectionGeneration)
+        } catch is CancellationError {
+            // Explicit stop and role teardown are expected lifecycle events.
+        } catch {
+            scheduleReconnect(after: connectionGeneration)
+        }
+
+        guard connectionGeneration == generation else { return }
+        socket?.cancel(with: .goingAway, reason: nil)
+        socket = nil
+        if shouldRemainConnected {
+            scheduleReconnect(after: connectionGeneration)
+        }
+    }
+
+    private func isSuccessfulHandshake(
+        _ message: URLSessionWebSocketTask.Message
+    ) -> Bool {
+        let text: String
+        switch message {
+        case .string(let value): text = value
+        case .data(let value): text = String(decoding: value, as: UTF8.self)
+        @unknown default: return false
+        }
+
+        return text
+            .split(separator: Character(Self.recordSeparator))
+            .contains { frame in
+                guard let object = try? JSONSerialization.jsonObject(
+                    with: Data(frame.utf8)) as? [String: Any] else {
+                    return false
+                }
+                return object["error"] == nil
+            }
+    }
+
+    private func receiveEvents(
+        from socket: URLSessionWebSocketTask,
+        generation connectionGeneration: Int
+    ) async throws {
+        while shouldRemainConnected,
+              connectionGeneration == generation,
+              !Task.isCancelled {
+            let message = try await socket.receive()
+            for event in events(in: message) {
+                onEvent?(event)
+            }
+        }
+    }
+
+    private func events(
+        in message: URLSessionWebSocketTask.Message
+    ) -> [MobileMessagingRealtimeEvent] {
+        let text: String
+        switch message {
+        case .string(let value): text = value
+        case .data(let value): text = String(decoding: value, as: UTF8.self)
+        @unknown default: return []
+        }
+
+        return text
+            .split(separator: Character(Self.recordSeparator))
+            .compactMap { frame in
+                guard let envelope = try? JSONDecoder.mobile.decode(
+                    SignalRInvocation.self,
+                    from: Data(frame.utf8)),
+                    envelope.type == 1,
+                    ["messagereceived", "conversationupdated"].contains(
+                        envelope.target?.lowercased() ?? "") else {
+                    return nil
+                }
+                return envelope.arguments?.first
+            }
+    }
+
+    private func scheduleReconnect(after connectionGeneration: Int) {
+        guard shouldRemainConnected,
+              connectionGeneration == generation,
+              reconnectTask == nil else { return }
+
+        let delay = Self.reconnectDelays[
+            min(reconnectAttempt, Self.reconnectDelays.count - 1)
+        ]
+        reconnectAttempt += 1
+        reconnectTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled,
+                  self.shouldRemainConnected,
+                  self.generation == connectionGeneration else {
+                return
+            }
+            self.reconnectTask = nil
+            self.startConnection()
+        }
+    }
+
+    private static func makeHubURL(from apiBaseURL: URL) -> URL? {
+        guard var components = URLComponents(
+            url: apiBaseURL,
+            resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        switch components.scheme?.lowercased() {
+        case "https": components.scheme = "wss"
+        case "http": components.scheme = "ws"
+        default: return nil
+        }
+        let basePath = components.path.trimmingCharacters(
+            in: CharacterSet(charactersIn: "/"))
+        components.path = "/" + [basePath, "messaginghub"]
+            .filter { !$0.isEmpty }
+            .joined(separator: "/")
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
+    private struct SignalRInvocation: Decodable {
+        let type: Int?
+        let target: String?
+        let arguments: [MobileMessagingRealtimeEvent]?
+    }
+}
+
+private enum MobileMessagingRealtimeError: Error {
+    case invalidHandshake
+}
+
 @MainActor
 final class MessagingStore: ObservableObject {
     @Published private(set) var state: MessagingLoadState = .idle
@@ -51,24 +301,47 @@ final class MessagingStore: ObservableObject {
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
     private let actorParticipantType: ParticipantType
+    private let realtime: (any MessagingRealtimeTransport)?
     let isFounder: Bool
     private var conversationListTask: Task<MobileStoreLoadResult, Never>?
     private var recipientSearchTask: Task<Void, Never>?
     private var recipientRequestGeneration = 0
+    /// Recipient search is an in-memory, account-scoped presentation cache. It
+    /// never grants access or starts a conversation without the API confirming it.
+    private var recipientSearchCache: [RecipientSearchCacheKey: [MessagingRecipient]] = [:]
+    private var recipientSearchCacheOrder: [RecipientSearchCacheKey] = []
+
+    private static let recipientSearchDebounceNanoseconds: UInt64 = 90_000_000
+    private static let maximumCachedRecipientSearches = 20
 
     init(
         api: any MessagingAPI,
         accessTokenProvider: @escaping () async throws -> String,
         diagnostics: LegendDiagnostics,
         actorParticipantType: ParticipantType,
-        isFounder: Bool = false
+        isFounder: Bool = false,
+        realtime: (any MessagingRealtimeTransport)? = nil
     ) {
         self.api = api
         self.accessTokenProvider = accessTokenProvider
         self.diagnostics = diagnostics
         self.actorParticipantType = actorParticipantType
         self.isFounder = isFounder
+        self.realtime = realtime
         selectedRecipientScope = .clients
+        realtime?.onEvent = { [weak self] event in
+            self?.reconcileRealtimeEvent(event)
+        }
+    }
+
+    deinit {
+        // `deinit` is nonisolated in Swift 6, so hand the main-actor transport
+        // its teardown without retaining this store. This breaks any outstanding
+        // receive loop as the account shell is released.
+        let realtime = realtime
+        Task { @MainActor [realtime] in
+            realtime?.stop()
+        }
     }
 
     var availableRecipientScopes: [MessagingRecipientScope] {
@@ -79,6 +352,7 @@ final class MessagingStore: ObservableObject {
 
     func load() {
         guard conversationListTask == nil else { return }
+        realtime?.start()
         Task {
             // Entering Messages must always reconcile with the server-owned inbox.
             // A cached empty/non-empty list is only a presentation cache; it must
@@ -88,6 +362,7 @@ final class MessagingStore: ObservableObject {
     }
 
     func loadIfNeeded() async -> MobileStoreLoadResult {
+        realtime?.start()
         let result = hasCachedConversations
             ? MobileStoreLoadResult.loaded
             : await requestConversationList(preservingCachedValue: false)
@@ -96,6 +371,7 @@ final class MessagingStore: ObservableObject {
     }
 
     func refresh() async -> MobileStoreLoadResult {
+        realtime?.start()
         let result = await requestConversationList(preservingCachedValue: hasCachedConversations)
         await refreshActivityNotifications()
         return result
@@ -123,7 +399,9 @@ final class MessagingStore: ObservableObject {
     }
 
     func searchRecipients(_ search: String) {
-        requestRecipients(search: search, debounceNanoseconds: 260_000_000)
+        requestRecipients(
+            search: search,
+            debounceNanoseconds: Self.recipientSearchDebounceNanoseconds)
     }
 
     func selectRecipientScope(_ scope: MessagingRecipientScope) {
@@ -139,8 +417,16 @@ final class MessagingStore: ObservableObject {
         recipientSearchTask?.cancel()
         recipientRequestGeneration += 1
         let requestGeneration = recipientRequestGeneration
-        recipientState = .loading
         let selectedScope = selectedRecipientScope
+        let cacheKey = RecipientSearchCacheKey(search: search, scope: selectedScope)
+        let hadCachedRecipients: Bool
+        if let cached = cachedRecipients(for: cacheKey) {
+            hadCachedRecipients = true
+            recipientState = .loaded(cached)
+        } else {
+            hadCachedRecipients = false
+            recipientState = .loading
+        }
         recipientSearchTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -157,9 +443,16 @@ final class MessagingStore: ObservableObject {
                     return
                 }
                 self.recipientState = .loaded(recipients)
+                self.cache(recipients, for: cacheKey)
             } catch {
                 guard !Task.isCancelled,
                       self.recipientRequestGeneration == requestGeneration else {
+                    return
+                }
+                // Keep a last-known authorized directory visible during a
+                // transient revalidation failure. A later search or scope change
+                // will still ask the server again; this never expands access.
+                if hadCachedRecipients {
                     return
                 }
                 self.recipientState = .unavailable(
@@ -871,6 +1164,33 @@ final class MessagingStore: ObservableObject {
         }
     }
 
+    private func reconcileRealtimeEvent(_ event: MobileMessagingRealtimeEvent) {
+        Task { [weak self] in
+            guard let self else { return }
+
+            async let inbox = self.requestConversationList(
+                preservingCachedValue: self.hasCachedConversations)
+            async let selectedConversation = self.refreshSelectedConversation(
+                ifSelected: event.conversationID)
+            _ = await (inbox, selectedConversation)
+        }
+    }
+
+    private func refreshSelectedConversation(ifSelected conversationID: UUID) async {
+        guard selectedConversationID == conversationID else { return }
+
+        do {
+            let conversation = try await api.conversation(
+                id: conversationID,
+                accessToken: try await accessTokenProvider())
+            guard selectedConversationID == conversationID else { return }
+            detailState = .loaded(conversation)
+        } catch {
+            // The inbox refresh has its own resilient failure handling. Keep the
+            // last readable thread on a transient event reconciliation failure.
+        }
+    }
+
     private func listFailureState(
         for error: Error,
         presentation: UserFacingFailure
@@ -917,6 +1237,44 @@ final class MessagingStore: ObservableObject {
             title: title,
             message: error.localizedDescription,
             correlationID: apiError?.correlationID)
+    }
+
+    private func cachedRecipients(
+        for key: RecipientSearchCacheKey
+    ) -> [MessagingRecipient]? {
+        guard let recipients = recipientSearchCache[key] else { return nil }
+        touchCachedRecipients(key)
+        return recipients
+    }
+
+    private func cache(
+        _ recipients: [MessagingRecipient],
+        for key: RecipientSearchCacheKey
+    ) {
+        recipientSearchCache[key] = recipients
+        touchCachedRecipients(key)
+        while recipientSearchCacheOrder.count > Self.maximumCachedRecipientSearches {
+            let evicted = recipientSearchCacheOrder.removeFirst()
+            recipientSearchCache.removeValue(forKey: evicted)
+        }
+    }
+
+    private func touchCachedRecipients(_ key: RecipientSearchCacheKey) {
+        recipientSearchCacheOrder.removeAll { $0 == key }
+        recipientSearchCacheOrder.append(key)
+    }
+
+    private struct RecipientSearchCacheKey: Hashable {
+        let search: String
+        let scope: MessagingRecipientScope
+
+        init(search: String?, scope: MessagingRecipientScope) {
+            self.search = search?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                ?? ""
+            self.scope = scope
+        }
     }
 }
 

@@ -506,17 +506,23 @@ final class MobileSessionCoordinator: ObservableObject {
             )
         }
 
+        let accessTokenProvider: () async throws -> String = { [weak self] in
+            guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
+            return try await self.accessTokenForRequest()
+        }
+
         return MessagingStore(
             api: URLSessionMessagingAPI(
                 client: MobileHTTPClient(baseURL: apiBaseURL),
                 participantType: currentSession.actor.identity.participantType),
-            accessTokenProvider: { [weak self] in
-                guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
-                return try await self.accessTokenForRequest()
-            },
+            accessTokenProvider: accessTokenProvider,
             diagnostics: diagnostics,
             actorParticipantType: currentSession.actor.identity.participantType,
-            isFounder: currentSession.capabilities.contains("founder")
+            isFounder: currentSession.capabilities.contains("founder"),
+            realtime: MobileMessagingRealtimeClient(
+                apiBaseURL: apiBaseURL,
+                participantType: currentSession.actor.identity.participantType,
+                accessTokenProvider: accessTokenProvider)
         )
     }
 
@@ -635,7 +641,8 @@ final class MobileSessionCoordinator: ObservableObject {
                 guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
                 return try await self.accessTokenForRequest()
             },
-            diagnostics: diagnostics)
+            diagnostics: diagnostics,
+            actorParticipantType: currentSession.actor.identity.participantType)
     }
 
     func makeAccountStore() -> MobileAccountStore {

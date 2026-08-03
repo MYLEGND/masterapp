@@ -185,38 +185,6 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
             )
 
         case .loaded(let snapshot):
-            if session.actor.identity.participantType == .client,
-               let journey = home.journey {
-                Button(action: openCircles) {
-                    HStack(spacing: LegendNextSpacing.sm) {
-                        Image(systemName: "person.3.fill")
-                            .foregroundStyle(LegendNextColor.gold)
-
-                        Text("Journey Circles")
-                            .font(.subheadline.weight(.semibold))
-
-                        Spacer()
-
-                        Text("\(journey.connectedPeerCount) connected")
-                            .font(LegendNextTypography.supporting)
-                            .foregroundStyle(
-                                LegendNextColor.textSecondary
-                            )
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(
-                                LegendNextColor.textSecondary
-                            )
-                    }
-                    .padding(.vertical, LegendNextSpacing.tiny)
-                }
-                .buttonStyle(LegendNextSurfaceButtonStyle())
-                .accessibilityLabel(
-                    "Open Journey Circles. \(journey.connectedPeerCount) connected profiles"
-                )
-            }
-
             LegendNextSectionHeader(
                 eyebrow: "Network",
                 title: "Latest from Legend"
@@ -1462,8 +1430,8 @@ struct LegendForYouView: View {
 
 /// The viewport-retention contract for native Hac playback. The feed owns
 /// exactly three hardware decoders: the previous, active, and next Hac in the
-/// vertical sequence. The following Hac's asset metadata is warmed separately,
-/// without allocating a fourth player. Network media itself remains owned by
+/// vertical sequence. The next three Hacs' asset metadata is warmed separately,
+/// without allocating extra players. Network media itself remains owned by
 /// `MobileSocialStore`'s secure disk cache, so FYP and a profile's Hac feed
 /// cannot form competing caches.
 enum LegendHacPlaybackWindow {
@@ -1479,7 +1447,7 @@ enum LegendHacPlaybackWindow {
     static func prefetchIndexes(activeIndex: Int, count: Int) -> [Int] {
         guard count > 0 else { return [] }
         let lowerBound = max(0, activeIndex + 1)
-        let upperBound = min(count - 1, activeIndex + 2)
+        let upperBound = min(count - 1, activeIndex + 3)
         guard lowerBound <= upperBound else { return [] }
         return Array(lowerBound...upperBound)
     }
@@ -1766,7 +1734,7 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
         playActive()
     }
 
-    /// Starts asset metadata work immediately for N+1 and N+2, then creates
+    /// Starts asset metadata work immediately for N+1 through N+3, then creates
     /// player items only for the strict previous/active/next player window.
     /// Every await occurs outside the scroll-commit path.
     private func prepareWindow(

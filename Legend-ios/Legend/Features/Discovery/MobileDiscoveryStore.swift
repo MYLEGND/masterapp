@@ -71,7 +71,7 @@ struct URLSessionMobileDiscoveryAPI: MobileDiscoveryAPI {
     }
 }
 
-/// Drives the Discover surface: debounced server-side search and infinite scroll.
+/// Drives the Discover surface: cache-first server-side search and infinite scroll.
 /// Relationship changes remain on the opened public profile, which is their single
 /// interaction authority.
 @MainActor
@@ -93,28 +93,38 @@ final class MobileDiscoveryStore: ObservableObject {
     @Published private(set) var recommendations: [MobileDiscoveryResult] = []
     @Published private(set) var actionFailure: UserFacingFailure?
 
-    /// How long to wait after the last keystroke before asking the server.
-    private static let searchDebounce = Duration.milliseconds(300)
+    /// Search should react within a typing frame, while still coalescing a burst of
+    /// keystrokes before it reaches the server.
+    private static let searchDebounce = Duration.milliseconds(90)
     private static let pageSize = 20
     private static let recommendationPageSize = 6
+    private static let maximumCachedSearches = 20
 
     private let api: any MobileDiscoveryAPI
     private let accessTokenProvider: () async throws -> String
     private let diagnostics: LegendDiagnostics
+    private let actorParticipantType: ParticipantType
 
     private var searchTask: Task<Void, Never>?
     private var loadMoreTask: Task<Void, Never>?
     /// Guards against a slow earlier response overwriting a newer one.
     private var requestGeneration = 0
+    /// The last 20 initial result sets are a presentation cache only. Every search
+    /// is still validated against the server, which remains the directory and
+    /// ranking authority.
+    private var initialSearchCache: [SearchCacheKey: CachedInitialSearch] = [:]
+    private var initialSearchCacheOrder: [SearchCacheKey] = []
 
     init(
         api: any MobileDiscoveryAPI,
         accessTokenProvider: @escaping () async throws -> String,
-        diagnostics: LegendDiagnostics
+        diagnostics: LegendDiagnostics,
+        actorParticipantType: ParticipantType = .client
     ) {
         self.api = api
         self.accessTokenProvider = accessTokenProvider
         self.diagnostics = diagnostics
+        self.actorParticipantType = actorParticipantType
     }
 
     var results: [MobileDiscoveryResult] {
@@ -166,6 +176,22 @@ final class MobileDiscoveryStore: ObservableObject {
 
     private func scheduleSearch() {
         searchTask?.cancel()
+        // Supersede an in-flight request as soon as the text changes, not after
+        // the debounce expires. This prevents an older result from flashing over
+        // a newly typed query.
+        requestGeneration += 1
+
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = trimmed.isEmpty ? nil : trimmed
+        if let cached = cachedInitialSearch(for: SearchCacheKey(
+            query: query,
+            sort: preferredSort)) {
+            // Recent searches render immediately; the delayed request below is
+            // only a quiet server-authoritative revalidation.
+            apply(cached)
+        }
+        isSearching = true
+
         searchTask = Task { [weak self] in
             guard let self else { return }
             // Debounce: only the last keystroke in a burst reaches the server.
@@ -181,8 +207,11 @@ final class MobileDiscoveryStore: ObservableObject {
 
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let query = trimmed.isEmpty ? nil : trimmed
+        let cacheKey = SearchCacheKey(query: query, sort: sort)
 
-        if resetting, !hasLoadedResults {
+        if resetting, let cached = cachedInitialSearch(for: cacheKey) {
+            apply(cached)
+        } else if resetting, !hasLoadedResults {
             state = .loading
         }
         isSearching = true
@@ -190,14 +219,42 @@ final class MobileDiscoveryStore: ObservableObject {
 
         do {
             let token = try await accessTokenProvider()
-            let page = try await api.search(
-                query: query,
-                offset: 0,
-                pageSize: query == nil && sort == .recommended
-                    ? Self.recommendationPageSize
-                    : Self.pageSize,
-                sort: sort,
-                accessToken: token)
+            let page: MobileDiscoveryPage
+            let concurrentDirectory: MobileDiscoveryPage?
+
+            // A client home search has two independent server projections. Start
+            // them together so the directory does not sit behind recommendations
+            // on a cold launch. Agents and text searches retain their single,
+            // authoritative endpoint request.
+            if query == nil,
+               sort == .recommended,
+               actorParticipantType == .client {
+                async let recommendationRequest = api.search(
+                    query: nil,
+                    offset: 0,
+                    pageSize: Self.recommendationPageSize,
+                    sort: .recommended,
+                    accessToken: token)
+                async let directoryRequest = api.search(
+                    query: nil,
+                    offset: 0,
+                    pageSize: Self.pageSize,
+                    sort: .directory,
+                    accessToken: token)
+                (page, concurrentDirectory) = try await (
+                    recommendationRequest,
+                    directoryRequest)
+            } else {
+                page = try await api.search(
+                    query: query,
+                    offset: 0,
+                    pageSize: query == nil && sort == .recommended
+                        ? Self.recommendationPageSize
+                        : Self.pageSize,
+                    sort: sort,
+                    accessToken: token)
+                concurrentDirectory = nil
+            }
 
             // A newer keystroke already superseded this request.
             guard generation == requestGeneration else { return }
@@ -206,30 +263,27 @@ final class MobileDiscoveryStore: ObservableObject {
             // active Legend directory. Both are server-authoritative queries over
             // the same endpoint; no device-side mirror or ranking is introduced.
             if query == nil, sort == .recommended, page.scope == .community {
-                let directory = try await api.search(
-                    query: nil,
-                    offset: 0,
-                    pageSize: Self.pageSize,
-                    sort: .directory,
-                    accessToken: token)
+                let directory: MobileDiscoveryPage
+                if let concurrentDirectory {
+                    directory = concurrentDirectory
+                } else {
+                    directory = try await api.search(
+                        query: nil,
+                        offset: 0,
+                        pageSize: Self.pageSize,
+                        sort: .directory,
+                        accessToken: token)
+                }
                 guard generation == requestGeneration else { return }
-
-                recommendations = Array(
-                    page.results
-                        .filter { $0.compatibilityScore > 0 }
-                        .prefix(Self.recommendationPageSize))
-                state = .loaded(directory.results)
-                totalCount = directory.totalCount
-                hasMore = directory.hasMore
-                scope = directory.scope
-                sortMode = directory.sortMode
+                let cached = CachedInitialSearch(
+                    page: page,
+                    directory: directory)
+                apply(cached)
+                cache(cached, for: cacheKey)
             } else {
-                recommendations = []
-                state = .loaded(page.results)
-                totalCount = page.totalCount
-                hasMore = page.hasMore
-                scope = page.scope
-                sortMode = page.sortMode
+                let cached = CachedInitialSearch(page: page, directory: nil)
+                apply(cached)
+                cache(cached, for: cacheKey)
             }
         } catch {
             guard generation == requestGeneration else { return }
@@ -281,6 +335,49 @@ final class MobileDiscoveryStore: ObservableObject {
         return false
     }
 
+    private func apply(_ cached: CachedInitialSearch) {
+        if let directory = cached.directory {
+            recommendations = Array(
+                cached.page.results
+                    .filter { $0.compatibilityScore > 0 }
+                    .prefix(Self.recommendationPageSize))
+            state = .loaded(directory.results)
+            totalCount = directory.totalCount
+            hasMore = directory.hasMore
+            scope = directory.scope
+            sortMode = directory.sortMode
+        } else {
+            recommendations = []
+            state = .loaded(cached.page.results)
+            totalCount = cached.page.totalCount
+            hasMore = cached.page.hasMore
+            scope = cached.page.scope
+            sortMode = cached.page.sortMode
+        }
+    }
+
+    private func cachedInitialSearch(
+        for key: SearchCacheKey
+    ) -> CachedInitialSearch? {
+        guard let cached = initialSearchCache[key] else { return nil }
+        touchCachedSearch(key)
+        return cached
+    }
+
+    private func cache(_ search: CachedInitialSearch, for key: SearchCacheKey) {
+        initialSearchCache[key] = search
+        touchCachedSearch(key)
+        while initialSearchCacheOrder.count > Self.maximumCachedSearches {
+            let evicted = initialSearchCacheOrder.removeFirst()
+            initialSearchCache.removeValue(forKey: evicted)
+        }
+    }
+
+    private func touchCachedSearch(_ key: SearchCacheKey) {
+        initialSearchCacheOrder.removeAll { $0 == key }
+        initialSearchCacheOrder.append(key)
+    }
+
     private func failure(for error: Error, title: String) -> UserFacingFailure {
         let apiError = error as? MobileAPIError
         diagnostics.record(
@@ -291,5 +388,23 @@ final class MobileDiscoveryStore: ObservableObject {
             title: title,
             message: error.localizedDescription,
             correlationID: apiError?.correlationID)
+    }
+
+    private struct SearchCacheKey: Hashable {
+        let query: String
+        let sort: MobileDiscoverySortMode
+
+        init(query: String?, sort: MobileDiscoverySortMode) {
+            self.query = query?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                ?? ""
+            self.sort = sort
+        }
+    }
+
+    private struct CachedInitialSearch {
+        let page: MobileDiscoveryPage
+        let directory: MobileDiscoveryPage?
     }
 }

@@ -525,6 +525,61 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(afterFirstMessage.first?.lastMessagePreview, "First persisted message")
     }
 
+    func testMessagingRecipientSearchUsesItsRecentCacheBeforeRevalidation() async throws {
+        let api = InboxReconciliationMessagingAPI(conversationID: UUID())
+        let store = MessagingStore(
+            api: api,
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics(),
+            actorParticipantType: .client)
+
+        store.searchRecipients("agent")
+        try await Task.sleep(for: .milliseconds(180))
+        XCTAssertEqual(api.recipientCallCount, 1)
+
+        store.searchRecipients("agent")
+
+        // Cache application is synchronous; the second server call is only a
+        // background authority check after the short debounce.
+        guard case .loaded(let recipients) = store.recipientState else {
+            return XCTFail("Expected cached recipients immediately")
+        }
+        XCTAssertEqual(recipients, [api.recipient])
+
+        try await Task.sleep(for: .milliseconds(180))
+        XCTAssertEqual(api.recipientCallCount, 2)
+    }
+
+    func testMessagingStoreReconcilesServerStateForRealtimeEvents() async throws {
+        let conversationID = UUID()
+        let api = InboxReconciliationMessagingAPI(conversationID: conversationID)
+        let realtime = RecordingMessagingRealtimeTransport()
+        let store = MessagingStore(
+            api: api,
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics(),
+            actorParticipantType: .client,
+            realtime: realtime)
+
+        store.load()
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertGreaterThanOrEqual(realtime.startCount, 1)
+        XCTAssertEqual(api.conversationListCallCount, 1)
+
+        api.makeConversationVisible()
+        realtime.publish(MobileMessagingRealtimeEvent(
+            conversationID: conversationID,
+            messageID: UUID(),
+            occurredUTC: .now))
+        try await Task.sleep(for: .milliseconds(100))
+
+        guard case .loaded(let conversations) = store.state else {
+            return XCTFail("Expected a server-reconciled inbox")
+        }
+        XCTAssertEqual(conversations.map(\.id), [conversationID])
+        XCTAssertGreaterThanOrEqual(api.conversationListCallCount, 2)
+    }
+
 
     func testMessagingStoreShowsOfflineStateForNetworkFailure() async {
         let store = MessagingStore(
@@ -535,14 +590,14 @@ final class MobileNativeContractTests: XCTestCase {
 
         store.load()
         let deadline = ContinuousClock.now.advanced(by: .seconds(1))
-        while case .loading = store.state,
-              ContinuousClock.now < deadline {
+        while ContinuousClock.now < deadline {
+            if case .offline = store.state {
+                return
+            }
             try? await Task.sleep(for: .milliseconds(10))
         }
 
-        guard case .offline = store.state else {
-            return XCTFail("Expected an offline messaging state")
-        }
+        XCTFail("Expected an offline messaging state")
     }
 
     func testMessagingStoreShowsUnauthorizedStateForTheBearerApiContract() async {
@@ -880,6 +935,7 @@ private final class InboxReconciliationMessagingAPI: MessagingAPI, @unchecked Se
     let conversationID: UUID
     let recipient: MessagingRecipient
     private(set) var conversationListCallCount = 0
+    private(set) var recipientCallCount = 0
     private var isVisibleInInbox = false
     private var lastMessage: ConversationMessage?
 
@@ -925,7 +981,8 @@ private final class InboxReconciliationMessagingAPI: MessagingAPI, @unchecked Se
     }
 
     func recipients(search: String?, scope: MessagingRecipientScope?, accessToken: String) async throws -> [MessagingRecipient] {
-        [recipient]
+        recipientCallCount += 1
+        return [recipient]
     }
 
     func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail {
@@ -984,6 +1041,22 @@ private final class InboxReconciliationMessagingAPI: MessagingAPI, @unchecked Se
     }
 
     func markRead(conversationID: UUID, accessToken: String) async throws {}
+}
+
+@MainActor
+private final class RecordingMessagingRealtimeTransport: MessagingRealtimeTransport {
+    var onEvent: ((MobileMessagingRealtimeEvent) -> Void)?
+    private(set) var startCount = 0
+
+    func start() {
+        startCount += 1
+    }
+
+    func stop() {}
+
+    func publish(_ event: MobileMessagingRealtimeEvent) {
+        onEvent?(event)
+    }
 }
 
 private struct OfflineMessagingAPI: MessagingAPI {

@@ -73,10 +73,10 @@ private final class MobileUploadProgressDelegate: NSObject, URLSessionTaskDelega
 }
 
 struct MobileHTTPClient: Sendable {
-    /// Videos are copied straight to a temporary file rather than materialized
-    /// in memory. Keep the protected-media request alive long enough for a
-    /// normal cellular transfer without changing the API timeout for JSON.
-    private static let protectedMediaRequestTimeout: TimeInterval = 120
+    /// Inline image/preview reads fail fast so a stalled asset cannot hold a
+    /// screen. Full media files keep their longer transfer budget separately.
+    private static let protectedMediaDataRequestTimeout: TimeInterval = 20
+    private static let protectedMediaDownloadTimeout: TimeInterval = 120
 
     let baseURL: URL
     let session: URLSession
@@ -126,13 +126,13 @@ struct MobileHTTPClient: Sendable {
     ) async throws -> Data {
         var request = URLRequest(url: try endpointURL(path, queryItems: []))
         request.httpMethod = "GET"
-        request.timeoutInterval = Self.protectedMediaRequestTimeout
+        request.timeoutInterval = Self.protectedMediaDataRequestTimeout
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("image/*, video/*", forHTTPHeaderField: "Accept")
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         let (data, _) = try await successfulData(
             for: request,
-            resourceTimeout: Self.protectedMediaRequestTimeout)
+            resourceTimeout: Self.protectedMediaDataRequestTimeout)
         return data
     }
 
@@ -145,7 +145,7 @@ struct MobileHTTPClient: Sendable {
     ) async throws -> URL {
         var request = URLRequest(url: try endpointURL(path, queryItems: []))
         request.httpMethod = "GET"
-        request.timeoutInterval = Self.protectedMediaRequestTimeout
+        request.timeoutInterval = Self.protectedMediaDownloadTimeout
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("image/*, video/*", forHTTPHeaderField: "Accept")
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
