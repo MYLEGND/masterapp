@@ -1,4 +1,6 @@
+using Domain.Messaging;
 using Infrastructure.Data;
+using Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClientApp.Services;
@@ -10,26 +12,29 @@ namespace ClientApp.Services;
 public sealed class ClientProfileImageLegacyBackfillService
 {
     private const long MaximumImageBytes = 3 * 1024 * 1024;
-    private static readonly (string Extension, string ContentType)[] ImageTypes =
+    private static readonly string[] ImageExtensions =
     [
-        (".png", "image/png"),
-        (".jpg", "image/jpeg"),
-        (".jpeg", "image/jpeg"),
-        (".webp", "image/webp")
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp"
     ];
 
     private readonly MasterAppDbContext _db;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<ClientProfileImageLegacyBackfillService> _logger;
+    private readonly IProfileImageWriter _profileImages;
 
     public ClientProfileImageLegacyBackfillService(
         MasterAppDbContext db,
         IWebHostEnvironment environment,
-        ILogger<ClientProfileImageLegacyBackfillService> logger)
+        ILogger<ClientProfileImageLegacyBackfillService> logger,
+        IProfileImageWriter profileImages)
     {
         _db = db;
         _environment = environment;
         _logger = logger;
+        _profileImages = profileImages;
     }
 
     public async Task<int> BackfillAsync(CancellationToken cancellationToken = default)
@@ -50,7 +55,7 @@ public sealed class ClientProfileImageLegacyBackfillService
 
             try
             {
-                var info = new FileInfo(image.Value.Path);
+                var info = new FileInfo(image);
                 if (info.Length is <= 0 or > MaximumImageBytes)
                 {
                     _logger.LogWarning(
@@ -60,9 +65,25 @@ public sealed class ClientProfileImageLegacyBackfillService
                     continue;
                 }
 
-                profile.ProfileImageContent = await File.ReadAllBytesAsync(image.Value.Path, cancellationToken);
-                profile.ProfileImageContentType = image.Value.ContentType;
-                profile.UpdatedUtc = DateTime.UtcNow;
+                var result = await _profileImages.UpdateAsync(
+                    new MessagingParticipantIdentity(
+                        string.Empty,
+                        MessagingParticipantTypes.Client,
+                        profile.Id,
+                        string.Empty,
+                        null,
+                        string.Empty),
+                    await File.ReadAllBytesAsync(image, cancellationToken),
+                    cancellationToken);
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning(
+                        "Skipping invalid legacy client profile image. ClientProfileId={ClientProfileId} ErrorCode={ErrorCode}",
+                        profile.Id,
+                        result.ErrorCode);
+                    continue;
+                }
+
                 imported++;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -74,13 +95,12 @@ public sealed class ClientProfileImageLegacyBackfillService
             }
         }
 
-        if (imported == 0)
-            return 0;
-
-        await _db.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation(
-            "Imported legacy client profile images into ClientProfiles. ImportedCount={ImportedCount}",
-            imported);
+        if (imported > 0)
+        {
+            _logger.LogInformation(
+                "Imported legacy client profile images through the canonical profile-media authority. ImportedCount={ImportedCount}",
+                imported);
+        }
         return imported;
     }
 
@@ -97,13 +117,13 @@ public sealed class ClientProfileImageLegacyBackfillService
         return Path.Combine(_environment.ContentRootPath, "App_Data", "avatars");
     }
 
-    private static (string Path, string ContentType)? FindLegacyImage(string root, Guid clientProfileId)
+    private static string? FindLegacyImage(string root, Guid clientProfileId)
     {
-        foreach (var imageType in ImageTypes)
+        foreach (var extension in ImageExtensions)
         {
-            var path = Path.Combine(root, $"{clientProfileId:D}{imageType.Extension}");
+            var path = Path.Combine(root, $"{clientProfileId:D}{extension}");
             if (File.Exists(path))
-                return (path, imageType.ContentType);
+                return path;
         }
 
         return null;

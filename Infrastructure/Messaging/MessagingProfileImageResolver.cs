@@ -28,6 +28,29 @@ public interface IMessagingProfileImageResolver
 public sealed record MessagingProfileImage(byte[] Content, string ContentType);
 
 /// <summary>
+/// A typed key for profile-media projection. A profile GUID is only meaningful
+/// together with its participant type because agent and client records are
+/// separate authorities.
+/// </summary>
+public readonly record struct MessagingProfileImageKey(string ParticipantType, Guid ProfileId)
+{
+    public static MessagingProfileImageKey From(MessagingParticipantIdentity participant) => new(
+        participant.ParticipantType,
+        participant.ProfileId);
+}
+
+/// <summary>
+/// Optional bulk read capability of the canonical profile-media authority.
+/// List and feed surfaces use it to avoid issuing one profile query per row.
+/// </summary>
+public interface IMessagingProfileImageBatchResolver
+{
+    Task<IReadOnlyDictionary<MessagingProfileImageKey, MessagingProfileImage>> ResolveManyAsync(
+        IEnumerable<MessagingParticipantIdentity> participants,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// The only mutation boundary for a member profile image. AgentPortal,
 /// ClientApp, mobile Account, and messaging projections all use the same
 /// typed profile records; no surface maintains a second avatar copy.
@@ -53,7 +76,10 @@ public sealed record ProfileImageUpdateResult(
         new(true, null, null, image);
 }
 
-internal sealed class MessagingProfileImageResolver : IMessagingProfileImageResolver, IProfileImageWriter
+internal sealed class MessagingProfileImageResolver :
+    IMessagingProfileImageResolver,
+    IMessagingProfileImageBatchResolver,
+    IProfileImageWriter
 {
     private const int MaximumProfileImageBytes = 3 * 1024 * 1024;
     private readonly MasterAppDbContext _db;
@@ -71,12 +97,64 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
         MessagingParticipantIdentity participant,
         CancellationToken cancellationToken = default)
     {
-        return participant.ParticipantType switch
+        var images = await ResolveManyAsync([participant], cancellationToken);
+        return images.GetValueOrDefault(MessagingProfileImageKey.From(participant));
+    }
+
+    public async Task<IReadOnlyDictionary<MessagingProfileImageKey, MessagingProfileImage>> ResolveManyAsync(
+        IEnumerable<MessagingParticipantIdentity> participants,
+        CancellationToken cancellationToken = default)
+    {
+        var requested = participants
+            .Where(participant => participant.ProfileId != Guid.Empty)
+            .Select(MessagingProfileImageKey.From)
+            .Where(key =>
+                key.ParticipantType == MessagingParticipantTypes.Agent ||
+                key.ParticipantType == MessagingParticipantTypes.Client)
+            .Distinct()
+            .ToArray();
+        if (requested.Length == 0)
+            return new Dictionary<MessagingProfileImageKey, MessagingProfileImage>();
+
+        var images = new Dictionary<MessagingProfileImageKey, MessagingProfileImage>();
+        var agentProfileIds = requested
+            .Where(key => key.ParticipantType == MessagingParticipantTypes.Agent)
+            .Select(key => key.ProfileId)
+            .ToArray();
+        var clientProfileIds = requested
+            .Where(key => key.ParticipantType == MessagingParticipantTypes.Client)
+            .Select(key => key.ProfileId)
+            .ToArray();
+
+        if (agentProfileIds.Length > 0)
         {
-            MessagingParticipantTypes.Agent => await ResolveAgentProfileImageAsync(participant.ProfileId, cancellationToken),
-            MessagingParticipantTypes.Client => await ResolveClientProfileImageAsync(participant.ProfileId, cancellationToken),
-            _ => null
-        };
+            var agents = await _db.AgentProfiles
+                .AsNoTracking()
+                .Where(profile => profile.IsActive && agentProfileIds.Contains(profile.Id))
+                .Select(profile => new ProfileImageRow(
+                    profile.Id,
+                    profile.ProfileImageContent,
+                    profile.ProfileImageContentType))
+                .ToListAsync(cancellationToken);
+
+            AddResolvedImages(images, MessagingParticipantTypes.Agent, agents);
+        }
+
+        if (clientProfileIds.Length > 0)
+        {
+            var clients = await _db.ClientProfiles
+                .AsNoTracking()
+                .Where(profile => clientProfileIds.Contains(profile.Id))
+                .Select(profile => new ProfileImageRow(
+                    profile.Id,
+                    profile.ProfileImageContent,
+                    profile.ProfileImageContentType))
+                .ToListAsync(cancellationToken);
+
+            AddResolvedImages(images, MessagingParticipantTypes.Client, clients);
+        }
+
+        return images;
     }
 
     public async Task<ProfileImageUpdateResult> UpdateAsync(
@@ -356,48 +434,34 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
         Guid clientProfileId,
         CancellationToken cancellationToken = default)
     {
-        var profile = await _db.ClientProfiles
-            .AsNoTracking()
-            .Where(x => x.Id == clientProfileId)
-            .Select(x => new ClientProfileImageRow(
-                x.ProfileImageContent,
-                x.ProfileImageContentType))
-            .FirstOrDefaultAsync(cancellationToken);
-        var contentType = NormalizeSupportedImageContentType(profile?.ContentType);
-        if (profile is null ||
-            profile.Content is not { Length: > 0 } ||
-            contentType is null)
-            return null;
-
-        _logger.LogDebug(
-            "Messaging client profile image resolved from ClientProfiles. ClientProfileId={ClientProfileId} ImageSourceType={ImageSourceType}",
-            clientProfileId,
-            "ClientProfile");
-        return new MessagingProfileImage(profile.Content, contentType);
+        var images = await ResolveManyAsync(
+            [new MessagingParticipantIdentity(
+                string.Empty,
+                MessagingParticipantTypes.Client,
+                clientProfileId,
+                string.Empty,
+                null,
+                string.Empty)],
+            cancellationToken);
+        return images.GetValueOrDefault(new MessagingProfileImageKey(
+            MessagingParticipantTypes.Client,
+            clientProfileId));
     }
 
-    private async Task<MessagingProfileImage?> ResolveAgentProfileImageAsync(
-        Guid agentProfileId,
-        CancellationToken cancellationToken)
+    private void AddResolvedImages(
+        IDictionary<MessagingProfileImageKey, MessagingProfileImage> destination,
+        string participantType,
+        IEnumerable<ProfileImageRow> rows)
     {
-        var profile = await _db.AgentProfiles
-            .AsNoTracking()
-            .Where(x => x.Id == agentProfileId && x.IsActive)
-            .Select(x => new AgentProfileImageRow(
-                x.ProfileImageContent,
-                x.ProfileImageContentType))
-            .FirstOrDefaultAsync(cancellationToken);
-        var contentType = NormalizeSupportedImageContentType(profile?.ContentType);
-        if (profile is null ||
-            profile.Content is not { Length: > 0 } ||
-            contentType is null)
-            return null;
+        foreach (var row in rows)
+        {
+            var contentType = NormalizeSupportedImageContentType(row.ContentType);
+            if (row.Content is not { Length: > 0 } || contentType is null)
+                continue;
 
-        _logger.LogDebug(
-            "Messaging agent profile image resolved from AgentProfiles. AgentProfileId={AgentProfileId} ImageSourceType={ImageSourceType}",
-            agentProfileId,
-            "AgentProfile");
-        return new MessagingProfileImage(profile.Content, contentType);
+            destination[new MessagingProfileImageKey(participantType, row.Id)] =
+                new MessagingProfileImage(row.Content, contentType);
+        }
     }
 
     private void LogIdentityResolutionFailure(string userId, string participantType, int matchCount)
@@ -453,7 +517,5 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
         bool IsVerified,
         string? Phone);
 
-    private sealed record ClientProfileImageRow(byte[]? Content, string? ContentType);
-
-    private sealed record AgentProfileImageRow(byte[]? Content, string? ContentType);
+    private sealed record ProfileImageRow(Guid Id, byte[]? Content, string? ContentType);
 }

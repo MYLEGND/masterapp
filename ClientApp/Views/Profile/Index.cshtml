@@ -19,6 +19,9 @@
     var canCancelSubscription = ViewBag.CanCancelSubscription is bool canCancel && canCancel;
     var hasClientSubscription = ViewBag.HasClientSubscription is bool hasSubscription && hasSubscription;
     var subscriptionNotice = ViewBag.SubscriptionNotice as string;
+    var accountLifecycleState = ViewBag.AccountLifecycleState as string ?? "Active";
+    var canResumeAccount = ViewBag.CanResumeAccount is bool canResume && canResume;
+    var accountIsRestricted = !string.Equals(accountLifecycleState, "Active", StringComparison.OrdinalIgnoreCase);
 }
 
 <main class="dashboard-page-shell client-create-page client-edit-page">
@@ -175,7 +178,7 @@
                         <div class="client-create-actions"><button type="submit" class="client-create-button client-create-button-primary">Save Profile</button></div>
                     </form>
 
-                    @if (!isAgentView)
+                    @if (!isAgentView && !accountIsRestricted)
                     {
                         <section class="client-create-section client-create-section-shell client-edit-section-spaced" aria-labelledby="subscriptions-heading">
                             <div class="client-edit-section-head">
@@ -194,6 +197,55 @@
                                href="/subscription?returnUrl=%2Fprofile">
                                 View Membership & Billing
                             </a>
+                        </section>
+                    }
+
+                    @if (!isAgentView)
+                    {
+                        <section class="client-create-section client-create-section-shell client-edit-section-spaced" aria-labelledby="account-access-heading">
+                            <div class="client-edit-section-head">
+                                <div>
+                                    <div class="client-create-section-title" id="account-access-heading">Account Access</div>
+                                    <p class="client-edit-note">
+                                        @if (canResumeAccount)
+                                        {
+                                            @:Your Legend account is paused. Resume it here to restore access to the rest of your workspace.
+                                        }
+                                        else if (accountIsRestricted)
+                                        {
+                                            @:Account closure is in progress. Legend access remains disabled while the required process is completed.
+                                        }
+                                        else
+                                        {
+                                            @:Need time away? Pausing is reversible and disables regular Legend access until you resume.
+                                        }
+                                    </p>
+                                </div>
+                            </div>
+
+                            @if (canResumeAccount)
+                            {
+                                <form action="/profile/account-access" method="post" class="client-create-actions">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="operation" value="resume" />
+                                    <button type="submit" class="client-create-button client-create-button-primary">Resume Account</button>
+                                </form>
+                            }
+                            else if (!accountIsRestricted)
+                            {
+                                <form action="/profile/account-access" method="post" class="client-create-grid">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="operation" value="pause" />
+                                    <div class="client-create-full">
+                                        <label class="client-create-label" for="pauseConfirmation">Type PAUSE to confirm</label>
+                                        <input id="pauseConfirmation" name="confirmation" class="client-create-input" autocomplete="off" />
+                                        <p class="client-edit-note client-edit-note-tight">Pausing disables regular Legend access. Return to this Profile page to resume.</p>
+                                    </div>
+                                    <div class="client-create-actions">
+                                        <button type="submit" class="client-create-button client-create-button-secondary">Pause Account</button>
+                                    </div>
+                                </form>
+                            }
                         </section>
                     }
             </div>

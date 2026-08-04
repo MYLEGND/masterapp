@@ -756,6 +756,141 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         return new CancelClientSubscriptionResult(true, null, cancellationResult.SanitizedSummary, null, false, subscription, entitlement, cancellationResult);
     }
 
+    /// <summary>
+    /// Pauses a platform-managed Legend membership through the existing billing
+    /// authority. The renewal schedule is preserved rather than recalculated so
+    /// account lifecycle code never becomes a second billing policy.
+    /// </summary>
+    public async Task<AccountLifecycleSubscriptionResult> PauseClientSubscriptionAsync(
+        AccountLifecycleSubscriptionCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var subscription = await _db.ClientSubscriptions
+            .Where(item => item.ClientProfileId == command.ClientProfileId)
+            .OrderByDescending(item => item.UpdatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (subscription is null)
+            return new AccountLifecycleSubscriptionResult(true, null, "No client subscription requires pausing.", null, null);
+
+        if (!subscription.IsPlatformManaged && !string.IsNullOrWhiteSpace(subscription.ProviderSubscriptionId))
+        {
+            return new AccountLifecycleSubscriptionResult(
+                false,
+                "ACCOUNT_PAUSE_PROVIDER_ACTION_REQUIRED",
+                "This membership is managed by a provider and cannot be paused from Legend until its provider lifecycle is supported.",
+                subscription,
+                null);
+        }
+
+        if (subscription.Status == ClientSubscriptionStatus.Paused)
+        {
+            var existingEntitlement = await _entitlements.RefreshAsync(
+                subscription.ClientProfileId,
+                BillingEntitlementKeys.ClientAppFullAccess,
+                "ACCOUNT_PAUSED",
+                cancellationToken);
+            return new AccountLifecycleSubscriptionResult(true, null, "Client subscription is already paused.", subscription, existingEntitlement);
+        }
+
+        if (subscription.Status != ClientSubscriptionStatus.Active)
+        {
+            return new AccountLifecycleSubscriptionResult(
+                false,
+                "ACCOUNT_PAUSE_SUBSCRIPTION_UNAVAILABLE",
+                "This membership is not in an active state that can be paused.",
+                subscription,
+                null);
+        }
+
+        var previousStatus = subscription.Status.ToString();
+        subscription.Status = ClientSubscriptionStatus.Paused;
+        subscription.NextChargeAttemptUtc = null;
+        subscription.UpdatedUtc = DateTime.UtcNow;
+        AddAuditEntry(
+            "ClientSubscription",
+            subscription.Id,
+            "account_paused",
+            previousStatus,
+            subscription.Status.ToString(),
+            BillingActorType.Client,
+            command.ActorId,
+            "account_lifecycle",
+            "ACCOUNT_PAUSED",
+            command.CorrelationId,
+            "Account lifecycle paused access and suspended future platform-managed charge attempts until the member resumes.");
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var entitlement = await _entitlements.RefreshAsync(
+            subscription.ClientProfileId,
+            BillingEntitlementKeys.ClientAppFullAccess,
+            "ACCOUNT_PAUSED",
+            cancellationToken);
+        return new AccountLifecycleSubscriptionResult(true, null, "Client subscription paused.", subscription, entitlement);
+    }
+
+    /// <summary>
+    /// Resumes only a subscription previously paused by the account lifecycle.
+    /// Existing billing dates remain authoritative; this method does not create a
+    /// new plan, price, payment method, or renewal policy.
+    /// </summary>
+    public async Task<AccountLifecycleSubscriptionResult> ResumeClientSubscriptionAsync(
+        AccountLifecycleSubscriptionCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        var subscription = await _db.ClientSubscriptions
+            .Where(item => item.ClientProfileId == command.ClientProfileId)
+            .OrderByDescending(item => item.UpdatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (subscription is null)
+            return new AccountLifecycleSubscriptionResult(true, null, "No client subscription requires resuming.", null, null);
+
+        if (!subscription.IsPlatformManaged && !string.IsNullOrWhiteSpace(subscription.ProviderSubscriptionId))
+        {
+            return new AccountLifecycleSubscriptionResult(
+                false,
+                "ACCOUNT_RESUME_PROVIDER_ACTION_REQUIRED",
+                "This membership is managed by a provider and cannot be resumed from Legend until its provider lifecycle is supported.",
+                subscription,
+                null);
+        }
+
+        if (subscription.Status != ClientSubscriptionStatus.Paused)
+        {
+            return new AccountLifecycleSubscriptionResult(
+                false,
+                "ACCOUNT_RESUME_SUBSCRIPTION_UNAVAILABLE",
+                "This membership is not paused by the account lifecycle.",
+                subscription,
+                null);
+        }
+
+        var previousStatus = subscription.Status.ToString();
+        subscription.Status = ClientSubscriptionStatus.Active;
+        subscription.UpdatedUtc = DateTime.UtcNow;
+        AddAuditEntry(
+            "ClientSubscription",
+            subscription.Id,
+            "account_resumed",
+            previousStatus,
+            subscription.Status.ToString(),
+            BillingActorType.Client,
+            command.ActorId,
+            "account_lifecycle",
+            "ACCOUNT_RESUMED",
+            command.CorrelationId,
+            "Account lifecycle restored access using the existing subscription and renewal schedule.");
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var entitlement = await _entitlements.RefreshAsync(
+            subscription.ClientProfileId,
+            BillingEntitlementKeys.ClientAppFullAccess,
+            "ACCOUNT_RESUMED",
+            cancellationToken);
+        return new AccountLifecycleSubscriptionResult(true, null, "Client subscription resumed.", subscription, entitlement);
+    }
+
     public async Task<PlatformRecurringBillingRunResult> ProcessDueClientSubscriptionRenewalsAsync(
         int maxItems,
         string workerId,

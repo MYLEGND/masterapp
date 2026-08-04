@@ -133,11 +133,31 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
         SocialDiscoveryPage page,
         CancellationToken cancellationToken)
     {
-        // Avatar resolution shares the request-scoped DbContext, so projection stays
-        // sequential exactly as it does in the social controller.
+        var identities = page.Results.Select(result => new MessagingParticipantIdentity(
+            result.UserId,
+            result.ParticipantType,
+            result.ClientProfileId,
+            result.DisplayName,
+            null,
+            string.Empty));
+        var avatars = await MobileAvatarProjection.ResolveManyAsync(
+            _profiles,
+            identities,
+            cancellationToken);
+
         var results = new List<MobileDiscoveryResultDto>(page.Results.Count);
         foreach (var result in page.Results)
-            results.Add(await ToResultDtoAsync(result, cancellationToken));
+        {
+            var key = new MessagingProfileImageKey(
+                result.ParticipantType,
+                result.ClientProfileId);
+            avatars.TryGetValue(key, out var avatar);
+            results.Add(await ToResultDtoAsync(
+                result,
+                cancellationToken,
+                avatar,
+                avatarResolved: true));
+        }
 
         return new MobileDiscoveryPageDto(
             results,
@@ -151,7 +171,9 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
 
     private async Task<MobileDiscoveryResultDto> ToResultDtoAsync(
         SocialDiscoveryResult result,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        MobileAvatarDto? avatar = null,
+        bool avatarResolved = false)
     {
         var identity = new MessagingParticipantIdentity(
             result.UserId,
@@ -180,7 +202,9 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
                 result.Relationship.ConnectionId,
                 result.Relationship.CanRequestConnection,
                 result.Relationship.CanFollow),
-            await MobileAvatarProjection.ResolveAsync(_profiles, identity, cancellationToken),
+            avatarResolved
+                ? avatar
+                : await MobileAvatarProjection.ResolveAsync(_profiles, identity, cancellationToken),
             result.Username,
             result.Bio,
             result.Website,

@@ -33,6 +33,8 @@
 	<string>$(LEGEND_API_BASE_URL)</string>
 	<key>LegendAgentOnlineAccountURL</key>
 	<string>$(LEGEND_AGENT_ONLINE_ACCOUNT_URL)</string>
+	<key>LegendPrivacyPolicyURL</key>
+	<string>$(LEGEND_PRIVACY_POLICY_URL)</string>
 	<key>LegendAuthAudience</key>
 	<string>$(LEGEND_AUTH_AUDIENCE)</string>
 	<key>LegendAuthClientID</key>

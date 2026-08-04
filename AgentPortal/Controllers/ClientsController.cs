@@ -6113,137 +6113,42 @@ namespace AgentPortal.Controllers;
         if (!linked && !isFounderOverride)
             return Forbid();
 
-        // A subscription owner has a restricted household relationship and
-        // retained billing history. Removing it through the generic client
-        // delete action would either orphan that state or invoke the
-        // partner-only member-removal path. Keep deletion of pre-activation
-        // records available, but require a dedicated account-closure flow for
-        // subscribed households.
-        var clientProfileId = await _db.ClientProfiles
-            .AsNoTracking()
+        var allLinks = await _db.AgentClients
             .Where(x => x.ClientUserId == clientUserIdNorm)
-            .Select(x => (Guid?)x.Id)
-            .FirstOrDefaultAsync();
+            .ToListAsync();
 
-        if (clientProfileId.HasValue)
+        var currentAgentLinks = allLinks
+            .Where(x => x.AgentUserId == agentOid)
+            .ToList();
+
+        // If another agent also has this client, remove only this agent's relationship.
+        // Deleting the shared profile/account would break the other agent and the client app.
+        if (!isFounderOverride && allLinks.Count > currentAgentLinks.Count)
         {
-            var hasHouseholdOrSubscription = await _db.HouseholdAccounts
-                .AsNoTracking()
-                .AnyAsync(x => x.SubscriptionOwnerClientProfileId == clientProfileId.Value)
-                || await _db.ClientSubscriptions
-                    .AsNoTracking()
-                    .AnyAsync(x => x.ClientProfileId == clientProfileId.Value);
-
-            if (hasHouseholdOrSubscription)
-            {
-                const string message = "This client has subscription or household records and cannot be deleted from the CRM. Cancel or close the subscription through its lifecycle first.";
-                _logger.LogWarning(
-                    "Blocked generic deletion of subscribed client. AgentOid={AgentOid} ClientUserId={ClientUserId} ClientProfileId={ClientProfileId}",
-                    agentOid,
-                    clientUserIdNorm,
-                    clientProfileId.Value);
-
-                if (isFetchRequest)
-                    return Conflict(new { ok = false, error = message });
-
-                TempData["Created"] = message;
-                return RedirectToAction(nameof(Index));
-            }
-        }
-
-        await using var tx = await _db.Database.BeginTransactionAsync();
-
-        try
-        {
-            var allLinks = await _db.AgentClients
-                .Where(x => x.ClientUserId == clientUserIdNorm)
-                .ToListAsync();
-
-            var currentAgentLinks = allLinks
-                .Where(x => x.AgentUserId == agentOid)
-                .ToList();
-
-            // If another agent also has this client, remove only this agent's relationship.
-            // Deleting the shared profile/account would break the other agent and the client app.
-            if (!isFounderOverride && allLinks.Count > currentAgentLinks.Count)
-            {
-                if (currentAgentLinks.Count > 0)
-                    _db.AgentClients.RemoveRange(currentAgentLinks);
-
-                await _db.SaveChangesAsync();
-                await tx.CommitAsync();
-
-                const string unlinkedMessage = "Client removed from your Agent Portal. The shared client profile remains active for the other assigned agent(s).";
-                TempData["Created"] = unlinkedMessage;
-
-                if (isFetchRequest)
-                    return Json(new { ok = true, removedOnly = true, message = unlinkedMessage, redirectUrl = Url.Action(nameof(Index)) ?? "/Clients" });
-
-                return RedirectToAction(nameof(Index));
-            }
-
-            var profile = await _db.ClientProfiles
-                .FirstOrDefaultAsync(x => x.ClientUserId == clientUserIdNorm);
-
-            // Delete a client identity only through the central lifecycle and
-            // only after the final MASTERAPP membership record is removed.
-            var hadPortalAccess = profile != null && !string.IsNullOrWhiteSpace(profile.ExternalIdentityObjectId);
-            if (profile != null)
-            {
-                if (hadPortalAccess)
-                    await _entraLifecycle.DeleteClientIdentityAsync(profile.Id, HttpContext.RequestAborted);
-            }
-
-            // DB cleanup
-            if (allLinks.Count > 0)
-                _db.AgentClients.RemoveRange(allLinks);
-
-            if (profile != null)
-            {
-                var financeToolStates = await _db.FinanceToolStates
-                    .Where(x => x.ClientProfileId == profile.Id)
-                    .ToListAsync();
-                if (financeToolStates.Count > 0)
-                    _db.FinanceToolStates.RemoveRange(financeToolStates);
-
-                var financialPlans = await _db.ClientFinancialPlans
-                    .Where(x => x.ClientId == profile.Id)
-                    .ToListAsync();
-                if (financialPlans.Count > 0)
-                    _db.ClientFinancialPlans.RemoveRange(financialPlans);
-
-                _db.ClientProfiles.Remove(profile);
-            }
-
+            if (currentAgentLinks.Count > 0)
+                _db.AgentClients.RemoveRange(currentAgentLinks);
             await _db.SaveChangesAsync();
-            await tx.CommitAsync();
 
-            var deletedMessage = hadPortalAccess
-                ? "Client deleted (profile + household + client shared finance + Entra account removed)."
-                : "Client deleted (profile + household + client shared finance removed).";
-            TempData["Created"] = deletedMessage;
+            const string unlinkedMessage = "Client removed from your Agent Portal. The shared client profile remains active for the other assigned agent(s).";
+            TempData["Created"] = unlinkedMessage;
 
             if (isFetchRequest)
-                return Json(new { ok = true, message = deletedMessage, redirectUrl = Url.Action(nameof(Index)) ?? "/Clients" });
+                return Json(new { ok = true, removedOnly = true, message = unlinkedMessage, redirectUrl = Url.Action(nameof(Index)) ?? "/Clients" });
 
             return RedirectToAction(nameof(Index));
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "Delete failed. AgentOid={AgentOid} ClientUserId={ClientUserId} FounderOverride={FounderOverride}",
-                agentOid,
-                clientUserIdNorm,
-                isFounderOverride);
 
-            await tx.RollbackAsync();
-            TempData["Created"] = $"Delete failed: {ex.Message}";
+        const string accountClosureMessage = "This action cannot delete a Legend account. The member must start account closure from Account access; account data, identity, billing, and retention are handled through the central lifecycle.";
+        _logger.LogInformation(
+            "Blocked CRM account deletion. AgentOid={AgentOid} ClientUserId={ClientUserId} FounderOverride={FounderOverride}",
+            agentOid,
+            clientUserIdNorm,
+            isFounderOverride);
 
-            if (isFetchRequest)
-                return StatusCode(StatusCodes.Status500InternalServerError, new { ok = false, error = ex.Message });
+        if (isFetchRequest)
+            return Conflict(new { ok = false, error = accountClosureMessage });
 
-            return RedirectToAction(nameof(Index));
-        }
+        TempData["Created"] = accountClosureMessage;
+        return RedirectToAction(nameof(Index));
     }
 }

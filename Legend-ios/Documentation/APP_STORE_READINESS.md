@@ -26,15 +26,17 @@ implemented.
 
 ## Release blockers
 
-- [ ] Establish and implement the account-deletion process for every account
-      type, including the retention policy for regulated financial and
-      insurance records, post/media removal, subscription cancellation, and
-      identity-provider lifecycle. The in-app initiation experience and any
-      permitted verification/support flow must use this one policy.
-- [ ] Replace placeholder privacy pages with the approved privacy policy,
-      data-retention/deletion disclosure, and consent/withdrawal instructions.
-      Add the required in-app privacy entry point and App Store Connect privacy
-      metadata from the actual released data flows.
+- [ ] Complete the approved deletion fulfillment policy for every account type:
+      regulated financial and insurance retention, post/media/blob removal,
+      shared-message de-identification, provider-managed subscriptions, and
+      external identity/session lifecycle. The in-app initiation and the
+      immediate server access block are implemented; completion must not be
+      claimed before this policy-backed worker exists.
+- [ ] Approve the canonical public privacy policy, data-retention/deletion
+      disclosure, consent/withdrawal instructions, and public support
+      destination. The in-app privacy entry point is configured to the one
+      Legend public policy URL; App Store Connect privacy metadata must match
+      the final released data flows.
 - [ ] Confirm distribution territories and the submitted binary contain no
       external-purchase CTA outside an expressly approved StoreKit entitlement
       region. Do not infer worldwide permission from the United States

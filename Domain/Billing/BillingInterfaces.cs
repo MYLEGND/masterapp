@@ -25,6 +25,8 @@ public interface IBillingOrchestrator
     Task<ExecuteCommerceOneTimePaymentResult> ExecuteCommerceOneTimePaymentAsync(ExecuteCommerceOneTimePaymentCommand command, CancellationToken cancellationToken = default);
     Task<ActivateClientSubscriptionResult> ActivateClientSubscriptionAsync(ActivateClientSubscriptionCommand command, CancellationToken cancellationToken = default);
     Task<CancelClientSubscriptionResult> CancelClientSubscriptionAsync(CancelClientSubscriptionCommand command, CancellationToken cancellationToken = default);
+    Task<AccountLifecycleSubscriptionResult> PauseClientSubscriptionAsync(AccountLifecycleSubscriptionCommand command, CancellationToken cancellationToken = default);
+    Task<AccountLifecycleSubscriptionResult> ResumeClientSubscriptionAsync(AccountLifecycleSubscriptionCommand command, CancellationToken cancellationToken = default);
     Task<ManualClientSubscriptionRenewalRetryResult> RetryClientSubscriptionRenewalAsync(ManualClientSubscriptionRenewalRetryCommand command, CancellationToken cancellationToken = default);
     Task<PlatformRecurringBillingRunResult> ProcessDueClientSubscriptionRenewalsAsync(int maxItems, string workerId, CancellationToken cancellationToken = default);
 }

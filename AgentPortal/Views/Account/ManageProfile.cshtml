@@ -28,6 +28,9 @@
         ? "is-neutral"
         : string.IsNullOrWhiteSpace(Model.MicrosoftBookingsEmbedUrl) ? "is-warn" : "is-good";
     var calendarStatusClass = string.IsNullOrWhiteSpace(Model.CalendarEmail) ? "is-neutral" : "is-good";
+    var accountLifecycleState = ViewBag.AccountLifecycle?.State as string ?? "Active";
+    var canResumeAccount = ViewBag.AccountLifecycle?.CanResume is bool canResume && canResume;
+    var accountIsRestricted = !string.Equals(accountLifecycleState, "Active", StringComparison.OrdinalIgnoreCase);
 }
 
 <style>
@@ -558,6 +561,14 @@
         {
             <div class="profile-flash profile-flash-error">@avatarErr</div>
         }
+        @if (TempData["AccountLifecycleNotice"] is string accountNotice)
+        {
+            <div class="profile-flash">@accountNotice</div>
+        }
+        @if (TempData["AccountLifecycleError"] is string accountError)
+        {
+            <div class="profile-flash profile-flash-error">@accountError</div>
+        }
 
         <form asp-action="ManageProfile" method="post" novalidate class="profile-form">
             @Html.AntiForgeryToken()
@@ -672,6 +683,50 @@
                 <button type="submit" class="profile-btn profile-btn-primary">Save profile</button>
             </div>
         </form>
+
+        <section class="profile-panel profile-section">
+            <div class="profile-section-head">
+                <h2 class="profile-section-title">Account Access</h2>
+                <p class="profile-section-sub">
+                    @if (canResumeAccount)
+                    {
+                        @:Your account is paused. Resume it here to restore access to the Agent Portal.
+                    }
+                    else if (accountIsRestricted)
+                    {
+                        @:Account closure is in progress. Access remains disabled while the required process is completed.
+                    }
+                    else
+                    {
+                        @:Need time away? Pausing is reversible and disables your regular Legend access until you resume.
+                    }
+                </p>
+            </div>
+
+            @if (canResumeAccount)
+            {
+                <form asp-action="AccountAccess" method="post" class="profile-actions profile-actions-start">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="operation" value="resume" />
+                    <button type="submit" class="profile-btn profile-btn-primary">Resume Account</button>
+                </form>
+            }
+            else if (!accountIsRestricted)
+            {
+                <form asp-action="AccountAccess" method="post" class="profile-fields">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="operation" value="pause" />
+                    <div class="profile-field profile-field-full">
+                        <label class="profile-label" for="pauseConfirmation">Type PAUSE to confirm</label>
+                        <input id="pauseConfirmation" name="confirmation" class="profile-input" autocomplete="off" />
+                        <p class="profile-help">Pausing does not close your account. Return to this profile page when you are ready to resume.</p>
+                    </div>
+                    <div class="profile-actions profile-actions-start">
+                        <button type="submit" class="profile-btn profile-btn-secondary">Pause Account</button>
+                    </div>
+                </form>
+            }
+        </section>
     </div>
 </div>
 

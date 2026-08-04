@@ -102,19 +102,32 @@ public sealed class MobileHomeController : MobileApiControllerBase
         IEnumerable<MobileAgentClient> clients,
         CancellationToken cancellationToken)
     {
-        var result = new List<MobileAgentClientDto>();
-        foreach (var client in clients)
+        var clientRows = clients.ToArray();
+        var avatars = await MobileAvatarProjection.ResolveManyAsync(
+            _profiles,
+            clientRows.Select(client => new MessagingParticipantIdentity(
+                string.Empty,
+                MessagingParticipantTypes.Client,
+                client.ProfileId,
+                client.DisplayName,
+                null,
+                string.Empty)),
+            cancellationToken);
+
+        var result = new List<MobileAgentClientDto>(clientRows.Length);
+        foreach (var client in clientRows)
         {
+            avatars.TryGetValue(
+                new MessagingProfileImageKey(
+                    MessagingParticipantTypes.Client,
+                    client.ProfileId),
+                out var avatar);
             result.Add(new MobileAgentClientDto(
                 client.ProfileId,
                 client.DisplayName,
                 client.Email,
                 client.CrmStatus,
-                await MobileAvatarProjection.ResolveAsync(
-                    _profiles,
-                    MessagingParticipantTypes.Client,
-                    client.ProfileId,
-                    cancellationToken)));
+                avatar));
         }
 
         return result;

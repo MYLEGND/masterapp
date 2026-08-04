@@ -1,3 +1,5 @@
+using Domain.Accounts;
+using Infrastructure.Identity;
 using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,17 +13,22 @@ namespace AgentPortal.Mobile;
 public abstract class MobileApiControllerBase : ControllerBase
 {
     private readonly IMobileActorResolver _actorResolver;
+    private readonly IAccountLifecycleService? _accountLifecycle;
 
-    protected MobileApiControllerBase(IMobileActorResolver actorResolver)
+    protected MobileApiControllerBase(
+        IMobileActorResolver actorResolver,
+        IAccountLifecycleService? accountLifecycle = null)
     {
         _actorResolver = actorResolver;
+        _accountLifecycle = accountLifecycle;
     }
 
     protected IMobileActorResolver ActorResolver => _actorResolver;
 
     protected async Task<MobileActorRequestResolution> ResolveActorAsync(
         CancellationToken cancellationToken,
-        bool allowSelectionRequired = false)
+        bool allowSelectionRequired = false,
+        bool allowLifecycleRestricted = false)
     {
         var requestedParticipantType = Request.Headers[MobileApiAuthorization.ParticipantTypeHeader].FirstOrDefault();
         var resolution = await _actorResolver.ResolveAsync(User, requestedParticipantType, cancellationToken);
@@ -47,6 +54,35 @@ public abstract class MobileApiControllerBase : ControllerBase
                     StatusCodes.Status409Conflict,
                     "mobile_role_selection_required",
                     "Choose one of your authorized mobile roles before continuing."));
+        }
+
+        var lifecycleService = _accountLifecycle;
+        if (lifecycleService is null && HttpContext.RequestServices is IServiceProvider requestServices)
+            lifecycleService = requestServices.GetService<IAccountLifecycleService>();
+        if (resolution.SelectedActor is not null &&
+            !allowLifecycleRestricted &&
+            lifecycleService is not null)
+        {
+            var lifecycle = await lifecycleService.GetAsync(
+                new AccountLifecycleSubject(
+                    resolution.SelectedActor.Actor.UserId,
+                    resolution.SelectedActor.Actor.ParticipantType,
+                    resolution.SelectedActor.ProfileId),
+                cancellationToken);
+            if (!lifecycle.AllowsFullAccess)
+            {
+                var isPaused = lifecycle.CanResume;
+                return new MobileActorRequestResolution(
+                    null,
+                    resolution.PermittedActors,
+                    false,
+                    Error(
+                        StatusCodes.Status403Forbidden,
+                        isPaused ? "mobile_account_paused" : "mobile_account_closure_in_progress",
+                        isPaused
+                            ? "Your Legend account is paused. Resume it from Account access to continue."
+                            : "Legend access is unavailable while your account closure request is in progress."));
+            }
         }
 
         return new MobileActorRequestResolution(

@@ -398,7 +398,7 @@ public class ClientsControllerTests
     }
 
     [Fact]
-    public async Task Delete_WhenLeadOnlyRecord_RemovesLocalProfileWithoutPortalDelete()
+    public async Task Delete_WhenSoleClientRecord_IsBlockedFromDeletingTheAccount()
     {
         using var db = ControllerTestHelpers.BuildDb();
         const string agentId = "agent-1";
@@ -437,10 +437,10 @@ public class ClientsControllerTests
 
         var redirect = Assert.IsType<RedirectToActionResult>(result);
         Assert.Equal(nameof(ClientsController.Index), redirect.ActionName);
-        Assert.Empty(await db.ClientProfiles.ToListAsync());
-        Assert.Empty(await db.AgentClients.ToListAsync());
-        Assert.Empty(await db.FinanceToolStates.ToListAsync());
-        Assert.Empty(await db.ClientFinancialPlans.ToListAsync());
+        Assert.Single(await db.ClientProfiles.ToListAsync());
+        Assert.Single(await db.AgentClients.ToListAsync());
+        Assert.Single(await db.FinanceToolStates.ToListAsync());
+        Assert.Single(await db.ClientFinancialPlans.ToListAsync());
     }
 
     [Fact]

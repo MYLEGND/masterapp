@@ -2,14 +2,12 @@ using System.Security.Claims;
 using AgentPortal.Services.Tracking;
 using AgentPortal.Services;
 using Domain.Messaging;
-using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Controllers;
 
@@ -17,27 +15,27 @@ namespace AgentPortal.Controllers;
 [EnableRateLimiting("anon-public")]
 public sealed class AvatarController : Controller
 {
-    private readonly MasterAppDbContext _db;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<AvatarController> _logger;
     private readonly AgentTrackingResolver _trackingResolver;
     private readonly AgentProfileAccessResolver _profileAccessResolver;
     private readonly IProfileImageWriter _profileImages;
+    private readonly IMessagingProfileImageResolver _profileImageResolver;
 
     public AvatarController(
-        MasterAppDbContext db,
         IWebHostEnvironment environment,
         ILogger<AvatarController> logger,
         AgentTrackingResolver trackingResolver,
         AgentProfileAccessResolver profileAccessResolver,
-        IProfileImageWriter profileImages)
+        IProfileImageWriter profileImages,
+        IMessagingProfileImageResolver profileImageResolver)
     {
-        _db = db;
         _environment = environment;
         _logger = logger;
         _trackingResolver = trackingResolver;
         _profileAccessResolver = profileAccessResolver;
         _profileImages = profileImages;
+        _profileImageResolver = profileImageResolver;
     }
 
     [HttpGet]
@@ -102,9 +100,11 @@ public sealed class AvatarController : Controller
     public async Task<IActionResult> Current()
     {
         var profile = await GetCurrentProfileAsync(HttpContext.RequestAborted);
-        return HasImage(profile)
-            ? File(profile!.ProfileImageContent!, profile.ProfileImageContentType!)
-            : DefaultAvatarResult();
+        return profile is null
+            ? DefaultAvatarResult()
+            : await ProfileImageResultAsync(
+                MessagingParticipantTypes.Agent,
+                profile.Id);
     }
 
     [HttpGet("avatar/agent/{slug}")]
@@ -119,12 +119,15 @@ public sealed class AvatarController : Controller
         if (!resolved.Found || string.IsNullOrWhiteSpace(resolved.Profile.AgentUserId))
             return DefaultAvatarResult();
 
-        var agentUserId = Normalize(resolved.Profile.AgentUserId);
-        var profile = await _db.AgentProfiles
-            .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.IsActive && x.AgentUserId.ToLower() == agentUserId, HttpContext.RequestAborted);
-        return HasImage(profile)
-            ? File(profile!.ProfileImageContent!, profile.ProfileImageContentType!)
+        var identities = await _profileImageResolver.ResolveIdentitiesAsync(
+            [new MessagingParticipantReference(
+                resolved.Profile.AgentUserId,
+                MessagingParticipantTypes.Agent)],
+            HttpContext.RequestAborted);
+        return identities.TryGetValue(
+            (resolved.Profile.AgentUserId.Trim().ToLowerInvariant(), MessagingParticipantTypes.Agent),
+            out var identity)
+            ? await ProfileImageResultAsync(identity)
             : DefaultAvatarResult();
     }
 
@@ -144,10 +147,25 @@ public sealed class AvatarController : Controller
             : NotFound();
     }
 
-    private static bool HasImage(Domain.Entities.AgentProfile? profile) =>
-        profile?.ProfileImageContent is { Length: > 0 } &&
-        profile.ProfileImageContentType is "image/png" or "image/jpeg" or "image/webp";
+    private Task<IActionResult> ProfileImageResultAsync(
+        string participantType,
+        Guid profileId) =>
+        ProfileImageResultAsync(
+            new MessagingParticipantIdentity(
+                string.Empty,
+                participantType,
+                profileId,
+                string.Empty,
+                null,
+                string.Empty));
 
-    private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;
+    private async Task<IActionResult> ProfileImageResultAsync(
+        MessagingParticipantIdentity identity)
+    {
+        var image = await _profileImageResolver.ResolveAsync(identity, HttpContext.RequestAborted);
+        return image is null
+            ? DefaultAvatarResult()
+            : File(image.Content, image.ContentType);
+    }
 
 }

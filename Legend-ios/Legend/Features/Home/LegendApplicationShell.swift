@@ -111,6 +111,22 @@ struct LegendApplicationShell: View {
     }
 
     var body: some View {
+        Group {
+            if let lifecycle = account.lifecycle, lifecycle.blocksFullExperience {
+                LegendAccountLifecycleLockedView(
+                    lifecycle: lifecycle,
+                    account: account,
+                    coordinator: coordinator)
+            } else {
+                fullExperience
+            }
+        }
+        .task {
+            await account.loadLifecycle()
+        }
+    }
+
+    private var fullExperience: some View {
         // The app chrome owns a real layout row rather than overlaying an inset.
         // Primary tabs are therefore constrained to the viewport below the
         // stationary wordmark; neither their initial content nor scroll position
@@ -314,6 +330,70 @@ struct LegendApplicationShell: View {
         withAnimation(LegendNextMotion.tab) {
             selectedTab = tab
         }
+    }
+}
+
+/// A paused or closing account has no route to regular app content. The
+/// lifecycle response is authoritative; this view offers only the permitted
+/// recovery action and sign out.
+private struct LegendAccountLifecycleLockedView: View {
+    let lifecycle: MobileAccountLifecycle
+    @ObservedObject var account: MobileAccountStore
+    @ObservedObject var coordinator: MobileSessionCoordinator
+
+    var body: some View {
+        VStack(spacing: LegendNextSpacing.md) {
+            Spacer(minLength: LegendNextSpacing.xl)
+
+            Image(systemName: lifecycle.canResume ? "pause.circle.fill" : "lock.fill")
+                .font(.system(size: 44, weight: .semibold))
+                .foregroundStyle(LegendNextColor.goldBright)
+
+            Text(lifecycle.canResume ? "Your account is paused" : "Account closure is in progress")
+                .font(LegendNextTypography.title)
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .multilineTextAlignment(.center)
+
+            Text(lifecycle.message ?? lifecycleDetail)
+                .font(.body)
+                .foregroundStyle(LegendNextColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 360)
+
+            if lifecycle.canResume {
+                Button(account.isUpdatingLifecycle ? "Resuming account…" : "Resume account") {
+                    Task { _ = await account.resumeAccount() }
+                }
+                .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                .disabled(account.isUpdatingLifecycle)
+                .padding(.top, LegendNextSpacing.xs)
+            }
+
+            if let failure = account.actionFailure {
+                Text(failure.message)
+                    .font(.footnote)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button("Sign out") {
+                coordinator.signOut()
+            }
+            .buttonStyle(LegendNextButtonStyle(kind: .secondary))
+
+            Spacer()
+        }
+        .padding(LegendNextSpacing.md)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(LegendNextCanvas())
+        .accessibilityElement(children: .contain)
+    }
+
+    private var lifecycleDetail: String {
+        lifecycle.canResume
+            ? "Legend access is paused. Resume your account here when you are ready to return."
+            : "Legend access is disabled while the required account and data-handling process is completed."
     }
 }
 
@@ -5140,6 +5220,7 @@ private struct LegendAccountView: View {
     @State private var selectedContent: LegendProfileContentFilter = .posts
     @State private var isEditing = false
     @State private var isShowingSettings = false
+    @State private var isPresentingAccountAccess = false
     @State private var isPresentingCreatorInsights = false
     @State private var isPresentingFollowRequests = false
     @State private var isPresentingTranslationLanguagePicker = false
@@ -5205,7 +5286,8 @@ private struct LegendAccountView: View {
             if case .loaded(let profile) = account.state {
                 LegendAccountEditor(
                     profile: profile,
-                    store: account
+                    store: account,
+                    synchronizeProfile: { await bootstrap.refreshProfile() }
                 )
             }
         }
@@ -5213,6 +5295,9 @@ private struct LegendAccountView: View {
             if case .loaded(let profile) = account.state {
                 profileSettingsSheet(profile)
             }
+        }
+        .sheet(isPresented: $isPresentingAccountAccess) {
+            LegendAccountAccessSheet(account: account)
         }
         .sheet(isPresented: $isPresentingTranslationLanguagePicker) {
             if case .loaded(let profile) = account.state {
@@ -5864,6 +5949,20 @@ private struct LegendAccountView: View {
                                 }
                                 .buttonStyle(.plain)
                             }
+
+                            if let privacyPolicyURL = MobileConfiguration.current.privacyPolicyURL {
+                                LegendProfileSettingsDivider()
+
+                                Link(destination: privacyPolicyURL) {
+                                    LegendProfileSettingsRow(
+                                        title: "Privacy policy",
+                                        detail: "How Legend handles account and app data",
+                                        systemImage: "doc.text",
+                                        showsChevron: true)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityHint("Opens the Legend privacy policy")
+                            }
                         }
                     }
 
@@ -5970,6 +6069,19 @@ private struct LegendAccountView: View {
                                 systemImage: "key.fill",
                                 showsChevron: false)
                         }
+                    }
+
+                    LegendProfileSettingsSection(title: "Account access") {
+                        Button {
+                            isPresentingAccountAccess = true
+                        } label: {
+                            LegendProfileSettingsRow(
+                                title: "Pause or close account",
+                                detail: "Review access and account-closure options",
+                                systemImage: "person.crop.circle.badge.exclamationmark",
+                                showsChevron: true)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     Button {
@@ -6139,6 +6251,162 @@ private struct LegendAccountView: View {
     private func legendLanguageName(_ code: String?) -> String {
         guard let code, !code.isEmpty else { return "Choose a language" }
         return translationLanguageNames[code] ?? (code == "ht" ? "Haitian Creole" : code)
+    }
+}
+
+/// Account closure is intentionally placed inside profile settings and requires
+/// a second, typed confirmation. Pausing is the clear reversible alternative.
+private struct LegendAccountAccessSheet: View {
+    @ObservedObject var account: MobileAccountStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var isConfirmingPause = false
+    @State private var isPresentingClosureConfirmation = false
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Account access",
+                        title: "Pause before you close",
+                        detail: "Pausing is reversible. It stops access to Legend until you return here and resume your account.",
+                        dismiss: { dismiss() })
+
+                    LegendProfileSettingsSection(title: "Pause account") {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            Text("Choose this if you need time away. Your regular Legend access is disabled until you resume the account.")
+                                .font(.subheadline)
+                                .foregroundStyle(LegendNextColor.textSecondary)
+
+                            Button(account.isUpdatingLifecycle ? "Pausing account…" : "Pause account") {
+                                isConfirmingPause = true
+                            }
+                            .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                            .disabled(account.isUpdatingLifecycle)
+                        }
+                    }
+
+                    LegendProfileSettingsSection(title: "Account closure") {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            Text("Closure removes your access immediately. It is not the same as signing out. Account-owned data is handled through the applicable retention process; records required for legal, financial, insurance, security, or audit purposes may remain.")
+                                .font(.subheadline)
+                                .foregroundStyle(LegendNextColor.textSecondary)
+
+                            Button("Continue to account closure") {
+                                isPresentingClosureConfirmation = true
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(LegendNextColor.goldBright)
+                            .accessibilityHint("Opens the account closure confirmation")
+                        }
+                    }
+
+                    if let failure = account.actionFailure {
+                        LegendNextSurface(style: .profileSettings, padding: LegendNextSpacing.sm) {
+                            Text(failure.message)
+                                .font(.footnote)
+                                .foregroundStyle(LegendNextColor.textSecondary)
+                        }
+                    }
+                }
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .tint(LegendNextColor.gold)
+        .legendNextSheetChrome(detents: [.medium, .large])
+        .confirmationDialog(
+            "Pause your Legend account?",
+            isPresented: $isConfirmingPause,
+            titleVisibility: .visible
+        ) {
+            Button("Pause account") {
+                Task {
+                    if await account.pauseAccount() {
+                        dismiss()
+                    }
+                }
+            }
+            Button("Keep account active", role: .cancel) {}
+        } message: {
+            Text("You will lose regular Legend access until you return to Account access and resume the account.")
+        }
+        .sheet(isPresented: $isPresentingClosureConfirmation) {
+            LegendAccountClosureConfirmationSheet(account: account)
+        }
+    }
+}
+
+private struct LegendAccountClosureConfirmationSheet: View {
+    @ObservedObject var account: MobileAccountStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmation = ""
+
+    private var hasConfirmedClosure: Bool {
+        confirmation.trimmingCharacters(in: .whitespacesAndNewlines) == "DELETE"
+    }
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Final confirmation",
+                        title: "Close your Legend account",
+                        detail: "This sends an account-closure request and disables Legend access immediately.",
+                        dismiss: { dismiss() })
+
+                    LegendProfileSettingsSection(title: "Before you continue") {
+                        Text("You will no longer be able to use Legend while closure is in progress. This action cannot be undone from the app. If you only need time away, go back and pause your account instead.")
+                            .font(.subheadline)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                    }
+
+                    LegendProfileSettingsSection(title: "Confirm closure") {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            Text("Type DELETE to confirm that you want to start closing this account.")
+                                .font(.subheadline)
+                                .foregroundStyle(LegendNextColor.textSecondary)
+
+                            TextField("DELETE", text: $confirmation)
+                                .textInputAutocapitalization(.characters)
+                                .autocorrectionDisabled()
+                                .padding(.horizontal, LegendNextSpacing.sm)
+                                .frame(minHeight: 48)
+                                .background(
+                                    LegendNextColor.brandBlueSurface,
+                                    in: RoundedRectangle(
+                                        cornerRadius: LegendNextRadius.control,
+                                        style: .continuous))
+                        }
+                    }
+
+                    Button(account.isUpdatingLifecycle ? "Sending closure request…" : "Request account closure") {
+                        Task {
+                            if await account.requestAccountDeletion(confirmation: confirmation) {
+                                dismiss()
+                            }
+                        }
+                    }
+                    .buttonStyle(LegendNextButtonStyle(kind: .destructive))
+                    .disabled(!hasConfirmedClosure || account.isUpdatingLifecycle)
+
+                    if let failure = account.actionFailure {
+                        Text(failure.message)
+                            .font(.footnote)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                }
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .tint(LegendNextColor.gold)
+        .legendNextSheetChrome(detents: [.large])
     }
 }
 
@@ -7187,6 +7455,7 @@ private struct LegendProfileGridTile: View {
 private struct LegendAccountEditor: View {
     let profile: MobileAccountProfile
     @ObservedObject var store: MobileAccountStore
+    let synchronizeProfile: @MainActor () async -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var displayName: String
     @State private var phone: String
@@ -7200,9 +7469,14 @@ private struct LegendAccountEditor: View {
     @State private var isEmailVisible: Bool
     @State private var isPhoneVisible: Bool
 
-    init(profile: MobileAccountProfile, store: MobileAccountStore) {
+    init(
+        profile: MobileAccountProfile,
+        store: MobileAccountStore,
+        synchronizeProfile: @escaping @MainActor () async -> Void
+    ) {
         self.profile = profile
         _store = ObservedObject(wrappedValue: store)
+        self.synchronizeProfile = synchronizeProfile
         _displayName = State(initialValue: profile.displayName)
         _phone = State(initialValue: profile.phone ?? "")
         _title = State(initialValue: profile.title ?? "")
@@ -7385,6 +7659,7 @@ private struct LegendAccountEditor: View {
                 isEmailVisible: isEmailVisible,
                 isPhoneVisible: isPhoneVisible))
             if didSave {
+                await synchronizeProfile()
                 dismiss()
             }
         }

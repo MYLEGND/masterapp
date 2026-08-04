@@ -2,6 +2,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ClientApp.Models;
 using ClientApp.Services;
+using Domain.Accounts;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Identity;
@@ -49,6 +50,10 @@ public class ClientProfileControllerTests
                 It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ClientSubscriptionIdentitySyncResult(false, 0, 0));
+        var accountLifecycle = new Mock<IAccountLifecycleService>();
+        accountLifecycle
+            .Setup(service => service.GetAsync(It.IsAny<AccountLifecycleSubject>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AccountLifecycleSnapshot("Active", true, false, null, null, null));
 
         var http = new DefaultHttpContext
         {
@@ -58,7 +63,8 @@ public class ClientProfileControllerTests
             db,
             new EffectiveClientContextService(db),
             entra.Object,
-            subscriptionSync.Object)
+            subscriptionSync.Object,
+            accountLifecycle.Object)
         {
             ControllerContext = new ControllerContext { HttpContext = http },
             TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>())

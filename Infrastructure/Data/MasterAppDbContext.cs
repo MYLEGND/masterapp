@@ -13,6 +13,7 @@ public class MasterAppDbContext : DbContext
     public MasterAppDbContext(DbContextOptions<MasterAppDbContext> options) : base(options) { }
 
     public DbSet<ClientProfile> ClientProfiles => Set<ClientProfile>();
+    public DbSet<AccountLifecycleRecord> AccountLifecycleRecords => Set<AccountLifecycleRecord>();
     public DbSet<AgentClient> AgentClients => Set<AgentClient>();
     public DbSet<AgentAssistant> AgentAssistants => Set<AgentAssistant>();
     public DbSet<HouseholdMember> HouseholdMembers => Set<HouseholdMember>();
@@ -119,6 +120,19 @@ public class MasterAppDbContext : DbContext
         JourneyCirclesModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         SocialFeedModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         var isSqlServer = Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
+
+        modelBuilder.Entity<AccountLifecycleRecord>(entity =>
+        {
+            entity.ToTable("AccountLifecycleRecords");
+            entity.HasKey(record => record.Id);
+            entity.Property(record => record.UserId).HasMaxLength(450).IsRequired();
+            entity.Property(record => record.ParticipantType).HasMaxLength(40).IsRequired();
+            entity.Property(record => record.State).HasMaxLength(40).IsRequired();
+            entity.Property(record => record.RowVersion).IsRowVersion();
+            entity.HasIndex(record => new { record.UserId, record.ParticipantType }).IsUnique();
+            entity.HasIndex(record => new { record.ProfileId, record.ParticipantType }).IsUnique();
+            entity.HasIndex(record => new { record.State, record.UpdatedUtc });
+        });
 
         modelBuilder.Entity<CommerceBusiness>(e =>
         {

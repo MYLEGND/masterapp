@@ -37,7 +37,10 @@ public sealed class MobileMessagingController : MobileApiControllerBase
     [HttpGet("session")]
     public async Task<IActionResult> Session(CancellationToken cancellationToken)
     {
-        var resolution = await ResolveActorAsync(cancellationToken, allowSelectionRequired: true);
+        var resolution = await ResolveActorAsync(
+            cancellationToken,
+            allowSelectionRequired: true,
+            allowLifecycleRestricted: true);
         if (resolution.Error is not null)
             return resolution.Error;
 
@@ -78,13 +81,17 @@ public sealed class MobileMessagingController : MobileApiControllerBase
 
         var result = await _messaging.ListConversationsAsync(
             resolved.Actor!.Actor,
-            new MessagingConversationListQuery(IncludeGroupImages: false),
+            // A group picture belongs to the conversation, not to any member
+            // profile. Include that authoritative media in the inbox so an
+            // owner-selected picture cannot disappear outside the thread.
+            new MessagingConversationListQuery(IncludeGroupImages: true),
             cancellationToken);
         if (!result.Succeeded)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);
 
         var participants = result.Conversations.Select(conversation => conversation.Counterparty);
         var identities = await ResolveParticipantIdentitiesAsync(participants, cancellationToken);
+        var avatars = await ResolveParticipantAvatarsAsync(identities.Values, cancellationToken);
         var response = new List<MobileConversationSummaryDto>();
         foreach (var conversation in result.Conversations)
         {
@@ -92,16 +99,19 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 conversation.Id,
                 conversation.ConversationType,
                 conversation.Subject ?? identities.GetDisplayName(conversation.Counterparty) ?? "Conversation",
-                ToParticipantDto(conversation.Counterparty, identities),
+                ToParticipantDto(
+                    conversation.Counterparty,
+                    identities,
+                    AvatarFor(conversation.Counterparty, identities, avatars)),
                 conversation.LastMessagePreview,
                 conversation.LastMessageUtc,
                 conversation.UnreadCount,
                 conversation.IsClosed,
                 conversation.Purpose,
-                // Profile media is intentionally not embedded in the inbox.
-                // It is visual enhancement data and can turn a small inbox
-                // projection into megabytes of duplicate base64 payload.
-                null,
+                // Group artwork is separate conversation-owned media. Member
+                // avatars above come from one batch against the same typed
+                // profile authority used by the rest of the mobile app.
+                MobileAvatarProjection.FromGroupImage(conversation.GroupImage),
                 conversation.IsPinned,
                 conversation.IsMuted));
         }
@@ -585,9 +595,10 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         var identities = await ResolveParticipantIdentitiesAsync(
             ConversationIdentities(result.Conversation),
             cancellationToken);
+        var avatars = await ResolveParticipantAvatarsAsync(identities.Values, cancellationToken);
         var messages = new List<MobileMessageDto>();
         foreach (var message in result.Conversation.Messages)
-            messages.Add(ToMessageDto(message, resolved.Actor.Actor, identities));
+            messages.Add(ToMessageDto(message, resolved.Actor.Actor, identities, avatars));
         return Ok(messages);
     }
 
@@ -617,7 +628,8 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 result.Message.SenderType,
                 string.Empty)],
             cancellationToken);
-        return Ok(ToMessageDto(result.Message, resolved.Actor.Actor, identities));
+        var avatars = await ResolveParticipantAvatarsAsync(identities.Values, cancellationToken);
+        return Ok(ToMessageDto(result.Message, resolved.Actor.Actor, identities, avatars));
     }
 
     [HttpPost("messaging/conversations/{conversationId:guid}/messages/{messageId:guid}/attachments")]
@@ -809,33 +821,15 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         var identities = await ResolveParticipantIdentitiesAsync(
             ConversationIdentities(conversation),
             cancellationToken);
-        var directParticipantAvatars =
-            new Dictionary<(string UserId, string ParticipantType), MobileAvatarDto?>();
-        if (conversation.ConversationType != MessagingConversationTypes.Group)
-        {
-            foreach (var participant in conversation.Participants)
-            {
-                if (string.Equals(participant.UserId, actor.UserId, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(participant.ParticipantType, actor.ParticipantType, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                if (!identities.TryGetValue((participant.UserId, participant.ParticipantType), out var identity))
-                    continue;
-
-                directParticipantAvatars[(participant.UserId, participant.ParticipantType)] =
-                    await ToAvatarDtoAsync(identity, cancellationToken);
-            }
-        }
+        var avatars = await ResolveParticipantAvatarsAsync(identities.Values, cancellationToken);
 
         var participants = new List<MobileParticipantDto>();
         foreach (var participant in conversation.Participants)
         {
-            directParticipantAvatars.TryGetValue(
-                (participant.UserId, participant.ParticipantType),
-                out var avatar);
-            var participantDto = ToParticipantDto(participant, identities, avatar);
+            var participantDto = ToParticipantDto(
+                participant,
+                identities,
+                AvatarFor(participant, identities, avatars));
 
             participants.Add(participantDto with
             {
@@ -845,13 +839,16 @@ public sealed class MobileMessagingController : MobileApiControllerBase
 
         var messages = new List<MobileMessageDto>();
         foreach (var message in conversation.Messages)
-            messages.Add(ToMessageDto(message, actor, identities));
+            messages.Add(ToMessageDto(message, actor, identities, avatars));
 
         MobileGroupMeetingDto? meeting = null;
         if (conversation.Meeting is not null)
         {
             meeting = new MobileGroupMeetingDto(
-                ToParticipantDto(conversation.Meeting.Host, identities),
+                ToParticipantDto(
+                    conversation.Meeting.Host,
+                    identities,
+                    AvatarFor(conversation.Meeting.Host, identities, avatars)),
                 conversation.Meeting.LinkLabel,
                 conversation.Meeting.LinkUrl,
                 conversation.Meeting.Schedule is null
@@ -935,6 +932,11 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             participants.Select(participant => new MessagingParticipantReference(participant.UserId, participant.ParticipantType)),
             cancellationToken);
 
+    private Task<IReadOnlyDictionary<MessagingProfileImageKey, MobileAvatarDto>> ResolveParticipantAvatarsAsync(
+        IEnumerable<MessagingParticipantIdentity> identities,
+        CancellationToken cancellationToken) =>
+        MobileAvatarProjection.ResolveManyAsync(_profiles, identities, cancellationToken);
+
     private async Task<MobileActorDto> ToActorDtoAsync(
         MobileResolvedActor actor,
         CancellationToken cancellationToken)
@@ -973,12 +975,14 @@ public sealed class MobileMessagingController : MobileApiControllerBase
     private static MobileMessageDto ToMessageDto(
         MessagingMessageSummary message,
         MessagingActor actor,
-        IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity> identities) => new(
+        IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity> identities,
+        IReadOnlyDictionary<MessagingProfileImageKey, MobileAvatarDto> avatars) => new(
         message.Id,
         message.ConversationId,
         ToParticipantDto(
             new MessagingParticipantSummary(message.SenderUserId, message.SenderType, string.Empty),
-            identities),
+            identities,
+            AvatarFor(message.SenderUserId, message.SenderType, identities, avatars)),
         message.Body,
         message.SentUtc,
         message.Attachments.Select(ToAttachmentDto).ToArray(),
@@ -994,7 +998,8 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                         message.Reply.SenderUserId,
                         message.Reply.SenderType,
                         string.Empty),
-                    identities),
+                    identities,
+                    AvatarFor(message.Reply.SenderUserId, message.Reply.SenderType, identities, avatars)),
                 message.Reply.Body,
                 message.Reply.IsDeleted),
         message.VerificationReview is null
@@ -1014,6 +1019,22 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 message.Translation.TargetLanguage,
                 message.Translation.Provider),
         message.OriginalBody);
+
+    private static MobileAvatarDto? AvatarFor(
+        MessagingParticipantSummary participant,
+        IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity> identities,
+        IReadOnlyDictionary<MessagingProfileImageKey, MobileAvatarDto> avatars) =>
+        AvatarFor(participant.UserId, participant.ParticipantType, identities, avatars);
+
+    private static MobileAvatarDto? AvatarFor(
+        string userId,
+        string participantType,
+        IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity> identities,
+        IReadOnlyDictionary<MessagingProfileImageKey, MobileAvatarDto> avatars) =>
+        identities.TryGetValue((userId, participantType), out var identity) &&
+        avatars.TryGetValue(MessagingProfileImageKey.From(identity), out var avatar)
+            ? avatar
+            : null;
 
     private async Task<MobileAvatarDto?> ToAvatarDtoAsync(
         MessagingParticipantIdentity identity,

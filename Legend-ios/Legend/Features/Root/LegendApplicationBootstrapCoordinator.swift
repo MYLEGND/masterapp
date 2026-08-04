@@ -235,10 +235,30 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
     }
 
     func refreshProfile() async {
+        // Profile records are the shared authority for every surface. Keep the
+        // currently active presentation projections in sync after a member
+        // changes their name, contact data, or avatar; each store preserves its
+        // last authorized value while this revalidation happens.
+        async let home = stores.home.refresh()
         async let account = stores.account.refresh()
         async let social = stores.social.refresh()
         async let profilePosts = stores.social.refreshProfilePosts()
-        _ = await (account, social, profilePosts)
+        async let messaging = stores.messaging.refresh()
+        async let discovery = stores.discovery.refresh()
+
+        if currentSession.actor.identity.participantType == .client {
+            async let journeyCircles = stores.journeyCircles.refresh()
+            _ = await (
+                home,
+                account,
+                social,
+                profilePosts,
+                messaging,
+                discovery,
+                journeyCircles)
+        } else {
+            _ = await (home, account, social, profilePosts, messaging, discovery)
+        }
     }
 
     func refreshFinancial() async {

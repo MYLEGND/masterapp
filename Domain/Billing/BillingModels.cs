@@ -329,6 +329,15 @@ public sealed record CancelClientSubscriptionCommand(
     string? ActorId,
     string? CorrelationId = null);
 
+/// <summary>
+/// Internal account-lifecycle command. It is intentionally not a mobile or
+/// browser billing contract; the account lifecycle authority is the only caller.
+/// </summary>
+public sealed record AccountLifecycleSubscriptionCommand(
+    Guid ClientProfileId,
+    string? ActorId,
+    string? CorrelationId = null);
+
 public sealed record BillingWebhookSignatureValidationRequest(
     BillingProvider Provider,
     string NotificationUrl,
@@ -402,6 +411,14 @@ public sealed record CancelClientSubscriptionResult(
     ClientEntitlement? Entitlement,
     ClientSubscriptionLifecycleResult LifecycleResult)
     : BillingWorkflowResult(Success, SafeErrorCode, SanitizedSummary, ProviderRequestId, Retryable);
+
+public sealed record AccountLifecycleSubscriptionResult(
+    bool Success,
+    string? SafeErrorCode,
+    string? SanitizedSummary,
+    ClientSubscription? Subscription,
+    ClientEntitlement? Entitlement)
+    : BillingWorkflowResult(Success, SafeErrorCode, SanitizedSummary, null, false);
 
 public sealed record ManualClientSubscriptionRenewalRetryCommand(
     Guid ClientSubscriptionId,

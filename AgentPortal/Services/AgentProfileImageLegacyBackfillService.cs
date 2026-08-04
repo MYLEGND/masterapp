@@ -1,5 +1,7 @@
 using Domain.Entities;
+using Domain.Messaging;
 using Infrastructure.Data;
+using Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Services;
@@ -12,26 +14,29 @@ namespace AgentPortal.Services;
 public sealed class AgentProfileImageLegacyBackfillService
 {
     private const long MaximumImageBytes = 3 * 1024 * 1024;
-    private static readonly (string Extension, string ContentType)[] ImageTypes =
+    private static readonly string[] ImageExtensions =
     [
-        (".png", "image/png"),
-        (".jpg", "image/jpeg"),
-        (".jpeg", "image/jpeg"),
-        (".webp", "image/webp")
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp"
     ];
 
     private readonly MasterAppDbContext _db;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<AgentProfileImageLegacyBackfillService> _logger;
+    private readonly IProfileImageWriter _profileImages;
 
     public AgentProfileImageLegacyBackfillService(
         MasterAppDbContext db,
         IWebHostEnvironment environment,
-        ILogger<AgentProfileImageLegacyBackfillService> logger)
+        ILogger<AgentProfileImageLegacyBackfillService> logger,
+        IProfileImageWriter profileImages)
     {
         _db = db;
         _environment = environment;
         _logger = logger;
+        _profileImages = profileImages;
     }
 
     public async Task<int> BackfillAsync(CancellationToken cancellationToken = default)
@@ -54,7 +59,7 @@ public sealed class AgentProfileImageLegacyBackfillService
 
             try
             {
-                var info = new FileInfo(image.Value.Path);
+                var info = new FileInfo(image);
                 if (info.Length is <= 0 or > MaximumImageBytes)
                 {
                     _logger.LogWarning(
@@ -64,9 +69,25 @@ public sealed class AgentProfileImageLegacyBackfillService
                     continue;
                 }
 
-                profile.ProfileImageContent = await File.ReadAllBytesAsync(image.Value.Path, cancellationToken);
-                profile.ProfileImageContentType = image.Value.ContentType;
-                profile.UpdatedUtc = DateTime.UtcNow;
+                var result = await _profileImages.UpdateAsync(
+                    new MessagingParticipantIdentity(
+                        string.Empty,
+                        MessagingParticipantTypes.Agent,
+                        profile.Id,
+                        string.Empty,
+                        null,
+                        string.Empty),
+                    await File.ReadAllBytesAsync(image, cancellationToken),
+                    cancellationToken);
+                if (!result.Succeeded)
+                {
+                    _logger.LogWarning(
+                        "Skipping invalid legacy agent profile image. AgentProfileId={AgentProfileId} ErrorCode={ErrorCode}",
+                        profile.Id,
+                        result.ErrorCode);
+                    continue;
+                }
+
                 imported++;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -78,13 +99,12 @@ public sealed class AgentProfileImageLegacyBackfillService
             }
         }
 
-        if (imported == 0)
-            return 0;
-
-        await _db.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation(
-            "Imported legacy agent profile images into AgentProfiles. ImportedCount={ImportedCount}",
-            imported);
+        if (imported > 0)
+        {
+            _logger.LogInformation(
+                "Imported legacy agent profile images through the canonical profile-media authority. ImportedCount={ImportedCount}",
+                imported);
+        }
         return imported;
     }
 
@@ -129,7 +149,7 @@ public sealed class AgentProfileImageLegacyBackfillService
         return keys;
     }
 
-    private static (string Path, string ContentType)? FindLegacyImage(string root, IEnumerable<string> agentUserIds)
+    private static string? FindLegacyImage(string root, IEnumerable<string> agentUserIds)
     {
         foreach (var agentUserId in agentUserIds)
         {
@@ -137,11 +157,11 @@ public sealed class AgentProfileImageLegacyBackfillService
             if (!string.Equals(Path.GetFileName(key), key, StringComparison.Ordinal))
                 continue;
 
-            foreach (var imageType in ImageTypes)
+            foreach (var extension in ImageExtensions)
             {
-                var path = Path.Combine(root, $"{key}{imageType.Extension}");
+                var path = Path.Combine(root, $"{key}{extension}");
                 if (File.Exists(path))
-                    return (path, imageType.ContentType);
+                    return path;
             }
         }
 

@@ -4,25 +4,31 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using AgentPortal.Models;
 using AgentPortal.Security;
 using AgentPortal.Services;
+using Domain.Accounts;
 using Domain.Entities;
+using Domain.Messaging;
 using Shared.Auth;
 
 public class AccountController : Controller
 {
     private readonly MasterAppDbContext _db;
     private readonly AgentProfileAccessResolver _profileAccessResolver;
+    private readonly IAccountLifecycleService _accountLifecycle;
 
     public AccountController(
         MasterAppDbContext db,
-        AgentProfileAccessResolver profileAccessResolver)
+        AgentProfileAccessResolver profileAccessResolver,
+        IAccountLifecycleService accountLifecycle)
     {
         _db = db;
         _profileAccessResolver = profileAccessResolver;
+        _accountLifecycle = accountLifecycle;
     }
 
     private static string? NormalizeEmail(string? email)
@@ -159,6 +165,10 @@ public class AccountController : Controller
             HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(profile.MetaCapiAccessToken)
         };
 
+        ViewBag.AccountLifecycle = await _accountLifecycle.GetAsync(
+            new AccountLifecycleSubject(userId, MessagingParticipantTypes.Agent, profile.Id),
+            HttpContext.RequestAborted);
+
         return View(vm);
     }
 
@@ -232,4 +242,49 @@ public class AccountController : Controller
         TempData["ProfileSaved"] = "Agent profile updated.";
         return RedirectToAction(nameof(ManageProfile));
     }
+
+    [HttpPost]
+    [Authorize]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AccountAccess(string operation, string? confirmation)
+    {
+        var userId = User.GetCanonicalUserId();
+        if (string.IsNullOrWhiteSpace(userId))
+            return Challenge();
+
+        var profile = await _profileAccessResolver.ResolveCurrentAsync(
+            User,
+            requireActive: false,
+            HttpContext.RequestAborted);
+        if (profile is null)
+            return Forbid();
+
+        var subject = new AccountLifecycleSubject(
+            userId,
+            MessagingParticipantTypes.Agent,
+            profile.Id);
+        AccountLifecycleOperationResult result;
+        if (string.Equals(operation, "pause", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.Equals(confirmation?.Trim(), "PAUSE", StringComparison.Ordinal))
+            {
+                TempData["AccountLifecycleError"] = "Type PAUSE to confirm that you want to pause your account.";
+                return RedirectToAction(nameof(ManageProfile));
+            }
+
+            result = await _accountLifecycle.PauseAsync(subject, HttpContext.TraceIdentifier, HttpContext.RequestAborted);
+        }
+        else if (string.Equals(operation, "resume", StringComparison.OrdinalIgnoreCase))
+        {
+            result = await _accountLifecycle.ResumeAsync(subject, HttpContext.TraceIdentifier, HttpContext.RequestAborted);
+        }
+        else
+        {
+            return BadRequest();
+        }
+
+        TempData[result.Succeeded ? "AccountLifecycleNotice" : "AccountLifecycleError"] = result.Message;
+        return RedirectToAction(nameof(ManageProfile));
+    }
+
 }

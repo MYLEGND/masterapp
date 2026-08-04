@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
+using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
 using AgentPortal.Models;
 using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
+using Domain.Accounts;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Identity;
@@ -52,6 +54,17 @@ public class IdentityHardeningTests
             })
             .Build();
         return new AgentTrackingService(db, NullLogger<AgentTrackingService>.Instance, config);
+    }
+
+    private static IAccountLifecycleService BuildActiveAccountLifecycle()
+    {
+        var lifecycle = new Mock<IAccountLifecycleService>();
+        lifecycle
+            .Setup(service => service.GetAsync(
+                It.IsAny<AccountLifecycleSubject>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AccountLifecycleSnapshot("Active", true, false, null, null, null));
+        return lifecycle.Object;
     }
 
     private static ClientProvisioningService BuildProvisioning(MasterAppDbContext db)
@@ -193,7 +206,7 @@ public class IdentityHardeningTests
             new Claim("name", "Directory Display Name")
         }, "TestAuth"));
         var http = new DefaultHttpContext { User = user };
-        var controller = new AccountController(db, new AgentProfileAccessResolver(db))
+        var controller = new AccountController(db, new AgentProfileAccessResolver(db), BuildActiveAccountLifecycle())
         {
             ControllerContext = new ControllerContext { HttpContext = http },
             TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>())
@@ -299,7 +312,7 @@ public class IdentityHardeningTests
     public async Task AccountController_ManageProfileCreatesNormalizedEmail()
     {
         using var db = BuildDb();
-        var controller = new AccountController(db, new AgentProfileAccessResolver(db))
+        var controller = new AccountController(db, new AgentProfileAccessResolver(db), BuildActiveAccountLifecycle())
         {
             ControllerContext = new ControllerContext
             {
@@ -332,7 +345,7 @@ public class IdentityHardeningTests
         });
         await db.SaveChangesAsync();
 
-        var controller = new AccountController(db, new AgentProfileAccessResolver(db))
+        var controller = new AccountController(db, new AgentProfileAccessResolver(db), BuildActiveAccountLifecycle())
         {
             ControllerContext = new ControllerContext
             {

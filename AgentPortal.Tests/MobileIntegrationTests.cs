@@ -270,6 +270,163 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileMessaging_ProjectsInboxAndThreadAvatarsFromTheSameTypedProfileAuthority()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "messaging-avatar-agent",
+            AgentUpn = "agent@example.test",
+            FullName = "Messaging Agent",
+            IsActive = true
+        };
+        var clientImage = new byte[] { 0x43, 0x4C, 0x49, 0x45, 0x4E, 0x54 };
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "messaging-avatar-client",
+            ExternalIdentityObjectId = "messaging-avatar-client",
+            FirstName = "Canonical",
+            LastName = "Client",
+            Email = "client@example.test",
+            ProfileImageContent = clientImage,
+            ProfileImageContentType = "image/png"
+        };
+        db.AddRange(agent, client);
+        await db.SaveChangesAsync();
+
+        var conversationId = Guid.NewGuid();
+        var counterparty = new MessagingParticipantSummary(
+            client.ClientUserId,
+            MessagingParticipantTypes.Client,
+            "Stale client name");
+        var message = new MessagingMessageSummary(
+            Guid.NewGuid(),
+            conversationId,
+            client.ClientUserId,
+            MessagingParticipantTypes.Client,
+            "The thread uses the same avatar authority.",
+            DateTime.UtcNow,
+            null,
+            false,
+            Array.Empty<MessagingAttachmentSummary>());
+        var detail = new MessagingConversationDetail(
+            conversationId,
+            MessagingConversationTypes.ClientAgent,
+            null,
+            DateTime.UtcNow,
+            message.SentUtc,
+            false,
+            false,
+            false,
+            [
+                new MessagingParticipantSummary(agent.AgentUserId, MessagingParticipantTypes.Agent, agent.FullName),
+                counterparty
+            ],
+            [message]);
+        var messaging = new Mock<IMessagingService>(MockBehavior.Strict);
+        messaging.Setup(service => service.ListConversationsAsync(
+                It.Is<MessagingActor>(actor => actor == new MessagingActor(agent.AgentUserId, MessagingParticipantTypes.Agent)),
+                It.Is<MessagingConversationListQuery>(query => query.IncludeGroupImages),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MessagingConversationListResult(
+                true,
+                null,
+                null,
+                [new MessagingConversationSummary(
+                    conversationId,
+                    MessagingConversationTypes.ClientAgent,
+                    null,
+                    message.SentUtc,
+                    false,
+                    false,
+                    0,
+                    counterparty,
+                    message.Body)]));
+        messaging.Setup(service => service.GetConversationPageAsync(
+                It.Is<MessagingActor>(actor => actor == new MessagingActor(agent.AgentUserId, MessagingParticipantTypes.Agent)),
+                conversationId,
+                It.IsAny<MessagingConversationMessagePageQuery>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MessagingConversationResult(true, null, null, detail));
+
+        var profiles = new MessagingProfileImageResolver(
+            db,
+            NullLogger<MessagingProfileImageResolver>.Instance);
+        var controller = CreateController(db, messaging.Object, Principal(agent.AgentUserId), profiles);
+
+        var inboxResult = await controller.ListConversations(CancellationToken.None);
+        var inbox = Assert.IsAssignableFrom<IEnumerable<MobileConversationSummaryDto>>(
+            Assert.IsType<OkObjectResult>(inboxResult).Value);
+        var inboxConversation = Assert.Single(inbox);
+        Assert.Equal("Canonical Client", inboxConversation.Counterparty.DisplayName);
+        Assert.NotNull(inboxConversation.Counterparty.Avatar);
+        Assert.Equal(clientImage, Convert.FromBase64String(inboxConversation.Counterparty.Avatar!.Base64Content));
+
+        var messagesResult = await controller.Messages(conversationId, null, null, CancellationToken.None);
+        var thread = Assert.IsAssignableFrom<IEnumerable<MobileMessageDto>>(
+            Assert.IsType<OkObjectResult>(messagesResult).Value);
+        var threadMessage = Assert.Single(thread);
+        Assert.Equal("Canonical Client", threadMessage.Sender.DisplayName);
+        Assert.NotNull(threadMessage.Sender.Avatar);
+        Assert.Equal(clientImage, Convert.FromBase64String(threadMessage.Sender.Avatar!.Base64Content));
+        messaging.VerifyAll();
+    }
+
+    [Fact]
+    public async Task MobileMessaging_PreservesGroupArtworkFromTheConversationAuthority()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "group-artwork-agent",
+            AgentUpn = "agent@example.test",
+            FullName = "Group Artwork Agent",
+            IsActive = true
+        };
+        db.AgentProfiles.Add(agent);
+        await db.SaveChangesAsync();
+
+        var groupImage = new byte[] { 0x47, 0x52, 0x4F, 0x55, 0x50 };
+        var conversation = new MessagingConversationSummary(
+            Guid.NewGuid(),
+            MessagingConversationTypes.Group,
+            "Canonical group",
+            DateTime.UtcNow,
+            false,
+            false,
+            0,
+            new MessagingParticipantSummary(
+                "group-artwork-member",
+                MessagingParticipantTypes.Client,
+                "Group member"),
+            null,
+            GroupImage: new MessagingGroupImage(groupImage, "image/jpeg"));
+        var messaging = new Mock<IMessagingService>(MockBehavior.Strict);
+        messaging.Setup(service => service.ListConversationsAsync(
+                It.Is<MessagingActor>(actor => actor == new MessagingActor(agent.AgentUserId, MessagingParticipantTypes.Agent)),
+                It.Is<MessagingConversationListQuery>(query => query.IncludeGroupImages),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MessagingConversationListResult(true, null, null, [conversation]));
+
+        var profiles = new MessagingProfileImageResolver(
+            db,
+            NullLogger<MessagingProfileImageResolver>.Instance);
+        var controller = CreateController(db, messaging.Object, Principal(agent.AgentUserId), profiles);
+
+        var result = await controller.ListConversations(CancellationToken.None);
+        var inbox = Assert.IsAssignableFrom<IEnumerable<MobileConversationSummaryDto>>(
+            Assert.IsType<OkObjectResult>(result).Value);
+        var summary = Assert.Single(inbox);
+        Assert.NotNull(summary.GroupAvatar);
+        Assert.Equal(groupImage, Convert.FromBase64String(summary.GroupAvatar!.Base64Content));
+        Assert.Equal("image/jpeg", summary.GroupAvatar.ContentType);
+        messaging.VerifyAll();
+    }
+
+    [Fact]
     public async Task MobileSession_UsesTheExistingTypedProfileImageAuthority()
     {
         await using var db = ControllerTestHelpers.BuildDb();

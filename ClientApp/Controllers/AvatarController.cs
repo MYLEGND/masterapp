@@ -1,14 +1,11 @@
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ClientApp.Services;
 using Domain.Messaging;
-using Infrastructure.Data;
 using Infrastructure.Messaging;
-using Microsoft.EntityFrameworkCore;
 
 namespace ClientApp.Controllers
 {
@@ -29,18 +26,18 @@ namespace ClientApp.Controllers
 </svg>
 """;
 
-        private readonly MasterAppDbContext _db;
         private readonly EffectiveClientContextService _clientContext;
         private readonly IProfileImageWriter _profileImages;
+        private readonly IMessagingProfileImageResolver _profileImageResolver;
 
         public AvatarController(
-            MasterAppDbContext db,
             EffectiveClientContextService clientContext,
-            IProfileImageWriter profileImages)
+            IProfileImageWriter profileImages,
+            IMessagingProfileImageResolver profileImageResolver)
         {
-            _db = db;
             _clientContext = clientContext;
             _profileImages = profileImages;
+            _profileImageResolver = profileImageResolver;
         }
 
         private async Task<Guid?> GetClientProfileIdAsync()
@@ -92,16 +89,9 @@ namespace ClientApp.Controllers
             if (clientProfileId is null)
                 return Unauthorized();
 
-            var profile = await _db.ClientProfiles
-                .AsNoTracking()
-                .Where(x => x.Id == clientProfileId.Value)
-                .Select(x => new { x.ProfileImageContent, x.ProfileImageContentType })
-                .SingleOrDefaultAsync(HttpContext.RequestAborted);
-            if (profile?.ProfileImageContent is { Length: > 0 } &&
-                profile.ProfileImageContentType is "image/png" or "image/jpeg" or "image/webp")
-                return File(profile.ProfileImageContent, profile.ProfileImageContentType);
-
-            return Content(FallbackAvatarSvg, "image/svg+xml");
+            return await ProfileImageResultAsync(
+                MessagingParticipantTypes.Client,
+                clientProfileId.Value);
         }
 
         [HttpGet("avatar/agent/current")]
@@ -112,14 +102,26 @@ namespace ClientApp.Controllers
             if (context is not { IsAgentView: true, AgentProfileId: { } agentProfileId })
                 return Unauthorized();
 
-            var profile = await _db.AgentProfiles
-                .AsNoTracking()
-                .Where(x => x.Id == agentProfileId)
-                .Select(x => new { x.ProfileImageContent, x.ProfileImageContentType })
-                .SingleOrDefaultAsync(HttpContext.RequestAborted);
-            if (profile?.ProfileImageContent is { Length: > 0 } &&
-                profile.ProfileImageContentType is "image/png" or "image/jpeg" or "image/webp")
-                return File(profile.ProfileImageContent, profile.ProfileImageContentType);
+            return await ProfileImageResultAsync(
+                MessagingParticipantTypes.Agent,
+                agentProfileId);
+        }
+
+        private async Task<IActionResult> ProfileImageResultAsync(
+            string participantType,
+            Guid profileId)
+        {
+            var image = await _profileImageResolver.ResolveAsync(
+                new MessagingParticipantIdentity(
+                    string.Empty,
+                    participantType,
+                    profileId,
+                    string.Empty,
+                    null,
+                    string.Empty),
+                HttpContext.RequestAborted);
+            if (image is not null)
+                return File(image.Content, image.ContentType);
 
             return Content(FallbackAvatarSvg, "image/svg+xml");
         }

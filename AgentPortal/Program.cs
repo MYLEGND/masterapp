@@ -65,6 +65,7 @@ builder.Services
         options.Filters.Add(new AuthorizeFilter(policy));
         options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
         options.Filters.Add<AgentTrackingProvisioningFilter>();
+        options.Filters.Add<AgentAccountLifecycleAuthorizeFilter>();
     })
     .AddMicrosoftIdentityUI()
     .AddApplicationPart(typeof(MessagingHub).Assembly);
@@ -97,6 +98,7 @@ var mobileAuthConfiguration = MobileAuthConfiguration.FromConfiguration(builder.
 builder.Services.AddSingleton(mobileAuthConfiguration);
 builder.Services.AddScoped<IMobileActorResolver, MobileActorResolver>();
 builder.Services.AddScoped<IMobileAccountService, MobileAccountService>();
+builder.Services.AddScoped<IAccountLifecycleService, AccountLifecycleService>();
 builder.Services.AddScoped<
     IMobileFinancialOperatingSystemProjectionService,
     MobileFinancialOperatingSystemProjectionService>();
@@ -166,6 +168,7 @@ builder.Services.AddScoped<IMetaAdsConnectionStore, MetaAdsConnectionStore>();
 builder.Services.AddScoped<IMetaAdsOAuthService, MetaAdsOAuthService>();
 builder.Services.AddScoped<IAgentTrackingService, AgentTrackingService>();
 builder.Services.AddScoped<AgentTrackingProvisioningFilter>();
+builder.Services.AddScoped<AgentAccountLifecycleAuthorizeFilter>();
 builder.Services.AddScoped<AgentTrackingResolver>();
 builder.Services.AddScoped<IExecutionEngine, ExecutionEngine>();
 builder.Services.AddScoped<IDecisionService, DecisionService>();

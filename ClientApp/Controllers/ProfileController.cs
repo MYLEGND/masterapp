@@ -1,34 +1,42 @@
+using ClientApp.Infrastructure;
 using ClientApp.Models;
 using ClientApp.Services;
+using Domain.Accounts;
 using Domain.Billing;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.Messaging;
 using Infrastructure.Data;
 using Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Shared.Auth;
 
 namespace ClientApp.Controllers;
 
 [Authorize]
+[BypassClientSubscriptionRequirement]
 public class ProfileController : Controller
 {
     private readonly MasterAppDbContext _db;
     private readonly EffectiveClientContextService _clientContext;
     private readonly IClientEntraLifecycleService _entraLifecycle;
     private readonly IClientSubscriptionIdentitySyncService _subscriptionIdentitySync;
+    private readonly IAccountLifecycleService _accountLifecycle;
 
     public ProfileController(
         MasterAppDbContext db,
         EffectiveClientContextService clientContext,
         IClientEntraLifecycleService entraLifecycle,
-        IClientSubscriptionIdentitySyncService subscriptionIdentitySync)
+        IClientSubscriptionIdentitySyncService subscriptionIdentitySync,
+        IAccountLifecycleService accountLifecycle)
     {
         _db = db;
         _clientContext = clientContext;
         _entraLifecycle = entraLifecycle;
         _subscriptionIdentitySync = subscriptionIdentitySync;
+        _accountLifecycle = accountLifecycle;
     }
 
     private static string Norm(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();
@@ -177,6 +185,19 @@ public class ProfileController : Controller
             ViewBag.CanCancelSubscription = latestSubscription?.Status is
                 ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod;
             ViewBag.SubscriptionNotice = TempData["SubscriptionNotice"]?.ToString();
+
+            var userId = User.GetCanonicalUserId();
+            if (!string.IsNullOrWhiteSpace(userId))
+            {
+                var lifecycle = await _accountLifecycle.GetAsync(
+                    new AccountLifecycleSubject(
+                        userId,
+                        MessagingParticipantTypes.Client,
+                        context.ClientProfileId),
+                    HttpContext.RequestAborted);
+                ViewBag.AccountLifecycleState = lifecycle.State;
+                ViewBag.CanResumeAccount = lifecycle.CanResume;
+            }
         }
 
         return View("Index", model);
@@ -308,6 +329,53 @@ public class ProfileController : Controller
             model,
             context,
             "Profile saved.");
+    }
+
+    [HttpPost("/profile/account-access")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AccountAccess(string operation, string? confirmation)
+    {
+        var context = await _clientContext.ResolveAsync(User, Request.Cookies, allowRelink: false);
+        if (context is null || context.IsAgentView)
+            return Forbid();
+
+        var userId = User.GetCanonicalUserId();
+        if (string.IsNullOrWhiteSpace(userId))
+            return Forbid();
+
+        var subject = new AccountLifecycleSubject(
+            userId,
+            MessagingParticipantTypes.Client,
+            context.ClientProfileId);
+        AccountLifecycleOperationResult result;
+        if (string.Equals(operation, "pause", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.Equals(confirmation?.Trim(), "PAUSE", StringComparison.Ordinal))
+            {
+                var invalidModel = await BuildProfileViewModelAsync(context.Profile);
+                return await ProfileViewAsync(
+                    invalidModel,
+                    context,
+                    warning: "Type PAUSE to confirm that you want to pause your account.");
+            }
+
+            result = await _accountLifecycle.PauseAsync(subject, HttpContext.TraceIdentifier, HttpContext.RequestAborted);
+        }
+        else if (string.Equals(operation, "resume", StringComparison.OrdinalIgnoreCase))
+        {
+            result = await _accountLifecycle.ResumeAsync(subject, HttpContext.TraceIdentifier, HttpContext.RequestAborted);
+        }
+        else
+        {
+            return BadRequest();
+        }
+
+        var model = await BuildProfileViewModelAsync(context.Profile);
+        return await ProfileViewAsync(
+            model,
+            context,
+            result.Succeeded ? result.Message : null,
+            result.Succeeded ? null : result.Message);
     }
 
     [HttpGet("/profile/{clientUserId}")]

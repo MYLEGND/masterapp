@@ -252,8 +252,8 @@ public sealed class MessagingProfileImageResolverTests
         "TestAuth"));
         var httpContext = new DefaultHttpContext { User = user };
         var controller = new ClientAvatarController(
-            db,
             new EffectiveClientContextService(db),
+            CreateResolver(db),
             CreateResolver(db))
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext }
@@ -305,13 +305,13 @@ public sealed class MessagingProfileImageResolverTests
         var environment = new Mock<IWebHostEnvironment>();
         environment.SetupGet(value => value.WebRootPath).Returns(AppContext.BaseDirectory);
         var controller = new AgentAvatarController(
-            db,
             environment.Object,
             NullLogger<AgentAvatarController>.Instance,
             new AgentPortal.Services.Tracking.AgentTrackingResolver(
                 db,
                 NullLogger<AgentPortal.Services.Tracking.AgentTrackingResolver>.Instance),
             new AgentProfileAccessResolver(db),
+            CreateResolver(db),
             CreateResolver(db))
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext },
@@ -368,13 +368,13 @@ public sealed class MessagingProfileImageResolverTests
         var environment = new Mock<IWebHostEnvironment>();
         environment.SetupGet(value => value.WebRootPath).Returns(AppContext.BaseDirectory);
         var controller = new AgentAvatarController(
-            db,
             environment.Object,
             NullLogger<AgentAvatarController>.Instance,
             new AgentPortal.Services.Tracking.AgentTrackingResolver(
                 db,
                 NullLogger<AgentPortal.Services.Tracking.AgentTrackingResolver>.Instance),
             new AgentProfileAccessResolver(db),
+            CreateResolver(db),
             CreateResolver(db))
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext },
@@ -463,14 +463,19 @@ public sealed class MessagingProfileImageResolverTests
             db.ClientProfiles.AddRange(client, otherClient);
             await db.SaveChangesAsync();
 
-            var imageBytes = "legacy profile image"u8.ToArray();
+            var imageBytes = new byte[]
+            {
+                0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00,
+                0x57, 0x45, 0x42, 0x50, 0x00, 0x00
+            };
             await File.WriteAllBytesAsync(Path.Combine(root, $"{client.Id:D}.webp"), imageBytes);
             var environment = new Mock<IWebHostEnvironment>();
             environment.SetupGet(value => value.ContentRootPath).Returns(AppContext.BaseDirectory);
             var importer = new ClientProfileImageLegacyBackfillService(
                 db,
                 environment.Object,
-                NullLogger<ClientProfileImageLegacyBackfillService>.Instance);
+                NullLogger<ClientProfileImageLegacyBackfillService>.Instance,
+                CreateResolver(db));
 
             Assert.Equal(1, await importer.BackfillAsync());
 
@@ -508,14 +513,19 @@ public sealed class MessagingProfileImageResolverTests
             db.AgentProfiles.AddRange(agent, otherAgent);
             await db.SaveChangesAsync();
 
-            var imageBytes = "legacy agent profile image"u8.ToArray();
+            var imageBytes = new byte[]
+            {
+                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+                0x00, 0x00, 0x00, 0x0D
+            };
             await File.WriteAllBytesAsync(Path.Combine(root, "legacy-agent.png"), imageBytes);
             var environment = new Mock<IWebHostEnvironment>();
             environment.SetupGet(value => value.ContentRootPath).Returns(AppContext.BaseDirectory);
             var importer = new AgentProfileImageLegacyBackfillService(
                 db,
                 environment.Object,
-                NullLogger<AgentProfileImageLegacyBackfillService>.Instance);
+                NullLogger<AgentProfileImageLegacyBackfillService>.Instance,
+                CreateResolver(db));
 
             Assert.Equal(1, await importer.BackfillAsync());
 
@@ -551,14 +561,19 @@ public sealed class MessagingProfileImageResolverTests
             });
             await db.SaveChangesAsync();
 
-            var imageBytes = "legacy agent profile image"u8.ToArray();
+            var imageBytes = new byte[]
+            {
+                0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00,
+                0x57, 0x45, 0x42, 0x50, 0x00, 0x00
+            };
             await File.WriteAllBytesAsync(Path.Combine(root, "legacy-agent-id.webp"), imageBytes);
             var environment = new Mock<IWebHostEnvironment>();
             environment.SetupGet(value => value.ContentRootPath).Returns(AppContext.BaseDirectory);
             var importer = new AgentProfileImageLegacyBackfillService(
                 db,
                 environment.Object,
-                NullLogger<AgentProfileImageLegacyBackfillService>.Instance);
+                NullLogger<AgentProfileImageLegacyBackfillService>.Instance,
+                CreateResolver(db));
 
             Assert.Equal(1, await importer.BackfillAsync());
 

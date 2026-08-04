@@ -191,16 +191,53 @@ private struct MobileAccountPrivacyUpdate: Encodable, Sendable {
     let isPrivate: Bool
 }
 
+struct MobileAccountLifecycle: Decodable, Equatable, Sendable {
+    let state: String
+    let allowsFullAccess: Bool
+    let canResume: Bool
+    let pausedUtc: Date?
+    let deletionRequestedUtc: Date?
+    let message: String?
+
+    var blocksFullExperience: Bool { !allowsFullAccess }
+}
+
+private struct MobileAccountLifecycleConfirmation: Encodable, Sendable {
+    let confirmation: String
+}
+
+private struct MobileAccountLifecycleResumeRequest: Encodable, Sendable {}
+
 protocol MobileAccountAPI: Sendable {
     func profile(accessToken: String) async throws -> MobileAccountProfile
     func update(_ update: MobileAccountUpdate, accessToken: String) async throws
     func updateAvatar(_ update: MobileAccountAvatarUpdate, accessToken: String) async throws -> MobileAccountProfile
     func updatePrivacy(isPrivate: Bool, accessToken: String) async throws -> MobileAccountProfile
     func usernameAvailability(username: String, accessToken: String) async throws -> MobileUsernameAvailability
+    func lifecycle(accessToken: String) async throws -> MobileAccountLifecycle
+    func pauseAccount(accessToken: String) async throws -> MobileAccountLifecycle
+    func resumeAccount(accessToken: String) async throws -> MobileAccountLifecycle
+    func requestAccountDeletion(confirmation: String, accessToken: String) async throws -> MobileAccountLifecycle
 }
 
 extension MobileAccountAPI {
     func updatePrivacy(isPrivate: Bool, accessToken: String) async throws -> MobileAccountProfile {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func lifecycle(accessToken: String) async throws -> MobileAccountLifecycle {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func pauseAccount(accessToken: String) async throws -> MobileAccountLifecycle {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func resumeAccount(accessToken: String) async throws -> MobileAccountLifecycle {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func requestAccountDeletion(confirmation: String, accessToken: String) async throws -> MobileAccountLifecycle {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
 }
@@ -223,6 +260,22 @@ struct MobileUnavailableAccountAPI: MobileAccountAPI {
     }
 
     func usernameAvailability(username: String, accessToken: String) async throws -> MobileUsernameAvailability {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func lifecycle(accessToken: String) async throws -> MobileAccountLifecycle {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func pauseAccount(accessToken: String) async throws -> MobileAccountLifecycle {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func resumeAccount(accessToken: String) async throws -> MobileAccountLifecycle {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func requestAccountDeletion(confirmation: String, accessToken: String) async throws -> MobileAccountLifecycle {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
 }
@@ -274,6 +327,41 @@ struct URLSessionMobileAccountAPI: MobileAccountAPI {
             response: MobileUsernameAvailability.self)
     }
 
+    func lifecycle(accessToken: String) async throws -> MobileAccountLifecycle {
+        try await client.get(
+            "/api/v1/mobile/account/lifecycle",
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: MobileAccountLifecycle.self)
+    }
+
+    func pauseAccount(accessToken: String) async throws -> MobileAccountLifecycle {
+        try await client.post(
+            "/api/v1/mobile/account/lifecycle/pause",
+            body: MobileAccountLifecycleConfirmation(confirmation: "PAUSE"),
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: MobileAccountLifecycle.self)
+    }
+
+    func resumeAccount(accessToken: String) async throws -> MobileAccountLifecycle {
+        try await client.post(
+            "/api/v1/mobile/account/lifecycle/resume",
+            body: MobileAccountLifecycleResumeRequest(),
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: MobileAccountLifecycle.self)
+    }
+
+    func requestAccountDeletion(confirmation: String, accessToken: String) async throws -> MobileAccountLifecycle {
+        try await client.post(
+            "/api/v1/mobile/account/lifecycle/deletion-request",
+            body: MobileAccountLifecycleConfirmation(confirmation: confirmation),
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: MobileAccountLifecycle.self)
+    }
+
     private var participantHeader: [String: String] {
         ["X-Legend-Participant-Type": participantType.rawValue]
     }
@@ -288,6 +376,8 @@ final class MobileAccountStore: ObservableObject {
     @Published private(set) var isCheckingUsername = false
     @Published private(set) var isRefreshing = false
     @Published private(set) var refreshFailure: UserFacingFailure?
+    @Published private(set) var lifecycle: MobileAccountLifecycle?
+    @Published private(set) var isUpdatingLifecycle = false
 
     private let api: any MobileAccountAPI
     private let accessTokenProvider: () async throws -> String
@@ -377,6 +467,44 @@ final class MobileAccountStore: ObservableObject {
 
     func dismissActionFailure() {
         actionFailure = nil
+    }
+
+    func loadLifecycle() async {
+        guard !isUpdatingLifecycle else { return }
+        do {
+            let accessToken = try await accessTokenProvider()
+            lifecycle = try await api.lifecycle(accessToken: accessToken)
+        } catch {
+            // A lifecycle status is a protective gate, not a reason to replace a
+            // working profile with an error state. Mutations remain server-authorized.
+        }
+    }
+
+    @discardableResult
+    func pauseAccount() async -> Bool {
+        await updateLifecycle(
+            title: "Account pause unavailable",
+            operation: { api, token in
+                try await api.pauseAccount(accessToken: token)
+            })
+    }
+
+    @discardableResult
+    func resumeAccount() async -> Bool {
+        await updateLifecycle(
+            title: "Account resume unavailable",
+            operation: { api, token in
+                try await api.resumeAccount(accessToken: token)
+            })
+    }
+
+    @discardableResult
+    func requestAccountDeletion(confirmation: String) async -> Bool {
+        await updateLifecycle(
+            title: "Account closure unavailable",
+            operation: { api, token in
+                try await api.requestAccountDeletion(confirmation: confirmation, accessToken: token)
+            })
     }
 
     func setPrivateAccount(_ isPrivate: Bool) {
@@ -469,6 +597,24 @@ final class MobileAccountStore: ObservableObject {
         let result = await task.value
         loadTask = nil
         return result
+    }
+
+    private func updateLifecycle(
+        title: String,
+        operation: @escaping @Sendable (any MobileAccountAPI, String) async throws -> MobileAccountLifecycle
+    ) async -> Bool {
+        guard !isUpdatingLifecycle else { return false }
+        isUpdatingLifecycle = true
+        actionFailure = nil
+        defer { isUpdatingLifecycle = false }
+        do {
+            let accessToken = try await accessTokenProvider()
+            lifecycle = try await operation(api, accessToken)
+            return true
+        } catch {
+            actionFailure = failure(for: error, title: title)
+            return false
+        }
     }
 
     private func executeLoad(preservingCachedValue: Bool) async -> MobileStoreLoadResult {

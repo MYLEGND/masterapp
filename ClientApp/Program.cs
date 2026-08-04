@@ -35,6 +35,7 @@ builder.Services.AddControllersWithViews(options =>
         .Build();
 
     options.Filters.Add(new AuthorizeFilter(policy));
+    options.Filters.AddService<ClientAccountLifecycleAuthorizeFilter>();
     options.Filters.AddService<ClientSubscriptionAuthorizeFilter>();
 })
     .AddApplicationPart(typeof(MessagingHub).Assembly);
@@ -57,6 +58,7 @@ builder.Services.AddHostedService<ClientProfileImageLegacyBackfillHostedService>
 builder.Services.AddScoped<IMessagingActorContextResolver, ClientAppMessagingActorContextResolver>();
 builder.Services.AddSingleton<ClientAppReturnUrlNormalizer>();
 builder.Services.AddScoped<IClientEntraLifecycleService, ClientEntraLifecycleService>();
+builder.Services.AddScoped<IAccountLifecycleService, AccountLifecycleService>();
 builder.Services.AddScoped<IHouseholdMembershipService, HouseholdMembershipService>();
 builder.Services.AddScoped<IClientSubscriptionIdentitySyncService, ClientSubscriptionIdentitySyncService>();
 builder.Services.AddScoped<ClientIdentityContinuationService>();
@@ -64,6 +66,7 @@ builder.Services.AddScoped<ClientIdentityAccessService>();
 builder.Services.AddScoped<ClientAppSignInEntryPoint>();
 builder.Services.AddScoped<SubscriptionActivationService>();
 builder.Services.AddScoped<ClientSubscriptionAuthorizeFilter>();
+builder.Services.AddScoped<ClientAccountLifecycleAuthorizeFilter>();
 builder.Services.AddScoped<IAuthorizationHandler, ClientSubscriptionActiveHandler>();
 // Data Protection — platform authority. Application name is preserved
 // ("MasterApp.ClientApp") so purpose isolation is unchanged; this now PERSISTS
