@@ -1,7 +1,6 @@
 // Checked-in template only. Staging configuration must be supplied outside source control.
 LEGEND_API_BASE_URL =
 LEGEND_AGENT_ONLINE_ACCOUNT_URL = https:/$()/portal.mylegnd.com/Account/ManageProfile
-LEGEND_CLIENT_ONLINE_ACCOUNT_URL = https:/$()/client.mylegnd.com/subscription
 LEGEND_AUTHORIZATION_ENDPOINT =
 LEGEND_TOKEN_ENDPOINT =
 LEGEND_AUTH_CLIENT_ID =

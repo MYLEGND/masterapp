@@ -57,7 +57,6 @@ struct MobileConfiguration: Equatable, Sendable {
     let scope: String?
     let audience: String?
     let agentOnlineAccountURL: URL?
-    let clientOnlineAccountURL: URL?
 
     init(
         bundleIdentifier: String,
@@ -68,8 +67,7 @@ struct MobileConfiguration: Equatable, Sendable {
         redirectScheme: String?,
         scope: String?,
         audience: String?,
-        agentOnlineAccountURL: URL? = nil,
-        clientOnlineAccountURL: URL? = nil
+        agentOnlineAccountURL: URL? = nil
     ) {
         self.bundleIdentifier = bundleIdentifier
         self.apiBaseURL = apiBaseURL
@@ -80,7 +78,6 @@ struct MobileConfiguration: Equatable, Sendable {
         self.scope = scope
         self.audience = audience
         self.agentOnlineAccountURL = agentOnlineAccountURL
-        self.clientOnlineAccountURL = clientOnlineAccountURL
     }
 
     static var current: MobileConfiguration {
@@ -129,9 +126,7 @@ struct MobileConfigurationProvider: Sendable {
             scope: stringValue(for: .scope),
             audience: stringValue(for: .audience),
             agentOnlineAccountURL: urlValue(
-                forInfoDictionaryKey: "LegendAgentOnlineAccountURL"),
-            clientOnlineAccountURL: urlValue(
-                forInfoDictionaryKey: "LegendClientOnlineAccountURL")
+                forInfoDictionaryKey: "LegendAgentOnlineAccountURL")
         )
     }
 
@@ -169,20 +164,6 @@ struct MobileConfigurationProvider: Sendable {
             return nil
         }
         return url
-    }
-}
-
-extension MobileConfiguration {
-    /// The mobile app never owns a commercial account flow. These signed-in
-    /// browser destinations are configured per web application and kept out of
-    /// the mobile API contract, analytics, and local cache.
-    func onlineAccountURL(for participantType: ParticipantType) -> URL? {
-        switch participantType {
-        case .agent:
-            agentOnlineAccountURL
-        case .client:
-            clientOnlineAccountURL
-        }
     }
 }
 

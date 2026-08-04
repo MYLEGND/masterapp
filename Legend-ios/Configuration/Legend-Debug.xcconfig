@@ -1,7 +1,6 @@
 // Checked-in template only. Set non-placeholder values in an ignored local file or CI secret store.
 LEGEND_API_BASE_URL =
 LEGEND_AGENT_ONLINE_ACCOUNT_URL = https:/$()/portal.mylegnd.com/Account/ManageProfile
-LEGEND_CLIENT_ONLINE_ACCOUNT_URL = https:/$()/client.mylegnd.com/subscription
 LEGEND_AUTHORIZATION_ENDPOINT =
 LEGEND_TOKEN_ENDPOINT =
 LEGEND_AUTH_CLIENT_ID =
