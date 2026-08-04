@@ -501,7 +501,7 @@ final class MobileAccountStore: ObservableObject {
     @discardableResult
     func requestAccountDeletion(confirmation: String) async -> Bool {
         await updateLifecycle(
-            title: "Account closure unavailable",
+            title: "Account deletion unavailable",
             operation: { api, token in
                 try await api.requestAccountDeletion(confirmation: confirmation, accessToken: token)
             })

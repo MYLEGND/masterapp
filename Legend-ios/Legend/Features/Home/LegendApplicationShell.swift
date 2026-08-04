@@ -349,7 +349,7 @@ private struct LegendAccountLifecycleLockedView: View {
                 .font(.system(size: 44, weight: .semibold))
                 .foregroundStyle(LegendNextColor.goldBright)
 
-            Text(lifecycle.canResume ? "Your account is paused" : "Account closure is in progress")
+            Text(lifecycle.canResume ? "Your account is paused" : "Account deletion is in progress")
                 .font(LegendNextTypography.title)
                 .foregroundStyle(LegendNextColor.textPrimary)
                 .multilineTextAlignment(.center)
@@ -5220,9 +5220,7 @@ private struct LegendAccountView: View {
     @State private var selectedContent: LegendProfileContentFilter = .posts
     @State private var isEditing = false
     @State private var isShowingSettings = false
-    @State private var isPresentingCreatorInsights = false
-    @State private var isPresentingFollowRequests = false
-    @State private var isPresentingTranslationManagement = false
+    @State private var profileSettingsPresentation: ProfileSettingsPresentation?
     @State private var translationLanguageNames: [String: String] = [:]
     @State private var isConfirmingSignOut = false
     @State private var creationRoute: LegendSocialCreationRoute?
@@ -5293,9 +5291,6 @@ private struct LegendAccountView: View {
             if case .loaded(let profile) = account.state {
                 profileSettingsSheet(profile)
             }
-        }
-        .sheet(isPresented: $isPresentingTranslationManagement) {
-            LegendTranslationAccessManager(messages: messages)
         }
         .sheet(item: $creationRoute) { _ in
             LegendSocialCreationSheet(
@@ -5844,9 +5839,14 @@ private struct LegendAccountView: View {
         .padding(.horizontal, LegendNextSpacing.sm)
     }
 
-    private enum ProfileSettingsDestination: Hashable {
+    private enum ProfileSettingsPresentation: String, Identifiable {
+        case creatorInsights
+        case followRequests
         case translationLanguage
+        case translationManagement
         case accountAccess
+
+        var id: String { rawValue }
     }
 
     private func profileSettingsSheet(_ profile: MobileAccountProfile) -> some View {
@@ -5882,7 +5882,7 @@ private struct LegendAccountView: View {
                             LegendProfileSettingsDivider()
 
                             Button {
-                                isPresentingCreatorInsights = true
+                                profileSettingsPresentation = .creatorInsights
                             } label: {
                                 LegendProfileSettingsRow(
                                     title: "Creator insights",
@@ -5934,7 +5934,7 @@ private struct LegendAccountView: View {
                                 LegendProfileSettingsDivider()
 
                                 Button {
-                                    isPresentingFollowRequests = true
+                                    profileSettingsPresentation = .followRequests
                                 } label: {
                                     LegendProfileSettingsRow(
                                         title: "Follow requests",
@@ -5982,7 +5982,9 @@ private struct LegendAccountView: View {
                     LegendProfileSettingsSection(title: "Language translation") {
                         VStack(spacing: 0) {
                             if profile.translationAccess.isGranted {
-                                NavigationLink(value: ProfileSettingsDestination.translationLanguage) {
+                                Button {
+                                    profileSettingsPresentation = .translationLanguage
+                                } label: {
                                     LegendProfileSettingsRow(
                                         title: "Translation language",
                                         detail: legendLanguageName(profile.translationAccess.preferredCommunicationLanguage),
@@ -5995,7 +5997,7 @@ private struct LegendAccountView: View {
                                     LegendProfileSettingsDivider()
 
                                     Button {
-                                        isPresentingTranslationManagement = true
+                                        profileSettingsPresentation = .translationManagement
                                     } label: {
                                         LegendProfileSettingsRow(
                                             title: "Manage translation access",
@@ -6065,7 +6067,9 @@ private struct LegendAccountView: View {
                     }
 
                     LegendProfileSettingsSection(title: "Account access") {
-                        NavigationLink(value: ProfileSettingsDestination.accountAccess) {
+                        Button {
+                            profileSettingsPresentation = .accountAccess
+                        } label: {
                             LegendProfileSettingsRow(
                                 title: "Pause or delete account",
                                 detail: "Review pause and account-deletion options",
@@ -6094,29 +6098,29 @@ private struct LegendAccountView: View {
             }
             .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: ProfileSettingsDestination.self) { destination in
-                switch destination {
-                case .translationLanguage:
-                    LegendTranslationLanguagePicker(
-                        profile: profile,
-                        store: account,
-                        messages: messages)
-                case .accountAccess:
-                    LegendAccountAccessSheet(account: account)
-                }
-            }
         }
         .tint(LegendNextColor.gold)
         .legendNextSheetChrome()
-        .sheet(isPresented: $isPresentingCreatorInsights) {
-            if case .loaded(let snapshot) = social.state {
-                LegendCreatorInsightsSheet(
-                    insights: snapshot.creatorInsights,
-                    profileMetrics: snapshot.currentProfileMetrics)
+        .sheet(item: $profileSettingsPresentation) { presentation in
+            switch presentation {
+            case .creatorInsights:
+                if case .loaded(let snapshot) = social.state {
+                    LegendCreatorInsightsSheet(
+                        insights: snapshot.creatorInsights,
+                        profileMetrics: snapshot.currentProfileMetrics)
+                }
+            case .followRequests:
+                LegendFollowRequestsSheet(social: social)
+            case .translationLanguage:
+                LegendTranslationLanguagePicker(
+                    profile: profile,
+                    store: account,
+                    messages: messages)
+            case .translationManagement:
+                LegendTranslationAccessManager(messages: messages)
+            case .accountAccess:
+                LegendAccountAccessSheet(account: account)
             }
-        }
-        .sheet(isPresented: $isPresentingFollowRequests) {
-            LegendFollowRequestsSheet(social: social)
         }
         .task {
             guard profile.translationAccess.isGranted,
@@ -6256,7 +6260,7 @@ private struct LegendAccountView: View {
     }
 }
 
-/// Account closure is intentionally placed inside profile settings and requires
+/// Account deletion is intentionally placed inside profile settings and requires
 /// a second, typed confirmation. Pausing is the clear reversible alternative.
 private struct LegendAccountAccessSheet: View {
     @ObservedObject var account: MobileAccountStore
@@ -6290,7 +6294,7 @@ private struct LegendAccountAccessSheet: View {
 
                     LegendProfileSettingsSection(title: "Delete account") {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                            Text("Closure removes your access immediately. It is not the same as signing out. Account-owned data is handled through the applicable retention process; records required for legal, financial, insurance, security, or audit purposes may remain.")
+                            Text("Deleting your account removes Legend access immediately. It is not the same as signing out. Account-owned data is handled through the applicable retention process; records required for legal, financial, insurance, security, or audit purposes may remain.")
                                 .font(.subheadline)
                                 .foregroundStyle(LegendNextColor.textSecondary)
 
@@ -6299,7 +6303,7 @@ private struct LegendAccountAccessSheet: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(LegendNextColor.goldBright)
-                            .accessibilityHint("Opens the account closure confirmation")
+                            .accessibilityHint("Opens the account deletion confirmation")
                         }
                     }
 
@@ -6356,19 +6360,19 @@ private struct LegendAccountClosureConfirmationSheet: View {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
                         eyebrow: "Final confirmation",
-                        title: "Close your Legend account",
-                        detail: "This sends an account-closure request and disables Legend access immediately.",
+                        title: "Delete your Legend account",
+                        detail: "This sends an account-deletion request and disables Legend access immediately.",
                         dismiss: { dismiss() })
 
                     LegendProfileSettingsSection(title: "Before you continue") {
-                        Text("You will no longer be able to use Legend while closure is in progress. This action cannot be undone from the app. If you only need time away, go back and pause your account instead.")
+                        Text("You will no longer be able to use Legend while deletion is in progress. This action cannot be undone from the app. If you only need time away, go back and pause your account instead.")
                             .font(.subheadline)
                             .foregroundStyle(LegendNextColor.textSecondary)
                     }
 
-                    LegendProfileSettingsSection(title: "Confirm closure") {
+                    LegendProfileSettingsSection(title: "Confirm deletion") {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                            Text("Type DELETE to confirm that you want to start closing this account.")
+                            Text("Type DELETE to confirm that you want to delete this account.")
                                 .font(.subheadline)
                                 .foregroundStyle(LegendNextColor.textSecondary)
 
@@ -6385,7 +6389,7 @@ private struct LegendAccountClosureConfirmationSheet: View {
                         }
                     }
 
-                    Button(account.isUpdatingLifecycle ? "Sending closure request…" : "Request account closure") {
+                    Button(account.isUpdatingLifecycle ? "Sending deletion request…" : "Request account deletion") {
                         Task {
                             if await account.requestAccountDeletion(confirmation: confirmation) {
                                 dismiss()
