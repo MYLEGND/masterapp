@@ -121,6 +121,10 @@ struct LegendApplicationShell: View {
                 fullExperience
             }
         }
+        // Global sharing consumes the SAME account-scoped MessagingStore that
+        // owns the Messages tab. This environment value is a reference only:
+        // it creates no second store, recipient directory, inbox, or send path.
+        .environment(\.legendMessagingStore, messages)
         .task {
             await account.loadLifecycle()
         }
@@ -1602,9 +1606,9 @@ private struct LegendHomeView: View {
         LegendNextSurface(
             style: .navy,
             cornerRadius: LegendNextRadius.prominentCard,
-            padding: LegendNextSpacing.intermediate
+            padding: LegendNextSpacing.sm
         ) {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                 HStack(spacing: LegendNextSpacing.xs) {
                     Capsule()
                         .fill(LegendNextGradient.gold)

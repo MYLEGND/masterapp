@@ -770,17 +770,14 @@ struct LegendTodayActivitySummaryPill: View {
                         .tracking(0.8)
                         .foregroundStyle(LegendNextColor.goldBright)
 
-                    Text(summary)
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(.white.opacity(0.84))
-                        .lineLimit(1)
+                    categorySummary
                 }
 
                 Spacer(minLength: LegendNextSpacing.xs)
 
                 Text("\(activity.today.count)")
                     .font(.title3.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(LegendNextColor.danger)
                     .accessibilityHidden(true)
 
                 Image(systemName: "chevron.right")
@@ -797,6 +794,37 @@ struct LegendTodayActivitySummaryPill: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Open today's activity. \(summary)")
+    }
+
+    private var categorySummary: some View {
+        Group {
+            if activity.categoryCounts.isEmpty {
+                Text("Your day is clear")
+                    .foregroundStyle(.white.opacity(0.84))
+            } else {
+                HStack(spacing: 5) {
+                    ForEach(
+                        Array(activity.categoryCounts.prefix(3).enumerated()),
+                        id: \.element.id
+                    ) { index, category in
+                        if index > 0 {
+                            Text("·")
+                                .foregroundStyle(.white.opacity(0.46))
+                        }
+
+                        Text("\(category.count)")
+                            .foregroundStyle(category.source.tone.color)
+
+                        Text(category.source.title.lowercased())
+                            .foregroundStyle(.white.opacity(0.84))
+                    }
+                }
+            }
+        }
+        .font(LegendNextTypography.supporting)
+        .lineLimit(1)
+        .minimumScaleFactor(0.82)
+        .allowsTightening(true)
     }
 
     private var summary: String {

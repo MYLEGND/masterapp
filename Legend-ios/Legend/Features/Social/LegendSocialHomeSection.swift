@@ -3,6 +3,453 @@ import Combine
 import SwiftUI
 import UIKit
 
+// MARK: - Global Share Authority
+
+/// Supplies the already-existing account-scoped MessagingStore to every
+/// share surface without creating another messaging object or data authority.
+private struct LegendMessagingStoreEnvironmentKey: EnvironmentKey {
+    static let defaultValue: MessagingStore? = nil
+}
+
+extension EnvironmentValues {
+    var legendMessagingStore: MessagingStore? {
+        get { self[LegendMessagingStoreEnvironmentKey.self] }
+        set { self[LegendMessagingStoreEnvironmentKey.self] = newValue }
+    }
+}
+
+/// ONE application-wide sharing control for Legend social content.
+///
+/// Every Story, Post, and Hac share button routes here.
+///
+/// Internal sharing:
+///     canonical MessagingStore recipient directory
+///         -> canonical startConversation
+///         -> canonical MessagingStore.send
+///         -> server-owned inbox reconciliation
+///
+/// External sharing:
+///     native Apple ShareLink
+///
+/// This type owns presentation only. It owns no recipient cache, conversation
+/// cache, inbox, message persistence, social persistence, or API client.
+private struct LegendGlobalShareButton<Label: View>: View {
+    let post: MobileSocialPost
+    @ObservedObject var social: MobileSocialStore
+    let accessibilityLabel: String
+    @ViewBuilder let label: () -> Label
+
+    @Environment(\.legendMessagingStore) private var messaging
+    @State private var isPresentingShare = false
+
+    var body: some View {
+        Button {
+            isPresentingShare = true
+        } label: {
+            label()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+        .sheet(isPresented: $isPresentingShare) {
+            if let messaging {
+                LegendGlobalShareSheet(
+                    post: post,
+                    social: social,
+                    messaging: messaging
+                )
+            } else {
+                LegendGlobalShareUnavailableSheet()
+            }
+        }
+    }
+}
+
+private struct LegendGlobalShareSheet: View {
+    let post: MobileSocialPost
+    @ObservedObject var social: MobileSocialStore
+    @ObservedObject var messaging: MessagingStore
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var search = ""
+    @State private var recipientBeingSent: LogicalParticipantIdentity?
+
+    private var normalizedBody: String {
+        post.body.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// One textual representation for the existing message body contract.
+    ///
+    /// No fake social attachment or parallel message schema is introduced.
+    /// When the canonical messaging contract gains a typed social attachment,
+    /// that evolution can occur at the messaging authority instead of here.
+    private var internalMessageBody: String {
+        let heading =
+            "Shared a Legend \(post.displayContentType) by \(post.author.displayName)"
+
+        guard !normalizedBody.isEmpty else {
+            return heading
+        }
+
+        return "\(heading)\n\n\(normalizedBody)"
+    }
+
+    private var externalShareBody: String {
+        normalizedBody.isEmpty
+            ? "Legend \(post.displayContentType) by \(post.author.displayName)"
+            : normalizedBody
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                destinationHeader
+                internalShareSection
+            }
+            .background(LegendNextCanvas())
+            .navigationTitle("Share")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .font(.subheadline.weight(.semibold))
+                }
+            }
+            .task {
+                // This is the SAME recipient authority already used by Messages.
+                messaging.loadRecipients()
+            }
+            .onChange(of: search) { _, value in
+                messaging.searchRecipients(value)
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var destinationHeader: some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+            Text("SEND IN LEGEND")
+                .font(.caption2.weight(.bold))
+                .tracking(1.0)
+                .foregroundStyle(LegendNextColor.gold)
+
+            TextField("Search Legend members", text: $search)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .padding(.horizontal, LegendNextSpacing.md)
+                .frame(minHeight: 46)
+                .background(
+                    LegendNextColor.surfaceElevated,
+                    in: RoundedRectangle(
+                        cornerRadius: LegendNextRadius.control,
+                        style: .continuous
+                    )
+                )
+
+            recipientScopes
+
+            ShareLink(item: externalShareBody) {
+                HStack(spacing: LegendNextSpacing.sm) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.body.weight(.semibold))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Share outside Legend")
+                            .font(.subheadline.weight(.bold))
+
+                        Text("Messages, Mail, AirDrop, and other apps")
+                            .font(.caption)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                }
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .padding(.horizontal, LegendNextSpacing.md)
+                .frame(minHeight: 56)
+                .background(
+                    LegendNextColor.surfaceElevated,
+                    in: RoundedRectangle(
+                        cornerRadius: LegendNextRadius.control,
+                        style: .continuous
+                    )
+                )
+            }
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    // Preserve the existing external-share metric semantics.
+                    social.recordShare(postID: post.id)
+                }
+            )
+            .accessibilityLabel("Share outside Legend")
+        }
+        .padding(.horizontal, LegendNextSpacing.md)
+        .padding(.top, LegendNextSpacing.sm)
+        .padding(.bottom, LegendNextSpacing.sm)
+    }
+
+    @ViewBuilder
+    private var recipientScopes: some View {
+        if messaging.availableRecipientScopes.count > 1 {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: LegendNextSpacing.xs) {
+                    ForEach(messaging.availableRecipientScopes) { scope in
+                        Button {
+                            messaging.selectRecipientScope(scope)
+                            if !search.isEmpty {
+                                messaging.searchRecipients(search)
+                            }
+                        } label: {
+                            Text(scope.rawValue)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(
+                                    messaging.selectedRecipientScope == scope
+                                        ? LegendNextColor.midnight
+                                        : LegendNextColor.textSecondary
+                                )
+                                .padding(.horizontal, LegendNextSpacing.sm)
+                                .frame(minHeight: 34)
+                                .background(
+                                    messaging.selectedRecipientScope == scope
+                                        ? AnyShapeStyle(LegendNextGradient.gold)
+                                        : AnyShapeStyle(
+                                            LegendNextColor.surfaceElevated
+                                        ),
+                                    in: Capsule()
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var internalShareSection: some View {
+        switch messaging.recipientState {
+        case .idle, .loading:
+            VStack(spacing: LegendNextSpacing.sm) {
+                ProgressView()
+                Text("Loading Legend members")
+                    .font(.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        case .unavailable(let failure):
+            VStack(spacing: LegendNextSpacing.md) {
+                Image(systemName: "person.2.slash")
+                    .font(.title2)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+
+                Text(failure.title)
+                    .font(.headline)
+
+                Text(failure.message)
+                    .font(.subheadline)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .multilineTextAlignment(.center)
+
+                Button("Retry") {
+                    messaging.loadRecipients(search: search)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(LegendNextColor.gold)
+            }
+            .padding(LegendNextSpacing.lg)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        case .loaded(let recipients):
+            if recipients.isEmpty {
+                VStack(spacing: LegendNextSpacing.sm) {
+                    Image(systemName: "person.2.slash")
+                        .font(.title2)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+
+                    Text(search.isEmpty
+                         ? "No Legend members available"
+                         : "No matching Legend members")
+                        .font(.headline)
+
+                    Text(
+                        search.isEmpty
+                            ? "Try another member category."
+                            : "Try a different search."
+                    )
+                    .font(.subheadline)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(LegendNextSpacing.lg)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(recipients) { recipient in
+                            recipientRow(recipient)
+
+                            Divider()
+                                .padding(.leading, 62)
+                        }
+                    }
+                    .padding(.horizontal, LegendNextSpacing.md)
+                    .padding(.bottom, LegendNextSpacing.xl)
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+        }
+    }
+
+    private func recipientRow(
+        _ recipient: MessagingRecipient
+    ) -> some View {
+        Button {
+            sendInsideLegend(to: recipient)
+        } label: {
+            HStack(spacing: LegendNextSpacing.sm) {
+                LegendProfileAvatar(
+                    avatar: recipient.avatar,
+                    displayName: recipient.displayName,
+                    size: 44
+                )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(recipient.displayName)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.textPrimary)
+                            .lineLimit(1)
+
+                        if recipient.isVerified == true {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.caption2)
+                                .foregroundStyle(LegendNextColor.gold)
+                        }
+                    }
+
+                    if let email = recipient.email,
+                       !email.trimmingCharacters(
+                           in: .whitespacesAndNewlines
+                       ).isEmpty {
+                        Text(email)
+                            .font(.caption)
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: LegendNextSpacing.sm)
+
+                if recipientBeingSent == recipient.identity ||
+                   (messaging.isStartingConversation &&
+                    recipientBeingSent == recipient.identity) ||
+                   (messaging.isSending &&
+                    recipientBeingSent == recipient.identity) {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "paperplane.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.gold)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            LegendNextColor.gold.opacity(0.10),
+                            in: Circle()
+                        )
+                }
+            }
+            .padding(.vertical, LegendNextSpacing.sm)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(
+            recipientBeingSent != nil ||
+            messaging.isStartingConversation ||
+            messaging.isSending
+        )
+        .accessibilityLabel(
+            "Send \(post.displayContentType) to \(recipient.displayName)"
+        )
+    }
+
+    private func sendInsideLegend(
+        to recipient: MessagingRecipient
+    ) {
+        guard recipientBeingSent == nil,
+              !messaging.isStartingConversation,
+              !messaging.isSending else {
+            return
+        }
+
+        recipientBeingSent = recipient.identity
+
+        // Canonical direct-conversation authority.
+        // Existing conversations are returned/opened by the same server path;
+        // new direct conversations are created by that same authority.
+        messaging.startConversation(with: recipient) { _ in
+            Task { @MainActor in
+                // Canonical message-send authority. Successful first sends
+                // already reconcile the server-owned Previous Messages inbox.
+                let message = await messaging.send(
+                    body: internalMessageBody
+                )
+
+                recipientBeingSent = nil
+
+                guard message != nil else {
+                    return
+                }
+
+                // One social share metric path for a successful internal send.
+                social.recordShare(postID: post.id)
+                dismiss()
+            }
+        }
+    }
+}
+
+private struct LegendGlobalShareUnavailableSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: LegendNextSpacing.md) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.title2)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+
+                Text("Sharing unavailable")
+                    .font(.headline)
+
+                Text(
+                    "The account messaging authority is not available in this session."
+                )
+                .font(.subheadline)
+                .foregroundStyle(LegendNextColor.textSecondary)
+                .multilineTextAlignment(.center)
+            }
+            .padding(LegendNextSpacing.xl)
+            .navigationTitle("Share")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
 /// The native home is intentionally a composition over the protected mobile
 /// projections. It never derives a role, feed audience, finance state, or
 /// profile identity in the client.
@@ -44,9 +491,9 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
-            storyContent
+        VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
             dashboardContent
+            storyContent
             socialFeed
         }
         .sheet(item: $creationRoute) { _ in
@@ -146,20 +593,20 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     @ViewBuilder
     private var storyContent: some View {
         if case .loaded(let snapshot) = social.state {
-            LegendNextSurface(style: .plain, padding: LegendNextSpacing.sm) {
-                LegendStoryRail(
-                    currentActor: session.actor,
-                    collections: MobileSocialStoryCollection.grouped(
-                        from: snapshot.stories
-                    ),
-                    createStory: {
-                        creationRoute = .composer(.story)
-                    },
-                    selectStory: { collection in
-                        storyCollection = collection
-                    }
-                )
-            }
+            LegendStoryRail(
+                currentActor: session.actor,
+                collections: MobileSocialStoryCollection.grouped(
+                    from: snapshot.stories
+                ),
+                createStory: {
+                    creationRoute = .composer(.story)
+                },
+                selectStory: { collection in
+                    storyCollection = collection
+                }
+            )
+            .padding(.horizontal, LegendNextSpacing.xs)
+            .padding(.vertical, LegendNextSpacing.tiny)
         }
     }
 
@@ -178,10 +625,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
             )
 
         case .loaded(let snapshot):
-            VStack(alignment: .leading, spacing: 0) {
-                LegendNetworkFeedHero(
-                    postCount: snapshot.posts.count,
-                    promotedGroupCount: snapshot.promotedGroups.count)
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
 
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                 ForEach(snapshot.promotedGroups) { group in
@@ -255,118 +699,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
 /// The feed's single premium entry treatment. It gives the network content a
 /// strong visual handoff from Home into live community posts without creating a
 /// second styling system for the cards that follow.
-private struct LegendNetworkFeedHero: View {
-    let postCount: Int
-    let promotedGroupCount: Int
 
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var updateLabel: String {
-        let updateCount = postCount + promotedGroupCount
-        return updateCount == 0
-            ? "NETWORK READY"
-            : "\(updateCount) FRESH UPDATE\(updateCount == 1 ? "" : "S")"
-    }
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.prominentCard,
-                style: .continuous)
-                .fill(LegendNextColor.midnight.opacity(0.92))
-                .offset(y: 7)
-
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.prominentCard,
-                style: .continuous)
-                .fill(LegendNextGradient.hero)
-                .overlay(LegendNextGradient.heroGlow)
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: LegendNextRadius.prominentCard,
-                        style: .continuous)
-                        .strokeBorder(LegendNextGradient.premiumStroke, lineWidth: 1.2)
-                }
-
-            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                HStack(spacing: LegendNextSpacing.sm) {
-                    Label("LEGEND NETWORK", systemImage: "person.3.sequence.fill")
-                        .font(.caption2.weight(.bold))
-                        .tracking(1.15)
-                        .foregroundStyle(LegendNextColor.goldBright)
-
-                    Spacer(minLength: LegendNextSpacing.sm)
-
-                    Text(updateLabel)
-                        .font(.caption2.weight(.bold))
-                        .tracking(0.7)
-                        .foregroundStyle(.white.opacity(0.86))
-                        .padding(.horizontal, LegendNextSpacing.sm)
-                        .padding(.vertical, LegendNextSpacing.tiny)
-                        .background(.white.opacity(0.12), in: Capsule())
-                        .overlay {
-                            Capsule()
-                                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
-                        }
-                }
-
-                HStack(alignment: .bottom, spacing: LegendNextSpacing.md) {
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                        Text("Latest from Legend")
-                            .font(LegendNextTypography.hero)
-                            .foregroundStyle(.white)
-
-                        Text("Your people, groups, and moments—alive right now.")
-                            .font(LegendNextTypography.supporting)
-                            .foregroundStyle(.white.opacity(0.74))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    ZStack {
-                        Circle()
-                            .fill(LegendNextGradient.gold)
-                        Image(systemName: "sparkles")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(LegendNextColor.midnight)
-                    }
-                    .frame(width: 48, height: 48)
-                    .shadow(
-                        color: LegendNextColor.gold.opacity(0.35),
-                        radius: 10,
-                        y: 4)
-                }
-
-                HStack(spacing: LegendNextSpacing.sm) {
-                    Circle()
-                        .fill(LegendNextColor.goldBright)
-                        .frame(width: 6, height: 6)
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    LegendNextColor.goldBright.opacity(0.82),
-                                    .white.opacity(0.14)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing))
-                        .frame(height: 1)
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(LegendNextColor.goldBright)
-                }
-                .padding(.top, LegendNextSpacing.tiny)
-            }
-            .padding(LegendNextSpacing.intermediate)
-        }
-        .shadow(
-            color: LegendNextColor.elevatedShadow(for: colorScheme).opacity(0.92),
-            radius: LegendNextElevation.cardRadius,
-            y: LegendNextElevation.cardY)
-        .padding(.bottom, LegendNextSpacing.xs)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Legend network. \(updateLabel.lowercased()). Latest from Legend.")
-    }
-}
 
 /// A safe invitation projection, not a conversation preview. The group must be
 /// joined through Messaging before the normal conversation API can reveal any
@@ -377,8 +710,12 @@ private struct LegendPromotedGroupCard: View {
     let join: () -> Void
 
     var body: some View {
-        LegendNextSurface(style: .navy, cornerRadius: LegendNextRadius.prominentCard) {
-            HStack(alignment: .center, spacing: LegendNextSpacing.md) {
+        LegendNextSurface(
+            style: .navy,
+            cornerRadius: LegendNextRadius.prominentCard,
+            padding: LegendNextSpacing.sm
+        ) {
+            HStack(alignment: .center, spacing: LegendNextSpacing.sm) {
                 groupAvatar
 
                 VStack(alignment: .leading, spacing: LegendNextSpacing.tiny) {
@@ -388,9 +725,9 @@ private struct LegendPromotedGroupCard: View {
                         .foregroundStyle(LegendNextColor.goldBright)
 
                     Text(group.subject)
-                        .font(.headline.weight(.bold))
+                        .font(.subheadline.weight(.bold))
                         .foregroundStyle(.white)
-                        .lineLimit(2)
+                        .lineLimit(1)
 
                     Text("Hosted by \(group.owner.displayName) · \(group.activeMemberCount) members")
                         .font(.caption)
@@ -403,8 +740,9 @@ private struct LegendPromotedGroupCard: View {
                 Button(group.isJoinedByCurrentActor ? "Joined" : "Join") {
                     join()
                 }
-                .font(.subheadline.weight(.bold))
+                .font(.caption.weight(.bold))
                 .buttonStyle(.borderedProminent)
+                .controlSize(.small)
                 .tint(group.isJoinedByCurrentActor ? .white.opacity(0.18) : LegendNextColor.gold)
                 .foregroundStyle(group.isJoinedByCurrentActor ? .white : LegendNextColor.midnight)
                 .disabled(group.isJoinedByCurrentActor || isJoining)
@@ -424,14 +762,17 @@ private struct LegendPromotedGroupCard: View {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFill()
-                .frame(width: 54, height: 54)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         } else {
             Image(systemName: "person.3.fill")
                 .font(.title3.weight(.bold))
                 .foregroundStyle(LegendNextColor.midnight)
-                .frame(width: 54, height: 54)
-                .background(LegendNextGradient.gold, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .frame(width: 44, height: 44)
+                .background(
+                    LegendNextGradient.gold,
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
         }
     }
 }
@@ -452,7 +793,7 @@ private struct LegendStoryRail: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: LegendNextSpacing.md) {
+            HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
                 currentStoryControl
 
                 ForEach(otherCollections) { collection in
@@ -540,10 +881,14 @@ private struct LegendStoryViewer: View {
     @ObservedObject var social: MobileSocialStore
 
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var isReplyFocused: Bool
+
     @State private var itemIndex = 0
     @State private var progress = 0.0
     @State private var storyDurationSeconds = 5.0
     @State private var isPaused = false
+    @State private var storyPressStartedAt: Date?
+    @State private var isHoldingStory = false
     @State private var hasRecordedDeparture = false
     @State private var replyBody = ""
 
@@ -553,67 +898,85 @@ private struct LegendStoryViewer: View {
         in: .common
     ).autoconnect()
 
-    private var item: MobileSocialPost {
+    /// The collection establishes Story order for this viewer session.
+    /// Mutable engagement state comes back from MobileSocialStore so the
+    /// viewer never creates a second reaction/comment source of truth.
+    private var collectionItem: MobileSocialPost {
         collection.items[itemIndex]
+    }
+
+    private var item: MobileSocialPost {
+        guard case .loaded(let snapshot) = social.state else {
+            return collectionItem
+        }
+
+        return snapshot.stories.first(where: { $0.id == collectionItem.id })
+            ?? collectionItem
     }
 
     private var isOwner: Bool {
         collection.author.identity == currentIdentity
     }
 
+    private var isVideoStory: Bool {
+        item.media.contains(where: \.isVideo)
+    }
+
+    private var normalizedReplyBody: String {
+        replyBody.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                LegendNextColor.midnight.ignoresSafeArea()
+                LegendNextColor.midnight
+                    .ignoresSafeArea()
 
                 LegendStoryMedia(
                     story: item,
                     social: social,
                     isPaused: isPaused,
                     playbackProgress: { current, duration in
+                        guard !isReplyFocused else { return }
                         storyDurationSeconds = max(duration, 0.1)
-                        progress = min(max(current / storyDurationSeconds, 0), 1)
+                        progress = min(
+                            max(current / storyDurationSeconds, 0),
+                            1
+                        )
                     },
                     playbackFinished: {
+                        guard !isReplyFocused else { return }
                         moveForward(manual: false)
-                    })
-                    .id(item.id)
-                    .frame(
-                        width: geometry.size.width,
-                        height: geometry.size.height)
-                    .background(LegendNextColor.midnight)
+                    }
+                )
+                .id(collectionItem.id)
+                .frame(
+                    width: geometry.size.width,
+                    height: geometry.size.height
+                )
+                .background(LegendNextColor.midnight)
 
-                HStack(spacing: 0) {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture { moveBackward() }
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture { moveForward(manual: true) }
-                }
+                navigationTapZones
 
                 VStack(spacing: LegendNextSpacing.sm) {
                     progressBars
                     header
-                    Spacer()
+
+                    Spacer(minLength: 0)
+
                     footer
                 }
                 .padding(.horizontal, LegendNextSpacing.md)
-                .padding(.vertical, LegendNextSpacing.lg)
+                .padding(
+                    .top,
+                    max(geometry.safeAreaInsets.top, LegendNextSpacing.sm)
+                )
+                .padding(
+                    .bottom,
+                    max(geometry.safeAreaInsets.bottom, LegendNextSpacing.md)
+                )
             }
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 30)
-                    .onEnded { value in
-                        if value.translation.height > 70 {
-                            closeStory(recordExit: true)
-                        }
-                    })
-            .onLongPressGesture(
-                minimumDuration: 0.12,
-                maximumDistance: 12,
-                pressing: { isPaused = $0 },
-                perform: {})
+            .simultaneousGesture(dismissGesture)
         }
         .onAppear {
             recordInitialView()
@@ -622,11 +985,25 @@ private struct LegendStoryViewer: View {
             progress = 0
             storyDurationSeconds = 5
             isPaused = false
+            storyPressStartedAt = nil
+            isHoldingStory = false
+            isReplyFocused = false
+            replyBody = ""
             recordInitialView()
         }
+        .onChange(of: isReplyFocused) { _, focused in
+            isPaused = focused
+        }
         .onReceive(imageProgressTimer) { _ in
-            guard !isPaused, !item.media.contains(where: \.isVideo) else { return }
+            guard !isPaused,
+                  !isReplyFocused,
+                  !isVideoStory
+            else {
+                return
+            }
+
             progress += 0.05 / storyDurationSeconds
+
             if progress >= 1 {
                 moveForward(manual: false)
             }
@@ -637,7 +1014,127 @@ private struct LegendStoryViewer: View {
             }
         }
         .interactiveDismissDisabled(false)
-        .accessibilityLabel("Story viewer for \(collection.author.displayName)")
+        .accessibilityLabel(
+            "Story viewer for \(collection.author.displayName)"
+        )
+    }
+
+    /// Navigation owns only the center media region. It deliberately leaves
+    /// the header and footer outside its hit-testing surface so close, reply,
+    /// reaction, and share controls cannot be intercepted by Story navigation.
+    private var navigationTapZones: some View {
+        VStack(spacing: 0) {
+            Color.clear
+                .frame(height: 104)
+                .allowsHitTesting(false)
+
+            HStack(spacing: 0) {
+                storyInteractionZone(
+                    accessibilityLabel: "Previous story",
+                    moveForwardOnTap: false
+                )
+
+                storyInteractionZone(
+                    accessibilityLabel: "Next story",
+                    moveForwardOnTap: true
+                )
+            }
+
+            Color.clear
+                .frame(height: 128)
+                .allowsHitTesting(false)
+        }
+        .padding(.horizontal, 2)
+    }
+
+    private func storyInteractionZone(
+        accessibilityLabel: String,
+        moveForwardOnTap: Bool
+    ) -> some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .accessibilityLabel(accessibilityLabel)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        beginStoryPress()
+                    }
+                    .onEnded { value in
+                        endStoryPress(
+                            translation: value.translation,
+                            moveForwardOnTap: moveForwardOnTap
+                        )
+                    }
+            )
+    }
+
+    private func beginStoryPress() {
+        guard !isReplyFocused else {
+            return
+        }
+
+        if storyPressStartedAt == nil {
+            storyPressStartedAt = Date()
+            isHoldingStory = true
+            isPaused = true
+        }
+    }
+
+    private func endStoryPress(
+        translation: CGSize,
+        moveForwardOnTap: Bool
+    ) {
+        guard !isReplyFocused else {
+            storyPressStartedAt = nil
+            isHoldingStory = false
+            isPaused = true
+            return
+        }
+
+        let startedAt = storyPressStartedAt ?? Date()
+        let pressDuration = Date().timeIntervalSince(startedAt)
+
+        storyPressStartedAt = nil
+        isHoldingStory = false
+        isPaused = false
+
+        let horizontalMovement = abs(translation.width)
+        let verticalMovement = abs(translation.height)
+        let movedSignificantly =
+            horizontalMovement >= 18 ||
+            verticalMovement >= 18
+
+        // A held Story resumes exactly where it was.
+        // It must never be interpreted as previous/next.
+        guard pressDuration < 0.22,
+              !movedSignificantly
+        else {
+            return
+        }
+
+        if moveForwardOnTap {
+            moveForward(manual: true)
+        } else {
+            moveBackward()
+        }
+    }
+
+    private var dismissGesture: some Gesture {
+        DragGesture(minimumDistance: 30)
+            .onEnded { value in
+                guard !isReplyFocused else { return }
+
+                let vertical = value.translation.height
+                let horizontal = abs(value.translation.width)
+
+                guard vertical > 70,
+                      vertical > horizontal
+                else {
+                    return
+                }
+
+                closeStory(recordExit: true)
+            }
     }
 
     private var progressBars: some View {
@@ -649,13 +1146,19 @@ private struct LegendStoryViewer: View {
                         .overlay(alignment: .leading) {
                             Capsule()
                                 .fill(.white)
-                                .frame(width: proxy.size.width * progressValue(for: index))
+                                .frame(
+                                    width: proxy.size.width
+                                        * progressValue(for: index)
+                                )
                         }
                 }
                 .frame(height: 3)
             }
         }
-        .accessibilityLabel("Story \(itemIndex + 1) of \(collection.items.count)")
+        .accessibilityLabel(
+            "Story \(itemIndex + 1) of \(collection.items.count)"
+        )
+        .allowsHitTesting(false)
     }
 
     private var header: some View {
@@ -663,7 +1166,9 @@ private struct LegendStoryViewer: View {
             LegendProfileAvatar(
                 avatar: collection.author.avatar,
                 displayName: collection.author.displayName,
-                size: 38)
+                size: 38
+            )
+
             VStack(alignment: .leading, spacing: 2) {
                 if isOwner {
                     Text("Your story")
@@ -674,120 +1179,245 @@ private struct LegendStoryViewer: View {
                         isVerified: collection.author.isVerified == true,
                         font: .subheadline.weight(.bold),
                         textColor: .white,
-                        badgePlacement: .alongsideProfileImage)
+                        badgePlacement: .alongsideProfileImage
+                    )
                 }
+
                 Text(item.postedUTC, style: .relative)
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.76))
             }
             .foregroundStyle(.white)
 
-            Spacer()
+            Spacer(minLength: LegendNextSpacing.sm)
 
             if isOwner {
-                Label("\(item.metrics.uniqueViewerCount)", systemImage: "eye")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .accessibilityLabel("\(item.metrics.uniqueViewerCount) unique viewers")
+                Label(
+                    "\(item.metrics.uniqueViewerCount)",
+                    systemImage: "eye"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .accessibilityLabel(
+                    "\(item.metrics.uniqueViewerCount) unique viewers"
+                )
             }
 
             Button {
                 closeStory(recordExit: true)
             } label: {
                 Image(systemName: "xmark")
-                    .font(.subheadline.weight(.bold))
-                    .frame(width: 36, height: 36)
-                    .background(LegendNextColor.midnight.opacity(0.42), in: Circle())
+                    .font(.body.weight(.bold))
+                    .frame(width: 44, height: 44)
+                    .background(
+                        LegendNextColor.midnight.opacity(0.52),
+                        in: Circle()
+                    )
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(.white)
             .accessibilityLabel("Close story")
         }
+        .contentShape(Rectangle())
     }
 
+    @ViewBuilder
     private var footer: some View {
-        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-            if !item.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.sm
+        ) {
+            if !item.body
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+            {
                 Text(item.body)
                     .font(.body.weight(.medium))
                     .foregroundStyle(.white)
                     .lineLimit(4)
-                    .shadow(color: LegendNextColor.midnight.opacity(0.45), radius: 4)
+                    .shadow(
+                        color: LegendNextColor.midnight.opacity(0.45),
+                        radius: 4
+                    )
             }
 
-            HStack(spacing: LegendNextSpacing.sm) {
-                TextField("Reply to \(collection.author.displayName)", text: $replyBody)
-                    .textFieldStyle(.plain)
-                    .padding(.horizontal, LegendNextSpacing.sm)
-                    .padding(.vertical, 11)
-                    .background(LegendNextColor.midnight.opacity(0.46), in: Capsule())
-                    .foregroundStyle(.white)
-                    .accessibilityLabel("Reply to story")
+            if isOwner {
+                ownerFooter
+            } else {
+                viewerFooter
+            }
+        }
+        .contentShape(Rectangle())
+    }
 
+    private var ownerFooter: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            Label(
+                "\(item.metrics.uniqueViewerCount)",
+                systemImage: "eye.fill"
+            )
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, LegendNextSpacing.md)
+            .frame(minHeight: 44)
+            .background(
+                LegendNextColor.midnight.opacity(0.52),
+                in: Capsule()
+            )
+            .accessibilityLabel(
+                "\(item.metrics.uniqueViewerCount) unique viewers"
+            )
+
+            Spacer(minLength: 0)
+
+            storyShareLink
+        }
+    }
+
+    private var viewerFooter: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            TextField(
+                "Reply to \(collection.author.displayName)",
+                text: $replyBody
+            )
+            .focused($isReplyFocused)
+            .textFieldStyle(.plain)
+            .submitLabel(.send)
+            .onSubmit(submitReply)
+            .padding(.horizontal, LegendNextSpacing.md)
+            .frame(minHeight: 44)
+            .background(
+                LegendNextColor.midnight.opacity(0.58),
+                in: Capsule()
+            )
+            .overlay {
+                Capsule()
+                    .strokeBorder(
+                        .white.opacity(isReplyFocused ? 0.42 : 0.16),
+                        lineWidth: 1
+                    )
+            }
+            .foregroundStyle(.white)
+            .accessibilityLabel("Reply to story")
+
+            if !normalizedReplyBody.isEmpty {
                 Button(action: submitReply) {
                     Image(systemName: "paperplane.fill")
-                        .frame(width: 40, height: 40)
-                        .background(.white.opacity(0.18), in: Circle())
+                        .font(.body.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                        .background(.white.opacity(0.20), in: Circle())
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
-                .disabled(replyBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityLabel("Send story reply")
-
-                Button {
-                    social.toggleReaction(postID: item.id)
-                } label: {
-                    Image(systemName: item.reactedByCurrentActor ? "heart.fill" : "heart")
-                        .frame(width: 40, height: 40)
-                        .background(LegendNextColor.midnight.opacity(0.46), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(item.reactedByCurrentActor ? LegendNextColor.danger : .white)
-                .accessibilityLabel(item.reactedByCurrentActor ? "Remove appreciation" : "Appreciate story")
-
-                ShareLink(item: "Legend story: \(item.body)") {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(width: 40, height: 40)
-                        .background(LegendNextColor.midnight.opacity(0.46), in: Circle())
-                }
-                .simultaneousGesture(TapGesture().onEnded {
-                    social.recordShare(postID: item.id)
-                })
-                .foregroundStyle(.white)
-                .accessibilityLabel("Share story")
             }
+
+            Button {
+                social.toggleReaction(postID: item.id)
+            } label: {
+                Image(
+                    systemName: item.reactedByCurrentActor
+                        ? "heart.fill"
+                        : "heart"
+                )
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .background(
+                    LegendNextColor.midnight.opacity(0.58),
+                    in: Circle()
+                )
+                .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(
+                item.reactedByCurrentActor
+                    ? LegendNextColor.danger
+                    : .white
+            )
+            .accessibilityLabel(
+                item.reactedByCurrentActor
+                    ? "Remove appreciation"
+                    : "Appreciate story"
+            )
+
+            storyShareLink
+        }
+    }
+
+    private var storyShareLink: some View {
+        LegendGlobalShareButton(
+            post: item,
+            social: social,
+            accessibilityLabel: "Share story"
+        ) {
+            Image(systemName: "square.and.arrow.up")
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .background(
+                    LegendNextColor.midnight.opacity(0.58),
+                    in: Circle()
+                )
+                .contentShape(Circle())
+                .foregroundStyle(.white)
         }
     }
 
     private func progressValue(for index: Int) -> CGFloat {
-        if index < itemIndex { return 1 }
-        if index > itemIndex { return 0 }
-        return CGFloat(progress)
+        if index < itemIndex {
+            return 1
+        }
+
+        if index > itemIndex {
+            return 0
+        }
+
+        return CGFloat(min(max(progress, 0), 1))
     }
 
     private func moveForward(manual: Bool) {
-        recordCurrent(interaction: manual ? "TapForward" : nil, completed: true)
+        guard !isReplyFocused else { return }
+
+        recordCurrent(
+            interaction: manual ? "TapForward" : nil,
+            completed: true
+        )
+
         guard itemIndex < collection.items.count - 1 else {
             closeStory(recordExit: false)
             return
         }
+
         itemIndex += 1
     }
 
     private func moveBackward() {
+        guard !isReplyFocused else { return }
+
         guard itemIndex > 0 else {
             progress = 0
             return
         }
+
         recordCurrent(interaction: "TapBackward")
         itemIndex -= 1
     }
 
     private func submitReply() {
-        let body = replyBody.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else { return }
-        social.addComment(postID: item.id, body: body)
+        let body = normalizedReplyBody
+
+        guard !body.isEmpty else {
+            return
+        }
+
+        social.addComment(
+            postID: item.id,
+            body: body
+        )
+
         replyBody = ""
+        isReplyFocused = false
     }
 
     private func recordInitialView() {
@@ -798,18 +1428,38 @@ private struct LegendStoryViewer: View {
         interaction: String?,
         completed: Bool = false
     ) {
+        let duration = max(storyDurationSeconds, 0.1)
+        let boundedProgress = min(max(progress, 0), 1)
+
         social.recordView(
             postID: item.id,
-            watchDurationSeconds: Decimal(completed ? storyDurationSeconds : progress * storyDurationSeconds),
-            watchCompletionPercentage: Decimal(completed ? 100 : progress * 100),
-            storyInteractionType: interaction)
+            watchDurationSeconds: Decimal(
+                completed
+                    ? duration
+                    : boundedProgress * duration
+            ),
+            watchCompletionPercentage: Decimal(
+                completed
+                    ? 100
+                    : boundedProgress * 100
+            ),
+            storyInteractionType: interaction
+        )
     }
 
     private func closeStory(recordExit: Bool) {
+        guard !hasRecordedDeparture else {
+            dismiss()
+            return
+        }
+
         hasRecordedDeparture = true
+        isReplyFocused = false
+
         if recordExit {
             recordCurrent(interaction: "Exit")
         }
+
         dismiss()
     }
 }
@@ -1366,22 +2016,16 @@ private struct LegendSocialPostCard: View {
                     : "Repost this update"
             )
 
-            ShareLink(
-                item: post.body.isEmpty
-                    ? "Legend \(post.displayContentType) by \(post.author.displayName)"
-                    : post.body
+            LegendGlobalShareButton(
+                post: post,
+                social: social,
+                accessibilityLabel: "Share this update"
             ) {
                 actionMetricLabel(
                     symbolName: "paperplane",
                     count: post.metrics.shareCount
                 )
             }
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    social.recordShare(postID: post.id)
-                }
-            )
-            .accessibilityLabel("Share this update")
 
             Spacer(minLength: 0)
         }
@@ -2658,20 +3302,16 @@ private struct LegendHacViewportPage: View {
                     tint: post.repostedByCurrentActor ? LegendNextColor.information : .white,
                     action: { social.toggleRepost(postID: post.id) })
 
-                ShareLink(
-                    item: post.body.isEmpty
-                        ? "Legend Hac by \(post.author.displayName)"
-                        : post.body
+                LegendGlobalShareButton(
+                    post: post,
+                    social: social,
+                    accessibilityLabel: "Share Hac"
                 ) {
                     hacActionLabel(
                         symbol: "paperplane",
                         count: post.metrics.shareCount,
                         tint: .white)
                 }
-                .simultaneousGesture(TapGesture().onEnded {
-                    social.recordShare(postID: post.id)
-                })
-                .accessibilityLabel("Share Hac")
 
                 hacAction(
                     symbol: playback.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
