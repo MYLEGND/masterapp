@@ -238,9 +238,15 @@ internal sealed class MessagingProfileImageResolver :
         CancellationToken cancellationToken = default)
     {
         var references = participants
-            .Select(reference => new MessagingParticipantReference(
-                Normalize(reference.UserId),
-                reference.ParticipantType?.Trim() ?? string.Empty))
+            .Select(reference =>
+            {
+                var key = MessagingParticipantIdentityKey.Create(
+                    reference.UserId,
+                    reference.ParticipantType);
+                return new MessagingParticipantReference(
+                    key.UserId,
+                    key.ParticipantType);
+            })
             .Where(reference =>
                 !string.IsNullOrWhiteSpace(reference.UserId) &&
                 (reference.ParticipantType == MessagingParticipantTypes.Agent ||
@@ -279,7 +285,12 @@ internal sealed class MessagingProfileImageResolver :
             foreach (var userId in agentUserIds)
             {
                 var matches = agents
-                    .Where(profile => string.Equals(Normalize(profile.UserId), userId, StringComparison.Ordinal))
+                    .Where(profile => string.Equals(
+                        MessagingParticipantIdentityKey.Create(
+                            profile.UserId,
+                            MessagingParticipantTypes.Agent).UserId,
+                        userId,
+                        StringComparison.Ordinal))
                     .ToArray();
                 if (matches.Length != 1)
                 {
@@ -325,8 +336,18 @@ internal sealed class MessagingProfileImageResolver :
             {
                 var matches = clients
                     .Where(profile =>
-                        string.Equals(Normalize(profile.ClientUserId), userId, StringComparison.Ordinal) ||
-                        string.Equals(Normalize(profile.ExternalIdentityObjectId), userId, StringComparison.Ordinal))
+                        string.Equals(
+                            MessagingParticipantIdentityKey.Create(
+                                profile.ClientUserId,
+                                MessagingParticipantTypes.Client).UserId,
+                            userId,
+                            StringComparison.Ordinal) ||
+                        string.Equals(
+                            MessagingParticipantIdentityKey.Create(
+                                profile.ExternalIdentityObjectId,
+                                MessagingParticipantTypes.Client).UserId,
+                            userId,
+                            StringComparison.Ordinal))
                     .ToArray();
                 if (matches.Length != 1)
                 {
@@ -409,7 +430,9 @@ internal sealed class MessagingProfileImageResolver :
                 continue;
             }
 
-            userId = Normalize(userId);
+            userId = MessagingParticipantIdentityKey.Create(
+                userId,
+                MessagingParticipantTypes.Client).UserId;
             var displayName = FirstNonEmpty(
                 $"{profile.FirstName} {profile.LastName}".Trim(),
                 profile.Email,
@@ -482,8 +505,6 @@ internal sealed class MessagingProfileImageResolver :
             "image/webp" => "image/webp",
             _ => null
         };
-
-    private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;
 
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;

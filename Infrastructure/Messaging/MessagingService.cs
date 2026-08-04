@@ -2261,7 +2261,11 @@ internal sealed class MessagingService : IMessagingService
         }
 
         var identities = await _participantIdentities.ResolveIdentitiesAsync([counterparty], cancellationToken);
-        if (!identities.TryGetValue((counterparty.UserId, counterparty.ParticipantType), out var identity))
+        if (!identities.TryGetValue(
+                MessagingParticipantIdentityKey.Create(
+                    counterparty.UserId,
+                    counterparty.ParticipantType),
+                out var identity))
             return MessagingConversationCallOptionsResult.Failure("MESSAGING_CALL_NOT_AVAILABLE", "This participant is no longer available for calling.");
 
         var phone = NormalizePhoneForNativeCall(identity.Phone);

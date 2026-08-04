@@ -116,6 +116,21 @@ public static class MessagingAttachmentScanStatuses
     public const string Rejected = "Rejected";
 }
 
+/// <summary>
+/// Canonical key contract for every typed messaging participant lookup.
+/// User IDs are case-insensitive and whitespace-normalized, while participant
+/// type remains part of the identity so Agent and Client authorities can never
+/// collide.
+/// </summary>
+public static class MessagingParticipantIdentityKey
+{
+    public static (string UserId, string ParticipantType) Create(
+        string? userId,
+        string? participantType) => (
+        userId?.Trim().ToLowerInvariant() ?? string.Empty,
+        participantType?.Trim() ?? string.Empty);
+}
+
 public sealed record MessagingActor(string UserId, string ParticipantType);
 
 public sealed record MessagingConversationListQuery(

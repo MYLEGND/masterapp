@@ -146,7 +146,11 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         var response = new List<MobileMessagingRecipientDto>();
         foreach (var recipient in result.Recipients)
         {
-            identities.TryGetValue((recipient.UserId, recipient.ParticipantType), out var identity);
+            identities.TryGetValue(
+                MessagingParticipantIdentityKey.Create(
+                    recipient.UserId,
+                    recipient.ParticipantType),
+                out var identity);
             response.Add((new MobileMessagingRecipientDto(
                 new MobileLogicalIdentityDto(recipient.UserId, recipient.ParticipantType),
                 identity?.ProfileId.ToString("D") ?? string.Empty,
@@ -371,7 +375,11 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         foreach (var entry in result.Recipients)
         {
             var recipient = entry.Recipient;
-            identities.TryGetValue((recipient.UserId, recipient.ParticipantType), out var identity);
+            identities.TryGetValue(
+                MessagingParticipantIdentityKey.Create(
+                    recipient.UserId,
+                    recipient.ParticipantType),
+                out var identity);
             response.Add((new MobileMessagingRecipientDto(
                 new MobileLogicalIdentityDto(recipient.UserId, recipient.ParticipantType),
                 identity?.ProfileId.ToString("D") ?? string.Empty,
@@ -960,7 +968,11 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity> identities,
         MobileAvatarDto? avatar = null)
     {
-        identities.TryGetValue((participant.UserId, participant.ParticipantType), out var identity);
+        identities.TryGetValue(
+            MessagingParticipantIdentityKey.Create(
+                participant.UserId,
+                participant.ParticipantType),
+            out var identity);
         return (new MobileParticipantDto(
             new MobileLogicalIdentityDto(participant.UserId, participant.ParticipantType),
             identity?.ProfileId.ToString("D") ?? string.Empty,
@@ -1031,7 +1043,9 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         string participantType,
         IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity> identities,
         IReadOnlyDictionary<MessagingProfileImageKey, MobileAvatarDto> avatars) =>
-        identities.TryGetValue((userId, participantType), out var identity) &&
+        identities.TryGetValue(
+            MessagingParticipantIdentityKey.Create(userId, participantType),
+            out var identity) &&
         avatars.TryGetValue(MessagingProfileImageKey.From(identity), out var avatar)
             ? avatar
             : null;
@@ -1315,7 +1329,11 @@ internal static class MobileParticipantIdentityDictionaryExtensions
     public static string? GetDisplayName(
         this IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity> identities,
         MessagingParticipantSummary participant) =>
-        identities.TryGetValue((participant.UserId, participant.ParticipantType), out var identity)
+        identities.TryGetValue(
+            MessagingParticipantIdentityKey.Create(
+                participant.UserId,
+                participant.ParticipantType),
+            out var identity)
             ? identity.DisplayName
             : participant.DisplayName;
 }

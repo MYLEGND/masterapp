@@ -5220,10 +5220,8 @@ private struct LegendAccountView: View {
     @State private var selectedContent: LegendProfileContentFilter = .posts
     @State private var isEditing = false
     @State private var isShowingSettings = false
-    @State private var isPresentingAccountAccess = false
     @State private var isPresentingCreatorInsights = false
     @State private var isPresentingFollowRequests = false
-    @State private var isPresentingTranslationLanguagePicker = false
     @State private var isPresentingTranslationManagement = false
     @State private var translationLanguageNames: [String: String] = [:]
     @State private var isConfirmingSignOut = false
@@ -5294,14 +5292,6 @@ private struct LegendAccountView: View {
         .sheet(isPresented: $isShowingSettings) {
             if case .loaded(let profile) = account.state {
                 profileSettingsSheet(profile)
-            }
-        }
-        .sheet(isPresented: $isPresentingAccountAccess) {
-            LegendAccountAccessSheet(account: account)
-        }
-        .sheet(isPresented: $isPresentingTranslationLanguagePicker) {
-            if case .loaded(let profile) = account.state {
-                LegendTranslationLanguagePicker(profile: profile, store: account, messages: messages)
             }
         }
         .sheet(isPresented: $isPresentingTranslationManagement) {
@@ -5854,6 +5844,11 @@ private struct LegendAccountView: View {
         .padding(.horizontal, LegendNextSpacing.sm)
     }
 
+    private enum ProfileSettingsDestination: Hashable {
+        case translationLanguage
+        case accountAccess
+    }
+
     private func profileSettingsSheet(_ profile: MobileAccountProfile) -> some View {
         NavigationStack {
             LegendScrollView(tracksNavigationChrome: false) {
@@ -5987,9 +5982,7 @@ private struct LegendAccountView: View {
                     LegendProfileSettingsSection(title: "Language translation") {
                         VStack(spacing: 0) {
                             if profile.translationAccess.isGranted {
-                                Button {
-                                    isPresentingTranslationLanguagePicker = true
-                                } label: {
+                                NavigationLink(value: ProfileSettingsDestination.translationLanguage) {
                                     LegendProfileSettingsRow(
                                         title: "Translation language",
                                         detail: legendLanguageName(profile.translationAccess.preferredCommunicationLanguage),
@@ -6072,12 +6065,10 @@ private struct LegendAccountView: View {
                     }
 
                     LegendProfileSettingsSection(title: "Account access") {
-                        Button {
-                            isPresentingAccountAccess = true
-                        } label: {
+                        NavigationLink(value: ProfileSettingsDestination.accountAccess) {
                             LegendProfileSettingsRow(
-                                title: "Pause or close account",
-                                detail: "Review access and account-closure options",
+                                title: "Pause or delete account",
+                                detail: "Review pause and account-deletion options",
                                 systemImage: "person.crop.circle.badge.exclamationmark",
                                 showsChevron: true)
                         }
@@ -6103,6 +6094,17 @@ private struct LegendAccountView: View {
             }
             .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(for: ProfileSettingsDestination.self) { destination in
+                switch destination {
+                case .translationLanguage:
+                    LegendTranslationLanguagePicker(
+                        profile: profile,
+                        store: account,
+                        messages: messages)
+                case .accountAccess:
+                    LegendAccountAccessSheet(account: account)
+                }
+            }
         }
         .tint(LegendNextColor.gold)
         .legendNextSheetChrome()
@@ -6268,7 +6270,7 @@ private struct LegendAccountAccessSheet: View {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
                         eyebrow: "Account access",
-                        title: "Pause before you close",
+                        title: "Pause or delete your account",
                         detail: "Pausing is reversible. It stops access to Legend until you return here and resume your account.",
                         dismiss: { dismiss() })
 
@@ -6286,13 +6288,13 @@ private struct LegendAccountAccessSheet: View {
                         }
                     }
 
-                    LegendProfileSettingsSection(title: "Account closure") {
+                    LegendProfileSettingsSection(title: "Delete account") {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                             Text("Closure removes your access immediately. It is not the same as signing out. Account-owned data is handled through the applicable retention process; records required for legal, financial, insurance, security, or audit purposes may remain.")
                                 .font(.subheadline)
                                 .foregroundStyle(LegendNextColor.textSecondary)
 
-                            Button("Continue to account closure") {
+                            Button("Continue to delete account") {
                                 isPresentingClosureConfirmation = true
                             }
                             .buttonStyle(.plain)

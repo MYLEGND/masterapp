@@ -109,7 +109,11 @@ public abstract class MessagingControllerBase : Controller
         var identities = await _profileImageResolver.ResolveIdentitiesAsync(
             [new MessagingParticipantReference(participant.Recipient.UserId, participant.Recipient.ParticipantType)],
             HttpContext.RequestAborted);
-        if (!identities.TryGetValue((participant.Recipient.UserId, participant.Recipient.ParticipantType), out var identity))
+        if (!identities.TryGetValue(
+                MessagingParticipantIdentityKey.Create(
+                    participant.Recipient.UserId,
+                    participant.Recipient.ParticipantType),
+                out var identity))
             return NotFound();
 
         var image = await _profileImageResolver.ResolveAsync(identity, HttpContext.RequestAborted);

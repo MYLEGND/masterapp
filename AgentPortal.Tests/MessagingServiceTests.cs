@@ -326,6 +326,13 @@ public sealed class MessagingServiceTests
             InitialMessageBody: "Call options test."));
         var conversationId = Assert.IsType<MessagingConversationDetail>(opened.Conversation).Id;
 
+        var storedAgentParticipant = await db.MessageConversationParticipants
+            .SingleAsync(participant =>
+                participant.ConversationId == conversationId &&
+                participant.ParticipantType == MessagingParticipantTypes.Agent);
+        storedAgentParticipant.UserId = storedAgentParticipant.UserId.ToUpperInvariant();
+        await db.SaveChangesAsync();
+
         var options = await service.GetConversationCallOptionsAsync(client, conversationId);
 
         Assert.True(options.Succeeded);

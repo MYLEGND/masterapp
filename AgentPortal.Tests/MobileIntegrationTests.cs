@@ -297,14 +297,15 @@ public sealed class MobileIntegrationTests
         await db.SaveChangesAsync();
 
         var conversationId = Guid.NewGuid();
+        var messagingClientUserId = client.ClientUserId.ToUpperInvariant();
         var counterparty = new MessagingParticipantSummary(
-            client.ClientUserId,
+            messagingClientUserId,
             MessagingParticipantTypes.Client,
             "Stale client name");
         var message = new MessagingMessageSummary(
             Guid.NewGuid(),
             conversationId,
-            client.ClientUserId,
+            messagingClientUserId,
             MessagingParticipantTypes.Client,
             "The thread uses the same avatar authority.",
             DateTime.UtcNow,
@@ -360,6 +361,7 @@ public sealed class MobileIntegrationTests
         var inbox = Assert.IsAssignableFrom<IEnumerable<MobileConversationSummaryDto>>(
             Assert.IsType<OkObjectResult>(inboxResult).Value);
         var inboxConversation = Assert.Single(inbox);
+        Assert.Equal(client.Id.ToString("D"), inboxConversation.Counterparty.ProfileId);
         Assert.Equal("Canonical Client", inboxConversation.Counterparty.DisplayName);
         Assert.NotNull(inboxConversation.Counterparty.Avatar);
         Assert.Equal(clientImage, Convert.FromBase64String(inboxConversation.Counterparty.Avatar!.Base64Content));
@@ -368,6 +370,7 @@ public sealed class MobileIntegrationTests
         var thread = Assert.IsAssignableFrom<IEnumerable<MobileMessageDto>>(
             Assert.IsType<OkObjectResult>(messagesResult).Value);
         var threadMessage = Assert.Single(thread);
+        Assert.Equal(client.Id.ToString("D"), threadMessage.Sender.ProfileId);
         Assert.Equal("Canonical Client", threadMessage.Sender.DisplayName);
         Assert.NotNull(threadMessage.Sender.Avatar);
         Assert.Equal(clientImage, Convert.FromBase64String(threadMessage.Sender.Avatar!.Base64Content));
