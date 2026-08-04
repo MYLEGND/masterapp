@@ -1609,37 +1609,53 @@ private struct LegendHomeView: View {
             padding: LegendNextSpacing.sm
         ) {
             VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                HStack(spacing: LegendNextSpacing.xs) {
-                    Capsule()
-                        .fill(LegendNextGradient.gold)
-                        .frame(width: 22, height: 3)
-
-                    Text("TODAY'S WORD")
-                        .font(LegendNextTypography.eyebrow)
-                        .tracking(1.05)
-                        .foregroundStyle(LegendNextColor.goldBright)
-
-                    Spacer()
-
-                    Image(systemName: "sparkles")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.66))
-                }
-
-                HStack(alignment: .firstTextBaseline, spacing: LegendNextSpacing.xs) {
+                HStack(
+                    alignment: .firstTextBaseline,
+                    spacing: LegendNextSpacing.xs
+                ) {
                     Text(greetingEyebrow.capitalized)
-                        .font(LegendNextTypography.title)
+                        .font(.title2.weight(.bold))
                         .foregroundStyle(LegendNextColor.goldBright)
                         .lineLimit(1)
 
                     Text(firstName)
-                        .font(LegendNextTypography.title)
+                        .font(.title2.weight(.bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
 
                     Spacer(minLength: 0)
+
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(LegendNextColor.goldBright)
+                        .shadow(
+                            color: LegendNextColor.gold.opacity(0.50),
+                            radius: 6
+                        )
                 }
-                .minimumScaleFactor(0.78)
+                .minimumScaleFactor(0.76)
+                .allowsTightening(true)
+
+                HStack(spacing: LegendNextSpacing.xs) {
+                    Text("UNTIL ALL HAVE HEARD")
+                        .font(LegendNextTypography.eyebrow)
+                        .tracking(1.0)
+                        .foregroundStyle(.white.opacity(0.82))
+                        .lineLimit(1)
+
+                    Capsule()
+                        .fill(LegendNextGradient.gold)
+                        .frame(width: 28, height: 2)
+
+                    Text("TODAY'S WORD")
+                        .font(LegendNextTypography.eyebrow)
+                        .tracking(1.0)
+                        .foregroundStyle(LegendNextColor.goldBright)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+                }
+                .minimumScaleFactor(0.74)
                 .allowsTightening(true)
 
                 Button {
@@ -1657,6 +1673,37 @@ private struct LegendHomeView: View {
                 .accessibilityLabel("Verse of the day, \(home.dailyScripture.reference). Double tap to read the full passage.")
             }
         }
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.prominentCard,
+                style: .continuous
+            )
+            .stroke(
+                LinearGradient(
+                    colors: [
+                        LegendNextColor.goldBright.opacity(0.62),
+                        LegendNextColor.gold.opacity(0.18),
+                        Color.white.opacity(0.06)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1
+            )
+            .allowsHitTesting(false)
+        }
+        .shadow(
+            color: LegendNextColor.midnight.opacity(0.22),
+            radius: 11,
+            x: 0,
+            y: 6
+        )
+        .shadow(
+            color: LegendNextColor.gold.opacity(0.09),
+            radius: 14,
+            x: 0,
+            y: 2
+        )
     }
 
     private func missionDashboard(

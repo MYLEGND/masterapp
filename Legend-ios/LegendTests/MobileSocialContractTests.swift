@@ -273,20 +273,56 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertTrue(MobileSocialContentType.hac.requiresVideo)
     }
 
-    func testHacPlaybackWindowOwnsExactlyThePreviousActiveAndNextHac() {
-        XCTAssertEqual(LegendHacPlaybackWindow.maximumPlayerCount, 3)
+    func testHacPlaybackWindowOwnsActiveNextAndWarmCandidate() {
+        XCTAssertEqual(LegendHacPlaybackWindow.maximumPlayerCount, 2)
+
         XCTAssertEqual(
-            LegendHacPlaybackWindow.retainedIndexes(activeIndex: 2, count: 7),
-            [1, 2, 3])
+            LegendHacPlaybackWindow.retainedIndexes(
+                activeIndex: 2,
+                count: 7
+            ),
+            [2, 3]
+        )
+
         XCTAssertEqual(
-            LegendHacPlaybackWindow.prefetchIndexes(activeIndex: 2, count: 7),
-            [3, 4])
+            LegendHacPlaybackWindow.prefetchIndexes(
+                activeIndex: 2,
+                count: 7
+            ),
+            [4]
+        )
+
         XCTAssertEqual(
-            LegendHacPlaybackWindow.retainedIndexes(activeIndex: 0, count: 2),
-            [0, 1])
+            LegendHacPlaybackWindow.retainedIndexes(
+                activeIndex: 0,
+                count: 4
+            ),
+            [0, 1]
+        )
+
         XCTAssertEqual(
-            LegendHacPlaybackWindow.prefetchIndexes(activeIndex: 1, count: 2),
-            [])
+            LegendHacPlaybackWindow.prefetchIndexes(
+                activeIndex: 0,
+                count: 4
+            ),
+            [2]
+        )
+
+        XCTAssertEqual(
+            LegendHacPlaybackWindow.retainedIndexes(
+                activeIndex: 3,
+                count: 4
+            ),
+            [3]
+        )
+
+        XCTAssertEqual(
+            LegendHacPlaybackWindow.prefetchIndexes(
+                activeIndex: 3,
+                count: 4
+            ),
+            []
+        )
     }
 
     func testCreationFormatsKeepCanvasAndCaptureRulesInOneAuthority() {
@@ -294,7 +330,12 @@ final class MobileSocialContractTests: XCTestCase {
         let story = MobileSocialContentType.story.format
         let hac = MobileSocialContentType.hac.format
 
-        XCTAssertEqual(post.mediaAspectRatio, 1)
+        XCTAssertEqual(
+            post.mediaAspectRatio,
+            LegendSocialPostCanvas.portrait.rawValue)
+        XCTAssertEqual(
+            post.supportedCanvasAspectRatios,
+            LegendSocialPostCanvas.allCases.map(\.rawValue))
         XCTAssertFalse(post.usesFixedCanvasAspectRatio)
         XCTAssertTrue(post.allowsTextOnlyPublication)
         XCTAssertEqual(post.maximumVideoDurationSeconds, 600)

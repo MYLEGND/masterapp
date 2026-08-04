@@ -56,11 +56,11 @@ final class LegendTests: XCTestCase {
                     id: UUID(), kind: "ControlledResourceApproved", title: "Yesterday's update", detail: "Not today", occurredUTC: date(1, 9), controlledResourceRequestID: nil)
             ],
             plannerItems: [
-                LegendApplePlannerItem(
+                LegendDevicePlannerItem(
                     id: "calendar-today", source: .calendar, title: "Prayer meeting", detail: "Personal", occursAt: date(2, 18), isPastDue: false, reminderIdentifier: nil),
-                LegendApplePlannerItem(
+                LegendDevicePlannerItem(
                     id: "reminder-overdue", source: .reminder, title: "Call client", detail: "Reminders", occursAt: date(1, 9), isPastDue: true, reminderIdentifier: "native-reminder"),
-                LegendApplePlannerItem(
+                LegendDevicePlannerItem(
                     id: "calendar-future", source: .calendar, title: "Tomorrow", detail: "Personal", occursAt: date(3, 9), isPastDue: false, reminderIdentifier: nil)
             ],
             now: today,

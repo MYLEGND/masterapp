@@ -2184,28 +2184,44 @@ struct LegendForYouView: View {
     }
 }
 
-/// The viewport-retention contract for native Hac playback. The feed owns
-/// exactly three hardware decoders: the previous, active, and next Hac in the
-/// vertical sequence. The next three Hacs' asset metadata is warmed separately,
-/// without allocating extra players. Network media itself remains owned by
-/// `MobileSocialStore`'s secure disk cache, so FYP and a profile's Hac feed
-/// cannot form competing caches.
+/// The viewport-retention contract for native Hac playback.
+///
+/// The visible Hac owns playback priority. Exactly one N+1 player is retained
+/// and prerolled for immediate forward navigation. N+2 may have its asset
+/// authority warmed without allocating another AVPlayer. Anything farther
+/// away performs no speculative playback work.
+///
+/// Network media remains owned exclusively by `MobileSocialStore`'s secure
+/// cache. This is a bounded playback working set, not another cache or player
+/// authority.
 enum LegendHacPlaybackWindow {
-    static let maximumPlayerCount = 3
+    static let maximumPlayerCount = 2
 
     static func retainedIndexes(activeIndex: Int, count: Int) -> [Int] {
-        guard count > 0 else { return [] }
-        let lowerBound = max(0, activeIndex - 1)
-        let upperBound = min(count - 1, activeIndex + 1)
-        return Array(lowerBound...upperBound)
+        guard count > 0,
+              activeIndex >= 0,
+              activeIndex < count else {
+            return []
+        }
+
+        let nextIndex = activeIndex + 1
+
+        if nextIndex < count {
+            return [activeIndex, nextIndex]
+        }
+
+        return [activeIndex]
     }
 
     static func prefetchIndexes(activeIndex: Int, count: Int) -> [Int] {
-        guard count > 0 else { return [] }
-        let lowerBound = max(0, activeIndex + 1)
-        let upperBound = min(count - 1, activeIndex + 3)
-        guard lowerBound <= upperBound else { return [] }
-        return Array(lowerBound...upperBound)
+        guard count > 0,
+              activeIndex >= 0,
+              activeIndex < count else {
+            return []
+        }
+
+        let warmIndex = activeIndex + 2
+        return warmIndex < count ? [warmIndex] : []
     }
 }
 
@@ -2412,6 +2428,7 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
     @Published private(set) var failures: [UUID: UserFacingFailure] = [:]
 
     private var players: [UUID: AVPlayer] = [:]
+    private var preparationTask: Task<Void, Never>?
     private var assets: [UUID: AVURLAsset] = [:]
     private var resourceLoaders: [UUID: LegendHacMediaResourceLoader] = [:]
     private var assetPreloadTasks: [UUID: Task<AVURLAsset?, Never>] = [:]
@@ -2490,39 +2507,48 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
         playActive()
     }
 
-    /// Starts asset metadata work immediately for N+1 through N+3, then creates
-    /// player items only for the strict previous/active/next player window.
-    /// Every await occurs outside the scroll-commit path.
+    /// The active Hac owns the immediate playback path. N+1 is the only queued
+    /// AVPlayer and N+2 receives lightweight asset warmup. A new viewport
+    /// cancels obsolete speculative preparation before starting the new window.
     private func prepareWindow(
         posts: [MobileSocialPost],
         postID: UUID,
         social: MobileSocialStore
     ) async {
-        guard let activeIndex = posts.firstIndex(where: { $0.id == postID }),
-              let activeMedia = posts[activeIndex].media.first,
-              activeMediaID == activeMedia.id else {
-            return
-        }
+        preparationTask?.cancel()
 
-        configureRetentionWindow(posts: posts, activeIndex: activeIndex)
+        preparationTask = Task { [weak self] in
+            guard let self else { return }
+            guard !Task.isCancelled else { return }
 
-        for index in LegendHacPlaybackWindow.prefetchIndexes(
-            activeIndex: activeIndex,
-            count: posts.count
-        ) {
-            guard let media = posts[index].media.first else { continue }
-            preloadAsset(for: media, social: social)
-        }
+            guard let activeIndex = posts.firstIndex(where: { $0.id == postID }),
+                  let activeMedia = posts[activeIndex].media.first,
+                  activeMediaID == activeMedia.id else {
+                return
+            }
 
-        // Active first, then the nearest neighbors. This preserves the strict
-        // three-player cap while making both swipe directions ready to commit.
-        let playerIndexes = LegendHacPlaybackWindow.retainedIndexes(
-            activeIndex: activeIndex,
-            count: posts.count)
-        let prioritizedIndexes = [activeIndex] + playerIndexes.filter { $0 != activeIndex }
-        for index in prioritizedIndexes {
-            guard let media = posts[index].media.first else { continue }
-            await preparePlayer(for: media, social: social)
+            configureRetentionWindow(posts: posts, activeIndex: activeIndex)
+
+            for index in LegendHacPlaybackWindow.prefetchIndexes(
+                activeIndex: activeIndex,
+                count: posts.count
+            ) {
+                guard let media = posts[index].media.first else { continue }
+                preloadAsset(for: media, social: social)
+            }
+
+            // Active first, then N+1 only. N+2 is asset warmup without an
+            // AVPlayer, keeping decoder and bandwidth pressure off active playback.
+            let playerIndexes = LegendHacPlaybackWindow.retainedIndexes(
+                activeIndex: activeIndex,
+                count: posts.count)
+            let prioritizedIndexes = [activeIndex] + playerIndexes.filter { $0 != activeIndex }
+            for index in prioritizedIndexes {
+                guard let media = posts[index].media.first else { continue }
+                await preparePlayer(for: media, social: social)
+            }
+
+            guard !Task.isCancelled else { return }
         }
     }
 

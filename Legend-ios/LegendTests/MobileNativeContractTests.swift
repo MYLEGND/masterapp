@@ -518,6 +518,20 @@ final class MobileNativeContractTests: XCTestCase {
         let sent = await store.send(body: "First persisted message")
         XCTAssertNotNil(sent)
 
+        // send() persists the message first, then reconciles Previous Messages
+        // from the server-owned inbox in a separate task. Wait for that
+        // authoritative reconciliation instead of racing the task scheduler.
+        let reconciliationDeadline = ContinuousClock.now.advanced(by: .seconds(1))
+        while ContinuousClock.now < reconciliationDeadline {
+            if case .loaded(let conversations) = store.state,
+               conversations.map(\.id) == [conversationID],
+               conversations.first?.lastMessagePreview == "First persisted message" {
+                return
+            }
+
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
         guard case .loaded(let afterFirstMessage) = store.state else {
             return XCTFail("Expected the server-authoritative inbox after first message")
         }

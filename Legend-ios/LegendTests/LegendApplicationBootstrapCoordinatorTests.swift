@@ -73,15 +73,21 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         await coordinator.bootstrapIfNeeded()
         try await Task.sleep(for: .milliseconds(80))
 
-        // Home is in flight; messaging and Journey Circles belong to the second pass.
+        // Home is still in flight. Messaging is intentionally prewarmed by the
+        // critical startup pass so the Messages tab can render immediately.
+        // MessagingStore coalesces that warm-up with the deferred load, so it
+        // must still resolve to one authoritative request. Journey Circles,
+        // however, remains deferred until the critical Home/Social pass settles.
         let messagingCalls = await services.messaging.calls()
         let journeyCalls = await services.journey.calls()
-        XCTAssertEqual(messagingCalls, 0)
+        XCTAssertEqual(messagingCalls, 1)
         XCTAssertEqual(journeyCalls, 0)
 
         await coordinator.awaitStartupCompletion()
         let settledMessaging = await services.messaging.calls()
+        let settledJourney = await services.journey.calls()
         XCTAssertEqual(settledMessaging, 1)
+        XCTAssertEqual(settledJourney, 1)
     }
 
     func testAgentBootstrapDefersFinancialIntelligenceUntilProfileDrawer() async throws {

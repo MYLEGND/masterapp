@@ -759,10 +759,32 @@ struct LegendTodayActivitySummaryPill: View {
         Button(action: openActivity) {
             HStack(spacing: LegendNextSpacing.sm) {
                 Image(systemName: "checklist")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(LegendNextColor.goldBright)
-                    .frame(width: 38, height: 38)
-                    .background(Color.white.opacity(0.10), in: Circle())
+                    .frame(width: 40, height: 40)
+                    .background(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.15),
+                                LegendNextColor.gold.opacity(0.10)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: Circle()
+                    )
+                    .overlay {
+                        Circle()
+                            .stroke(
+                                LegendNextColor.goldBright.opacity(0.18),
+                                lineWidth: 1
+                            )
+                    }
+                    .shadow(
+                        color: LegendNextColor.midnight.opacity(0.20),
+                        radius: 5,
+                        y: 3
+                    )
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("TODAY'S ACTIVITY")
@@ -792,6 +814,37 @@ struct LegendTodayActivitySummaryPill: View {
                     .strokeBorder(LegendNextGradient.premiumStroke, lineWidth: 1)
             }
         }
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.prominentCard,
+                style: .continuous
+            )
+            .stroke(
+                LinearGradient(
+                    colors: [
+                        LegendNextColor.goldBright.opacity(0.34),
+                        LegendNextColor.gold.opacity(0.10),
+                        Color.white.opacity(0.05)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1
+            )
+            .allowsHitTesting(false)
+        }
+        .shadow(
+            color: LegendNextColor.midnight.opacity(0.18),
+            radius: 7,
+            x: 0,
+            y: 4
+        )
+        .contentShape(
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.prominentCard,
+                style: .continuous
+            )
+        )
         .buttonStyle(.plain)
         .accessibilityLabel("Open today's activity. \(summary)")
     }
