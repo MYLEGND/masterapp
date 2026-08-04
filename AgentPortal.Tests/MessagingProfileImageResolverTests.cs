@@ -251,7 +251,10 @@ public sealed class MessagingProfileImageResolverTests
         ],
         "TestAuth"));
         var httpContext = new DefaultHttpContext { User = user };
-        var controller = new ClientAvatarController(db, new EffectiveClientContextService(db))
+        var controller = new ClientAvatarController(
+            db,
+            new EffectiveClientContextService(db),
+            CreateResolver(db))
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext }
         };
@@ -308,7 +311,8 @@ public sealed class MessagingProfileImageResolverTests
             new AgentPortal.Services.Tracking.AgentTrackingResolver(
                 db,
                 NullLogger<AgentPortal.Services.Tracking.AgentTrackingResolver>.Instance),
-            new AgentProfileAccessResolver(db))
+            new AgentProfileAccessResolver(db),
+            CreateResolver(db))
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext },
             TempData = new TempDataDictionary(httpContext, Mock.Of<ITempDataProvider>())
@@ -370,7 +374,8 @@ public sealed class MessagingProfileImageResolverTests
             new AgentPortal.Services.Tracking.AgentTrackingResolver(
                 db,
                 NullLogger<AgentPortal.Services.Tracking.AgentTrackingResolver>.Instance),
-            new AgentProfileAccessResolver(db))
+            new AgentProfileAccessResolver(db),
+            CreateResolver(db))
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext },
             TempData = new TempDataDictionary(httpContext, Mock.Of<ITempDataProvider>())

@@ -5,6 +5,7 @@ struct LegendApp: App {
     @StateObject private var diagnostics: LegendDiagnostics
     @StateObject private var session: MobileSessionCoordinator
     @StateObject private var scrollChrome: LegendScrollChrome
+    @UIApplicationDelegateAdaptor(LegendPushNotificationDelegate.self) private var pushNotifications
 
     init() {
         let diagnostics = LegendDiagnostics()
@@ -27,6 +28,7 @@ struct LegendApp: App {
                 .environmentObject(session)
                 .environmentObject(diagnostics)
                 .environmentObject(scrollChrome)
+                .environmentObject(pushNotifications)
                 .scrollIndicators(.hidden)
                 .task {
                     NativeUnreadBadge.prepare()

@@ -21,17 +21,23 @@ namespace AgentPortal.Mobile;
 [TypeFilter(typeof(MobileApiExceptionFilter))]
 public sealed class MobileAccountController : MobileApiControllerBase
 {
+    // 3 MiB binary profile-image limit encoded as Base64, with no second copy
+    // materialized before the shared profile-media validator receives it.
+    private const int MaximumAvatarBase64Characters = 4 * 1024 * 1024;
     private readonly IMobileAccountService _accounts;
     private readonly IMessagingProfileImageResolver _profiles;
+    private readonly IProfileImageWriter _profileImages;
 
     public MobileAccountController(
         IMobileActorResolver actorResolver,
         IMobileAccountService accounts,
-        IMessagingProfileImageResolver profiles)
+        IMessagingProfileImageResolver profiles,
+        IProfileImageWriter profileImages)
         : base(actorResolver)
     {
         _accounts = accounts;
         _profiles = profiles;
+        _profileImages = profileImages;
     }
 
     [HttpGet]
@@ -112,6 +118,69 @@ public sealed class MobileAccountController : MobileApiControllerBase
         return result.Succeeded && result.Account is not null
             ? Ok(await ProjectAsync(resolved.Actor!, result.Account, cancellationToken))
             : AccountFailure(result);
+    }
+
+    [HttpPut("avatar")]
+    public async Task<IActionResult> UpdateAvatar(
+        [FromBody] MobileAccountAvatarUpdateRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        if (string.IsNullOrWhiteSpace(request?.Base64Content))
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "mobile_account_avatar_required",
+                "Choose a profile picture to upload.");
+        }
+
+        if (request.Base64Content.Length > MaximumAvatarBase64Characters)
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "mobile_account_avatar_too_large",
+                "Choose a PNG, JPG, or WEBP profile picture under 3 MB.");
+        }
+
+        byte[] content;
+        try
+        {
+            content = Convert.FromBase64String(request.Base64Content);
+        }
+        catch (FormatException)
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "mobile_account_avatar_invalid",
+                "Choose a valid profile picture to upload.");
+        }
+
+        var actor = resolved.Actor!;
+        var imageResult = await _profileImages.UpdateAsync(
+            new MessagingParticipantIdentity(
+                actor.Actor.UserId,
+                actor.Actor.ParticipantType,
+                actor.ProfileId,
+                actor.DisplayName,
+                null,
+                string.Empty),
+            content,
+            cancellationToken);
+        if (!imageResult.Succeeded)
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                imageResult.ErrorCode?.ToLowerInvariant() ?? "mobile_account_avatar_invalid",
+                imageResult.ErrorMessage ?? "Choose a valid PNG, JPG, or WEBP profile picture under 3 MB.");
+        }
+
+        var accountResult = await _accounts.GetAsync(actor, cancellationToken);
+        return accountResult.Succeeded && accountResult.Account is not null
+            ? Ok(await ProjectAsync(actor, accountResult.Account, cancellationToken))
+            : AccountFailure(accountResult);
     }
 
     [HttpGet("username-availability")]
@@ -208,6 +277,8 @@ public sealed record MobileAccountUpdateRequest(
     bool? IsPrivate = null);
 
 public sealed record MobileAccountPrivacyUpdateRequest(bool IsPrivate);
+
+public sealed record MobileAccountAvatarUpdateRequest(string? Base64Content);
 
 public sealed record MobileAccountProfile(
     string ParticipantType,

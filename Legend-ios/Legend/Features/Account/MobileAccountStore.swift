@@ -178,6 +178,10 @@ struct MobileAccountUpdate: Encodable, Sendable {
     }
 }
 
+struct MobileAccountAvatarUpdate: Encodable, Sendable {
+    let base64Content: String
+}
+
 struct MobileUsernameAvailability: Codable, Equatable, Sendable {
     let isAvailable: Bool
     let message: String?
@@ -190,6 +194,7 @@ private struct MobileAccountPrivacyUpdate: Encodable, Sendable {
 protocol MobileAccountAPI: Sendable {
     func profile(accessToken: String) async throws -> MobileAccountProfile
     func update(_ update: MobileAccountUpdate, accessToken: String) async throws
+    func updateAvatar(_ update: MobileAccountAvatarUpdate, accessToken: String) async throws -> MobileAccountProfile
     func updatePrivacy(isPrivate: Bool, accessToken: String) async throws -> MobileAccountProfile
     func usernameAvailability(username: String, accessToken: String) async throws -> MobileUsernameAvailability
 }
@@ -206,6 +211,10 @@ struct MobileUnavailableAccountAPI: MobileAccountAPI {
     }
 
     func update(_ update: MobileAccountUpdate, accessToken: String) async throws {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func updateAvatar(_ update: MobileAccountAvatarUpdate, accessToken: String) async throws -> MobileAccountProfile {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
 
@@ -236,6 +245,15 @@ struct URLSessionMobileAccountAPI: MobileAccountAPI {
             body: update,
             accessToken: accessToken,
             headers: participantHeader)
+    }
+
+    func updateAvatar(_ update: MobileAccountAvatarUpdate, accessToken: String) async throws -> MobileAccountProfile {
+        try await client.put(
+            "/api/v1/mobile/account/avatar",
+            body: update,
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: MobileAccountProfile.self)
     }
 
     func updatePrivacy(isPrivate: Bool, accessToken: String) async throws -> MobileAccountProfile {
@@ -318,6 +336,23 @@ final class MobileAccountStore: ObservableObject {
             return true
         } catch {
             actionFailure = failure(for: error, title: "Account update unavailable")
+            return false
+        }
+    }
+
+    @discardableResult
+    func uploadAvatar(_ update: MobileAccountAvatarUpdate) async -> Bool {
+        guard !isSaving else { return false }
+        isSaving = true
+        actionFailure = nil
+        defer { isSaving = false }
+        do {
+            let accessToken = try await accessTokenProvider()
+            state = .loaded(try await api.updateAvatar(update, accessToken: accessToken))
+            refreshFailure = nil
+            return true
+        } catch {
+            actionFailure = failure(for: error, title: "Profile picture unavailable")
             return false
         }
     }

@@ -5,6 +5,12 @@ namespace AgentPortal.Mobile;
 
 internal static class MobileAvatarProjection
 {
+    public static MobileAvatarDto? FromGroupImage(MessagingGroupImage? image) =>
+        image is { Content.Length: > 0 } &&
+        image.ContentType is "image/png" or "image/jpeg" or "image/webp"
+            ? new MobileAvatarDto("inline", image.ContentType, Convert.ToBase64String(image.Content))
+            : null;
+
     public static Task<MobileAvatarDto?> ResolveAsync(
         IMessagingProfileImageResolver profiles,
         string participantType,

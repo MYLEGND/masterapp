@@ -24,6 +24,7 @@ public sealed class EffectiveClientContext
     public Guid? FinancialScopeOwnerClientProfileId { get; init; }
 
     public string? AgentDisplayName { get; init; }
+    public Guid? AgentProfileId { get; init; }
     public string? AgentNpn { get; init; }
     public string? AgentEmail { get; init; }
     public string? AgentPhone { get; init; }
@@ -113,6 +114,7 @@ public sealed class EffectiveClientContextService
         ClientProfile profile,
         bool isAgentView,
         string? agentDisplayName = null,
+        Guid? agentProfileId = null,
         string? agentNpn = null,
         string? agentEmail = null,
         string? agentPhone = null)
@@ -124,6 +126,7 @@ public sealed class EffectiveClientContextService
             Profile = profile,
             IsAgentView = isAgentView,
             AgentDisplayName = agentDisplayName,
+            AgentProfileId = agentProfileId,
             AgentNpn = agentNpn,
             AgentEmail = agentEmail,
             AgentPhone = agentPhone
@@ -150,6 +153,7 @@ public sealed class EffectiveClientContextService
             HouseholdAccountId = access.HasActiveMembership ? access.HouseholdAccountId : null,
             FinancialScopeOwnerClientProfileId = access.HasActiveMembership ? access.SubscriptionOwnerClientProfileId : null,
             AgentDisplayName = context.AgentDisplayName,
+            AgentProfileId = context.AgentProfileId,
             AgentNpn = context.AgentNpn,
             AgentEmail = context.AgentEmail,
             AgentPhone = context.AgentPhone
@@ -337,6 +341,7 @@ public sealed class EffectiveClientContextService
             profile,
             isAgentView: true,
             agentDisplayName: agentDisplayName,
+            agentProfileId: agentProfile?.Id,
             agentNpn: agentNpn,
             agentEmail: agentEmail,
             agentPhone: agentPhone));
@@ -519,6 +524,7 @@ public sealed class EffectiveClientContextService
             profile,
             isAgentView: false,
             agentDisplayName: agentDisplayName,
+            agentProfileId: agentProfile?.Id,
             agentNpn: agentNpn,
             agentEmail: agentEmail,
             agentPhone: agentPhone));

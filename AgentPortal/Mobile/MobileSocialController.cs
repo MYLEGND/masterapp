@@ -629,7 +629,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
                 group.ConversationId,
                 group.Subject,
                 await ToAuthorDtoAsync(group.Owner, cancellationToken),
-                ToGroupAvatarDto(group.GroupImage),
+                MobileAvatarProjection.FromGroupImage(group.GroupImage),
                 group.ActiveMemberCount,
                 group.IsJoinedByCurrentActor,
                 group.PromotionStartedUtc));
@@ -637,11 +637,6 @@ public sealed class MobileSocialController : MobileApiControllerBase
 
         return result;
     }
-
-    private static MobileAvatarDto? ToGroupAvatarDto(MessagingGroupImage? image) =>
-        image is { Content.Length: > 0 } && !string.IsNullOrWhiteSpace(image.ContentType)
-            ? new MobileAvatarDto("inline", image.ContentType, Convert.ToBase64String(image.Content))
-            : null;
 
     // Avatar resolution uses the request-scoped MasterAppDbContext. EF Core permits one
     // operation at a time per context, so all DTO projection stays sequential.

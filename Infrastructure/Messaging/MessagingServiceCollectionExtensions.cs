@@ -3,9 +3,11 @@ using Domain.JourneyCircles;
 using Domain.Moderation;
 using Infrastructure.JourneyCircles;
 using Infrastructure.Moderation;
+using Infrastructure.Notifications;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Net;
 
 namespace Infrastructure.Messaging;
 
@@ -29,7 +31,21 @@ public static class MessagingServiceCollectionExtensions
         });
         services.AddSingleton<ICommunityTextModerationService>(_ => new CommunityTextModerationService(configuration));
         services.AddScoped<IJourneyCirclesService, JourneyCirclesService>();
-        services.AddScoped<IMessagingProfileImageResolver, MessagingProfileImageResolver>();
+        services.AddScoped<MessagingProfileImageResolver>();
+        services.AddScoped<IMessagingProfileImageResolver>(provider =>
+            provider.GetRequiredService<MessagingProfileImageResolver>());
+        services.AddScoped<IProfileImageWriter>(provider =>
+            provider.GetRequiredService<MessagingProfileImageResolver>());
+        services.AddScoped<INotificationEngine, NotificationEngine>();
+        services.AddSingleton<INotificationRealtimePublisher, NotificationRealtimePublisher>();
+        services.AddHttpClient("ApplePush", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+            client.DefaultRequestVersion = HttpVersion.Version20;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
+        });
+        services.AddSingleton<IApplePushGateway, ApplePushGateway>();
+        services.AddHostedService<ApplePushDeliveryHostedService>();
         services.AddSingleton<IMessagingContactKeyProtector, MessagingContactKeyProtector>();
         services.AddSingleton<IMessageAttachmentStorage, MessagingAttachmentStorage>();
         services.AddSingleton<IMessagingRealtimePublisher, MessagingRealtimePublisher>();

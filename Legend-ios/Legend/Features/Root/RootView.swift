@@ -295,6 +295,8 @@ private struct SessionFailureView: View {
 }
 
 private struct AuthenticatedHomeView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @EnvironmentObject private var pushNotifications: LegendPushNotificationDelegate
     let currentSession: MobileSession
     @ObservedObject private var coordinator: MobileSessionCoordinator
     @StateObject private var bootstrap: LegendApplicationBootstrapCoordinator
@@ -336,6 +338,31 @@ private struct AuthenticatedHomeView: View {
         }
         .task {
             await bootstrap.bootstrapIfNeeded()
+            await synchronizeNotifications()
         }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await synchronizeNotifications() }
+        }
+        .onChange(of: pushNotifications.deviceToken) { _, _ in
+            Task { await registerPushDeviceIfAvailable() }
+        }
+    }
+
+    private func synchronizeNotifications() async {
+        await bootstrap.stores.notifications.sync()
+        await registerPushDeviceIfAvailable()
+    }
+
+    private func registerPushDeviceIfAvailable() async {
+        guard let token = pushNotifications.deviceToken else { return }
+        #if DEBUG
+        let environment = "sandbox"
+        #else
+        let environment = "production"
+        #endif
+        await bootstrap.stores.notifications.registerAPNSDevice(
+            token: token,
+            environment: environment)
     }
 }

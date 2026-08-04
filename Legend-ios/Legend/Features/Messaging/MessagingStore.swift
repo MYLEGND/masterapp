@@ -34,14 +34,46 @@ enum MessagingControlledResourceRequestSubmission {
 /// contract. The event contains only the identifiers needed to reconcile the
 /// server-owned inbox and an already-open conversation.
 struct MobileMessagingRealtimeEvent: Decodable, Sendable {
-    let conversationID: UUID
+    let conversationID: UUID?
     let messageID: UUID?
+    let notificationID: UUID?
+    let unreadCount: Int?
+    let revision: Int64?
     let occurredUTC: Date
 
     private enum CodingKeys: String, CodingKey {
         case conversationID = "conversationId"
         case messageID = "messageId"
+        case notificationID = "notificationId"
+        case unreadCount, revision
         case occurredUTC = "occurredUtc"
+    }
+
+    init(
+        conversationID: UUID?,
+        messageID: UUID?,
+        notificationID: UUID? = nil,
+        unreadCount: Int? = nil,
+        revision: Int64? = nil,
+        occurredUTC: Date
+    ) {
+        self.conversationID = conversationID
+        self.messageID = messageID
+        self.notificationID = notificationID
+        self.unreadCount = unreadCount
+        self.revision = revision
+        self.occurredUTC = occurredUTC
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            conversationID: try container.decodeIfPresent(UUID.self, forKey: .conversationID),
+            messageID: try container.decodeIfPresent(UUID.self, forKey: .messageID),
+            notificationID: try container.decodeIfPresent(UUID.self, forKey: .notificationID),
+            unreadCount: try container.decodeIfPresent(Int.self, forKey: .unreadCount),
+            revision: try container.decodeIfPresent(Int64.self, forKey: .revision),
+            occurredUTC: try container.decode(Date.self, forKey: .occurredUTC))
     }
 }
 
@@ -218,7 +250,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
                     SignalRInvocation.self,
                     from: Data(frame.utf8)),
                     envelope.type == 1,
-                    ["messagereceived", "conversationupdated"].contains(
+                    ["messagereceived", "conversationupdated", "notificationupdated"].contains(
                         envelope.target?.lowercased() ?? "") else {
                     return nil
                 }
@@ -317,11 +349,11 @@ final class MessagingStore: ObservableObject {
     /// never grants access or starts a conversation without the API confirming it.
     private var recipientSearchCache: [RecipientSearchCacheKey: [MessagingRecipient]] = [:]
     private var recipientSearchCacheOrder: [RecipientSearchCacheKey] = []
+    private var notificationBadgeUpdateHandler: ((Int, Int64) -> Void)?
 
     private static let recipientSearchDebounceNanoseconds: UInt64 = 90_000_000
     private static let maximumCachedRecipientSearches = 20
     private static let maximumCachedConversationDetails = 12
-    private static let detailPrefetchCount = 4
 
     init(
         api: any MessagingAPI,
@@ -368,6 +400,15 @@ final class MessagingStore: ObservableObject {
             // never prevent a newly persisted conversation from becoming visible.
             _ = await refresh()
         }
+    }
+
+    /// The centralized notification store owns the app icon. Messaging only
+    /// forwards the server's signed-in realtime snapshot; it never sums inbox
+    /// rows into a competing badge total.
+    func setNotificationBadgeUpdateHandler(
+        _ handler: @escaping (Int, Int64) -> Void
+    ) {
+        notificationBadgeUpdateHandler = handler
     }
 
     func loadIfNeeded() async -> MobileStoreLoadResult {
@@ -500,8 +541,10 @@ final class MessagingStore: ObservableObject {
                     accessToken: try await accessTokenProvider())
                 presentConversation(conversation)
                 selectedConversationID = conversation.id
-                _ = await refresh()
                 completion(conversation.id)
+                Task { [weak self] in
+                    _ = await self?.refresh()
+                }
             } catch {
                 sendFailure = failure(for: error, title: "Group not created")
             }
@@ -543,6 +586,7 @@ final class MessagingStore: ObservableObject {
         do {
             activityNotifications = try await api.activityNotifications(
                 accessToken: try await accessTokenProvider())
+                .filter { $0.controlledResourceRequestID != nil }
         } catch {
             // Activity is supplementary: a temporary fetch failure must never
             // obscure conversations or overwrite a more relevant user action error.
@@ -617,8 +661,10 @@ final class MessagingStore: ObservableObject {
                     id: conversationID,
                     accessToken: try await accessTokenProvider())
                 presentConversation(conversation)
-                _ = await refresh()
                 completion()
+                Task { [weak self] in
+                    _ = await self?.refresh()
+                }
             } catch {
                 sendFailure = failure(for: error, title: "Member not added")
             }
@@ -754,8 +800,10 @@ final class MessagingStore: ObservableObject {
                     id: conversationID,
                     accessToken: try await accessTokenProvider())
                 presentConversation(conversation)
-                _ = await refresh()
                 completion()
+                Task { [weak self] in
+                    _ = await self?.refresh()
+                }
             } catch {
                 sendFailure = failure(for: error, title: "Group not updated")
             }
@@ -826,8 +874,10 @@ final class MessagingStore: ObservableObject {
                     accessToken: try await accessTokenProvider())
                 presentConversation(conversation)
                 selectedConversationID = conversation.id
-                _ = await refresh()
                 completion(conversation.id)
+                Task { [weak self] in
+                    _ = await self?.refresh()
+                }
             } catch {
                 sendFailure = failure(for: error, title: "Conversation not started")
             }
@@ -861,8 +911,11 @@ final class MessagingStore: ObservableObject {
             // blank conversation is intentionally absent from Previous Messages
             // until the first message is persisted, so reconcile immediately after
             // a successful send instead of maintaining a second local recent-chat list.
-            _ = await requestConversationList(
-                preservingCachedValue: hasCachedConversations)
+            Task { [weak self] in
+                guard let self else { return }
+                _ = await self.requestConversationList(
+                    preservingCachedValue: self.hasCachedConversations)
+            }
             return message
         } catch {
             sendFailure = failure(for: error, title: "Message not sent")
@@ -962,9 +1015,6 @@ final class MessagingStore: ObservableObject {
                 guard case .loaded(let conversations) = state else { return }
                 let remaining = conversations.filter { $0.id != conversationID }
                 state = .loaded(remaining)
-                NativeUnreadBadge.update(with: remaining.reduce(0) {
-                    $0 + max(0, $1.unreadCount)
-                })
             } catch {
                 sendFailure = failure(for: error, title: "Conversation not removed")
             }
@@ -1217,20 +1267,28 @@ final class MessagingStore: ObservableObject {
         conversationDetailCacheOrder.append(conversationID)
     }
 
-    private func prefetchConversationDetails(_ conversations: [ConversationSummary]) {
-        for conversation in conversations.prefix(Self.detailPrefetchCount) {
-            guard conversationDetailCache[conversation.id] == nil,
-                  conversationDetailTasks[conversation.id] == nil else {
-                continue
-            }
-
-            Task { [weak self] in
-                await self?.refreshConversation(
-                    conversation.id,
-                    presentsResult: false,
-                    marksRead: false)
-            }
+    private func preservingCachedGroupAvatar(
+        _ conversation: ConversationSummary
+    ) -> ConversationSummary {
+        guard conversation.conversationType == "Group",
+              conversation.groupAvatar == nil,
+              let groupAvatar = conversationDetailCache[conversation.id]?.groupAvatar else {
+            return conversation
         }
+
+        return ConversationSummary(
+            id: conversation.id,
+            conversationType: conversation.conversationType,
+            counterparty: conversation.counterparty,
+            title: conversation.title,
+            lastMessagePreview: conversation.lastMessagePreview,
+            lastMessageUTC: conversation.lastMessageUTC,
+            unreadCount: conversation.unreadCount,
+            isClosed: conversation.isClosed,
+            purpose: conversation.purpose,
+            groupAvatar: groupAvatar,
+            isPinned: conversation.isPinned,
+            isMuted: conversation.isMuted)
     }
 
     private func requestConversationList(
@@ -1277,14 +1335,8 @@ final class MessagingStore: ObservableObject {
             // rule here. The server intentionally hides empty direct drafts,
             // while allowing explicit user-created groups and every persisted
             // conversation that belongs in this actor's inbox.
-            state = .loaded(conversations)
+            state = .loaded(conversations.map(preservingCachedGroupAvatar))
             refreshFailure = nil
-            prefetchConversationDetails(conversations)
-            NativeUnreadBadge.update(
-                with: conversations.reduce(0) {
-                    $0 + max(0, $1.unreadCount)
-                }
-            )
             return .loaded
         } catch {
             let presentation = failure(for: error, title: "Messages unavailable")
@@ -1315,19 +1367,21 @@ final class MessagingStore: ObservableObject {
                 isPinned: conversation.isPinned,
                 isMuted: conversation.isMuted)
         })
-        if case .loaded(let updatedConversations) = state {
-            NativeUnreadBadge.update(with: updatedConversations.reduce(0) { $0 + max(0, $1.unreadCount) })
-        }
     }
 
     private func reconcileRealtimeEvent(_ event: MobileMessagingRealtimeEvent) {
+        if let unreadCount = event.unreadCount {
+            notificationBadgeUpdateHandler?(unreadCount, event.revision ?? 0)
+            return
+        }
+        guard let conversationID = event.conversationID else { return }
         Task { [weak self] in
             guard let self else { return }
 
             async let inbox = self.requestConversationList(
                 preservingCachedValue: self.hasCachedConversations)
             async let selectedConversation = self.refreshSelectedConversation(
-                ifSelected: event.conversationID)
+                ifSelected: conversationID)
             _ = await (inbox, selectedConversation)
         }
     }

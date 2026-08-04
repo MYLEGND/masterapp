@@ -28,6 +28,7 @@ final class LegendApplicationStores {
     let discovery: MobileDiscoveryStore
     let account: MobileAccountStore
     let messaging: MessagingStore
+    let notifications: MobileNotificationStore
     let agentWorkspace: MobileAgentWorkspaceStore?
 
     init(
@@ -42,7 +43,13 @@ final class LegendApplicationStores {
         self.journeyCircles = journeyCircles
         discovery = coordinator.makeDiscoveryStore()
         account = coordinator.makeAccountStore()
-        messaging = coordinator.makeMessagingStore()
+        let messaging = coordinator.makeMessagingStore()
+        let notifications = coordinator.makeNotificationStore()
+        self.messaging = messaging
+        self.notifications = notifications
+        messaging.setNotificationBadgeUpdateHandler { [weak notifications] unreadCount, revision in
+            notifications?.applyRealtime(unreadCount: unreadCount, revision: revision)
+        }
         agentWorkspace = currentSession.actor.identity.participantType == .agent
             ? coordinator.makeAgentWorkspaceStore()
             : nil
@@ -56,6 +63,7 @@ final class LegendApplicationStores {
         discovery: MobileDiscoveryStore,
         account: MobileAccountStore,
         messaging: MessagingStore,
+        notifications: MobileNotificationStore,
         agentWorkspace: MobileAgentWorkspaceStore?
     ) {
         self.home = home
@@ -65,7 +73,11 @@ final class LegendApplicationStores {
         self.discovery = discovery
         self.account = account
         self.messaging = messaging
+        self.notifications = notifications
         self.agentWorkspace = agentWorkspace
+        messaging.setNotificationBadgeUpdateHandler { [weak notifications] unreadCount, revision in
+            notifications?.applyRealtime(unreadCount: unreadCount, revision: revision)
+        }
     }
 }
 
@@ -187,6 +199,7 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
             async let profilePosts = stores.social.refreshProfilePosts()
             async let account = stores.account.refresh()
             async let messaging = stores.messaging.refresh()
+            async let notifications = stores.notifications.sync()
             async let clients = agentWorkspace.refreshClients()
             async let leads = agentWorkspace.refreshLeads()
             _ = await (
@@ -195,6 +208,7 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
                 profilePosts,
                 account,
                 messaging,
+                notifications,
                 clients,
                 leads
             )
@@ -204,8 +218,9 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
             async let profilePosts = stores.social.refreshProfilePosts()
             async let account = stores.account.refresh()
             async let messaging = stores.messaging.refresh()
+            async let notifications = stores.notifications.sync()
             async let journey = stores.journeyCircles.refresh()
-            _ = await (home, social, profilePosts, account, messaging, journey)
+            _ = await (home, social, profilePosts, account, messaging, notifications, journey)
         }
     }
 
@@ -239,7 +254,9 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
     }
 
     func refreshMessaging() async {
-        _ = await stores.messaging.refresh()
+        async let messaging = stores.messaging.refresh()
+        async let notifications = stores.notifications.sync()
+        _ = await (messaging, notifications)
     }
 
     func refreshClients() async {
@@ -284,9 +301,10 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
         // the user switches tabs. `MessagingStore` coalesces this with the
         // deferred pass and any manual refresh into one request.
         stores.messaging.load()
+        async let notifications = stores.notifications.sync()
         async let home = stores.home.loadIfNeeded()
         async let social = stores.social.loadIfNeeded()
-        let values = await (home, social)
+        let values = await (home, social, notifications)
         return [(.home, values.0), (.social, values.1)]
     }
 

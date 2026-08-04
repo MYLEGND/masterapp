@@ -91,6 +91,9 @@ public class MasterAppDbContext : DbContext
     public DbSet<ControlledResourceGrant> ControlledResourceGrants => Set<ControlledResourceGrant>();
     public DbSet<MessageTranslation> MessageTranslations => Set<MessageTranslation>();
     public DbSet<MobileActivityNotification> MobileActivityNotifications => Set<MobileActivityNotification>();
+    public DbSet<UserGlobalBadge> UserGlobalBadges => Set<UserGlobalBadge>();
+    public DbSet<MobilePushDevice> MobilePushDevices => Set<MobilePushDevice>();
+    public DbSet<MobilePushDelivery> MobilePushDeliveries => Set<MobilePushDelivery>();
     public DbSet<JourneyCircleProfile> JourneyCircleProfiles => Set<JourneyCircleProfile>();
     public DbSet<JourneyCircleConnection> JourneyCircleConnections => Set<JourneyCircleConnection>();
     public DbSet<JourneyCircleBlock> JourneyCircleBlocks => Set<JourneyCircleBlock>();

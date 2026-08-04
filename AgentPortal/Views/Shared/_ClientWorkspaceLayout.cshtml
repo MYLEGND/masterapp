@@ -607,13 +607,16 @@
                             ?? first
                             ?? "Agent";
 
-                        avatarUrl =
-                            user.FindFirst("picture")?.Value
-                            ?? user.FindFirst("photo")?.Value
-                            ?? user.FindFirst("avatar")?.Value
-                            ?? user.FindFirst("avatar_url")?.Value
-                            ?? user.FindFirst("profile_image")?.Value
-                            ?? user.FindFirst("image")?.Value;
+                        var agentProfile = Db.AgentProfiles
+                            .AsNoTracking()
+                            .FirstOrDefault(x => x.AgentUserId == userId);
+                        if (!string.IsNullOrWhiteSpace(agentProfile?.FullName))
+                        {
+                            displayName = agentProfile.FullName.Trim();
+                            var nameParts = displayName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                            first = nameParts.Length > 0 ? nameParts[0] : first;
+                            last = nameParts.Length > 1 ? nameParts[^1] : last;
+                        }
                     }
 
                     var initials = (Initial(first) ?? "") + (Initial(last) ?? "");
@@ -622,7 +625,7 @@
                         initials = Initial(displayName) ?? "A";
                     }
 
-                    if (avatarUrl == null && !string.IsNullOrWhiteSpace(userId))
+                    if (!string.IsNullOrWhiteSpace(userId))
                     {
                         avatarUrl = Url.Action("Current", "Avatar");
                     }

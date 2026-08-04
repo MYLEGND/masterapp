@@ -8,6 +8,7 @@ using Infrastructure.JourneyCircles;
 using Domain.Messaging;
 using Infrastructure.Moderation;
 using Infrastructure.Messaging;
+using Infrastructure.Notifications;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -69,6 +70,17 @@ public sealed class MessagingServiceTests
         Assert.Equal(MessagingConversationTypes.ClientAgent, conversation.ConversationType);
         Assert.Single(conversation.Messages);
 
+        // First messages use the same durable ledger as subsequent sends. The
+        // app icon total is the database projection, never an inbox sum.
+        var notification = await db.MobileActivityNotifications.SingleAsync(
+            entry => entry.RecipientUserId == client.UserId &&
+                     entry.RecipientParticipantType == client.ParticipantType &&
+                     entry.ConversationId == conversation.Id);
+        Assert.False(notification.IsRead);
+        Assert.Equal(1, (await db.UserGlobalBadges.SingleAsync(
+            badge => badge.UserId == client.UserId &&
+                     badge.ParticipantType == client.ParticipantType)).UnreadCount);
+
         var clientList = await service.ListConversationsAsync(client, new MessagingConversationListQuery());
         Assert.True(clientList.Succeeded);
         var listedConversation = Assert.Single(clientList.Conversations);
@@ -81,6 +93,11 @@ public sealed class MessagingServiceTests
         Assert.True(read.Succeeded);
         var afterRead = await service.ListConversationsAsync(client, new MessagingConversationListQuery());
         Assert.Equal(0, Assert.Single(afterRead.Conversations).UnreadCount);
+        Assert.True((await db.MobileActivityNotifications.SingleAsync(
+            entry => entry.Id == notification.Id)).IsRead);
+        Assert.Equal(0, (await db.UserGlobalBadges.SingleAsync(
+            badge => badge.UserId == client.UserId &&
+                     badge.ParticipantType == client.ParticipantType)).UnreadCount);
         Assert.Equal(3, await db.MessagingAuditEntries.CountAsync());
     }
 
@@ -2865,6 +2882,7 @@ public sealed class MessagingServiceTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSignalR();
         var environment = new Mock<IWebHostEnvironment>();
         environment.SetupGet(value => value.ContentRootPath).Returns(AppContext.BaseDirectory);
         services.AddSingleton<IWebHostEnvironment>(environment.Object);
@@ -2895,7 +2913,19 @@ public sealed class MessagingServiceTests
             images,
             new ControlledResourceAccessService(db),
             translation ?? new TestTranslationService(),
+            new NotificationEngine(
+                db,
+                new NoopNotificationRealtimePublisher(),
+                NullLogger<NotificationEngine>.Instance),
             configuredFounderOid);
+    }
+
+    private sealed class NoopNotificationRealtimePublisher : INotificationRealtimePublisher
+    {
+        public Task PublishAsync(
+            MessagingActor recipient,
+            NotificationRealtimeEvent notification,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private sealed class TestTranslationService : ITranslationService

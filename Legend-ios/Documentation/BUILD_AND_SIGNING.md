@@ -83,6 +83,26 @@ non-production identity and mobile API configuration.
 - Never commit `.p12`, `.mobileprovision`, `.cer`, `.xcarchive`, `.ipa`, or
   provisioning-derived metadata.
 
+## Push notification release configuration
+
+The app has the Push Notifications entitlement and embeds the
+`LegendNotificationService` extension. The extension receives the exact unread
+count APNs carries from the server; it does not retain an account credential or
+invent a second count.
+
+Before a staged or production release, enable Push Notifications for the app
+identifier in Apple Developer, then store these backend-only values in the
+deployment secret store (never in this repository):
+
+- `Notifications__ApplePush__KeyId`
+- `Notifications__ApplePush__TeamId`
+- `Notifications__ApplePush__PrivateKey` (the APNs `.p8` text, with newline
+  characters represented as `\n` when supplied through an environment value)
+
+`Notifications__ApplePush__BundleId` must equal the signed app bundle ID. The
+APNs worker is configuration-gated: it safely preserves the database ledger and
+foreground realtime updates until those credentials are available.
+
 ## CI gate once Xcode is available
 
 The release pipeline must at minimum run:

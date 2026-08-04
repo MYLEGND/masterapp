@@ -2105,6 +2105,11 @@ struct ConversationThreadView: View {
 
             LegendMessageTimeline(
                 messages: conversation.messages,
+                participantAvatar: { identity in
+                    conversation.participants.first(where: {
+                        $0.identity == identity
+                    })?.avatar
+                },
                 hasOlderMessages: conversation.hasOlderMessages == true,
                 isLoadingOlderMessages: store.isLoadingOlderMessages,
                 loadOlderMessages: { store.loadOlderMessages() },
@@ -3110,6 +3115,7 @@ private struct LegendConversationFallbackHeader: View {
 
 private struct LegendMessageTimeline: View {
     let messages: [ConversationMessage]
+    let participantAvatar: (LogicalParticipantIdentity) -> ProfileAvatar?
     let hasOlderMessages: Bool
     let isLoadingOlderMessages: Bool
     let loadOlderMessages: () -> Void
@@ -3161,6 +3167,7 @@ private struct LegendMessageTimeline: View {
 
                             LegendMessageBubble(
                                 message: message,
+                                senderAvatar: participantAvatar(message.sender.identity),
                                 showsSender: shouldShowSender(
                                     at: index,
                                     messages: messages
@@ -3405,6 +3412,7 @@ private struct LegendMessageContextPreview: View {
 
 private struct LegendMessageBubble: View {
     let message: ConversationMessage
+    let senderAvatar: ProfileAvatar?
     let showsSender: Bool
     let onReply: () -> Void
     let onDelete: () -> Void
@@ -3636,7 +3644,7 @@ private struct LegendMessageBubble: View {
     private var incomingAvatar: some View {
         if showsSender {
             Group {
-                if let data = message.sender.avatar?.imageData,
+                if let data = senderAvatar?.imageData,
                    let image = UIImage(data: data) {
                     Image(uiImage: image)
                         .resizable()

@@ -18,6 +18,9 @@ internal static class MessagingModelConfiguration
         ConfigureControlledResourceGrant(modelBuilder.Entity<ControlledResourceGrant>(), providerName);
         ConfigureMessageTranslation(modelBuilder.Entity<MessageTranslation>());
         ConfigureMobileActivityNotification(modelBuilder.Entity<MobileActivityNotification>(), providerName);
+        ConfigureUserGlobalBadge(modelBuilder.Entity<UserGlobalBadge>(), providerName);
+        ConfigureMobilePushDevice(modelBuilder.Entity<MobilePushDevice>());
+        ConfigureMobilePushDelivery(modelBuilder.Entity<MobilePushDelivery>());
         ConfigureGrant(modelBuilder.Entity<ClientAgentMessagingGrant>());
         ConfigureAuditEntry(modelBuilder.Entity<MessagingAuditEntry>());
     }
@@ -274,6 +277,9 @@ internal static class MessagingModelConfiguration
         entity.Property(x => x.Kind).IsRequired().HasMaxLength(80);
         entity.Property(x => x.Title).IsRequired().HasMaxLength(240);
         entity.Property(x => x.Detail).IsRequired().HasMaxLength(1_000);
+        entity.Property(x => x.ConversationId);
+        entity.Property(x => x.SourceMessageId);
+        ConfigureRowVersion(entity.Property(x => x.RowVersion), providerName);
         entity.HasIndex(x => new
         {
             x.RecipientUserId,
@@ -289,6 +295,72 @@ internal static class MessagingModelConfiguration
         {
             requestOutcomeIndex.HasFilter("\"ControlledResourceRequestId\" IS NOT NULL");
         }
+
+        var messageRecipientIndex = entity.HasIndex(x => new
+        {
+            x.SourceMessageId,
+            x.RecipientUserId,
+            x.RecipientParticipantType
+        }).IsUnique();
+        if (IsSqlServer(providerName))
+        {
+            messageRecipientIndex.HasFilter("[SourceMessageId] IS NOT NULL");
+        }
+        else if (IsSqlite(providerName))
+        {
+            messageRecipientIndex.HasFilter("\"SourceMessageId\" IS NOT NULL");
+        }
+
+        entity.HasIndex(x => new
+        {
+            x.RecipientUserId,
+            x.RecipientParticipantType,
+            x.IsRead,
+            x.IsCleared,
+            x.OccurredUtc
+        });
+        entity.HasIndex(x => new
+        {
+            x.RecipientUserId,
+            x.RecipientParticipantType,
+            x.ConversationId,
+            x.IsRead,
+            x.IsCleared
+        });
+    }
+
+    private static void ConfigureUserGlobalBadge(
+        EntityTypeBuilder<UserGlobalBadge> entity,
+        string? providerName)
+    {
+        entity.ToTable("UserGlobalBadges");
+        entity.HasKey(x => x.Id);
+        entity.Property(x => x.UserId).IsRequired().HasMaxLength(450);
+        entity.Property(x => x.ParticipantType).IsRequired().HasMaxLength(40);
+        ConfigureRowVersion(entity.Property(x => x.RowVersion), providerName);
+        entity.HasIndex(x => new { x.UserId, x.ParticipantType }).IsUnique();
+    }
+
+    private static void ConfigureMobilePushDevice(EntityTypeBuilder<MobilePushDevice> entity)
+    {
+        entity.ToTable("MobilePushDevices");
+        entity.HasKey(x => x.Id);
+        entity.Property(x => x.UserId).IsRequired().HasMaxLength(450);
+        entity.Property(x => x.ParticipantType).IsRequired().HasMaxLength(40);
+        entity.Property(x => x.DeviceToken).IsRequired().HasMaxLength(512);
+        entity.Property(x => x.TokenHash).IsRequired().HasMaxLength(128);
+        entity.Property(x => x.Environment).IsRequired().HasMaxLength(24);
+        entity.HasIndex(x => x.TokenHash).IsUnique();
+        entity.HasIndex(x => new { x.UserId, x.ParticipantType, x.IsActive });
+    }
+
+    private static void ConfigureMobilePushDelivery(EntityTypeBuilder<MobilePushDelivery> entity)
+    {
+        entity.ToTable("MobilePushDeliveries");
+        entity.HasKey(x => x.Id);
+        entity.Property(x => x.LastError).HasMaxLength(1_000);
+        entity.HasIndex(x => new { x.NotificationId, x.MobilePushDeviceId }).IsUnique();
+        entity.HasIndex(x => new { x.SentUtc, x.AbandonedUtc, x.NextAttemptUtc });
     }
 
     private static void ConfigureAttachment(

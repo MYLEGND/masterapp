@@ -526,6 +526,27 @@ final class MobileSessionCoordinator: ObservableObject {
         )
     }
 
+    func makeNotificationStore() -> MobileNotificationStore {
+        guard let apiBaseURL = configuration.apiBaseURL,
+              case .authenticated(let currentSession) = state else {
+            return MobileNotificationStore(
+                api: MobileUnavailableNotificationAPI(),
+                accessTokenProvider: { throw MobileAPIError.unauthorized(correlationID: nil) },
+                diagnostics: diagnostics)
+        }
+
+        let accessTokenProvider: () async throws -> String = { [weak self] in
+            guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
+            return try await self.accessTokenForRequest()
+        }
+        return MobileNotificationStore(
+            api: URLSessionMobileNotificationAPI(
+                client: MobileHTTPClient(baseURL: apiBaseURL),
+                participantType: currentSession.actor.identity.participantType),
+            accessTokenProvider: accessTokenProvider,
+            diagnostics: diagnostics)
+    }
+
     func makeHomeStore() -> MobileHomeStore {
         guard let apiBaseURL = configuration.apiBaseURL,
               case .authenticated(let currentSession) = state else {

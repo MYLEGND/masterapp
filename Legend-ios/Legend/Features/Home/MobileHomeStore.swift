@@ -293,7 +293,6 @@ final class MobileHomeStore: ObservableObject {
             state = .loaded(home)
             persistence.write(home)
             refreshFailure = nil
-            NativeUnreadBadge.update(with: home.messaging.unreadCount)
             return .loaded
         } catch {
             let presentation = failure(for: error, title: "Home unavailable")

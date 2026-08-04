@@ -3,6 +3,7 @@ using Domain.Entities;
 using Domain.Messaging;
 using Domain.Moderation;
 using Infrastructure.Data;
+using Infrastructure.Notifications;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -34,6 +35,7 @@ internal sealed class MessagingService : IMessagingService
     private readonly IMessagingProfileImageResolver _participantIdentities;
     private readonly IControlledResourceAccessService _controlledResources;
     private readonly ITranslationService _translation;
+    private readonly INotificationEngine _notifications;
     private readonly string? _configuredFounderOid;
 
     public MessagingService(
@@ -43,6 +45,7 @@ internal sealed class MessagingService : IMessagingService
         IMessagingProfileImageResolver participantIdentities,
         IControlledResourceAccessService controlledResources,
         ITranslationService translation,
+        INotificationEngine notifications,
         string? configuredFounderOid = null)
     {
         _db = db;
@@ -51,6 +54,7 @@ internal sealed class MessagingService : IMessagingService
         _participantIdentities = participantIdentities;
         _controlledResources = controlledResources;
         _translation = translation;
+        _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
         _configuredFounderOid = configuredFounderOid ??
             Environment.GetEnvironmentVariable("FOUNDER_OID") ??
             Environment.GetEnvironmentVariable("FounderOid");
@@ -773,6 +777,7 @@ internal sealed class MessagingService : IMessagingService
             JoinedUtc = nowUtc
         }));
 
+        IReadOnlyList<MessagingActor> notificationRecipients = Array.Empty<MessagingActor>();
         if (!string.IsNullOrWhiteSpace(initialMessage))
         {
             var message = new InternalMessage
@@ -788,6 +793,16 @@ internal sealed class MessagingService : IMessagingService
             _db.InternalMessages.Add(message);
             conversation.LastMessageUtc = nowUtc;
             AddAudit(actor.UserId, "MessageSent", conversation.Id, message.Id, null, null, nowUtc);
+            notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
+                actor,
+                conversation.Id,
+                message.Id,
+                message.Body,
+                nowUtc,
+                participants.Select(participant => new MessagingActor(
+                    participant.UserId,
+                    participant.ParticipantType)),
+                cancellationToken);
         }
 
         AddAudit(actor.UserId, "ConversationCreated", conversation.Id, null, targetUserId, conversationType, nowUtc);
@@ -863,6 +878,9 @@ internal sealed class MessagingService : IMessagingService
                 "MESSAGING_CONVERSATION_SAVE_FAILED",
                 $"We could not open this conversation. Please try again. If the issue continues, provide Diagnostic ID: {diagnosticId}.");
         }
+
+        if (notificationRecipients.Count > 0)
+            await _notifications.ReconcileAndPublishAsync(notificationRecipients, cancellationToken);
 
         return await GetConversationAsync(actor, conversation.Id, cancellationToken);
     }
@@ -1671,11 +1689,12 @@ internal sealed class MessagingService : IMessagingService
         request.ResolvedUtc = nowUtc;
         request.ResolvedByUserId = actor.UserId;
         request.ResolutionNote = resolutionNote;
-        _db.MobileActivityNotifications.Add(CreateControlledResourceOutcomeNotification(
+        var outcomeNotification = CreateControlledResourceOutcomeNotification(
             request,
             command.Approve,
             resolutionNote,
-            nowUtc));
+            nowUtc);
+        await _notifications.StageAsync(outcomeNotification, cancellationToken);
         _db.InternalMessages.Add(new InternalMessage
         {
             Id = Guid.NewGuid(),
@@ -1691,7 +1710,14 @@ internal sealed class MessagingService : IMessagingService
         reviewConversation.LastMessageUtc = nowUtc;
         reviewConversation.UpdatedUtc = nowUtc;
         AddAudit(actor.UserId, command.Approve ? "ControlledResourceApproved" : "ControlledResourceDeclined", reviewConversation.Id, null, request.RequesterUserId, $"{request.ResourceType}:{request.Id:D}", nowUtc);
-        return await SaveOperationAsync("ControlledResourceRequestResolved", actor.UserId, reviewConversation.Id, cancellationToken);
+        var resolutionSave = await SaveOperationAsync("ControlledResourceRequestResolved", actor.UserId, reviewConversation.Id, cancellationToken);
+        if (resolutionSave.Succeeded)
+        {
+            await _notifications.ReconcileAndPublishAsync(
+                [new MessagingActor(request.RequesterUserId, request.RequesterParticipantType)],
+                cancellationToken);
+        }
+        return resolutionSave;
     }
 
     public async Task<MessagingControlledResourceRecipientListResult> ListControlledResourceRecipientsAsync(
@@ -1778,11 +1804,12 @@ internal sealed class MessagingService : IMessagingService
             request.Status = command.IsGranted ? VerificationReviewStatuses.Approved : VerificationReviewStatuses.Declined;
             request.ResolvedUtc = nowUtc;
             request.ResolvedByUserId = actor.UserId;
-            _db.MobileActivityNotifications.Add(CreateControlledResourceOutcomeNotification(
+            var outcomeNotification = CreateControlledResourceOutcomeNotification(
                 request,
                 command.IsGranted,
                 resolutionNote: null,
-                nowUtc));
+                nowUtc);
+            await _notifications.StageAsync(outcomeNotification, cancellationToken);
             if (reviewConversations.TryGetValue(request.ReviewConversationId, out var reviewConversation))
             {
                 _db.InternalMessages.Add(new InternalMessage
@@ -1817,6 +1844,15 @@ internal sealed class MessagingService : IMessagingService
         {
             _logger.LogWarning(exception, "Controlled resource grant save failed. ResourceType={ResourceType} TargetUserId={TargetUserId}", resourceType, target.UserId);
             return MessagingOperationResult.Failure("MESSAGING_RESOURCE_SAVE_FAILED", "Legend could not update this resource. Please try again.");
+        }
+
+        if (pending.Count > 0)
+        {
+            await _notifications.ReconcileAndPublishAsync(
+                pending.Select(request => new MessagingActor(
+                    request.RequesterUserId,
+                    request.RequesterParticipantType)),
+                cancellationToken);
         }
 
         return MessagingOperationResult.Success();
@@ -1959,6 +1995,13 @@ internal sealed class MessagingService : IMessagingService
         conversation.LastMessageUtc = nowUtc;
         conversation.UpdatedUtc = nowUtc;
         AddAudit(actor.UserId, "MessageSent", conversation.Id, message.Id, null, null, nowUtc);
+        var notificationRecipients = await _notifications.StageMessageAsync(
+            actor,
+            conversation.Id,
+            message.Id,
+            message.Body,
+            nowUtc,
+            cancellationToken);
 
         try
         {
@@ -1968,6 +2011,13 @@ internal sealed class MessagingService : IMessagingService
         {
             _logger.LogError(ex, "Messaging message save failed. ActorUserId={ActorUserId} ConversationId={ConversationId}", actor.UserId, conversation.Id);
             return MessagingMessageResult.Failure("MESSAGING_MESSAGE_SAVE_FAILED", "The message could not be saved.");
+        }
+
+        if (notificationRecipients.Count > 0)
+        {
+            await _notifications.ReconcileAndPublishAsync(
+                notificationRecipients,
+                cancellationToken);
         }
 
         return new MessagingMessageResult(
@@ -2033,7 +2083,16 @@ internal sealed class MessagingService : IMessagingService
         participant.LastReadUtc = latestMessage.SentUtc;
         participant.LastReadMessageId = latestMessage.Id;
         AddAudit(actor.UserId, "ConversationRead", command.ConversationId, latestMessage.Id, null, null, DateTime.UtcNow);
-        return await SaveOperationAsync("ConversationRead", actor.UserId, command.ConversationId, cancellationToken);
+        await _notifications.StageConversationReadAsync(
+            actor,
+            command.ConversationId,
+            DateTime.UtcNow,
+            cancellationToken);
+
+        var saveResult = await SaveOperationAsync("ConversationRead", actor.UserId, command.ConversationId, cancellationToken);
+        if (saveResult.Succeeded)
+            await _notifications.ReconcileAndPublishAsync([actor], cancellationToken);
+        return saveResult;
     }
 
     public async Task<MessagingOperationResult> SetConversationMutedAsync(
@@ -3163,6 +3222,7 @@ internal sealed class MessagingService : IMessagingService
             JoinedUtc = nowUtc
         }));
 
+        IReadOnlyList<MessagingActor> notificationRecipients = Array.Empty<MessagingActor>();
         if (!string.IsNullOrWhiteSpace(initialMessage))
         {
             var message = new InternalMessage
@@ -3178,6 +3238,16 @@ internal sealed class MessagingService : IMessagingService
             _db.InternalMessages.Add(message);
             conversation.LastMessageUtc = nowUtc;
             AddAudit(actor.UserId, "MessageSent", conversation.Id, message.Id, null, null, nowUtc);
+            notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
+                actor,
+                conversation.Id,
+                message.Id,
+                message.Body,
+                nowUtc,
+                participants.Select(participant => new MessagingActor(
+                    participant.UserId,
+                    participant.ParticipantType)),
+                cancellationToken);
         }
 
         AddAudit(actor.UserId, "GroupConversationCreated", conversation.Id, null, null, purpose, nowUtc);
@@ -3197,6 +3267,9 @@ internal sealed class MessagingService : IMessagingService
                 "MESSAGING_GROUP_SAVE_FAILED",
                 "We could not create this group. Please try again.");
         }
+
+        if (notificationRecipients.Count > 0)
+            await _notifications.ReconcileAndPublishAsync(notificationRecipients, cancellationToken);
 
         return await GetConversationAsync(actor, conversation.Id, cancellationToken);
     }

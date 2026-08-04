@@ -546,6 +546,15 @@ public sealed class MobileIntegrationTests
                 It.Is<MessagingConversationMessagePageQuery>(query =>
                     query.BeforeUtc == null &&
                     query.Take == 60 &&
+                    query.IncludeGroupImage),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MessagingConversationResult(true, null, null, detail));
+        messaging.Setup(x => x.GetConversationPageAsync(
+                actor,
+                conversationId,
+                It.Is<MessagingConversationMessagePageQuery>(query =>
+                    query.BeforeUtc == null &&
+                    query.Take == 60 &&
                     !query.IncludeGroupImage),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MessagingConversationResult(true, null, null, detail));
@@ -668,6 +677,67 @@ public sealed class MobileIntegrationTests
         Assert.Equal("Client", client.FirstName);
         Assert.Equal("Updated", client.LastName);
         Assert.Equal("444-444-4444", client.Phone);
+    }
+
+    [Fact]
+    public async Task MobileAccount_AvatarUpdateUsesTheSameTypedProfileImageAsWebAndMessaging()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        const string sharedUserId = "dual-mobile-avatar-oid";
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = sharedUserId,
+            AgentUpn = "agent.avatar@example.test",
+            FullName = "Agent Avatar",
+            IsActive = true
+        };
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = sharedUserId,
+            ExternalIdentityObjectId = sharedUserId,
+            FirstName = "Client",
+            LastName = "Avatar",
+            Email = "client.avatar@example.test"
+        };
+        db.AddRange(agent, client);
+        await db.SaveChangesAsync();
+
+        var controller = CreateAccountController(db, Principal(sharedUserId));
+        var imageBytes = new byte[]
+        {
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D
+        };
+
+        controller.HttpContext.Request.Headers[MobileApiAuthorization.ParticipantTypeHeader] = MessagingParticipantTypes.Agent;
+        var agentResult = await controller.UpdateAvatar(
+            new MobileAccountAvatarUpdateRequest(Convert.ToBase64String(imageBytes)),
+            CancellationToken.None);
+
+        var agentAccount = Assert.IsType<OkObjectResult>(agentResult).Value as MobileAccountProfile;
+        Assert.NotNull(agentAccount?.Avatar);
+        Assert.Equal(imageBytes, Convert.FromBase64String(agentAccount!.Avatar!.Base64Content));
+
+        await db.Entry(agent).ReloadAsync();
+        await db.Entry(client).ReloadAsync();
+        Assert.Equal(imageBytes, agent.ProfileImageContent);
+        Assert.Null(client.ProfileImageContent);
+
+        controller.HttpContext.Request.Headers[MobileApiAuthorization.ParticipantTypeHeader] = MessagingParticipantTypes.Client;
+        var clientResult = await controller.UpdateAvatar(
+            new MobileAccountAvatarUpdateRequest(Convert.ToBase64String(imageBytes)),
+            CancellationToken.None);
+
+        var clientAccount = Assert.IsType<OkObjectResult>(clientResult).Value as MobileAccountProfile;
+        Assert.NotNull(clientAccount?.Avatar);
+        Assert.Equal(imageBytes, Convert.FromBase64String(clientAccount!.Avatar!.Base64Content));
+
+        await db.Entry(agent).ReloadAsync();
+        await db.Entry(client).ReloadAsync();
+        Assert.Equal(imageBytes, agent.ProfileImageContent);
+        Assert.Equal(imageBytes, client.ProfileImageContent);
     }
 
     [Fact]
@@ -1547,11 +1617,15 @@ public sealed class MobileIntegrationTests
         var accounts = new MobileAccountService(
             db,
             new ControlledResourceAccessService(db));
+        var profiles = new MessagingProfileImageResolver(
+            db,
+            NullLogger<MessagingProfileImageResolver>.Instance);
 
         return new MobileAccountController(
             CreateResolver(db),
             accounts,
-            CreateEmptyProfileResolver())
+            profiles,
+            profiles)
         {
             ControllerContext = new ControllerContext
             {

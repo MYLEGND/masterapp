@@ -92,9 +92,11 @@ struct LegendDailyActivityCategoryCount: Identifiable, Equatable, Sendable {
     var id: LegendDailyActivitySource { source }
 }
 
-/// The native EventKit payload is intentionally small and value-based. Nothing
-/// from Apple Calendar or Reminders is posted to Legend's backend.
-struct LegendApplePlannerItem: Identifiable, Equatable, Sendable {
+/// The native device-planner payload is intentionally small and value-based.
+/// Nothing from a device calendar or reminders service is posted to Legend's
+/// backend. On iOS, EventKit exposes every account the member has enabled on
+/// the phone, including iCloud, Google, Outlook, and Exchange calendars.
+struct LegendDevicePlannerItem: Identifiable, Equatable, Sendable {
     let id: String
     let source: LegendDailyActivitySource
     let title: String
@@ -104,7 +106,7 @@ struct LegendApplePlannerItem: Identifiable, Equatable, Sendable {
     let reminderIdentifier: String?
 }
 
-enum LegendApplePlannerAuthorization: Equatable {
+enum LegendDevicePlannerAuthorization: Equatable {
     case notDetermined
     case authorized
     case denied
@@ -122,78 +124,159 @@ enum LegendApplePlannerAuthorization: Equatable {
     }
 }
 
-/// Owns the Apple-only access boundary. It is separate from the Activity
-/// projection because EventKit is a device permission, not a Legend account
-/// credential. The resulting values are fed into the same projection as every
-/// other activity source.
+/// These capabilities intentionally describe the user-facing planner model,
+/// rather than an operating-system vendor. Each native client maps them to its
+/// device provider while Activity keeps one source of truth.
+enum LegendDevicePlannerCapability: String, CaseIterable, Hashable, Sendable {
+    case calendar
+    case reminders
+
+    var title: String {
+        switch self {
+        case .calendar: return "Calendar"
+        case .reminders: return "Reminders"
+        }
+    }
+
+    var activitySource: LegendDailyActivitySource {
+        switch self {
+        case .calendar: return .calendar
+        case .reminders: return .reminder
+        }
+    }
+}
+
+/// Owns the device-planner access boundary. The system permission and the
+/// member's in-app connection are deliberately separate: system access may
+/// remain granted while a member disconnects Activity at any time.
 @MainActor
-final class LegendApplePlannerStore: ObservableObject {
-    @Published private(set) var calendarAuthorization: LegendApplePlannerAuthorization
-    @Published private(set) var remindersAuthorization: LegendApplePlannerAuthorization
-    @Published private(set) var items: [LegendApplePlannerItem] = []
+final class LegendDevicePlannerStore: ObservableObject {
+    @Published private(set) var calendarAuthorization: LegendDevicePlannerAuthorization
+    @Published private(set) var remindersAuthorization: LegendDevicePlannerAuthorization
+    @Published private(set) var isCalendarConnected: Bool
+    @Published private(set) var isRemindersConnected: Bool
+    @Published private(set) var items: [LegendDevicePlannerItem] = []
     @Published private(set) var failureMessage: String?
 
     private let eventStore: EKEventStore
     private let calendar: Calendar
+    private let storageScope: String
+    private let defaults: UserDefaults
 
     init(
         eventStore: EKEventStore = EKEventStore(),
-        calendar: Calendar = .autoupdatingCurrent
+        calendar: Calendar = .autoupdatingCurrent,
+        storageScope: String = "default",
+        defaults: UserDefaults = .standard
     ) {
+        let initialCalendarAuthorization = Self.authorization(for: .event)
+        let initialRemindersAuthorization = Self.authorization(for: .reminder)
+
         self.eventStore = eventStore
         self.calendar = calendar
-        calendarAuthorization = Self.authorization(for: .event)
-        remindersAuthorization = Self.authorization(for: .reminder)
+        self.storageScope = storageScope
+        self.defaults = defaults
+
+        self.calendarAuthorization = initialCalendarAuthorization
+        self.remindersAuthorization = initialRemindersAuthorization
+
+        self.isCalendarConnected = Self.initialConnectionState(
+            for: .calendar,
+            authorization: initialCalendarAuthorization,
+            storageScope: storageScope,
+            defaults: defaults
+        )
+
+        self.isRemindersConnected = Self.initialConnectionState(
+            for: .reminders,
+            authorization: initialRemindersAuthorization,
+            storageScope: storageScope,
+            defaults: defaults
+        )
     }
 
-    func requestCalendarAccess() async {
-        do {
-            _ = try await eventStore.requestFullAccessToEvents()
-            calendarAuthorization = Self.authorization(for: .event)
-            await refresh()
-        } catch {
-            failureMessage = "Legend could not connect to Apple Calendar. Please try again in Settings."
+    func authorization(for capability: LegendDevicePlannerCapability) -> LegendDevicePlannerAuthorization {
+        switch capability {
+        case .calendar: return calendarAuthorization
+        case .reminders: return remindersAuthorization
         }
     }
 
-    func requestRemindersAccess() async {
-        do {
-            _ = try await eventStore.requestFullAccessToReminders()
-            remindersAuthorization = Self.authorization(for: .reminder)
-            await refresh()
-        } catch {
-            failureMessage = "Legend could not connect to Apple Reminders. Please try again in Settings."
+    func isConnected(_ capability: LegendDevicePlannerCapability) -> Bool {
+        switch capability {
+        case .calendar: return isCalendarConnected
+        case .reminders: return isRemindersConnected
         }
+    }
+
+    func connect(_ capability: LegendDevicePlannerCapability) async {
+        failureMessage = nil
+        refreshAuthorizations()
+        let currentAuthorization = authorization(for: capability)
+
+        switch currentAuthorization {
+        case .authorized:
+            setConnection(true, for: capability)
+            await refresh()
+
+        case .notDetermined:
+            await requestSystemAccess(for: capability)
+            refreshAuthorizations()
+            guard authorization(for: capability).isAuthorized else {
+                failureMessage = "Allow \(capability.title) in your device settings, then connect it to Activity."
+                return
+            }
+            setConnection(true, for: capability)
+            await refresh()
+
+        case .denied:
+            failureMessage = "Allow \(capability.title) in your device settings, then return to Activity to connect it."
+
+        case .restricted:
+            failureMessage = "\(capability.title) access is unavailable on this device."
+        }
+    }
+
+    func disconnect(_ capability: LegendDevicePlannerCapability) {
+        failureMessage = nil
+        setConnection(false, for: capability)
+        items.removeAll { $0.source == capability.activitySource }
+    }
+
+    func openDeviceSettings() {
+        guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else {
+            return
+        }
+        UIApplication.shared.open(settingsURL)
     }
 
     func refresh() async {
-        calendarAuthorization = Self.authorization(for: .event)
-        remindersAuthorization = Self.authorization(for: .reminder)
+        refreshAuthorizations()
 
         let range = todayRange
-        var refreshed: [LegendApplePlannerItem] = []
+        var refreshed: [LegendDevicePlannerItem] = []
 
-        if calendarAuthorization.isAuthorized {
+        if isCalendarConnected {
             let predicate = eventStore.predicateForEvents(
                 withStart: range.start,
                 end: range.end,
                 calendars: nil)
             refreshed.append(contentsOf: eventStore.events(matching: predicate).map {
                 event in
-                LegendApplePlannerItem(
+                LegendDevicePlannerItem(
                     id: "calendar:\(event.eventIdentifier ?? event.calendarItemIdentifier)",
                     source: .calendar,
                     title: sanitized(event.title, fallback: "Calendar event"),
                     detail: event.isAllDay
-                        ? "All-day event · \(event.calendar.title)"
-                        : event.calendar.title,
+                        ? "All-day event · \(calendarDetail(for: event.calendar))"
+                        : calendarDetail(for: event.calendar),
                     occursAt: event.startDate,
                     isPastDue: false,
                     reminderIdentifier: nil)
             })
         }
 
-        if remindersAuthorization.isAuthorized {
+        if isRemindersConnected {
             let predicate = eventStore.predicateForIncompleteReminders(
                 withDueDateStarting: nil,
                 ending: range.end,
@@ -201,11 +284,11 @@ final class LegendApplePlannerStore: ObservableObject {
             let reminders = await incompleteReminders(matching: predicate)
             refreshed.append(contentsOf: reminders.compactMap { reminder in
                 guard let dueDate = dueDate(for: reminder) else { return nil }
-                return LegendApplePlannerItem(
+                return LegendDevicePlannerItem(
                     id: "reminder:\(reminder.calendarItemIdentifier)",
                     source: .reminder,
                     title: sanitized(reminder.title, fallback: "Reminder"),
-                    detail: reminder.calendar.title,
+                    detail: calendarDetail(for: reminder.calendar),
                     occursAt: dueDate,
                     isPastDue: dueDate < range.start,
                     reminderIdentifier: reminder.calendarItemIdentifier)
@@ -219,9 +302,12 @@ final class LegendApplePlannerStore: ObservableObject {
         identifier: String,
         completed: Bool
     ) throws {
+        guard isRemindersConnected else {
+            throw LegendDevicePlannerError.remindersDisconnected
+        }
         guard let reminder = eventStore.calendarItem(
             withIdentifier: identifier) as? EKReminder else {
-            throw LegendApplePlannerError.reminderNotFound
+            throw LegendDevicePlannerError.reminderNotFound
         }
 
         reminder.isCompleted = completed
@@ -230,6 +316,43 @@ final class LegendApplePlannerStore: ObservableObject {
 
     func dismissFailure() {
         failureMessage = nil
+    }
+
+    private func requestSystemAccess(for capability: LegendDevicePlannerCapability) async {
+        do {
+            switch capability {
+            case .calendar:
+                _ = try await eventStore.requestFullAccessToEvents()
+            case .reminders:
+                _ = try await eventStore.requestFullAccessToReminders()
+            }
+        } catch {
+            failureMessage = "Legend could not request \(capability.title) access. Please try again in device settings."
+        }
+    }
+
+    private func refreshAuthorizations() {
+        calendarAuthorization = Self.authorization(for: .event)
+        remindersAuthorization = Self.authorization(for: .reminder)
+        if !calendarAuthorization.isAuthorized {
+            isCalendarConnected = false
+        }
+        if !remindersAuthorization.isAuthorized {
+            isRemindersConnected = false
+        }
+    }
+
+    private func setConnection(
+        _ isConnected: Bool,
+        for capability: LegendDevicePlannerCapability
+    ) {
+        defaults.set(isConnected, forKey: connectionKey(for: capability))
+        switch capability {
+        case .calendar:
+            isCalendarConnected = isConnected && calendarAuthorization.isAuthorized
+        case .reminders:
+            isRemindersConnected = isConnected && remindersAuthorization.isAuthorized
+        }
     }
 
     private var todayRange: DateInterval {
@@ -255,7 +378,7 @@ final class LegendApplePlannerStore: ObservableObject {
 
     private static func authorization(
         for entityType: EKEntityType
-    ) -> LegendApplePlannerAuthorization {
+    ) -> LegendDevicePlannerAuthorization {
         switch EKEventStore.authorizationStatus(for: entityType) {
         case .fullAccess, .authorized:
             return .authorized
@@ -270,19 +393,52 @@ final class LegendApplePlannerStore: ObservableObject {
         }
     }
 
+    private static func initialConnectionState(
+        for capability: LegendDevicePlannerCapability,
+        authorization: LegendDevicePlannerAuthorization,
+        storageScope: String,
+        defaults: UserDefaults
+    ) -> Bool {
+        let key = "legend.device-planner.connection.\(storageScope).\(capability.rawValue)"
+        guard let storedValue = defaults.object(forKey: key) as? Bool else {
+            // An existing system authorization means the member had already
+            // opted in before this explicit disconnect control was introduced.
+            return authorization.isAuthorized
+        }
+        return storedValue && authorization.isAuthorized
+    }
+
+    private func connectionKey(for capability: LegendDevicePlannerCapability) -> String {
+        "legend.device-planner.connection.\(storageScope).\(capability.rawValue)"
+    }
+
+    private func calendarDetail(for calendar: EKCalendar) -> String {
+        let source = calendar.source.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = calendar.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !source.isEmpty,
+              !title.isEmpty,
+              source.caseInsensitiveCompare(title) != .orderedSame else {
+            return title.isEmpty ? "Device planner" : title
+        }
+        return "\(source) · \(title)"
+    }
+
     private func sanitized(_ value: String?, fallback: String) -> String {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? fallback : trimmed
     }
 }
 
-private enum LegendApplePlannerError: LocalizedError {
+private enum LegendDevicePlannerError: LocalizedError {
     case reminderNotFound
+    case remindersDisconnected
 
     var errorDescription: String? {
         switch self {
         case .reminderNotFound:
-            return "The Apple Reminder is no longer available."
+            return "The device reminder is no longer available."
+        case .remindersDisconnected:
+            return "Connect device reminders before updating a reminder."
         }
     }
 }
@@ -295,7 +451,7 @@ enum LegendDailyActivityProjection {
         home: MobileHomeResponse?,
         social: MobileSocialSnapshot?,
         accountNotifications: [MobileActivityNotification],
-        plannerItems: [LegendApplePlannerItem],
+        plannerItems: [LegendDevicePlannerItem],
         now: Date = Date(),
         calendar: Calendar = .autoupdatingCurrent
     ) -> (today: [LegendDailyActivityItem], pastDue: [LegendDailyActivityItem]) {
@@ -396,7 +552,7 @@ final class LegendDailyActivityStore: ObservableObject {
     @Published private(set) var categoryCounts: [LegendDailyActivityCategoryCount] = []
     @Published private(set) var completionFailure: String?
 
-    let planner: LegendApplePlannerStore
+    let planner: LegendDevicePlannerStore
 
     private let identity: LogicalParticipantIdentity
     private let home: MobileHomeStore
@@ -410,36 +566,41 @@ final class LegendDailyActivityStore: ObservableObject {
         home: MobileHomeStore,
         social: MobileSocialStore,
         messages: MessagingStore,
-        planner: LegendApplePlannerStore? = nil,
+        planner: LegendDevicePlannerStore? = nil,
         calendar: Calendar = .autoupdatingCurrent
     ) {
         self.identity = identity
         self.home = home
         self.social = social
         self.messages = messages
-        self.planner = planner ?? LegendApplePlannerStore()
+        self.planner = planner ?? LegendDevicePlannerStore(
+            storageScope: "\(identity.participantType.rawValue).\(identity.userID)")
         self.calendar = calendar
         observeSources()
         rebuild()
     }
 
-    var hasApplePlannerConnection: Bool {
-        planner.calendarAuthorization.isAuthorized || planner.remindersAuthorization.isAuthorized
+    var hasDevicePlannerConnection: Bool {
+        planner.isConnected(.calendar) || planner.isConnected(.reminders)
     }
 
-    func refreshApplePlanner() async {
+    func refreshDevicePlanner() async {
         await planner.refresh()
         rebuild()
     }
 
-    func requestCalendarAccess() async {
-        await planner.requestCalendarAccess()
+    func connectPlanner(_ capability: LegendDevicePlannerCapability) async {
+        await planner.connect(capability)
         rebuild()
     }
 
-    func requestRemindersAccess() async {
-        await planner.requestRemindersAccess()
+    func disconnectPlanner(_ capability: LegendDevicePlannerCapability) {
+        planner.disconnect(capability)
         rebuild()
+    }
+
+    func openDevicePlannerSettings() {
+        planner.openDeviceSettings()
     }
 
     func markTodayViewed() {
@@ -478,7 +639,7 @@ final class LegendDailyActivityStore: ObservableObject {
 
         if item.nativeReminderIdentifier != nil {
             Task { [weak self] in
-                await self?.refreshApplePlanner()
+                await self?.refreshDevicePlanner()
             }
         }
     }
@@ -655,6 +816,7 @@ struct LegendDailyActivitySheet: View {
     let currentIdentity: LogicalParticipantIdentity
     @ObservedObject var social: MobileSocialStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showsPastDue = false
     @State private var selectedPost: MobileSocialPost?
     @State private var selectedProfile: LegendPublicProfileRoute?
@@ -677,7 +839,7 @@ struct LegendDailyActivitySheet: View {
 
                     if !showsPastDue {
                         activitySummary
-                        plannerConnection
+                        devicePlannerConnection
                     }
 
                     let items = showsPastDue ? activity.pastDue : activity.today
@@ -686,7 +848,7 @@ struct LegendDailyActivitySheet: View {
                             title: showsPastDue ? "Nothing past due" : "Your day is clear",
                             message: showsPastDue
                                 ? "Completed or rescheduled activities will not appear here."
-                                : "Today's account updates, appointments, actions, and connected Apple planner items appear here.",
+                                : "Today's account updates, appointments, actions, and connected device planner items appear here.",
                             systemImage: showsPastDue
                                 ? "checkmark.circle"
                                 : "sun.max")
@@ -750,7 +912,7 @@ struct LegendDailyActivitySheet: View {
             }
         }
         .alert(
-            "Apple planner unavailable",
+            "Device planner unavailable",
             isPresented: Binding(
                 get: { activity.plannerFailure != nil },
                 set: { if !$0 { activity.dismissPlannerFailure() } }
@@ -763,7 +925,11 @@ struct LegendDailyActivitySheet: View {
             }
         )
         .task {
-            await activity.refreshApplePlanner()
+            await activity.refreshDevicePlanner()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await activity.refreshDevicePlanner() }
         }
         .legendNextSheetChrome(detents: [.large])
     }
@@ -847,47 +1013,59 @@ struct LegendDailyActivitySheet: View {
         }
     }
 
-    private var plannerConnection: some View {
+    private var devicePlannerConnection: some View {
         LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
             VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("APPLE PLANNER")
+                        Text("DEVICE PLANNER")
                             .font(LegendNextTypography.eyebrow)
                             .tracking(0.8)
                             .foregroundStyle(LegendNextColor.gold)
-                        Text("Optional, private device connection")
+                        Text("Optional, private calendar and reminders connection")
                             .font(LegendNextTypography.caption)
                             .foregroundStyle(LegendNextColor.textSecondary)
                     }
                     Spacer()
                 }
 
-                Text("Calendar events and incomplete reminders stay on this device and are never sent to Legend.")
+                Text("Connect the calendar and reminders available on this phone. Apple, Google, Outlook, Exchange, and other device accounts stay local and are never sent to Legend.")
                     .font(LegendNextTypography.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
 
                 plannerAccessRow(
-                    title: "Apple Calendar",
+                    capability: .calendar,
+                    title: "Calendar",
                     symbol: "calendar",
                     authorization: activity.planner.calendarAuthorization,
-                    connect: { Task { await activity.requestCalendarAccess() } }
+                    isConnected: activity.planner.isConnected(.calendar),
+                    connect: { Task { await activity.connectPlanner(.calendar) } },
+                    disconnect: { activity.disconnectPlanner(.calendar) },
+                    openSettings: activity.openDevicePlannerSettings
                 )
                 plannerAccessRow(
-                    title: "Apple Reminders",
+                    capability: .reminders,
+                    title: "Reminders",
                     symbol: "checklist",
                     authorization: activity.planner.remindersAuthorization,
-                    connect: { Task { await activity.requestRemindersAccess() } }
+                    isConnected: activity.planner.isConnected(.reminders),
+                    connect: { Task { await activity.connectPlanner(.reminders) } },
+                    disconnect: { activity.disconnectPlanner(.reminders) },
+                    openSettings: activity.openDevicePlannerSettings
                 )
             }
         }
     }
 
     private func plannerAccessRow(
+        capability: LegendDevicePlannerCapability,
         title: String,
         symbol: String,
-        authorization: LegendApplePlannerAuthorization,
-        connect: @escaping () -> Void
+        authorization: LegendDevicePlannerAuthorization,
+        isConnected: Bool,
+        connect: @escaping () -> Void,
+        disconnect: @escaping () -> Void,
+        openSettings: @escaping () -> Void
     ) -> some View {
         HStack(spacing: LegendNextSpacing.xs) {
             Image(systemName: symbol)
@@ -899,18 +1077,34 @@ struct LegendDailyActivitySheet: View {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(LegendNextColor.textPrimary)
-                Text(authorization.statusTitle)
+                Text(connectionStatus(
+                    for: capability,
+                    authorization: authorization,
+                    isConnected: isConnected))
                     .font(.caption)
-                    .foregroundStyle(authorization.isAuthorized
+                    .foregroundStyle(isConnected
                         ? LegendNextColor.success
                         : LegendNextColor.textSecondary)
             }
 
             Spacer()
 
-            if authorization.isAuthorized {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(LegendNextColor.success)
+            if isConnected {
+                Button("Disconnect", action: disconnect)
+                    .buttonStyle(LegendNextButtonStyle(
+                        kind: .secondary,
+                        isFullWidth: false,
+                        controlHeight: 34))
+            } else if authorization == .denied {
+                Button("Settings", action: openSettings)
+                    .buttonStyle(LegendNextButtonStyle(
+                        kind: .secondary,
+                        isFullWidth: false,
+                        controlHeight: 34))
+            } else if authorization == .restricted {
+                Text("Unavailable")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.textTertiary)
             } else {
                 Button("Connect", action: connect)
                     .buttonStyle(LegendNextButtonStyle(
@@ -919,6 +1113,16 @@ struct LegendDailyActivitySheet: View {
                         controlHeight: 34))
             }
         }
+    }
+
+    private func connectionStatus(
+        for capability: LegendDevicePlannerCapability,
+        authorization: LegendDevicePlannerAuthorization,
+        isConnected: Bool
+    ) -> String {
+        if isConnected { return "Connected" }
+        if authorization.isAuthorized { return "Not connected" }
+        return authorization.statusTitle
     }
 }
 

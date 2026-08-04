@@ -27,8 +27,35 @@ public interface IMessagingProfileImageResolver
 
 public sealed record MessagingProfileImage(byte[] Content, string ContentType);
 
-internal sealed class MessagingProfileImageResolver : IMessagingProfileImageResolver
+/// <summary>
+/// The only mutation boundary for a member profile image. AgentPortal,
+/// ClientApp, mobile Account, and messaging projections all use the same
+/// typed profile records; no surface maintains a second avatar copy.
+/// </summary>
+public interface IProfileImageWriter
 {
+    Task<ProfileImageUpdateResult> UpdateAsync(
+        MessagingParticipantIdentity participant,
+        byte[] content,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record ProfileImageUpdateResult(
+    bool Succeeded,
+    string? ErrorCode,
+    string? ErrorMessage,
+    MessagingProfileImage? Image)
+{
+    public static ProfileImageUpdateResult Failure(string errorCode, string errorMessage) =>
+        new(false, errorCode, errorMessage, null);
+
+    public static ProfileImageUpdateResult Success(MessagingProfileImage image) =>
+        new(true, null, null, image);
+}
+
+internal sealed class MessagingProfileImageResolver : IMessagingProfileImageResolver, IProfileImageWriter
+{
+    private const int MaximumProfileImageBytes = 3 * 1024 * 1024;
     private readonly MasterAppDbContext _db;
     private readonly ILogger<MessagingProfileImageResolver> _logger;
 
@@ -50,6 +77,82 @@ internal sealed class MessagingProfileImageResolver : IMessagingProfileImageReso
             MessagingParticipantTypes.Client => await ResolveClientProfileImageAsync(participant.ProfileId, cancellationToken),
             _ => null
         };
+    }
+
+    public async Task<ProfileImageUpdateResult> UpdateAsync(
+        MessagingParticipantIdentity participant,
+        byte[] content,
+        CancellationToken cancellationToken = default)
+    {
+        if (participant.ProfileId == Guid.Empty)
+        {
+            return ProfileImageUpdateResult.Failure(
+                "PROFILE_IMAGE_PROFILE_REQUIRED",
+                "The profile image could not be associated with this account.");
+        }
+
+        var validation = Infrastructure.Security.UploadValidation.UploadValidator.ValidateImageContent(
+            content,
+            Infrastructure.Security.UploadValidation.UploadValidationPolicy.Images(MaximumProfileImageBytes));
+        var contentType = NormalizeSupportedImageContentType(validation.DetectedContentType);
+        if (!validation.IsValid || contentType is null)
+        {
+            return ProfileImageUpdateResult.Failure(
+                validation.ErrorCode ?? "PROFILE_IMAGE_INVALID",
+                validation.ErrorMessage ?? "Choose a valid PNG, JPG, or WEBP profile picture under 3 MB.");
+        }
+
+        var now = DateTime.UtcNow;
+        switch (participant.ParticipantType)
+        {
+            case MessagingParticipantTypes.Agent:
+            {
+                var profile = await _db.AgentProfiles.SingleOrDefaultAsync(
+                    candidate => candidate.Id == participant.ProfileId && candidate.IsActive,
+                    cancellationToken);
+                if (profile is null)
+                {
+                    return ProfileImageUpdateResult.Failure(
+                        "PROFILE_IMAGE_PROFILE_UNAVAILABLE",
+                        "Your agent profile is not available.");
+                }
+
+                profile.ProfileImageContent = content;
+                profile.ProfileImageContentType = contentType;
+                profile.UpdatedUtc = now;
+                break;
+            }
+
+            case MessagingParticipantTypes.Client:
+            {
+                var profile = await _db.ClientProfiles.SingleOrDefaultAsync(
+                    candidate => candidate.Id == participant.ProfileId,
+                    cancellationToken);
+                if (profile is null)
+                {
+                    return ProfileImageUpdateResult.Failure(
+                        "PROFILE_IMAGE_PROFILE_UNAVAILABLE",
+                        "Your client profile is not available.");
+                }
+
+                profile.ProfileImageContent = content;
+                profile.ProfileImageContentType = contentType;
+                profile.UpdatedUtc = now;
+                break;
+            }
+
+            default:
+                return ProfileImageUpdateResult.Failure(
+                    "PROFILE_IMAGE_PARTICIPANT_INVALID",
+                    "This account cannot update a profile picture.");
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation(
+            "Profile image updated through the canonical profile media path. ParticipantType={ParticipantType} ProfileId={ProfileId}",
+            participant.ParticipantType,
+            participant.ProfileId);
+        return ProfileImageUpdateResult.Success(new MessagingProfileImage(content, contentType));
     }
 
     public async Task<IReadOnlyDictionary<(string UserId, string ParticipantType), MessagingParticipantIdentity>> ResolveIdentitiesAsync(

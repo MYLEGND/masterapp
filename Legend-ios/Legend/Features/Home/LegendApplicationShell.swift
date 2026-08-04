@@ -1,5 +1,29 @@
 import SwiftUI
 import UIKit
+import PhotosUI
+
+private func legendMobileAvatarUpdate(from imageData: Data) -> MobileAccountAvatarUpdate? {
+    guard let image = UIImage(data: imageData) else { return nil }
+
+    let maximumSide: CGFloat = 1_024
+    let scale = min(1, maximumSide / max(image.size.width, image.size.height))
+    let targetSize = CGSize(
+        width: max(1, image.size.width * scale),
+        height: max(1, image.size.height * scale))
+    let normalizedImage = UIGraphicsImageRenderer(size: targetSize).image { _ in
+        image.draw(in: CGRect(origin: .zero, size: targetSize))
+    }
+
+    for quality in [CGFloat(0.82), 0.68, 0.54] {
+        guard let content = normalizedImage.jpegData(compressionQuality: quality) else {
+            continue
+        }
+        if content.count <= 3 * 1_024 * 1_024 {
+            return MobileAccountAvatarUpdate(base64Content: content.base64EncodedString())
+        }
+    }
+    return nil
+}
 
 private enum LegendAppTab: String, Identifiable {
     case home
@@ -64,6 +88,7 @@ struct LegendApplicationShell: View {
     let currentSession: MobileSession
     @ObservedObject private var coordinator: MobileSessionCoordinator
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
+    @ObservedObject private var account: MobileAccountStore
     @State private var selectedTab: LegendAppTab = .home
     @ObservedObject private var messages: MessagingStore
     @ObservedObject private var social: MobileSocialStore
@@ -79,6 +104,7 @@ struct LegendApplicationShell: View {
         self.currentSession = currentSession
         _coordinator = ObservedObject(wrappedValue: coordinator)
         _bootstrap = ObservedObject(wrappedValue: bootstrap)
+        _account = ObservedObject(wrappedValue: bootstrap.stores.account)
         _messages = ObservedObject(wrappedValue: bootstrap.stores.messaging)
         _social = ObservedObject(wrappedValue: bootstrap.stores.social)
         _activity = ObservedObject(wrappedValue: bootstrap.activity)
@@ -118,8 +144,8 @@ struct LegendApplicationShell: View {
                     tabs: LegendAppTab.available(
                         for: currentSession.actor.identity.participantType
                     ),
-                    accountAvatar: currentSession.actor.avatar,
-                    accountDisplayName: currentSession.actor.displayName,
+                    accountAvatar: activeAccountAvatar,
+                    accountDisplayName: activeAccountDisplayName,
                     unreadMessageCount: unreadMessageCount,
                     alternateAccountTypes: currentSession.alternateParticipantTypes,
                     switchAccount: { participantType in
@@ -264,6 +290,20 @@ struct LegendApplicationShell: View {
 
     private var homeActivityCount: Int {
         activity.unreadBadgeCount
+    }
+
+    private var activeAccountAvatar: ProfileAvatar? {
+        guard case .loaded(let profile) = account.state else {
+            return currentSession.actor.avatar
+        }
+        return profile.avatar
+    }
+
+    private var activeAccountDisplayName: String {
+        guard case .loaded(let profile) = account.state else {
+            return currentSession.actor.displayName
+        }
+        return profile.displayName
     }
 
     private func select(_ tab: LegendAppTab) {
@@ -5113,6 +5153,7 @@ private struct LegendAccountView: View {
     @State private var profilePage = 0
     @State private var isFinancialIntelligencePresented = false
     @State private var controlledResourceRequestFeedback: LegendRequestSubmissionFeedback?
+    @State private var selectedProfilePhoto: PhotosPickerItem?
 
     init(
         currentSession: MobileSession,
@@ -5155,6 +5196,10 @@ private struct LegendAccountView: View {
         .toolbar(.hidden, for: .navigationBar)
         .refreshable {
             await bootstrap.refreshProfile()
+        }
+        .onChange(of: selectedProfilePhoto) { _, photo in
+            guard let photo else { return }
+            Task { await uploadProfileAvatar(photo) }
         }
         .sheet(isPresented: $isEditing) {
             if case .loaded(let profile) = account.state {
@@ -5411,18 +5456,39 @@ private struct LegendAccountView: View {
     private func profileIdentityHeader(
         _ profile: MobileAccountProfile
     ) -> some View {
-        LegendNextSurface(
+        let isUploadingAvatar = account.isSaving
+        return LegendNextSurface(
             style: .elevated,
             cornerRadius: LegendNextRadius.prominentCard,
             padding: LegendNextSpacing.sm
         ) {
             VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                 HStack(alignment: .center, spacing: LegendNextSpacing.sm) {
-                    LegendProfileAvatar(
-                        avatar: profile.avatar,
-                        displayName: profile.displayName,
-                        size: 64
-                    )
+                    PhotosPicker(
+                        selection: $selectedProfilePhoto,
+                        matching: .images,
+                        photoLibrary: .shared()) {
+                            ZStack(alignment: .bottomTrailing) {
+                                LegendProfileAvatar(
+                                    avatar: profile.avatar,
+                                    displayName: profile.displayName,
+                                    size: 64)
+
+                                Image(systemName: isUploadingAvatar
+                                      ? "arrow.triangle.2.circlepath"
+                                      : "camera.fill")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(LegendNextColor.midnight)
+                                    .frame(width: 24, height: 24)
+                                    .background(LegendNextGradient.gold, in: Circle())
+                                    .overlay {
+                                        Circle().stroke(.white, lineWidth: 1.5)
+                                    }
+                            }
+                        }
+                        .disabled(isUploadingAvatar)
+                        .accessibilityLabel("Change profile picture")
+                        .accessibilityHint("Choose a picture from your photo library")
 
                     VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
                         profileAccountMenu
@@ -5493,6 +5559,17 @@ private struct LegendAccountView: View {
                 .padding(.top, LegendNextSpacing.micro)
             }
         }
+    }
+
+    private func uploadProfileAvatar(_ item: PhotosPickerItem) async {
+        defer { selectedProfilePhoto = nil }
+        guard let imageData = try? await item.loadTransferable(type: Data.self),
+              let update = legendMobileAvatarUpdate(from: imageData) else {
+            return
+        }
+
+        guard await account.uploadAvatar(update) else { return }
+        await bootstrap.refreshProfile()
     }
 
     @ViewBuilder
@@ -5751,9 +5828,10 @@ private struct LegendAccountView: View {
                         }
                     }
 
-                    LegendProfileSettingsSection(title: "Online account") {
-                        LegendOnlineAccountSettingsRow(
-                            participantType: currentSession.actor.identity.participantType)
+                    if currentSession.actor.identity.participantType == .agent {
+                        LegendProfileSettingsSection(title: "Agent portal") {
+                            LegendAgentProfileSettingsRow()
+                        }
                     }
 
                     LegendProfileSettingsSection(title: "Privacy") {
@@ -7346,21 +7424,20 @@ private struct LegendProfileSettingsSection<Content: View>: View {
     }
 }
 
-/// One neutral handoff to the account-specific web application. This mobile
-/// surface has no commerce state, price, purchase, payment, or notice data.
-private struct LegendOnlineAccountSettingsRow: View {
-    let participantType: ParticipantType
-
+/// The agent profile portal is a noncommercial profile-management handoff.
+/// Client subscription and payment management deliberately have no native
+/// link, price, or call-to-action surface.
+private struct LegendAgentProfileSettingsRow: View {
     private var destination: URL? {
-        MobileConfiguration.current.onlineAccountURL(for: participantType)
+        MobileConfiguration.current.agentOnlineAccountURL
     }
 
     var body: some View {
         if let destination {
             Link(destination: destination) {
                 LegendProfileSettingsRow(
-                    title: "Manage online account",
-                    detail: "Open your secure Legend account in the browser",
+                    title: "Manage agent profile",
+                    detail: "Open your secure Legend profile in the browser",
                     systemImage: "safari",
                     showsChevron: true)
             }
@@ -7368,8 +7445,8 @@ private struct LegendOnlineAccountSettingsRow: View {
             .accessibilityHint("Opens your Legend web account outside the app")
         } else {
             LegendProfileSettingsRow(
-                title: "Online account unavailable",
-                detail: "This build is missing its secure web account address",
+                title: "Agent profile unavailable",
+                detail: "This build is missing its secure profile address",
                 systemImage: "exclamationmark.triangle",
                 showsChevron: false)
         }

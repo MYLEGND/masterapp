@@ -61,7 +61,25 @@
 		DF44B6B8A2DC0CABCA2850B7 /* MobileConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */; };
 		ED6F8CA9B2F56B434459B527 /* MobileSocialModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BCB75EDC999212C0F1FC00C /* MobileSocialModels.swift */; };
 		FF2556A053AA9A5F2644E7A3 /* LegendNextSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5C1BFF90DD76D5A09D0E3C1 /* LegendNextSurface.swift */; };
+		F10101010101010101010101 /* MobileNotificationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20101010101010101010101 /* MobileNotificationStore.swift */; };
+		F10101010101010101010102 /* LegendPushNotificationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20101010101010101010102 /* LegendPushNotificationDelegate.swift */; };
+		F10101010101010101010103 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20101010101010101010103 /* NotificationService.swift */; };
+		F10101010101010101010104 /* LegendNotificationService.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = F20101010101010101010104 /* LegendNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		F40101010101010101010102 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				F10101010101010101010104 /* LegendNotificationService.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXContainerItemProxy section */
 		4681A1A1EA355A2E1F35A032 /* PBXContainerItemProxy */ = {
@@ -141,6 +159,11 @@
 		E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileConfigurationTests.swift; sourceTree = "<group>"; };
 		AA01D15C0000000000000030 /* LegendLaunchCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendLaunchCache.swift; sourceTree = "<group>"; };
 		F8B6BA00648FA7CC1476B86B /* SecureTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureTokenStore.swift; sourceTree = "<group>"; };
+		F20101010101010101010101 /* MobileNotificationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileNotificationStore.swift; sourceTree = "<group>"; };
+		F20101010101010101010102 /* LegendPushNotificationDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendPushNotificationDelegate.swift; sourceTree = "<group>"; };
+		F20101010101010101010103 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		F20101010101010101010104 /* LegendNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LegendNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F20101010101010101010105 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -185,6 +208,7 @@
 				9787A23BF1358EAA054012DD /* Root */,
 				7DA31C48C755041A1D83D7AB /* Settings */,
 				E628A2A6B5C97C3B84186B36 /* Social */,
+				F30101010101010101010101 /* Notifications */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -237,6 +261,7 @@
 				C8BCE9A957D881CC5889EC30 /* Legend */,
 				CADCC7AD3295EB37C38131C4 /* LegendTests */,
 				DC98A05E79E044CA5B138CA0 /* LegendUITests */,
+				F30101010101010101010102 /* LegendNotificationService */,
 				DA02266B909234E5C3D00DB6 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -336,6 +361,7 @@
 				D7D88FC1403F3F593CF31A82 /* LEGND.app */,
 				D62E96A9291858D31BE2BE3A /* LegendTests.xctest */,
 				62C14045B2834CC0689DBE37 /* LegendUITests.xctest */,
+				F20101010101010101010104 /* LegendNotificationService.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -370,10 +396,28 @@
 			path = Social;
 			sourceTree = "<group>";
 		};
+		F30101010101010101010101 /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				F20101010101010101010101 /* MobileNotificationStore.swift */,
+			);
+			path = Notifications;
+			sourceTree = "<group>";
+		};
+		F30101010101010101010102 /* LegendNotificationService */ = {
+			isa = PBXGroup;
+			children = (
+				F20101010101010101010103 /* NotificationService.swift */,
+				F20101010101010101010105 /* Info.plist */,
+			);
+			path = LegendNotificationService;
+			sourceTree = "<group>";
+		};
 		FBCAF1A7DF857FC4089EC4C8 /* App */ = {
 			isa = PBXGroup;
 			children = (
 				474F0CA43E80A96D179DD53F /* LegendApp.swift */,
+				F20101010101010101010102 /* LegendPushNotificationDelegate.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -405,10 +449,12 @@
 			buildPhases = (
 				9E3CD2EA366E0F8A856611DA /* Sources */,
 				EADB7468BC942A7ED477A4C4 /* Resources */,
+				F40101010101010101010102 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				F70101010101010101010101 /* PBXTargetDependency */,
 			);
 			name = Legend;
 			packageProductDependencies = (
@@ -416,6 +462,23 @@
 			productName = Legend;
 			productReference = D7D88FC1403F3F593CF31A82 /* LEGND.app */;
 			productType = "com.apple.product-type.application";
+		};
+		F50101010101010101010101 /* LegendNotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F60101010101010101010101 /* Build configuration list for PBXNativeTarget "LegendNotificationService" */;
+			buildPhases = (
+				F40101010101010101010101 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LegendNotificationService;
+			packageProductDependencies = (
+			);
+			productName = LegendNotificationService;
+			productReference = F20101010101010101010104 /* LegendNotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		EA4A0637A0F2AB3926966269 /* LegendTests */ = {
 			isa = PBXNativeTarget;
@@ -453,10 +516,14 @@
 						DevelopmentTeam = Z8XL9RU485;
 						ProvisioningStyle = Automatic;
 					};
-					EA4A0637A0F2AB3926966269 = {
+				EA4A0637A0F2AB3926966269 = {
 						DevelopmentTeam = Z8XL9RU485;
 						ProvisioningStyle = Automatic;
 					};
+				};
+				F50101010101010101010101 = {
+					DevelopmentTeam = Z8XL9RU485;
+					ProvisioningStyle = Automatic;
 				};
 			};
 			buildConfigurationList = 7647BBC9022EF468D50ED9F5 /* Build configuration list for PBXProject "Legend" */;
@@ -476,6 +543,7 @@
 				A3724AD4D043CDC38EFCD940 /* Legend */,
 				EA4A0637A0F2AB3926966269 /* LegendTests */,
 				1E19E163CFAA8580A24E53FA /* LegendUITests */,
+				F50101010101010101010101 /* LegendNotificationService */,
 			);
 		};
 /* End PBXProject section */
@@ -555,6 +623,8 @@
 				BB01D15C0000000000000030 /* LegendLaunchCache.swift in Sources */,
 				49E97E820E110E4302D64836 /* SecureTokenStore.swift in Sources */,
 				E31C7AB1213A4E57A1CCB001 /* LegendContactCard.swift in Sources */,
+				F10101010101010101010101 /* MobileNotificationStore.swift in Sources */,
+				F10101010101010101010102 /* LegendPushNotificationDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -563,6 +633,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				18601E8AFBE103484F6576EC /* LegendUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F40101010101010101010101 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F10101010101010101010103 /* NotificationService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -578,6 +656,10 @@
 			isa = PBXTargetDependency;
 			target = A3724AD4D043CDC38EFCD940 /* Legend */;
 			targetProxy = 75C179B3F04C019F788E75DF /* PBXContainerItemProxy */;
+		};
+		F70101010101010101010101 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F50101010101010101010101 /* LegendNotificationService */;
 		};
 /* End PBXTargetDependency section */
 
@@ -605,7 +687,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				APS_ENVIRONMENT = development;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_ENTITLEMENTS = Legend/Resources/Legend.entitlements;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Legend/Resources/Info.plist;
@@ -901,7 +985,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				APS_ENVIRONMENT = development;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_ENTITLEMENTS = Legend/Resources/Legend.entitlements;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -939,11 +1025,78 @@
 			};
 			name = Debug;
 		};
+		F80101010101010101010101 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = Z8XL9RU485;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LegendNotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mylegnd.legend.notification-service;
+				PRODUCT_MODULE_NAME = LegendNotificationService;
+				PRODUCT_NAME = LegendNotificationService;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F80101010101010101010102 /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = Z8XL9RU485;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LegendNotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mylegnd.legend.notification-service;
+				PRODUCT_MODULE_NAME = LegendNotificationService;
+				PRODUCT_NAME = LegendNotificationService;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Staging;
+		};
+		F80101010101010101010103 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = Z8XL9RU485;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LegendNotificationService/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mylegnd.legend.notification-service;
+				PRODUCT_MODULE_NAME = LegendNotificationService;
+				PRODUCT_NAME = LegendNotificationService;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		E8768BB52D1E58B65F65C827 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				APS_ENVIRONMENT = production;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_ENTITLEMENTS = Legend/Resources/Legend.entitlements;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Legend/Resources/Info.plist;
@@ -999,6 +1152,16 @@
 				61619F64FBD3A8B3F1378B1E /* Debug */,
 				0FF4A4357FCF3C99A21D0595 /* Release */,
 				804DC27B08755FFC40E34EC4 /* Staging */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F60101010101010101010101 /* Build configuration list for PBXNativeTarget "LegendNotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F80101010101010101010101 /* Debug */,
+				F80101010101010101010103 /* Release */,
+				F80101010101010101010102 /* Staging */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

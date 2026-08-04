@@ -370,6 +370,10 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
                 accessTokenProvider: tokenProvider,
                 diagnostics: diagnostics,
                 actorParticipantType: participantType),
+            notifications: MobileNotificationStore(
+                api: MobileUnavailableNotificationAPI(),
+                accessTokenProvider: tokenProvider,
+                diagnostics: diagnostics),
             agentWorkspace: includesAgentWorkspace
                 ? MobileAgentWorkspaceStore(
                     api: services.workspace,
@@ -619,6 +623,10 @@ private actor AccountBootstrapAPI: MobileAccountAPI {
     func calls() -> Int { callCount }
 
     func update(_ update: MobileAccountUpdate, accessToken: String) async throws {}
+
+    func updateAvatar(_ update: MobileAccountAvatarUpdate, accessToken: String) async throws -> MobileAccountProfile {
+        profileResponse
+    }
 
     func usernameAvailability(username: String, accessToken: String) async throws -> MobileUsernameAvailability {
         MobileUsernameAvailability(isAvailable: true, message: nil)

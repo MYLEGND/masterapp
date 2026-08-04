@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using AgentPortal.Services.Tracking;
 using AgentPortal.Services;
+using Domain.Messaging;
 using Infrastructure.Data;
+using Infrastructure.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -15,26 +17,27 @@ namespace AgentPortal.Controllers;
 [EnableRateLimiting("anon-public")]
 public sealed class AvatarController : Controller
 {
-    private static readonly string[] SupportedImageContentTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
-
     private readonly MasterAppDbContext _db;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<AvatarController> _logger;
     private readonly AgentTrackingResolver _trackingResolver;
     private readonly AgentProfileAccessResolver _profileAccessResolver;
+    private readonly IProfileImageWriter _profileImages;
 
     public AvatarController(
         MasterAppDbContext db,
         IWebHostEnvironment environment,
         ILogger<AvatarController> logger,
         AgentTrackingResolver trackingResolver,
-        AgentProfileAccessResolver profileAccessResolver)
+        AgentProfileAccessResolver profileAccessResolver,
+        IProfileImageWriter profileImages)
     {
         _db = db;
         _environment = environment;
         _logger = logger;
         _trackingResolver = trackingResolver;
         _profileAccessResolver = profileAccessResolver;
+        _profileImages = profileImages;
     }
 
     [HttpGet]
@@ -60,39 +63,27 @@ public sealed class AvatarController : Controller
             return RedirectToAction("ManageProfile", "Account");
         }
 
-        if (photo.Length > 3 * 1024 * 1024)
-        {
-            TempData["AvatarError"] = "Please upload an image under 3 MB.";
-            return RedirectToAction("ManageProfile", "Account");
-        }
-
-        if (!SupportedImageContentTypes.Contains(photo.ContentType, StringComparer.OrdinalIgnoreCase))
-        {
-            TempData["AvatarError"] = "Only PNG, JPG, or WEBP images are allowed.";
-            return RedirectToAction("ManageProfile", "Account");
-        }
-
         try
         {
             await using var stream = new MemoryStream();
             await photo.CopyToAsync(stream, HttpContext.RequestAborted);
             var bytes = stream.ToArray();
 
-            // Verify the actual bytes are a real image of an allowed type — the
-            // client-declared Content-Type alone is not trustworthy.
-            var validation = Infrastructure.Security.UploadValidation.UploadValidator.ValidateImageContent(
+            var result = await _profileImages.UpdateAsync(
+                new MessagingParticipantIdentity(
+                    string.Empty,
+                    MessagingParticipantTypes.Agent,
+                    profile.Id,
+                    string.Empty,
+                    null,
+                    string.Empty),
                 bytes,
-                Infrastructure.Security.UploadValidation.UploadValidationPolicy.Images(3 * 1024 * 1024));
-            if (!validation.IsValid)
+                HttpContext.RequestAborted);
+            if (!result.Succeeded)
             {
-                TempData["AvatarError"] = "Only valid PNG, JPG, or WEBP images are allowed.";
+                TempData["AvatarError"] = result.ErrorMessage ?? "Only valid PNG, JPG, or WEBP images are allowed.";
                 return RedirectToAction("ManageProfile", "Account");
             }
-
-            profile.ProfileImageContent = bytes;
-            profile.ProfileImageContentType = NormalizeImageContentType(photo.ContentType);
-            profile.UpdatedUtc = DateTime.UtcNow;
-            await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
             TempData["AvatarSuccess"] = "Profile picture updated.";
         }
@@ -159,6 +150,4 @@ public sealed class AvatarController : Controller
 
     private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;
 
-    private static string NormalizeImageContentType(string value) =>
-        string.Equals(value, "image/jpg", StringComparison.OrdinalIgnoreCase) ? "image/jpeg" : value;
 }
