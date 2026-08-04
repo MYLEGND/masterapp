@@ -272,7 +272,7 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
         XCTAssertEqual(callsAfterOpeningDrawer, 1)
     }
 
-    func testProfileRefreshCoordinatesAccountFeedAndProfilePostsOnce() async throws {
+    func testProfileRefreshLoadsOnlyProfileAuthorities() async throws {
         let fixture = try BootstrapFixture()
         let services = BootstrapServices(fixture: fixture)
         let coordinator = makeCoordinator(
@@ -284,9 +284,40 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
 
         let accountCalls = await services.account.calls()
         let socialCalls = await services.social.calls()
+        let homeCalls = await services.home.calls()
+        let messagingCalls = await services.messaging.calls()
+        let journeyCalls = await services.journey.calls()
+
+        XCTAssertEqual(accountCalls, 1)
+        XCTAssertEqual(socialCalls.feed, 0)
+        XCTAssertEqual(socialCalls.profilePosts, 1)
+        XCTAssertEqual(homeCalls, 0)
+        XCTAssertEqual(messagingCalls, 0)
+        XCTAssertEqual(journeyCalls, 0)
+    }
+
+    func testProfileIdentitySynchronizationRevalidatesSharedProjections() async throws {
+        let fixture = try BootstrapFixture()
+        let services = BootstrapServices(fixture: fixture)
+        let coordinator = makeCoordinator(
+            participantType: .client,
+            services: services,
+            includesAgentWorkspace: false)
+
+        await coordinator.synchronizeProfileIdentity()
+
+        let accountCalls = await services.account.calls()
+        let socialCalls = await services.social.calls()
+        let homeCalls = await services.home.calls()
+        let messagingCalls = await services.messaging.calls()
+        let journeyCalls = await services.journey.calls()
+
         XCTAssertEqual(accountCalls, 1)
         XCTAssertEqual(socialCalls.feed, 1)
         XCTAssertEqual(socialCalls.profilePosts, 1)
+        XCTAssertEqual(homeCalls, 1)
+        XCTAssertEqual(messagingCalls, 1)
+        XCTAssertEqual(journeyCalls, 1)
     }
 
     func testAgentRefreshApplicationDoesNotActivateFinancialIntelligence() async throws {

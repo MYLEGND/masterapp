@@ -234,11 +234,23 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
         _ = await stores.social.refresh()
     }
 
+    /// Refreshes only the authoritative projections rendered by Profile.
+    ///
+    /// A page-level retry or pull-to-refresh must not trigger network work for
+    /// Home, Messages, Discovery, Journey Circles, and the entire Social feed.
     func refreshProfile() async {
-        // Profile records are the shared authority for every surface. Keep the
-        // currently active presentation projections in sync after a member
-        // changes their name, contact data, or avatar; each store preserves its
-        // last authorized value while this revalidation happens.
+        async let account = stores.account.refresh()
+        async let profilePosts = stores.social.refreshProfilePosts()
+        _ = await (account, profilePosts)
+    }
+
+    /// Revalidates projections that can embed member identity after an actual
+    /// profile mutation such as a name/contact/avatar change.
+    ///
+    /// This intentionally remains broader than `refreshProfile()`: identity
+    /// changes can legitimately affect cached author/participant projections.
+    /// It is mutation reconciliation, not ordinary page loading.
+    func synchronizeProfileIdentity() async {
         async let home = stores.home.refresh()
         async let account = stores.account.refresh()
         async let social = stores.social.refresh()
@@ -257,7 +269,13 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
                 discovery,
                 journeyCircles)
         } else {
-            _ = await (home, account, social, profilePosts, messaging, discovery)
+            _ = await (
+                home,
+                account,
+                social,
+                profilePosts,
+                messaging,
+                discovery)
         }
     }
 
@@ -313,50 +331,56 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
         applyRecoverableFailures(in: critical + deferred)
     }
 
-    /// Home renders only its own projection and social feed. Financial Intelligence
-    /// stays dormant until the user opens the hidden Profile drawer.
+    /// Home startup loads only the projection required to make Home current.
+    ///
+    /// Social owns its own cached presentation and first-appearance loading, so
+    /// the comparatively expensive SocialFeedSnapshot must never sit on Home's
+    /// critical startup path. Messages and notifications are warmed without
+    /// becoming presentation gates.
     private func loadCriticalFeatures() async -> [(LegendBootstrapFeature, MobileStoreLoadResult)] {
-        // The inbox is not part of the Home rendering gate, but warming its
-        // authoritative projection here lets Messages render immediately when
-        // the user switches tabs. `MessagingStore` coalesces this with the
-        // deferred pass and any manual refresh into one request.
         stores.messaging.load()
-        async let notifications = stores.notifications.sync()
-        async let home = stores.home.loadIfNeeded()
-        async let social = stores.social.loadIfNeeded()
-        let values = await (home, social, notifications)
-        return [(.home, values.0), (.social, values.1)]
+
+        Task { [notifications = stores.notifications] in
+            _ = await notifications.sync()
+        }
+
+        let home = await stores.home.loadIfNeeded()
+        return [(.home, home)]
     }
 
     private func loadDeferredFeatures() async -> [(LegendBootstrapFeature, MobileStoreLoadResult)] {
         if currentSession.actor.identity.participantType == .agent {
             guard let agentWorkspace = stores.agentWorkspace else { return [] }
 
+            async let social = stores.social.loadIfNeeded()
             async let profilePosts = stores.social.loadProfilePostsIfNeeded()
             async let account = stores.account.loadIfNeeded()
             async let messaging = stores.messaging.loadIfNeeded()
             async let clients = agentWorkspace.loadClientsIfNeeded()
             async let leads = agentWorkspace.loadLeadsIfNeeded()
-            let values = await (profilePosts, account, messaging, clients, leads)
+            let values = await (social, profilePosts, account, messaging, clients, leads)
             return [
-                (.profilePosts, values.0),
-                (.account, values.1),
-                (.messaging, values.2),
-                (.clients, values.3),
-                (.leads, values.4)
+                (.social, values.0),
+                (.profilePosts, values.1),
+                (.account, values.2),
+                (.messaging, values.3),
+                (.clients, values.4),
+                (.leads, values.5)
             ]
         }
 
+        async let social = stores.social.loadIfNeeded()
         async let profilePosts = stores.social.loadProfilePostsIfNeeded()
         async let account = stores.account.loadIfNeeded()
         async let messaging = stores.messaging.loadIfNeeded()
         async let journey = stores.journeyCircles.loadIfNeeded()
-        let values = await (profilePosts, account, messaging, journey)
+        let values = await (social, profilePosts, account, messaging, journey)
         return [
-            (.profilePosts, values.0),
-            (.account, values.1),
-            (.messaging, values.2),
-            (.journeyCircles, values.3)
+            (.social, values.0),
+            (.profilePosts, values.1),
+            (.account, values.2),
+            (.messaging, values.3),
+            (.journeyCircles, values.4)
         ]
     }
 

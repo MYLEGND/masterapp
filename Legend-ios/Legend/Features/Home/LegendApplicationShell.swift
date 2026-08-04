@@ -5334,7 +5334,7 @@ private struct LegendAccountView: View {
                 LegendAccountEditor(
                     profile: profile,
                     store: account,
-                    synchronizeProfile: { await bootstrap.refreshProfile() }
+                    synchronizeProfile: { await bootstrap.synchronizeProfileIdentity() }
                 )
             }
         }
@@ -5690,7 +5690,7 @@ private struct LegendAccountView: View {
         }
 
         guard await account.uploadAvatar(update) else { return }
-        await bootstrap.refreshProfile()
+        await bootstrap.synchronizeProfileIdentity()
     }
 
     @ViewBuilder

@@ -155,11 +155,36 @@ public sealed class SocialFeedService : ISocialFeedService
                 "Legend social metrics could not be loaded.");
         }
 
+        var selectedFeed = rankedFeed.Take(MaximumFeedPosts).ToArray();
+        var selectedHacs = rankedHacs.Take(MaximumHacPosts).ToArray();
+
+        // Stories, Home posts, and Hacs share one SocialPostView projection.
+        // Hydrate their final selected post set once so comments, reactions,
+        // media, metrics, music, follows, saves, reposts, and authors are not
+        // queried again for each surface.
+        var hydratedPosts = await BuildPostViewsAsync(
+            stories
+                .Concat(selectedFeed)
+                .Concat(selectedHacs)
+                .GroupBy(post => post.Id)
+                .Select(group => group.First()),
+            actor,
+            cancellationToken);
+
+        var hydratedById = hydratedPosts.ToDictionary(post => post.Id);
+
+        static IReadOnlyList<SocialPostView> SelectHydrated(
+            IEnumerable<SocialPost> source,
+            IReadOnlyDictionary<Guid, SocialPostView> hydratedById) =>
+            source
+                .Select(post => hydratedById[post.Id])
+                .ToArray();
+
         return SocialOperationResult<SocialFeedSnapshot>.Success(
             new SocialFeedSnapshot(
-                await BuildPostViewsAsync(stories, actor, cancellationToken),
-                await BuildPostViewsAsync(rankedFeed.Take(MaximumFeedPosts).ToArray(), actor, cancellationToken),
-                await BuildPostViewsAsync(rankedHacs.Take(MaximumHacPosts).ToArray(), actor, cancellationToken),
+                SelectHydrated(stories, hydratedById),
+                SelectHydrated(selectedFeed, hydratedById),
+                SelectHydrated(selectedHacs, hydratedById),
                 activity,
                 activity.Count,
                 profileMetrics.Value,
@@ -2140,114 +2165,211 @@ public sealed class SocialFeedService : ISocialFeedService
         SocialFeedActor actor,
         CancellationToken cancellationToken)
     {
-        var materialized = posts.ToArray();
+        var materialized = posts
+            .GroupBy(post => post.Id)
+            .Select(group => group.First())
+            .ToArray();
+
         if (materialized.Length == 0)
             return Array.Empty<SocialPostView>();
 
-        var postIds = materialized.Select(post => post.Id).ToArray();
+        var postIds = materialized
+            .Select(post => post.Id)
+            .ToArray();
+
         var comments = await _db.SocialPostComments
             .AsNoTracking()
-            .Where(comment => postIds.Contains(comment.SocialPostId) && comment.DeletedUtc == null)
+            .Where(comment =>
+                postIds.Contains(comment.SocialPostId) &&
+                comment.DeletedUtc == null)
             .OrderByDescending(comment => comment.CreatedUtc)
             .ToListAsync(cancellationToken);
+
         var reactions = await _db.SocialPostReactions
             .AsNoTracking()
             .Where(reaction => postIds.Contains(reaction.SocialPostId))
             .ToListAsync(cancellationToken);
+
         var mediaAssets = await _db.SocialPostMediaAssets
             .AsNoTracking()
             .Where(media => postIds.Contains(media.SocialPostId))
             .OrderBy(media => media.DisplayOrder)
             .ToListAsync(cancellationToken);
-        var metricsByPost = await LoadPostMetricsAsync(postIds, cancellationToken);
+
+        var metricsByPost = await LoadPostMetricsAsync(
+            postIds,
+            cancellationToken);
+
         var musicByPost = await _db.SocialPostMusicAttachments
             .AsNoTracking()
             .Where(music => postIds.Contains(music.SocialPostId))
-            .ToDictionaryAsync(music => music.SocialPostId, cancellationToken);
-        var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+            .ToDictionaryAsync(
+                music => music.SocialPostId,
+                cancellationToken);
+
+        var actorKey = AuthorKey.From(
+            actor.Identity.UserId,
+            actor.Identity.ParticipantType);
+
         var follows = await _db.SocialFollows
             .AsNoTracking()
             .Where(follow =>
                 follow.FollowerUserId == actorKey.UserId &&
                 follow.FollowerParticipantType == actorKey.ParticipantType)
             .ToListAsync(cancellationToken);
+
         var savedPostIds = await _db.SocialPostSaves
             .AsNoTracking()
-            .Where(save => postIds.Contains(save.SocialPostId) &&
-                           save.ActorUserId == actorKey.UserId &&
-                           save.ActorParticipantType == actorKey.ParticipantType)
+            .Where(save =>
+                postIds.Contains(save.SocialPostId) &&
+                save.ActorUserId == actorKey.UserId &&
+                save.ActorParticipantType == actorKey.ParticipantType)
             .Select(save => save.SocialPostId)
             .ToHashSetAsync(cancellationToken);
+
         var repostedPostIds = await _db.SocialPostReposts
             .AsNoTracking()
-            .Where(repost => postIds.Contains(repost.SocialPostId) &&
-                              repost.ActorUserId == actorKey.UserId &&
-                              repost.ActorParticipantType == actorKey.ParticipantType)
+            .Where(repost =>
+                postIds.Contains(repost.SocialPostId) &&
+                repost.ActorUserId == actorKey.UserId &&
+                repost.ActorParticipantType == actorKey.ParticipantType)
             .Select(repost => repost.SocialPostId)
             .ToHashSetAsync(cancellationToken);
 
         var authors = await ResolveAuthorsAsync(
-            materialized.Select(post => new AuthorReference(post.AuthorUserId, post.AuthorParticipantType, post.AuthorProfileId))
-                .Concat(comments.Select(comment => new AuthorReference(comment.AuthorUserId, comment.AuthorParticipantType, comment.AuthorProfileId))),
+            materialized
+                .Select(post => new AuthorReference(
+                    post.AuthorUserId,
+                    post.AuthorParticipantType,
+                    post.AuthorProfileId))
+                .Concat(comments.Select(comment => new AuthorReference(
+                    comment.AuthorUserId,
+                    comment.AuthorParticipantType,
+                    comment.AuthorProfileId))),
             cancellationToken);
-        return materialized.Select(post =>
-        {
-            var postComments = comments
-                .Where(comment => comment.SocialPostId == post.Id)
-                .OrderBy(comment => comment.CreatedUtc)
-                .TakeLast(MaximumCommentsPerPost)
-                .Select(comment => new SocialCommentView(
-                    comment.Id,
-                    authors.GetValueOrDefault(AuthorKey.From(comment.AuthorUserId, comment.AuthorParticipantType)) ?? ToUnknownAuthor(comment.AuthorUserId, comment.AuthorParticipantType, comment.AuthorProfileId),
-                    comment.ParentCommentId,
-                    comment.Body,
-                    comment.CreatedUtc))
-                .ToArray();
-            var postReactions = reactions.Where(reaction => reaction.SocialPostId == post.Id).ToArray();
-            return new SocialPostView(
-                post.Id,
-                authors.GetValueOrDefault(AuthorKey.From(post.AuthorUserId, post.AuthorParticipantType)) ?? ToUnknownAuthor(post.AuthorUserId, post.AuthorParticipantType, post.AuthorProfileId),
-                post.ContentType,
-                post.Body,
-                post.Audience,
-                post.Location,
-                post.CommentsEnabled,
-                post.PostedUtc,
-                post.ExpiresUtc,
-                postReactions.Length,
-                comments.Count(comment => comment.SocialPostId == post.Id),
-                postReactions.Any(reaction => AuthorKey.From(reaction.ActorUserId, reaction.ActorParticipantType) == actorKey),
-                follows.Any(follow =>
-                    follow.Status == SocialFollowStatuses.Accepted &&
-                    AuthorKey.From(follow.FollowedUserId, follow.FollowedParticipantType) ==
-                    AuthorKey.From(post.AuthorUserId, post.AuthorParticipantType)),
-                follows.Any(follow =>
-                    follow.Status == SocialFollowStatuses.Pending &&
-                    AuthorKey.From(follow.FollowedUserId, follow.FollowedParticipantType) ==
-                    AuthorKey.From(post.AuthorUserId, post.AuthorParticipantType)),
-                savedPostIds.Contains(post.Id),
-                repostedPostIds.Contains(post.Id),
-                metricsByPost[post.Id],
-                musicByPost.TryGetValue(post.Id, out var music) ? ToMusicView(music) : null,
-                mediaAssets
-                    .Where(media => media.SocialPostId == post.Id)
+
+        // Index the authoritative query results once. The former implementation
+        // repeatedly scanned the complete comment/reaction/media/follow arrays
+        // for every post being projected.
+        var commentsByPost = comments
+            .GroupBy(comment => comment.SocialPostId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.ToArray());
+
+        var reactionsByPost = reactions
+            .GroupBy(reaction => reaction.SocialPostId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.ToArray());
+
+        var mediaByPost = mediaAssets
+            .GroupBy(media => media.SocialPostId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
                     .OrderBy(media => media.DisplayOrder)
-                    .Select(media => new SocialMediaAssetView(
-                        media.Id,
-                        media.DisplayOrder,
-                        media.MediaKind,
-                        media.MimeType,
-                        media.FileSizeBytes,
-                        media.Width,
-                        media.Height,
-                        media.AspectRatio,
-                        media.DurationSeconds,
-                        media.ProcessingState,
-                        media.AccessibilityText,
-                        !string.IsNullOrWhiteSpace(media.ThumbnailStorageKey)))
-                    .ToArray(),
-                postComments);
-        }).ToArray();
+                    .ToArray());
+
+        var acceptedFollowAuthors = follows
+            .Where(follow =>
+                follow.Status == SocialFollowStatuses.Accepted)
+            .Select(follow => AuthorKey.From(
+                follow.FollowedUserId,
+                follow.FollowedParticipantType))
+            .ToHashSet();
+
+        var pendingFollowAuthors = follows
+            .Where(follow =>
+                follow.Status == SocialFollowStatuses.Pending)
+            .Select(follow => AuthorKey.From(
+                follow.FollowedUserId,
+                follow.FollowedParticipantType))
+            .ToHashSet();
+
+        return materialized
+            .Select(post =>
+            {
+                var postComments =
+                    commentsByPost.GetValueOrDefault(post.Id) ?? [];
+
+                var postReactions =
+                    reactionsByPost.GetValueOrDefault(post.Id) ?? [];
+
+                var postMedia =
+                    mediaByPost.GetValueOrDefault(post.Id) ?? [];
+
+                var postAuthorKey = AuthorKey.From(
+                    post.AuthorUserId,
+                    post.AuthorParticipantType);
+
+                var visibleComments = postComments
+                    .OrderBy(comment => comment.CreatedUtc)
+                    .TakeLast(MaximumCommentsPerPost)
+                    .Select(comment => new SocialCommentView(
+                        comment.Id,
+                        authors.GetValueOrDefault(
+                            AuthorKey.From(
+                                comment.AuthorUserId,
+                                comment.AuthorParticipantType))
+                            ?? ToUnknownAuthor(
+                                comment.AuthorUserId,
+                                comment.AuthorParticipantType,
+                                comment.AuthorProfileId),
+                        comment.ParentCommentId,
+                        comment.Body,
+                        comment.CreatedUtc))
+                    .ToArray();
+
+                return new SocialPostView(
+                    post.Id,
+                    authors.GetValueOrDefault(postAuthorKey)
+                        ?? ToUnknownAuthor(
+                            post.AuthorUserId,
+                            post.AuthorParticipantType,
+                            post.AuthorProfileId),
+                    post.ContentType,
+                    post.Body,
+                    post.Audience,
+                    post.Location,
+                    post.CommentsEnabled,
+                    post.PostedUtc,
+                    post.ExpiresUtc,
+                    postReactions.Length,
+                    postComments.Length,
+                    postReactions.Any(reaction =>
+                        AuthorKey.From(
+                            reaction.ActorUserId,
+                            reaction.ActorParticipantType) == actorKey),
+                    acceptedFollowAuthors.Contains(postAuthorKey),
+                    pendingFollowAuthors.Contains(postAuthorKey),
+                    savedPostIds.Contains(post.Id),
+                    repostedPostIds.Contains(post.Id),
+                    metricsByPost[post.Id],
+                    musicByPost.TryGetValue(
+                        post.Id,
+                        out var music)
+                        ? ToMusicView(music)
+                        : null,
+                    postMedia
+                        .Select(media => new SocialMediaAssetView(
+                            media.Id,
+                            media.DisplayOrder,
+                            media.MediaKind,
+                            media.MimeType,
+                            media.FileSizeBytes,
+                            media.Width,
+                            media.Height,
+                            media.AspectRatio,
+                            media.DurationSeconds,
+                            media.ProcessingState,
+                            media.AccessibilityText,
+                            !string.IsNullOrWhiteSpace(
+                                media.ThumbnailStorageKey)))
+                        .ToArray(),
+                    visibleComments);
+            })
+            .ToArray();
     }
 
     private async Task<SocialPostView> BuildPostViewAsync(SocialPost post, SocialFeedActor actor, CancellationToken cancellationToken) =>
