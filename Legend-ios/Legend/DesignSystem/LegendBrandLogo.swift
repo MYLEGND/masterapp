@@ -8,6 +8,6 @@ struct LegendBrandLogo: View {
             .resizable()
             .scaledToFit()
             .frame(maxWidth: maximumWidth)
-            .accessibilityLabel("Legend")
+            .accessibilityLabel("LEGEND®")
     }
 }

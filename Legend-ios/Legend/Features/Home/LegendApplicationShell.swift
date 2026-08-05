@@ -421,7 +421,7 @@ private struct LegendAppBrandBar: View {
 
             Spacer(minLength: LegendNextSpacing.sm)
 
-            Text("LEGEND")
+            Text("LEGEND®")
                 .font(.system(size: 23, weight: .bold, design: .default))
                 .tracking(4.6)
                 .foregroundStyle(wordmarkColor)
@@ -785,7 +785,7 @@ private struct LegendAccountSwitcherSheet: View {
                     alignment: .leading,
                     spacing: LegendNextSpacing.micro
                 ) {
-                    Text("LEGEND IDENTITY")
+                    Text("LEGEND® IDENTITY")
                         .font(LegendNextTypography.eyebrow)
                         .tracking(1)
                         .foregroundStyle(
@@ -2187,10 +2187,10 @@ private struct LegendHomeView: View {
         for home: MobileHomeResponse
     ) -> String {
         if home.identity.participantType == .agent {
-            return "Lead with clarity, serve with precision, and keep every relationship moving forward."
+            return "Lead with purpose, discipline, clarity, and confidence while helping others grow intentionally."
         }
 
-        return "Continue building the protection, community, and legacy behind your journey."
+        return "Build discipline, confidence, clarity, and purpose through Christ-centered growth and intentional living."
     }
 
     private func actionDueDetail(

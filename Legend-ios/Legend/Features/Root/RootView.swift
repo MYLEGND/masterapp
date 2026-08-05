@@ -176,7 +176,7 @@ private struct ConfigurationStateView: View {
                     VStack(spacing: LegendNextSpacing.xs) {
                         LegendBrandLogo(maximumWidth: 96)
                             .accessibilityHidden(true)
-                        Text("Legend")
+                        Text("LEGEND®")
                             .font(.system(.title2, design: .rounded).weight(.bold))
                             .foregroundStyle(LegendNextColor.textPrimary)
                     }
@@ -331,7 +331,7 @@ private struct AuthenticatedHomeView: View {
                     .padding(LegendNextSpacing.md)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(LegendNextCanvas())
-                    .navigationTitle("Legend")
+                    .navigationTitle("LEGEND®")
                     .navigationBarTitleDisplayMode(.inline)
                 }
             }
