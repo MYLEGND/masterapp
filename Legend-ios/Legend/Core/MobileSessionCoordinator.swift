@@ -88,6 +88,16 @@ final class MobileSessionCoordinator: ObservableObject {
     private let biometricSecurity: any MobileBiometricSessionSecuring
     let launchCache: any LegendLaunchCaching
     private var activeTokens: OAuthTokenSet?
+
+    /// Presentation cache for protected avatar resources. The resource URL
+    /// contains a server-generated content version, so a changed image gets a
+    /// new key instead of overwriting or competing with authoritative state.
+    private let protectedImageCache: NSCache<NSString, NSData> = {
+        let cache = NSCache<NSString, NSData>()
+        cache.countLimit = 256
+        cache.totalCostLimit = 32 * 1024 * 1024
+        return cache
+    }()
     /// The single in-flight token refresh, shared by every concurrent caller.
     private var refreshTask: Task<OAuthTokenSet, Error>?
     private var authenticationRecoveryTask: Task<Void, Never>?
@@ -776,6 +786,42 @@ final class MobileSessionCoordinator: ObservableObject {
         }
 
         transition(to: .authenticated(session), reason: reason)
+    }
+
+    func protectedImageData(
+        resourcePath: String
+    ) async -> Data? {
+        let path = resourcePath.trimmingCharacters(
+            in: .whitespacesAndNewlines)
+
+        guard path.hasPrefix("/"),
+              let apiBaseURL = configuration.apiBaseURL else {
+            return nil
+        }
+
+        let key = path as NSString
+
+        if let cached = protectedImageCache.object(forKey: key) {
+            return cached as Data
+        }
+
+        do {
+            let accessToken = try await accessTokenForRequest()
+            let data = try await MobileHTTPClient(
+                baseURL: apiBaseURL
+            ).getData(
+                path,
+                accessToken: accessToken)
+
+            protectedImageCache.setObject(
+                data as NSData,
+                forKey: key,
+                cost: data.count)
+
+            return data
+        } catch {
+            return nil
+        }
     }
 
     private func accessTokenForRequest() async throws -> String {

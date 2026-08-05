@@ -757,23 +757,24 @@ private struct LegendPromotedGroupCard: View {
 
     @ViewBuilder
     private var groupAvatar: some View {
-        if let data = group.groupAvatar?.imageData,
-           let image = UIImage(data: data) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        } else {
+        LegendAvatarImageContent(
+            avatar: group.groupAvatar
+        ) {
             Image(systemName: "person.3.fill")
                 .font(.title3.weight(.bold))
                 .foregroundStyle(LegendNextColor.midnight)
                 .frame(width: 44, height: 44)
                 .background(
                     LegendNextGradient.gold,
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                )
+                    in: RoundedRectangle(
+                        cornerRadius: 12,
+                        style: .continuous))
         }
+        .frame(width: 44, height: 44)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: 12,
+                style: .continuous))
     }
 }
 

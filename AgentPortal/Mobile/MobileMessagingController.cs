@@ -111,12 +111,47 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 // Group artwork is separate conversation-owned media. Member
                 // avatars above come from one batch against the same typed
                 // profile authority used by the rest of the mobile app.
-                MobileAvatarProjection.FromGroupImage(conversation.GroupImage),
+                MobileAvatarProjection.FromGroupImage(
+                    conversation.Id,
+                    conversation.GroupImage),
                 conversation.IsPinned,
                 conversation.IsMuted));
         }
 
         return Ok(response);
+    }
+
+    [HttpGet("messaging/conversations/{conversationId:guid}/image")]
+    [ResponseCache(Duration = 86400, Location = ResponseCacheLocation.Client)]
+    public async Task<IActionResult> ConversationImage(
+        Guid conversationId,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var result = await _messaging.GetConversationPageAsync(
+            resolved.Actor!.Actor,
+            conversationId,
+            new MessagingConversationMessagePageQuery(
+                BeforeUtc: null,
+                Take: 1,
+                IncludeGroupImage: true),
+            cancellationToken);
+
+        if (!result.Succeeded || result.Conversation is null)
+            return MessagingFailure(
+                result.ErrorCode,
+                result.ErrorMessage);
+
+        var image = result.Conversation.GroupImage;
+
+        return image is null
+            ? NotFound()
+            : File(
+                image.Content,
+                image.ContentType);
     }
 
     [HttpGet("messaging/recipients")]
@@ -880,7 +915,9 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             conversation.IsClosed,
             conversation.CanManageMembers,
             conversation.Purpose,
-            MobileAvatarProjection.FromGroupImage(conversation.GroupImage)) with
+            MobileAvatarProjection.FromGroupImage(
+                conversation.Id,
+                conversation.GroupImage)) with
         {
             CanManageCollaborators = conversation.CanManageCollaborators,
             CanDeleteGroup = conversation.CanDeleteGroup,
@@ -1099,7 +1136,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
 
 public sealed record MobileLogicalIdentityDto(string UserId, string ParticipantType);
 
-public sealed record MobileAvatarDto(string Kind, string ContentType, string Base64Content);
+public sealed record MobileAvatarDto(string Kind, string ContentType, string ResourcePath);
 
 public sealed record MobileActorDto(
     MobileLogicalIdentityDto Identity,

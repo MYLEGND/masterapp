@@ -7901,27 +7901,80 @@ private struct LegendProfileEditorField: View {
     }
 }
 
+struct LegendAvatarImageContent<Placeholder: View>: View {
+    @EnvironmentObject private var session: MobileSessionCoordinator
+
+    let avatar: ProfileAvatar?
+    private let placeholder: Placeholder
+
+    @State private var remoteData: Data?
+
+    init(
+        avatar: ProfileAvatar?,
+        @ViewBuilder placeholder: () -> Placeholder
+    ) {
+        self.avatar = avatar
+        self.placeholder = placeholder()
+    }
+
+    var body: some View {
+        Group {
+            if let data = avatar?.imageData ?? remoteData,
+               let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                placeholder
+            }
+        }
+        .task(id: avatar?.resourcePath) {
+            remoteData = nil
+
+            guard avatar?.imageData == nil,
+                  let resourcePath = avatar?.resourcePath else {
+                return
+            }
+
+            remoteData = await session.protectedImageData(
+                resourcePath: resourcePath)
+        }
+    }
+}
+
 struct LegendProfileAvatar: View {
     let avatar: ProfileAvatar?
     let displayName: String
     let size: CGFloat
 
     var body: some View {
-        Group {
-            if let data = avatar?.imageData, let image = UIImage(data: data) {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else {
-                Text(initials).font(.caption.weight(.bold)).foregroundStyle(.white).background(LegendNextColor.navy)
-            }
+        LegendAvatarImageContent(avatar: avatar) {
+            Text(initials)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .background(LegendNextColor.navy)
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay { Circle().stroke(LegendNextColor.gold.opacity(0.7), lineWidth: 1) }
-        .accessibilityLabel("Profile image for \(displayName)")
+        .overlay {
+            Circle()
+                .stroke(
+                    LegendNextColor.gold.opacity(0.7),
+                    lineWidth: 1)
+        }
+        .accessibilityLabel(
+            "Profile image for \(displayName)")
     }
 
     private var initials: String {
-        let value = displayName.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased()
+        let value = displayName
+            .split(separator: " ")
+            .prefix(2)
+            .compactMap(\.first)
+            .map(String.init)
+            .joined()
+            .uppercased()
+
         return value.isEmpty ? "L" : value
     }
 }

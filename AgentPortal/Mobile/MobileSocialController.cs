@@ -629,7 +629,9 @@ public sealed class MobileSocialController : MobileApiControllerBase
                 group.ConversationId,
                 group.Subject,
                 await ToAuthorDtoAsync(group.Owner, cancellationToken),
-                MobileAvatarProjection.FromGroupImage(group.GroupImage),
+                MobileAvatarProjection.FromGroupImage(
+                    group.ConversationId,
+                    group.GroupImage),
                 group.ActiveMemberCount,
                 group.IsJoinedByCurrentActor,
                 group.PromotionStartedUtc));

@@ -91,7 +91,26 @@ struct MobileActor: Codable, Equatable, Sendable {
 struct ProfileAvatar: Codable, Equatable, Sendable {
     let kind: String
     let contentType: String
-    let base64Content: String
+    let base64Content: String?
+    let resourcePath: String?
 
-    var imageData: Data? { Data(base64Encoded: base64Content) }
+    init(
+        kind: String,
+        contentType: String,
+        base64Content: String? = nil,
+        resourcePath: String? = nil
+    ) {
+        self.kind = kind
+        self.contentType = contentType
+        self.base64Content = base64Content
+        self.resourcePath = resourcePath
+    }
+
+    /// Inline bytes exist only for native, device-local previews. Server
+    /// projections use `resourcePath` so parent JSON never carries image data.
+    var imageData: Data? {
+        base64Content.flatMap { value in
+            Data(base64Encoded: value)
+        }
+    }
 }

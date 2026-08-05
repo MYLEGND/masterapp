@@ -364,7 +364,9 @@ public sealed class MobileIntegrationTests
         Assert.Equal(client.Id.ToString("D"), inboxConversation.Counterparty.ProfileId);
         Assert.Equal("Canonical Client", inboxConversation.Counterparty.DisplayName);
         Assert.NotNull(inboxConversation.Counterparty.Avatar);
-        Assert.Equal(clientImage, Convert.FromBase64String(inboxConversation.Counterparty.Avatar!.Base64Content));
+        Assert.Contains(
+            client.Id.ToString("D"),
+            inboxConversation.Counterparty.Avatar!.ResourcePath);
 
         var messagesResult = await controller.Messages(conversationId, null, null, CancellationToken.None);
         var thread = Assert.IsAssignableFrom<IEnumerable<MobileMessageDto>>(
@@ -373,7 +375,9 @@ public sealed class MobileIntegrationTests
         Assert.Equal(client.Id.ToString("D"), threadMessage.Sender.ProfileId);
         Assert.Equal("Canonical Client", threadMessage.Sender.DisplayName);
         Assert.NotNull(threadMessage.Sender.Avatar);
-        Assert.Equal(clientImage, Convert.FromBase64String(threadMessage.Sender.Avatar!.Base64Content));
+        Assert.Contains(
+            client.Id.ToString("D"),
+            threadMessage.Sender.Avatar!.ResourcePath);
         messaging.VerifyAll();
     }
 
@@ -424,7 +428,9 @@ public sealed class MobileIntegrationTests
             Assert.IsType<OkObjectResult>(result).Value);
         var summary = Assert.Single(inbox);
         Assert.NotNull(summary.GroupAvatar);
-        Assert.Equal(groupImage, Convert.FromBase64String(summary.GroupAvatar!.Base64Content));
+        Assert.StartsWith(
+            "/api/v1/mobile/messaging/conversations/",
+            summary.GroupAvatar!.ResourcePath);
         Assert.Equal("image/jpeg", summary.GroupAvatar.ContentType);
         messaging.VerifyAll();
     }
@@ -459,7 +465,9 @@ public sealed class MobileIntegrationTests
         var response = Assert.IsType<OkObjectResult>(result).Value as MobileSessionResponse;
         Assert.NotNull(response?.Actor?.Avatar);
         Assert.Equal("image/png", response!.Actor!.Avatar!.ContentType);
-        Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2, 3 }), response.Actor.Avatar.Base64Content);
+        Assert.Contains(
+            agentId.ToString("D"),
+            response.Actor.Avatar.ResourcePath);
         profiles.VerifyAll();
     }
 
@@ -878,7 +886,9 @@ public sealed class MobileIntegrationTests
 
         var agentAccount = Assert.IsType<OkObjectResult>(agentResult).Value as MobileAccountProfile;
         Assert.NotNull(agentAccount?.Avatar);
-        Assert.Equal(imageBytes, Convert.FromBase64String(agentAccount!.Avatar!.Base64Content));
+        Assert.Contains(
+            agent.Id.ToString("D"),
+            agentAccount!.Avatar!.ResourcePath);
 
         await db.Entry(agent).ReloadAsync();
         await db.Entry(client).ReloadAsync();
@@ -892,7 +902,9 @@ public sealed class MobileIntegrationTests
 
         var clientAccount = Assert.IsType<OkObjectResult>(clientResult).Value as MobileAccountProfile;
         Assert.NotNull(clientAccount?.Avatar);
-        Assert.Equal(imageBytes, Convert.FromBase64String(clientAccount!.Avatar!.Base64Content));
+        Assert.Contains(
+            client.Id.ToString("D"),
+            clientAccount!.Avatar!.ResourcePath);
 
         await db.Entry(agent).ReloadAsync();
         await db.Entry(client).ReloadAsync();
@@ -1156,7 +1168,9 @@ public sealed class MobileIntegrationTests
         var response = Assert.IsType<OkObjectResult>(result).Value as MobileJourneyDashboard;
         Assert.NotNull(response?.Profile?.Avatar);
         Assert.Equal("image/png", response!.Profile!.Avatar!.ContentType);
-        Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2, 3 }), response.Profile.Avatar.Base64Content);
+        Assert.Contains(
+            profileId.ToString("D"),
+            response.Profile.Avatar.ResourcePath);
         journeyCircles.VerifyAll();
         images.VerifyAll();
     }
@@ -1624,7 +1638,9 @@ public sealed class MobileIntegrationTests
         Assert.Equal("Client Identity", client.DisplayName);
         Assert.NotNull(client.Avatar);
         Assert.Equal("image/png", client.Avatar!.ContentType);
-        Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2, 3 }), client.Avatar.Base64Content);
+        Assert.Contains(
+            clientProfileId.ToString("D"),
+            client.Avatar.ResourcePath);
         home.VerifyAll();
         profiles.VerifyAll();
     }

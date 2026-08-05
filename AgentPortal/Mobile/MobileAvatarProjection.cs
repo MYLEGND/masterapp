@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Domain.Messaging;
 using Infrastructure.Messaging;
 
@@ -5,10 +6,15 @@ namespace AgentPortal.Mobile;
 
 internal static class MobileAvatarProjection
 {
-    public static MobileAvatarDto? FromGroupImage(MessagingGroupImage? image) =>
+    public static MobileAvatarDto? FromGroupImage(
+        Guid conversationId,
+        MessagingGroupImage? image) =>
         image is { Content.Length: > 0 } &&
         image.ContentType is "image/png" or "image/jpeg" or "image/webp" or "image/heic"
-            ? new MobileAvatarDto("inline", image.ContentType, Convert.ToBase64String(image.Content))
+            ? Resource(
+                image.ContentType,
+                $"/api/v1/mobile/messaging/conversations/{conversationId:D}/image",
+                image.Content)
             : null;
 
     public static Task<MobileAvatarDto?> ResolveAsync(
@@ -35,14 +41,13 @@ internal static class MobileAvatarProjection
         var image = await profiles.ResolveAsync(identity, cancellationToken);
         return image is null
             ? null
-            : new MobileAvatarDto("inline", image.ContentType, Convert.ToBase64String(image.Content));
+            : ProfileResource(identity, image);
     }
 
     /// <summary>
-    /// Projects a list of canonical avatars with at most one query per typed
-    /// profile authority. The production resolver implements the batch
-    /// capability; the single-image fallback keeps alternate implementations
-    /// contract-compatible without changing their source of truth.
+    /// Resolves canonical profile media in one batch, but transports only
+    /// versioned protected resource references. Binary image content never
+    /// enters parent mobile JSON payloads.
     /// </summary>
     public static async Task<IReadOnlyDictionary<MessagingProfileImageKey, MobileAvatarDto>> ResolveManyAsync(
         IMessagingProfileImageResolver profiles,
@@ -53,32 +58,81 @@ internal static class MobileAvatarProjection
             .Where(identity => identity.ProfileId != Guid.Empty)
             .DistinctBy(MessagingProfileImageKey.From)
             .ToArray();
+
         if (requested.Length == 0)
             return new Dictionary<MessagingProfileImageKey, MobileAvatarDto>();
 
         IReadOnlyDictionary<MessagingProfileImageKey, MessagingProfileImage> images;
+
         if (profiles is IMessagingProfileImageBatchResolver batchResolver)
         {
-            images = await batchResolver.ResolveManyAsync(requested, cancellationToken);
+            images = await batchResolver.ResolveManyAsync(
+                requested,
+                cancellationToken);
         }
         else
         {
-            var fallback = new Dictionary<MessagingProfileImageKey, MessagingProfileImage>();
+            var resolved = new Dictionary<
+                MessagingProfileImageKey,
+                MessagingProfileImage>();
+
             foreach (var identity in requested)
             {
-                var image = await profiles.ResolveAsync(identity, cancellationToken);
+                var image = await profiles.ResolveAsync(
+                    identity,
+                    cancellationToken);
+
                 if (image is not null)
-                    fallback[MessagingProfileImageKey.From(identity)] = image;
+                {
+                    resolved[
+                        MessagingProfileImageKey.From(identity)
+                    ] = image;
+                }
             }
 
-            images = fallback;
+            images = resolved;
         }
 
         return images.ToDictionary(
             entry => entry.Key,
-            entry => new MobileAvatarDto(
-                "inline",
+            entry => Resource(
                 entry.Value.ContentType,
-                Convert.ToBase64String(entry.Value.Content)));
+                ProfilePath(
+                    entry.Key.ParticipantType,
+                    entry.Key.ProfileId),
+                entry.Value.Content));
+    }
+
+    private static MobileAvatarDto ProfileResource(
+        MessagingParticipantIdentity identity,
+        MessagingProfileImage image) =>
+        Resource(
+            image.ContentType,
+            ProfilePath(
+                identity.ParticipantType,
+                identity.ProfileId),
+            image.Content);
+
+    private static string ProfilePath(
+        string participantType,
+        Guid profileId) =>
+        $"/api/v1/mobile/profile-images/" +
+        $"{Uri.EscapeDataString(participantType)}/{profileId:D}";
+
+    private static MobileAvatarDto Resource(
+        string contentType,
+        string path,
+        byte[] content)
+    {
+        // The immutable version component changes whenever the authoritative
+        // image bytes change. Native caching can therefore be aggressive
+        // without serving a stale avatar after an update.
+        var version = Convert.ToHexString(
+            SHA256.HashData(content))[..16].ToLowerInvariant();
+
+        return new MobileAvatarDto(
+            "resource",
+            contentType,
+            $"{path}?v={version}");
     }
 }

@@ -66,18 +66,15 @@ private struct LegendMessagingGroupAvatar: View {
     let size: CGFloat
 
     var body: some View {
-        Group {
-            if let data = avatar?.imageData,
-               let image = UIImage(data: data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Image(systemName: "person.3.fill")
-                    .font(.system(size: size * 0.38, weight: .semibold))
-                    .foregroundStyle(LegendNextColor.midnight)
-                    .background(LegendNextGradient.gold, in: Circle())
-            }
+        LegendAvatarImageContent(avatar: avatar) {
+            Image(systemName: "person.3.fill")
+                .font(.system(
+                    size: size * 0.38,
+                    weight: .semibold))
+                .foregroundStyle(LegendNextColor.midnight)
+                .background(
+                    LegendNextGradient.gold,
+                    in: Circle())
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
@@ -3643,22 +3640,18 @@ private struct LegendMessageBubble: View {
     @ViewBuilder
     private var incomingAvatar: some View {
         if showsSender {
-            Group {
-                if let data = senderAvatar?.imageData,
-                   let image = UIImage(data: data) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    Text(senderInitials)
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(
-                            maxWidth: .infinity,
-                            maxHeight: .infinity
-                        )
-                        .background(recipientBubbleColor)
-                }
+            LegendAvatarImageContent(
+                avatar: senderAvatar
+            ) {
+                Text(senderInitials)
+                    .font(.system(
+                        size: 8,
+                        weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity)
+                    .background(recipientBubbleColor)
             }
             .frame(
                 width: accessoryColumnWidth,
@@ -3815,25 +3808,20 @@ private struct LegendMessagingAvatar: View {
     let showsGoldRing: Bool
 
     var body: some View {
-        Group {
-            if let data = participant.avatar?.imageData,
-               let image = UIImage(data: data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Text(initials)
-                    .font(
-                        .system(
-                            size: max(11, size * 0.29),
-                            weight: .bold,
-                            design: .rounded
-                        )
-                    )
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(LegendNextGradient.hero)
-            }
+        LegendAvatarImageContent(
+            avatar: participant.avatar
+        ) {
+            Text(initials)
+                .font(
+                    .system(
+                        size: max(11, size * 0.29),
+                        weight: .bold,
+                        design: .rounded))
+                .foregroundStyle(.white)
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity)
+                .background(LegendNextGradient.hero)
         }
         .frame(width: size, height: size)
         .clipShape(Circle())

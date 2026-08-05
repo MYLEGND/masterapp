@@ -293,6 +293,31 @@ struct MobileHTTPClient: Sendable {
         try await performEmpty(request)
     }
 
+    #if DEBUG
+    private static func recordPerformance(
+        phase: String,
+        request: URLRequest,
+        milliseconds: Double,
+        byteCount: Int?
+    ) {
+        let method = request.httpMethod ?? "?"
+        let path = request.url?.path ?? "<unknown>"
+        let query = request.url?.query.map { "?\($0)" } ?? ""
+        let bytes = byteCount.map { " | \($0) bytes" } ?? ""
+
+        print(
+            String(
+                format:
+                    "LEGEND_PERF | %@ | %@ %@%@ | %.1f ms%@",
+                phase,
+                method,
+                path,
+                query,
+                milliseconds,
+                bytes))
+    }
+    #endif
+
     private func endpointURL(_ path: String, queryItems: [URLQueryItem]) throws -> URL {
         guard path.hasPrefix("/") else { throw MobileAPIError.invalidPath }
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
@@ -316,9 +341,38 @@ struct MobileHTTPClient: Sendable {
             for: request,
             uploadBodyFile: uploadBodyFile,
             uploadProgress: uploadProgress)
+
+        #if DEBUG
+        let decodeStarted = Date().timeIntervalSinceReferenceDate
+        #endif
+
         do {
-            return try JSONDecoder.mobile.decode(Response.self, from: data)
+            let decoded = try JSONDecoder.mobile.decode(Response.self, from: data)
+
+            #if DEBUG
+            let decodeMilliseconds =
+                (Date().timeIntervalSinceReferenceDate - decodeStarted) * 1_000
+
+            Self.recordPerformance(
+                phase: "DECODE",
+                request: request,
+                milliseconds: decodeMilliseconds,
+                byteCount: data.count)
+            #endif
+
+            return decoded
         } catch {
+            #if DEBUG
+            let decodeMilliseconds =
+                (Date().timeIntervalSinceReferenceDate - decodeStarted) * 1_000
+
+            Self.recordPerformance(
+                phase: "DECODE FAILED",
+                request: request,
+                milliseconds: decodeMilliseconds,
+                byteCount: data.count)
+            #endif
+
             throw MobileAPIError.decodingFailed(correlationID: correlationID)
         }
     }
@@ -329,20 +383,54 @@ struct MobileHTTPClient: Sendable {
         uploadProgress: (@Sendable (Double) -> Void)? = nil,
         resourceTimeout: TimeInterval? = nil
     ) async throws -> (Data, String?) {
-        let hasAuthorizationHeader = request.value(forHTTPHeaderField: "Authorization") != nil
-        MobileDebugDiagnostics.record("Mobile API request started. Authorization header present: \(hasAuthorizationHeader).")
-        let (data, urlResponse) = try await requestData(
-            for: request,
-            uploadBodyFile: uploadBodyFile,
-            uploadProgress: uploadProgress,
-            resourceTimeout: resourceTimeout)
+        let hasAuthorizationHeader =
+            request.value(forHTTPHeaderField: "Authorization") != nil
 
-        guard let http = urlResponse as? HTTPURLResponse else {
-            throw MobileAPIError.invalidServerResponse
+        MobileDebugDiagnostics.record(
+            "Mobile API request started. Authorization header present: \(hasAuthorizationHeader).")
+
+        #if DEBUG
+        let requestStarted = Date().timeIntervalSinceReferenceDate
+        #endif
+
+        do {
+            let (data, urlResponse) = try await requestData(
+                for: request,
+                uploadBodyFile: uploadBodyFile,
+                uploadProgress: uploadProgress,
+                resourceTimeout: resourceTimeout)
+
+            guard let http = urlResponse as? HTTPURLResponse else {
+                throw MobileAPIError.invalidServerResponse
+            }
+
+            #if DEBUG
+            let networkMilliseconds =
+                (Date().timeIntervalSinceReferenceDate - requestStarted) * 1_000
+
+            Self.recordPerformance(
+                phase: "NETWORK \(http.statusCode)",
+                request: request,
+                milliseconds: networkMilliseconds,
+                byteCount: data.count)
+            #endif
+
+            let correlationID = try validateResponse(http, body: data)
+            return (data, correlationID)
+        } catch {
+            #if DEBUG
+            let networkMilliseconds =
+                (Date().timeIntervalSinceReferenceDate - requestStarted) * 1_000
+
+            Self.recordPerformance(
+                phase: "NETWORK FAILED",
+                request: request,
+                milliseconds: networkMilliseconds,
+                byteCount: nil)
+            #endif
+
+            throw error
         }
-
-        let correlationID = try validateResponse(http, body: data)
-        return (data, correlationID)
     }
 
     private func performEmpty(_ request: URLRequest) async throws {
