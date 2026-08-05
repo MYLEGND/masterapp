@@ -42,7 +42,7 @@ public static class MessagingServiceCollectionExtensions
         {
             client.Timeout = TimeSpan.FromSeconds(10);
             client.DefaultRequestVersion = HttpVersion.Version20;
-            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrHigher;
+            client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
         });
         services.AddSingleton<IApplePushGateway, ApplePushGateway>();
         services.AddHostedService<ApplePushDeliveryHostedService>();
