@@ -62,13 +62,27 @@ targets:
         LegendAuthRedirectScheme: "$(LEGEND_AUTH_REDIRECT_SCHEME)"
         LegendAuthScope: "$(LEGEND_AUTH_SCOPE)"
         LegendAuthAudience: "$(LEGEND_AUTH_AUDIENCE)"
+        LegendAgentOnlineAccountURL: "$(LEGEND_AGENT_ONLINE_ACCOUNT_URL)"
+        LegendPrivacyPolicyURL: "$(LEGEND_PRIVACY_POLICY_URL)"
+        LegendAPNSEnvironment: "$(APS_ENVIRONMENT)"
+        ITSAppUsesNonExemptEncryption: false
         LSApplicationQueriesSchemes:
           - facetime
           - facetime-audio
           - tel
-        NSCameraUsageDescription: "Legend uses the camera only when you choose to capture media for a Legend update."
-        NSMicrophoneUsageDescription: "Legend uses the microphone only when you choose to record audio with a Legend video update."
-        NSPhotoLibraryUsageDescription: "Legend uses photo access only when you choose to manage media for a Legend update."
+        NSCameraUsageDescription: "LEGEND® uses the camera only when you choose to capture media for a Legend update."
+        NSMicrophoneUsageDescription: "LEGEND® uses the microphone only when you choose to record audio with a Legend video update."
+        NSPhotoLibraryUsageDescription: "LEGEND® uses photo access only when you choose to manage media for a Legend update."
+        NSCalendarsFullAccessUsageDescription: "LEGEND® reads today’s events from the calendar accounts available on this device only when you choose to connect Calendar to Activity."
+        NSFaceIDUsageDescription: "LEGEND® uses Face ID only when you choose to protect access to your account on this device."
+        NSRemindersFullAccessUsageDescription: "LEGEND® reads and completes reminders available on this device only when you choose to connect Reminders to Activity."
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UILaunchStoryboardName: LaunchScreen
 
     settings:
@@ -128,6 +142,13 @@ targets:
 
     info:
       path: LegendNotificationService/Info.plist
+      properties:
+        CFBundleDisplayName: Legend Notification Service
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).NotificationService"
 
     settings:
       base:

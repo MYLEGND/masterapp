@@ -130,6 +130,51 @@ public sealed class MobileJourneyCirclesController : MobileApiControllerBase
             : JourneyFailure(result);
     }
 
+    [HttpPost("profiles/{targetClientProfileId:guid}/block")]
+    public async Task<IActionResult> BlockProfile(
+        Guid targetClientProfileId,
+        CancellationToken cancellationToken)
+    {
+        var actor = await ResolveClientActorAsync(cancellationToken);
+        if (actor.Error is not null)
+            return actor.Error;
+        if (targetClientProfileId == Guid.Empty)
+            return Error(StatusCodes.Status400BadRequest, "mobile_journey_target_required", "Choose an authorized Journey Circles profile.");
+
+        var result = await _journeyCircles.BlockAsync(
+            actor.Actor!.Actor.UserId,
+            targetClientProfileId,
+            cancellationToken);
+        return result.Succeeded
+            ? NoContent()
+            : JourneyFailure(result);
+    }
+
+    [HttpPost("profiles/{targetClientProfileId:guid}/report")]
+    public async Task<IActionResult> ReportProfile(
+        Guid targetClientProfileId,
+        [FromBody] MobileJourneyReportRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var actor = await ResolveClientActorAsync(cancellationToken);
+        if (actor.Error is not null)
+            return actor.Error;
+        if (targetClientProfileId == Guid.Empty)
+            return Error(StatusCodes.Status400BadRequest, "mobile_journey_target_required", "Choose an authorized Journey Circles profile.");
+        if (string.IsNullOrWhiteSpace(request?.Category))
+            return Error(StatusCodes.Status400BadRequest, "mobile_journey_report_category_required", "Choose a reason for this report.");
+
+        var result = await _journeyCircles.ReportAsync(
+            actor.Actor!.Actor.UserId,
+            targetClientProfileId,
+            request.Category,
+            request.Detail,
+            cancellationToken);
+        return result.Succeeded
+            ? NoContent()
+            : JourneyFailure(result);
+    }
+
     private async Task<MobileActorRequestResolution> ResolveClientActorAsync(CancellationToken cancellationToken)
     {
         var resolution = await ResolveActorAsync(cancellationToken);
@@ -289,6 +334,7 @@ public sealed record MobileJourneyProfileInput(
 
 public sealed record MobileJourneyConnectionRequest(Guid TargetClientProfileId, string? ConnectionReason, string? Introduction);
 public sealed record MobileJourneyConnectionResponse(bool Accept);
+public sealed record MobileJourneyReportRequest(string? Category, string? Detail);
 public sealed record MobileJourneyDashboard(
     MobileJourneyProfile? Profile,
     MobileJourneyPreferences? Preferences,

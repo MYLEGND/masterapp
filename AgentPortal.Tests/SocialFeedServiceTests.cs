@@ -1581,6 +1581,43 @@ public sealed class SocialFeedServiceTests
         Assert.False(group.IsJoinedByCurrentActor);
     }
 
+    [Fact]
+    public async Task CommunityModeration_BlocksSocialPostsAndCommentsBeforeTheyArePersisted()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "moderated-social-agent",
+            AgentUpn = "moderated.social.agent@example.test",
+            FullName = "Moderated Social Agent",
+            IsActive = true
+        };
+        db.AgentProfiles.Add(profile);
+        await db.SaveChangesAsync();
+
+        var actor = new SocialFeedActor(
+            new MessagingActor(profile.AgentUserId, MessagingParticipantTypes.Agent),
+            profile.Id,
+            profile.FullName!);
+        var service = CreateService(db);
+
+        var allowedPost = await service.CreatePostAsync(
+            new CreateSocialPostCommand(actor, SocialPostContentTypes.Post, "A respectful update."));
+        var blockedPost = await service.CreatePostAsync(
+            new CreateSocialPostCommand(actor, SocialPostContentTypes.Post, "This is f.u.c.k."));
+        var blockedComment = await service.AddCommentAsync(
+            new CreateSocialCommentCommand(actor, allowedPost.Value!.Id, "This is f.u.c.k."));
+
+        Assert.True(allowedPost.Succeeded);
+        Assert.False(blockedPost.Succeeded);
+        Assert.Equal("social_content_blocked", blockedPost.ErrorCode);
+        Assert.False(blockedComment.Succeeded);
+        Assert.Equal("social_content_blocked", blockedComment.ErrorCode);
+        Assert.Single(db.SocialPosts);
+        Assert.Empty(db.SocialPostComments);
+    }
+
     private static SocialFeedService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
         ISocialMediaStorage? mediaStorage = null,
@@ -1592,6 +1629,8 @@ public sealed class SocialFeedServiceTests
             mediaStorage ?? new UnavailableTestSocialMediaStorage(),
             musicCatalog ?? new CuratedOpenMusicCatalog(),
             new MemoryCache(new MemoryCacheOptions()),
+            moderation: new CommunityTextModerationService(
+                new ConfigurationBuilder().Build()),
             configuredFounderOid: configuredFounderOid);
     }
 

@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using Domain.Entities;
 using Domain.Messaging;
+using Domain.Moderation;
 using Domain.Social;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +34,7 @@ public sealed class SocialFeedService : ISocialFeedService
     private const int MaximumStoryInteractionCount = 20;
     private const int MaximumWatchDurationSeconds = 86_400;
     private const int TopInsightItemCount = 5;
+    private const string RespectfulCommunityMessage = "This content cannot be shared because it violates Legend Legacy Protection's respectful-communication policy. Please revise it and try again.";
     private static readonly TimeSpan AudienceGraphCacheDuration = TimeSpan.FromMinutes(3);
     private const string AudienceGraphCachePrefix = "legend.social.audience.v1";
 
@@ -40,6 +42,7 @@ public sealed class SocialFeedService : ISocialFeedService
     private readonly ISocialMediaStorage _mediaStorage;
     private readonly ISocialMediaProcessingQueue? _mediaProcessingQueue;
     private readonly ISocialMusicCatalog _musicCatalog;
+    private readonly ICommunityTextModerationService _moderation;
     private readonly IMemoryCache _memoryCache;
     private readonly string? _configuredFounderOid;
 
@@ -48,6 +51,7 @@ public sealed class SocialFeedService : ISocialFeedService
         ISocialMediaStorage mediaStorage,
         ISocialMusicCatalog musicCatalog,
         IMemoryCache memoryCache,
+        ICommunityTextModerationService moderation,
         ISocialMediaProcessingQueue? mediaProcessingQueue = null,
         string? configuredFounderOid = null)
     {
@@ -56,6 +60,7 @@ public sealed class SocialFeedService : ISocialFeedService
         _mediaProcessingQueue = mediaProcessingQueue;
         _musicCatalog = musicCatalog;
         _memoryCache = memoryCache;
+        _moderation = moderation;
         _configuredFounderOid = configuredFounderOid ??
             Environment.GetEnvironmentVariable("FOUNDER_OID") ??
             Environment.GetEnvironmentVariable("FounderOid");
@@ -274,6 +279,8 @@ public sealed class SocialFeedService : ISocialFeedService
         var body = NormalizeBody(command.Body, MaximumPostLength);
         if (contentType is null || string.IsNullOrWhiteSpace(body))
             return SocialOperationResult<SocialPostView>.Failure("social_post_invalid", "Choose a post type and add a concise update.");
+        if (!IsCommunityTextAllowed(body, "SocialPost"))
+            return ContentBlocked<SocialPostView>();
 
         var details = command.Details ?? new SocialPostDetails();
 
@@ -323,6 +330,8 @@ public sealed class SocialFeedService : ISocialFeedService
                 "social_media_post_invalid",
                 $"Choose a post type and attach between 1 and {MaximumMediaItemsPerPost} supported media files.");
         }
+        if (!IsCommunityTextAllowed(body, "SocialMediaPost"))
+            return ContentBlocked<SocialPostView>();
 
         // Hacs have one portable delivery contract. The iOS creation path
         // produces H.264/AAC MP4 before this point; rejecting unnormalized
@@ -542,6 +551,8 @@ public sealed class SocialFeedService : ISocialFeedService
                 "social_media_post_invalid",
                 "The caption is too long. Keep it within the Legend update limit.");
         }
+        if (!IsCommunityTextAllowed(body, "SocialMediaPostPublish"))
+            return ContentBlocked<SocialPostView>();
 
         if (!IsValidHacPreview(post.ContentType, command.PreviewImage))
         {
@@ -659,6 +670,8 @@ public sealed class SocialFeedService : ISocialFeedService
                 "social_post_edit_invalid",
                 "Add a concise update before saving.");
         }
+        if (!IsCommunityTextAllowed(body, "SocialPostUpdate"))
+            return ContentBlocked<SocialPostView>();
 
         post.Body = body;
         await _db.SaveChangesAsync(cancellationToken);
@@ -977,6 +990,8 @@ public sealed class SocialFeedService : ISocialFeedService
             return SocialOperationResult<SocialCommentView>.Failure("social_post_unavailable", "This post is not available to your mobile identity.");
         if (string.IsNullOrWhiteSpace(body))
             return SocialOperationResult<SocialCommentView>.Failure("social_comment_invalid", "Add a concise comment before sending it.");
+        if (!IsCommunityTextAllowed(body, "SocialComment"))
+            return ContentBlocked<SocialCommentView>();
         if (!post.CommentsEnabled)
         {
             return SocialOperationResult<SocialCommentView>.Failure(
@@ -2135,6 +2150,12 @@ public sealed class SocialFeedService : ISocialFeedService
         content is { Length: > 0 } && !string.IsNullOrWhiteSpace(contentType)
             ? new MessagingGroupImage(content, contentType)
             : null;
+
+    private bool IsCommunityTextAllowed(string? content, string surface) =>
+        _moderation.Evaluate(content, surface).IsAllowed;
+
+    private static SocialOperationResult<T> ContentBlocked<T>() =>
+        SocialOperationResult<T>.Failure("social_content_blocked", RespectfulCommunityMessage);
 
     private Task<bool> IsValidActorAsync(SocialFeedActor actor, CancellationToken cancellationToken)
     {

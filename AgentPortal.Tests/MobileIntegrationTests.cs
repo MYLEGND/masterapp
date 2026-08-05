@@ -784,6 +784,52 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileJourneyCircles_UsesTheExistingServiceForClientReportsAndBlocks()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "client-oid",
+            FirstName = "Client",
+            LastName = "Identity",
+            Email = "client@example.test"
+        });
+        await db.SaveChangesAsync();
+
+        var targetProfileId = Guid.NewGuid();
+        var journeyCircles = new Mock<IJourneyCirclesService>(MockBehavior.Strict);
+        journeyCircles
+            .Setup(service => service.BlockAsync(
+                "client-oid",
+                targetProfileId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JourneyCircleOperationResult.Success());
+        journeyCircles
+            .Setup(service => service.ReportAsync(
+                "client-oid",
+                targetProfileId,
+                "Harassment",
+                null,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(JourneyCircleOperationResult.Success());
+        var controller = CreateJourneyController(
+            db,
+            journeyCircles.Object,
+            Principal("client-oid"));
+
+        var block = await controller.BlockProfile(targetProfileId, CancellationToken.None);
+        var report = await controller.ReportProfile(
+            targetProfileId,
+            new MobileJourneyReportRequest("Harassment", null),
+            CancellationToken.None);
+
+        Assert.IsType<NoContentResult>(block);
+        Assert.IsType<NoContentResult>(report);
+        journeyCircles.VerifyAll();
+    }
+
+    [Fact]
     public async Task MobileAccount_UpdatesOnlyTheSelectedTypedProfileForOnePhysicalUser()
     {
         await using var db = ControllerTestHelpers.BuildDb();

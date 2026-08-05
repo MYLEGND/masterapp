@@ -800,6 +800,13 @@ struct MobileJourneyConnectionResponseBody: Encodable, Sendable {
     let accept: Bool
 }
 
+struct MobileJourneyReportRequestBody: Encodable, Sendable {
+    let category: String
+    let detail: String?
+}
+
+struct MobileJourneyProfileActionRequest: Encodable, Sendable {}
+
 struct MobileJourneyRecommendation: Codable, Equatable, Identifiable, Sendable {
     let profile: MobileJourneyProfile
     let explanation: String

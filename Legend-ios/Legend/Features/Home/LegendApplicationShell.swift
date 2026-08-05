@@ -7132,6 +7132,7 @@ struct LegendPublicProfileView: View {
     let profile: MobileSocialAuthor
     let currentIdentity: LogicalParticipantIdentity
 
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject private var social: MobileSocialStore
     @State private var metricsState: MobileDataLoadState<MobileSocialProfileMetrics> = .idle
     @State private var postsState: MobileDataLoadState<[MobileSocialPost]> = .idle
@@ -7140,11 +7141,17 @@ struct LegendPublicProfileView: View {
     @State private var isUpdatingFollow = false
     @State private var isConnectionActive: Bool
     @State private var isRemovingConnection = false
+    @State private var isSafetyActionInProgress = false
+    @State private var isReportOptionsPresented = false
+    @State private var isBlockConfirmationPresented = false
     @State private var verificationReview: VerificationReview?
     @State private var isResolvingVerification = false
     @State private var verificationResolutionNote = ""
     private let journeyConnectionID: UUID?
     private let disconnectConnection: ((UUID) async -> Bool)?
+    private let journeyClientProfileID: UUID?
+    private let blockJourneyProfile: ((UUID) async -> Bool)?
+    private let reportJourneyProfile: ((UUID, String) async -> Bool)?
     private let performVerificationResolution: ((VerificationReview, Bool, String?) async -> Bool)?
 
     init(
@@ -7155,6 +7162,9 @@ struct LegendPublicProfileView: View {
         isFollowRequestPending: Bool = false,
         journeyConnectionID: UUID? = nil,
         disconnectConnection: ((UUID) async -> Bool)? = nil,
+        journeyClientProfileID: UUID? = nil,
+        blockJourneyProfile: ((UUID) async -> Bool)? = nil,
+        reportJourneyProfile: ((UUID, String) async -> Bool)? = nil,
         verificationReview: VerificationReview? = nil,
         resolveVerification: ((VerificationReview, Bool, String?) async -> Bool)? = nil
     ) {
@@ -7167,6 +7177,9 @@ struct LegendPublicProfileView: View {
         _verificationReview = State(initialValue: verificationReview)
         self.journeyConnectionID = journeyConnectionID
         self.disconnectConnection = disconnectConnection
+        self.journeyClientProfileID = journeyClientProfileID
+        self.blockJourneyProfile = blockJourneyProfile
+        self.reportJourneyProfile = reportJourneyProfile
         performVerificationResolution = resolveVerification
     }
 
@@ -7215,6 +7228,8 @@ struct LegendPublicProfileView: View {
                     .disabled(isRemovingConnection)
                 }
 
+                journeySafetySection
+
                 verificationDecisionSection
 
                 aboutSection
@@ -7226,6 +7241,31 @@ struct LegendPublicProfileView: View {
         .background(LegendNextCanvas())
         .navigationTitle(displayedProfile.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "Report \(displayedProfile.displayName)",
+            isPresented: $isReportOptionsPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Harassment or hate") { submitProfileReport(category: "HarassmentOrHate") }
+            Button("Threat or self-harm") { submitProfileReport(category: "ThreatOrSelfHarm") }
+            Button("Sexual content") { submitProfileReport(category: "SexualContent") }
+            Button("Spam or scam") { submitProfileReport(category: "SpamOrScam") }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose the reason that best describes the concern.")
+        }
+        .confirmationDialog(
+            "Block \(displayedProfile.displayName)?",
+            isPresented: $isBlockConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Block profile", role: .destructive) {
+                Task { await blockProfile() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the Journey Circles connection and prevents client-to-client messaging with this profile.")
+        }
         .onAppear {
             Task { await refresh() }
         }
@@ -7328,6 +7368,65 @@ struct LegendPublicProfileView: View {
         if isFollowing { return "Following" }
         if isFollowRequestPending { return "Requested" }
         return displayedProfile.isPrivate == true ? "Request to follow" : "Follow"
+    }
+
+    private var supportsJourneySafetyActions: Bool {
+        currentIdentity.participantType == .client &&
+            profile.identity.participantType == .client &&
+            profile.identity != currentIdentity &&
+            journeyClientProfileID != nil &&
+            blockJourneyProfile != nil &&
+            reportJourneyProfile != nil
+    }
+
+    @ViewBuilder
+    private var journeySafetySection: some View {
+        if supportsJourneySafetyActions {
+            HStack(spacing: LegendNextSpacing.sm) {
+                Button {
+                    isReportOptionsPresented = true
+                } label: {
+                    Text("Report profile")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(LegendNextButtonStyle(kind: .secondary, controlHeight: 40))
+                .disabled(isSafetyActionInProgress)
+
+                Button(role: .destructive) {
+                    isBlockConfirmationPresented = true
+                } label: {
+                    if isSafetyActionInProgress {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Block profile")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(LegendNextButtonStyle(kind: .destructive, controlHeight: 40))
+                .disabled(isSafetyActionInProgress)
+            }
+        }
+    }
+
+    private func submitProfileReport(category: String) {
+        Task { await reportProfile(category: category) }
+    }
+
+    private func reportProfile(category: String) async {
+        guard let journeyClientProfileID, let reportJourneyProfile else { return }
+        isSafetyActionInProgress = true
+        defer { isSafetyActionInProgress = false }
+        _ = await reportJourneyProfile(journeyClientProfileID, category)
+    }
+
+    private func blockProfile() async {
+        guard let journeyClientProfileID, let blockJourneyProfile else { return }
+        isSafetyActionInProgress = true
+        defer { isSafetyActionInProgress = false }
+        if await blockJourneyProfile(journeyClientProfileID) {
+            dismiss()
+        }
     }
 
     private var identityHeader: some View {

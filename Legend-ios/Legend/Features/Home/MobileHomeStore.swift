@@ -39,10 +39,24 @@ protocol MobileJourneyCirclesAPI: Sendable {
     func requestConnection(_ request: MobileJourneyConnectionRequestBody, accessToken: String) async throws
     func respondToConnection(id: UUID, accept: Bool, accessToken: String) async throws
     func disconnectConnection(id: UUID, accessToken: String) async throws
+    func blockProfile(id: UUID, accessToken: String) async throws
+    func reportProfile(id: UUID, request: MobileJourneyReportRequestBody, accessToken: String) async throws
 }
 
 extension MobileJourneyCirclesAPI {
     func disconnectConnection(id: UUID, accessToken: String) async throws {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func blockProfile(id: UUID, accessToken: String) async throws {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func reportProfile(
+        id: UUID,
+        request: MobileJourneyReportRequestBody,
+        accessToken: String
+    ) async throws {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
 }
@@ -170,6 +184,28 @@ struct URLSessionMobileJourneyCirclesAPI: MobileJourneyCirclesAPI {
         try await client.delete(
             "/api/v1/mobile/journey-circles/connections/\(id.uuidString)/disconnect",
             accessToken: accessToken,
+            headers: participantHeader)
+    }
+
+    func blockProfile(id: UUID, accessToken: String) async throws {
+        try await client.post(
+            "/api/v1/mobile/journey-circles/profiles/\(id.uuidString)/block",
+            body: MobileJourneyProfileActionRequest(),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader)
+    }
+
+    func reportProfile(
+        id: UUID,
+        request: MobileJourneyReportRequestBody,
+        accessToken: String
+    ) async throws {
+        try await client.post(
+            "/api/v1/mobile/journey-circles/profiles/\(id.uuidString)/report",
+            body: request,
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
             headers: participantHeader)
     }
 
@@ -598,34 +634,44 @@ final class MobileJourneyCirclesStore: ObservableObject {
     /// Sends a connection request and reports whether the server accepted it, so a
     /// caller such as Discover can update one row instead of reloading a dashboard.
     func requestConnectionConfirmed(to profileID: UUID) async -> Bool {
-        actionFailure = nil
-        do {
+        await performConfirmedAction(title: "Could not send the request") {
             try await api.requestConnection(
                 MobileJourneyConnectionRequestBody(
                     targetClientProfileID: profileID,
                     connectionReason: nil,
                     introduction: nil),
                 accessToken: try await accessTokenProvider())
-            // Keep the Journey Circles dashboard consistent with the new request.
-            _ = await refresh()
-            return true
-        } catch {
-            actionFailure = failure(for: error, title: "Could not send the request")
-            return false
         }
     }
 
     func disconnectConnectionConfirmed(id: UUID) async -> Bool {
-        actionFailure = nil
-        do {
-            try await api.disconnectConnection(
+        await performConfirmedAction(title: "Could not remove the connection") {
+            try await self.api.disconnectConnection(
                 id: id,
-                accessToken: try await accessTokenProvider())
-            _ = await refresh()
-            return true
-        } catch {
-            actionFailure = failure(for: error, title: "Could not remove the connection")
-            return false
+                accessToken: try await self.accessTokenProvider())
+        }
+    }
+
+    func blockProfileConfirmed(id: UUID) async -> Bool {
+        await performConfirmedAction(title: "Could not block this profile") {
+            try await self.api.blockProfile(
+                id: id,
+                accessToken: try await self.accessTokenProvider())
+        }
+    }
+
+    func reportProfileConfirmed(
+        id: UUID,
+        category: String,
+        detail: String? = nil
+    ) async -> Bool {
+        await performConfirmedAction(title: "Could not submit this report") {
+            try await self.api.reportProfile(
+                id: id,
+                request: MobileJourneyReportRequestBody(
+                    category: category,
+                    detail: detail),
+                accessToken: try await self.accessTokenProvider())
         }
     }
 
@@ -662,6 +708,21 @@ final class MobileJourneyCirclesStore: ObservableObject {
             } catch {
                 actionFailure = failure(for: error, title: "Journey Circles unavailable")
             }
+        }
+    }
+
+    private func performConfirmedAction(
+        title: String,
+        operation: () async throws -> Void
+    ) async -> Bool {
+        actionFailure = nil
+        do {
+            try await operation()
+            _ = await refresh()
+            return true
+        } catch {
+            actionFailure = failure(for: error, title: title)
+            return false
         }
     }
 

@@ -90,6 +90,28 @@ public sealed class AccountLifecycleServiceTests
     }
 
     [Fact]
+    public async Task RepeatedDeletionRequest_IsIdempotentAndPreservesTheOriginalRequest()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var billing = new Mock<IBillingOrchestrator>();
+        var service = new AccountLifecycleService(db, billing.Object);
+        var subject = new AccountLifecycleSubject(
+            "client-entra-object-id",
+            MessagingParticipantTypes.Client,
+            Guid.NewGuid());
+
+        var first = await service.RequestDeletionAsync(subject);
+        var originalRequestedUtc = first.Snapshot.DeletionRequestedUtc;
+        var repeated = await service.RequestDeletionAsync(subject);
+
+        Assert.True(first.Succeeded);
+        Assert.True(repeated.Succeeded);
+        Assert.Equal(AccountLifecycleStates.DeletionRequested, repeated.Snapshot.State);
+        Assert.Equal(originalRequestedUtc, repeated.Snapshot.DeletionRequestedUtc);
+        Assert.Single(db.AccountLifecycleRecords);
+    }
+
+    [Fact]
     public async Task MobileEndpoint_UsesOnlyResolvedActorSubject()
     {
         using var db = ControllerTestHelpers.BuildDb();
@@ -156,6 +178,45 @@ public sealed class AccountLifecycleServiceTests
                 DateTime.UtcNow,
                 null,
                 null));
+        var controller = new LifecycleProbeController(resolver.Object, lifecycle.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        var resolution = await controller.ProbeAsync();
+
+        var response = Assert.IsType<ObjectResult>(resolution.Error);
+        Assert.Equal(StatusCodes.Status403Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task MobileBase_RejectsClosedActorBeforeFeatureControllersRun()
+    {
+        var profileId = Guid.NewGuid();
+        var actor = new MobileResolvedActor(
+            new MessagingActor("client-entra-object-id", MessagingParticipantTypes.Client),
+            profileId,
+            "Legend Client");
+        var resolver = new Mock<IMobileActorResolver>();
+        resolver
+            .Setup(service => service.ResolveAsync(
+                It.IsAny<System.Security.Claims.ClaimsPrincipal>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MobileActorResolution(true, null, null, [actor], actor, false));
+        var lifecycle = new Mock<IAccountLifecycleService>();
+        lifecycle
+            .Setup(service => service.GetAsync(It.IsAny<AccountLifecycleSubject>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AccountLifecycleSnapshot(
+                AccountLifecycleStates.Closed,
+                false,
+                false,
+                null,
+                DateTime.UtcNow.AddDays(-1),
+                DateTime.UtcNow));
         var controller = new LifecycleProbeController(resolver.Object, lifecycle.Object)
         {
             ControllerContext = new ControllerContext

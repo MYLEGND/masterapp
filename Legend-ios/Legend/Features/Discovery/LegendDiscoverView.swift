@@ -43,6 +43,15 @@ struct LegendDiscoverView: View {
                     journeyConnectionID: route.journeyConnectionID,
                     disconnectConnection: { connectionID in
                         await journeyCircles.disconnectConnectionConfirmed(id: connectionID)
+                    },
+                    journeyClientProfileID: journeySafetyProfileID(for: route.profile),
+                    blockJourneyProfile: { profileID in
+                        await journeyCircles.blockProfileConfirmed(id: profileID)
+                    },
+                    reportJourneyProfile: { profileID, category in
+                        await journeyCircles.reportProfileConfirmed(
+                            id: profileID,
+                            category: category)
                     })
             }
             .alert(
@@ -328,6 +337,16 @@ struct LegendDiscoverView: View {
                 publicPhone: result.publicPhone),
             isFollowing: result.relationship.followedByCurrentActor,
             isFollowRequestPending: result.relationship.followRequestPending ?? false)
+    }
+
+    private func journeySafetyProfileID(for profile: MobileSocialAuthor) -> UUID? {
+        guard currentSession.actor.identity.participantType == .client,
+              profile.identity.participantType == .client,
+              profile.identity != currentSession.actor.identity else {
+            return nil
+        }
+
+        return UUID(uuidString: profile.profileID)
     }
 }
 

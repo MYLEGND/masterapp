@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F10101010101010101010110 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F20101010101010101010110 /* PrivacyInfo.xcprivacy */; };
 		E31C7AB1213A4E57A1CCB001 /* LegendContactCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E31C7AB1213A4E57A1CCB002 /* LegendContactCard.swift */; };
 		0729AED3FD936A3DCECA669A /* LegendNextTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72C9D00CE99AA225824D8CEC /* LegendNextTheme.swift */; };
 		0DB5B8FE0EC8C432F40A6EDE /* LegendApplicationBootstrapCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E18DF8C5550EB16730C4F99C /* LegendApplicationBootstrapCoordinatorTests.swift */; };
@@ -105,6 +106,7 @@
 		1AAA5690855BD6C5B4132AB3 /* MessagingHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingHomeView.swift; sourceTree = "<group>"; };
 		1B1EEE02B5210AA94A3A78FA /* README-NEXTGEN.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "README-NEXTGEN.md"; sourceTree = "<group>"; };
 		20D35703BC894AC8E986DFF8 /* MessagingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingModels.swift; sourceTree = "<group>"; };
+		F20101010101010101010110 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		AA01D15C0000000000000001 /* MobileDiscoveryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDiscoveryModels.swift; sourceTree = "<group>"; };
 		AA01D15C0000000000000002 /* MobileDiscoveryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDiscoveryStore.swift; sourceTree = "<group>"; };
 		AA01D15C0000000000000003 /* LegendDiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiscoverView.swift; sourceTree = "<group>"; };
@@ -182,6 +184,7 @@
 			children = (
 				D4B6F16BA0A01123E7CABB7F /* Assets.xcassets */,
 				8FF13A9483243B521F7DFC68 /* LaunchScreen.storyboard */,
+				F20101010101010101010110 /* PrivacyInfo.xcprivacy */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -555,6 +558,7 @@
 			files = (
 				84506FE2A46FD85E1E250858 /* Assets.xcassets in Resources */,
 				4EB558694357C25511FC1A79 /* LaunchScreen.storyboard in Resources */,
+				F10101010101010101010110 /* PrivacyInfo.xcprivacy in Resources */,
 				CEA324C22EB521222C0E457B /* README-NEXTGEN.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
