@@ -118,7 +118,13 @@ internal sealed class ApplePushGateway : IApplePushGateway
         }
         catch (HttpRequestException exception)
         {
-            return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Retry, exception.Message);
+            _logger.LogError(exception, "APNs HTTP request failed.");
+            var detail = exception.InnerException is null
+                ? exception.Message
+                : $"{exception.Message} | {exception.InnerException.GetType().Name}: {exception.InnerException.Message}";
+            return new ApplePushDeliveryResult(
+                ApplePushDeliveryOutcome.Retry,
+                Clip($"APNs HTTP failure: {detail}"));
         }
         catch (CryptographicException exception)
         {
