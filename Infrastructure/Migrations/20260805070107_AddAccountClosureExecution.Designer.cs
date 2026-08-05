@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260805070107_AddAccountClosureExecution")]
+    partial class AddAccountClosureExecution
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -4163,27 +4166,11 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("BlockedClientProfileId")
+                    b.Property<Guid>("BlockedClientProfileId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("BlockedParticipantType")
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("BlockedUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<Guid?>("BlockerClientProfileId")
+                    b.Property<Guid>("BlockerClientProfileId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("BlockerParticipantType")
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("BlockerUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
@@ -4191,12 +4178,7 @@ namespace Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("BlockerClientProfileId", "BlockedClientProfileId")
-                        .IsUnique()
-                        .HasFilter("[BlockerClientProfileId] IS NOT NULL AND [BlockedClientProfileId] IS NOT NULL");
-
-                    b.HasIndex("BlockerUserId", "BlockerParticipantType", "BlockedUserId", "BlockedParticipantType")
-                        .IsUnique()
-                        .HasFilter("[BlockerUserId] IS NOT NULL AND [BlockerParticipantType] IS NOT NULL AND [BlockedUserId] IS NOT NULL AND [BlockedParticipantType] IS NOT NULL");
+                        .IsUnique();
 
                     b.ToTable("JourneyCircleBlocks", (string)null);
                 });
@@ -4407,56 +4389,20 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(600)
                         .HasColumnType("nvarchar(600)");
 
-                    b.Property<Guid?>("ReportedClientProfileId")
+                    b.Property<Guid>("ReportedClientProfileId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("ReportedParticipantType")
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("ReportedUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<Guid?>("ReporterClientProfileId")
+                    b.Property<Guid>("ReporterClientProfileId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ReporterParticipantType")
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("ReporterUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("Resolution")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("ResolvedByUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<DateTime?>("ResolvedUtc")
-                        .HasColumnType("datetime2");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
 
-                    b.Property<Guid?>("TargetEntityId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("TargetKind")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Status", "CreatedUtc");
-
-                    b.HasIndex("ReportedUserId", "ReportedParticipantType", "Status");
 
                     b.ToTable("JourneyCircleReports", (string)null);
                 });

@@ -37,6 +37,7 @@ internal sealed class MessagingService : IMessagingService
     private readonly ITranslationService _translation;
     private readonly INotificationEngine _notifications;
     private readonly string? _configuredFounderOid;
+    private readonly ICommunitySafetyService? _communitySafety;
 
     public MessagingService(
         MasterAppDbContext db,
@@ -46,7 +47,8 @@ internal sealed class MessagingService : IMessagingService
         IControlledResourceAccessService controlledResources,
         ITranslationService translation,
         INotificationEngine notifications,
-        string? configuredFounderOid = null)
+        string? configuredFounderOid = null,
+        ICommunitySafetyService? communitySafety = null)
     {
         _db = db;
         _logger = logger;
@@ -58,6 +60,7 @@ internal sealed class MessagingService : IMessagingService
         _configuredFounderOid = configuredFounderOid ??
             Environment.GetEnvironmentVariable("FOUNDER_OID") ??
             Environment.GetEnvironmentVariable("FounderOid");
+        _communitySafety = communitySafety;
     }
 
     public async Task<MessagingConversationListResult> ListConversationsAsync(
@@ -1887,6 +1890,12 @@ internal sealed class MessagingService : IMessagingService
             return MessagingMessageResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The requested conversation was not found.");
         if (conversation.IsClosed)
             return MessagingMessageResult.Failure("MESSAGING_CONVERSATION_CLOSED", "Closed conversations cannot receive new messages.");
+        if (!await CanSendWithinCommunitySafetyAsync(actor, conversation.Id, cancellationToken))
+        {
+            return MessagingMessageResult.Failure(
+                "MESSAGING_BLOCKED_BY_COMMUNITY_SAFETY",
+                "A Legend community block prevents messages in this conversation.");
+        }
         if (conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
             !await ConversationHasActiveClientMembershipAsync(conversation.Id, cancellationToken))
         {
@@ -2435,6 +2444,42 @@ internal sealed class MessagingService : IMessagingService
         return await SaveOperationAsync("AttachmentScanStatusUpdated", actorUserId, attachment.InternalMessage.ConversationId, cancellationToken);
     }
 
+    private async Task<bool> CanSendWithinCommunitySafetyAsync(
+        MessagingActor actor,
+        Guid conversationId,
+        CancellationToken cancellationToken)
+    {
+        if (_communitySafety is null)
+            return true;
+
+        var participants = await _db.MessageConversationParticipants
+            .AsNoTracking()
+            .Where(participant => participant.ConversationId == conversationId && participant.IsActive)
+            .Select(participant => new { participant.UserId, participant.ParticipantType })
+            .ToArrayAsync(cancellationToken);
+        foreach (var participant in participants)
+        {
+            if (IsSameParticipant(
+                    participant.UserId,
+                    participant.ParticipantType,
+                    actor.UserId,
+                    actor.ParticipantType))
+            {
+                continue;
+            }
+
+            if (await _communitySafety.IsInteractionBlockedAsync(
+                    actor,
+                    new MessagingActor(participant.UserId, participant.ParticipantType),
+                    cancellationToken))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private async Task<IQueryable<MessageConversation>> AuthorizedConversationsQueryAsync(
         MessagingActor actor,
         CancellationToken cancellationToken)
@@ -2892,10 +2937,14 @@ internal sealed class MessagingService : IMessagingService
             var blockedProfileIds = actorProfileIds.Count == 0
                 ? new HashSet<Guid>()
                 : (await _db.JourneyCircleBlocks.AsNoTracking()
-                    .Where(block => actorProfileIds.Contains(block.BlockerClientProfileId) || actorProfileIds.Contains(block.BlockedClientProfileId))
-                    .Select(block => actorProfileIds.Contains(block.BlockerClientProfileId)
+                    .Where(block =>
+                        (block.BlockerClientProfileId.HasValue && actorProfileIds.Contains(block.BlockerClientProfileId.Value)) ||
+                        (block.BlockedClientProfileId.HasValue && actorProfileIds.Contains(block.BlockedClientProfileId.Value)))
+                    .Select(block => block.BlockerClientProfileId.HasValue && actorProfileIds.Contains(block.BlockerClientProfileId.Value)
                         ? block.BlockedClientProfileId
                         : block.BlockerClientProfileId)
+                    .Where(profileId => profileId != null)
+                    .Select(profileId => profileId!.Value)
                     .ToListAsync(cancellationToken))
                     .ToHashSet();
             var clientRows = await ActiveMessagingClientProfilesQuery()
@@ -3364,10 +3413,12 @@ internal sealed class MessagingService : IMessagingService
             return false;
 
         return !await _db.JourneyCircleBlocks.AsNoTracking().AnyAsync(block =>
-            (actorProfileIds.Contains(block.BlockerClientProfileId) &&
-             ownerProfileIds.Contains(block.BlockedClientProfileId)) ||
-            (actorProfileIds.Contains(block.BlockedClientProfileId) &&
-             ownerProfileIds.Contains(block.BlockerClientProfileId)),
+            (block.BlockerClientProfileId.HasValue && block.BlockedClientProfileId.HasValue &&
+             actorProfileIds.Contains(block.BlockerClientProfileId.Value) &&
+             ownerProfileIds.Contains(block.BlockedClientProfileId.Value)) ||
+            (block.BlockerClientProfileId.HasValue && block.BlockedClientProfileId.HasValue &&
+             actorProfileIds.Contains(block.BlockedClientProfileId.Value) &&
+             ownerProfileIds.Contains(block.BlockerClientProfileId.Value)),
             cancellationToken);
     }
 

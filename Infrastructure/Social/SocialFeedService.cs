@@ -45,6 +45,7 @@ public sealed class SocialFeedService : ISocialFeedService
     private readonly ICommunityTextModerationService _moderation;
     private readonly IMemoryCache _memoryCache;
     private readonly string? _configuredFounderOid;
+    private readonly ICommunitySafetyService? _communitySafety;
 
     public SocialFeedService(
         MasterAppDbContext db,
@@ -53,7 +54,8 @@ public sealed class SocialFeedService : ISocialFeedService
         IMemoryCache memoryCache,
         ICommunityTextModerationService moderation,
         ISocialMediaProcessingQueue? mediaProcessingQueue = null,
-        string? configuredFounderOid = null)
+        string? configuredFounderOid = null,
+        ICommunitySafetyService? communitySafety = null)
     {
         _db = db;
         _mediaStorage = mediaStorage;
@@ -64,6 +66,7 @@ public sealed class SocialFeedService : ISocialFeedService
         _configuredFounderOid = configuredFounderOid ??
             Environment.GetEnvironmentVariable("FOUNDER_OID") ??
             Environment.GetEnvironmentVariable("FounderOid");
+        _communitySafety = communitySafety;
     }
 
     public async Task<SocialOperationResult<SocialFeedSnapshot>> GetFeedAsync(
@@ -759,6 +762,149 @@ public sealed class SocialFeedService : ISocialFeedService
         _db.SocialPosts.Remove(post);
         await _db.SaveChangesAsync(cancellationToken);
         return SocialOperationResult<bool>.Success(true);
+    }
+
+    public async Task<SocialOperationResult<bool>> RemoveReportedPostAsync(
+        Guid postId,
+        CancellationToken cancellationToken = default)
+    {
+        if (postId == Guid.Empty)
+            return SocialOperationResult<bool>.Failure("social_report_target_invalid", "The reported content is unavailable.");
+
+        var post = await _db.SocialPosts.AsNoTracking().SingleOrDefaultAsync(
+            item => item.Id == postId && item.DeletedUtc == null,
+            cancellationToken);
+        if (post is null)
+            return SocialOperationResult<bool>.Success(true);
+
+        return await DeletePostAsync(
+            new SocialPostMutationCommand(
+                new SocialFeedActor(
+                    new MessagingActor(post.AuthorUserId, post.AuthorParticipantType),
+                    post.AuthorProfileId,
+                    "Community moderation"),
+                post.Id),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Removes a departing member's social footprint through the existing
+    /// social and storage authority. Posts are physically deleted through the
+    /// same path a member uses. A comment with replies from other members is
+    /// minimally redacted instead, preserving those replies' parent relation
+    /// without retaining the departing member's content or identity.
+    /// </summary>
+    public async Task<SocialOperationResult<SocialAccountClosureDisposition>> RemoveAccountContentForClosureAsync(
+        SocialFeedActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsValidActorAsync(actor, cancellationToken))
+        {
+            return SocialOperationResult<SocialAccountClosureDisposition>.Failure(
+                "social_actor_invalid",
+                "The account is not available for social-content removal.");
+        }
+
+        var author = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+        var authorUserIds = await AuthorUserIdFormsAsync(author, cancellationToken);
+        var postIds = await _db.SocialPosts
+            .AsNoTracking()
+            .Where(post => authorUserIds.Contains(post.AuthorUserId) &&
+                           post.AuthorParticipantType == author.ParticipantType &&
+                           post.DeletedUtc == null)
+            .Select(post => post.Id)
+            .ToArrayAsync(cancellationToken);
+
+        foreach (var postId in postIds)
+        {
+            var deleted = await DeletePostAsync(new SocialPostMutationCommand(actor, postId), cancellationToken);
+            if (!deleted.Succeeded)
+            {
+                return SocialOperationResult<SocialAccountClosureDisposition>.Failure(
+                    deleted.ErrorCode ?? "social_closure_delete_failed",
+                    deleted.ErrorMessage ?? "Legend could not remove the account's social content.");
+            }
+        }
+
+        var authoredComments = await _db.SocialPostComments
+            .Where(comment => authorUserIds.Contains(comment.AuthorUserId) &&
+                              comment.AuthorParticipantType == author.ParticipantType)
+            .ToArrayAsync(cancellationToken);
+        var authoredCommentIds = authoredComments.Select(comment => comment.Id).ToArray();
+        var commentsWithReplies = authoredCommentIds.Length == 0
+            ? new HashSet<Guid>()
+            : (await _db.SocialPostComments
+                .AsNoTracking()
+                .Where(comment => comment.ParentCommentId != null &&
+                                  authoredCommentIds.Contains(comment.ParentCommentId.Value))
+                .Select(comment => comment.ParentCommentId!.Value)
+                .Distinct()
+                .ToArrayAsync(cancellationToken))
+                .ToHashSet();
+
+        var removableComments = authoredComments
+            .Where(comment => !commentsWithReplies.Contains(comment.Id))
+            .ToArray();
+        var redactedComments = authoredComments
+            .Where(comment => commentsWithReplies.Contains(comment.Id))
+            .ToArray();
+        var now = DateTime.UtcNow;
+        foreach (var comment in redactedComments)
+        {
+            comment.AuthorUserId = $"closed:{comment.Id:N}";
+            comment.AuthorParticipantType = "Closed";
+            comment.AuthorProfileId = Guid.Empty;
+            comment.Body = string.Empty;
+            comment.DeletedUtc = now;
+        }
+
+        var reactions = await _db.SocialPostReactions
+            .Where(reaction => authorUserIds.Contains(reaction.ActorUserId) &&
+                               reaction.ActorParticipantType == author.ParticipantType)
+            .ToArrayAsync(cancellationToken);
+        var views = await _db.SocialPostViews
+            .Where(view => authorUserIds.Contains(view.ViewerUserId) &&
+                           view.ViewerParticipantType == author.ParticipantType)
+            .ToArrayAsync(cancellationToken);
+        var saves = await _db.SocialPostSaves
+            .Where(save => authorUserIds.Contains(save.ActorUserId) &&
+                           save.ActorParticipantType == author.ParticipantType)
+            .ToArrayAsync(cancellationToken);
+        var shares = await _db.SocialPostShares
+            .Where(share => authorUserIds.Contains(share.ActorUserId) &&
+                            share.ActorParticipantType == author.ParticipantType)
+            .ToArrayAsync(cancellationToken);
+        var reposts = await _db.SocialPostReposts
+            .Where(repost => authorUserIds.Contains(repost.ActorUserId) &&
+                             repost.ActorParticipantType == author.ParticipantType)
+            .ToArrayAsync(cancellationToken);
+        var follows = await _db.SocialFollows
+            .Where(follow =>
+                (authorUserIds.Contains(follow.FollowerUserId) &&
+                 follow.FollowerParticipantType == author.ParticipantType) ||
+                (authorUserIds.Contains(follow.FollowedUserId) &&
+                 follow.FollowedParticipantType == author.ParticipantType))
+            .ToArrayAsync(cancellationToken);
+        var visits = await _db.SocialProfileVisits
+            .Where(visit =>
+                (authorUserIds.Contains(visit.VisitorUserId) &&
+                 visit.VisitorParticipantType == author.ParticipantType) ||
+                (authorUserIds.Contains(visit.TargetUserId) &&
+                 visit.TargetParticipantType == author.ParticipantType))
+            .ToArrayAsync(cancellationToken);
+
+        _db.SocialPostComments.RemoveRange(removableComments);
+        _db.SocialPostReactions.RemoveRange(reactions);
+        _db.SocialPostViews.RemoveRange(views);
+        _db.SocialPostSaves.RemoveRange(saves);
+        _db.SocialPostShares.RemoveRange(shares);
+        _db.SocialPostReposts.RemoveRange(reposts);
+        _db.SocialFollows.RemoveRange(follows);
+        _db.SocialProfileVisits.RemoveRange(visits);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return SocialOperationResult<SocialAccountClosureDisposition>.Success(
+            new SocialAccountClosureDisposition(postIds.Length, removableComments.Length, redactedComments.Length));
     }
 
     public async Task<SocialOperationResult<SocialMediaStream>> GetMediaAsync(
@@ -2706,6 +2852,16 @@ public sealed class SocialFeedService : ISocialFeedService
                          client.ClientUserId,
                          client.ExternalIdentityObjectId))
                 active.Add(AuthorKey.From(userId, MessagingParticipantTypes.Client));
+        }
+
+        if (_communitySafety is not null)
+        {
+            var blocked = await _communitySafety.GetBlockedParticipantsAsync(actor.Identity, cancellationToken);
+            foreach (var participant in blocked)
+            {
+                foreach (var userId in participant.UserIdForms)
+                    active.Remove(AuthorKey.From(userId, participant.ParticipantType));
+            }
         }
 
         return active;

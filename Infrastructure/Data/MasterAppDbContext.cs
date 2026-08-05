@@ -111,6 +111,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<SocialPostRepost> SocialPostReposts => Set<SocialPostRepost>();
     public DbSet<SocialProfileVisit> SocialProfileVisits => Set<SocialProfileVisit>();
     public DbSet<SocialPostMusicAttachment> SocialPostMusicAttachments => Set<SocialPostMusicAttachment>();
+    public DbSet<AccountLifecycleAuditEntry> AccountLifecycleAuditEntries => Set<AccountLifecycleAuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -128,10 +129,21 @@ public class MasterAppDbContext : DbContext
             entity.Property(record => record.UserId).HasMaxLength(450).IsRequired();
             entity.Property(record => record.ParticipantType).HasMaxLength(40).IsRequired();
             entity.Property(record => record.State).HasMaxLength(40).IsRequired();
+            entity.Property(record => record.LastClosureErrorCode).HasMaxLength(80);
             entity.Property(record => record.RowVersion).IsRowVersion();
             entity.HasIndex(record => new { record.UserId, record.ParticipantType }).IsUnique();
             entity.HasIndex(record => new { record.ProfileId, record.ParticipantType }).IsUnique();
             entity.HasIndex(record => new { record.State, record.UpdatedUtc });
+            entity.HasIndex(record => new { record.State, record.ClosureLeaseExpiresUtc });
+        });
+
+        modelBuilder.Entity<AccountLifecycleAuditEntry>(entity =>
+        {
+            entity.ToTable("AccountLifecycleAuditEntries");
+            entity.HasKey(entry => entry.Id);
+            entity.Property(entry => entry.Action).HasMaxLength(80).IsRequired();
+            entity.Property(entry => entry.ResultCode).HasMaxLength(80).IsRequired();
+            entity.HasIndex(entry => new { entry.AccountLifecycleRecordId, entry.OccurredUtc });
         });
 
         modelBuilder.Entity<CommerceBusiness>(e =>

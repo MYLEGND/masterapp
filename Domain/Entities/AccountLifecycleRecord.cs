@@ -16,6 +16,13 @@ public sealed class AccountLifecycleRecord
     public DateTime? PausedUtc { get; set; }
     public DateTime? DeletionRequestedUtc { get; set; }
     public DateTime? ClosedUtc { get; set; }
+    // A short-lived lease is the durable concurrency boundary for the one
+    // closure executor. A recycled worker can resume after it expires.
+    public Guid? ClosureLeaseId { get; set; }
+    public DateTime? ClosureLeaseExpiresUtc { get; set; }
+    public int ClosureAttemptCount { get; set; }
+    public DateTime? LastClosureAttemptUtc { get; set; }
+    public string? LastClosureErrorCode { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();

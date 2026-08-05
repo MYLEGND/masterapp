@@ -6,6 +6,7 @@ using System.Threading;
 using Domain.Entities;
 using System.Threading.Tasks;
 using Domain.Messaging;
+using Domain.Moderation;
 using Domain.Social;
 using Infrastructure.Messaging;
 using Infrastructure.Moderation;
@@ -551,6 +552,129 @@ public sealed class SocialFeedServiceTests
         Assert.False(await db.SocialProfileVisits.AnyAsync(visit => visit.SourceSocialPostId == postId));
         Assert.Null((await db.SocialFollows.SingleAsync(follow => follow.Id == sourceFollow.Id)).SourceSocialPostId);
         Assert.Equal(0, storage.StoredMediaCount);
+    }
+
+    [Fact]
+    public async Task ClosureDisposition_DeletesPostsAndRedactsOnlyCommentsNeededAsReplyParents()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var departing = Client("departing-client", "Departing", "Client");
+        var remaining = Client("remaining-client", "Remaining", "Client");
+        db.ClientProfiles.AddRange(departing, remaining);
+        var departingPost = new SocialPost
+        {
+            AuthorUserId = departing.ClientUserId,
+            AuthorParticipantType = MessagingParticipantTypes.Client,
+            AuthorProfileId = departing.Id,
+            ContentType = SocialPostContentTypes.Post,
+            Audience = SocialPostAudiences.AuthorizedNetwork,
+            Body = "Remove this entire post."
+        };
+        var remainingPost = new SocialPost
+        {
+            AuthorUserId = remaining.ClientUserId,
+            AuthorParticipantType = MessagingParticipantTypes.Client,
+            AuthorProfileId = remaining.Id,
+            ContentType = SocialPostContentTypes.Post,
+            Audience = SocialPostAudiences.AuthorizedNetwork,
+            Body = "Keep this post."
+        };
+        var parentComment = new SocialPostComment
+        {
+            SocialPostId = remainingPost.Id,
+            AuthorUserId = departing.ClientUserId,
+            AuthorParticipantType = MessagingParticipantTypes.Client,
+            AuthorProfileId = departing.Id,
+            Body = "Remove this parent text."
+        };
+        var removableComment = new SocialPostComment
+        {
+            SocialPostId = remainingPost.Id,
+            AuthorUserId = departing.ClientUserId,
+            AuthorParticipantType = MessagingParticipantTypes.Client,
+            AuthorProfileId = departing.Id,
+            Body = "Remove this standalone text."
+        };
+        var reply = new SocialPostComment
+        {
+            SocialPostId = remainingPost.Id,
+            ParentCommentId = parentComment.Id,
+            AuthorUserId = remaining.ClientUserId,
+            AuthorParticipantType = MessagingParticipantTypes.Client,
+            AuthorProfileId = remaining.Id,
+            Body = "Keep this reply."
+        };
+        db.AddRange(departingPost, remainingPost, parentComment, removableComment, reply);
+        db.SocialPostReactions.Add(new SocialPostReaction
+        {
+            SocialPostId = remainingPost.Id,
+            ActorUserId = departing.ClientUserId,
+            ActorParticipantType = MessagingParticipantTypes.Client,
+            ReactionType = SocialReactionTypes.Appreciate
+        });
+        db.SocialFollows.Add(new SocialFollow
+        {
+            FollowerUserId = departing.ClientUserId,
+            FollowerParticipantType = MessagingParticipantTypes.Client,
+            FollowedUserId = remaining.ClientUserId,
+            FollowedParticipantType = MessagingParticipantTypes.Client
+        });
+        db.SocialProfileVisits.Add(new SocialProfileVisit
+        {
+            VisitorUserId = departing.ClientUserId,
+            VisitorParticipantType = MessagingParticipantTypes.Client,
+            TargetUserId = remaining.ClientUserId,
+            TargetParticipantType = MessagingParticipantTypes.Client
+        });
+        await db.SaveChangesAsync();
+
+        var result = await CreateService(db).RemoveAccountContentForClosureAsync(ClientActor(departing));
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(1, result.Value!.DeletedPostCount);
+        Assert.Equal(1, result.Value.DeletedCommentCount);
+        Assert.Equal(1, result.Value.RedactedCommentCount);
+        Assert.False(await db.SocialPosts.AnyAsync(post => post.Id == departingPost.Id));
+        Assert.True(await db.SocialPosts.AnyAsync(post => post.Id == remainingPost.Id));
+        Assert.False(await db.SocialPostComments.AnyAsync(comment => comment.Id == removableComment.Id));
+        var redacted = await db.SocialPostComments.SingleAsync(comment => comment.Id == parentComment.Id);
+        Assert.Equal(string.Empty, redacted.Body);
+        Assert.NotNull(redacted.DeletedUtc);
+        Assert.Equal("Closed", redacted.AuthorParticipantType);
+        Assert.Equal(Guid.Empty, redacted.AuthorProfileId);
+        Assert.Empty(await db.SocialPostReactions.ToArrayAsync());
+        Assert.Empty(await db.SocialFollows.ToArrayAsync());
+        Assert.Empty(await db.SocialProfileVisits.ToArrayAsync());
+        Assert.True(await db.SocialPostComments.AnyAsync(comment => comment.Id == reply.Id));
+    }
+
+    [Fact]
+    public async Task CommunityBlock_ImmediatelyExcludesTheBlockedAuthorFromTheSocialFeed()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var viewer = Client("safety-viewer", "Safety", "Viewer");
+        var author = Client("safety-author", "Safety", "Author");
+        db.ClientProfiles.AddRange(viewer, author);
+        db.SocialPosts.Add(new SocialPost
+        {
+            AuthorUserId = author.ClientUserId,
+            AuthorParticipantType = MessagingParticipantTypes.Client,
+            AuthorProfileId = author.Id,
+            ContentType = SocialPostContentTypes.Post,
+            Audience = SocialPostAudiences.AuthorizedNetwork,
+            Body = "This post becomes unavailable to the blocking member."
+        });
+        await db.SaveChangesAsync();
+
+        var safety = new CommunitySafetyService(db);
+        var blocked = await safety.BlockAsync(new CommunitySafetyBlockCommand(
+            ClientActor(viewer).Identity,
+            ClientActor(author).Identity));
+        var feed = await CreateService(db, communitySafety: safety).GetFeedAsync(ClientActor(viewer));
+
+        Assert.True(blocked.Succeeded);
+        Assert.True(feed.Succeeded);
+        Assert.Empty(feed.Value!.Posts);
     }
 
     [Fact]
@@ -1622,7 +1746,8 @@ public sealed class SocialFeedServiceTests
         Infrastructure.Data.MasterAppDbContext db,
         ISocialMediaStorage? mediaStorage = null,
         ISocialMusicCatalog? musicCatalog = null,
-        string? configuredFounderOid = null)
+        string? configuredFounderOid = null,
+        ICommunitySafetyService? communitySafety = null)
     {
         return new SocialFeedService(
             db,
@@ -1631,7 +1756,8 @@ public sealed class SocialFeedServiceTests
             new MemoryCache(new MemoryCacheOptions()),
             moderation: new CommunityTextModerationService(
                 new ConfigurationBuilder().Build()),
-            configuredFounderOid: configuredFounderOid);
+            configuredFounderOid: configuredFounderOid,
+            communitySafety: communitySafety);
     }
 
     // Minimal ISO base media header. The social service now verifies that a

@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Domain.Entities;
 using Domain.JourneyCircles;
+using Domain.Messaging;
 using Domain.Moderation;
 using Infrastructure.Data;
+using Infrastructure.Moderation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -13,13 +15,19 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
     private const string PolicyVersion = "2026.07";
     private readonly MasterAppDbContext _db;
     private readonly ICommunityTextModerationService _moderation;
+    private readonly ICommunitySafetyService _communitySafety;
     private readonly ILogger<JourneyCirclesService> _logger;
 
-    public JourneyCirclesService(MasterAppDbContext db, ICommunityTextModerationService moderation, ILogger<JourneyCirclesService> logger)
+    public JourneyCirclesService(
+        MasterAppDbContext db,
+        ICommunityTextModerationService moderation,
+        ILogger<JourneyCirclesService> logger,
+        ICommunitySafetyService? communitySafety = null)
     {
         _db = db;
         _moderation = moderation;
         _logger = logger;
+        _communitySafety = communitySafety ?? new CommunitySafetyService(db);
     }
 
     public async Task<JourneyCircleDashboard> GetDashboardAsync(string clientUserId, CancellationToken cancellationToken = default)
@@ -164,7 +172,14 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
     {
         var client = await FindClientAsync(clientUserId, cancellationToken);
         if (client is null || client.Id == targetClientProfileId) return JourneyCircleOperationResult.Failure("JOURNEY_BLOCK_INVALID", "This community control is not available.");
-        if (!await _db.JourneyCircleBlocks.AnyAsync(x => x.BlockerClientProfileId == client.Id && x.BlockedClientProfileId == targetClientProfileId, cancellationToken)) _db.JourneyCircleBlocks.Add(new JourneyCircleBlock { Id = Guid.NewGuid(), BlockerClientProfileId = client.Id, BlockedClientProfileId = targetClientProfileId, CreatedUtc = DateTime.UtcNow });
+        var target = await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetClientProfileId, cancellationToken);
+        if (target is null) return JourneyCircleOperationResult.Failure("JOURNEY_BLOCK_INVALID", "This community control is not available.");
+        var block = await _communitySafety.BlockAsync(
+            new CommunitySafetyBlockCommand(
+                new MessagingActor(client.ClientUserId, MessagingParticipantTypes.Client),
+                new MessagingActor(target.ExternalIdentityObjectId ?? target.ClientUserId, MessagingParticipantTypes.Client)),
+            cancellationToken);
+        if (!block.Succeeded) return JourneyCircleOperationResult.Failure("JOURNEY_BLOCK_INVALID", "This community control is not available.");
         var connection = await _db.JourneyCircleConnections.FirstOrDefaultAsync(x => x.ConnectionKey == PairKey(client.Id, targetClientProfileId), cancellationToken); if (connection is not null) { connection.Status = JourneyCircleConnectionStatuses.Blocked; connection.UpdatedUtc = DateTime.UtcNow; }
         AddAudit(client.ClientUserId, "JourneyClientBlocked", connection?.Id, targetClientProfileId); await _db.SaveChangesAsync(cancellationToken); return JourneyCircleOperationResult.Success();
     }
@@ -172,7 +187,19 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
     public async Task<JourneyCircleOperationResult> ReportAsync(string clientUserId, Guid targetClientProfileId, string category, string? detail, CancellationToken cancellationToken = default)
     {
         var client = await FindClientAsync(clientUserId, cancellationToken); if (client is null || client.Id == targetClientProfileId || string.IsNullOrWhiteSpace(category)) return JourneyCircleOperationResult.Failure("JOURNEY_REPORT_INVALID", "This report is not available.");
-        _db.JourneyCircleReports.Add(new JourneyCircleReport { Id = Guid.NewGuid(), ReporterClientProfileId = client.Id, ReportedClientProfileId = targetClientProfileId, Category = Limit(category, 80)!, Detail = Limit(detail, 600), CreatedUtc = DateTime.UtcNow }); AddAudit(client.ClientUserId, "JourneyClientReported", null, targetClientProfileId); await _db.SaveChangesAsync(cancellationToken); return JourneyCircleOperationResult.Success();
+        var target = await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetClientProfileId, cancellationToken);
+        if (target is null) return JourneyCircleOperationResult.Failure("JOURNEY_REPORT_INVALID", "This report is not available.");
+        var report = await _communitySafety.ReportAsync(
+            new CommunitySafetyReportCommand(
+                new MessagingActor(client.ClientUserId, MessagingParticipantTypes.Client),
+                new MessagingActor(target.ExternalIdentityObjectId ?? target.ClientUserId, MessagingParticipantTypes.Client),
+                CommunitySafetyTargetKinds.JourneyCircleProfile,
+                targetClientProfileId,
+                category,
+                detail),
+            cancellationToken);
+        if (!report.Succeeded) return JourneyCircleOperationResult.Failure("JOURNEY_REPORT_INVALID", "This report is not available.");
+        AddAudit(client.ClientUserId, "JourneyClientReported", null, targetClientProfileId); await _db.SaveChangesAsync(cancellationToken); return JourneyCircleOperationResult.Success();
     }
 
     public async Task<bool> CanMessageAsync(string firstClientUserId, string secondClientUserId, CancellationToken cancellationToken = default)

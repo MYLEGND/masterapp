@@ -99,6 +99,7 @@ builder.Services.AddSingleton(mobileAuthConfiguration);
 builder.Services.AddScoped<IMobileActorResolver, MobileActorResolver>();
 builder.Services.AddScoped<IMobileAccountService, MobileAccountService>();
 builder.Services.AddScoped<IAccountLifecycleService, AccountLifecycleService>();
+builder.Services.AddScoped<IAccountClosureService, AccountClosureService>();
 builder.Services.AddScoped<
     IMobileFinancialOperatingSystemProjectionService,
     MobileFinancialOperatingSystemProjectionService>();
@@ -176,6 +177,7 @@ builder.Services.AddScoped<IBlockerService, BlockerService>();
 builder.Services.AddScoped<ICommitmentService, CommitmentService>();
 builder.Services.AddScoped<IPlaybookEngine, PlaybookEngine>();
 builder.Services.AddHostedService<MigrationHealthHostedService>();
+builder.Services.AddHostedService<AccountClosureHostedService>();
 builder.Services.AddHostedService<AgentProfileImageLegacyBackfillHostedService>();
 builder.Services.AddHostedService<AnalyticsIncidentResponseHostedService>();
 builder.Services.AddHostedService<GraphCalendarSubscriptionHostedService>();

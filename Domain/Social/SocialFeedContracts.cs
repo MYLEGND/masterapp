@@ -309,6 +309,15 @@ public sealed record SocialMediaStream(
     string MimeType);
 
 public sealed record SocialPostMutationCommand(SocialFeedActor Actor, Guid PostId);
+/// <summary>
+/// The social authority's durable disposition of a closed account's authored
+/// content. This is intentionally an internal lifecycle contract rather than
+/// a client-facing bulk-delete endpoint.
+/// </summary>
+public sealed record SocialAccountClosureDisposition(
+    int DeletedPostCount,
+    int DeletedCommentCount,
+    int RedactedCommentCount);
 public sealed record UpdateSocialPostCommand(SocialFeedActor Actor, Guid PostId, string Body);
 public sealed record CreateSocialCommentCommand(SocialFeedActor Actor, Guid PostId, string Body, Guid? ParentCommentId = null);
 public sealed record SocialFollowCommand(SocialFeedActor Actor, string FollowedUserId, string FollowedParticipantType, Guid? SourcePostId = null);
@@ -411,6 +420,13 @@ public interface ISocialFeedService
     Task<SocialOperationResult<SocialPostView>> PublishStagedMediaPostAsync(PublishStagedSocialMediaPostCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostView>> UpdatePostAsync(UpdateSocialPostCommand command, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<bool>> DeletePostAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Founder review invokes this internal social authority after a validated
+    /// report is actioned. It deliberately reuses post deletion so media bytes
+    /// and relational attribution receive the same verified disposition.
+    /// </summary>
+    Task<SocialOperationResult<bool>> RemoveReportedPostAsync(Guid postId, CancellationToken cancellationToken = default);
+    Task<SocialOperationResult<SocialAccountClosureDisposition>> RemoveAccountContentForClosureAsync(SocialFeedActor actor, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialMediaStream>> GetMediaAsync(SocialFeedActor actor, Guid mediaAssetId, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialMediaStream>> GetMediaPreviewAsync(SocialFeedActor actor, Guid mediaAssetId, CancellationToken cancellationToken = default);
     Task<SocialOperationResult<SocialPostView>> ToggleReactionAsync(SocialPostMutationCommand command, CancellationToken cancellationToken = default);

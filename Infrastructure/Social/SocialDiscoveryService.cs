@@ -823,6 +823,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             .Select(block => block.BlockerClientProfileId == viewerProfileId
                 ? block.BlockedClientProfileId
                 : block.BlockerClientProfileId)
+            .Where(profileId => profileId != null)
+            .Select(profileId => profileId!.Value)
             .Distinct()
             .ToListAsync(cancellationToken);
 

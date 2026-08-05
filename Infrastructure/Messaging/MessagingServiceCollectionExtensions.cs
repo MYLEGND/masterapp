@@ -30,6 +30,7 @@ public static class MessagingServiceCollectionExtensions
             client.Timeout = TimeSpan.FromSeconds(6);
         });
         services.AddSingleton<ICommunityTextModerationService>(_ => new CommunityTextModerationService(configuration));
+        services.AddScoped<ICommunitySafetyService, CommunitySafetyService>();
         services.AddScoped<IJourneyCirclesService, JourneyCirclesService>();
         services.AddScoped<MessagingProfileImageResolver>();
         services.AddScoped<IMessagingProfileImageResolver>(provider =>
