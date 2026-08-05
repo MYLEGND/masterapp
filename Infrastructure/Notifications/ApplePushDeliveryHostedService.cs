@@ -123,7 +123,9 @@ internal sealed class ApplePushGateway : IApplePushGateway
         catch (CryptographicException exception)
         {
             _logger.LogError(exception, "APNs provider token could not be generated.");
-            return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Suppressed, "APNs credential configuration is invalid.");
+            return new ApplePushDeliveryResult(
+                ApplePushDeliveryOutcome.Suppressed,
+                Clip($"APNs cryptographic failure: {exception.GetType().Name}: {exception.Message}"));
         }
     }
 
