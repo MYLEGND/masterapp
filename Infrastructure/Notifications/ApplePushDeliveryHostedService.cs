@@ -158,9 +158,27 @@ internal sealed class ApplePushGateway : IApplePushGateway
                 iat = new DateTimeOffset(issuedUtc).ToUnixTimeSeconds()
             }));
             var signingInput = Encoding.ASCII.GetBytes($"{header}.{payload}");
+
+            var pem = configuration.PrivateKey.AsSpan();
+            if (!PemEncoding.TryFind(pem, out var pemFields) ||
+                !pem[pemFields.Label].SequenceEqual("PRIVATE KEY"))
+            {
+                throw new CryptographicException("APNs private key is not a PKCS#8 PRIVATE KEY PEM.");
+            }
+
+            var keyBytes = Convert.FromBase64String(pem[pemFields.Base64Data].ToString());
+
             using var key = ECDsa.Create();
-            key.ImportFromPem(configuration.PrivateKey);
-            var signature = key.SignData(signingInput, HashAlgorithmName.SHA256);
+            key.ImportPkcs8PrivateKey(keyBytes, out var bytesRead);
+
+            if (bytesRead != keyBytes.Length)
+                throw new CryptographicException("APNs PKCS#8 private key was not fully consumed.");
+
+            var signature = key.SignData(
+                signingInput,
+                HashAlgorithmName.SHA256,
+                DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+
             _cachedProviderToken = $"{header}.{payload}.{Base64Url(signature)}";
             _cachedProviderTokenIssuedUtc = issuedUtc;
             return _cachedProviderToken;
