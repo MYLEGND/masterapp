@@ -98,6 +98,13 @@ final class MobileSessionCoordinator: ObservableObject {
         cache.totalCostLimit = 32 * 1024 * 1024
         return cache
     }()
+
+    /// One protected resource path owns at most one active network request.
+    /// Multiple visible views awaiting the same avatar share that request
+    /// instead of racing identical GETs before NSCache has been populated.
+    private var protectedImageLoadTasks: [
+        String: Task<Data?, Never>
+    ] = [:]
     /// The single in-flight token refresh, shared by every concurrent caller.
     private var refreshTask: Task<OAuthTokenSet, Error>?
     private var authenticationRecoveryTask: Task<Void, Never>?
@@ -805,23 +812,41 @@ final class MobileSessionCoordinator: ObservableObject {
             return cached as Data
         }
 
-        do {
-            let accessToken = try await accessTokenForRequest()
-            let data = try await MobileHTTPClient(
-                baseURL: apiBaseURL
-            ).getData(
-                path,
-                accessToken: accessToken)
+        if let existing = protectedImageLoadTasks[path] {
+            return await existing.value
+        }
 
+        let task = Task { [weak self] () -> Data? in
+            guard let self else { return nil }
+
+            do {
+                let accessToken = try await self.accessTokenForRequest()
+
+                return try await MobileHTTPClient(
+                    baseURL: apiBaseURL
+                ).getData(
+                    path,
+                    accessToken: accessToken)
+            } catch {
+                return nil
+            }
+        }
+
+        protectedImageLoadTasks[path] = task
+
+        let data = await task.value
+
+        protectedImageLoadTasks.removeValue(
+            forKey: path)
+
+        if let data {
             protectedImageCache.setObject(
                 data as NSData,
                 forKey: key,
                 cost: data.count)
-
-            return data
-        } catch {
-            return nil
         }
+
+        return data
     }
 
     private func accessTokenForRequest() async throws -> String {

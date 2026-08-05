@@ -131,26 +131,6 @@ public sealed class AvatarController : Controller
             : DefaultAvatarResult();
     }
 
-    [HttpGet("/api/v1/mobile/profile-images/{participantType}/{profileId:guid}")]
-    [Authorize(Policy = AgentPortal.Mobile.MobileApiAuthorization.PolicyName)]
-    [ResponseCache(Duration = 86400, Location = ResponseCacheLocation.Client)]
-    public async Task<IActionResult> MobileProfileImage(
-        string participantType,
-        Guid profileId)
-    {
-        if (profileId == Guid.Empty ||
-            participantType is not (
-                MessagingParticipantTypes.Agent or
-                MessagingParticipantTypes.Client))
-        {
-            return NotFound();
-        }
-
-        return await ProfileImageResultAsync(
-            participantType,
-            profileId);
-    }
-
     private async Task<Domain.Entities.AgentProfile?> GetCurrentProfileAsync(CancellationToken cancellationToken)
     {
         return await _profileAccessResolver.ResolveCurrentAsync(
