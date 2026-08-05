@@ -3,10 +3,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Mobile;
+using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
 
@@ -113,6 +115,81 @@ public sealed class MobileProfileMediaControllerTests
         Assert.IsType<NotFoundResult>(result);
 
         profiles.VerifyAll();
+    }
+
+    [Fact]
+    public async Task ProjectedCanonicalResources_AreServedByCanonicalController_ForAgentAndClient()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "projected-agent",
+            AgentUpn = "projected.agent@example.test",
+            FullName = "Projected Agent",
+            IsActive = true,
+            ProfileImageContent = [1, 2, 3, 4],
+            ProfileImageContentType = "image/jpeg"
+        };
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "projected-client",
+            FirstName = "Projected",
+            LastName = "Client",
+            Email = "projected.client@example.test",
+            ProfileImageContent = [5, 6, 7, 8],
+            ProfileImageContentType = "image/png"
+        };
+        db.AddRange(agent, client);
+        await db.SaveChangesAsync();
+
+        var resolver = new MessagingProfileImageResolver(
+            db,
+            NullLogger<MessagingProfileImageResolver>.Instance);
+        var identities = new[]
+        {
+            new MessagingParticipantIdentity(
+                agent.AgentUserId,
+                MessagingParticipantTypes.Agent,
+                agent.Id,
+                agent.FullName!,
+                agent.AgentUpn,
+                "PA"),
+            new MessagingParticipantIdentity(
+                client.ClientUserId,
+                MessagingParticipantTypes.Client,
+                client.Id,
+                "Projected Client",
+                client.Email,
+                "PC")
+        };
+
+        var projected = await MobileAvatarProjection.ResolveManyAsync(
+            resolver,
+            identities,
+            CancellationToken.None);
+        var controller = new MobileProfileMediaController(resolver);
+
+        foreach (var identity in identities)
+        {
+            var avatar = projected[MessagingProfileImageKey.From(identity)];
+            Assert.StartsWith(
+                $"/api/v1/mobile/profile-images/{identity.ParticipantType}/{identity.ProfileId:D}?v=",
+                avatar.ResourcePath,
+                StringComparison.Ordinal);
+
+            var result = await controller.Get(
+                identity.ParticipantType,
+                identity.ProfileId,
+                CancellationToken.None);
+            var file = Assert.IsType<FileContentResult>(result);
+
+            var expected = identity.ParticipantType == MessagingParticipantTypes.Agent
+                ? agent.ProfileImageContent
+                : client.ProfileImageContent;
+            Assert.Equal(expected, file.FileContents);
+        }
     }
 
     [Theory]

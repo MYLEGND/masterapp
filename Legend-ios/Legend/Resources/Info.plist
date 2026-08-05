@@ -31,6 +31,8 @@
 	<string>1</string>
 	<key>LegendAPIBaseURL</key>
 	<string>$(LEGEND_API_BASE_URL)</string>
+	<key>LegendAPNSEnvironment</key>
+	<string>$(APS_ENVIRONMENT)</string>
 	<key>LegendAgentOnlineAccountURL</key>
 	<string>$(LEGEND_AGENT_ONLINE_ACCOUNT_URL)</string>
 	<key>LegendPrivacyPolicyURL</key>

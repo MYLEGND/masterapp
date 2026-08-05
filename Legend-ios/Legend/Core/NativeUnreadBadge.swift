@@ -9,8 +9,10 @@ enum NativeUnreadBadge {
     static func prepare() {
         UNUserNotificationCenter.current().requestAuthorization(
             options: [.alert, .badge, .sound]
-        ) { granted, _ in
-            guard granted else { return }
+        ) { _, _ in
+            // APNs registration is independent from alert permission. Register
+            // on every launch so token rotation is reported even when the user
+            // has denied visible notifications or changes Settings later.
             DispatchQueue.main.async {
                 UIApplication.shared.registerForRemoteNotifications()
             }

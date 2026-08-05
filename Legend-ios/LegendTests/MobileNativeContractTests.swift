@@ -4,6 +4,17 @@ import XCTest
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testSignedAPNSEnvironmentMapsOnlyTheAppEntitlementValues() {
+        XCTAssertEqual(
+            LegendAPNSEnvironment.fromSignedEntitlement("development"),
+            .sandbox)
+        XCTAssertEqual(
+            LegendAPNSEnvironment.fromSignedEntitlement("production"),
+            .production)
+        XCTAssertNil(LegendAPNSEnvironment.fromSignedEntitlement("staging"))
+        XCTAssertNil(LegendAPNSEnvironment.fromSignedEntitlement(nil))
+    }
+
     func testVerificationBadgeIsLimitedToTheProfileImageIdentitySurface() {
         XCTAssertTrue(
             LegendVerifiedBadgePlacement.alongsideProfileImage
@@ -344,6 +355,41 @@ final class MobileNativeContractTests: XCTestCase {
 
         XCTAssertTrue(data.isEmpty)
         XCTAssertEqual(StubURLProtocol.lastRequestTimeout, 20)
+    }
+
+    func testMobileHTTPClientPreservesVersionQueriesOnProtectedResourcePaths() async throws {
+        StubURLProtocol.responseStatus = 200
+        let client = MobileHTTPClient(
+            baseURL: URL(string: "https://api.example.test/mobile")!,
+            session: stubSession())
+        let resources = [
+            (
+                "/api/v1/mobile/profile-images/Agent/81d5d665-7e00-4675-9903-4d0f27ab6315?v=4df3214380552811",
+                "/mobile/api/v1/mobile/profile-images/Agent/81d5d665-7e00-4675-9903-4d0f27ab6315",
+                "4df3214380552811"
+            ),
+            (
+                "/api/v1/mobile/messaging/conversations/17aa8133-5551-465e-bb04-88f2e22f1502/image?v=9fe451fd95809b94",
+                "/mobile/api/v1/mobile/messaging/conversations/17aa8133-5551-465e-bb04-88f2e22f1502/image",
+                "9fe451fd95809b94"
+            )
+        ]
+
+        for (resourcePath, expectedPath, expectedVersion) in resources {
+            StubURLProtocol.lastRequestURL = nil
+
+            _ = try await client.getData(resourcePath, accessToken: "token")
+
+            let requestURL = try XCTUnwrap(StubURLProtocol.lastRequestURL)
+            let components = try XCTUnwrap(
+                URLComponents(url: requestURL, resolvingAgainstBaseURL: false))
+
+            XCTAssertEqual(components.path, expectedPath)
+            XCTAssertEqual(
+                components.queryItems,
+                [URLQueryItem(name: "v", value: expectedVersion)])
+            XCTAssertFalse(requestURL.absoluteString.contains("%3F"))
+        }
     }
 
     func testSignOutClearsTheKeychainAbstraction() {
@@ -803,12 +849,14 @@ private struct StubMobileFinancialAPI: MobileFinancialAPI {
 private final class StubURLProtocol: URLProtocol {
     static var responseStatus = 200
     static var lastRequestTimeout: TimeInterval?
+    static var lastRequestURL: URL?
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         Self.lastRequestTimeout = request.timeoutInterval
+        Self.lastRequestURL = request.url
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: Self.responseStatus,

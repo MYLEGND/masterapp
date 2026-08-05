@@ -28,6 +28,21 @@ public sealed record NotificationSnapshot(
     NotificationBadgeSnapshot Badge,
     IReadOnlyList<NotificationLedgerItem> Notifications);
 
+/// <summary>
+/// Safe APNs state for the authenticated actor's existing device registration.
+/// This projection deliberately excludes the opaque token and its hash.
+/// </summary>
+public sealed record MobilePushDiagnosticSnapshot(
+    string RegistrationState,
+    string? Environment,
+    DateTime? LastRegistrationUtc,
+    string LastRegistrationResult,
+    DateTime? LastDeliveryUtc,
+    string DeliveryState,
+    int? LastApnsStatus,
+    string? LastApnsReason,
+    int? DeliveryAttemptCount);
+
 public sealed record NotificationRealtimeEvent(
     Guid? NotificationId,
     int UnreadCount,
@@ -100,6 +115,15 @@ public interface INotificationEngine
         MessagingActor actor,
         string deviceToken,
         string environment,
+        CancellationToken cancellationToken = default);
+
+    Task DeactivateDeviceAsync(
+        MessagingActor actor,
+        string deviceToken,
+        CancellationToken cancellationToken = default);
+
+    Task<MobilePushDiagnosticSnapshot> GetPushDiagnosticAsync(
+        MessagingActor actor,
         CancellationToken cancellationToken = default);
 }
 
@@ -344,16 +368,8 @@ internal sealed class NotificationEngine : INotificationEngine
         CancellationToken cancellationToken = default)
     {
         var recipient = Normalize(actor);
-        var token = deviceToken?.Trim().ToLowerInvariant() ?? string.Empty;
-        if (token.Length is 0 or > MaximumDeviceTokenLength ||
-            token.Any(character => !Uri.IsHexDigit(character)))
-        {
-            throw new ArgumentException("The APNs device token is invalid.", nameof(deviceToken));
-        }
-
-        var normalizedEnvironment = string.Equals(environment?.Trim(), "sandbox", StringComparison.OrdinalIgnoreCase)
-            ? "sandbox"
-            : "production";
+        var token = NormalizeDeviceToken(deviceToken);
+        var normalizedEnvironment = NormalizeEnvironment(environment);
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
         var now = DateTime.UtcNow;
         var device = await _db.MobilePushDevices.SingleOrDefaultAsync(
@@ -388,6 +404,136 @@ internal sealed class NotificationEngine : INotificationEngine
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeactivateDeviceAsync(
+        MessagingActor actor,
+        string deviceToken,
+        CancellationToken cancellationToken = default)
+    {
+        var recipient = Normalize(actor);
+        var token = NormalizeDeviceToken(deviceToken);
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
+        var device = await _db.MobilePushDevices.SingleOrDefaultAsync(
+            candidate =>
+                candidate.TokenHash == hash &&
+                candidate.UserId == recipient.UserId &&
+                candidate.ParticipantType == recipient.ParticipantType,
+            cancellationToken);
+        if (device is null || !device.IsActive)
+            return;
+
+        var now = DateTime.UtcNow;
+        device.IsActive = false;
+        device.InvalidatedUtc = now;
+        device.UpdatedUtc = now;
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<MobilePushDiagnosticSnapshot> GetPushDiagnosticAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        var recipient = Normalize(actor);
+        var device = await _db.MobilePushDevices
+            .AsNoTracking()
+            .Where(candidate =>
+                candidate.UserId == recipient.UserId &&
+                candidate.ParticipantType == recipient.ParticipantType)
+            .OrderByDescending(candidate => candidate.LastSeenUtc ?? candidate.UpdatedUtc)
+            .ThenByDescending(candidate => candidate.UpdatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (device is null)
+        {
+            return new MobilePushDiagnosticSnapshot(
+                "missing",
+                null,
+                null,
+                "unknown",
+                null,
+                "unknown",
+                null,
+                null,
+                null);
+        }
+
+        var delivery = await (
+                from candidate in _db.MobilePushDeliveries.AsNoTracking()
+                join notification in _db.MobileActivityNotifications.AsNoTracking()
+                    on candidate.NotificationId equals notification.Id
+                where candidate.MobilePushDeviceId == device.Id &&
+                      notification.RecipientUserId == recipient.UserId &&
+                      notification.RecipientParticipantType == recipient.ParticipantType
+                orderby candidate.SentUtc ?? candidate.AbandonedUtc ?? candidate.NextAttemptUtc descending
+                select new
+                {
+                    candidate.SentUtc,
+                    candidate.AbandonedUtc,
+                    candidate.NextAttemptUtc,
+                    candidate.AttemptCount,
+                    candidate.LastError
+                })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var registrationState = device.IsActive ? "registered" : "inactive";
+        if (delivery is null)
+        {
+            return new MobilePushDiagnosticSnapshot(
+                registrationState,
+                device.Environment,
+                device.LastSeenUtc,
+                registrationState,
+                null,
+                "unknown",
+                null,
+                null,
+                null);
+        }
+
+        var apnsDetail = ApplePushDiagnosticDetail.TryParse(delivery.LastError, out var parsedDetail)
+            ? parsedDetail
+            : null;
+        var deliveryState = delivery.SentUtc is not null
+            ? "delivered"
+            : delivery.AbandonedUtc is not null
+                ? string.Equals(delivery.LastError, "Notification no longer unread.", StringComparison.Ordinal)
+                    ? "suppressed"
+                    : "failed"
+                : "pending";
+        return new MobilePushDiagnosticSnapshot(
+            registrationState,
+            device.Environment,
+            device.LastSeenUtc,
+            registrationState,
+            delivery.SentUtc ?? delivery.AbandonedUtc,
+            deliveryState,
+            apnsDetail?.StatusCode,
+            apnsDetail?.Reason,
+            delivery.AttemptCount);
+    }
+
+    private static string NormalizeDeviceToken(string? deviceToken)
+    {
+        var token = deviceToken?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (token.Length is 0 or > MaximumDeviceTokenLength ||
+            token.Any(character => !Uri.IsHexDigit(character)))
+        {
+            throw new ArgumentException("The APNs device token is invalid.", nameof(deviceToken));
+        }
+
+        return token;
+    }
+
+    private static string NormalizeEnvironment(string? environment)
+    {
+        if (string.Equals(environment?.Trim(), "sandbox", StringComparison.OrdinalIgnoreCase))
+            return "sandbox";
+        if (string.Equals(environment?.Trim(), "production", StringComparison.OrdinalIgnoreCase))
+            return "production";
+
+        throw new ArgumentException(
+            "The APNs environment must be sandbox or production.",
+            nameof(environment));
     }
 
     private async Task StageDeliveriesAsync(

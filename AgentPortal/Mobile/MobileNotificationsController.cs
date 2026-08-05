@@ -90,6 +90,33 @@ public sealed class MobileNotificationsController : MobileApiControllerBase
             badge.UpdatedUtc));
     }
 
+    /// <summary>
+    /// Returns only the current typed actor's safe APNs registration and
+    /// delivery projection. Opaque device tokens and credential material never
+    /// cross this authenticated boundary.
+    /// </summary>
+    [HttpGet("devices/apns/status")]
+    public async Task<IActionResult> ApnsStatus(CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var status = await _notifications.GetPushDiagnosticAsync(
+            resolved.Actor!.Actor,
+            cancellationToken);
+        return Ok(new MobilePushDiagnosticDto(
+            status.RegistrationState,
+            status.Environment,
+            status.LastRegistrationUtc,
+            status.LastRegistrationResult,
+            status.LastDeliveryUtc,
+            status.DeliveryState,
+            status.LastApnsStatus,
+            status.LastApnsReason,
+            status.DeliveryAttemptCount));
+    }
+
     [HttpPut("devices/apns")]
     public async Task<IActionResult> RegisterApnsDevice(
         [FromBody] MobileApnsDeviceRegistrationRequest? request,
@@ -112,8 +139,15 @@ public sealed class MobileNotificationsController : MobileApiControllerBase
             await _notifications.RegisterDeviceAsync(
                 resolved.Actor!.Actor,
                 request.DeviceToken,
-                request.Environment ?? "production",
+                request.Environment ?? string.Empty,
                 cancellationToken);
+        }
+        catch (ArgumentException exception) when (exception.ParamName == "environment")
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "mobile_notification_environment_invalid",
+                "The APNs environment must be sandbox or production.");
         }
         catch (ArgumentException)
         {
@@ -131,6 +165,41 @@ public sealed class MobileNotificationsController : MobileApiControllerBase
             snapshot.Badge.UnreadCount,
             snapshot.Badge.Revision,
             snapshot.Badge.UpdatedUtc));
+    }
+
+    [HttpDelete("devices/apns")]
+    public async Task<IActionResult> DeactivateApnsDevice(
+        [FromBody] MobileApnsDeviceRemovalRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        if (string.IsNullOrWhiteSpace(request?.DeviceToken))
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "mobile_notification_device_required",
+                "An APNs device token is required.");
+        }
+
+        try
+        {
+            await _notifications.DeactivateDeviceAsync(
+                resolved.Actor!.Actor,
+                request.DeviceToken,
+                cancellationToken);
+        }
+        catch (ArgumentException)
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "mobile_notification_device_invalid",
+                "The APNs device token is invalid.");
+        }
+
+        return NoContent();
     }
 
     private static MobileNotificationSnapshotDto ToResponse(NotificationSnapshot snapshot) => new(
@@ -171,3 +240,16 @@ public sealed record MobileNotificationSnapshotDto(
 public sealed record MobileApnsDeviceRegistrationRequest(
     string? DeviceToken,
     string? Environment = null);
+
+public sealed record MobileApnsDeviceRemovalRequest(string? DeviceToken);
+
+public sealed record MobilePushDiagnosticDto(
+    string RegistrationState,
+    string? Environment,
+    DateTime? LastRegistrationUtc,
+    string LastRegistrationResult,
+    DateTime? LastDeliveryUtc,
+    string DeliveryState,
+    int? LastApnsStatus,
+    string? LastApnsReason,
+    int? DeliveryAttemptCount);

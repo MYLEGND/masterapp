@@ -86,6 +86,7 @@ struct LegendApplicationShell: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let currentSession: MobileSession
+    let onSignOut: () -> Void
     @ObservedObject private var coordinator: MobileSessionCoordinator
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     @ObservedObject private var account: MobileAccountStore
@@ -99,9 +100,11 @@ struct LegendApplicationShell: View {
     init(
         currentSession: MobileSession,
         coordinator: MobileSessionCoordinator,
-        bootstrap: LegendApplicationBootstrapCoordinator
+        bootstrap: LegendApplicationBootstrapCoordinator,
+        onSignOut: @escaping () -> Void
     ) {
         self.currentSession = currentSession
+        self.onSignOut = onSignOut
         _coordinator = ObservedObject(wrappedValue: coordinator)
         _bootstrap = ObservedObject(wrappedValue: bootstrap)
         _account = ObservedObject(wrappedValue: bootstrap.stores.account)
@@ -116,7 +119,8 @@ struct LegendApplicationShell: View {
                 LegendAccountLifecycleLockedView(
                     lifecycle: lifecycle,
                     account: account,
-                    coordinator: coordinator)
+                    coordinator: coordinator,
+                    onSignOut: onSignOut)
             } else {
                 fullExperience
             }
@@ -277,7 +281,8 @@ struct LegendApplicationShell: View {
                     account: bootstrap.stores.account,
                     messages: messages,
                     social: social,
-                    bootstrap: bootstrap
+                    bootstrap: bootstrap,
+                    onSignOut: onSignOut
                 )
             }
             .task {
@@ -344,6 +349,7 @@ private struct LegendAccountLifecycleLockedView: View {
     let lifecycle: MobileAccountLifecycle
     @ObservedObject var account: MobileAccountStore
     @ObservedObject var coordinator: MobileSessionCoordinator
+    let onSignOut: () -> Void
 
     var body: some View {
         VStack(spacing: LegendNextSpacing.md) {
@@ -382,7 +388,7 @@ private struct LegendAccountLifecycleLockedView: View {
             }
 
             Button("Sign out") {
-                coordinator.signOut()
+                onSignOut()
             }
             .buttonStyle(LegendNextButtonStyle(kind: .secondary))
 
@@ -5260,7 +5266,9 @@ private enum LegendProfileContentFilter: String, CaseIterable, Identifiable {
 }
 
 private struct LegendAccountView: View {
+    @EnvironmentObject private var pushNotifications: LegendPushNotificationDelegate
     let currentSession: MobileSession
+    let onSignOut: () -> Void
 
     @ObservedObject private var coordinator: MobileSessionCoordinator
     @ObservedObject private var account: MobileAccountStore
@@ -5289,9 +5297,11 @@ private struct LegendAccountView: View {
         account: MobileAccountStore,
         messages: MessagingStore,
         social: MobileSocialStore,
-        bootstrap: LegendApplicationBootstrapCoordinator
+        bootstrap: LegendApplicationBootstrapCoordinator,
+        onSignOut: @escaping () -> Void
     ) {
         self.currentSession = currentSession
+        self.onSignOut = onSignOut
         _coordinator = ObservedObject(wrappedValue: coordinator)
         _account = ObservedObject(wrappedValue: account)
         _messages = ObservedObject(wrappedValue: messages)
@@ -5374,7 +5384,7 @@ private struct LegendAccountView: View {
             titleVisibility: .visible
         ) {
             Button("Sign out", role: .destructive) {
-                coordinator.signOut()
+                onSignOut()
             }
 
             Button("Cancel", role: .cancel) {}
@@ -5896,6 +5906,7 @@ private struct LegendAccountView: View {
         case translationLanguage
         case translationManagement
         case accountAccess
+        case pushNotificationStatus
 
         var id: String { rawValue }
     }
@@ -6114,6 +6125,21 @@ private struct LegendAccountView: View {
                                 detail: "iOS Keychain",
                                 systemImage: "key.fill",
                                 showsChevron: false)
+
+                            LegendProfileSettingsDivider()
+
+                            Button {
+                                profileSettingsPresentation = .pushNotificationStatus
+                                pushNotifications.refreshNotificationAuthorizationStatus()
+                                Task { await bootstrap.stores.notifications.refreshPushDiagnostic() }
+                            } label: {
+                                LegendProfileSettingsRow(
+                                    title: "Push notification status",
+                                    detail: "Review this device's secure delivery state",
+                                    systemImage: "bell.badge",
+                                    showsChevron: true)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
 
@@ -6171,6 +6197,10 @@ private struct LegendAccountView: View {
                 LegendTranslationAccessManager(messages: messages)
             case .accountAccess:
                 LegendAccountAccessSheet(account: account)
+            case .pushNotificationStatus:
+                LegendPushNotificationStatusSheet(
+                    notifications: bootstrap.stores.notifications)
+                .environmentObject(pushNotifications)
             }
         }
         .task {
@@ -6308,6 +6338,202 @@ private struct LegendAccountView: View {
     private func legendLanguageName(_ code: String?) -> String {
         guard let code, !code.isEmpty else { return "Choose a language" }
         return translationLanguageNames[code] ?? (code == "ht" ? "Haitian Creole" : code)
+    }
+}
+
+/// A production-safe view of system and server APNs facts. The server response
+/// is actor-scoped and redacted; this sheet never reads or renders a token.
+private struct LegendPushNotificationStatusSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var pushNotifications: LegendPushNotificationDelegate
+    @ObservedObject var notifications: MobileNotificationStore
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Security",
+                        title: "Push notification status",
+                        detail: "This view reports only this signed-in device's notification state. Device tokens and credentials are never displayed.",
+                        dismiss: { dismiss() })
+
+                    LegendProfileSettingsSection(title: "This iPhone") {
+                        VStack(spacing: 0) {
+                            statusRow(
+                                title: "Notification permission",
+                                detail: notificationPermissionDetail,
+                                systemImage: "bell")
+                            LegendProfileSettingsDivider()
+                            statusRow(
+                                title: "APNs registration",
+                                detail: pushNotifications.registrationState.displayName,
+                                systemImage: "antenna.radiowaves.left.and.right")
+                            LegendProfileSettingsDivider()
+                            statusRow(
+                                title: "Signed APNs environment",
+                                detail: pushNotifications.signedEnvironment?.displayName ?? "Unavailable",
+                                systemImage: "signature")
+                            LegendProfileSettingsDivider()
+                            statusRow(
+                                title: "Device token",
+                                detail: pushNotifications.deviceToken == nil ? "Missing" : "Registered",
+                                systemImage: "checkmark.shield")
+                        }
+                    }
+
+                    LegendProfileSettingsSection(title: "Legend server") {
+                        VStack(spacing: 0) {
+                            statusRow(
+                                title: "Server registration",
+                                detail: registrationDetail,
+                                systemImage: "server.rack")
+                            LegendProfileSettingsDivider()
+                            statusRow(
+                                title: "Server environment",
+                                detail: environmentDetail,
+                                systemImage: "network")
+                            LegendProfileSettingsDivider()
+                            statusRow(
+                                title: "Latest registration timestamp",
+                                detail: formatted(lastRegistrationUTC),
+                                systemImage: "clock.arrow.circlepath")
+                            LegendProfileSettingsDivider()
+                            statusRow(
+                                title: "Last registration result",
+                                detail: registrationResultDetail,
+                                systemImage: "checkmark.circle")
+                        }
+                    }
+
+                    LegendProfileSettingsSection(title: "Last APNs delivery") {
+                        VStack(spacing: 0) {
+                            statusRow(
+                                title: "Delivery result",
+                                detail: deliveryDetail,
+                                systemImage: "paperplane")
+                            LegendProfileSettingsDivider()
+                            statusRow(
+                                title: "Delivery timestamp",
+                                detail: formatted(notifications.pushDiagnostic?.lastDeliveryUTC),
+                                systemImage: "clock")
+                            LegendProfileSettingsDivider()
+                            statusRow(
+                                title: "APNs status",
+                                detail: notifications.pushDiagnostic?.lastAPNSStatus.map(String.init) ?? "Unavailable",
+                                systemImage: "number")
+                            LegendProfileSettingsDivider()
+                            statusRow(
+                                title: "APNs reason",
+                                detail: notifications.pushDiagnostic?.lastAPNSReason ?? "Unavailable",
+                                systemImage: "exclamationmark.bubble")
+                            if let attempts = notifications.pushDiagnostic?.deliveryAttemptCount {
+                                LegendProfileSettingsDivider()
+                                statusRow(
+                                    title: "Delivery attempts",
+                                    detail: attempts.formatted(),
+                                    systemImage: "arrow.triangle.2.circlepath")
+                            }
+                        }
+                    }
+
+                    Button(notifications.isRefreshingPushDiagnostic ? "Refreshing…" : "Refresh status") {
+                        pushNotifications.refreshNotificationAuthorizationStatus()
+                        Task { await notifications.refreshPushDiagnostic() }
+                    }
+                    .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                    .disabled(notifications.isRefreshingPushDiagnostic)
+                }
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .tint(LegendNextColor.gold)
+        .legendNextSheetChrome(detents: [.medium, .large])
+        .task {
+            pushNotifications.refreshNotificationAuthorizationStatus()
+            await notifications.refreshPushDiagnostic()
+        }
+    }
+
+    private var notificationPermissionDetail: String {
+        switch pushNotifications.authorizationStatus {
+        case .authorized: "Authorized"
+        case .denied: "Denied"
+        case .provisional: "Provisional"
+        case .ephemeral: "Ephemeral"
+        case .notDetermined: "Not determined"
+        @unknown default: "Unavailable"
+        }
+    }
+
+    private var registrationDetail: String {
+        switch notifications.pushRegistrationState {
+        case .registering: return "Registering"
+        case .registered: return "Registered"
+        case .failed: return "Failed"
+        case .unknown: break
+        }
+
+        switch notifications.pushDiagnostic?.registrationState {
+        case "registered": return "Registered"
+        case "inactive": return "Inactive"
+        case "missing": return "Missing"
+        default: return "Unknown"
+        }
+    }
+
+    private var environmentDetail: String {
+        switch notifications.pushDiagnostic?.environment {
+        case "sandbox": "Development"
+        case "production": "Production"
+        default: "Unknown"
+        }
+    }
+
+    private var registrationResultDetail: String {
+        switch notifications.pushRegistrationState {
+        case .registering: return "Registering"
+        case .registered: return "Registered"
+        case .failed: return "Failed"
+        case .unknown: break
+        }
+
+        switch notifications.pushDiagnostic?.lastRegistrationResult {
+        case "registered": return "Registered"
+        case "inactive": return "Inactive"
+        default: return "Unknown"
+        }
+    }
+
+    private var lastRegistrationUTC: Date? {
+        notifications.lastPushRegistrationAttemptUTC ??
+            notifications.pushDiagnostic?.lastRegistrationUTC
+    }
+
+    private var deliveryDetail: String {
+        switch notifications.pushDiagnostic?.deliveryState {
+        case "delivered": "Delivered"
+        case "failed": "Failed"
+        case "pending": "Pending"
+        case "suppressed": "Suppressed"
+        default: "Unknown"
+        }
+    }
+
+    private func formatted(_ value: Date?) -> String {
+        guard let value else { return "Unavailable" }
+        return value.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private func statusRow(title: String, detail: String, systemImage: String) -> some View {
+        LegendProfileSettingsRow(
+            title: title,
+            detail: detail,
+            systemImage: systemImage,
+            showsChevron: false)
     }
 }
 

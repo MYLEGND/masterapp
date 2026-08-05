@@ -278,6 +278,22 @@ struct MobileHTTPClient: Sendable {
         try await performEmpty(request)
     }
 
+    func delete<Body: Encodable>(
+        _ path: String,
+        body: Body,
+        accessToken: String,
+        headers: [String: String] = [:]
+    ) async throws {
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        request.httpBody = try JSONEncoder.mobile.encode(body)
+        try await performEmpty(request)
+    }
+
     func put<Body: Encodable>(
         _ path: String,
         body: Body,
@@ -320,13 +336,24 @@ struct MobileHTTPClient: Sendable {
 
     private func endpointURL(_ path: String, queryItems: [URLQueryItem]) throws -> URL {
         guard path.hasPrefix("/") else { throw MobileAPIError.invalidPath }
+        guard let resourceComponents = URLComponents(
+            string: path),
+            resourceComponents.scheme == nil,
+            resourceComponents.host == nil else {
+            throw MobileAPIError.invalidPath
+        }
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw MobileAPIError.invalidBaseURL
         }
-        let basePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let suffix = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        components.path = "/" + [basePath, suffix].filter { !$0.isEmpty }.joined(separator: "/")
-        components.queryItems = queryItems.isEmpty ? nil : queryItems
+        let basePath = components.percentEncodedPath.trimmingCharacters(
+            in: CharacterSet(charactersIn: "/"))
+        let resourcePath = resourceComponents.percentEncodedPath.trimmingCharacters(
+            in: CharacterSet(charactersIn: "/"))
+        components.percentEncodedPath = "/" + [basePath, resourcePath]
+            .filter { !$0.isEmpty }
+            .joined(separator: "/")
+        let mergedQueryItems = (resourceComponents.queryItems ?? []) + queryItems
+        components.queryItems = mergedQueryItems.isEmpty ? nil : mergedQueryItems
         guard let url = components.url else { throw MobileAPIError.invalidBaseURL }
         return url
     }

@@ -318,7 +318,10 @@ private struct AuthenticatedHomeView: View {
                 LegendApplicationShell(
                     currentSession: currentSession,
                     coordinator: coordinator,
-                    bootstrap: bootstrap)
+                    bootstrap: bootstrap,
+                    onSignOut: {
+                        Task { await signOut() }
+                    })
             case .failed(let failure):
                 NavigationStack {
                     LegendNextErrorState(
@@ -347,6 +350,9 @@ private struct AuthenticatedHomeView: View {
         .onChange(of: pushNotifications.deviceToken) { _, _ in
             Task { await registerPushDeviceIfAvailable() }
         }
+        .onChange(of: pushNotifications.signedEnvironment) { _, _ in
+            Task { await registerPushDeviceIfAvailable() }
+        }
     }
 
     private func synchronizeNotifications() async {
@@ -355,14 +361,18 @@ private struct AuthenticatedHomeView: View {
     }
 
     private func registerPushDeviceIfAvailable() async {
-        guard let token = pushNotifications.deviceToken else { return }
-        #if DEBUG
-        let environment = "sandbox"
-        #else
-        let environment = "production"
-        #endif
+        guard let token = pushNotifications.deviceToken,
+              let environment = pushNotifications.signedEnvironment else {
+            return
+        }
         await bootstrap.stores.notifications.registerAPNSDevice(
             token: token,
-            environment: environment)
+            environment: environment.rawValue)
+    }
+
+    private func signOut() async {
+        await bootstrap.stores.notifications.deactivateAPNSDevice(
+            token: pushNotifications.deviceToken)
+        coordinator.signOut()
     }
 }

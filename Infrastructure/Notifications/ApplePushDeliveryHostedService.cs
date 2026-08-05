@@ -35,6 +35,84 @@ internal sealed record ApplePushDeliveryResult(
     ApplePushDeliveryOutcome Outcome,
     string? Detail = null);
 
+/// <summary>
+/// The safe, durable subset of an APNs failure response.  Delivery records are
+/// intentionally useful to the authenticated mobile diagnostic without ever
+/// retaining an opaque device token, provider JWT, or response body.
+/// </summary>
+internal sealed record ApplePushDiagnosticDetail(
+    int? StatusCode,
+    string? Reason,
+    string? ApnsId,
+    long? Timestamp,
+    string Environment,
+    string? Topic)
+{
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+
+    public static string Create(
+        int? statusCode,
+        string? reason,
+        string? apnsId,
+        long? timestamp,
+        string environment,
+        string? topic) =>
+        JsonSerializer.Serialize(
+            new ApplePushDiagnosticDetail(
+                statusCode,
+                SanitizeReason(reason),
+                Guid.TryParse(apnsId, out var parsedApnsId)
+                    ? parsedApnsId.ToString("D")
+                    : null,
+                timestamp,
+                string.Equals(environment, "sandbox", StringComparison.OrdinalIgnoreCase)
+                    ? "sandbox"
+                    : "production",
+                SanitizeTopic(topic)),
+            SerializerOptions);
+
+    public static bool TryParse(string? value, out ApplePushDiagnosticDetail? detail)
+    {
+        detail = null;
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        try
+        {
+            detail = JsonSerializer.Deserialize<ApplePushDiagnosticDetail>(value, SerializerOptions);
+            return detail is not null;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string? SanitizeReason(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = value.Trim();
+        return normalized.Length <= 160 && normalized.All(character =>
+            char.IsLetterOrDigit(character) || character is ' ' or '.' or '_' or '-')
+            ? normalized
+            : "APNs request failed.";
+    }
+
+    private static string? SanitizeTopic(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = value.Trim();
+        return normalized.Length <= 255 && normalized.All(character =>
+            char.IsLetterOrDigit(character) || character is '.' or '-')
+            ? normalized
+            : null;
+    }
+}
+
 internal interface IApplePushGateway
 {
     Task<ApplePushDeliveryResult> SendAsync(
@@ -70,9 +148,14 @@ internal sealed class ApplePushGateway : IApplePushGateway
         ApplePushDeliveryRequest request,
         CancellationToken cancellationToken = default)
     {
-        var configuration = ReadConfiguration();
+        var configuration = ReadConfiguration(out var configurationFailure);
         if (configuration is null)
-            return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Suppressed, "APNs is not configured.");
+        {
+            return Suppressed(
+                request,
+                topic: null,
+                reason: configurationFailure);
+        }
 
         try
         {
@@ -104,36 +187,110 @@ internal sealed class ApplePushGateway : IApplePushGateway
                 Encoding.UTF8,
                 "application/json");
 
-            var response = await _httpClients.CreateClient("ApplePush")
+            using var response = await _httpClients.CreateClient("ApplePush")
                 .SendAsync(message, cancellationToken);
             if (response.IsSuccessStatusCode)
                 return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Sent);
 
-            var detail = await response.Content.ReadAsStringAsync(cancellationToken);
-            if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Gone)
-                return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.InvalidDevice, Clip(detail));
+            var failure = await ReadFailureAsync(response, request, configuration.BundleId, cancellationToken);
+            if (IsPermanentlyInvalidDevice(response.StatusCode, failure.Reason))
+                return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.InvalidDevice, failure.Detail);
+            if (string.Equals(failure.Reason, "ExpiredProviderToken", StringComparison.Ordinal))
+                _cachedProviderToken = null;
             if ((int)response.StatusCode is 429 or >= 500)
-                return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Retry, Clip(detail));
-            return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Suppressed, Clip(detail));
+                return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Retry, failure.Detail);
+            if (string.Equals(failure.Reason, "ExpiredProviderToken", StringComparison.Ordinal))
+                return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Retry, failure.Detail);
+            return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Suppressed, failure.Detail);
         }
-        catch (HttpRequestException exception)
+        catch (HttpRequestException)
         {
-            _logger.LogError(exception, "APNs HTTP request failed.");
-            var detail = exception.InnerException is null
-                ? exception.Message
-                : $"{exception.Message} | {exception.InnerException.GetType().Name}: {exception.InnerException.Message}";
-            return new ApplePushDeliveryResult(
-                ApplePushDeliveryOutcome.Retry,
-                Clip($"APNs HTTP failure: {detail}"));
+            _logger.LogError("APNs HTTP request failed.");
+            return Retry(request, configuration.BundleId, "APNs transport failure.");
         }
-        catch (CryptographicException exception)
+        catch (CryptographicException)
         {
-            _logger.LogError(exception, "APNs provider token could not be generated.");
-            return new ApplePushDeliveryResult(
-                ApplePushDeliveryOutcome.Suppressed,
-                Clip($"APNs cryptographic failure: {exception.GetType().Name}: {exception.Message}"));
+            _logger.LogError("APNs provider token could not be generated.");
+            return Suppressed(request, configuration.BundleId, "APNs credential configuration is invalid.");
         }
     }
+
+    private static bool IsPermanentlyInvalidDevice(HttpStatusCode statusCode, string? reason) =>
+        statusCode == HttpStatusCode.Gone &&
+        string.Equals(reason, "Unregistered", StringComparison.Ordinal) ||
+        statusCode == HttpStatusCode.BadRequest &&
+        (string.Equals(reason, "BadDeviceToken", StringComparison.Ordinal) ||
+         string.Equals(reason, "DeviceTokenNotForTopic", StringComparison.Ordinal));
+
+    private static async Task<(string? Reason, string Detail)> ReadFailureAsync(
+        HttpResponseMessage response,
+        ApplePushDeliveryRequest request,
+        string topic,
+        CancellationToken cancellationToken)
+    {
+        string? reason = null;
+        long? timestamp = null;
+        try
+        {
+            using var document = JsonDocument.Parse(
+                await response.Content.ReadAsStreamAsync(cancellationToken));
+            if (document.RootElement.TryGetProperty("reason", out var reasonProperty) &&
+                reasonProperty.ValueKind == JsonValueKind.String)
+            {
+                reason = reasonProperty.GetString();
+            }
+            if (document.RootElement.TryGetProperty("timestamp", out var timestampProperty) &&
+                timestampProperty.ValueKind == JsonValueKind.Number &&
+                timestampProperty.TryGetInt64(out var value))
+            {
+                timestamp = value;
+            }
+        }
+        catch (JsonException)
+        {
+            reason = "APNs request failed.";
+        }
+
+        var apnsId = response.Headers.TryGetValues("apns-id", out var values)
+            ? values.FirstOrDefault()
+            : null;
+        var detail = ApplePushDiagnosticDetail.Create(
+            (int)response.StatusCode,
+            reason,
+            apnsId,
+            timestamp,
+            request.Environment,
+            topic);
+        return (reason, detail);
+    }
+
+    private static ApplePushDeliveryResult Retry(
+        ApplePushDeliveryRequest request,
+        string? topic,
+        string reason) =>
+        new(
+            ApplePushDeliveryOutcome.Retry,
+            ApplePushDiagnosticDetail.Create(
+                statusCode: null,
+                reason,
+                apnsId: null,
+                timestamp: null,
+                request.Environment,
+                topic));
+
+    private static ApplePushDeliveryResult Suppressed(
+        ApplePushDeliveryRequest request,
+        string? topic,
+        string reason) =>
+        new(
+            ApplePushDeliveryOutcome.Suppressed,
+            ApplePushDiagnosticDetail.Create(
+                statusCode: null,
+                reason,
+                apnsId: null,
+                timestamp: null,
+                request.Environment,
+                topic));
 
     private async Task<string> ProviderTokenAsync(
         ApplePushConfiguration configuration,
@@ -197,7 +354,7 @@ internal sealed class ApplePushGateway : IApplePushGateway
         }
     }
 
-    private ApplePushConfiguration? ReadConfiguration()
+    private ApplePushConfiguration? ReadConfiguration(out string failure)
     {
         var keyId = _configuration["Notifications:ApplePush:KeyId"]?.Trim();
         var teamId = _configuration["Notifications:ApplePush:TeamId"]?.Trim();
@@ -205,20 +362,38 @@ internal sealed class ApplePushGateway : IApplePushGateway
         var privateKey = _configuration["Notifications:ApplePush:PrivateKey"]?
             .Replace("\\n", "\n", StringComparison.Ordinal)
             .Trim();
-        return string.IsNullOrWhiteSpace(keyId) ||
-               string.IsNullOrWhiteSpace(teamId) ||
-               string.IsNullOrWhiteSpace(bundleId) ||
-               string.IsNullOrWhiteSpace(privateKey)
-            ? null
-            : new ApplePushConfiguration(keyId, teamId, bundleId, privateKey);
+        if (string.IsNullOrWhiteSpace(keyId) ||
+            string.IsNullOrWhiteSpace(teamId) ||
+            string.IsNullOrWhiteSpace(bundleId) ||
+            string.IsNullOrWhiteSpace(privateKey))
+        {
+            failure = "APNs is not configured.";
+            return null;
+        }
+
+        if (!IsAppleIdentifier(keyId) ||
+            !IsAppleIdentifier(teamId) ||
+            !IsBundleIdentifier(bundleId))
+        {
+            failure = "APNs credential configuration is invalid.";
+            return null;
+        }
+
+        failure = string.Empty;
+        return new ApplePushConfiguration(keyId, teamId, bundleId, privateKey);
     }
+
+    private static bool IsAppleIdentifier(string value) =>
+        value.Length == 10 && value.All(char.IsLetterOrDigit);
+
+    private static bool IsBundleIdentifier(string value) =>
+        value.Length is > 0 and <= 255 &&
+        value.All(character => char.IsLetterOrDigit(character) || character is '.' or '-');
 
     private static string Base64Url(byte[] value) => Convert.ToBase64String(value)
         .TrimEnd('=')
         .Replace('+', '-')
         .Replace('/', '_');
-
-    private static string Clip(string value) => value.Length <= 1_000 ? value : value[..1_000];
 
     private sealed record ApplePushConfiguration(
         string KeyId,
@@ -350,7 +525,7 @@ internal sealed class ApplePushDeliveryHostedService : BackgroundService
             await db.SaveChangesAsync(cancellationToken);
     }
 
-    private static void ApplyResult(
+    internal static void ApplyResult(
         MobilePushDelivery delivery,
         ApplePushDeliveryResult result,
         DateTime now)
