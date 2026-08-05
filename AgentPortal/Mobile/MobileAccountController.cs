@@ -59,38 +59,6 @@ public sealed class MobileAccountController : MobileApiControllerBase
             : AccountFailure(result);
     }
 
-    [HttpGet("/api/v1/mobile/profile-images/{participantType}/{profileId:guid}")]
-    [ResponseCache(Duration = 86400, Location = ResponseCacheLocation.Client)]
-    public async Task<IActionResult> ProfileImage(
-        string participantType,
-        Guid profileId,
-        CancellationToken cancellationToken)
-    {
-        if (profileId == Guid.Empty ||
-            participantType is not (
-                MessagingParticipantTypes.Agent or
-                MessagingParticipantTypes.Client))
-        {
-            return NotFound();
-        }
-
-        var image = await _profiles.ResolveAsync(
-            new MessagingParticipantIdentity(
-                string.Empty,
-                participantType,
-                profileId,
-                string.Empty,
-                null,
-                string.Empty),
-            cancellationToken);
-
-        return image is null
-            ? NotFound()
-            : File(
-                image.Content,
-                image.ContentType);
-    }
-
     [HttpPut]
     public async Task<IActionResult> Update(
         [FromBody] MobileAccountUpdateRequest? request,
