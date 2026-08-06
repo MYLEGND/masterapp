@@ -33,6 +33,10 @@ App_Data/
 *.binlog
 *.pp.xml
 
+# The production Hac worker requires these audited Windows executables.
+!tools/ffmpeg/ffmpeg.exe
+!tools/ffmpeg/ffprobe.exe
+
 # =========================
 # Logs & temp files
 # =========================

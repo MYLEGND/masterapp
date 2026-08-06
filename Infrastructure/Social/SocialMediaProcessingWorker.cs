@@ -57,14 +57,59 @@ internal sealed class SocialMediaProcessingWorker : BackgroundService, ISocialMe
             while (_queue.Reader.TryRead(out var mediaAssetId))
                 await ProcessAsync(mediaAssetId, stoppingToken);
 
-            var hasQueuedWork = _queue.Reader.WaitToReadAsync(stoppingToken).AsTask();
-            var recoveryDue = timer.WaitForNextTickAsync(stoppingToken).AsTask();
-            var completed = await Task.WhenAny(hasQueuedWork, recoveryDue);
+            if (!await WaitForWorkOrRecoveryAsync(timer, stoppingToken))
+                return;
+        }
+    }
 
-            if (completed == recoveryDue && await recoveryDue)
-                await EnqueueDurableWorkAsync(stoppingToken);
-            else
-                await hasQueuedWork;
+    /// <summary>
+    /// Waits for exactly one of the worker's two wake-up signals.  Cancelling
+    /// and observing the loser is essential: PeriodicTimer permits only one
+    /// active wait, so leaving a timer wait alive after queue work arrives
+    /// would terminate this single sequential worker on its next pass.
+    /// </summary>
+    private async Task<bool> WaitForWorkOrRecoveryAsync(
+        PeriodicTimer timer,
+        CancellationToken stoppingToken)
+    {
+        using var waitCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            stoppingToken);
+        var hasQueuedWork = _queue.Reader
+            .WaitToReadAsync(waitCancellation.Token)
+            .AsTask();
+        var recoveryDue = timer
+            .WaitForNextTickAsync(waitCancellation.Token)
+            .AsTask();
+        var completed = await Task.WhenAny(hasQueuedWork, recoveryDue);
+
+        if (completed == recoveryDue)
+        {
+            var shouldRecover = await recoveryDue;
+            waitCancellation.Cancel();
+            await ObserveCancelledWaitAsync(hasQueuedWork);
+            if (!shouldRecover)
+                return false;
+
+            await EnqueueDurableWorkAsync(stoppingToken);
+            return true;
+        }
+
+        var hasWork = await hasQueuedWork;
+        waitCancellation.Cancel();
+        await ObserveCancelledWaitAsync(recoveryDue);
+        return hasWork;
+    }
+
+    private static async Task ObserveCancelledWaitAsync(Task wait)
+    {
+        try
+        {
+            await wait;
+        }
+        catch (OperationCanceledException)
+        {
+            // The other wake-up signal won. Its pending wait is intentionally
+            // cancelled before the next loop can register another one.
         }
     }
 

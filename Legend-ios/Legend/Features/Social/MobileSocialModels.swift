@@ -357,7 +357,9 @@ extension MobileSocialPost {
     var isVideoHac: Bool {
         contentType == MobileSocialContentType.hac.rawValue &&
             media.count == 1 &&
-            media.allSatisfy(\.isVideo)
+            media.allSatisfy { media in
+                media.isVideo && media.processingState == "Ready"
+            }
     }
 
     func replacing(

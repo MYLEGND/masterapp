@@ -34,6 +34,49 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertEqual(mp4.playbackFileExtension, "mp4")
     }
 
+    func testHacPlaybackRequiresReadyVideo() throws {
+        let author = MobileSocialAuthor(
+            identity: try LogicalParticipantIdentity(
+                userID: "client-one",
+                participantType: .client),
+            profileID: "00000000-0000-0000-0000-000000000002",
+            displayName: "Client One",
+            avatar: nil)
+        let post = MobileSocialPost(
+            id: UUID(),
+            author: author,
+            contentType: MobileSocialContentType.hac.rawValue,
+            body: "Preparing Hac.",
+            audience: MobileSocialAudience.authorizedNetwork.rawValue,
+            location: nil,
+            commentsEnabled: true,
+            postedUTC: .now,
+            expiresUTC: nil,
+            reactionCount: 0,
+            commentCount: 0,
+            reactedByCurrentActor: false,
+            followedByCurrentActor: false,
+            savedByCurrentActor: false,
+            repostedByCurrentActor: false,
+            metrics: testSocialMetrics,
+            music: nil,
+            media: [MobileSocialMedia(
+                id: UUID(),
+                displayOrder: 0,
+                mediaKind: "Video",
+                mimeType: "video/mp4",
+                fileSizeBytes: 4,
+                width: 1080,
+                height: 1920,
+                aspectRatio: 0.5625,
+                durationSeconds: nil,
+                processingState: "PendingProcessing",
+                accessibilityText: "A Legend Hac")],
+            comments: [])
+
+        XCTAssertFalse(post.isVideoHac)
+    }
+
     func testPostMetadataHidesParticipantRoleOutsideAgentContext() {
         XCTAssertEqual(
             LegendSocialPostMetadata.summary(

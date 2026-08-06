@@ -18,6 +18,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The one production video processor. These assets must ship with every
+         ZipDeploy; without them, Hacs remain unplayable after upload. -->
+    <Content Include="tools/ffmpeg/ffmpeg.exe" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="tools/ffmpeg/ffprobe.exe" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="tools/ffmpeg/LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Remove="bin/**" />
     <Content Remove="obj/**" />
     <Content Remove="clientlogs/**" />
