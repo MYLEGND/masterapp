@@ -106,3 +106,5 @@ backups/
 
 # Local DB backups
 *.db.backup*
+Legend-ios/*.p8
+Legend-ios/*API*KEY*
