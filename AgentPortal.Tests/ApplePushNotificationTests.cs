@@ -40,7 +40,7 @@ public sealed class ApplePushNotificationTests
 
         Assert.Equal(ApplePushDeliveryOutcome.Sent, result.Outcome);
         Assert.Equal(expectedEndpoint, handler.RequestUri?.AbsoluteUri);
-        Assert.Equal("com.mylegnd.legend", handler.Headers["apns-topic"]);
+        Assert.Equal("com.mylegnd.legend.registered", handler.Headers["apns-topic"]);
         Assert.Equal("alert", handler.Headers["apns-push-type"]);
         Assert.Equal("10", handler.Headers["apns-priority"]);
         Assert.Equal("bearer", handler.AuthorizationScheme);
@@ -77,7 +77,7 @@ public sealed class ApplePushNotificationTests
         Assert.Equal("BadTopic", detail.Reason);
         Assert.Equal(apnsId.ToString("D"), detail.ApnsId);
         Assert.Equal("production", detail.Environment);
-        Assert.Equal("com.mylegnd.legend", detail.Topic);
+        Assert.Equal("com.mylegnd.legend.registered", detail.Topic);
         Assert.DoesNotContain("abcdef", result.Detail!, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -187,7 +187,7 @@ public sealed class ApplePushNotificationTests
                 Guid.NewGuid().ToString("D"),
                 null,
                 "production",
-                "com.mylegnd.legend")
+                "com.mylegnd.legend.registered")
         });
         await db.SaveChangesAsync();
 
@@ -239,7 +239,7 @@ public sealed class ApplePushNotificationTests
             {
                 ["Notifications:ApplePush:KeyId"] = "ABC123DEFG",
                 ["Notifications:ApplePush:TeamId"] = "Z8XL9RU485",
-                ["Notifications:ApplePush:BundleId"] = "com.mylegnd.legend",
+                ["Notifications:ApplePush:BundleId"] = "com.mylegnd.legend.registered",
                 ["Notifications:ApplePush:PrivateKey"] = privateKey
             })
             .Build();

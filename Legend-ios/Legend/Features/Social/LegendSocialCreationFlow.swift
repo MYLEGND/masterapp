@@ -2630,7 +2630,7 @@ private final class LegendSocialCameraViewController: UIViewController {
     private let cancelled: () -> Void
 
     private let session = AVCaptureSession()
-    private let sessionQueue = DispatchQueue(label: "com.mylegnd.legend.social.camera")
+    private let sessionQueue = DispatchQueue(label: "com.mylegnd.legend.registered.social.camera")
     private let photoOutput = AVCapturePhotoOutput()
     private let movieOutput = AVCaptureMovieFileOutput()
     private let previewLayer = AVCaptureVideoPreviewLayer()

@@ -44,7 +44,7 @@ final class MobileNativeContractTests: XCTestCase {
         let request = OAuthAuthorizationRequest(
             authorizationEndpoint: URL(string: "https://login.example.test/authorize")!,
             clientID: "public-client",
-            redirectScheme: "com-mylegnd-legend",
+            redirectScheme: "com-mylegnd-legend-registered",
             scope: "openid profile api://legend/mobile_access",
             state: "expected-state",
             pkce: pkce)
@@ -56,21 +56,21 @@ final class MobileNativeContractTests: XCTestCase {
     }
 
     func testCallbackValidationRequiresExactSchemePathAndState() throws {
-        let valid = URL(string: "com-mylegnd-legend://oauth/callback?code=auth-code&state=expected")!
+        let valid = URL(string: "com-mylegnd-legend-registered://oauth/callback?code=auth-code&state=expected")!
         XCTAssertEqual(
             try OAuthCallbackValidator.authorizationCode(
                 from: valid,
-                redirectScheme: "com-mylegnd-legend",
+                redirectScheme: "com-mylegnd-legend-registered",
                 expectedState: "expected"),
             "auth-code")
 
         XCTAssertThrowsError(try OAuthCallbackValidator.authorizationCode(
-            from: URL(string: "com-mylegnd-legend://oauth/callback?code=auth-code&state=wrong")!,
-            redirectScheme: "com-mylegnd-legend",
+            from: URL(string: "com-mylegnd-legend-registered://oauth/callback?code=auth-code&state=wrong")!,
+            redirectScheme: "com-mylegnd-legend-registered",
             expectedState: "expected"))
         XCTAssertThrowsError(try OAuthCallbackValidator.authorizationCode(
             from: URL(string: "other-scheme://oauth/callback?code=auth-code&state=expected")!,
-            redirectScheme: "com-mylegnd-legend",
+            redirectScheme: "com-mylegnd-legend-registered",
             expectedState: "expected"))
     }
 
@@ -790,12 +790,12 @@ final class MobileNativeContractTests: XCTestCase {
 
     private func completeConfiguration() -> MobileConfiguration {
         MobileConfiguration(
-            bundleIdentifier: "com.mylegnd.legend",
+            bundleIdentifier: "com.mylegnd.legend.registered",
             apiBaseURL: URL(string: "https://api.example.test")!,
             authorizationEndpoint: URL(string: "https://identity.example.test/authorize")!,
             tokenEndpoint: URL(string: "https://identity.example.test/token")!,
             clientID: "public-client",
-            redirectScheme: "com-mylegnd-legend",
+            redirectScheme: "com-mylegnd-legend-registered",
             scope: "openid profile api://legend/mobile_access",
             audience: "api://legend")
     }
@@ -968,7 +968,7 @@ private actor DualRoleSessionService: MobileSessionServicing {
 
 private final class TestAuthorizer: OAuthAuthorizing {
     func authorize(_ request: OAuthAuthorizationRequest) async throws -> URL {
-        URL(string: "com-mylegnd-legend://oauth/callback?code=test&state=test")!
+        URL(string: "com-mylegnd-legend-registered://oauth/callback?code=test&state=test")!
     }
 }
 

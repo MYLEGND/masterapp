@@ -51,6 +51,7 @@ targets:
     info:
       path: Legend/Resources/Info.plist
       properties:
+        CFBundleDisplayName: LEGEND®
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
             CFBundleURLSchemes:
@@ -87,7 +88,7 @@ targets:
 
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.mylegnd.legend
+        PRODUCT_BUNDLE_IDENTIFIER: com.mylegnd.legend.registered
         PRODUCT_NAME: Legend
         PRODUCT_MODULE_NAME: Legend
         INFOPLIST_FILE: Legend/Resources/Info.plist
@@ -124,7 +125,7 @@ targets:
 
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.mylegnd.legend.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.mylegnd.legend.registered.tests
         PRODUCT_MODULE_NAME: "$(TARGET_NAME)"
         PRODUCT_NAME: "$(TARGET_NAME)"
         GENERATE_INFOPLIST_FILE: YES
@@ -152,7 +153,7 @@ targets:
 
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.mylegnd.legend.notification-service
+        PRODUCT_BUNDLE_IDENTIFIER: com.mylegnd.legend.registered.notification-service
         PRODUCT_NAME: LegendNotificationService
         PRODUCT_MODULE_NAME: LegendNotificationService
         INFOPLIST_FILE: LegendNotificationService/Info.plist
@@ -171,7 +172,7 @@ targets:
 
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.mylegnd.legend.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: com.mylegnd.legend.registered.uitests
         PRODUCT_MODULE_NAME: "$(TARGET_NAME)"
         PRODUCT_NAME: "$(TARGET_NAME)"
         GENERATE_INFOPLIST_FILE: YES

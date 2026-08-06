@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A3724AD4D043CDC38EFCD940"
-               BuildableName = "LEGND.app"
+               BuildableName = "Legend.app"
                BlueprintName = "Legend"
                ReferencedContainer = "container:Legend.xcodeproj">
             </BuildableReference>
@@ -34,7 +34,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A3724AD4D043CDC38EFCD940"
-            BuildableName = "LEGND.app"
+            BuildableName = "Legend.app"
             BlueprintName = "Legend"
             ReferencedContainer = "container:Legend.xcodeproj">
          </BuildableReference>
@@ -81,7 +81,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A3724AD4D043CDC38EFCD940"
-            BuildableName = "LEGND.app"
+            BuildableName = "Legend.app"
             BlueprintName = "Legend"
             ReferencedContainer = "container:Legend.xcodeproj">
          </BuildableReference>
@@ -100,7 +100,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A3724AD4D043CDC38EFCD940"
-            BuildableName = "LEGND.app"
+            BuildableName = "Legend.app"
             BlueprintName = "Legend"
             ReferencedContainer = "container:Legend.xcodeproj">
          </BuildableReference>

@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>LEGEND®</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -14,8 +16,6 @@
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleURLTypes</key>
@@ -31,14 +31,20 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>facetime</string>
+		<string>facetime-audio</string>
+		<string>tel</string>
+	</array>
 	<key>LegendAPIBaseURL</key>
 	<string>$(LEGEND_API_BASE_URL)</string>
 	<key>LegendAPNSEnvironment</key>
 	<string>$(APS_ENVIRONMENT)</string>
 	<key>LegendAgentOnlineAccountURL</key>
 	<string>$(LEGEND_AGENT_ONLINE_ACCOUNT_URL)</string>
-	<key>LegendPrivacyPolicyURL</key>
-	<string>$(LEGEND_PRIVACY_POLICY_URL)</string>
 	<key>LegendAuthAudience</key>
 	<string>$(LEGEND_AUTH_AUDIENCE)</string>
 	<key>LegendAuthClientID</key>
@@ -49,18 +55,14 @@
 	<string>$(LEGEND_AUTH_SCOPE)</string>
 	<key>LegendAuthorizationEndpoint</key>
 	<string>$(LEGEND_AUTHORIZATION_ENDPOINT)</string>
+	<key>LegendPrivacyPolicyURL</key>
+	<string>$(LEGEND_PRIVACY_POLICY_URL)</string>
 	<key>LegendTokenEndpoint</key>
 	<string>$(LEGEND_TOKEN_ENDPOINT)</string>
-	<key>LSApplicationQueriesSchemes</key>
-	<array>
-		<string>facetime</string>
-		<string>facetime-audio</string>
-		<string>tel</string>
-	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>LEGEND® uses the camera only when you choose to capture media for a Legend update.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>LEGEND® reads today’s events from the calendar accounts available on this device only when you choose to connect Calendar to Activity.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>LEGEND® uses the camera only when you choose to capture media for a Legend update.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>LEGEND® uses Face ID only when you choose to protect access to your account on this device.</string>
 	<key>NSMicrophoneUsageDescription</key>

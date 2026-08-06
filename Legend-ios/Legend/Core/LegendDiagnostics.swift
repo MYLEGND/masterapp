@@ -54,7 +54,7 @@ enum MobileDebugDiagnostics {
     static func record(_ summary: String, correlationID: String? = nil) {
         #if DEBUG
         let suffix = correlationID.map { " correlation=\($0)" } ?? ""
-        Logger(subsystem: "com.mylegnd.legend", category: "mobile-auth")
+        Logger(subsystem: "com.mylegnd.legend.registered", category: "mobile-auth")
             .debug("\(DiagnosticRedactor.redact(summary + suffix), privacy: .public)")
         #endif
     }

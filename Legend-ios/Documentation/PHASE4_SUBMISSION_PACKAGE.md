@@ -1,26 +1,46 @@
-# Legend Phase 4 submission package
+# LEGEND® Phase 4 submission package
 
 This is a pre-submission working package. It is not a public Privacy Policy,
 Terms of Use, App Store Connect submission, or legal approval. It records only
 the facts verified in the current implementation and identifies the exact
 owner decisions needed before public release.
 
+## Authoritative release identity
+
+| Field | Value |
+| --- | --- |
+| Public product and App Store name | LEGEND® |
+| Main bundle identifier | `com.mylegnd.legend.registered` |
+| Notification service extension identifier | `com.mylegnd.legend.registered.notification-service` |
+| Apple Developer team | MyLegnd, LLC (`Z8XL9RU485`) |
+| Retired shipping identity | LEGND / `com.mylegnd.legend` — do not upload or submit to this record |
+
+## Cutover bindings
+
+| Authority | Final binding |
+| --- | --- |
+| Installed app display name | `LEGEND®` |
+| Microsoft Entra public-client callback | `com-mylegnd-legend-registered://oauth/callback` |
+| Production APNs topic | `com.mylegnd.legend.registered` |
+| Main App Store provisioning profile | `iOS Team Store Provisioning Profile: com.mylegnd.legend.registered` |
+| Notification extension provisioning profile | `iOS Team Store Provisioning Profile: com.mylegnd.legend.registered.notification-service` |
+
 ## App Store Connect metadata
 
 | Field | Prepared value | Status |
 | --- | --- | --- |
-| App name | Legend | Derived from the application target |
-| Subtitle | Community and progress | Draft; within the 30-character App Store limit |
-| Promotional text | Discover people, share updates, and stay connected throughout your Legend journey. | Draft; within the 170-character App Store limit |
-| Description | Legend brings together a personal home, community discovery, Hacs, messaging, Journey Circles, profile tools, and account controls. Access and available workspace features depend on the authenticated Client or Agent role. Members can share supported updates and media, connect with their community, manage notifications and settings, and report or block unsafe interactions. Account access includes an in-app account-closure request that immediately restricts normal Legend access while the server completes the approved lifecycle work. | Factual draft; approve before publication |
+| App name | LEGEND® | Matches the authoritative public brand |
+| Subtitle | Community & Progress | Factual draft; within the 30-character App Store limit |
+| Promotional text | Discover people, share updates, and stay connected throughout your LEGEND® journey. | Factual draft; within the 170-character App Store limit |
+| Description | LEGEND® brings together a personal home, community discovery, Hacs, messaging, Journey Circles, profile tools, and account controls. Access and available workspace features depend on the authenticated Client or Agent role. Members can share supported updates and media, connect with their community, manage notifications and settings, and report or block unsafe interactions. Account access includes an in-app account-closure request that immediately restricts normal LEGEND® access while the server completes the approved lifecycle work. | Factual draft; approve before publication |
 | Keywords | community,messaging,discover,journey,goals,profile,updates | Draft; no competitor names |
 | Primary category | Social Networking | Recommendation based on community, messaging, discovery, and UGC surfaces |
 | Secondary category | Lifestyle | Recommendation based on personal progress and Journey Circles |
 | Privacy Policy URL | https://protect.mylegnd.com/Privacy | Public URL exists; app-specific approved content is required |
 | Support URL | https://protect.mylegnd.com/Contact | Public URL and support email exist |
 | Terms URL | https://protect.mylegnd.com/Terms | Public URL exists; app-specific approved content is required |
-| Copyright | Confirm the legal copyright owner and first publication year before entry. | Owner confirmation required |
-| Release notes | Initial public release: leave "What’s New" blank if this is the first App Store version; otherwise describe only approved, user-visible changes. | App Store Connect record confirmation required |
+| Copyright | © 2026 MyLegnd, LLC | Factual launch draft; confirm the first-publication year in App Store Connect |
+| Release notes | Welcome to LEGEND® — the initial public release includes community discovery, Hacs, messaging, Journey Circles, profile tools, safety controls, and account management. | Factual launch draft |
 
 ## App Privacy declaration
 
@@ -59,11 +79,11 @@ Store Connect export-compliance certification for the Distribution archive.
 
 The final owner-approved policy must accurately state all of the following:
 
-1. **Account and identity information.** Legend receives account/profile
+1. **Account and identity information.** LEGEND® receives account/profile
    information used for authentication, role resolution, and account operation,
    including name, email address, phone number, account identifiers, and
    configured profile information.
-2. **Community and communications.** Legend processes posts, Hacs, comments,
+2. **Community and communications.** LEGEND® processes posts, Hacs, comments,
    messages, reactions, reports, blocks, and related user-generated content.
    Photos, videos, and audio are processed only when a member elects to create
    or upload supported media.
@@ -79,7 +99,7 @@ The final owner-approved policy must accurately state all of the following:
    actually used in production, and must approve any required disclosures.
 6. **Account closure.** A member can request closure from Profile > Settings >
    Account access by typing `DELETE`. The request immediately blocks normal
-   Legend access; the server’s lifecycle worker performs the approved closure
+   LEGEND® access; the server’s lifecycle worker performs the approved closure
    work and records operational audit evidence.
 7. **Retention and deletion.** The owner must approve a category-specific
    schedule for profile data, UGC/media, messages/shared content, device records,
@@ -127,7 +147,7 @@ Notes. Do not disable production MFA or create a bypass.
 
 **Review Notes draft:**
 
-1. Install Legend and select Sign in.
+1. Install LEGEND® and select Sign in.
 2. Authenticate with the supplied Client reviewer account and approved MFA
    method. Select the Client role if prompted.
 3. Review Home, Discover/Hacs, messaging, Journey Circles, Profile, reporting,
@@ -173,11 +193,11 @@ retention schedule.`
 
 ### 2. External Agent Entra identity
 
-**Current behavior:** Deactivate Legend Agent access/profile; retain the
+**Current behavior:** Deactivate LEGEND® Agent access/profile; retain the
 organization-managed external Entra identity.
 
 **Recommended launch default:** Retain the external identity and deactivate
-only Legend access.
+only LEGEND® access.
 
 **Decision:** `YES / NO — Approve retained external Entra identity on Agent
 closure.`
