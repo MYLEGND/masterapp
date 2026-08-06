@@ -734,7 +734,7 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertEqual(deletedPostID, post.id)
     }
 
-    func testMediaRefreshUsesTheSingleProtectedMediaPath() async throws {
+    func testMediaAndPreviewRefreshUseTheirProtectedPaths() async throws {
         let author = MobileSocialAuthor(
             identity: try LogicalParticipantIdentity(
                 userID: "client-one",
@@ -774,12 +774,16 @@ final class MobileSocialContractTests: XCTestCase {
         let refreshed = await store.mediaData(
             for: assetID,
             forceRefresh: true)
+        let preview = await store.previewData(for: assetID)
         let mediaDataCallCount = await api.mediaDataCallCount()
+        let previewDataCallCount = await api.previewDataCallCount()
 
         XCTAssertEqual(first, Data())
         XCTAssertEqual(cached, Data())
         XCTAssertEqual(refreshed, Data())
+        XCTAssertEqual(preview, Data([0xFF, 0xD8, 0xFF, 0xD9]))
         XCTAssertEqual(mediaDataCallCount, 2)
+        XCTAssertEqual(previewDataCallCount, 1)
     }
 
     func testMusicSelectionPreservesProviderVerifiedTrimAndMixMetadata() throws {
@@ -909,6 +913,7 @@ private actor RecordingSocialAPI: MobileSocialAPI {
     private var recordedUpdateRequest: MobileUpdateSocialPost?
     private var recordedDeletedPostID: UUID?
     private var recordedMediaDataCallCount = 0
+    private var recordedPreviewDataCallCount = 0
     private var recordedMediaAudience: MobileSocialAudience?
     private var recordedMediaLocation: String?
     private var recordedMediaCommentsEnabled: Bool?
@@ -973,6 +978,13 @@ private actor RecordingSocialAPI: MobileSocialAPI {
     }
 
     func mediaDataCallCount() -> Int { recordedMediaDataCallCount }
+
+    func previewData(assetID: UUID, accessToken: String) async throws -> Data {
+        recordedPreviewDataCallCount += 1
+        return Data([0xFF, 0xD8, 0xFF, 0xD9])
+    }
+
+    func previewDataCallCount() -> Int { recordedPreviewDataCallCount }
 
     func toggleReaction(
         postID: UUID,

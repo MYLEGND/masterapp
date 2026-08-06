@@ -289,6 +289,7 @@ protocol MobileSocialAPI: Sendable {
     func updatePost(postID: UUID, request: MobileUpdateSocialPost, accessToken: String) async throws -> MobileSocialPost
     func deletePost(postID: UUID, accessToken: String) async throws
     func mediaData(assetID: UUID, accessToken: String) async throws -> Data
+    func previewData(assetID: UUID, accessToken: String) async throws -> Data
     func downloadMedia(assetID: UUID, accessToken: String) async throws -> URL
     func mediaStream(assetID: UUID, accessToken: String) async throws -> MobileSocialMediaStream?
     func toggleReaction(postID: UUID, accessToken: String) async throws -> MobileSocialPost
