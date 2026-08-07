@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -112,6 +113,30 @@ public sealed class ApplePushNotificationTests
         Assert.True(ApplePushDiagnosticDetail.TryParse(retry.Detail, out var retryDetail));
         Assert.Equal(503, retryDetail!.StatusCode);
         Assert.Equal("ServiceUnavailable", retryDetail.Reason);
+    }
+
+    [Fact]
+    public async Task Gateway_preserves_safe_transport_failure_classification_without_device_or_secret_data()
+    {
+        using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var handler = new ThrowingHandler(new HttpRequestException(
+            HttpRequestError.ConnectionError,
+            "sensitive transport detail that must not be persisted",
+            new SocketException((int)SocketError.ConnectionReset)));
+        using var client = new HttpClient(handler, disposeHandler: false);
+        var gateway = CreateGateway(client, PrivateKeyPem(signingKey));
+
+        var result = await gateway.SendAsync(Request("production"));
+
+        Assert.Equal(ApplePushDeliveryOutcome.Retry, result.Outcome);
+        Assert.True(ApplePushDiagnosticDetail.TryParse(result.Detail, out var detail));
+        Assert.NotNull(detail);
+        Assert.Null(detail!.StatusCode);
+        Assert.Equal("APNs transport ConnectionError ConnectionReset", detail.Reason);
+        Assert.Equal("production", detail.Environment);
+        Assert.Equal("com.mylegnd.legend.registered", detail.Topic);
+        Assert.DoesNotContain("abcdef", result.Detail!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("sensitive", result.Detail!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -290,6 +315,20 @@ public sealed class ApplePushNotificationTests
             MessagingActor recipient,
             NotificationRealtimeEvent notification,
             CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        private readonly Exception _exception;
+
+        public ThrowingHandler(Exception exception)
+        {
+            _exception = exception;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) => Task.FromException<HttpResponseMessage>(_exception);
     }
 
     private sealed class RecordingHandler : HttpMessageHandler

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -203,16 +204,49 @@ internal sealed class ApplePushGateway : IApplePushGateway
                 return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Retry, failure.Detail);
             return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Suppressed, failure.Detail);
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException exception)
         {
-            _logger.LogError("APNs HTTP request failed.");
-            return Retry(request, configuration.BundleId, "APNs transport failure.");
+            var transportReason = TransportFailureReason(exception);
+            _logger.LogError(
+                "APNs HTTP request failed. HttpRequestError={HttpRequestError} InnerException={InnerException} SocketError={SocketError}",
+                exception.HttpRequestError,
+                exception.InnerException?.GetType().Name ?? "None",
+                FindSocketException(exception)?.SocketErrorCode.ToString() ?? "None");
+            return Retry(request, configuration.BundleId, transportReason);
         }
         catch (CryptographicException)
         {
             _logger.LogError("APNs provider token could not be generated.");
             return Suppressed(request, configuration.BundleId, "APNs credential configuration is invalid.");
         }
+    }
+
+    private static string TransportFailureReason(HttpRequestException exception)
+    {
+        var parts = new List<string>
+        {
+            "APNs transport",
+            exception.HttpRequestError.ToString()
+        };
+
+        var socketException = FindSocketException(exception);
+        if (socketException is not null)
+            parts.Add(socketException.SocketErrorCode.ToString());
+        else if (exception.InnerException is not null)
+            parts.Add(exception.InnerException.GetType().Name);
+
+        return string.Join(' ', parts);
+    }
+
+    private static SocketException? FindSocketException(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is SocketException socketException)
+                return socketException;
+        }
+
+        return null;
     }
 
     private static bool IsPermanentlyInvalidDevice(HttpStatusCode statusCode, string? reason) =>
