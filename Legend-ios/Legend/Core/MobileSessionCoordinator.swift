@@ -795,6 +795,15 @@ final class MobileSessionCoordinator: ObservableObject {
         transition(to: .authenticated(session), reason: reason)
     }
 
+    func cachedProtectedImageData(
+        resourcePath: String
+    ) -> Data? {
+        let path = resourcePath.trimmingCharacters(
+            in: .whitespacesAndNewlines)
+        guard path.hasPrefix("/") else { return nil }
+        return protectedImageCache.object(forKey: path as NSString) as Data?
+    }
+
     func protectedImageData(
         resourcePath: String
     ) async -> Data? {

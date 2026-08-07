@@ -8233,6 +8233,7 @@ struct LegendAvatarImageContent<Placeholder: View>: View {
     private let placeholder: Placeholder
 
     @State private var remoteData: Data?
+    @State private var remoteResourcePath: String?
 
     init(
         avatar: ProfileAvatar?,
@@ -8244,7 +8245,7 @@ struct LegendAvatarImageContent<Placeholder: View>: View {
 
     var body: some View {
         Group {
-            if let data = avatar?.imageData ?? remoteData,
+            if let data = avatar?.imageData ?? currentRemoteData,
                let image = UIImage(data: data) {
                 Image(uiImage: image)
                     .resizable()
@@ -8254,16 +8255,33 @@ struct LegendAvatarImageContent<Placeholder: View>: View {
             }
         }
         .task(id: avatar?.resourcePath) {
-            remoteData = nil
-
             guard avatar?.imageData == nil,
                   let resourcePath = avatar?.resourcePath else {
+                remoteData = nil
+                remoteResourcePath = nil
                 return
             }
 
-            remoteData = await session.protectedImageData(
+            if let cached = session.cachedProtectedImageData(resourcePath: resourcePath) {
+                remoteData = cached
+                remoteResourcePath = resourcePath
+            } else if remoteResourcePath != resourcePath {
+                remoteData = nil
+                remoteResourcePath = nil
+            }
+
+            let fetched = await session.protectedImageData(
                 resourcePath: resourcePath)
+            guard !Task.isCancelled else { return }
+
+            remoteData = fetched
+            remoteResourcePath = fetched == nil ? nil : resourcePath
         }
+    }
+
+    private var currentRemoteData: Data? {
+        guard remoteResourcePath == avatar?.resourcePath else { return nil }
+        return remoteData
     }
 }
 

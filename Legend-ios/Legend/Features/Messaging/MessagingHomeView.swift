@@ -43,22 +43,42 @@ private func legendMessagingGroupImageRequest(
     from data: Data?
 ) -> MessagingGroupImageRequest? {
     guard let data,
-          let image = UIImage(data: data) else { return nil }
+          let sourceImage = UIImage(data: data),
+          sourceImage.size.width > 0,
+          sourceImage.size.height > 0 else { return nil }
 
-    let maximumSide: CGFloat = 640
-    let scale = min(1, maximumSide / max(image.size.width, image.size.height))
-    let targetSize = CGSize(
-        width: max(1, image.size.width * scale),
-        height: max(1, image.size.height * scale))
-    let resized = UIGraphicsImageRenderer(size: targetSize).image { _ in
-        image.draw(in: CGRect(origin: .zero, size: targetSize))
+    let maximumBytes = 512 * 1_024
+    let compressionQualities: [CGFloat] = [0.82, 0.72, 0.62, 0.52, 0.42, 0.32]
+    let maximumSides: [CGFloat] = [640, 560, 480, 400, 320]
+
+    for maximumSide in maximumSides {
+        let scale = min(
+            1,
+            maximumSide / max(sourceImage.size.width, sourceImage.size.height))
+        let targetSize = CGSize(
+            width: max(1, sourceImage.size.width * scale),
+            height: max(1, sourceImage.size.height * scale))
+
+        // Rendering normalizes orientation and strips source-format metadata while
+        // keeping the existing JPEG transport contract used by messaging.
+        let normalized = UIGraphicsImageRenderer(size: targetSize).image { _ in
+            sourceImage.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+
+        for quality in compressionQualities {
+            guard let compressed = normalized.jpegData(compressionQuality: quality) else {
+                continue
+            }
+
+            if compressed.count <= maximumBytes {
+                return MessagingGroupImageRequest(
+                    contentType: "image/jpeg",
+                    base64Content: compressed.base64EncodedString())
+            }
+        }
     }
-    guard let compressed = resized.jpegData(compressionQuality: 0.70),
-          compressed.count <= 512 * 1_024 else { return nil }
 
-    return MessagingGroupImageRequest(
-        contentType: "image/jpeg",
-        base64Content: compressed.base64EncodedString())
+    return nil
 }
 
 private struct LegendMessagingGroupAvatar: View {
@@ -705,6 +725,7 @@ private struct LegendRecipientPicker: View {
     @State private var groupMeetingDraft = LegendGroupMeetingDraft()
     @State private var selectedGroupPhoto: PhotosPickerItem?
     @State private var groupPhotoData: Data?
+    @State private var isShowingGroupPhotoPreparationFailure = false
 
     var body: some View {
         NavigationStack {
@@ -883,11 +904,22 @@ private struct LegendRecipientPicker: View {
                 canManageMeeting: true)
 
             Button(store.isCreatingGroup ? "Creating group…" : "Create group (\(groupRecipients.count))") {
+                let groupImage: MessagingGroupImageRequest?
+                if groupPhotoData != nil {
+                    guard let preparedImage = legendMessagingGroupImageRequest(from: groupPhotoData) else {
+                        isShowingGroupPhotoPreparationFailure = true
+                        return
+                    }
+                    groupImage = preparedImage
+                } else {
+                    groupImage = nil
+                }
+
                 let recipients = Array(groupRecipients.values)
                 store.createGroup(
                     subject: groupSubject,
                     recipients: recipients,
-                    groupImage: legendMessagingGroupImageRequest(from: groupPhotoData),
+                    groupImage: groupImage,
                     meeting: groupMeetingDraft.request) { conversationID in
                     selectConversation(conversationID)
                 }
@@ -902,6 +934,11 @@ private struct LegendRecipientPicker: View {
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
         .padding(.bottom, LegendNextSpacing.sm)
+        .alert("Group photo could not be prepared", isPresented: $isShowingGroupPhotoPreparationFailure) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Choose another photo and try again. Your group was not created without the selected photo.")
+        }
         .onChange(of: selectedGroupPhoto) { _, item in
             guard let item else { return }
             Task {
@@ -1819,6 +1856,7 @@ private struct LegendGroupProfileEditor: View {
     @State private var meetingDraft: LegendGroupMeetingDraft
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var replacementPhotoData: Data?
+    @State private var isShowingGroupPhotoPreparationFailure = false
 
     init(
         store: MessagingStore,
@@ -1892,10 +1930,21 @@ private struct LegendGroupProfileEditor: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(store.isCreatingGroup ? "Saving…" : "Save") {
+                        let groupImage: MessagingGroupImageRequest?
+                        if replacementPhotoData != nil {
+                            guard let preparedImage = legendMessagingGroupImageRequest(from: replacementPhotoData) else {
+                                isShowingGroupPhotoPreparationFailure = true
+                                return
+                            }
+                            groupImage = preparedImage
+                        } else {
+                            groupImage = nil
+                        }
+
                         store.updateGroup(
                             conversationID: conversation.id,
                             subject: subject,
-                            groupImage: legendMessagingGroupImageRequest(from: replacementPhotoData),
+                            groupImage: groupImage,
                             meeting: conversation.canManageMeeting == true
                                 ? meetingDraft.request
                                 : nil,
@@ -1906,6 +1955,11 @@ private struct LegendGroupProfileEditor: View {
                         subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
                         (conversation.canManageMeeting == true && !meetingDraft.isValid))
                 }
+            }
+            .alert("Group photo could not be prepared", isPresented: $isShowingGroupPhotoPreparationFailure) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Choose another photo and try again. Your existing group photo was not changed.")
             }
             .onChange(of: selectedPhoto) { _, item in
                 guard let item else { return }
