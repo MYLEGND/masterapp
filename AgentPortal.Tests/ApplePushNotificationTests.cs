@@ -41,6 +41,8 @@ public sealed class ApplePushNotificationTests
 
         Assert.Equal(ApplePushDeliveryOutcome.Sent, result.Outcome);
         Assert.Equal(expectedEndpoint, handler.RequestUri?.AbsoluteUri);
+        Assert.Equal(HttpVersion.Version20, handler.RequestVersion);
+        Assert.Equal(HttpVersionPolicy.RequestVersionExact, handler.RequestVersionPolicy);
         Assert.Equal("com.mylegnd.legend.registered", handler.Headers["apns-topic"]);
         Assert.Equal("alert", handler.Headers["apns-push-type"]);
         Assert.Equal("10", handler.Headers["apns-priority"]);
@@ -341,6 +343,8 @@ public sealed class ApplePushNotificationTests
         }
 
         public Uri? RequestUri { get; private set; }
+        public Version? RequestVersion { get; private set; }
+        public HttpVersionPolicy RequestVersionPolicy { get; private set; }
         public IReadOnlyDictionary<string, string> Headers { get; private set; } = new Dictionary<string, string>();
         public string? AuthorizationScheme { get; private set; }
         public string? ProviderToken { get; private set; }
@@ -351,6 +355,8 @@ public sealed class ApplePushNotificationTests
             CancellationToken cancellationToken)
         {
             RequestUri = request.RequestUri;
+            RequestVersion = request.Version;
+            RequestVersionPolicy = request.VersionPolicy;
             Headers = request.Headers.ToDictionary(
                 header => header.Key,
                 header => string.Join(",", header.Value),

@@ -166,7 +166,14 @@ internal sealed class ApplePushGateway : IApplePushGateway
                 : "https://api.push.apple.com";
             using var message = new HttpRequestMessage(
                 HttpMethod.Post,
-                $"{host}/3/device/{request.DeviceToken}");
+                $"{host}/3/device/{request.DeviceToken}")
+            {
+                // HttpRequestMessage starts at HTTP/1.1 and RequestVersionOrLower.
+                // APNs requires HTTP/2, so the request itself—not only the named
+                // client's defaults—must carry the exact version requirement.
+                Version = HttpVersion.Version20,
+                VersionPolicy = HttpVersionPolicy.RequestVersionExact
+            };
             message.Headers.Authorization = new AuthenticationHeaderValue("bearer", providerToken);
             message.Headers.TryAddWithoutValidation("apns-topic", configuration.BundleId);
             message.Headers.TryAddWithoutValidation("apns-push-type", "alert");
