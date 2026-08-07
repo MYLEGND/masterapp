@@ -95,6 +95,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<UserGlobalBadge> UserGlobalBadges => Set<UserGlobalBadge>();
     public DbSet<MobilePushDevice> MobilePushDevices => Set<MobilePushDevice>();
     public DbSet<MobilePushDelivery> MobilePushDeliveries => Set<MobilePushDelivery>();
+    public DbSet<DailyScriptureOverride> DailyScriptureOverrides => Set<DailyScriptureOverride>();
     public DbSet<JourneyCircleProfile> JourneyCircleProfiles => Set<JourneyCircleProfile>();
     public DbSet<JourneyCircleConnection> JourneyCircleConnections => Set<JourneyCircleConnection>();
     public DbSet<JourneyCircleBlock> JourneyCircleBlocks => Set<JourneyCircleBlock>();
@@ -118,6 +119,7 @@ public class MasterAppDbContext : DbContext
         base.OnModelCreating(modelBuilder);
 
         MessagingModelConfiguration.Configure(modelBuilder, Database.ProviderName);
+        DailyScriptureModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         JourneyCirclesModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         SocialFeedModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         var isSqlServer = Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;

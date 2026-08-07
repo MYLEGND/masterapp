@@ -1770,7 +1770,8 @@ public sealed class MobileIntegrationTests
             messaging,
             attachmentStorage ?? new Mock<IMessageAttachmentStorage>(MockBehavior.Strict).Object,
             realtimePublisher ?? new Mock<IMessagingRealtimePublisher>(MockBehavior.Loose).Object,
-            profiles)
+            profiles,
+            new ControlledResourceAccessService(db))
         {
             ControllerContext = new ControllerContext
             {

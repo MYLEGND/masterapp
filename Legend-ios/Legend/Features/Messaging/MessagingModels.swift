@@ -377,11 +377,13 @@ struct MobileActivityNotification: Codable, Equatable, Identifiable, Sendable {
 enum ControlledResourceType: String, Codable, Sendable {
     case verificationBadge = "VerificationBadge"
     case languageTranslation = "LanguageTranslation"
+    case scriptureManagement = "ScriptureManagement"
 
     var displayName: String {
         switch self {
         case .verificationBadge: "Legend verification"
         case .languageTranslation: "Language Translation Access"
+        case .scriptureManagement: "Daily Scripture Management"
         }
     }
 }

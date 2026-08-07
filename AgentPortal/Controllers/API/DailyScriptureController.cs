@@ -13,15 +13,17 @@ public sealed class DailyScriptureController : ControllerBase
     public DailyScriptureController(IDailyScriptureService scripture) => _scripture = scripture;
 
     [HttpGet]
-    public ActionResult<DailyScriptureResponse> Get()
+    public async Task<ActionResult<DailyScriptureResponse>> Get(CancellationToken cancellationToken)
     {
-        var daily = _scripture.GetTodayUtc();
+        var daily = await _scripture.GetTodayAsync(cancellationToken);
         return Ok(new DailyScriptureResponse(
             daily.Date,
             daily.Reference,
             daily.Translation,
             daily.Verses,
-            daily.Text));
+            daily.Text,
+            daily.Source,
+            daily.PassageText ?? daily.Text));
     }
 }
 
@@ -30,4 +32,6 @@ public sealed record DailyScriptureResponse(
     string Reference,
     string Translation,
     IReadOnlyList<string> Verses,
-    string Text);
+    string Text,
+    string Source,
+    string PassageText);

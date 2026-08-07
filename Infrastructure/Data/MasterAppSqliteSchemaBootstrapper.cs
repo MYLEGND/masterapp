@@ -16,6 +16,7 @@ public static class MasterAppSqliteSchemaBootstrapper
     private const string NormalizeClientPaymentMethodsMigrationId = "20260725192303_NormalizeClientPaymentMethods";
     private const string AddClientBillingNotificationsMigrationId = "20260725195951_AddClientBillingNotifications";
     private const string MessagingReplyAuthorityMigrationId = "20260729063438_AddMessagingReplyAuthority";
+    private const string DailyScriptureOverridesMigrationId = "20260807193230_AddDailyScriptureOverrides";
     private const string MessagingReplyAuthorityIndexName = "IX_InternalMessages_ReplyToMessageId";
 
     private static readonly ColumnPatch[] AdditiveColumnPatches =
@@ -158,6 +159,12 @@ public static class MasterAppSqliteSchemaBootstrapper
         new("IX_ClientBillingNotifications_SentUtc_NotBeforeUtc_NextAttemptUtc", "CREATE INDEX \"IX_ClientBillingNotifications_SentUtc_NotBeforeUtc_NextAttemptUtc\" ON \"ClientBillingNotifications\" (\"SentUtc\", \"NotBeforeUtc\", \"NextAttemptUtc\")")
     };
 
+    private static readonly IndexPatch[] DailyScriptureOverrideIndexes =
+    {
+        new("IX_DailyScriptureOverrides_DisplayDate", "CREATE UNIQUE INDEX \"IX_DailyScriptureOverrides_DisplayDate\" ON \"DailyScriptureOverrides\" (\"DisplayDate\") WHERE \"IsActive\" = 1"),
+        new("IX_DailyScriptureOverrides_IsActive_DisplayDate", "CREATE INDEX \"IX_DailyScriptureOverrides_IsActive_DisplayDate\" ON \"DailyScriptureOverrides\" (\"IsActive\", \"DisplayDate\")")
+    };
+
     public static async Task InitializeAsync(
         MasterAppDbContext db,
         ILogger logger,
@@ -295,6 +302,19 @@ public static class MasterAppSqliteSchemaBootstrapper
                 }
             }
 
+            if (await CreateDailyScriptureOverridesTableIfMissingAsync(connection, cancellationToken))
+            {
+                repairs.Add("DailyScriptureOverrides");
+            }
+
+            foreach (var index in DailyScriptureOverrideIndexes)
+            {
+                if (await CreateIndexIfMissingAsync(connection, index, cancellationToken))
+                {
+                    repairs.Add(index.Name);
+                }
+            }
+
             await StampMigrationHistoryAsync(db, connection, createdFromModel, logger, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, CommerceBusinessScopeMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, CommerceCoreSchemaMigrationId, cancellationToken);
@@ -303,6 +323,7 @@ public static class MasterAppSqliteSchemaBootstrapper
             await StampMigrationIfMissingAsync(db, connection, PlatformManagedRecurringBillingMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, NormalizeClientPaymentMethodsMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, AddClientBillingNotificationsMigrationId, cancellationToken);
+            await StampMigrationIfMissingAsync(db, connection, DailyScriptureOverridesMigrationId, cancellationToken);
 
             if (await HasMessagingReplyAuthorityAsync(connection, cancellationToken))
             {
@@ -1025,6 +1046,36 @@ public static class MasterAppSqliteSchemaBootstrapper
                     FOREIGN KEY ("ClientProfileId") REFERENCES "ClientProfiles" ("Id") ON DELETE CASCADE,
                 CONSTRAINT "FK_ClientBillingNotifications_ClientSubscriptions_ClientSubscriptionId"
                     FOREIGN KEY ("ClientSubscriptionId") REFERENCES "ClientSubscriptions" ("Id") ON DELETE CASCADE
+            )
+            """, cancellationToken);
+
+        return true;
+    }
+
+    private static async Task<bool> CreateDailyScriptureOverridesTableIfMissingAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        if (await TableExistsAsync(connection, "DailyScriptureOverrides", cancellationToken))
+        {
+            return false;
+        }
+
+        await ExecuteNonQueryAsync(connection, """
+            CREATE TABLE "DailyScriptureOverrides" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_DailyScriptureOverrides" PRIMARY KEY,
+                "DisplayDate" TEXT NOT NULL,
+                "Reference" TEXT NOT NULL,
+                "Translation" TEXT NOT NULL,
+                "PassageText" TEXT NOT NULL,
+                "IsActive" INTEGER NOT NULL,
+                "CreatedByUserId" TEXT NOT NULL,
+                "CreatedByParticipantType" TEXT NOT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "UpdatedByUserId" TEXT NOT NULL,
+                "UpdatedByParticipantType" TEXT NOT NULL,
+                "UpdatedUtc" TEXT NOT NULL,
+                "RowVersion" BLOB NOT NULL DEFAULT X''
             )
             """, cancellationToken);
 

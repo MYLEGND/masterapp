@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -784,6 +785,74 @@ public sealed class MessagingServiceTests
                     IsGranted: false));
 
         Assert.True(founderDecision.Succeeded);
+    }
+
+    [Fact]
+    public async Task ScriptureManagement_RequiresCanonicalFounderForDirectGrantAndSupportsRevocation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founderId = Guid.NewGuid().ToString();
+        var managerId = Guid.NewGuid().ToString();
+        db.AgentProfiles.AddRange(
+            new AgentProfile
+            {
+                AgentUserId = founderId,
+                FullName = "Founder",
+                IsActive = true
+            },
+            new AgentProfile
+            {
+                AgentUserId = managerId,
+                FullName = "Scripture Manager",
+                IsActive = true
+            });
+        await db.SaveChangesAsync();
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new[]
+            {
+                new KeyValuePair<string, string?>("Founder:Oid", founderId)
+            })
+            .Build();
+        var service = CreateService(
+            db,
+            configuredFounderOid: founderId,
+            configuration: configuration);
+        var founder = new MessagingActor(founderId, MessagingParticipantTypes.Agent);
+        var manager = new MessagingActor(managerId, MessagingParticipantTypes.Agent);
+
+        var unauthorized = await service.SetControlledResourceGrantAsync(
+            new SetControlledResourceGrantCommand(
+                manager,
+                ControlledResourceTypes.ScriptureManagement,
+                managerId,
+                MessagingParticipantTypes.Agent,
+                IsGranted: true));
+        Assert.False(unauthorized.Succeeded);
+
+        var grant = await service.SetControlledResourceGrantAsync(
+            new SetControlledResourceGrantCommand(
+                founder,
+                ControlledResourceTypes.ScriptureManagement,
+                managerId,
+                MessagingParticipantTypes.Agent,
+                IsGranted: true));
+        Assert.True(grant.Succeeded, grant.ErrorMessage);
+        Assert.True(await db.ControlledResourceGrants.AnyAsync(entry =>
+            entry.UserId == managerId &&
+            entry.ParticipantType == MessagingParticipantTypes.Agent &&
+            entry.ResourceType == ControlledResourceTypes.ScriptureManagement &&
+            entry.IsActive));
+
+        var revoke = await service.SetControlledResourceGrantAsync(
+            new SetControlledResourceGrantCommand(
+                founder,
+                ControlledResourceTypes.ScriptureManagement,
+                managerId,
+                MessagingParticipantTypes.Agent,
+                IsGranted: false));
+        Assert.True(revoke.Succeeded, revoke.ErrorMessage);
+        Assert.False((await db.ControlledResourceGrants.SingleAsync()).IsActive);
     }
 
     [Fact]
@@ -2907,7 +2976,8 @@ public sealed class MessagingServiceTests
     private static MessagingService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
         TestTranslationService? translation = null,
-        string? configuredFounderOid = null)
+        string? configuredFounderOid = null,
+        IConfiguration? configuration = null)
     {
         var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
         var images = new MessagingProfileImageResolver(
@@ -2918,7 +2988,7 @@ public sealed class MessagingServiceTests
             NullLogger<MessagingService>.Instance,
             moderation,
             images,
-            new ControlledResourceAccessService(db),
+            new ControlledResourceAccessService(db, configuration),
             translation ?? new TestTranslationService(),
             new NotificationEngine(
                 db,

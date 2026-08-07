@@ -90,7 +90,7 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddDailyScripture();
+builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
 builder.Services.AddMasterAppMessaging(builder.Configuration);

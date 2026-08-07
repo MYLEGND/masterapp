@@ -812,6 +812,64 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(detail, "Save Expense Lens to begin.")
     }
 
+    func testDailyScriptureDecodesServerOwnedOverrideContentWithoutRewritingIt() throws {
+        let data = Data("""
+        {
+          "date": "2026-08-07",
+          "reference": "Psalm 121",
+          "translation": "KJV",
+          "verses": [],
+          "text": "1 I will lift up mine eyes unto the hills.\\n2 My help cometh from the LORD.",
+          "source": "ScheduledOverride",
+          "passageText": "1 I will lift up mine eyes unto the hills.\\n2 My help cometh from the LORD."
+        }
+        """.utf8)
+
+        let scripture = try JSONDecoder.mobile.decode(MobileDailyScripture.self, from: data)
+
+        XCTAssertEqual(scripture.source, "ScheduledOverride")
+        XCTAssertEqual(scripture.passageText, scripture.text)
+        XCTAssertTrue(scripture.verses.isEmpty)
+
+        let paragraphs = DailyScripturePassageFormatter.paragraphs(for: scripture)
+        XCTAssertEqual(paragraphs.count, 1)
+        XCTAssertEqual(paragraphs[0].segments, [
+            DailyScripturePassageSegment(number: 1, text: "I will lift up mine eyes unto the hills."),
+            DailyScripturePassageSegment(number: 2, text: "My help cometh from the LORD.")
+        ])
+    }
+
+    func testDailyScripturePassageFormatterKeepsUnstructuredRawPassageUntouched() {
+        let raw = "Read slowly and reflect.\nThis paragraph has no structured verse markers."
+        let scripture = MobileDailyScripture(
+            date: "2026-08-07",
+            reference: "Psalm 121",
+            translation: "KJV",
+            verses: [],
+            text: raw,
+            source: "ScheduledOverride",
+            passageText: raw)
+
+        let paragraphs = DailyScripturePassageFormatter.paragraphs(for: scripture)
+
+        XCTAssertEqual(paragraphs, [
+            DailyScripturePassageParagraph(
+                id: "raw-0",
+                segments: [DailyScripturePassageSegment(number: nil, text: raw)])
+        ])
+    }
+
+    func testServerGrantedScriptureManagementCapabilityIsAvailableToTheNativeSettingsSurface() throws {
+        let data = Data(#"{"messaging":true,"isFounder":false,"canManageScripture":true}"#.utf8)
+
+        let capabilities = try JSONDecoder.mobile.decode(MobileCapabilities.self, from: data)
+
+        XCTAssertTrue(capabilities.messaging)
+        XCTAssertFalse(capabilities.isFounder)
+        XCTAssertTrue(capabilities.sessionCapabilities.contains("scripture-management"))
+        XCTAssertFalse(capabilities.sessionCapabilities.contains("founder"))
+    }
+
     private var availableOperatingSystem: MobileFinancialOperatingSystemSnapshotResponse {
         MobileFinancialOperatingSystemSnapshotResponse(
             projection: MobileFinancialProjectionStatusResponse(

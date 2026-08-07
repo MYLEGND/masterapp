@@ -16,6 +16,42 @@ struct MobileDailyScripture: Codable, Equatable, Sendable {
     let translation: String
     let verses: [String]
     let text: String
+    let source: String
+    let passageText: String
+
+    init(
+        date: String,
+        reference: String,
+        translation: String,
+        verses: [String],
+        text: String,
+        source: String = "DailyCatalog",
+        passageText: String? = nil
+    ) {
+        self.date = date
+        self.reference = reference
+        self.translation = translation
+        self.verses = verses
+        self.text = text
+        self.source = source
+        self.passageText = passageText ?? text
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case date, reference, translation, verses, text, source, passageText
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            date: try container.decode(String.self, forKey: .date),
+            reference: try container.decode(String.self, forKey: .reference),
+            translation: try container.decode(String.self, forKey: .translation),
+            verses: try container.decodeIfPresent([String].self, forKey: .verses) ?? [],
+            text: try container.decodeIfPresent(String.self, forKey: .text) ?? "",
+            source: try container.decodeIfPresent(String.self, forKey: .source) ?? "DailyCatalog",
+            passageText: try container.decodeIfPresent(String.self, forKey: .passageText))
+    }
 }
 
 struct MobileHomeIdentity: Codable, Equatable, Sendable {

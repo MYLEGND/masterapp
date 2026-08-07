@@ -2,6 +2,8 @@ using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Shared.Auth;
 
 namespace Infrastructure.Messaging;
 
@@ -13,6 +15,10 @@ public interface IControlledResourceAccessService
         CancellationToken cancellationToken = default);
 
     Task<bool> IsFounderManagerAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> IsCanonicalFounderManagerAsync(
         MessagingActor actor,
         CancellationToken cancellationToken = default);
 
@@ -29,10 +35,14 @@ public interface IControlledResourceAccessService
 internal sealed class ControlledResourceAccessService : IControlledResourceAccessService
 {
     private readonly MasterAppDbContext _db;
+    private readonly IConfiguration _configuration;
 
-    public ControlledResourceAccessService(MasterAppDbContext db)
+    public ControlledResourceAccessService(
+        MasterAppDbContext db,
+        IConfiguration? configuration = null)
     {
         _db = db;
+        _configuration = configuration ?? new ConfigurationBuilder().Build();
     }
 
     public async Task<ControlledResourceAccess> GetAccessAsync(
@@ -44,19 +54,15 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
         if (!ControlledResourceTypes.IsSupported(resourceType))
             return new ControlledResourceAccess(resourceType, ControlledResourceAccessStates.NotGranted, false);
 
-        var canManage = await IsFounderManagerAsync(actor, cancellationToken);
+        var canManage = resourceType == ControlledResourceTypes.ScriptureManagement
+            ? await IsCanonicalFounderManagerAsync(actor, cancellationToken)
+            : await IsFounderManagerAsync(actor, cancellationToken);
         var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
         var granted = resourceType switch
         {
             ControlledResourceTypes.VerificationBadge => await IsVerificationGrantedAsync(actor, cancellationToken),
-            ControlledResourceTypes.LanguageTranslation => canManage || await _db.ControlledResourceGrants
-                .AsNoTracking()
-                .AnyAsync(grant =>
-                    grant.IsActive &&
-                    grant.ResourceType == ControlledResourceTypes.LanguageTranslation &&
-                    actorUserIds.Contains(grant.UserId.ToLower()) &&
-                    grant.ParticipantType == actor.ParticipantType,
-                    cancellationToken),
+            ControlledResourceTypes.LanguageTranslation or ControlledResourceTypes.ScriptureManagement =>
+                canManage || await HasActiveGrantAsync(actor, actorUserIds, resourceType, cancellationToken),
             _ => false
         };
 
@@ -92,6 +98,22 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
             (profile.NormalizedEmail == LegendVerifiedIdentity.FounderEmail ||
              (profile.AgentUpn != null && profile.AgentUpn.ToLower() == LegendVerifiedIdentity.FounderEmail)),
             cancellationToken);
+    }
+
+    public Task<bool> IsCanonicalFounderManagerAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        actor = Normalize(actor);
+        if (actor.ParticipantType != MessagingParticipantTypes.Agent)
+            return Task.FromResult(false);
+
+        var configuredFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID")
+            ?? Environment.GetEnvironmentVariable("FounderOid")
+            ?? _configuration["Founder:Oid"];
+        return Task.FromResult(FounderAuthority.IsConfiguredFounderIdentity(
+            actor.UserId,
+            configuredFounderOid));
     }
 
     public async Task<string?> GetPreferredLanguageAsync(
@@ -158,6 +180,20 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
 
         return false;
     }
+
+    private Task<bool> HasActiveGrantAsync(
+        MessagingActor actor,
+        string[] actorUserIds,
+        string resourceType,
+        CancellationToken cancellationToken) =>
+        _db.ControlledResourceGrants
+            .AsNoTracking()
+            .AnyAsync(grant =>
+                grant.IsActive &&
+                grant.ResourceType == resourceType &&
+                actorUserIds.Contains(grant.UserId.ToLower()) &&
+                grant.ParticipantType == actor.ParticipantType,
+                cancellationToken);
 
     private async Task<string[]> ParticipantUserIdFormsAsync(
         MessagingActor actor,

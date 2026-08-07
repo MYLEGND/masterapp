@@ -19,19 +19,22 @@ public sealed class MobileMessagingController : MobileApiControllerBase
     private readonly IMessageAttachmentStorage _attachmentStorage;
     private readonly IMessagingRealtimePublisher _realtimePublisher;
     private readonly IMessagingProfileImageResolver _profiles;
+    private readonly IControlledResourceAccessService _controlledResources;
 
     public MobileMessagingController(
         IMobileActorResolver actorResolver,
         IMessagingService messaging,
         IMessageAttachmentStorage attachmentStorage,
         IMessagingRealtimePublisher realtimePublisher,
-        IMessagingProfileImageResolver profiles)
+        IMessagingProfileImageResolver profiles,
+        IControlledResourceAccessService controlledResources)
         : base(actorResolver)
     {
         _messaging = messaging;
         _attachmentStorage = attachmentStorage;
         _realtimePublisher = realtimePublisher;
         _profiles = profiles;
+        _controlledResources = controlledResources;
     }
 
     [HttpGet("session")]
@@ -49,7 +52,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             resolution.Actor is null ? null : await ToActorDtoAsync(resolution.Actor, cancellationToken),
             resolution.PermittedActors.Select(actor => actor.Actor.ParticipantType).ToArray(),
             resolution.RequiresParticipantSelection,
-            new MobileCapabilitiesDto(true, FounderGuard.IsFounder(User)),
+            await CapabilitiesAsync(resolution.Actor, cancellationToken),
             CorrelationId()));
     }
 
@@ -69,7 +72,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             await ToActorDtoAsync(resolution.SelectedActor, cancellationToken),
             resolution.PermittedActors.Select(actor => actor.Actor.ParticipantType).ToArray(),
             CorrelationId(),
-            new MobileCapabilitiesDto(true, FounderGuard.IsFounder(User))));
+            await CapabilitiesAsync(resolution.SelectedActor, cancellationToken)));
     }
 
     [HttpGet("messaging/conversations")]
@@ -1124,6 +1127,19 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         }
     }
 
+    private async Task<MobileCapabilitiesDto> CapabilitiesAsync(
+        MobileResolvedActor? actor,
+        CancellationToken cancellationToken)
+    {
+        var isFounder = FounderGuard.IsFounder(User);
+        var canManageScripture = isFounder || (actor is not null &&
+            (await _controlledResources.GetAccessAsync(
+                actor.Actor,
+                ControlledResourceTypes.ScriptureManagement,
+                cancellationToken)).State == ControlledResourceAccessStates.Granted);
+        return new MobileCapabilitiesDto(true, isFounder, canManageScripture);
+    }
+
     private IActionResult MessagingFailure(string? errorCode, string? errorMessage)
     {
         var statusCode = string.Equals(errorCode, "MESSAGING_CONVERSATION_NOT_FOUND", StringComparison.Ordinal)
@@ -1163,7 +1179,10 @@ public sealed record MobileSessionResponse(
     MobileCapabilitiesDto Capabilities,
     string CorrelationId);
 
-public sealed record MobileCapabilitiesDto(bool Messaging, bool IsFounder = false);
+public sealed record MobileCapabilitiesDto(
+    bool Messaging,
+    bool IsFounder = false,
+    bool CanManageScripture = false);
 
 public sealed record MobileRoleSelectionResponse(
     MobileActorDto Actor,

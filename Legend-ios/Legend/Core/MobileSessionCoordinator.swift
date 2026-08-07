@@ -588,6 +588,26 @@ final class MobileSessionCoordinator: ObservableObject {
                 actorKey: legendLaunchActorKey(currentSession.actor.identity)))
     }
 
+    func makeDailyScriptureManagementStore() -> MobileDailyScriptureManagementStore {
+        guard let apiBaseURL = configuration.apiBaseURL,
+              case .authenticated(let currentSession) = state else {
+            return MobileDailyScriptureManagementStore(
+                api: MobileUnavailableDailyScriptureManagementAPI(),
+                accessTokenProvider: { throw MobileAPIError.unauthorized(correlationID: nil) },
+                diagnostics: diagnostics)
+        }
+
+        return MobileDailyScriptureManagementStore(
+            api: URLSessionMobileDailyScriptureManagementAPI(
+                client: MobileHTTPClient(baseURL: apiBaseURL),
+                participantType: currentSession.actor.identity.participantType),
+            accessTokenProvider: { [weak self] in
+                guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
+                return try await self.accessTokenForRequest()
+            },
+            diagnostics: diagnostics)
+    }
+
     func makeFinancialStore() -> MobileFinancialStore {
         guard let apiBaseURL = configuration.apiBaseURL,
               case .authenticated(let currentSession) = state else {
@@ -1365,26 +1385,36 @@ struct MobileBootstrapResponse: Decodable {
 struct MobileCapabilities: Decodable {
     let messaging: Bool
     let isFounder: Bool
+    let canManageScripture: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case messaging, isFounder
+        case messaging, isFounder, canManageScripture
     }
 
-    init(messaging: Bool, isFounder: Bool = false) {
+    init(
+        messaging: Bool,
+        isFounder: Bool = false,
+        canManageScripture: Bool = false
+    ) {
         self.messaging = messaging
         self.isFounder = isFounder
+        self.canManageScripture = canManageScripture
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         messaging = try container.decodeIfPresent(Bool.self, forKey: .messaging) ?? false
         isFounder = try container.decodeIfPresent(Bool.self, forKey: .isFounder) ?? false
+        canManageScripture = try container.decodeIfPresent(Bool.self, forKey: .canManageScripture) ?? false
     }
 
     var sessionCapabilities: Set<String> {
         var capabilities: Set<String> = messaging ? ["messaging"] : []
         if isFounder {
             capabilities.insert("founder")
+        }
+        if canManageScripture {
+            capabilities.insert("scripture-management")
         }
         return capabilities
     }

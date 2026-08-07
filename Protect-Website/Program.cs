@@ -33,7 +33,7 @@ if (builder.Environment.IsDevelopment())
     mvcBuilder.AddRazorRuntimeCompilation();
 }
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddDailyScripture();
+builder.Services.AddDailyScripture(builder.Configuration);
 builder.Services.AddHttpClient();
 
 // DbContext for tracking resolution

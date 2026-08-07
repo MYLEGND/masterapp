@@ -22,6 +22,7 @@ enum LegendApplicationBootstrapState: Equatable {
 @MainActor
 final class LegendApplicationStores {
     let home: MobileHomeStore
+    let dailyScriptureManagement: MobileDailyScriptureManagementStore
     let financial: MobileFinancialStore
     let social: MobileSocialStore
     let journeyCircles: MobileJourneyCirclesStore
@@ -36,6 +37,7 @@ final class LegendApplicationStores {
         coordinator: MobileSessionCoordinator
     ) {
         home = coordinator.makeHomeStore()
+        dailyScriptureManagement = coordinator.makeDailyScriptureManagementStore()
         financial = coordinator.makeFinancialStore()
         let social = coordinator.makeSocialStore()
         let journeyCircles = coordinator.makeJourneyCirclesStore()
@@ -57,6 +59,7 @@ final class LegendApplicationStores {
 
     init(
         home: MobileHomeStore,
+        dailyScriptureManagement: MobileDailyScriptureManagementStore,
         financial: MobileFinancialStore,
         social: MobileSocialStore,
         journeyCircles: MobileJourneyCirclesStore,
@@ -67,6 +70,7 @@ final class LegendApplicationStores {
         agentWorkspace: MobileAgentWorkspaceStore?
     ) {
         self.home = home
+        self.dailyScriptureManagement = dailyScriptureManagement
         self.financial = financial
         self.social = social
         self.journeyCircles = journeyCircles

@@ -388,6 +388,10 @@ final class LegendApplicationBootstrapCoordinatorTests: XCTestCase {
                 api: services.home,
                 accessTokenProvider: tokenProvider,
                 diagnostics: diagnostics),
+            dailyScriptureManagement: MobileDailyScriptureManagementStore(
+                api: MobileUnavailableDailyScriptureManagementAPI(),
+                accessTokenProvider: tokenProvider,
+                diagnostics: diagnostics),
             financial: MobileFinancialStore(
                 api: services.financial,
                 accessTokenProvider: tokenProvider,

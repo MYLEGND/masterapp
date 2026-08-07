@@ -1,11 +1,23 @@
+using Domain.Entities;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+
 namespace Infrastructure.DailyScripture;
 
 public interface IDailyScriptureService
 {
-    DailyScripture GetForDate(DateOnly date);
-    DailyScripture GetTodayUtc();
+    Task<DailyScripture> GetForDateAsync(DateOnly date, CancellationToken cancellationToken = default);
+
+    Task<DailyScripture> GetTodayAsync(CancellationToken cancellationToken = default);
+
+    DateOnly GetBusinessDate(DateTime utcNow);
 }
 
+/// <summary>
+/// The one authoritative resolver for Daily Scripture. An active, date-scoped
+/// authored override always wins; otherwise the established deterministic
+/// catalog remains the fallback for that business date.
+/// </summary>
 public sealed class DailyScriptureService : IDailyScriptureService
 {
     private static readonly DailyScripture[] Catalog =
@@ -45,25 +57,108 @@ public sealed class DailyScriptureService : IDailyScriptureService
         ])
     ];
 
-    public DailyScripture GetTodayUtc() => GetForDate(DateOnly.FromDateTime(DateTime.UtcNow));
+    private readonly MasterAppDbContext _db;
+    private readonly DailyScriptureOptions _options;
+    private readonly TimeZoneInfo _businessTimeZone;
 
-    public DailyScripture GetForDate(DateOnly date)
+    public DailyScriptureService(
+        MasterAppDbContext db,
+        DailyScriptureOptions options)
     {
+        _db = db;
+        _options = options;
+        _businessTimeZone = ResolveBusinessTimeZone(options.BusinessTimeZoneId);
+    }
+
+    public Task<DailyScripture> GetTodayAsync(CancellationToken cancellationToken = default) =>
+        GetForDateAsync(GetBusinessDate(DateTime.UtcNow), cancellationToken);
+
+    public DateOnly GetBusinessDate(DateTime utcNow)
+    {
+        var normalizedUtc = utcNow.Kind == DateTimeKind.Utc
+            ? utcNow
+            : DateTime.SpecifyKind(utcNow, DateTimeKind.Utc);
+        var local = TimeZoneInfo.ConvertTimeFromUtc(normalizedUtc, _businessTimeZone);
+        return DateOnly.FromDateTime(local);
+    }
+
+    public async Task<DailyScripture> GetForDateAsync(
+        DateOnly date,
+        CancellationToken cancellationToken = default)
+    {
+        var overrideEntry = await _db.DailyScriptureOverrides
+            .AsNoTracking()
+            .Where(entry => entry.IsActive && entry.DisplayDate == date)
+            .OrderByDescending(entry => entry.UpdatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (overrideEntry is not null)
+        {
+            return new DailyScripture(
+                overrideEntry.Reference,
+                overrideEntry.Translation,
+                Array.Empty<string>(),
+                date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                DailyScriptureSources.ScheduledOverride,
+                overrideEntry.PassageText);
+        }
+
         var key = date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
         uint hash = 0;
         foreach (var character in key)
             hash = unchecked(hash * 31 + character);
 
         var selected = Catalog[hash % (uint)Catalog.Length];
-        return selected with { Date = key };
+        return selected with
+        {
+            Date = key,
+            Source = DailyScriptureSources.DailyCatalog
+        };
     }
+
+    private static TimeZoneInfo ResolveBusinessTimeZone(string? configuredTimeZoneId)
+    {
+        foreach (var candidate in new[]
+                 {
+                     configuredTimeZoneId,
+                     "America/Phoenix",
+                     "US Mountain Standard Time",
+                     "UTC"
+                 })
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(candidate.Trim());
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        return TimeZoneInfo.Utc;
+    }
+}
+
+public static class DailyScriptureSources
+{
+    public const string DailyCatalog = "DailyCatalog";
+    public const string ScheduledOverride = "ScheduledOverride";
 }
 
 public sealed record DailyScripture(
     string Reference,
     string Translation,
     IReadOnlyList<string> Verses,
-    string Date = "")
+    string Date = "",
+    string Source = DailyScriptureSources.DailyCatalog,
+    string? PassageText = null)
 {
-    public string Text => string.Join(" ", Verses);
+    /// <summary>Legacy concise text projection used by existing shared consumers.</summary>
+    public string Text => PassageText ?? string.Join(" ", Verses);
 }

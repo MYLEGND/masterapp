@@ -1132,7 +1132,7 @@ private extension ParticipantType {
     }
 }
 
-private struct DailyScriptureSheet: View {
+struct DailyScriptureSheet: View {
     let scripture: MobileDailyScripture
 
     @Environment(\.dismiss) private var dismiss
@@ -1175,15 +1175,16 @@ private struct DailyScriptureSheet: View {
                     Button {
                         dismiss()
                     } label: {
-                        Text("Done")
-                            .font(LegendNextTypography.bodyEmphasis)
-                            .foregroundStyle(LegendNextColor.midnight)
-                            .padding(.horizontal, 18)
-                            .frame(minHeight: 44)
-                            .background(
-                                LegendNextColor.goldBright,
-                                in: Capsule()
-                            )
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 38, height: 38)
+                            .background(LegendNextGradient.finance, in: Circle())
+                            .overlay {
+                                Circle().strokeBorder(
+                                    Color.white.opacity(0.16),
+                                    lineWidth: 1)
+                            }
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Close scripture")
@@ -1232,12 +1233,6 @@ private struct DailyScriptureSheet: View {
                             .tracking(1.1)
                             .foregroundStyle(
                                 LegendNextColor.goldBright
-                            )
-
-                        Text("GOD ABOVE ALL")
-                            .font(LegendNextTypography.supporting)
-                            .foregroundStyle(
-                                Color.white.opacity(0.70)
                             )
                     }
 
@@ -1308,7 +1303,7 @@ private struct DailyScriptureSheet: View {
                             .tracking(1)
                             .foregroundStyle(LegendNextColor.gold)
 
-                        Text("Read slowly. Reflect deeply.")
+                        Text("Untill all have heard.")
                             .font(LegendNextTypography.supporting)
                             .foregroundStyle(
                                 LegendNextColor.textSecondary
@@ -1328,61 +1323,8 @@ private struct DailyScriptureSheet: View {
                 }
                 .padding(.bottom, LegendNextSpacing.sm)
 
-                ForEach(
-                    Array(scripture.verses.enumerated()),
-                    id: \.offset
-                ) { index, verse in
-                    if index > 0 {
-                        LegendNextDivider()
-                            .padding(.vertical, LegendNextSpacing.sm)
-                    }
-
-                    verseRow(
-                        number: index + 1,
-                        text: verse
-                    )
-                }
+                LegendDailyScripturePassageView(scripture: scripture)
             }
-        }
-    }
-
-    private func verseRow(
-        number: Int,
-        text: String
-    ) -> some View {
-        HStack(
-            alignment: .top,
-            spacing: LegendNextSpacing.xs
-        ) {
-            Text("\(number)")
-                .font(
-                    .system(
-                        size: 13,
-                        weight: .bold,
-                        design: .rounded
-                    )
-                )
-                .foregroundStyle(LegendNextColor.midnight)
-                .frame(width: 30, height: 30)
-                .background(
-                    LegendNextColor.goldBright,
-                    in: Circle()
-                )
-                .accessibilityHidden(true)
-
-            Text(text)
-                .font(LegendNextTypography.body)
-                .foregroundStyle(LegendNextColor.textPrimary)
-                .lineSpacing(5)
-                .fixedSize(
-                    horizontal: false,
-                    vertical: true
-                )
-                .frame(
-                    maxWidth: .infinity,
-                    alignment: .leading
-                )
-                .accessibilityLabel("Verse \(number). \(text)")
         }
     }
 
@@ -1614,18 +1556,18 @@ private struct LegendHomeView: View {
             cornerRadius: LegendNextRadius.prominentCard,
             padding: LegendNextSpacing.sm
         ) {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                 HStack(
                     alignment: .firstTextBaseline,
                     spacing: LegendNextSpacing.xs
                 ) {
-                    Text(greetingEyebrow.capitalized)
-                        .font(.title2.weight(.bold))
+                    Text("\(greetingEyebrow.capitalized),")
+                        .font(LegendNextTypography.supporting.weight(.semibold))
                         .foregroundStyle(LegendNextColor.goldBright)
                         .lineLimit(1)
 
                     Text(firstName)
-                        .font(.title2.weight(.bold))
+                        .font(.title3.weight(.bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
 
@@ -1642,38 +1584,35 @@ private struct LegendHomeView: View {
                 .minimumScaleFactor(0.76)
                 .allowsTightening(true)
 
-                HStack(spacing: LegendNextSpacing.xs) {
-                    Text("UNTIL ALL HAVE HEARD")
-                        .font(LegendNextTypography.eyebrow)
-                        .tracking(1.0)
-                        .foregroundStyle(.white.opacity(0.82))
-                        .lineLimit(1)
-
-                    Capsule()
-                        .fill(LegendNextGradient.gold)
-                        .frame(width: 28, height: 2)
-
-                    Text("TODAY'S WORD")
-                        .font(LegendNextTypography.eyebrow)
-                        .tracking(1.0)
-                        .foregroundStyle(LegendNextColor.goldBright)
-                        .lineLimit(1)
-
-                    Spacer(minLength: 0)
-                }
-                .minimumScaleFactor(0.74)
-                .allowsTightening(true)
-
                 Button {
                     presentedScripture = home.dailyScripture
                 } label: {
-                    Text("\(home.dailyScripture.reference) — \(home.dailyScripture.text)")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.88))
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(2)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                        HStack(spacing: LegendNextSpacing.xs) {
+                            Text("DAILY SCRIPTURE")
+                                .font(LegendNextTypography.eyebrow)
+                                .tracking(0.9)
+                                .foregroundStyle(LegendNextColor.goldBright)
+
+                            Spacer(minLength: 0)
+
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white.opacity(0.72))
+                        }
+
+                        Text(home.dailyScripture.reference)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+
+                        Text(home.dailyScripture.text)
+                            .font(LegendNextTypography.caption)
+                            .foregroundStyle(.white.opacity(0.78))
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                            .truncationMode(.tail)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Verse of the day, \(home.dailyScripture.reference). Double tap to read the full passage.")
@@ -6228,6 +6167,7 @@ private struct LegendAccountView: View {
         case followRequests
         case translationLanguage
         case translationManagement
+        case dailyScriptureManagement
         case accountAccess
         case pushNotificationStatus
         case privacyPolicy
@@ -6298,6 +6238,21 @@ private struct LegendAccountView: View {
                     if currentSession.actor.identity.participantType == .agent {
                         LegendProfileSettingsSection(title: "Agent portal") {
                             LegendAgentProfileSettingsRow()
+                        }
+                    }
+
+                    if currentSession.capabilities.contains("scripture-management") {
+                        LegendProfileSettingsSection(title: "Daily scripture") {
+                            Button {
+                                profileSettingsPresentation = .dailyScriptureManagement
+                            } label: {
+                                LegendProfileSettingsRow(
+                                    title: "Manage Daily Scripture",
+                                    detail: "Schedule and review the scripture shown across Legend.",
+                                    systemImage: "book.closed",
+                                    showsChevron: true)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
 
@@ -6533,7 +6488,14 @@ private struct LegendAccountView: View {
                     store: account,
                     messages: messages)
             case .translationManagement:
-                LegendTranslationAccessManager(messages: messages)
+                LegendControlledResourceAccessManager(
+                    messages: messages,
+                    resourceType: .languageTranslation)
+            case .dailyScriptureManagement:
+                LegendDailyScriptureManagementView(
+                    store: bootstrap.stores.dailyScriptureManagement,
+                    messages: messages,
+                    isFounder: currentSession.capabilities.contains("founder"))
             case .accountAccess:
                 LegendAccountAccessSheet(account: account)
             case .pushNotificationStatus:
@@ -7128,8 +7090,9 @@ private struct LegendTranslationLanguagePicker: View {
     }
 }
 
-private struct LegendTranslationAccessManager: View {
+struct LegendControlledResourceAccessManager: View {
     @ObservedObject var messages: MessagingStore
+    let resourceType: ControlledResourceType
     @Environment(\.dismiss) private var dismiss
     @State private var recipients: MobileDataLoadState<[MessagingRecipient]> = .idle
     @State private var search = ""
@@ -7141,8 +7104,8 @@ private struct LegendTranslationAccessManager: View {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
                         eyebrow: "Founder controls",
-                        title: "Translation access",
-                        detail: "Grant or remove Language Translation Access for any active Legend profile.",
+                        title: resourceType.displayName,
+                        detail: "Grant or remove \(resourceType.displayName) for any active Legend profile.",
                         dismiss: { dismiss() })
 
                     TextField("Search people", text: $search)
@@ -7252,7 +7215,7 @@ private struct LegendTranslationAccessManager: View {
     private func reloadDirectory() async {
         recipients = .loading
         guard let loaded = await messages.controlledResourceRecipients(
-            .languageTranslation,
+            resourceType,
             search: search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : search) else {
             recipients = .unavailable(UserFacingFailure(
                 title: "Access directory unavailable",
@@ -7267,7 +7230,7 @@ private struct LegendTranslationAccessManager: View {
         isUpdatingRecipientID = recipient.identity
         defer { isUpdatingRecipientID = nil }
         guard await messages.setControlledResourceGrant(
-            .languageTranslation,
+            resourceType,
             recipient: recipient,
             isGranted: isGranted) else {
             return
@@ -8403,7 +8366,7 @@ private struct LegendAccountEditor: View {
     }
 }
 
-private struct LegendProfileSettingsSection<Content: View>: View {
+struct LegendProfileSettingsSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
 
@@ -8457,7 +8420,7 @@ private struct LegendAgentProfileSettingsRow: View {
     }
 }
 
-private struct LegendProfileSettingsRow: View {
+struct LegendProfileSettingsRow: View {
     let title: String
     let detail: String?
     let systemImage: String
@@ -8528,7 +8491,7 @@ private struct LegendProfileSettingsToggleRow: View {
     }
 }
 
-private struct LegendProfileSettingsDivider: View {
+struct LegendProfileSettingsDivider: View {
     var body: some View {
         Rectangle()
             .fill(Color.white.opacity(0.22))

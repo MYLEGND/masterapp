@@ -59,7 +59,9 @@ public sealed class MobileHomeFinancialServiceTests
             journey.Object,
             financialIntelligence.Object,
             financialOperatingSystem.Object,
-            new Infrastructure.DailyScripture.DailyScriptureService());
+            new Infrastructure.DailyScripture.DailyScriptureService(
+                db,
+                new Infrastructure.DailyScripture.DailyScriptureOptions()));
 
         var result = await service.GetHomeAsync(new MobileResolvedActor(
             new MessagingActor(client.ClientUserId, MessagingParticipantTypes.Client),

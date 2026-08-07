@@ -41,8 +41,18 @@ public static class ControlledResourceTypes
 {
     public const string VerificationBadge = "VerificationBadge";
     public const string LanguageTranslation = "LanguageTranslation";
+    public const string ScriptureManagement = "ScriptureManagement";
 
     public static bool IsSupported(string? value) =>
+        string.Equals(value, VerificationBadge, StringComparison.Ordinal) ||
+        string.Equals(value, LanguageTranslation, StringComparison.Ordinal) ||
+        string.Equals(value, ScriptureManagement, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Scripture management is issued only through an explicit Founder grant;
+    /// it never enters the member-request review queue.
+    /// </summary>
+    public static bool SupportsMemberRequest(string? value) =>
         string.Equals(value, VerificationBadge, StringComparison.Ordinal) ||
         string.Equals(value, LanguageTranslation, StringComparison.Ordinal);
 }

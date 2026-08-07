@@ -423,7 +423,7 @@ public sealed class MobileHomeService : IMobileHomeService
                 journey.Requests.Count),
             appointments,
             Array.Empty<MobileActionItem>(),
-            ToMobileDailyScripture(_dailyScripture.GetTodayUtc()),
+            ToMobileDailyScripture(await _dailyScripture.GetTodayAsync(cancellationToken)),
             0);
     }
 
@@ -474,7 +474,7 @@ public sealed class MobileHomeService : IMobileHomeService
             null,
             appointments,
             actions,
-            ToMobileDailyScripture(_dailyScripture.GetTodayUtc()),
+            ToMobileDailyScripture(await _dailyScripture.GetTodayAsync(cancellationToken)),
             activeClientCount);
     }
 
@@ -485,7 +485,9 @@ public sealed class MobileHomeService : IMobileHomeService
         scripture.Reference,
         scripture.Translation,
         scripture.Verses,
-        scripture.Text);
+        scripture.Text,
+        scripture.Source,
+        scripture.PassageText ?? scripture.Text);
 
     private Task<List<MobileUpcomingAppointment>> QueryAppointmentsForClientAsync(
         Guid clientProfileId,
@@ -575,7 +577,14 @@ public sealed record MobileMessagingSummary(int UnreadCount, int ConversationCou
 public sealed record MobileJourneySummary(bool HasProfile, int RecommendationCount, int ConnectedPeerCount, int PendingRequestCount);
 public sealed record MobileUpcomingAppointment(Guid Id, DateTime StartUtc, DateTime? EndUtc, string Status);
 public sealed record MobileActionItem(Guid Id, string Title, string Status, string Priority, DateTime? DueDateUtc);
-public sealed record MobileDailyScripture(string Date, string Reference, string Translation, IReadOnlyList<string> Verses, string Text);
+public sealed record MobileDailyScripture(
+    string Date,
+    string Reference,
+    string Translation,
+    IReadOnlyList<string> Verses,
+    string Text,
+    string Source,
+    string PassageText);
 public sealed record MobileFinancialSnapshot(
     MobileFinancialPosition? Position,
     MobileFinancialIntelligenceSummary? Intelligence,

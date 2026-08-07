@@ -1007,7 +1007,7 @@ internal sealed class MessagingService : IMessagingService
     {
         var actor = NormalizeActor(command.Actor);
         var resourceType = NormalizeRequired(command.ResourceType);
-        if (!ControlledResourceTypes.IsSupported(resourceType))
+        if (!ControlledResourceTypes.SupportsMemberRequest(resourceType))
             return MessagingControlledResourceRequestResult.Failure("MESSAGING_RESOURCE_INVALID", "This Legend resource is not available.");
         if (!await IsValidActorAsync(actor, cancellationToken))
             return MessagingControlledResourceRequestResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
@@ -1734,7 +1734,7 @@ internal sealed class MessagingService : IMessagingService
         if (!ControlledResourceTypes.IsSupported(resourceType))
             return MessagingControlledResourceRecipientListResult.Failure("MESSAGING_RESOURCE_INVALID", "This Legend resource is not available.");
         if (!await IsValidActorAsync(actor, cancellationToken) ||
-            !await _controlledResources.IsFounderManagerAsync(actor, cancellationToken))
+            !await CanManageControlledResourceAsync(actor, resourceType, cancellationToken))
         {
             return MessagingControlledResourceRecipientListResult.Failure("MESSAGING_RESOURCE_REVIEWER_FORBIDDEN", "Only the Founder can manage this resource.");
         }
@@ -1770,7 +1770,7 @@ internal sealed class MessagingService : IMessagingService
         if (!ControlledResourceTypes.IsSupported(resourceType))
             return MessagingOperationResult.Failure("MESSAGING_RESOURCE_INVALID", "This Legend resource is not available.");
         if (!await IsValidActorAsync(actor, cancellationToken) ||
-            !await _controlledResources.IsFounderManagerAsync(actor, cancellationToken))
+            !await CanManageControlledResourceAsync(actor, resourceType, cancellationToken))
         {
             return MessagingOperationResult.Failure("MESSAGING_RESOURCE_REVIEWER_FORBIDDEN", "Only the Founder can manage this resource.");
         }
@@ -1778,8 +1778,13 @@ internal sealed class MessagingService : IMessagingService
             return MessagingOperationResult.Failure("MESSAGING_RESOURCE_RECIPIENT_UNAVAILABLE", "This person is no longer available.");
 
         var targetAccess = await _controlledResources.GetAccessAsync(target, resourceType, cancellationToken);
-        if (!command.IsGranted && targetAccess.CanManage && resourceType == ControlledResourceTypes.LanguageTranslation)
-            return MessagingOperationResult.Failure("MESSAGING_RESOURCE_FOUNDER_PERSISTENT", "Founder Language Translation Access remains active.");
+        if (!command.IsGranted && targetAccess.CanManage &&
+            resourceType is ControlledResourceTypes.LanguageTranslation or ControlledResourceTypes.ScriptureManagement)
+        {
+            return MessagingOperationResult.Failure(
+                "MESSAGING_RESOURCE_FOUNDER_PERSISTENT",
+                $"Founder {ControlledResourceDisplayName(resourceType)} remains active.");
+        }
 
         if (!await SetResourceGrantCoreAsync(actor, resourceType, target.UserId, target.ParticipantType, command.IsGranted, cancellationToken))
             return MessagingOperationResult.Failure("MESSAGING_RESOURCE_RECIPIENT_UNAVAILABLE", "This person is no longer available.");
@@ -3611,7 +3616,7 @@ internal sealed class MessagingService : IMessagingService
             };
         }
 
-        if (resourceType != ControlledResourceTypes.LanguageTranslation)
+        if (resourceType is not (ControlledResourceTypes.LanguageTranslation or ControlledResourceTypes.ScriptureManagement))
             return false;
 
         var grant = await _db.ControlledResourceGrants.SingleOrDefaultAsync(candidate =>
@@ -3657,6 +3662,14 @@ internal sealed class MessagingService : IMessagingService
         return true;
     }
 
+    private Task<bool> CanManageControlledResourceAsync(
+        MessagingActor actor,
+        string resourceType,
+        CancellationToken cancellationToken) =>
+        resourceType == ControlledResourceTypes.ScriptureManagement
+            ? _controlledResources.IsCanonicalFounderManagerAsync(actor, cancellationToken)
+            : _controlledResources.IsFounderManagerAsync(actor, cancellationToken);
+
     private static MessagingVerificationReview ToReview(VerificationReviewRequest request) => new(
         request.Id,
         request.RequesterUserId,
@@ -3669,6 +3682,7 @@ internal sealed class MessagingService : IMessagingService
     {
         ControlledResourceTypes.VerificationBadge => "Legend verification",
         ControlledResourceTypes.LanguageTranslation => "Language Translation Access",
+        ControlledResourceTypes.ScriptureManagement => "Daily Scripture Management",
         _ => "Legend resource"
     };
 
