@@ -724,7 +724,8 @@ private struct LegendRecipientPicker: View {
     @State private var groupRecipients: [LogicalParticipantIdentity: MessagingRecipient] = [:]
     @State private var groupMeetingDraft = LegendGroupMeetingDraft()
     @State private var selectedGroupPhoto: PhotosPickerItem?
-    @State private var groupPhotoData: Data?
+    @State private var groupImage: MessagingGroupImageRequest?
+    @State private var isPreparingGroupImage = false
     @State private var isShowingGroupPhotoPreparationFailure = false
 
     var body: some View {
@@ -784,7 +785,8 @@ private struct LegendRecipientPicker: View {
                     groupRecipients.removeAll()
                     groupSubject = ""
                     groupMeetingDraft = LegendGroupMeetingDraft()
-                    groupPhotoData = nil
+                    groupImage = nil
+                    isPreparingGroupImage = false
                     selectedGroupPhoto = nil
                 } label: {
                     Image(systemName: isCreatingGroup ? "person.fill" : "person.3.fill")
@@ -874,15 +876,16 @@ private struct LegendRecipientPicker: View {
                     matching: .images,
                     photoLibrary: PHPhotoLibrary.shared()) {
                         LegendMessagingGroupAvatar(
-                            avatar: groupPhotoData.map {
+                            avatar: groupImage.map {
                                 ProfileAvatar(
                                     kind: "inline",
-                                    contentType: "image/jpeg",
-                                    base64Content: $0.base64EncodedString())
+                                    contentType: $0.contentType,
+                                    base64Content: $0.base64Content)
                             },
                             size: 42)
                     }
                     .accessibilityLabel("Choose group photo")
+                    .disabled(isPreparingGroupImage)
 
                 TextField("Group name", text: $groupSubject)
                     .textInputAutocapitalization(.words)
@@ -904,17 +907,6 @@ private struct LegendRecipientPicker: View {
                 canManageMeeting: true)
 
             Button(store.isCreatingGroup ? "Creating group…" : "Create group (\(groupRecipients.count))") {
-                let groupImage: MessagingGroupImageRequest?
-                if groupPhotoData != nil {
-                    guard let preparedImage = legendMessagingGroupImageRequest(from: groupPhotoData) else {
-                        isShowingGroupPhotoPreparationFailure = true
-                        return
-                    }
-                    groupImage = preparedImage
-                } else {
-                    groupImage = nil
-                }
-
                 let recipients = Array(groupRecipients.values)
                 store.createGroup(
                     subject: groupSubject,
@@ -927,6 +919,7 @@ private struct LegendRecipientPicker: View {
             .buttonStyle(LegendNextButtonStyle(kind: .primary, controlHeight: 34))
             .disabled(
                 store.isCreatingGroup ||
+                isPreparingGroupImage ||
                 groupSubject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
                 groupRecipients.count < 2 ||
                 !groupMeetingDraft.isValid
@@ -941,8 +934,15 @@ private struct LegendRecipientPicker: View {
         }
         .onChange(of: selectedGroupPhoto) { _, item in
             guard let item else { return }
+            isPreparingGroupImage = true
+            groupImage = nil
             Task {
-                groupPhotoData = try? await item.loadTransferable(type: Data.self)
+                let photoData = try? await item.loadTransferable(type: Data.self)
+                guard !Task.isCancelled else { return }
+
+                groupImage = legendMessagingGroupImageRequest(from: photoData)
+                isShowingGroupPhotoPreparationFailure = groupImage == nil
+                isPreparingGroupImage = false
                 selectedGroupPhoto = nil
             }
         }
@@ -1855,7 +1855,8 @@ private struct LegendGroupProfileEditor: View {
     @State private var subject: String
     @State private var meetingDraft: LegendGroupMeetingDraft
     @State private var selectedPhoto: PhotosPickerItem?
-    @State private var replacementPhotoData: Data?
+    @State private var replacementImage: MessagingGroupImageRequest?
+    @State private var isPreparingReplacementImage = false
     @State private var isShowingGroupPhotoPreparationFailure = false
 
     init(
@@ -1885,6 +1886,7 @@ private struct LegendGroupProfileEditor: View {
                                 size: 92)
                         }
                         .accessibilityLabel("Change group photo")
+                        .disabled(isPreparingReplacementImage)
 
                     VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                         Text("Group name")
@@ -1930,21 +1932,10 @@ private struct LegendGroupProfileEditor: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(store.isCreatingGroup ? "Saving…" : "Save") {
-                        let groupImage: MessagingGroupImageRequest?
-                        if replacementPhotoData != nil {
-                            guard let preparedImage = legendMessagingGroupImageRequest(from: replacementPhotoData) else {
-                                isShowingGroupPhotoPreparationFailure = true
-                                return
-                            }
-                            groupImage = preparedImage
-                        } else {
-                            groupImage = nil
-                        }
-
                         store.updateGroup(
                             conversationID: conversation.id,
                             subject: subject,
-                            groupImage: groupImage,
+                            groupImage: replacementImage,
                             meeting: conversation.canManageMeeting == true
                                 ? meetingDraft.request
                                 : nil,
@@ -1952,6 +1943,7 @@ private struct LegendGroupProfileEditor: View {
                     }
                     .disabled(
                         store.isCreatingGroup ||
+                        isPreparingReplacementImage ||
                         subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
                         (conversation.canManageMeeting == true && !meetingDraft.isValid))
                 }
@@ -1963,8 +1955,15 @@ private struct LegendGroupProfileEditor: View {
             }
             .onChange(of: selectedPhoto) { _, item in
                 guard let item else { return }
+                isPreparingReplacementImage = true
+                replacementImage = nil
                 Task {
-                    replacementPhotoData = try? await item.loadTransferable(type: Data.self)
+                    let photoData = try? await item.loadTransferable(type: Data.self)
+                    guard !Task.isCancelled else { return }
+
+                    replacementImage = legendMessagingGroupImageRequest(from: photoData)
+                    isShowingGroupPhotoPreparationFailure = replacementImage == nil
+                    isPreparingReplacementImage = false
                     selectedPhoto = nil
                 }
             }
@@ -1972,11 +1971,11 @@ private struct LegendGroupProfileEditor: View {
     }
 
     private var replacementAvatar: ProfileAvatar? {
-        replacementPhotoData.map {
+        replacementImage.map {
             ProfileAvatar(
                 kind: "inline",
-                contentType: "image/jpeg",
-                base64Content: $0.base64EncodedString())
+                contentType: $0.contentType,
+                base64Content: $0.base64Content)
         }
     }
 

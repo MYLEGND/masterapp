@@ -134,6 +134,29 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertFalse(conversation.messages.first?.isMine ?? true)
     }
 
+    func testCreateGroupRequestEncodesThePreparedGroupImage() throws {
+        let request = CreateMessagingGroupRequest(
+            subject: "Family protection",
+            participants: [
+                MessagingGroupMemberRequest(
+                    userID: "client-1",
+                    participantType: .client)
+            ],
+            initialMessageBody: nil,
+            groupImage: MessagingGroupImageRequest(
+                contentType: "image/jpeg",
+                base64Content: "AQID"),
+            meeting: nil)
+
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder.mobile.encode(request)) as? [String: Any])
+        let image = try XCTUnwrap(payload["groupImage"] as? [String: Any])
+
+        XCTAssertEqual(image["contentType"] as? String, "image/jpeg")
+        XCTAssertEqual(image["base64Content"] as? String, "AQID")
+    }
+
     func testJSONDecoderAcceptsAspNetCoreFractionalSecondUtcTimestamps() throws {
         let data = Data("""
         {

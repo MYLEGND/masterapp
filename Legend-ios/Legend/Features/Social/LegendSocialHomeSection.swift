@@ -3273,35 +3273,21 @@ private struct LegendHacViewportPage: View {
             }
 
             if !bottomNavigationVisible {
-                HStack(spacing: LegendNextSpacing.sm) {
-                    Button(action: comment) {
-                        HStack(spacing: LegendNextSpacing.xs) {
-                            Image(systemName: "bubble.right")
-                            Text("Add comment…")
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                        }
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.96))
-                        .padding(.horizontal, LegendNextSpacing.md)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(.black.opacity(0.62), in: Capsule())
+                Button(action: comment) {
+                    HStack(spacing: LegendNextSpacing.xs) {
+                        Image(systemName: "bubble.right")
+                        Text("Add comment…")
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Add a comment")
-
-                    Button {
-                        social.toggleSave(postID: post.id)
-                    } label: {
-                        Image(systemName: post.savedByCurrentActor ? "bookmark.fill" : "bookmark")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(post.savedByCurrentActor ? LegendNextColor.gold : .white)
-                            .frame(width: 48, height: 48)
-                            .background(LegendNextColor.navy.opacity(0.82), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(post.savedByCurrentActor ? "Remove saved Hac" : "Save Hac")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.96))
+                    .padding(.horizontal, LegendNextSpacing.md)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(.black.opacity(0.62), in: Capsule())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add a comment")
             }
         }
         .padding(.bottom, safeAreaBottom == 0 ? 0 : LegendNextSpacing.micro)
@@ -3339,6 +3325,13 @@ private struct LegendHacViewportPage: View {
                         count: post.metrics.shareCount,
                         tint: .white)
                 }
+
+                hacAction(
+                    symbol: post.savedByCurrentActor ? "bookmark.fill" : "bookmark",
+                    count: nil,
+                    title: post.savedByCurrentActor ? "Remove saved Hac" : "Save Hac",
+                    tint: post.savedByCurrentActor ? LegendNextColor.gold : .white,
+                    action: { social.toggleSave(postID: post.id) })
 
                 hacAction(
                     symbol: playback.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
