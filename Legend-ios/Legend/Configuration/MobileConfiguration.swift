@@ -57,7 +57,6 @@ struct MobileConfiguration: Equatable, Sendable {
     let scope: String?
     let audience: String?
     let agentOnlineAccountURL: URL?
-    let privacyPolicyURL: URL?
 
     init(
         bundleIdentifier: String,
@@ -68,8 +67,7 @@ struct MobileConfiguration: Equatable, Sendable {
         redirectScheme: String?,
         scope: String?,
         audience: String?,
-        agentOnlineAccountURL: URL? = nil,
-        privacyPolicyURL: URL? = nil
+        agentOnlineAccountURL: URL? = nil
     ) {
         self.bundleIdentifier = bundleIdentifier
         self.apiBaseURL = apiBaseURL
@@ -80,7 +78,6 @@ struct MobileConfiguration: Equatable, Sendable {
         self.scope = scope
         self.audience = audience
         self.agentOnlineAccountURL = agentOnlineAccountURL
-        self.privacyPolicyURL = privacyPolicyURL
     }
 
     static var current: MobileConfiguration {
@@ -129,9 +126,7 @@ struct MobileConfigurationProvider: Sendable {
             scope: stringValue(for: .scope),
             audience: stringValue(for: .audience),
             agentOnlineAccountURL: urlValue(
-                forInfoDictionaryKey: "LegendAgentOnlineAccountURL"),
-            privacyPolicyURL: urlValue(
-                forInfoDictionaryKey: "LegendPrivacyPolicyURL")
+                forInfoDictionaryKey: "LegendAgentOnlineAccountURL")
         )
     }
 

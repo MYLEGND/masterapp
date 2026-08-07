@@ -55,8 +55,6 @@
 	<string>$(LEGEND_AUTH_SCOPE)</string>
 	<key>LegendAuthorizationEndpoint</key>
 	<string>$(LEGEND_AUTHORIZATION_ENDPOINT)</string>
-	<key>LegendPrivacyPolicyURL</key>
-	<string>$(LEGEND_PRIVACY_POLICY_URL)</string>
 	<key>LegendTokenEndpoint</key>
 	<string>$(LEGEND_TOKEN_ENDPOINT)</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

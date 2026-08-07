@@ -72,7 +72,7 @@ available.
 ## Privacy/legal surface
 
 The native app reads one configured public policy destination:
-`https://protect.mylegnd.com/Privacy`. The URL is supplied through the existing
+`https://www.mylegnd.com/privacy-terms`. The URL is supplied through the existing
 build configuration and Info.plist, not copied into the app or duplicated in a
 feature view.
 

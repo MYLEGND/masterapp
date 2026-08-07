@@ -64,7 +64,6 @@ targets:
         LegendAuthScope: "$(LEGEND_AUTH_SCOPE)"
         LegendAuthAudience: "$(LEGEND_AUTH_AUDIENCE)"
         LegendAgentOnlineAccountURL: "$(LEGEND_AGENT_ONLINE_ACCOUNT_URL)"
-        LegendPrivacyPolicyURL: "$(LEGEND_PRIVACY_POLICY_URL)"
         LegendAPNSEnvironment: "$(APS_ENVIRONMENT)"
         ITSAppUsesNonExemptEncryption: false
         LSApplicationQueriesSchemes:

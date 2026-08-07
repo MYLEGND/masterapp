@@ -5900,6 +5900,329 @@ private struct LegendAccountView: View {
         .padding(.horizontal, LegendNextSpacing.sm)
     }
 
+
+    private struct LegendLegalSection: Identifiable {
+        let id: String
+        let title: String
+        let body: String
+
+        init(_ title: String, _ body: String) {
+            self.id = title
+            self.title = title
+            self.body = body
+        }
+    }
+
+    private struct LegendLegalDocumentView: View {
+        let eyebrow: String
+        let title: String
+        let subtitle: String
+        let sections: [LegendLegalSection]
+        let dismiss: () -> Void
+
+        var body: some View {
+            NavigationStack {
+                ZStack {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.025, green: 0.075, blue: 0.145),
+                            Color(red: 0.045, green: 0.125, blue: 0.220)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing)
+                        .ignoresSafeArea()
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("LEGEND®")
+                                    .font(.system(size: 13, weight: .black, design: .rounded))
+                                    .tracking(2.4)
+                                    .foregroundStyle(
+                                        Color(red: 0.835, green: 0.695, blue: 0.365))
+
+                                Text(eyebrow.uppercased())
+                                    .font(.caption.weight(.bold))
+                                    .tracking(1.4)
+                                    .foregroundStyle(.white.opacity(0.62))
+
+                                Text(title)
+                                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+
+                                Text(subtitle)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.white.opacity(0.76))
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                Rectangle()
+                                    .fill(
+                                        Color(red: 0.835, green: 0.695, blue: 0.365))
+                                    .frame(width: 54, height: 2)
+                                    .padding(.top, 3)
+                            }
+                            .padding(.bottom, 2)
+
+                            ForEach(sections) { section in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(section.title)
+                                        .font(.headline.weight(.bold))
+                                        .foregroundStyle(
+                                            Color(red: 0.835, green: 0.695, blue: 0.365))
+
+                                    Text(section.body)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.white.opacity(0.88))
+                                        .lineSpacing(4)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .textSelection(.enabled)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(16)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                        .fill(.white.opacity(0.075)))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                        .stroke(.white.opacity(0.10), lineWidth: 1))
+                            }
+
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("CONTACT LEGEND®")
+                                    .font(.caption.weight(.bold))
+                                    .tracking(1.2)
+                                    .foregroundStyle(
+                                        Color(red: 0.835, green: 0.695, blue: 0.365))
+
+                                Text("connect@mylegnd.com")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+
+                                Text("Effective August 7, 2026")
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.56))
+                            }
+                            .padding(.top, 4)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 20)
+                        .padding(.bottom, 36)
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done", action: dismiss)
+                            .fontWeight(.bold)
+                            .tint(
+                                Color(red: 0.835, green: 0.695, blue: 0.365))
+                    }
+                }
+                .toolbarBackground(
+                    Color(red: 0.025, green: 0.075, blue: 0.145),
+                    for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+            }
+        }
+    }
+
+    private func legendPrivacyPolicyView(dismiss: @escaping () -> Void) -> some View {
+        LegendLegalDocumentView(
+            eyebrow: "Your Privacy",
+            title: "Privacy Policy",
+            subtitle: "Your trust is our priority.",
+            sections: [
+                LegendLegalSection(
+                    "Privacy & Data Use",
+                    """
+                    LEGEND® collects and uses information necessary to provide, secure, personalize, and improve the services available through the app.
+
+                    Depending on how you use LEGEND®, information associated with your account may include your name, contact information, profile information, authentication and account data, profile photo, messages, community activity, uploaded photos or videos, notification preferences, device registration information, and information you voluntarily provide through LEGEND® features.
+
+                    Where financial-wellness or financial-planning features are available, LEGEND® may also process financial information you choose to provide for the purpose of delivering those features.
+
+                    LEGEND® does not sell your personal information.
+                    """),
+                LegendLegalSection(
+                    "Account & Authentication",
+                    """
+                    LEGEND® uses account and authentication information to identify you, protect your account, determine the features and permissions available to you, and maintain secure access to the platform.
+
+                    Authentication may involve third-party identity infrastructure used by LEGEND® to securely manage sign-in, account access, and related security functions.
+                    """),
+                LegendLegalSection(
+                    "Messaging & Communications",
+                    """
+                    LEGEND® allows eligible users to communicate through direct messages, conversations, and group messaging.
+
+                    Messages and related conversation information may be stored so conversations can be delivered, synchronized, displayed, moderated where necessary, and preserved according to applicable business, legal, security, and retention requirements.
+
+                    Where language-translation functionality is enabled and authorized for an account, eligible message content may be processed through an approved translation service to provide translated communications.
+                    """),
+                LegendLegalSection(
+                    "Community, Hacs & User Content",
+                    """
+                    LEGEND® includes community and social features that may allow users to create profiles, publish posts or Hacs, upload photos or videos, comment, react, participate in discussions, and interact with other members.
+
+                    Content you intentionally publish to community areas may be visible to other users according to the audience and privacy settings available within the app.
+
+                    LEGEND® may review, restrict, remove, preserve, or take action on content when reasonably necessary to enforce community standards, respond to reports, protect users, comply with law, or maintain the safety and integrity of the platform.
+                    """),
+                LegendLegalSection(
+                    "Photos, Videos & Device Permissions",
+                    """
+                    If you choose to upload a profile image, Hac, post, conversation image, or other media, LEGEND® may request access to your camera or photo library.
+
+                    Permission is requested through iOS and remains subject to the controls available in your device settings. LEGEND® only receives media that you choose to provide through the app.
+                    """),
+                LegendLegalSection(
+                    "Push Notifications",
+                    """
+                    If you permit notifications, LEGEND® may register your device with Apple Push Notification service (APNs) so the app can deliver alerts such as new messages, activity, or other relevant account notifications.
+
+                    Device notification tokens and related delivery information may be processed to register your device, deliver notifications, diagnose delivery problems, and disable registrations that are no longer valid. Notification permissions remain under your control through iOS.
+                    """),
+                LegendLegalSection(
+                    "Technical & Security Information",
+                    """
+                    LEGEND® may process limited technical information necessary to operate and protect the service, including device and application information, network requests, diagnostic information, security events, performance information, and service logs.
+
+                    This information may be used to maintain reliability, investigate failures, prevent abuse, secure accounts, and improve application performance.
+                    """),
+                LegendLegalSection(
+                    "Service Providers",
+                    """
+                    LEGEND® may use trusted technology and service providers to support functions such as cloud hosting, authentication, notifications, communications, scheduling, translation, media processing, security, and other operational services.
+
+                    These providers may process limited information as necessary to perform services for LEGEND® and may also operate under their own applicable legal and privacy obligations.
+                    """),
+                LegendLegalSection(
+                    "Information Retention",
+                    """
+                    LEGEND® retains information for as long as reasonably necessary to provide the service, protect the platform, satisfy legitimate business requirements, resolve disputes, enforce agreements, and comply with legal, regulatory, insurance, financial-services, recordkeeping, or security obligations.
+
+                    Some information may therefore be retained after account closure when retention is legally or operationally required.
+                    """),
+                LegendLegalSection(
+                    "Account Deletion",
+                    """
+                    Eligible users may request deletion of their LEGEND® account from within the application.
+
+                    When an account-deletion request is confirmed, LEGEND® may immediately restrict account access while the deletion and closure process is completed.
+
+                    Information that is not required to be retained may be deleted, anonymized, deactivated, or otherwise removed in accordance with LEGEND® policies and applicable requirements. Certain records may be retained when required for legal, regulatory, fraud-prevention, insurance, financial-services, security, dispute-resolution, or legitimate recordkeeping purposes.
+                    """),
+                LegendLegalSection(
+                    "Your Choices",
+                    """
+                    You can manage certain privacy, profile, notification, community, and account settings from within LEGEND® or through your device settings.
+
+                    Questions regarding privacy or account information may be directed to connect@mylegnd.com.
+                    """)
+            ],
+            dismiss: dismiss)
+    }
+
+    private func legendTermsOfUseView(dismiss: @escaping () -> Void) -> some View {
+        LegendLegalDocumentView(
+            eyebrow: "LEGEND®",
+            title: "Terms of Use",
+            subtitle: "Using LEGEND® means agreeing to use the platform responsibly and in good faith.",
+            sections: [
+                LegendLegalSection(
+                    "Using LEGEND®",
+                    """
+                    By accessing or using the LEGEND® mobile application, you agree to use the platform responsibly, lawfully, and in good faith.
+
+                    LEGEND® provides a platform supporting personal growth, community, life coaching, education, financial wellness, and, where applicable, access to insurance-related guidance and services.
+
+                    Features available to an individual user may vary based on account type, permissions, eligibility, location, licensing requirements, and services offered.
+                    """),
+                LegendLegalSection(
+                    "Coaching & Educational Information",
+                    """
+                    Life-coaching, wellness, educational, community, and financial-wellness content provided through LEGEND® is intended to support personal development, organization, education, and informed decision-making.
+
+                    Unless expressly stated otherwise in connection with a separately regulated professional service, content available through the app is not legal, tax, medical, or individualized investment advice.
+
+                    LEGEND® does not guarantee specific personal, financial, health, career, relationship, business, investment, or other outcomes.
+                    """),
+                LegendLegalSection(
+                    "Insurance-Related Services",
+                    """
+                    Insurance-related information or services available through LEGEND® are subject to applicable licensing requirements, eligibility, underwriting, carrier rules, product availability, approval, and applicable law.
+
+                    Nothing displayed within the app guarantees issuance of an insurance policy, a particular premium, coverage amount, underwriting decision, or carrier approval.
+
+                    Where regulated insurance services are provided, those services are governed by the applicable carrier documentation, disclosures, applications, policies, and regulatory requirements.
+                    """),
+                LegendLegalSection(
+                    "User Content & Community Conduct",
+                    """
+                    You are responsible for content you create, upload, send, publish, or otherwise make available through LEGEND®.
+
+                    You may not use LEGEND® to harass, threaten, impersonate, exploit, defraud, abuse, intimidate, or unlawfully target another person. You may not publish or transmit content that is unlawful, fraudulent, abusive, malicious, intentionally deceptive, or that violates another person's rights.
+
+                    LEGEND® may investigate reports and may restrict content, communication, functionality, or account access when reasonably necessary to protect users or the platform. Reporting or blocking another user does not guarantee a particular moderation outcome.
+                    """),
+                LegendLegalSection(
+                    "Messaging",
+                    """
+                    You are responsible for communications sent through your account.
+
+                    Do not use LEGEND® messaging for spam, harassment, unlawful solicitation, fraud, threats, or prohibited activity.
+
+                    Messages may be retained and reviewed when reasonably necessary for security, moderation, dispute resolution, legal compliance, or enforcement of these Terms.
+                    """),
+                LegendLegalSection(
+                    "Account Security",
+                    """
+                    You are responsible for maintaining appropriate control of your account and authentication methods.
+
+                    You may not intentionally access another person's account, misrepresent your identity, bypass security controls, interfere with application security, or attempt unauthorized access to LEGEND® systems or data.
+
+                    You should promptly notify LEGEND® if you believe your account or credentials have been compromised.
+                    """),
+                LegendLegalSection(
+                    "Availability & Changes",
+                    """
+                    LEGEND® continually develops and improves its services.
+
+                    Features may be added, modified, restricted, suspended, or discontinued when reasonably necessary for security, compliance, reliability, product development, or business operations.
+
+                    Temporary service interruptions may occur due to maintenance, technology providers, network conditions, platform updates, or circumstances outside LEGEND®'s reasonable control.
+                    """),
+                LegendLegalSection(
+                    "Apple",
+                    """
+                    Your use of the LEGEND® iOS application is also subject to applicable Apple platform requirements and your agreements with Apple.
+
+                    Apple is not responsible for providing LEGEND®'s coaching, community, insurance-related, financial-wellness, messaging, or other services.
+                    """),
+                LegendLegalSection(
+                    "Termination & Account Closure",
+                    """
+                    LEGEND® may restrict, suspend, or terminate access when reasonably necessary because of unlawful activity, material violations of these Terms, threats to users or platform security, fraud, abuse, regulatory requirements, or misuse of the service.
+
+                    Users may request eligible account closure through the account-management functionality provided within the application.
+                    """),
+                LegendLegalSection(
+                    "Updates to These Terms",
+                    """
+                    LEGEND® may update these Terms as the application, services, legal obligations, or regulatory requirements evolve.
+
+                    When material changes require additional notice or consent, LEGEND® may provide that notice through the application or another appropriate communication method.
+
+                    Continued use of LEGEND® after an applicable update constitutes acceptance of the updated Terms to the extent permitted by law.
+                    """),
+                LegendLegalSection(
+                    "Contact LEGEND®",
+                    """
+                    Questions regarding LEGEND®, your account, or these Terms may be directed to connect@mylegnd.com.
+                    """)
+            ],
+            dismiss: dismiss)
+    }
+
     private enum ProfileSettingsPresentation: String, Identifiable {
         case creatorInsights
         case followRequests
@@ -5907,6 +6230,8 @@ private struct LegendAccountView: View {
         case translationManagement
         case accountAccess
         case pushNotificationStatus
+        case privacyPolicy
+        case termsOfUse
 
         var id: String { rawValue }
     }
@@ -6007,19 +6332,33 @@ private struct LegendAccountView: View {
                                 .buttonStyle(.plain)
                             }
 
-                            if let privacyPolicyURL = MobileConfiguration.current.privacyPolicyURL {
-                                LegendProfileSettingsDivider()
+                            LegendProfileSettingsDivider()
 
-                                Link(destination: privacyPolicyURL) {
-                                    LegendProfileSettingsRow(
-                                        title: "Privacy policy",
-                                        detail: "How Legend handles account and app data",
-                                        systemImage: "doc.text",
-                                        showsChevron: true)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityHint("Opens the Legend privacy policy")
+                            Button {
+                                profileSettingsPresentation = .privacyPolicy
+                            } label: {
+                                LegendProfileSettingsRow(
+                                    title: "Privacy Policy",
+                                    detail: "How LEGEND® handles your information",
+                                    systemImage: "hand.raised.fill",
+                                    showsChevron: true)
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Opens the LEGEND privacy policy")
+
+                            LegendProfileSettingsDivider()
+
+                            Button {
+                                profileSettingsPresentation = .termsOfUse
+                            } label: {
+                                LegendProfileSettingsRow(
+                                    title: "Terms of Use",
+                                    detail: "Rules governing your use of LEGEND®",
+                                    systemImage: "doc.text.fill",
+                                    showsChevron: true)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Opens the LEGEND terms of use")
                         }
                     }
 
@@ -6201,6 +6540,14 @@ private struct LegendAccountView: View {
                 LegendPushNotificationStatusSheet(
                     notifications: bootstrap.stores.notifications)
                 .environmentObject(pushNotifications)
+            case .privacyPolicy:
+                legendPrivacyPolicyView {
+                    profileSettingsPresentation = nil
+                }
+            case .termsOfUse:
+                legendTermsOfUseView {
+                    profileSettingsPresentation = nil
+                }
             }
         }
         .task {

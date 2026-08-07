@@ -36,7 +36,7 @@ owner decisions needed before public release.
 | Keywords | community,messaging,discover,journey,goals,profile,updates | Draft; no competitor names |
 | Primary category | Social Networking | Recommendation based on community, messaging, discovery, and UGC surfaces |
 | Secondary category | Lifestyle | Recommendation based on personal progress and Journey Circles |
-| Privacy Policy URL | https://protect.mylegnd.com/Privacy | Public URL exists; app-specific approved content is required |
+| Privacy Policy URL | https://www.mylegnd.com/privacy-terms | Public URL exists; app-specific approved content is required |
 | Support URL | https://protect.mylegnd.com/Contact | Public URL and support email exist |
 | Terms URL | https://protect.mylegnd.com/Terms | Public URL exists; app-specific approved content is required |
 | Copyright | © 2026 MyLegnd, LLC | Factual launch draft; confirm the first-publication year in App Store Connect |
