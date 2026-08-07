@@ -41,10 +41,20 @@ public static class MessagingServiceCollectionExtensions
         services.AddSingleton<INotificationRealtimePublisher, NotificationRealtimePublisher>();
         services.AddHttpClient("ApplePush", client =>
         {
-            client.Timeout = TimeSpan.FromSeconds(10);
+            client.Timeout = TimeSpan.FromSeconds(30);
             client.DefaultRequestVersion = HttpVersion.Version20;
             client.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
-        });
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            AutomaticDecompression = DecompressionMethods.None,
+            ConnectTimeout = TimeSpan.FromSeconds(10),
+            EnableMultipleHttp2Connections = true,
+            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
+            PooledConnectionLifetime = TimeSpan.FromMinutes(15),
+            UseCookies = false
+        })
+        .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
         services.AddSingleton<IApplePushGateway, ApplePushGateway>();
         services.AddHostedService<ApplePushDeliveryHostedService>();
         services.AddSingleton<IMessagingContactKeyProtector, MessagingContactKeyProtector>();
