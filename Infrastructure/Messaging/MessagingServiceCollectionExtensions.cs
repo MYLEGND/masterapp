@@ -50,6 +50,7 @@ public static class MessagingServiceCollectionExtensions
             AutomaticDecompression = DecompressionMethods.None,
             ConnectTimeout = TimeSpan.FromSeconds(10),
             EnableMultipleHttp2Connections = true,
+            UseProxy = false,
             PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
             PooledConnectionLifetime = TimeSpan.FromMinutes(15),
             UseCookies = false
