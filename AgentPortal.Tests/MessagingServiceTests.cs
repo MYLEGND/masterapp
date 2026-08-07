@@ -2922,6 +2922,7 @@ public sealed class MessagingServiceTests
             translation ?? new TestTranslationService(),
             new NotificationEngine(
                 db,
+                images,
                 new NoopNotificationRealtimePublisher(),
                 NullLogger<NotificationEngine>.Instance),
             configuredFounderOid);

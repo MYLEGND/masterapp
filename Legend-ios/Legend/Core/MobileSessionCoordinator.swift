@@ -825,6 +825,7 @@ final class MobileSessionCoordinator: ObservableObject {
             return await existing.value
         }
 
+        let participantHeaders = Self.protectedImageHeaders(for: state)
         let task = Task { [weak self] () -> Data? in
             guard let self else { return nil }
 
@@ -835,7 +836,8 @@ final class MobileSessionCoordinator: ObservableObject {
                     baseURL: apiBaseURL
                 ).getData(
                     path,
-                    accessToken: accessToken)
+                    accessToken: accessToken,
+                    headers: participantHeaders)
             } catch {
                 return nil
             }
@@ -856,6 +858,18 @@ final class MobileSessionCoordinator: ObservableObject {
         }
 
         return data
+    }
+
+    static func protectedImageHeaders(
+        for state: MobileSessionState
+    ) -> [String: String] {
+        guard case .authenticated(let session) = state else {
+            return [:]
+        }
+
+        return [
+            "X-Legend-Participant-Type": session.actor.identity.participantType.rawValue
+        ]
     }
 
     private func accessTokenForRequest() async throws -> String {

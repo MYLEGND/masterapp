@@ -139,15 +139,18 @@ internal sealed class NotificationEngine : INotificationEngine
     private const int MaximumDetailLength = 1_000;
     private const int MaximumDeviceTokenLength = 512;
     private readonly MasterAppDbContext _db;
+    private readonly IMessagingProfileImageResolver _participantIdentities;
     private readonly INotificationRealtimePublisher _realtime;
     private readonly ILogger<NotificationEngine> _logger;
 
     public NotificationEngine(
         MasterAppDbContext db,
+        IMessagingProfileImageResolver participantIdentities,
         INotificationRealtimePublisher realtime,
         ILogger<NotificationEngine> logger)
     {
         _db = db;
+        _participantIdentities = participantIdentities;
         _realtime = realtime;
         _logger = logger;
     }
@@ -188,6 +191,7 @@ internal sealed class NotificationEngine : INotificationEngine
     {
         ArgumentNullException.ThrowIfNull(recipients);
         var normalizedSender = Normalize(sender);
+        var senderTitle = await ResolveMessageSenderTitleAsync(normalizedSender, cancellationToken);
         var stagedRecipients = new List<MessagingActor>();
         foreach (var recipient in recipients.Select(Normalize).Distinct())
         {
@@ -208,7 +212,7 @@ internal sealed class NotificationEngine : INotificationEngine
                 RecipientUserId = recipient.UserId,
                 RecipientParticipantType = recipient.ParticipantType,
                 Kind = "Message",
-                Title = "New message",
+                Title = senderTitle,
                 Detail = Clip(body, MaximumDetailLength),
                 ConversationId = conversationId,
                 SourceMessageId = messageId,
@@ -222,6 +226,17 @@ internal sealed class NotificationEngine : INotificationEngine
         }
 
         return stagedRecipients;
+    }
+
+    private async Task<string> ResolveMessageSenderTitleAsync(
+        MessagingActor sender,
+        CancellationToken cancellationToken)
+    {
+        var identities = await _participantIdentities.ResolveIdentitiesAsync(
+            [new MessagingParticipantReference(sender.UserId, sender.ParticipantType)],
+            cancellationToken);
+        var senderIdentity = identities.GetValueOrDefault((sender.UserId, sender.ParticipantType));
+        return Clip(senderIdentity?.DisplayName, MaximumTitleLength);
     }
 
     public async Task StageAsync(

@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using AgentPortal.Mobile;
 using Domain.Entities;
 using Domain.Messaging;
+using Infrastructure.Messaging;
 using Infrastructure.Mobile;
 using Infrastructure.Notifications;
 using Microsoft.AspNetCore.Http;
@@ -159,6 +160,59 @@ public sealed class ApplePushNotificationTests
     }
 
     [Fact]
+    public async Task Message_notification_uses_the_sender_canonical_full_name()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            ClientUserId = "sender-user",
+            FirstName = "Avery",
+            LastName = "Stone",
+            Email = "avery.stone@example.test"
+        });
+        await db.SaveChangesAsync();
+
+        var engine = CreateEngine(db);
+        await engine.StageMessageForRecipientsAsync(
+            new MessagingActor("sender-user", MessagingParticipantTypes.Client),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Hello there",
+            DateTime.UtcNow,
+            [new MessagingActor("recipient-user", MessagingParticipantTypes.Client)]);
+        await db.SaveChangesAsync();
+
+        var notification = Assert.Single(db.MobileActivityNotifications);
+        Assert.Equal("Avery Stone", notification.Title);
+    }
+
+    [Fact]
+    public async Task Message_notification_uses_the_agent_sender_full_name()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "agent-user",
+            AgentUpn = "jordan.lee@example.test",
+            FullName = "Jordan Lee"
+        });
+        await db.SaveChangesAsync();
+
+        var engine = CreateEngine(db);
+        await engine.StageMessageForRecipientsAsync(
+            new MessagingActor("agent-user", MessagingParticipantTypes.Agent),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Hello there",
+            DateTime.UtcNow,
+            [new MessagingActor("recipient-user", MessagingParticipantTypes.Client)]);
+        await db.SaveChangesAsync();
+
+        var notification = Assert.Single(db.MobileActivityNotifications);
+        Assert.Equal("Jordan Lee", notification.Title);
+    }
+
+    [Fact]
     public void Delivery_worker_abandons_permanent_device_failures_and_retries_transient_ones()
     {
         var now = DateTime.UtcNow;
@@ -254,6 +308,9 @@ public sealed class ApplePushNotificationTests
     private static NotificationEngine CreateEngine(Infrastructure.Data.MasterAppDbContext db) =>
         new(
             db,
+            new MessagingProfileImageResolver(
+                db,
+                NullLogger<MessagingProfileImageResolver>.Instance),
             new NoopRealtimePublisher(),
             NullLogger<NotificationEngine>.Instance);
 

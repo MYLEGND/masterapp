@@ -415,6 +415,25 @@ final class MobileNativeContractTests: XCTestCase {
         }
     }
 
+    func testProtectedImageRequestsUseTheActiveParticipantRole() throws {
+        let actor = try MobileActor(
+            identity: LogicalParticipantIdentity(
+                userID: "agent-user",
+                participantType: .agent),
+            profileID: "00000000-0000-0000-0000-000000000001",
+            displayName: "Agent User",
+            avatar: nil)
+        let headers = MobileSessionCoordinator.protectedImageHeaders(
+            for: .authenticated(MobileSession(
+                actor: actor,
+                capabilities: ["messaging"])))
+
+        XCTAssertEqual(headers, ["X-Legend-Participant-Type": "Agent"])
+        XCTAssertEqual(
+            MobileSessionCoordinator.protectedImageHeaders(for: .signedOut),
+            [:])
+    }
+
     func testSignOutClearsTheKeychainAbstraction() {
         let store = InMemoryTokenStore()
         let coordinator = MobileSessionCoordinator(
