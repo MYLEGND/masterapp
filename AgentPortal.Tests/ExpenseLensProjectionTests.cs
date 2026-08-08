@@ -12,57 +12,60 @@ namespace AgentPortal.Tests;
 public class ExpenseLensProjectionTests
 {
     private const string ProjectionBridgeScript = """
-ObjC.import('Foundation');
-
-function readUtf8(path) {
-    const text = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null);
-    if (!text) {
-        throw new Error('Unable to read file: ' + path);
-    }
-    return ObjC.unwrap(text);
-}
+const fs = require("fs");
 
 function pad(value) {
-    return String(value).padStart(2, '0');
+    return String(value).padStart(2, "0");
 }
 
 function formatLocalDate(date) {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function run(argv) {
-    const functionName = argv[0];
-    const modulePath = argv[1];
-    const payload = argv[2] ? JSON.parse(argv[2]) : {};
-    const globalObj = (typeof globalThis !== 'undefined') ? globalThis : this;
-    var module = { exports: {} };
-    var exports = module.exports;
+const functionName = process.argv[2];
+const modulePath = process.argv[3];
+const payload = process.argv[4] ? JSON.parse(process.argv[4]) : {};
 
-    eval(readUtf8(modulePath));
+const projectionModule = { exports: {} };
+const projectionSource = fs.readFileSync(modulePath, "utf8");
+const loadProjection = new Function(
+    "module",
+    "exports",
+    "globalThis",
+    `${projectionSource}
+return module.exports;`);
+const exportedApi = loadProjection(
+    projectionModule,
+    projectionModule.exports,
+    globalThis);
+const api = exportedApi && Object.keys(exportedApi).length
+    ? exportedApi
+    : globalThis.LegendExpenseLensProjection;
 
-    const api = module.exports && Object.keys(module.exports).length
-        ? module.exports
-        : globalObj.LegendExpenseLensProjection;
-    if (!api) {
-        throw new Error('LegendExpenseLensProjection did not load.');
-    }
-
-    let result;
-    if (functionName === 'projectExpenseLensTimeline') {
-        result = api.projectExpenseLensTimeline(payload);
-    } else if (functionName === 'normalizeState') {
-        result = api.normalizeState(payload);
-    } else if (functionName === 'getScheduledOccurrenceDays') {
-        result = api.getScheduledOccurrenceDays(payload.anchorDate, payload.frequency, payload.options || {})
-            .map(formatLocalDate);
-    } else if (functionName === 'summarizeExpenseCategories') {
-        result = api.summarizeExpenseCategories(payload.state || {}, payload.options || {});
-    } else {
-        throw new Error('Unsupported function: ' + functionName);
-    }
-
-    return JSON.stringify(result);
+if (!api) {
+    throw new Error("LegendExpenseLensProjection did not load.");
 }
+
+let result;
+if (functionName === "projectExpenseLensTimeline") {
+    result = api.projectExpenseLensTimeline(payload);
+} else if (functionName === "normalizeState") {
+    result = api.normalizeState(payload);
+} else if (functionName === "getScheduledOccurrenceDays") {
+    result = api.getScheduledOccurrenceDays(
+        payload.anchorDate,
+        payload.frequency,
+        payload.options || {})
+        .map(formatLocalDate);
+} else if (functionName === "summarizeExpenseCategories") {
+    result = api.summarizeExpenseCategories(
+        payload.state || {},
+        payload.options || {});
+} else {
+    throw new Error(`Unsupported function: ${functionName}`);
+}
+
+process.stdout.write(JSON.stringify(result));
 """;
 
     private static string RepoRoot => ResolveRepoRoot();
@@ -114,14 +117,12 @@ function run(argv) {
 
         try
         {
-            var psi = new ProcessStartInfo("/usr/bin/osascript")
+            var psi = new ProcessStartInfo("node")
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-            psi.ArgumentList.Add("-l");
-            psi.ArgumentList.Add("JavaScript");
             psi.ArgumentList.Add(tempScriptPath);
             psi.ArgumentList.Add(functionName);
             psi.ArgumentList.Add(ProjectionModulePath);
@@ -136,7 +137,7 @@ function run(argv) {
 
             Assert.True(
                 process.ExitCode == 0,
-                $"/usr/bin/osascript failed for {functionName}.{Environment.NewLine}STDERR:{Environment.NewLine}{stderr}{Environment.NewLine}STDOUT:{Environment.NewLine}{stdout}");
+                $"node failed for {functionName}.{Environment.NewLine}STDERR:{Environment.NewLine}{stderr}{Environment.NewLine}STDOUT:{Environment.NewLine}{stdout}");
 
             return JsonDocument.Parse(stdout.Trim());
         }

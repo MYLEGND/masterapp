@@ -126,7 +126,12 @@ public sealed class SocialMediaStorageTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Social:Media:BlobContainerUrl"] = "https://legendmedia.blob.core.windows.net/legend-social-media",
+                ["Social:Media:StorageConnectionString"] =
+                    "DefaultEndpointsProtocol=https;" +
+                    "AccountName=legendmedia;" +
+                    "AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;" +
+                    "EndpointSuffix=core.windows.net",
+                ["Social:Media:ContainerName"] = "legend-social-media",
                 ["Social:Media:MaximumBytes"] = "104857600"
             })
             .Build();
