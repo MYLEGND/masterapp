@@ -3,6 +3,7 @@
     var canSetFounderSubscriptionOptions = ViewData["CanSetFounderSubscriptionOptions"] is bool founderOptions && founderOptions;
     var customMinimum = canSetFounderSubscriptionOptions ? "0" : "50";
     var customAmountPlaceholder = canSetFounderSubscriptionOptions ? "0.00" : "50.00";
+    var createForm = ClientCreationFormDefinition.Create(Model, canSetFounderSubscriptionOptions);
 }
 
 @{
@@ -86,18 +87,13 @@
                         <p class="client-create-section-copy">Choose the workspace type first so required fields and downstream portal behavior stay aligned.</p>
                     </div>
                     <div class="client-create-record-types">
-                        <label class="client-create-record-option">
-                            <input asp-for="RecordType" type="radio" value="Lead" />
-                            <span>Lead</span>
-                        </label>
-                        <label class="client-create-record-option">
-                            <input asp-for="RecordType" type="radio" value="Client" />
-                            <span>Client</span>
-                        </label>
-                        <label class="client-create-record-option">
-                            <input asp-for="RecordType" type="radio" value="BusinessClient" />
-                            <span>Business Client</span>
-                        </label>
+                        @foreach (var option in createForm.Field("RecordType").Options)
+                        {
+                            <label class="client-create-record-option">
+                                <input asp-for="RecordType" type="radio" value="@option.Value" />
+                                <span>@option.Label</span>
+                            </label>
+                        }
                     </div>
                     <span asp-validation-for="RecordType" class="text-danger client-create-validation"></span>
                 </div>
@@ -108,14 +104,13 @@
                         <p class="client-create-section-copy">Required for Client and Business Client records. The client can change this later from their profile.</p>
                     </div>
                     <div class="client-create-record-types">
-                        <label class="client-create-record-option">
-                            <input asp-for="AccountManagementMode" type="radio" value="SharedAccount" />
-                            <span>Shared Account</span>
-                        </label>
-                        <label class="client-create-record-option">
-                            <input asp-for="AccountManagementMode" type="radio" value="SelfManaged" />
-                            <span>Self Managed</span>
-                        </label>
+                        @foreach (var option in createForm.Field("AccountManagementMode").Options)
+                        {
+                            <label class="client-create-record-option">
+                                <input asp-for="AccountManagementMode" type="radio" value="@option.Value" />
+                                <span>@option.Label</span>
+                            </label>
+                        }
                     </div>
                     <p class="client-create-section-copy">Shared Account lets you work from their client workspace. Self Managed keeps that workspace private until the client chooses to share it.</p>
                     <span asp-validation-for="AccountManagementMode" class="text-danger client-create-validation"></span>
@@ -160,12 +155,10 @@
                     <div>
                         <label asp-for="MaritalStatus" class="client-create-label">Marital Status</label>
                         <select asp-for="MaritalStatus" class="client-create-input" id="MaritalStatus">
-                            <option value=""></option>
-                            <option>Single</option>
-                            <option>Married</option>
-                            <option>Domestic Partnership</option>
-                            <option>Divorced</option>
-                            <option>Widowed</option>
+                            @foreach (var option in createForm.Field("MaritalStatus").Options)
+                            {
+                                <option value="@option.Value">@option.Label</option>
+                            }
                         </select>
                         <span asp-validation-for="MaritalStatus" class="text-danger client-create-validation"></span>
                     </div>
@@ -226,12 +219,10 @@
                                     class="client-create-input"
                                     id="SubscriptionPriceType"
                                     data-client-required>
-                                <option value="">Select a subscription</option>
-                                <option value="Fixed50">$50 / month</option>
-                                <option value="Fixed75">$75 / month</option>
-                                <option value="Fixed100">$100 / month</option>
-                                <option value="Fixed150">$150 / month</option>
-                                <option value="Custom">Custom</option>
+                                @foreach (var option in createForm.Field("SubscriptionPriceType").Options)
+                                {
+                                    <option value="@option.Value">@option.Label</option>
+                                }
                             </select>
                             <span asp-validation-for="SubscriptionPriceType" class="text-danger client-create-validation"></span>
                         </div>
@@ -245,11 +236,9 @@
                         <div>
                             <label class="client-create-label" asp-for="SubscriptionBillingAnchorMode">Billing Anchor</label>
                             <select asp-for="SubscriptionBillingAnchorMode" class="client-create-input" id="SubscriptionBillingAnchorMode">
-                                <option value="FirstOfMonth">1st of month</option>
-                                <option value="FifteenthOfMonth">15th of month</option>
-                                @if (canSetFounderSubscriptionOptions)
+                                @foreach (var option in createForm.Field("SubscriptionBillingAnchorMode").Options)
                                 {
-                                    <option value="SpecificDayOfMonth">Agent-selected day</option>
+                                    <option value="@option.Value">@option.Label</option>
                                 }
                             </select>
                             <span asp-validation-for="SubscriptionBillingAnchorMode" class="text-danger client-create-validation"></span>
@@ -284,38 +273,30 @@
                         <div>
                             <label class="client-create-label" for="CrmStatus">CRM Status</label>
                             <select asp-for="CrmStatus" class="client-create-input" id="CrmStatus">
-                                <option value="Lead">Lead</option>
-                                <option value="Prospect">Prospect</option>
-                                <option value="Active">Active Client</option>
-                                <option value="Dormant">Inactive</option>
+                                @foreach (var option in createForm.Field("CrmStatus").Options)
+                                {
+                                    <option value="@option.Value">@option.Label</option>
+                                }
                             </select>
                         </div>
 
                         <div>
                             <label class="client-create-label" for="PipelineStage">Pipeline Stage</label>
                             <select asp-for="PipelineStage" class="client-create-input" id="PipelineStage">
-                                <option value="NewLead">Lead</option>
-                                <option value="Opportunities">Opportunities</option>
-                                <option value="Contacted">Contacted</option>
-                                <option value="Qualified">Qualified</option>
-                                <option value="Client">Clients</option>
-                                <option value="BusinessClient">Business Clients</option>
-                                <option value="MeetingScheduled">Meeting Scheduled</option>
-                                <option value="ProposalSent">Proposal Sent</option>
-                                <option value="ApplicationStarted">Application Started</option>
-                                <option value="Submitted">Submitted</option>
-                                <option value="ClosedLost">Not Moving Forward</option>
-                                <option value="Nurture">Nurture</option>
+                                @foreach (var option in createForm.Field("PipelineStage").Options)
+                                {
+                                    <option value="@option.Value">@option.Label</option>
+                                }
                             </select>
                         </div>
 
                         <div>
                             <label class="client-create-label" for="CrmPriority">Priority</label>
                             <select asp-for="CrmPriority" class="client-create-input" id="CrmPriority">
-                                <option value="Low">Low</option>
-                                <option value="Normal">Normal</option>
-                                <option value="High">High</option>
-                                <option value="Urgent">Urgent</option>
+                                @foreach (var option in createForm.Field("CrmPriority").Options)
+                                {
+                                    <option value="@option.Value">@option.Label</option>
+                                }
                             </select>
                         </div>
 

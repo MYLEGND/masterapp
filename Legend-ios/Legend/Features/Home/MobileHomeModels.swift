@@ -765,6 +765,81 @@ struct MobileAgentLeadSummary: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// AgentPortal owns this contract and returns it every time an agent opens the
+/// native Add Client sheet. SwiftUI renders the fields rather than carrying a
+/// parallel copy of the web form's field list or choice lists.
+struct MobileClientCreationForm: Codable, Equatable, Sendable {
+    let title: String
+    let detail: String
+    let sections: [MobileClientCreationFormSection]
+    let actions: [MobileClientCreationFormAction]
+}
+
+struct MobileClientCreationFormSection: Codable, Equatable, Identifiable, Sendable {
+    let key: String
+    let title: String
+    let detail: String
+    let visibleWhen: [MobileClientCreationFieldCondition]
+    let fields: [MobileClientCreationFormField]
+
+    var id: String { key }
+}
+
+struct MobileClientCreationFormField: Codable, Equatable, Identifiable, Sendable {
+    let key: String
+    let label: String
+    let inputKind: String
+    let defaultValue: String
+    let required: Bool
+    let options: [MobileClientCreationFormOption]
+    let visibleWhen: [MobileClientCreationFieldCondition]
+    let requiredWhen: [MobileClientCreationFieldCondition]
+    let valueRules: [MobileClientCreationValueRule]
+    let placeholder: String?
+    let autocomplete: String?
+    let minimum: Decimal?
+    let maximum: Decimal?
+    let step: Decimal?
+    let helpText: String?
+
+    var id: String { key }
+}
+
+struct MobileClientCreationFormOption: Codable, Equatable, Identifiable, Sendable {
+    let value: String
+    let label: String
+
+    var id: String { value }
+}
+
+struct MobileClientCreationFieldCondition: Codable, Equatable, Sendable {
+    let field: String
+    let equalsAny: [String]
+}
+
+struct MobileClientCreationValueRule: Codable, Equatable, Sendable {
+    let value: String
+    let conditions: [MobileClientCreationFieldCondition]
+}
+
+struct MobileClientCreationFormAction: Codable, Equatable, Identifiable, Sendable {
+    let key: String
+    let label: String
+    let field: String?
+    let value: String
+
+    var id: String { key }
+}
+
+struct MobileClientCreationRequest: Encodable, Sendable {
+    let fields: [String: String]
+}
+
+struct MobileClientCreationResult: Decodable, Equatable, Sendable {
+    let created: Bool
+    let message: String
+}
+
 struct MobileJourneyDashboardResponse: Codable, Equatable, Sendable {
     let profile: MobileJourneyProfile?
     let preferences: MobileJourneyPreferences?

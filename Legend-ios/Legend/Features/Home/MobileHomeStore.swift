@@ -64,6 +64,11 @@ extension MobileJourneyCirclesAPI {
 protocol MobileAgentWorkspaceAPI: Sendable {
     func clients(accessToken: String) async throws -> [MobileAgentClientSummary]
     func leads(accessToken: String) async throws -> [MobileAgentLeadSummary]
+    func clientCreationForm(accessToken: String) async throws -> MobileClientCreationForm
+    func createClient(
+        _ request: MobileClientCreationRequest,
+        accessToken: String
+    ) async throws -> MobileClientCreationResult
 }
 
 struct MobileUnavailableHomeAPI: MobileHomeAPI {
@@ -102,6 +107,17 @@ struct MobileUnavailableAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
     }
 
     func leads(accessToken: String) async throws -> [MobileAgentLeadSummary] {
+        throw MobileAPIError.forbidden(correlationID: nil)
+    }
+
+    func clientCreationForm(accessToken: String) async throws -> MobileClientCreationForm {
+        throw MobileAPIError.forbidden(correlationID: nil)
+    }
+
+    func createClient(
+        _ request: MobileClientCreationRequest,
+        accessToken: String
+    ) async throws -> MobileClientCreationResult {
         throw MobileAPIError.forbidden(correlationID: nil)
     }
 }
@@ -233,6 +249,27 @@ struct URLSessionMobileAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
             accessToken: accessToken,
             headers: participantHeader,
             response: [MobileAgentLeadSummary].self)
+    }
+
+    func clientCreationForm(accessToken: String) async throws -> MobileClientCreationForm {
+        try await client.get(
+            "/api/v1/mobile/agent/clients/create-form",
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: MobileClientCreationForm.self)
+    }
+
+    func createClient(
+        _ request: MobileClientCreationRequest,
+        accessToken: String
+    ) async throws -> MobileClientCreationResult {
+        try await client.post(
+            "/api/v1/mobile/agent/clients",
+            body: request,
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader,
+            response: MobileClientCreationResult.self)
     }
 }
 
@@ -794,6 +831,20 @@ final class MobileAgentWorkspaceStore: ObservableObject {
 
     func refreshLeads() async -> MobileStoreLoadResult {
         await requestLeads(preservingCachedValue: hasLeads)
+    }
+
+    func clientCreationForm() async throws -> MobileClientCreationForm {
+        let accessToken = try await accessTokenProvider()
+        return try await api.clientCreationForm(accessToken: accessToken)
+    }
+
+    func createClient(
+        fields: [String: String]
+    ) async throws -> MobileClientCreationResult {
+        let accessToken = try await accessTokenProvider()
+        return try await api.createClient(
+            MobileClientCreationRequest(fields: fields),
+            accessToken: accessToken)
     }
 
     private var hasClients: Bool {
