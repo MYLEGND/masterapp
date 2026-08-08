@@ -5,6 +5,7 @@ using Domain.JourneyCircles;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Infrastructure.DailyScripture;
+using Infrastructure.Households;
 using DailyScriptureRecord = Infrastructure.DailyScripture.DailyScripture;
 using Microsoft.EntityFrameworkCore;
 using Shared.Finance;
@@ -34,6 +35,7 @@ public sealed class MobileHomeService : IMobileHomeService
     private readonly IJourneyCirclesService _journeyCircles;
     private readonly IFinancialIntelligenceEvaluationService _financialIntelligence;
     private readonly IMobileFinancialOperatingSystemProjectionService _financialOperatingSystem;
+    private readonly IHouseholdMembershipService _households;
     private readonly IDailyScriptureService _dailyScripture;
 
     public MobileHomeService(
@@ -42,6 +44,7 @@ public sealed class MobileHomeService : IMobileHomeService
         IJourneyCirclesService journeyCircles,
         IFinancialIntelligenceEvaluationService financialIntelligence,
         IMobileFinancialOperatingSystemProjectionService financialOperatingSystem,
+        IHouseholdMembershipService households,
         IDailyScriptureService dailyScripture)
     {
         _db = db;
@@ -49,6 +52,7 @@ public sealed class MobileHomeService : IMobileHomeService
         _journeyCircles = journeyCircles;
         _financialIntelligence = financialIntelligence;
         _financialOperatingSystem = financialOperatingSystem;
+        _households = households;
         _dailyScripture = dailyScripture;
     }
 
@@ -105,39 +109,32 @@ public sealed class MobileHomeService : IMobileHomeService
         MobileResolvedActor actor,
         CancellationToken cancellationToken)
     {
+        var financialScope = await _households.ResolveActiveAccessAsync(
+            actor.ProfileId,
+            cancellationToken);
+        if (!financialScope.HasActiveMembership ||
+            !financialScope.HouseholdAccountId.HasValue ||
+            !financialScope.SubscriptionOwnerClientProfileId.HasValue)
+        {
+            return MobileFinancialResult.Unavailable(
+                "MOBILE_FINANCIAL_HOUSEHOLD_ACCESS_REQUIRED",
+                "Financial Health Snapshot is available through your active household account.");
+        }
 
         var persistedState = await _db.FinanceToolStates
             .AsNoTracking()
             .Where(state =>
-                state.ClientProfileId == actor.ProfileId &&
+                state.HouseholdAccountId == financialScope.HouseholdAccountId.Value &&
                 state.ToolId == LegendLivingBalanceSheetConstants.ToolId)
-            .OrderByDescending(state => state.UpdatedUtc)
             .Select(state => new MobilePersistedFinanceState(state.JsonState, state.UpdatedUtc))
             .FirstOrDefaultAsync(cancellationToken);
 
-        MobileFinancialPosition? position = null;
-        if (persistedState is not null)
-        {
-            var normalizedJson = LegendLivingBalanceSheetCalculator.NormalizeJson(persistedState.JsonState, actor.ProfileId);
-            var state = System.Text.Json.JsonSerializer.Deserialize<LegendLivingBalanceSheetState>(
-                normalizedJson,
-                new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-            state = LegendLivingBalanceSheetCalculator.Calculate(state);
-            position = new MobileFinancialPosition(
-                state.Summary.HealthScore,
-                state.Summary.AssetsTotal,
-                state.Summary.LiabilitiesTotal,
-                state.Summary.NetWorth,
-                state.CashFlow.Earnings,
-                state.CashFlow.LifestyleRemaining,
-                state.Summary.Taxes,
-                state.Summary.ProtectionGapTotal,
-                state.Summary.PositionStatus,
-                state.Summary.PositionSummary,
-                state.Summary.EstatePlanningStatus,
-                state.Summary.EstatePlanningRiskLevel,
-                persistedState.UpdatedUtc);
-        }
+        var healthProjection = persistedState is null
+            ? null
+            : TryProjectFinancialHealth(
+                persistedState,
+                financialScope.SubscriptionOwnerClientProfileId.Value);
+        var position = healthProjection?.Position;
 
         var intelligence = await _financialIntelligence.GetSnapshotAsync(
             new FinancialIntelligenceActor(
@@ -203,7 +200,8 @@ public sealed class MobileHomeService : IMobileHomeService
             intelligenceSummary,
             upcomingBills,
             operatingSystem,
-            presentation));
+            presentation,
+            healthProjection?.HealthSnapshot));
     }
 
     private async Task<MobileFinancialResult> GetAgentFinancialAsync(
@@ -222,32 +220,10 @@ public sealed class MobileHomeService : IMobileHomeService
                 state.UpdatedUtc))
             .FirstOrDefaultAsync(cancellationToken);
 
-        MobileFinancialPosition? position = null;
-        if (persistedState is not null)
-        {
-            var normalizedJson = LegendLivingBalanceSheetCalculator.NormalizeJson(
-                persistedState.JsonState);
-            var state = System.Text.Json.JsonSerializer.Deserialize<
-                LegendLivingBalanceSheetState>(
-                normalizedJson,
-                new System.Text.Json.JsonSerializerOptions(
-                    System.Text.Json.JsonSerializerDefaults.Web));
-            state = LegendLivingBalanceSheetCalculator.Calculate(state);
-            position = new MobileFinancialPosition(
-                state.Summary.HealthScore,
-                state.Summary.AssetsTotal,
-                state.Summary.LiabilitiesTotal,
-                state.Summary.NetWorth,
-                state.CashFlow.Earnings,
-                state.CashFlow.LifestyleRemaining,
-                state.Summary.Taxes,
-                state.Summary.ProtectionGapTotal,
-                state.Summary.PositionStatus,
-                state.Summary.PositionSummary,
-                state.Summary.EstatePlanningStatus,
-                state.Summary.EstatePlanningRiskLevel,
-                persistedState.UpdatedUtc);
-        }
+        var healthProjection = persistedState is null
+            ? null
+            : TryProjectFinancialHealth(persistedState, clientProfileId: null);
+        var position = healthProjection?.Position;
 
         var operatingSystem = await _financialOperatingSystem.ProjectAgentAsync(
             actor.Actor.UserId,
@@ -267,7 +243,64 @@ public sealed class MobileHomeService : IMobileHomeService
             Intelligence: null,
             UpcomingBills: Array.Empty<MobileUpcomingBill>(),
             OperatingSystem: operatingSystem,
-            Presentation: presentation));
+            Presentation: presentation,
+            HealthSnapshot: healthProjection?.HealthSnapshot));
+    }
+
+    /// <summary>
+    /// Rejects missing, malformed, or non-object persisted state instead of
+    /// presenting a fabricated empty balance sheet. Valid state is normalized
+    /// and calculated only by the established shared calculator.
+    /// </summary>
+    private static MobileFinancialHealthProjection? TryProjectFinancialHealth(
+        MobilePersistedFinanceState persistedState,
+        Guid? clientProfileId)
+    {
+        if (string.IsNullOrWhiteSpace(persistedState.JsonState))
+            return null;
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(
+                persistedState.JsonState);
+            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return null;
+
+            var normalizedJson = LegendLivingBalanceSheetCalculator.NormalizeJson(
+                persistedState.JsonState,
+                clientProfileId);
+            var state = System.Text.Json.JsonSerializer.Deserialize<
+                LegendLivingBalanceSheetState>(
+                normalizedJson,
+                new System.Text.Json.JsonSerializerOptions(
+                    System.Text.Json.JsonSerializerDefaults.Web));
+            if (state is null)
+                return null;
+
+            state = LegendLivingBalanceSheetCalculator.Calculate(state);
+            return new MobileFinancialHealthProjection(
+                new MobileFinancialPosition(
+                    state.Summary.HealthScore,
+                    state.Summary.AssetsTotal,
+                    state.Summary.LiabilitiesTotal,
+                    state.Summary.NetWorth,
+                    state.CashFlow.Earnings,
+                    state.CashFlow.LifestyleRemaining,
+                    state.Summary.Taxes,
+                    state.Summary.ProtectionGapTotal,
+                    state.Summary.PositionStatus,
+                    state.Summary.PositionSummary,
+                    state.Summary.EstatePlanningStatus,
+                    state.Summary.EstatePlanningRiskLevel,
+                    persistedState.UpdatedUtc),
+                MobileFinancialHealthSnapshotProjection.Create(
+                    state,
+                    persistedState.UpdatedUtc));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
     }
 
     private async Task<MobileFinancialAssignedAgentContext>
@@ -514,6 +547,10 @@ public sealed class MobileHomeService : IMobileHomeService
 
     private sealed record MobilePersistedFinanceState(string JsonState, DateTime UpdatedUtc);
 
+    private sealed record MobileFinancialHealthProjection(
+        MobileFinancialPosition Position,
+        MobileFinancialHealthSnapshot HealthSnapshot);
+
     private sealed record MobileAgentClientProfileRow(
         Guid Id,
         string ClientUserId,
@@ -590,7 +627,8 @@ public sealed record MobileFinancialSnapshot(
     MobileFinancialIntelligenceSummary? Intelligence,
     IReadOnlyList<MobileUpcomingBill> UpcomingBills,
     MobileFinancialOperatingSystemSnapshot? OperatingSystem = null,
-    MobileFinancialPresentation? Presentation = null);
+    MobileFinancialPresentation? Presentation = null,
+    MobileFinancialHealthSnapshot? HealthSnapshot = null);
 public sealed record MobileFinancialPosition(int HealthScore, decimal AssetsTotal, decimal LiabilitiesTotal, decimal NetWorth, decimal AnnualEarnings, decimal AnnualLifestyleRemaining, decimal AnnualTaxes, decimal ProtectionGapTotal, string PositionStatus, string PositionSummary, string EstatePlanningStatus, string EstatePlanningRiskLevel, DateTime UpdatedUtc);
 public sealed record MobileFinancialIntelligenceSummary(string Status, decimal DataCompletenessScore, string CurrentRiskSummary, string CurrentOpportunitySummary, string CurrentLeakageSummary, DateTime? LastEvaluatedUtc, IReadOnlyList<MobileFinancialFinding> Findings);
 public sealed record MobileFinancialFinding(Guid Id, string Category, string Title, string Explanation, decimal? EstimatedImpact, string? ImpactUnit, string Urgency, string Status, DateTime LastDetectedUtc);

@@ -489,6 +489,14 @@ final class MobileFinancialStore: ObservableObject {
     private func classify(
         _ snapshot: MobileFinancialSnapshotResponse
     ) -> MobileFinancialLoadState {
+        // Financial Health Snapshot and Expense Lens are independent existing
+        // capabilities. A complete synchronized health snapshot remains
+        // available even when Expense Lens has not been saved yet.
+        if let healthSnapshot = snapshot.healthSnapshot,
+           !healthSnapshot.sections.isEmpty {
+            return .available(snapshot)
+        }
+
         guard let operatingSystem = snapshot.operatingSystem else {
             return .projectionUnavailable(
                 snapshot,

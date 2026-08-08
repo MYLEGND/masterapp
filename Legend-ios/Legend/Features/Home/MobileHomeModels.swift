@@ -112,6 +112,92 @@ struct MobileFinancialSnapshotResponse: Codable, Equatable, Sendable {
     let upcomingBills: [MobileUpcomingBill]
     let operatingSystem: MobileFinancialOperatingSystemSnapshotResponse?
     var presentation: MobileFinancialPresentationResponse? = nil
+    var healthSnapshot: MobileFinancialHealthSnapshotResponse? = nil
+}
+
+/// Read-only representation of the server-authoritative Financial Health
+/// Snapshot. It carries calculated section rows and totals for native display;
+/// the app never derives balances from these values.
+struct MobileFinancialHealthSnapshotResponse: Codable, Equatable, Sendable {
+    let updatedUTC: Date
+    let sections: [MobileFinancialHealthSectionResponse]
+
+    private enum CodingKeys: String, CodingKey {
+        case sections
+        case updatedUTC = "updatedUtc"
+    }
+
+    func section(
+        for destination: MobileFinancialDetailDestination
+    ) -> MobileFinancialHealthSectionResponse? {
+        guard let key = destination.healthSectionKey else { return nil }
+        return sections.first { $0.key == key }
+    }
+}
+
+struct MobileFinancialHealthSectionResponse:
+    Codable,
+    Equatable,
+    Identifiable,
+    Sendable
+{
+    let key: String
+    let title: String
+    let semantic: String
+    let period: String?
+    let groups: [MobileFinancialHealthGroupResponse]
+    let total: MobileFinancialHealthMetricResponse?
+
+    var id: String { key }
+}
+
+struct MobileFinancialHealthGroupResponse:
+    Codable,
+    Equatable,
+    Identifiable,
+    Sendable
+{
+    let key: String
+    let title: String?
+    let metrics: [MobileFinancialHealthMetricResponse]
+
+    var id: String { key }
+}
+
+struct MobileFinancialHealthMetricResponse:
+    Codable,
+    Equatable,
+    Identifiable,
+    Sendable
+{
+    let key: String
+    let label: String
+    let valueType: String
+    let amountCents: Int64?
+    let numericValue: Decimal?
+    let textValue: String?
+    let status: String?
+
+    var id: String { key }
+
+    var displayValue: String {
+        switch valueType {
+        case "Currency":
+            guard let amountCents else { return "Not available" }
+            return MobileFinancialDisplay.currency(cents: amountCents)
+
+        case "Percentage":
+            guard let numericValue else { return "Not available" }
+            return numericValue.formatted(
+                .percent.precision(.fractionLength(0...2)))
+
+        default:
+            return textValue?.trimmingCharacters(
+                in: .whitespacesAndNewlines).isEmpty == false
+                ? textValue!
+                : "Not available"
+        }
+    }
 }
 
 struct MobileFinancialPresentationResponse: Codable, Equatable, Sendable {
@@ -192,6 +278,11 @@ enum MobileFinancialSemantic: String, Codable, Equatable, Sendable {
 /// Maps the server-authoritative financial section key to the one native
 /// detail destination that renders its complete read-only breakdown.
 enum MobileFinancialDetailDestination: String, Hashable, Identifiable, Sendable {
+    case assets
+    case liabilities
+    case cashFlow = "cash-flow"
+    case protection
+    case taxProfile = "tax-profile"
     case currentOutlook = "current-outlook"
     case monthlyOutlook = "monthly-outlook"
     case debtObligations = "debt-obligations"
@@ -204,6 +295,16 @@ enum MobileFinancialDetailDestination: String, Hashable, Identifiable, Sendable 
 
     var title: String {
         switch self {
+        case .assets:
+            return "Assets"
+        case .liabilities:
+            return "Liabilities"
+        case .cashFlow:
+            return "Cash Flow"
+        case .protection:
+            return "Protection"
+        case .taxProfile:
+            return "Tax Profile"
         case .currentOutlook:
             return "Current Outlook"
         case .monthlyOutlook:
@@ -218,6 +319,21 @@ enum MobileFinancialDetailDestination: String, Hashable, Identifiable, Sendable 
             return "Protection Discussion"
         case .dataAttention:
             return "Data Needing Attention"
+        }
+    }
+
+    var healthSectionKey: String? {
+        switch self {
+        case .assets, .liabilities, .cashFlow, .protection, .taxProfile:
+            return rawValue
+        case .currentOutlook,
+                .monthlyOutlook,
+                .debtObligations,
+                .financialPosition,
+                .upcomingActivity,
+                .protectionDiscussion,
+                .dataAttention:
+            return nil
         }
     }
 }

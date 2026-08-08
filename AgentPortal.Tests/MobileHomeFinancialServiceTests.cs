@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
@@ -6,6 +7,7 @@ using Domain.FinancialIntelligence;
 using Domain.JourneyCircles;
 using Domain.Messaging;
 using Infrastructure.Mobile;
+using Infrastructure.Households;
 using Moq;
 using Xunit;
 
@@ -59,6 +61,7 @@ public sealed class MobileHomeFinancialServiceTests
             journey.Object,
             financialIntelligence.Object,
             financialOperatingSystem.Object,
+            new Mock<IHouseholdMembershipService>().Object,
             new Infrastructure.DailyScripture.DailyScriptureService(
                 db,
                 new Infrastructure.DailyScripture.DailyScriptureOptions()));
@@ -221,9 +224,143 @@ public sealed class MobileHomeFinancialServiceTests
         Assert.False(presentation.AssignedAgent.HasAssignedAgent);
         Assert.Equal(40000m, snapshot.Position?.NetWorth);
         Assert.Equal(120000m, snapshot.Position?.AnnualEarnings);
+        var health = Assert.IsType<MobileFinancialHealthSnapshot>(snapshot.HealthSnapshot);
+        Assert.Equal(
+            ["assets", "liabilities", "cash-flow", "protection", "tax-profile"],
+            health.Sections.Select(section => section.Key));
         Assert.Contains(
             presentation.PrioritySections,
             section => section.Key == "current-outlook");
+    }
+
+    [Fact]
+    public async Task GetFinancialAsync_ClientUsesTheActiveHouseholdsAuthoritativeBalanceSheet()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var householdId = Guid.NewGuid();
+        var owner = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "household-owner-oid",
+            FirstName = "Owner",
+            LastName = "Client",
+            Email = "owner@example.test"
+        };
+        var member = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "household-member-oid",
+            FirstName = "Member",
+            LastName = "Client",
+            Email = "member@example.test"
+        };
+        db.AddRange(owner, member);
+        db.FinanceToolStates.AddRange(
+            new FinanceToolState
+            {
+                HouseholdAccountId = householdId,
+                ClientProfileId = owner.Id,
+                ToolId = "LegendLivingBalanceSheet",
+                UpdatedUtc = new DateTime(2026, 8, 8, 12, 0, 0, DateTimeKind.Utc),
+                JsonState =
+                    """
+                    {
+                      "assets": { "personalProperty": 1250.50, "savings": 9900.25 },
+                      "liabilities": { "shortTerm": 4100, "mortgages": 200000 },
+                      "cashFlow": {
+                        "earnings": 150000,
+                        "insuranceCosts": 6000,
+                        "annualSavings": 18000,
+                        "debtObligations": 12000
+                      },
+                      "taxProfile": { "useCustomTaxOverride": true, "manualTaxAmount": 32000 }
+                    }
+                    """
+            },
+            new FinanceToolState
+            {
+                HouseholdAccountId = Guid.NewGuid(),
+                ClientProfileId = member.Id,
+                ToolId = "LegendLivingBalanceSheet",
+                JsonState = """{ "assets": { "savings": 1 } }"""
+            });
+        await db.SaveChangesAsync();
+
+        var households = new Mock<IHouseholdMembershipService>(MockBehavior.Strict);
+        households
+            .Setup(service => service.ResolveActiveAccessAsync(
+                member.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HouseholdAccessResolution(
+                true,
+                householdId,
+                owner.Id,
+                null,
+                null));
+        var service = CreateService(db, OperatingSystem(), households.Object);
+
+        var result = await service.GetFinancialAsync(new MobileResolvedActor(
+            new MessagingActor(member.ClientUserId, MessagingParticipantTypes.Client),
+            member.Id,
+            "Member Client"));
+
+        var snapshot = Assert.IsType<MobileFinancialSnapshot>(result.Snapshot);
+        var health = Assert.IsType<MobileFinancialHealthSnapshot>(snapshot.HealthSnapshot);
+        var assets = Assert.Single(health.Sections, section => section.Key == "assets");
+        var savings = Assert.Single(Assert.Single(assets.Groups).Metrics,
+            metric => metric.Key == "savings");
+
+        Assert.Equal(990_025, savings.AmountCents);
+        Assert.Equal(236_100m, snapshot.Position?.LiabilitiesTotal);
+        Assert.Equal("Annual", Assert.Single(health.Sections,
+            section => section.Key == "cash-flow").Period);
+        households.VerifyAll();
+    }
+
+    [Fact]
+    public async Task GetFinancialAsync_ClientDoesNotReadAStateOutsideItsResolvedHousehold()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var member = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "isolated-member-oid",
+            FirstName = "Isolated",
+            LastName = "Member",
+            Email = "isolated@example.test"
+        };
+        db.ClientProfiles.Add(member);
+        db.FinanceToolStates.Add(new FinanceToolState
+        {
+            HouseholdAccountId = Guid.NewGuid(),
+            ClientProfileId = Guid.NewGuid(),
+            ToolId = "LegendLivingBalanceSheet",
+            JsonState = """{ "assets": { "savings": 999999 } }"""
+        });
+        await db.SaveChangesAsync();
+
+        var households = new Mock<IHouseholdMembershipService>(MockBehavior.Strict);
+        households
+            .Setup(service => service.ResolveActiveAccessAsync(
+                member.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HouseholdAccessResolution(
+                true,
+                Guid.NewGuid(),
+                member.Id,
+                null,
+                null));
+        var service = CreateService(db, OperatingSystem(), households.Object);
+
+        var result = await service.GetFinancialAsync(new MobileResolvedActor(
+            new MessagingActor(member.ClientUserId, MessagingParticipantTypes.Client),
+            member.Id,
+            "Isolated Member"));
+
+        var snapshot = Assert.IsType<MobileFinancialSnapshot>(result.Snapshot);
+        Assert.Null(snapshot.Position);
+        Assert.Null(snapshot.HealthSnapshot);
+        households.VerifyAll();
     }
 
     private static JourneyCircleDashboard EmptyJourneyDashboard() => new(
@@ -243,7 +380,8 @@ public sealed class MobileHomeFinancialServiceTests
 
     private static MobileHomeService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
-        MobileFinancialOperatingSystemSnapshot operatingSystem)
+        MobileFinancialOperatingSystemSnapshot operatingSystem,
+        IHouseholdMembershipService? households = null)
     {
         var financialIntelligence = new Mock<IFinancialIntelligenceEvaluationService>(MockBehavior.Strict);
         financialIntelligence
@@ -263,13 +401,32 @@ public sealed class MobileHomeFinancialServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(operatingSystem);
 
+        households ??= DefaultHouseholdAccess();
+
         return new MobileHomeService(
             db,
             new Mock<IMessagingService>().Object,
             new Mock<IJourneyCirclesService>().Object,
             financialIntelligence.Object,
             operatingSystemService.Object,
+            households,
             new Mock<Infrastructure.DailyScripture.IDailyScriptureService>().Object);
+    }
+
+    private static IHouseholdMembershipService DefaultHouseholdAccess()
+    {
+        var households = new Mock<IHouseholdMembershipService>(MockBehavior.Strict);
+        households
+            .Setup(service => service.ResolveActiveAccessAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HouseholdAccessResolution(
+                true,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                null,
+                null));
+        return households.Object;
     }
 
     private static MobileFinancialOperatingSystemSnapshot OperatingSystem() =>

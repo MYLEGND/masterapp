@@ -812,6 +812,74 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(detail, "Save Expense Lens to begin.")
     }
 
+    func testFinancialStoreKeepsSavedHealthSnapshotAvailableWhenExpenseLensIsNotSaved() async throws {
+        let healthSnapshot = MobileFinancialHealthSnapshotResponse(
+            updatedUTC: .now,
+            sections: [
+                MobileFinancialHealthSectionResponse(
+                    key: "assets",
+                    title: "Assets",
+                    semantic: "assets",
+                    period: nil,
+                    groups: [
+                        MobileFinancialHealthGroupResponse(
+                            key: "asset-components",
+                            title: nil,
+                            metrics: [
+                                MobileFinancialHealthMetricResponse(
+                                    key: "savings",
+                                    label: "Savings",
+                                    valueType: "Currency",
+                                    amountCents: 990_025,
+                                    numericValue: nil,
+                                    textValue: nil,
+                                    status: nil)
+                            ])
+                    ],
+                    total: MobileFinancialHealthMetricResponse(
+                        key: "total-assets",
+                        label: "Total Assets",
+                        valueType: "Currency",
+                        amountCents: 990_025,
+                        numericValue: nil,
+                        textValue: nil,
+                        status: nil))
+            ])
+        let snapshot = MobileFinancialSnapshotResponse(
+            position: nil,
+            intelligence: nil,
+            upcomingBills: [],
+            operatingSystem: MobileFinancialOperatingSystemSnapshotResponse(
+                projection: MobileFinancialProjectionStatusResponse(
+                    status: "Unavailable",
+                    reasonCode: "EXPENSE_LENS_STATE_NOT_FOUND",
+                    summary: "Save Expense Lens to begin."),
+                freshness: MobileFinancialDataFreshnessResponse(
+                    financeStateUpdatedUTC: nil,
+                    intelligenceEvaluatedUTC: nil,
+                    generatedUTC: .now),
+                weekAtGlance: nil,
+                monthAtGlance: nil,
+                tools: []),
+            healthSnapshot: healthSnapshot)
+        let store = MobileFinancialStore(
+            api: StubMobileFinancialAPI(snapshot: snapshot),
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics())
+
+        store.load()
+        try await Task.sleep(for: .milliseconds(50))
+
+        guard case .available(let loaded) = store.state else {
+            return XCTFail("Expected the saved Financial Health Snapshot")
+        }
+
+        XCTAssertEqual(loaded.healthSnapshot?.sections.first?.total?.amountCents, 990_025)
+        XCTAssertEqual(
+            loaded.operatingSystem?.projection.reasonCode,
+            "EXPENSE_LENS_STATE_NOT_FOUND")
+    }
+
     func testDailyScriptureDecodesServerOwnedOverrideContentWithoutRewritingIt() throws {
         let data = Data("""
         {

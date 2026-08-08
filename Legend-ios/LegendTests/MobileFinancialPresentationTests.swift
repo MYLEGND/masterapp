@@ -94,6 +94,21 @@ final class MobileFinancialPresentationTests: XCTestCase {
 
     func testNavigationDestinationMappingHasOneSupportedDetailForEachServerSection() {
         XCTAssertEqual(
+            MobileFinancialDetailDestination(rawValue: "assets"),
+            .assets)
+        XCTAssertEqual(
+            MobileFinancialDetailDestination(rawValue: "liabilities"),
+            .liabilities)
+        XCTAssertEqual(
+            MobileFinancialDetailDestination(rawValue: "cash-flow"),
+            .cashFlow)
+        XCTAssertEqual(
+            MobileFinancialDetailDestination(rawValue: "protection"),
+            .protection)
+        XCTAssertEqual(
+            MobileFinancialDetailDestination(rawValue: "tax-profile"),
+            .taxProfile)
+        XCTAssertEqual(
             MobileFinancialDetailDestination(rawValue: "current-outlook"),
             .currentOutlook)
         XCTAssertEqual(
@@ -115,6 +130,109 @@ final class MobileFinancialPresentationTests: XCTestCase {
             MobileFinancialDetailDestination(rawValue: "data-attention"),
             .dataAttention)
         XCTAssertNil(MobileFinancialDetailDestination(rawValue: "unverified-section"))
+    }
+
+    func testHealthSnapshotDecodesServerRowsAndTotalsForNativeSectionDetail() throws {
+        let financial = try JSONDecoder.mobile.decode(
+            MobileFinancialSnapshotResponse.self,
+            from: Data("""
+            {
+              "position": null,
+              "intelligence": null,
+              "upcomingBills": [],
+              "operatingSystem": null,
+              "presentation": null,
+              "healthSnapshot": {
+                "updatedUtc": "2026-08-08T15:00:00Z",
+                "sections": [
+                  {
+                    "key": "assets",
+                    "title": "Assets",
+                    "semantic": "assets",
+                    "period": null,
+                    "groups": [
+                      {
+                        "key": "asset-components",
+                        "title": null,
+                        "metrics": [
+                          {
+                            "key": "personal-property",
+                            "label": "Personal Property",
+                            "valueType": "Currency",
+                            "amountCents": 125050,
+                            "numericValue": null,
+                            "textValue": null,
+                            "status": null
+                          },
+                          {
+                            "key": "savings",
+                            "label": "Savings",
+                            "valueType": "Currency",
+                            "amountCents": 990025,
+                            "numericValue": null,
+                            "textValue": null,
+                            "status": null
+                          }
+                        ]
+                      }
+                    ],
+                    "total": {
+                      "key": "total-assets",
+                      "label": "Total Assets",
+                      "valueType": "Currency",
+                      "amountCents": 1115075,
+                      "numericValue": null,
+                      "textValue": null,
+                      "status": null
+                    }
+                  },
+                  {
+                    "key": "protection",
+                    "title": "Protection",
+                    "semantic": "protection",
+                    "period": null,
+                    "groups": [
+                      {
+                        "key": "if-sick",
+                        "title": "If You Get Sick",
+                        "metrics": [
+                          {
+                            "key": "primary-status",
+                            "label": "Primary Status",
+                            "valueType": "Text",
+                            "amountCents": null,
+                            "numericValue": null,
+                            "textValue": "Partial",
+                            "status": "Partial"
+                          },
+                          {
+                            "key": "primary-gap",
+                            "label": "Primary Gap",
+                            "valueType": "Currency",
+                            "amountCents": 6000000,
+                            "numericValue": null,
+                            "textValue": null,
+                            "status": null
+                          }
+                        ]
+                      }
+                    ],
+                    "total": null
+                  }
+                ]
+              }
+            }
+            """.utf8))
+
+        let snapshot = try XCTUnwrap(financial.healthSnapshot)
+        let assets = try XCTUnwrap(snapshot.section(for: .assets))
+        XCTAssertEqual(assets.groups.first?.metrics.map(\.amountCents), [125050, 990025])
+        XCTAssertEqual(assets.total?.amountCents, 1115075)
+
+        let protection = try XCTUnwrap(snapshot.section(for: .protection))
+        XCTAssertEqual(protection.groups.first?.title, "If You Get Sick")
+        XCTAssertEqual(protection.groups.first?.metrics.first?.textValue, "Partial")
+        XCTAssertEqual(protection.groups.first?.metrics.last?.amountCents, 6000000)
     }
 
     func testDiscussionCopyUsesAssignedAgentOrNonAdvisoryReflection() {

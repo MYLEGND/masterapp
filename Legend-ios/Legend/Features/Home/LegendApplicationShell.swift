@@ -4036,8 +4036,11 @@ private struct LegendFinanceView: View {
 
                 if let position = financial.position {
                     financialHealth(position)
-                    positionMetrics(position)
-                } else {
+                }
+
+                if let healthSnapshot = financial.healthSnapshot {
+                    financialHealthSections(healthSnapshot)
+                } else if financial.position == nil {
                     LegendNextEmptyState(
                         title: "Financial snapshot incomplete",
                         message:
@@ -4374,6 +4377,23 @@ private struct LegendFinanceView: View {
                 }
 
                 switch destination {
+                case .assets,
+                        .liabilities,
+                        .cashFlow,
+                        .protection,
+                        .taxProfile:
+                    if let section = financial.healthSnapshot?.section(
+                        for: destination
+                    ) {
+                        financialHealthSectionDetail(section)
+                    } else {
+                        LegendNextEmptyState(
+                            title: "Financial snapshot incomplete",
+                            message: "The saved section detail is not available yet.",
+                            systemImage: financialHealthSymbol(destination.rawValue)
+                        )
+                    }
+
                 case .currentOutlook, .monthlyOutlook:
                     operatingSystemUnavailable(
                         summary: "Week and month outlooks are available from the Financial Intelligence panel in your Profile."
@@ -4396,9 +4416,11 @@ private struct LegendFinanceView: View {
                     }
 
                 case .financialPosition:
-                    if let position = financial.position {
-                        financialHealth(position)
-                        positionMetrics(position)
+                    if let healthSnapshot = financial.healthSnapshot {
+                        if let position = financial.position {
+                            financialHealth(position)
+                        }
+                        financialHealthSections(healthSnapshot)
                     } else {
                         LegendNextEmptyState(
                             title: "Financial snapshot incomplete",
@@ -4419,9 +4441,10 @@ private struct LegendFinanceView: View {
                     }
 
                 case .protectionDiscussion:
-                    if let position = financial.position {
-                        financialHealth(position)
-                        positionMetrics(position)
+                    if let section = financial.healthSnapshot?.section(
+                        for: .protection
+                    ) {
+                        financialHealthSectionDetail(section)
                     } else {
                         LegendNextEmptyState(
                             title: "Protection information unavailable",
@@ -4635,128 +4658,254 @@ private struct LegendFinanceView: View {
 
 
 
-    private func positionMetrics(
-        _ position: MobileFinancialPosition
+    private func financialHealthSections(
+        _ snapshot: MobileFinancialHealthSnapshotResponse
     ) -> some View {
-        LegendNextSurface(
-            style: .navy,
-            cornerRadius: LegendNextRadius.prominentCard,
-            padding: LegendNextSpacing.sm
+        VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.sm
         ) {
-            VStack(
-                alignment: .leading,
-                spacing: LegendNextSpacing.sm
+            financeSectionLabel(
+                eyebrow: "Financial Health Snapshot",
+                title: "Synced breakdowns",
+                detail: "Open a section to review its complete saved composition."
+            )
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: LegendNextSpacing.xs),
+                    GridItem(.flexible(), spacing: LegendNextSpacing.xs)
+                ],
+                spacing: LegendNextSpacing.xs
             ) {
-                Text("FINANCIAL POSITION")
-                    .font(LegendNextTypography.eyebrow)
-                    .tracking(0.7)
-                    .foregroundStyle(LegendNextColor.goldBright)
-
-                Text("Balance Sheet")
-                    .font(LegendNextTypography.title)
-                    .foregroundStyle(.white)
-
-                HStack(
-                    alignment: .top,
-                    spacing: LegendNextSpacing.xs
-                ) {
-                    positionMetric(
-                        title: "Assets",
-                        value: position.assetsTotal.formatted(
-                            .currency(code: "USD")
-                        ),
-                        systemImage: "building.columns.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            for: position.assetsTotal,
-                            kind: .assets
+                ForEach(snapshot.sections) { section in
+                    if let destination = MobileFinancialDetailDestination(
+                        rawValue: section.key
+                    ) {
+                        Button {
+                            detailDestination = destination
+                        } label: {
+                            financialHealthSectionCard(section)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(
+                            "\(section.title). \(sectionSummary(section)). Open details."
                         )
-                    )
-
-                    positionMetric(
-                        title: "Liabilities",
-                        value: position.liabilitiesTotal.formatted(
-                            .currency(code: "USD")
-                        ),
-                        systemImage: "creditcard.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            for: position.liabilitiesTotal,
-                            kind: .liabilities
-                        )
-                    )
-
-                    positionMetric(
-                        title: "Net Worth",
-                        value: position.netWorth.formatted(
-                            .currency(code: "USD")
-                        ),
-                        systemImage:
-                            position.netWorth >= 0
-                                ? "arrow.up.right"
-                                : "arrow.down.right",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            for: position.netWorth,
-                            kind: .netWorth
-                        )
-                    )
+                    }
                 }
             }
         }
     }
 
-    private func positionMetric(
-        title: String,
-        value: String,
-        systemImage: String,
-        tone: LegendNextTone
+    private func financialHealthSectionCard(
+        _ section: MobileFinancialHealthSectionResponse
     ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.xs
+        let tone = financialHealthTone(section.semantic)
+
+        return LegendNextSurface(
+            style: .navy,
+            cornerRadius: LegendNextRadius.card,
+            padding: LegendNextSpacing.xs
         ) {
-            HStack(spacing: LegendNextSpacing.micro) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(tone.color)
-                    .frame(width: 26, height: 26)
-                    .background(
-                        tone.color.opacity(0.16),
-                        in: Circle()
-                    )
-                    .accessibilityHidden(true)
+            VStack(
+                alignment: .leading,
+                spacing: LegendNextSpacing.xs
+            ) {
+                HStack(spacing: LegendNextSpacing.micro) {
+                    Image(systemName: financialHealthSymbol(section.key))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(tone.color)
+                        .frame(width: 28, height: 28)
+                        .background(tone.color.opacity(0.16), in: Circle())
+                        .accessibilityHidden(true)
 
-                Text(title.uppercased())
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.white.opacity(0.58))
+                        .accessibilityHidden(true)
+                }
+
+                Text(section.title.uppercased())
                     .font(LegendNextTypography.eyebrow)
-                    .foregroundStyle(Color.white.opacity(0.68))
+                    .tracking(0.5)
+                    .foregroundStyle(tone.color)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.62)
-            }
+                    .minimumScaleFactor(0.72)
 
-            Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(tone.color)
+                Text(sectionSummary(section))
+                    .font(LegendNextTypography.bodyEmphasis)
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+
+                if let period = section.period {
+                    Text(period.uppercased())
+                        .font(LegendNextTypography.eyebrow)
+                        .foregroundStyle(Color.white.opacity(0.56))
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 122, alignment: .topLeading)
+        }
+    }
+
+    private func financialHealthSectionDetail(
+        _ section: MobileFinancialHealthSectionResponse
+    ) -> some View {
+        let tone = financialHealthTone(section.semantic)
+
+        return VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.sm
+        ) {
+            financialIntelligenceStatusBanner(
+                title: section.title,
+                detail: section.period.map { "\($0) values from your saved Financial Health Snapshot." }
+                    ?? "Values from your saved Financial Health Snapshot.",
+                tone: tone,
+                systemImage: financialHealthSymbol(section.key)
+            )
+
+            LegendNextSurface(
+                style: .navy,
+                cornerRadius: LegendNextRadius.prominentCard,
+                padding: 0
+            ) {
+                VStack(spacing: 0) {
+                    ForEach(Array(section.groups.enumerated()), id: \.element.id) {
+                        groupIndex,
+                        group in
+                        if let title = group.title {
+                            Text(title.uppercased())
+                                .font(LegendNextTypography.eyebrow)
+                                .tracking(0.7)
+                                .foregroundStyle(tone.color)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, LegendNextSpacing.sm)
+                                .padding(.top, groupIndex == 0 ? LegendNextSpacing.sm : LegendNextSpacing.md)
+                        }
+
+                        ForEach(Array(group.metrics.enumerated()), id: \.element.id) {
+                            metricIndex,
+                            metric in
+                            financialHealthMetricRow(metric, tone: tone)
+
+                            if metricIndex < group.metrics.count - 1 {
+                                LegendNextDivider()
+                                    .padding(.leading, LegendNextSpacing.sm)
+                            }
+                        }
+
+                        if groupIndex < section.groups.count - 1 {
+                            LegendNextDivider()
+                                .padding(.top, LegendNextSpacing.sm)
+                        }
+                    }
+
+                    if let total = section.total {
+                        LegendNextDivider()
+                            .padding(.top, LegendNextSpacing.sm)
+
+                        financialHealthMetricRow(
+                            total,
+                            tone: tone,
+                            isTotal: true
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func financialHealthMetricRow(
+        _ metric: MobileFinancialHealthMetricResponse,
+        tone: LegendNextTone,
+        isTotal: Bool = false
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: LegendNextSpacing.sm) {
+            Text(metric.label)
+                .font(isTotal ? LegendNextTypography.bodyEmphasis : LegendNextTypography.supporting)
+                .foregroundStyle(isTotal ? .white : Color.white.opacity(0.78))
+                .lineLimit(2)
+
+            Spacer(minLength: LegendNextSpacing.xs)
+
+            Text(metric.displayValue)
+                .font(isTotal ? LegendNextTypography.bodyEmphasis : LegendNextTypography.supporting)
+                .foregroundStyle(
+                    metric.status == nil
+                        ? tone.color
+                        : financialHealthStatusTone(metric.status, fallback: tone).color
+                )
                 .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.42)
-                .allowsTightening(true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+                .minimumScaleFactor(0.76)
         }
-        .padding(LegendNextSpacing.xs)
-        .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-        .background(
-            Color.white.opacity(0.055),
-            in: RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
-                style: .continuous
-            )
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
-                style: .continuous
-            )
-            .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        }
+        .padding(.horizontal, LegendNextSpacing.sm)
+        .padding(.vertical, isTotal ? LegendNextSpacing.sm : LegendNextSpacing.xs)
         .accessibilityElement(children: .combine)
+    }
+
+    private func sectionSummary(
+        _ section: MobileFinancialHealthSectionResponse
+    ) -> String {
+        section.total?.displayValue ?? "Open details"
+    }
+
+    private func financialHealthTone(
+        _ semantic: String
+    ) -> LegendNextTone {
+        switch semantic {
+        case "assets":
+            return .information
+        case "liabilities":
+            return .danger
+        case "cash-flow":
+            return .success
+        case "protection", "tax-profile":
+            return .gold
+        default:
+            return .neutral
+        }
+    }
+
+    private func financialHealthStatusTone(
+        _ status: String?,
+        fallback: LegendNextTone
+    ) -> LegendNextTone {
+        switch status?.lowercased() {
+        case "protected", "low":
+            return .success
+        case "partial", "moderate":
+            return .warning
+        case "exposed", "high":
+            return .danger
+        default:
+            return fallback
+        }
+    }
+
+    private func financialHealthSymbol(
+        _ key: String
+    ) -> String {
+        switch key {
+        case "assets":
+            return "building.columns.fill"
+        case "liabilities":
+            return "creditcard.fill"
+        case "cash-flow":
+            return "arrow.left.arrow.right.circle.fill"
+        case "protection":
+            return "shield.lefthalf.filled"
+        case "tax-profile":
+            return "percent"
+        default:
+            return "chart.bar.fill"
+        }
     }
 
     private func largestObligation(
