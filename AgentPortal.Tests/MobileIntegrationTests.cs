@@ -1425,7 +1425,7 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
-    public async Task MobileSocialFeed_ProjectsStoriesPostsAndActivitySequentially()
+    public async Task MobileSocialFeed_DeduplicatesRepeatedAuthorProjection()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var client = new ClientProfile
@@ -1510,10 +1510,27 @@ public sealed class MobileIntegrationTests
 
         var response = Assert.IsType<OkObjectResult>(result);
         var feed = Assert.IsType<MobileSocialSnapshotDto>(response.Value);
+        Assert.Single(feed.Stories);
+        Assert.Single(feed.Posts);
         Assert.Single(feed.Hacs);
+        Assert.Single(feed.Activity);
+        Assert.Equal("Client Feed", feed.Stories[0].Author.DisplayName);
+        Assert.Equal("Client Feed", feed.Posts[0].Author.DisplayName);
+        Assert.Equal("Client Feed", feed.Hacs[0].Author.DisplayName);
+        Assert.Equal("Client Feed", feed.Activity[0].Actor.DisplayName);
+        Assert.Equal("Client Feed", feed.CurrentProfileMetrics.Profile.DisplayName);
+        Assert.NotNull(feed.Stories[0].Author.Avatar);
+        Assert.NotNull(feed.Posts[0].Author.Avatar);
+        Assert.NotNull(feed.Hacs[0].Author.Avatar);
+        Assert.NotNull(feed.Activity[0].Actor.Avatar);
+        Assert.NotNull(feed.CurrentProfileMetrics.Profile.Avatar);
         Assert.Equal(1, peakResolutions);
         social.VerifyAll();
-        images.Verify(service => service.ResolveAsync(It.IsAny<MessagingParticipantIdentity>(), It.IsAny<CancellationToken>()), Times.Exactly(5));
+        images.Verify(
+            service => service.ResolveAsync(
+                It.IsAny<MessagingParticipantIdentity>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

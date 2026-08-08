@@ -63,6 +63,38 @@ internal sealed class MessagingService : IMessagingService
         _communitySafety = communitySafety;
     }
 
+    public async Task<MessagingGroupImage?> GetConversationImageAsync(
+        MessagingActor actor,
+        Guid conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        actor = NormalizeActor(actor);
+        if (conversationId == Guid.Empty ||
+            !await IsValidActorAsync(actor, cancellationToken))
+        {
+            return null;
+        }
+
+        var conversationsQuery = await AuthorizedConversationsQueryAsync(
+            actor,
+            cancellationToken);
+
+        var image = await conversationsQuery
+            .Where(conversation => conversation.Id == conversationId)
+            .Select(conversation => new
+            {
+                conversation.GroupImageContent,
+                conversation.GroupImageContentType
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return image is null
+            ? null
+            : ToGroupImage(
+                image.GroupImageContent,
+                image.GroupImageContentType);
+    }
+
     public async Task<MessagingConversationListResult> ListConversationsAsync(
         MessagingActor actor,
         MessagingConversationListQuery query,
@@ -80,7 +112,10 @@ internal sealed class MessagingService : IMessagingService
 
         var actorParticipantType = NormalizeRequired(actor.ParticipantType);
         var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
-        var conversationsQuery = await AuthorizedConversationsQueryAsync(actor, cancellationToken);
+        var conversationsQuery = await AuthorizedConversationsQueryAsync(
+            actor,
+            cancellationToken,
+            actorUserIds);
 
         // Removing a conversation is actor-scoped. It remains available to the
         // other members, and returns to this inbox if a newer message arrives.
@@ -257,12 +292,14 @@ internal sealed class MessagingService : IMessagingService
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var displayNames = await LoadDisplayNamesAsync(participants, cancellationToken);
+        var participantsByConversation = participants
+            .GroupBy(participant => participant.ConversationId)
+            .ToDictionary(group => group.Key, group => group.ToList());
         var result = new List<MessagingConversationSummary>(conversations.Count);
         foreach (var conversation in conversations)
         {
-            var conversationParticipants = participants
-                .Where(x => x.ConversationId == conversation.Id)
-                .ToList();
+            var conversationParticipants =
+                participantsByConversation.GetValueOrDefault(conversation.Id) ?? [];
             var currentParticipant = conversationParticipants.FirstOrDefault(x =>
                 IsCurrentActor(x.UserId, x.ParticipantType, actorUserIds, actorParticipantType));
             if (currentParticipant is null)
@@ -2487,11 +2524,17 @@ internal sealed class MessagingService : IMessagingService
 
     private async Task<IQueryable<MessageConversation>> AuthorizedConversationsQueryAsync(
         MessagingActor actor,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyCollection<string>? resolvedActorUserIds = null)
     {
         var actorUserId = NormalizeRequired(actor.UserId);
         var actorParticipantType = NormalizeRequired(actor.ParticipantType);
-        var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
+        var actorUserIds = resolvedActorUserIds?.Count > 0
+            ? resolvedActorUserIds
+                .Select(NormalizeUserId)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray()
+            : await ParticipantUserIdFormsAsync(actor, cancellationToken);
         var participantConversations = _db.MessageConversations.Where(conversation =>
             conversation.Participants.Any(participant =>
                 participant.IsActive &&

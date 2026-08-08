@@ -300,6 +300,8 @@ private struct AuthenticatedHomeView: View {
     let currentSession: MobileSession
     @ObservedObject private var coordinator: MobileSessionCoordinator
     @StateObject private var bootstrap: LegendApplicationBootstrapCoordinator
+    @State private var notificationSynchronizationInFlight = false
+    @State private var pushDeviceRegistrationInFlight = false
 
     init(currentSession: MobileSession, coordinator: MobileSessionCoordinator) {
         self.currentSession = currentSession
@@ -339,13 +341,10 @@ private struct AuthenticatedHomeView: View {
                 }
             }
         }
-        .task {
+        .task(id: scenePhase) {
             await bootstrap.bootstrapIfNeeded()
+            guard scenePhase == .active else { return }
             await synchronizeNotifications()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            Task { await synchronizeNotifications() }
         }
         .onChange(of: pushNotifications.deviceToken) { _, _ in
             Task { await registerPushDeviceIfAvailable() }
@@ -356,15 +355,31 @@ private struct AuthenticatedHomeView: View {
     }
 
     private func synchronizeNotifications() async {
+        guard !notificationSynchronizationInFlight else {
+            return
+        }
+
+        notificationSynchronizationInFlight = true
+        defer {
+            notificationSynchronizationInFlight = false
+        }
+
         await bootstrap.stores.notifications.sync()
         await registerPushDeviceIfAvailable()
     }
 
     private func registerPushDeviceIfAvailable() async {
-        guard let token = pushNotifications.deviceToken,
+        guard !pushDeviceRegistrationInFlight,
+              let token = pushNotifications.deviceToken,
               let environment = pushNotifications.signedEnvironment else {
             return
         }
+
+        pushDeviceRegistrationInFlight = true
+        defer {
+            pushDeviceRegistrationInFlight = false
+        }
+
         await bootstrap.stores.notifications.registerAPNSDevice(
             token: token,
             environment: environment.rawValue)

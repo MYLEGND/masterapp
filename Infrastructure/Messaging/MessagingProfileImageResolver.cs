@@ -50,6 +50,21 @@ public interface IMessagingProfileImageBatchResolver
         CancellationToken cancellationToken = default);
 }
 
+
+/// <summary>
+/// Lightweight cache-version projection for native list/feed surfaces.
+/// It remains backed by the canonical AgentProfile/ClientProfile image fields
+/// but avoids materializing image BLOBs merely to build a protected resource URL.
+/// </summary>
+public sealed record MessagingProfileImageVersion(string ContentType, string Version);
+
+public interface IMessagingProfileImageVersionBatchResolver
+{
+    Task<IReadOnlyDictionary<MessagingProfileImageKey, MessagingProfileImageVersion>> ResolveVersionsAsync(
+        IEnumerable<MessagingParticipantIdentity> participants,
+        CancellationToken cancellationToken = default);
+}
+
 /// <summary>
 /// The only mutation boundary for a member profile image. AgentPortal,
 /// ClientApp, mobile Account, and messaging projections all use the same
@@ -79,6 +94,7 @@ public sealed record ProfileImageUpdateResult(
 internal sealed class MessagingProfileImageResolver :
     IMessagingProfileImageResolver,
     IMessagingProfileImageBatchResolver,
+    IMessagingProfileImageVersionBatchResolver,
     IProfileImageWriter
 {
     private const int MaximumProfileImageBytes = 3 * 1024 * 1024;
@@ -155,6 +171,71 @@ internal sealed class MessagingProfileImageResolver :
         }
 
         return images;
+    }
+
+    public async Task<IReadOnlyDictionary<MessagingProfileImageKey, MessagingProfileImageVersion>> ResolveVersionsAsync(
+        IEnumerable<MessagingParticipantIdentity> participants,
+        CancellationToken cancellationToken = default)
+    {
+        var requested = participants
+            .Where(participant => participant.ProfileId != Guid.Empty)
+            .Select(MessagingProfileImageKey.From)
+            .Where(key =>
+                key.ParticipantType == MessagingParticipantTypes.Agent ||
+                key.ParticipantType == MessagingParticipantTypes.Client)
+            .Distinct()
+            .ToArray();
+
+        if (requested.Length == 0)
+            return new Dictionary<MessagingProfileImageKey, MessagingProfileImageVersion>();
+
+        var versions = new Dictionary<MessagingProfileImageKey, MessagingProfileImageVersion>();
+        var agentProfileIds = requested
+            .Where(key => key.ParticipantType == MessagingParticipantTypes.Agent)
+            .Select(key => key.ProfileId)
+            .ToArray();
+        var clientProfileIds = requested
+            .Where(key => key.ParticipantType == MessagingParticipantTypes.Client)
+            .Select(key => key.ProfileId)
+            .ToArray();
+
+        if (agentProfileIds.Length > 0)
+        {
+            var agents = await _db.AgentProfiles
+                .AsNoTracking()
+                .Where(profile => profile.IsActive && agentProfileIds.Contains(profile.Id))
+                .Select(profile => new ProfileImageVersionRow(
+                    profile.Id,
+                    profile.ProfileImageContent != null,
+                    profile.ProfileImageContentType,
+                    profile.UpdatedUtc))
+                .ToArrayAsync(cancellationToken);
+
+            AddResolvedVersions(
+                versions,
+                MessagingParticipantTypes.Agent,
+                agents);
+        }
+
+        if (clientProfileIds.Length > 0)
+        {
+            var clients = await _db.ClientProfiles
+                .AsNoTracking()
+                .Where(profile => clientProfileIds.Contains(profile.Id))
+                .Select(profile => new ProfileImageVersionRow(
+                    profile.Id,
+                    profile.ProfileImageContent != null,
+                    profile.ProfileImageContentType,
+                    profile.UpdatedUtc))
+                .ToArrayAsync(cancellationToken);
+
+            AddResolvedVersions(
+                versions,
+                MessagingParticipantTypes.Client,
+                clients);
+        }
+
+        return versions;
     }
 
     public async Task<ProfileImageUpdateResult> UpdateAsync(
@@ -537,6 +618,33 @@ internal sealed class MessagingProfileImageResolver :
         string? Email,
         bool IsVerified,
         string? Phone);
+
+    private sealed record ProfileImageVersionRow(
+        Guid Id,
+        bool HasImage,
+        string? ContentType,
+        DateTime UpdatedUtc);
+
+    private static void AddResolvedVersions(
+        IDictionary<MessagingProfileImageKey, MessagingProfileImageVersion> destination,
+        string participantType,
+        IEnumerable<ProfileImageVersionRow> rows)
+    {
+        foreach (var row in rows)
+        {
+            if (!row.HasImage)
+                continue;
+
+            var contentType = NormalizeSupportedImageContentType(row.ContentType);
+            if (contentType is null)
+                continue;
+
+            destination[new MessagingProfileImageKey(participantType, row.Id)] =
+                new MessagingProfileImageVersion(
+                    contentType,
+                    row.UpdatedUtc.Ticks.ToString("x"));
+        }
+    }
 
     private sealed record ProfileImageRow(Guid Id, byte[]? Content, string? ContentType);
 }

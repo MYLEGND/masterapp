@@ -62,6 +62,20 @@ internal static class MobileAvatarProjection
         if (requested.Length == 0)
             return new Dictionary<MessagingProfileImageKey, MobileAvatarDto>();
 
+        if (profiles is IMessagingProfileImageVersionBatchResolver versionResolver)
+        {
+            var versions = await versionResolver.ResolveVersionsAsync(
+                requested,
+                cancellationToken);
+
+            return versions.ToDictionary(
+                entry => entry.Key,
+                entry => new MobileAvatarDto(
+                    "resource",
+                    entry.Value.ContentType,
+                    $"{ProfilePath(entry.Key.ParticipantType, entry.Key.ProfileId)}?v={entry.Value.Version}"));
+        }
+
         IReadOnlyDictionary<MessagingProfileImageKey, MessagingProfileImage> images;
 
         if (profiles is IMessagingProfileImageBatchResolver batchResolver)

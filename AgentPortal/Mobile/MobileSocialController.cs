@@ -337,6 +337,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
     }
 
     [HttpGet("media/{mediaAssetId:guid}")]
+    [ResponseCache(Duration = 86400, Location = ResponseCacheLocation.Client)]
     public async Task<IActionResult> GetMedia(
         Guid mediaAssetId,
         CancellationToken cancellationToken)
@@ -364,6 +365,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
     }
 
     [HttpGet("media/{mediaAssetId:guid}/preview")]
+    [ResponseCache(Duration = 86400, Location = ResponseCacheLocation.Client)]
     public async Task<IActionResult> GetMediaPreview(
         Guid mediaAssetId,
         CancellationToken cancellationToken)
@@ -608,19 +610,29 @@ public sealed class MobileSocialController : MobileApiControllerBase
             resolution.Actor.DisplayName), null);
     }
 
-    private async Task<MobileSocialSnapshotDto> ToSnapshotDtoAsync(SocialFeedSnapshot snapshot, CancellationToken cancellationToken) => new(
-        await ToPostDtosAsync(snapshot.Stories, cancellationToken),
-        await ToPostDtosAsync(snapshot.Posts, cancellationToken),
-        await ToPostDtosAsync(snapshot.Hacs, cancellationToken),
-        await ToActivityDtosAsync(snapshot.Activity, cancellationToken),
-        snapshot.ActivityCount,
-        await ToProfileMetricsDtoAsync(snapshot.CurrentProfileMetrics, cancellationToken),
-        ToCreatorInsightsDto(snapshot.CreatorInsights),
-        await ToPromotedGroupDtosAsync(snapshot.PromotedGroups, cancellationToken));
+    private async Task<MobileSocialSnapshotDto> ToSnapshotDtoAsync(
+        SocialFeedSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        var authorProjection = await BuildSnapshotAuthorProjectionAsync(
+            snapshot,
+            cancellationToken);
+
+        return new MobileSocialSnapshotDto(
+            await ToPostDtosAsync(snapshot.Stories, cancellationToken, authorProjection),
+            await ToPostDtosAsync(snapshot.Posts, cancellationToken, authorProjection),
+            await ToPostDtosAsync(snapshot.Hacs, cancellationToken, authorProjection),
+            await ToActivityDtosAsync(snapshot.Activity, cancellationToken, authorProjection),
+            snapshot.ActivityCount,
+            await ToProfileMetricsDtoAsync(snapshot.CurrentProfileMetrics, cancellationToken, authorProjection),
+            ToCreatorInsightsDto(snapshot.CreatorInsights),
+            await ToPromotedGroupDtosAsync(snapshot.PromotedGroups, cancellationToken, authorProjection));
+    }
 
     private async Task<IReadOnlyList<MobileSocialPromotedGroupDto>> ToPromotedGroupDtosAsync(
         IEnumerable<SocialPromotedGroupView> groups,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, MobileSocialAuthorDto>? authorProjection = null)
     {
         var result = new List<MobileSocialPromotedGroupDto>();
         foreach (var group in groups)
@@ -628,7 +640,7 @@ public sealed class MobileSocialController : MobileApiControllerBase
             result.Add(new MobileSocialPromotedGroupDto(
                 group.ConversationId,
                 group.Subject,
-                await ToAuthorDtoAsync(group.Owner, cancellationToken),
+                await ToAuthorDtoAsync(group.Owner, cancellationToken, authorProjection),
                 MobileAvatarProjection.FromGroupImage(
                     group.ConversationId,
                     group.GroupImage),
@@ -640,26 +652,28 @@ public sealed class MobileSocialController : MobileApiControllerBase
         return result;
     }
 
-    // Avatar resolution uses the request-scoped MasterAppDbContext. EF Core permits one
-    // operation at a time per context, so all DTO projection stays sequential.
+    // EF Core still performs one operation at a time on the request-scoped context,
+    // but snapshot author metadata is resolved in bounded batches before DTO projection.
     private async Task<IReadOnlyList<MobileSocialPostDto>> ToPostDtosAsync(
         IEnumerable<SocialPostView> posts,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, MobileSocialAuthorDto>? authorProjection = null)
     {
         var result = new List<MobileSocialPostDto>();
         foreach (var post in posts)
-            result.Add(await ToPostDtoAsync(post, cancellationToken));
+            result.Add(await ToPostDtoAsync(post, cancellationToken, authorProjection));
 
         return result;
     }
 
     private async Task<IReadOnlyList<MobileSocialActivityDto>> ToActivityDtosAsync(
         IEnumerable<SocialActivityView> activity,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, MobileSocialAuthorDto>? authorProjection = null)
     {
         var result = new List<MobileSocialActivityDto>();
         foreach (var item in activity)
-            result.Add(await ToActivityDtoAsync(item, cancellationToken));
+            result.Add(await ToActivityDtoAsync(item, cancellationToken, authorProjection));
 
         return result;
     }
@@ -692,9 +706,12 @@ public sealed class MobileSocialController : MobileApiControllerBase
         return result;
     }
 
-    private async Task<MobileSocialPostDto> ToPostDtoAsync(SocialPostView post, CancellationToken cancellationToken) => new(
+    private async Task<MobileSocialPostDto> ToPostDtoAsync(
+        SocialPostView post,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, MobileSocialAuthorDto>? authorProjection = null) => new(
         post.Id,
-        await ToAuthorDtoAsync(post.Author, cancellationToken),
+        await ToAuthorDtoAsync(post.Author, cancellationToken, authorProjection),
         post.ContentType,
         post.Body,
         post.Audience,
@@ -724,60 +741,209 @@ public sealed class MobileSocialController : MobileApiControllerBase
             media.ProcessingState,
             media.AccessibilityText,
             media.HasPreviewImage)).ToArray(),
-        await ToCommentDtosAsync(post.Comments, cancellationToken));
+        await ToCommentDtosAsync(post.Comments, cancellationToken, authorProjection));
 
     private async Task<IReadOnlyList<MobileSocialCommentDto>> ToCommentDtosAsync(
         IEnumerable<SocialCommentView> comments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, MobileSocialAuthorDto>? authorProjection = null)
     {
         var result = new List<MobileSocialCommentDto>();
         foreach (var comment in comments)
-            result.Add(await ToCommentDtoAsync(comment, cancellationToken));
+            result.Add(await ToCommentDtoAsync(comment, cancellationToken, authorProjection));
 
         return result;
     }
 
-    private async Task<MobileSocialCommentDto> ToCommentDtoAsync(SocialCommentView comment, CancellationToken cancellationToken) => new(
+    private async Task<MobileSocialCommentDto> ToCommentDtoAsync(
+        SocialCommentView comment,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, MobileSocialAuthorDto>? authorProjection = null) => new(
         comment.Id,
-        await ToAuthorDtoAsync(comment.Author, cancellationToken),
+        await ToAuthorDtoAsync(comment.Author, cancellationToken, authorProjection),
         comment.ParentCommentId,
         comment.Body,
         comment.CreatedUtc);
 
-    private async Task<MobileSocialActivityDto> ToActivityDtoAsync(SocialActivityView activity, CancellationToken cancellationToken) => new(
+    private async Task<MobileSocialActivityDto> ToActivityDtoAsync(
+        SocialActivityView activity,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, MobileSocialAuthorDto>? authorProjection = null) => new(
         activity.Id,
         activity.Kind,
-        await ToAuthorDtoAsync(activity.Actor, cancellationToken),
+        await ToAuthorDtoAsync(activity.Actor, cancellationToken, authorProjection),
         activity.PostId,
         activity.OccurredUtc);
 
-    private async Task<MobileSocialAuthorDto> ToAuthorDtoAsync(SocialAuthor author, CancellationToken cancellationToken)
+    private async Task<MobileSocialAuthorDto> ToAuthorDtoAsync(
+        SocialAuthor author,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, MobileSocialAuthorDto>? authorProjection = null)
     {
-        var identity = new MessagingParticipantIdentity(
-            author.UserId,
-            author.ParticipantType,
-            author.ProfileId,
-            author.DisplayName,
-            null,
-            string.Empty);
-        return new MobileSocialAuthorDto(
-            new MobileLogicalIdentityDto(author.UserId, author.ParticipantType),
-            author.ProfileId.ToString("D"),
-            author.DisplayName,
+        if (authorProjection is not null &&
+            authorProjection.TryGetValue(AuthorProjectionKey(author), out var projected))
+        {
+            return projected;
+        }
+
+        var identity = ToMessagingIdentity(author);
+        return ToAuthorDto(
+            author,
             await MobileAvatarProjection.ResolveAsync(_profiles, identity, cancellationToken),
-            author.Username,
-            author.Bio,
-            author.Website,
-            author.Location,
-            author.PublicEmail,
-            author.IsPrivate,
             await IsVerifiedProfileAsync(
                 author.ParticipantType,
                 author.ProfileId,
-                cancellationToken),
-            author.RoleLabel,
-            author.PublicPhone);
+                cancellationToken));
     }
+
+    private async Task<IReadOnlyDictionary<string, MobileSocialAuthorDto>> BuildSnapshotAuthorProjectionAsync(
+        SocialFeedSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        var authors = snapshot.Stories
+            .Concat(snapshot.Posts)
+            .Concat(snapshot.Hacs)
+            .SelectMany(post => new[] { post.Author }.Concat(post.Comments.Select(comment => comment.Author)))
+            .Concat(snapshot.Activity.Select(activity => activity.Actor))
+            .Concat(new[] { snapshot.CurrentProfileMetrics.Profile })
+            .Concat(snapshot.PromotedGroups.Select(group => group.Owner))
+            .DistinctBy(AuthorProjectionKey)
+            .ToArray();
+
+        if (authors.Length == 0)
+            return new Dictionary<string, MobileSocialAuthorDto>();
+
+        var identities = authors
+            .Select(ToMessagingIdentity)
+            .ToArray();
+        var avatars = await MobileAvatarProjection.ResolveManyAsync(
+            _profiles,
+            identities,
+            cancellationToken);
+        var verification = await ResolveVerifiedProfilesAsync(
+            authors,
+            cancellationToken);
+
+        var projected = new Dictionary<string, MobileSocialAuthorDto>(
+            authors.Length,
+            StringComparer.Ordinal);
+
+        foreach (var author in authors)
+        {
+            var identity = ToMessagingIdentity(author);
+            avatars.TryGetValue(MessagingProfileImageKey.From(identity), out var avatar);
+            verification.TryGetValue(
+                new MessagingProfileImageKey(author.ParticipantType, author.ProfileId),
+                out var isVerified);
+
+            projected[AuthorProjectionKey(author)] =
+                ToAuthorDto(author, avatar, isVerified);
+        }
+
+        return projected;
+    }
+
+    private async Task<IReadOnlyDictionary<MessagingProfileImageKey, bool>> ResolveVerifiedProfilesAsync(
+        IReadOnlyCollection<SocialAuthor> authors,
+        CancellationToken cancellationToken)
+    {
+        if (_db is null || authors.Count == 0)
+            return new Dictionary<MessagingProfileImageKey, bool>();
+
+        var clientIds = authors
+            .Where(author =>
+                author.ProfileId != Guid.Empty &&
+                string.Equals(
+                    author.ParticipantType,
+                    MessagingParticipantTypes.Client,
+                    StringComparison.Ordinal))
+            .Select(author => author.ProfileId)
+            .Distinct()
+            .ToArray();
+
+        var agentIds = authors
+            .Where(author =>
+                author.ProfileId != Guid.Empty &&
+                string.Equals(
+                    author.ParticipantType,
+                    MessagingParticipantTypes.Agent,
+                    StringComparison.Ordinal))
+            .Select(author => author.ProfileId)
+            .Distinct()
+            .ToArray();
+
+        var verified = new Dictionary<MessagingProfileImageKey, bool>();
+
+        if (clientIds.Length > 0)
+        {
+            var clients = await _db.ClientProfiles
+                .AsNoTracking()
+                .Where(profile => clientIds.Contains(profile.Id))
+                .Select(profile => new { profile.Id, profile.IsVerified })
+                .ToArrayAsync(cancellationToken);
+
+            foreach (var profile in clients)
+            {
+                verified[new MessagingProfileImageKey(
+                    MessagingParticipantTypes.Client,
+                    profile.Id)] = profile.IsVerified;
+            }
+        }
+
+        if (agentIds.Length > 0)
+        {
+            var agents = await _db.AgentProfiles
+                .AsNoTracking()
+                .Where(profile => profile.IsActive && agentIds.Contains(profile.Id))
+                .Select(profile => new
+                {
+                    profile.Id,
+                    profile.IsVerified,
+                    Email = profile.NormalizedEmail ?? profile.AgentUpn
+                })
+                .ToArrayAsync(cancellationToken);
+
+            foreach (var profile in agents)
+            {
+                verified[new MessagingProfileImageKey(
+                    MessagingParticipantTypes.Agent,
+                    profile.Id)] =
+                    profile.IsVerified ||
+                    LegendVerifiedIdentity.IsVerifiedAgentEmail(profile.Email);
+            }
+        }
+
+        return verified;
+    }
+
+    private static MessagingParticipantIdentity ToMessagingIdentity(SocialAuthor author) => new(
+        author.UserId,
+        author.ParticipantType,
+        author.ProfileId,
+        author.DisplayName,
+        null,
+        string.Empty);
+
+    private static string AuthorProjectionKey(SocialAuthor author) =>
+        $"{author.ParticipantType}:{author.ProfileId:D}:{author.UserId.Trim().ToLowerInvariant()}";
+
+    private static MobileSocialAuthorDto ToAuthorDto(
+        SocialAuthor author,
+        MobileAvatarDto? avatar,
+        bool isVerified) => new(
+        new MobileLogicalIdentityDto(author.UserId, author.ParticipantType),
+        author.ProfileId.ToString("D"),
+        author.DisplayName,
+        avatar,
+        author.Username,
+        author.Bio,
+        author.Website,
+        author.Location,
+        author.PublicEmail,
+        author.IsPrivate,
+        isVerified,
+        author.RoleLabel,
+        author.PublicPhone);
 
     private async Task<bool> IsVerifiedProfileAsync(
         string participantType,
@@ -811,8 +977,9 @@ public sealed class MobileSocialController : MobileApiControllerBase
 
     private async Task<MobileSocialProfileMetricsDto> ToProfileMetricsDtoAsync(
         SocialProfileMetrics metrics,
-        CancellationToken cancellationToken) => new(
-            await ToAuthorDtoAsync(metrics.Profile, cancellationToken),
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, MobileSocialAuthorDto>? authorProjection = null) => new(
+            await ToAuthorDtoAsync(metrics.Profile, cancellationToken, authorProjection),
             metrics.PostCount,
             metrics.VideoCount,
             metrics.StoryCount,

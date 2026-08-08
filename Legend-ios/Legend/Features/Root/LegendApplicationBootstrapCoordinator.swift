@@ -339,14 +339,11 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
     ///
     /// Social owns its own cached presentation and first-appearance loading, so
     /// the comparatively expensive SocialFeedSnapshot must never sit on Home's
-    /// critical startup path. Messages and notifications are warmed without
-    /// becoming presentation gates.
+    /// critical startup path. Messages are warmed without becoming presentation
+    /// gates. RootView remains the single lifecycle owner for notification inbox
+    /// synchronization and APNs device registration.
     private func loadCriticalFeatures() async -> [(LegendBootstrapFeature, MobileStoreLoadResult)] {
         stores.messaging.load()
-
-        Task { [notifications = stores.notifications] in
-            _ = await notifications.sync()
-        }
 
         let home = await stores.home.loadIfNeeded()
         return [(.home, home)]

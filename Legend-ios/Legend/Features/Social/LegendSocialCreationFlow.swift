@@ -2527,12 +2527,12 @@ private struct LegendHacPreviewSelector: View {
     }
 }
 
-/// One JPEG-generation authority for the Hac publishing flow. The 1080px cap
-/// and progressive compression keep a user-selected poster below the server's
-/// 1 MB ingress limit without changing the source video.
+/// One JPEG-generation authority for the Hac publishing flow. A 720px cap
+/// and bounded progressive compression keep poster transfers lightweight while
+/// preserving the existing preview-storage contract and source video unchanged.
 private enum LegendHacPreviewFrame {
-    private static let maximumEdge: CGFloat = 1_080
-    private static let maximumBytes = 1_024 * 1_024
+    private static let maximumEdge: CGFloat = 720
+    private static let maximumBytes = 384 * 1_024
 
     static func duration(of url: URL) async -> Double {
         let asset = AVURLAsset(url: url)
@@ -2563,7 +2563,7 @@ private enum LegendHacPreviewFrame {
             source.draw(in: CGRect(origin: .zero, size: targetSize))
         }
 
-        for quality in [CGFloat(0.82), 0.70, 0.58] {
+        for quality in [CGFloat(0.72), 0.58, 0.46, 0.34] {
             if let data = normalized.jpegData(compressionQuality: quality),
                data.count <= maximumBytes {
                 return data

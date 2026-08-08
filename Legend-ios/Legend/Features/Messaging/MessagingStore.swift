@@ -337,6 +337,7 @@ final class MessagingStore: ObservableObject {
     private let realtime: (any MessagingRealtimeTransport)?
     let isFounder: Bool
     private var conversationListTask: Task<MobileStoreLoadResult, Never>?
+    private var isRefreshingActivityNotifications = false
     private var conversationDetailTasks: [UUID: Task<ConversationDetail, Error>] = [:]
     /// Conversation details are a bounded, account-scoped presentation cache.
     /// The API remains authoritative and every cached thread is revalidated as
@@ -583,6 +584,15 @@ final class MessagingStore: ObservableObject {
     }
 
     func refreshActivityNotifications() async {
+        guard !isRefreshingActivityNotifications else {
+            return
+        }
+
+        isRefreshingActivityNotifications = true
+        defer {
+            isRefreshingActivityNotifications = false
+        }
+
         do {
             activityNotifications = try await api.activityNotifications(
                 accessToken: try await accessTokenProvider())

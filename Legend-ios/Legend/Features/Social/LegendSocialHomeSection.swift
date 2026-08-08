@@ -627,7 +627,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         case .loaded(let snapshot):
             VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
 
-                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                LazyVStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                 ForEach(snapshot.promotedGroups) { group in
                     LegendPromotedGroupCard(
                         group: group,
@@ -2195,8 +2195,12 @@ struct LegendForYouView: View {
 /// Network media remains owned exclusively by `MobileSocialStore`'s secure
 /// cache. This is a bounded playback working set, not another cache or player
 /// authority.
+enum LegendHacPlaybackPolicy {
+    static let restartThreshold: TimeInterval = 2
+}
+
 enum LegendHacPlaybackWindow {
-    static let maximumPlayerCount = 2
+    static let maximumPlayerCount = 3
 
     static func retainedIndexes(activeIndex: Int, count: Int) -> [Int] {
         guard count > 0,
@@ -2205,13 +2209,9 @@ enum LegendHacPlaybackWindow {
             return []
         }
 
-        let nextIndex = activeIndex + 1
-
-        if nextIndex < count {
-            return [activeIndex, nextIndex]
-        }
-
-        return [activeIndex]
+        let lowerBound = max(0, activeIndex - 1)
+        let upperBound = min(count - 1, activeIndex + 1)
+        return Array(lowerBound...upperBound)
     }
 
     static func prefetchIndexes(activeIndex: Int, count: Int) -> [Int] {
@@ -2221,8 +2221,18 @@ enum LegendHacPlaybackWindow {
             return []
         }
 
-        let warmIndex = activeIndex + 2
-        return warmIndex < count ? [warmIndex] : []
+        var indexes: [Int] = []
+        let previousIndex = activeIndex - 1
+        let nextIndex = activeIndex + 1
+
+        if previousIndex >= 0 {
+            indexes.append(previousIndex)
+        }
+        if nextIndex < count {
+            indexes.append(nextIndex)
+        }
+
+        return indexes
     }
 }
 
@@ -2427,6 +2437,7 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
     @Published private(set) var isMuted = false
     @Published private(set) var readyMediaIDs = Set<UUID>()
     @Published private(set) var failures: [UUID: UserFacingFailure] = [:]
+    @Published private(set) var playbackProgress: [UUID: Double] = [:]
 
     private var players: [UUID: AVPlayer] = [:]
     private var preparationTask: Task<Void, Never>?
@@ -2435,6 +2446,11 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
     private var assetPreloadTasks: [UUID: Task<AVURLAsset?, Never>] = [:]
     private var itemStatusObservations: [UUID: NSKeyValueObservation] = [:]
     private var itemEndObservers: [UUID: NSObjectProtocol] = [:]
+    private var progressObservers: [UUID: Any] = [:]
+    private var inactiveSince: [UUID: Date] = [:]
+    private var restartRequiredMediaIDs = Set<UUID>()
+    private var scrubbingMediaID: UUID?
+    private var resumeAfterScrubMediaID: UUID?
     private var retainedMediaIDs = Set<UUID>()
     private var retainedAssetIDs = Set<UUID>()
     private var activeMediaID: UUID?
@@ -2447,6 +2463,97 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
 
     func failure(for mediaID: UUID) -> UserFacingFailure? {
         failures[mediaID]
+    }
+
+    func progress(for mediaID: UUID) -> Double {
+        playbackProgress[mediaID] ?? 0
+    }
+
+    func beginScrubbing(mediaID: UUID) {
+        guard mediaID == activeMediaID,
+              let player = players[mediaID] else { return }
+
+        scrubbingMediaID = mediaID
+        if isPlaying {
+            resumeAfterScrubMediaID = mediaID
+            player.pause()
+        } else {
+            resumeAfterScrubMediaID = nil
+        }
+    }
+
+    func scrub(mediaID: UUID, progress: Double) {
+        guard mediaID == activeMediaID,
+              scrubbingMediaID == mediaID,
+              let player = players[mediaID],
+              let duration = player.currentItem?.duration.seconds,
+              duration.isFinite,
+              duration > 0 else {
+            return
+        }
+
+        let clampedProgress = min(1, max(0, progress))
+        playbackProgress[mediaID] = clampedProgress
+        restartRequiredMediaIDs.remove(mediaID)
+
+        let target = CMTime(
+            seconds: duration * clampedProgress,
+            preferredTimescale: 600)
+        let tolerance = CMTime(
+            seconds: 0.03,
+            preferredTimescale: 600)
+
+        // No completion callback here: repeated drag samples should coalesce
+        // naturally in AVPlayer instead of creating a queue of stale resumes.
+        player.seek(
+            to: target,
+            toleranceBefore: tolerance,
+            toleranceAfter: tolerance)
+    }
+
+    func endScrubbing(mediaID: UUID, progress: Double) {
+        guard mediaID == activeMediaID,
+              scrubbingMediaID == mediaID,
+              let player = players[mediaID],
+              let duration = player.currentItem?.duration.seconds,
+              duration.isFinite,
+              duration > 0 else {
+            scrubbingMediaID = nil
+            resumeAfterScrubMediaID = nil
+            return
+        }
+
+        let clampedProgress = min(1, max(0, progress))
+        playbackProgress[mediaID] = clampedProgress
+        let target = CMTime(
+            seconds: duration * clampedProgress,
+            preferredTimescale: 600)
+        let shouldResume = resumeAfterScrubMediaID == mediaID
+
+        scrubbingMediaID = nil
+        resumeAfterScrubMediaID = nil
+
+        player.seek(
+            to: target,
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        ) { [weak self, weak player] finished in
+            guard finished else { return }
+            Task { @MainActor [weak self, weak player] in
+                guard let self,
+                      let player,
+                      self.players[mediaID] === player,
+                      self.activeMediaID == mediaID else {
+                    return
+                }
+
+                self.playbackProgress[mediaID] = clampedProgress
+                if shouldResume {
+                    player.playImmediately(atRate: 1)
+                    self.isPlaying = true
+                }
+            }
+        }
     }
 
     func activate(
@@ -2487,6 +2594,15 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
             recordActivePlayback(with: social)
             if let previousMediaID {
                 players[previousMediaID]?.pause()
+                inactiveSince[previousMediaID] = Date()
+            }
+
+            if let departedAt = inactiveSince.removeValue(forKey: activeMedia.id),
+               Date().timeIntervalSince(departedAt) > LegendHacPlaybackPolicy.restartThreshold {
+                restartRequiredMediaIDs.insert(activeMedia.id)
+                playbackProgress[activeMedia.id] = 0
+            } else {
+                restartRequiredMediaIDs.remove(activeMedia.id)
             }
         }
 
@@ -2657,6 +2773,7 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
 
         players[media.id] = player
         failures.removeValue(forKey: media.id)
+        installProgressObserver(for: player, mediaID: media.id)
 
         // AVPlayerItem construction does not mean the asset is ready for
         // playback. Drive readiness, preroll, and active playback from the
@@ -2859,7 +2976,30 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
             return
         }
 
-        player.play()
+        if restartRequiredMediaIDs.remove(activeMediaID) != nil {
+            player.seek(
+                to: .zero,
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            ) { [weak self, weak player] finished in
+                guard finished else { return }
+                Task { @MainActor [weak self, weak player] in
+                    guard let self,
+                          let player,
+                          self.players[activeMediaID] === player,
+                          self.activeMediaID == activeMediaID,
+                          self.isPlaying else {
+                        return
+                    }
+                    self.playbackProgress[activeMediaID] = 0
+                    player.playImmediately(atRate: 1)
+                }
+            }
+            isPlaying = true
+            return
+        }
+
+        player.playImmediately(atRate: 1)
         isPlaying = true
     }
 
@@ -2888,14 +3028,16 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
         guard mediaID == activeMediaID,
               isPlaying,
               let player = players[mediaID] else { return }
+
         recordActivePlayback(completed: true, with: socialStore)
-        player.seek(to: .zero) { [weak self] finished in
-            guard finished else { return }
-            Task { @MainActor [weak self] in
-                guard self?.isPlaying == true else { return }
-                self?.players[mediaID]?.play()
-            }
-        }
+
+        player.seek(
+            to: .zero,
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        )
+        guard mediaID == activeMediaID, isPlaying else { return }
+        player.playImmediately(atRate: 1.0)
     }
 
     private func handlePlaybackFailure(mediaID: UUID, message: String) {
@@ -2936,6 +3078,34 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
             watchCompletionPercentage: completion.map { Decimal($0) })
     }
 
+    private func installProgressObserver(
+        for player: AVPlayer,
+        mediaID: UUID
+    ) {
+        progressObservers[mediaID] = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.05, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self, weak player] currentTime in
+            Task { @MainActor [weak self, weak player] in
+                guard let self,
+                      let player,
+                      self.players[mediaID] === player,
+                      self.scrubbingMediaID != mediaID,
+                      let duration = player.currentItem?.duration.seconds,
+                      duration.isFinite,
+                      duration > 0 else {
+                    return
+                }
+
+                let seconds = currentTime.seconds
+                guard seconds.isFinite else { return }
+                self.playbackProgress[mediaID] = min(
+                    1,
+                    max(0, seconds / duration))
+            }
+        }
+    }
+
     private func releasePlayersOutsideRetainedWindow() {
         let obsoleteMediaIDs = players.keys.filter { !retainedMediaIDs.contains($0) }
         obsoleteMediaIDs.forEach(releasePlayer)
@@ -2958,6 +3128,10 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
 
     private func releasePlayer(_ mediaID: UUID) {
         players[mediaID]?.pause()
+        if let player = players[mediaID],
+           let observer = progressObservers.removeValue(forKey: mediaID) {
+            player.removeTimeObserver(observer)
+        }
         players[mediaID]?.replaceCurrentItem(with: nil)
         players.removeValue(forKey: mediaID)
         itemStatusObservations.removeValue(forKey: mediaID)
@@ -2965,6 +3139,15 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
             NotificationCenter.default.removeObserver(observer)
         }
         readyMediaIDs.remove(mediaID)
+        playbackProgress.removeValue(forKey: mediaID)
+        restartRequiredMediaIDs.remove(mediaID)
+        inactiveSince.removeValue(forKey: mediaID)
+        if scrubbingMediaID == mediaID {
+            scrubbingMediaID = nil
+        }
+        if resumeAfterScrubMediaID == mediaID {
+            resumeAfterScrubMediaID = nil
+        }
     }
 }
 
@@ -2983,6 +3166,7 @@ struct LegendHacViewportFeed: View {
     @State private var selectedPostID: UUID?
     @State private var commentTarget: MobileSocialPost?
     @State private var publicProfile: LegendPublicProfileRoute?
+    @State private var isScrubbingHac = false
 
     init(
         posts: [MobileSocialPost],
@@ -3014,6 +3198,7 @@ struct LegendHacViewportFeed: View {
                                 post: post,
                                 social: social,
                                 playback: playback,
+                                isScrubbing: $isScrubbingHac,
                                 comment: { commentTarget = post },
                                 retry: {
                                     Task {
@@ -3037,6 +3222,7 @@ struct LegendHacViewportFeed: View {
                     .scrollTargetLayout()
                 }
                 .scrollTargetBehavior(.paging)
+                .scrollDisabled(isScrubbingHac)
                 .scrollPosition(id: $selectedPostID)
                 .task {
                     guard let selectedPostID else { return }
@@ -3138,6 +3324,7 @@ private struct LegendHacViewportPage: View {
     let post: MobileSocialPost
     @ObservedObject var social: MobileSocialStore
     @ObservedObject var playback: LegendHacPlaybackCoordinator
+    @Binding var isScrubbing: Bool
     @EnvironmentObject private var scrollChrome: LegendScrollChrome
     let comment: () -> Void
     let retry: () -> Void
@@ -3199,7 +3386,8 @@ private struct LegendHacViewportPage: View {
                 .allowsHitTesting(false)
 
                 hacOverlay(
-                    bottomNavigationVisible: scrollChrome.isBottomNavigationVisible,
+                    bottomNavigationVisible:
+                        !isScrubbing && scrollChrome.isBottomNavigationVisible,
                     safeAreaBottom: proxy.safeAreaInsets.bottom)
                     .frame(
                         maxWidth: .infinity,
@@ -3209,7 +3397,8 @@ private struct LegendHacViewportPage: View {
                     .padding(
                         .bottom,
                         overlayBottomInset(
-                            bottomNavigationVisible: scrollChrome.isBottomNavigationVisible,
+                            bottomNavigationVisible:
+                                !isScrubbing && scrollChrome.isBottomNavigationVisible,
                             safeAreaBottom: proxy.safeAreaInsets.bottom))
 
                 if showsAppreciation {
@@ -3273,6 +3462,26 @@ private struct LegendHacViewportPage: View {
             }
 
             if !bottomNavigationVisible {
+                if let video {
+                    LegendHacScrubber(
+                        progress: playback.progress(for: video.id),
+                        begin: {
+                            isScrubbing = true
+                            playback.beginScrubbing(mediaID: video.id)
+                        },
+                        scrub: {
+                            playback.scrub(
+                                mediaID: video.id,
+                                progress: $0)
+                        },
+                        end: {
+                            playback.endScrubbing(
+                                mediaID: video.id,
+                                progress: $0)
+                            isScrubbing = false
+                        })
+                }
+
                 Button(action: comment) {
                     HStack(spacing: LegendNextSpacing.xs) {
                         Image(systemName: "bubble.right")
@@ -3411,6 +3620,79 @@ private struct LegendHacViewportPage: View {
         }
         .foregroundStyle(.white)
         .padding(LegendNextSpacing.lg)
+    }
+}
+
+private struct LegendHacScrubber: View {
+    let progress: Double
+    let begin: () -> Void
+    let scrub: (Double) -> Void
+    let end: (Double) -> Void
+
+    @State private var draggedProgress: Double?
+
+    private var displayedProgress: Double {
+        draggedProgress ?? progress
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = max(proxy.size.width, 1)
+            let clamped = min(1, max(0, displayedProgress))
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(LegendNextColor.navy.opacity(0.78))
+                    .frame(height: 3)
+
+                Capsule()
+                    .fill(LegendNextColor.gold)
+                    .frame(width: max(2, width * clamped), height: 3)
+            }
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let target = min(
+                            1,
+                            max(0, value.location.x / width))
+                        if draggedProgress == nil {
+                            begin()
+                        }
+                        draggedProgress = target
+                        scrub(target)
+                    }
+                    .onEnded { value in
+                        let target = min(
+                            1,
+                            max(0, value.location.x / width))
+                        draggedProgress = nil
+                        end(target)
+                    }
+            )
+        }
+        .frame(height: 12)
+        .accessibilityElement()
+        .accessibilityLabel("Video progress")
+        .accessibilityValue("\(Int(displayedProgress * 100)) percent")
+        .accessibilityAdjustableAction { direction in
+            let step = 0.05
+            switch direction {
+            case .increment:
+                let target = min(1, displayedProgress + step)
+                begin()
+                scrub(target)
+                end(target)
+            case .decrement:
+                let target = max(0, displayedProgress - step)
+                begin()
+                scrub(target)
+                end(target)
+            @unknown default:
+                break
+            }
+        }
     }
 }
 

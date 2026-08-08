@@ -5,7 +5,7 @@ import PhotosUI
 private func legendMobileAvatarUpdate(from imageData: Data) -> MobileAccountAvatarUpdate? {
     guard let image = UIImage(data: imageData) else { return nil }
 
-    let maximumSide: CGFloat = 1_024
+    let maximumSide: CGFloat = 512
     let scale = min(1, maximumSide / max(image.size.width, image.size.height))
     let targetSize = CGSize(
         width: max(1, image.size.width * scale),
@@ -14,11 +14,11 @@ private func legendMobileAvatarUpdate(from imageData: Data) -> MobileAccountAvat
         image.draw(in: CGRect(origin: .zero, size: targetSize))
     }
 
-    for quality in [CGFloat(0.82), 0.68, 0.54] {
+    for quality in [CGFloat(0.74), 0.60, 0.48, 0.36] {
         guard let content = normalizedImage.jpegData(compressionQuality: quality) else {
             continue
         }
-        if content.count <= 3 * 1_024 * 1_024 {
+        if content.count <= 384 * 1_024 {
             return MobileAccountAvatarUpdate(base64Content: content.base64EncodedString())
         }
     }
@@ -1515,7 +1515,7 @@ private struct LegendHomeView: View {
         _ home: MobileHomeResponse
     ) -> some View {
         LegendScrollView {
-            LazyVStack(
+            VStack(
                 alignment: .leading,
                 spacing: LegendNextSpacing.xs
             ) {

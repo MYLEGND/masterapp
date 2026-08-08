@@ -138,18 +138,30 @@ public sealed class SocialFeedService : ISocialFeedService
         var stories = await FilterPostsForViewerAsync(storyPosts, actorKey, audience, cancellationToken);
         var feed = await FilterPostsForViewerAsync(feedPosts, actorKey, audience, cancellationToken);
         var hacs = await FilterPostsForViewerAsync(hacPosts, actorKey, audience, cancellationToken);
-        var rankedFeed = await RankFeedCandidatesForViewerAsync(
-            feed,
+        var feedMetrics = await LoadPostMetricsAsync(
+            stories
+                .Concat(feed)
+                .Concat(hacs)
+                .Select(post => post.Id)
+                .Distinct()
+                .ToArray(),
+            cancellationToken);
+        var rankedCandidates = await RankFeedCandidatesForViewerAsync(
+            feed
+                .Concat(hacs)
+                .DistinctBy(post => post.Id)
+                .ToArray(),
             actor,
             audience,
             now,
+            feedMetrics,
             cancellationToken);
-        var rankedHacs = await RankFeedCandidatesForViewerAsync(
-            hacs,
-            actor,
-            audience,
-            now,
-            cancellationToken);
+        var rankedFeed = rankedCandidates
+            .Where(post => post.ContentType == SocialPostContentTypes.Post)
+            .ToArray();
+        var rankedHacs = rankedCandidates
+            .Where(post => post.ContentType == SocialPostContentTypes.Reel)
+            .ToArray();
         var activity = await GetActivityAsync(actor, cancellationToken);
         var promotedGroups = await GetPromotedGroupsAsync(actor, activeAuthors, cancellationToken);
 
@@ -177,7 +189,8 @@ public sealed class SocialFeedService : ISocialFeedService
                 .GroupBy(post => post.Id)
                 .Select(group => group.First()),
             actor,
-            cancellationToken);
+            cancellationToken,
+            feedMetrics);
 
         var hydratedById = hydratedPosts.ToDictionary(post => post.Id);
 
@@ -1839,6 +1852,7 @@ public sealed class SocialFeedService : ISocialFeedService
         SocialFeedActor actor,
         AudienceGraph audience,
         DateTime now,
+        IReadOnlyDictionary<Guid, SocialPostMetrics> metricsByPost,
         CancellationToken cancellationToken)
     {
         if (posts.Count == 0)
@@ -1968,10 +1982,6 @@ public sealed class SocialFeedService : ISocialFeedService
             }
         }
 
-        var metricsByPost = await LoadPostMetricsAsync(
-            posts.Select(post => post.Id).ToArray(),
-            cancellationToken);
-
         decimal Score(SocialPost post)
         {
             var metrics = metricsByPost[post.Id];
@@ -2030,13 +2040,71 @@ public sealed class SocialFeedService : ISocialFeedService
         if (post is null)
             return null;
 
-        var activeAuthors = await GetActiveAuthorsAsync(actor, cancellationToken);
-        if (!activeAuthors.Contains(AuthorKey.From(post.AuthorUserId, post.AuthorParticipantType)))
+        var authorIsActive = post.AuthorParticipantType switch
+        {
+            MessagingParticipantTypes.Agent => await _db.AgentProfiles
+                .AsNoTracking()
+                .AnyAsync(
+                    profile =>
+                        profile.Id == post.AuthorProfileId &&
+                        profile.IsActive,
+                    cancellationToken),
+            MessagingParticipantTypes.Client => await _db.ClientProfiles
+                .AsNoTracking()
+                .AnyAsync(
+                    profile =>
+                        profile.Id == post.AuthorProfileId &&
+                        (profile.CrmStatus == null ||
+                         profile.CrmStatus == "" ||
+                         profile.CrmStatus == "Active"),
+                    cancellationToken),
+            _ => false
+        };
+
+        if (!authorIsActive)
             return null;
 
-        var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
+        var authorKey = AuthorKey.From(
+            post.AuthorUserId,
+            post.AuthorParticipantType);
+
+        if (_communitySafety is not null)
+        {
+            var blocked = await _communitySafety.GetBlockedParticipantsAsync(
+                actor.Identity,
+                cancellationToken);
+
+            if (blocked.Any(participant =>
+                    participant.ParticipantType == post.AuthorParticipantType &&
+                    participant.UserIdForms.Any(userId =>
+                        AuthorKey.From(userId, participant.ParticipantType) == authorKey)))
+            {
+                return null;
+            }
+        }
+
+        var actorKey = AuthorKey.From(
+            actor.Identity.UserId,
+            actor.Identity.ParticipantType);
+
+        if (authorKey == actorKey)
+            return post;
+
+        var isPrivate = await _db.MobileProfileSettings
+            .AsNoTracking()
+            .AnyAsync(
+                setting =>
+                    setting.ProfileId == post.AuthorProfileId &&
+                    setting.IsPrivate,
+                cancellationToken);
+
+        if (!isPrivate)
+            return post;
+
         var audience = await LoadAudienceGraphAsync(actor, cancellationToken);
-        return (await FilterPostsForViewerAsync([post], actorKey, audience, cancellationToken)).SingleOrDefault();
+        return audience.FollowedProfileIds.Contains(post.AuthorProfileId)
+            ? post
+            : null;
     }
 
     private async Task<Dictionary<Guid, SocialPostMetrics>> LoadPostMetricsAsync(
@@ -2074,9 +2142,36 @@ public sealed class SocialFeedService : ISocialFeedService
                              ids.Contains(follow.SourceSocialPostId.Value))
             .ToArrayAsync(cancellationToken);
 
+        var viewsByPost = views
+            .GroupBy(view => view.SocialPostId)
+            .ToDictionary(group => group.Key, group => group.ToArray());
+        var reactionCounts = reactions
+            .GroupBy(reaction => reaction.SocialPostId)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var commentsByPost = comments
+            .GroupBy(comment => comment.SocialPostId)
+            .ToDictionary(group => group.Key, group => group.ToArray());
+        var repostCounts = reposts
+            .GroupBy(repost => repost.SocialPostId)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var saveCounts = saves
+            .GroupBy(save => save.SocialPostId)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var shareCounts = shares
+            .GroupBy(share => share.SocialPostId)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var profileVisitCounts = profileVisits
+            .GroupBy(visit => visit.SourceSocialPostId)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var followCounts = follows
+            .Where(follow => follow.SourceSocialPostId.HasValue)
+            .GroupBy(follow => follow.SourceSocialPostId!.Value)
+            .ToDictionary(group => group.Key, group => group.Count());
+
         return ids.ToDictionary(postId => postId, postId =>
         {
-            var postViews = views.Where(view => view.SocialPostId == postId).ToArray();
+            var postViews = viewsByPost.GetValueOrDefault(postId) ?? [];
+            var postComments = commentsByPost.GetValueOrDefault(postId) ?? [];
             var watchedDuration = postViews
                 .Where(view => view.MaximumWatchDurationSeconds.HasValue)
                 .Select(view => view.MaximumWatchDurationSeconds!.Value)
@@ -2089,14 +2184,14 @@ public sealed class SocialFeedService : ISocialFeedService
             return new SocialPostMetrics(
                 postViews.Length,
                 postViews.Length,
-                reactions.Count(reaction => reaction.SocialPostId == postId),
-                comments.Count(comment => comment.SocialPostId == postId),
-                comments.Count(comment => comment.SocialPostId == postId && comment.ParentCommentId != null),
-                reposts.Count(repost => repost.SocialPostId == postId),
-                saves.Count(save => save.SocialPostId == postId),
-                shares.Count(share => share.SocialPostId == postId),
-                profileVisits.Count(visit => visit.SourceSocialPostId == postId),
-                follows.Count(follow => follow.SourceSocialPostId == postId),
+                reactionCounts.GetValueOrDefault(postId),
+                postComments.Length,
+                postComments.Count(comment => comment.ParentCommentId != null),
+                repostCounts.GetValueOrDefault(postId),
+                saveCounts.GetValueOrDefault(postId),
+                shareCounts.GetValueOrDefault(postId),
+                profileVisitCounts.GetValueOrDefault(postId),
+                followCounts.GetValueOrDefault(postId),
                 watchedDuration.Length == 0 ? null : decimal.Round(watchedDuration.Average(), 3),
                 watchedCompletion.Length == 0 ? null : decimal.Round(watchedCompletion.Average(), 2),
                 postViews.Sum(view => view.StoryExitCount),
@@ -2330,7 +2425,8 @@ public sealed class SocialFeedService : ISocialFeedService
     private async Task<IReadOnlyList<SocialPostView>> BuildPostViewsAsync(
         IEnumerable<SocialPost> posts,
         SocialFeedActor actor,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<Guid, SocialPostMetrics>? preloadedMetricsByPost = null)
     {
         var materialized = posts
             .GroupBy(post => post.Id)
@@ -2363,9 +2459,12 @@ public sealed class SocialFeedService : ISocialFeedService
             .OrderBy(media => media.DisplayOrder)
             .ToListAsync(cancellationToken);
 
-        var metricsByPost = await LoadPostMetricsAsync(
-            postIds,
-            cancellationToken);
+        var metricsByPost = preloadedMetricsByPost is not null &&
+                            postIds.All(preloadedMetricsByPost.ContainsKey)
+            ? preloadedMetricsByPost
+            : await LoadPostMetricsAsync(
+                postIds,
+                cancellationToken);
 
         var musicByPost = await _db.SocialPostMusicAttachments
             .AsNoTracking()

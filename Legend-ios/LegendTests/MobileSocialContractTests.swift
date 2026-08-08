@@ -316,55 +316,56 @@ final class MobileSocialContractTests: XCTestCase {
         XCTAssertTrue(MobileSocialContentType.hac.requiresVideo)
     }
 
-    func testHacPlaybackWindowOwnsActiveNextAndWarmCandidate() {
-        XCTAssertEqual(LegendHacPlaybackWindow.maximumPlayerCount, 2)
+    func testHacPlaybackPolicyRestartsAfterTwoSeconds() {
+        XCTAssertEqual(LegendHacPlaybackPolicy.restartThreshold, 2)
+    }
+
+    func testHacPlaybackWindowOwnsPreviousActiveAndNextHac() {
+        XCTAssertEqual(LegendHacPlaybackWindow.maximumPlayerCount, 3)
 
         XCTAssertEqual(
             LegendHacPlaybackWindow.retainedIndexes(
                 activeIndex: 2,
                 count: 7
             ),
-            [2, 3]
+            [1, 2, 3]
         )
-
         XCTAssertEqual(
             LegendHacPlaybackWindow.prefetchIndexes(
                 activeIndex: 2,
                 count: 7
             ),
-            [4]
+            [1, 3]
         )
 
         XCTAssertEqual(
             LegendHacPlaybackWindow.retainedIndexes(
                 activeIndex: 0,
-                count: 4
+                count: 7
             ),
             [0, 1]
         )
-
         XCTAssertEqual(
             LegendHacPlaybackWindow.prefetchIndexes(
                 activeIndex: 0,
-                count: 4
+                count: 7
             ),
-            [2]
+            [1]
         )
 
         XCTAssertEqual(
             LegendHacPlaybackWindow.retainedIndexes(
-                activeIndex: 3,
-                count: 4
+                activeIndex: 6,
+                count: 7
             ),
-            [3]
+            [5, 6]
         )
-
         XCTAssertEqual(
             LegendHacPlaybackWindow.prefetchIndexes(
-                activeIndex: 3,
-                count: 4
+                activeIndex: 6,
+                count: 7
             ),
-            []
+            [5]
         )
     }
 

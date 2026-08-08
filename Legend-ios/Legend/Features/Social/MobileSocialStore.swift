@@ -717,6 +717,36 @@ struct URLSessionMobileSocialAPI: MobileSocialAPI {
 
 private struct EmptyMobileRequest: Codable, Sendable {}
 
+private actor LegendSocialPreviewRequestGate {
+    private let maximumConcurrentRequests: Int
+    private var activeRequests = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(maximumConcurrentRequests: Int) {
+        self.maximumConcurrentRequests = max(1, maximumConcurrentRequests)
+    }
+
+    func acquire() async {
+        if activeRequests < maximumConcurrentRequests {
+            activeRequests += 1
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func release() {
+        if waiters.isEmpty {
+            activeRequests = max(0, activeRequests - 1)
+            return
+        }
+
+        waiters.removeFirst().resume()
+    }
+}
+
 @MainActor
 final class MobileSocialStore: ObservableObject {
     private struct CachedMediaFile {
@@ -747,6 +777,7 @@ final class MobileSocialStore: ObservableObject {
     private let persistence: LegendStorePersistence<MobileSocialSnapshot>
     private let mediaCache = NSCache<NSUUID, NSData>()
     private let previewCache = NSCache<NSUUID, NSData>()
+    private let previewRequestGate = LegendSocialPreviewRequestGate(maximumConcurrentRequests: 3)
     private var mediaFileCache: [UUID: CachedMediaFile] = [:]
     private var mediaStreamCache: [UUID: MobileSocialMediaStream] = [:]
     private var mediaLoadTasks: [UUID: Task<Data?, Never>] = [:]
@@ -754,6 +785,10 @@ final class MobileSocialStore: ObservableObject {
     private var mediaFileLoadTasks: [UUID: Task<URL?, Never>] = [:]
     private var mediaStreamLoadTasks: [UUID: Task<MobileSocialMediaStream?, Never>] = [:]
     private var inFlightMutationKeys: Set<String> = []
+    private var recordedBasicViewPostIDs: Set<UUID> = []
+    private var maximumRecordedWatchSecondsByPostID: [UUID: Decimal] = [:]
+    private var completedViewPostIDs: Set<UUID> = []
+    private var lastRecordedViewTelemetryAtByPostID: [UUID: Date] = [:]
     private var pendingPublicationRequest: MobileSocialPublishRequest?
     private var feedLoadTask: Task<MobileStoreLoadResult, Never>?
     private var profilePostsLoadTask: Task<MobileStoreLoadResult, Never>?
@@ -791,10 +826,8 @@ final class MobileSocialStore: ObservableObject {
     }
 
     func load() {
-        guard feedLoadTask == nil else { return }
-        if !hasFeedValue {
-            state = .loading
-        }
+        guard feedLoadTask == nil, !hasFeedValue else { return }
+        state = .loading
         Task { _ = await loadIfNeeded() }
     }
 
@@ -994,6 +1027,14 @@ final class MobileSocialStore: ObservableObject {
 
         let task = Task { [weak self] () -> Data? in
             guard let self else { return nil }
+
+            await self.previewRequestGate.acquire()
+            defer {
+                Task { await self.previewRequestGate.release() }
+            }
+
+            guard !Task.isCancelled else { return nil }
+
             do {
                 let token = try await self.accessTokenProvider()
                 let data = try await self.api.previewData(
@@ -1159,6 +1200,44 @@ final class MobileSocialStore: ObservableObject {
         watchCompletionPercentage: Decimal? = nil,
         storyInteractionType: String? = nil
     ) {
+        if storyInteractionType == nil {
+            if watchDurationSeconds == nil && watchCompletionPercentage == nil {
+                guard recordedBasicViewPostIDs.insert(postID).inserted else { return }
+            } else {
+                let watchSeconds = max(0, watchDurationSeconds ?? 0)
+                let completion = max(0, watchCompletionPercentage ?? 0)
+                let completed = completion >= 100
+
+                if completedViewPostIDs.contains(postID) { return }
+
+                let previousMaximum = maximumRecordedWatchSecondsByPostID[postID] ?? -1
+                guard completed || watchSeconds > previousMaximum else { return }
+
+                maximumRecordedWatchSecondsByPostID[postID] = watchSeconds
+                if completed {
+                    completedViewPostIDs.insert(postID)
+                }
+            }
+        }
+
+        // SocialPostViewer is the durable max-based metrics authority.
+        // Preserve Story interactions and completion while suppressing
+        // sub-second progressive playback writes for the same post.
+        let isStoryInteraction = storyInteractionType != nil
+        let isCompletion = (watchCompletionPercentage ?? 0) >= 100
+        let isMeasuredPlayback = watchDurationSeconds != nil ||
+            watchCompletionPercentage != nil
+        let minimumViewTelemetryInterval: TimeInterval = 2.0
+
+        if isMeasuredPlayback && !isStoryInteraction && !isCompletion {
+            let now = Date()
+            if let last = lastRecordedViewTelemetryAtByPostID[postID],
+               now.timeIntervalSince(last) < minimumViewTelemetryInterval {
+                return
+            }
+            lastRecordedViewTelemetryAtByPostID[postID] = now
+        }
+
         Task {
             do {
                 let token = try await accessTokenProvider()

@@ -134,21 +134,10 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         if (resolved.Error is not null)
             return resolved.Error;
 
-        var result = await _messaging.GetConversationPageAsync(
+        var image = await _messaging.GetConversationImageAsync(
             resolved.Actor!.Actor,
             conversationId,
-            new MessagingConversationMessagePageQuery(
-                BeforeUtc: null,
-                Take: 1,
-                IncludeGroupImage: true),
             cancellationToken);
-
-        if (!result.Succeeded || result.Conversation is null)
-            return MessagingFailure(
-                result.ErrorCode,
-                result.ErrorMessage);
-
-        var image = result.Conversation.GroupImage;
 
         return image is null
             ? NotFound()

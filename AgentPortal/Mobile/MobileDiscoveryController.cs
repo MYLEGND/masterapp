@@ -144,6 +144,9 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
             _profiles,
             identities,
             cancellationToken);
+        var verifiedProfiles = await ResolveVerifiedProfilesAsync(
+            page.Results,
+            cancellationToken);
 
         var results = new List<MobileDiscoveryResultDto>(page.Results.Count);
         foreach (var result in page.Results)
@@ -156,7 +159,8 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
                 result,
                 cancellationToken,
                 avatar,
-                avatarResolved: true));
+                avatarResolved: true,
+                isVerified: verifiedProfiles.GetValueOrDefault(key)));
         }
 
         return new MobileDiscoveryPageDto(
@@ -173,7 +177,8 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
         SocialDiscoveryResult result,
         CancellationToken cancellationToken,
         MobileAvatarDto? avatar = null,
-        bool avatarResolved = false)
+        bool avatarResolved = false,
+        bool? isVerified = null)
     {
         var identity = new MessagingParticipantIdentity(
             result.UserId,
@@ -210,12 +215,85 @@ public sealed class MobileDiscoveryController : MobileApiControllerBase
             result.Website,
             result.PublicEmail,
             result.IsPrivate,
-            await IsVerifiedProfileAsync(
+            isVerified ?? await IsVerifiedProfileAsync(
                 result.ParticipantType,
                 result.ClientProfileId,
                 cancellationToken),
             result.RoleLabel,
             result.PublicPhone);
+    }
+
+    private async Task<IReadOnlyDictionary<MessagingProfileImageKey, bool>> ResolveVerifiedProfilesAsync(
+        IReadOnlyCollection<SocialDiscoveryResult> results,
+        CancellationToken cancellationToken)
+    {
+        if (_db is null || results.Count == 0)
+            return new Dictionary<MessagingProfileImageKey, bool>();
+
+        var clientIds = results
+            .Where(result =>
+                result.ClientProfileId != Guid.Empty &&
+                string.Equals(
+                    result.ParticipantType,
+                    MessagingParticipantTypes.Client,
+                    StringComparison.Ordinal))
+            .Select(result => result.ClientProfileId)
+            .Distinct()
+            .ToArray();
+
+        var agentIds = results
+            .Where(result =>
+                result.ClientProfileId != Guid.Empty &&
+                string.Equals(
+                    result.ParticipantType,
+                    MessagingParticipantTypes.Agent,
+                    StringComparison.Ordinal))
+            .Select(result => result.ClientProfileId)
+            .Distinct()
+            .ToArray();
+
+        var verified = new Dictionary<MessagingProfileImageKey, bool>();
+
+        if (clientIds.Length > 0)
+        {
+            var clients = await _db.ClientProfiles
+                .AsNoTracking()
+                .Where(profile => clientIds.Contains(profile.Id))
+                .Select(profile => new { profile.Id, profile.IsVerified })
+                .ToArrayAsync(cancellationToken);
+
+            foreach (var profile in clients)
+            {
+                verified[new MessagingProfileImageKey(
+                    MessagingParticipantTypes.Client,
+                    profile.Id)] = profile.IsVerified;
+            }
+        }
+
+        if (agentIds.Length > 0)
+        {
+            var agents = await _db.AgentProfiles
+                .AsNoTracking()
+                .Where(profile => profile.IsActive && agentIds.Contains(profile.Id))
+                .Select(profile => new
+                {
+                    profile.Id,
+                    profile.IsVerified,
+                    Email = profile.NormalizedEmail ?? profile.AgentUpn
+                })
+                .ToArrayAsync(cancellationToken);
+
+            foreach (var profile in agents)
+            {
+                verified[new MessagingProfileImageKey(
+                    MessagingParticipantTypes.Agent,
+                    profile.Id)] =
+                    profile.IsVerified ||
+                    LegendVerifiedIdentity.IsVerifiedAgentEmail(profile.Email);
+            }
+        }
+
+        return verified;
     }
 
     private async Task<bool> IsVerifiedProfileAsync(

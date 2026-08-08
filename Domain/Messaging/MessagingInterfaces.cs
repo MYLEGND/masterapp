@@ -2,6 +2,12 @@ namespace Domain.Messaging;
 
 public interface IMessagingService
 {
+    Task<MessagingGroupImage?> GetConversationImageAsync(
+        MessagingActor actor,
+        Guid conversationId,
+        CancellationToken cancellationToken = default);
+
+
     Task<MessagingConversationListResult> ListConversationsAsync(
         MessagingActor actor,
         MessagingConversationListQuery query,
