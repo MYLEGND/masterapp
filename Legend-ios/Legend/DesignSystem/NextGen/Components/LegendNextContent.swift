@@ -3,7 +3,8 @@ import SwiftUI
 struct LegendHomeChromeActionRequest: Equatable, Identifiable {
     enum Kind: Equatable {
         case create
-        case activity
+        case notifications
+        case todayActivity
     }
 
     let id = UUID()

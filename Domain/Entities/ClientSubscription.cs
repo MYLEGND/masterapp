@@ -29,6 +29,7 @@ public sealed class ClientSubscription
     public ClientSubscriptionPaymentStanding PaymentStanding { get; set; } = ClientSubscriptionPaymentStanding.Unknown;
     public DateTime? FirstChargeUtc { get; set; }
     public DateTime? FirstRecurringRenewalUtc { get; set; }
+    public DateTime? TrialEndsUtc { get; set; }
     public DateTime? CurrentPeriodStartUtc { get; set; }
     public DateTime? CurrentPeriodEndUtc { get; set; }
     public DateTime? NextBillingDateUtc { get; set; }

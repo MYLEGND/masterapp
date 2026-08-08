@@ -681,6 +681,8 @@ struct MobileSocialActivity: Codable, Equatable, Identifiable, Sendable {
             return "commented on your update"
         case "follow":
             return "followed your Legend profile"
+        case "repost":
+            return "reposted your update"
         default:
             return "interacted with your update"
         }
@@ -694,6 +696,8 @@ struct MobileSocialActivity: Codable, Equatable, Identifiable, Sendable {
             return "bubble.right.fill"
         case "follow":
             return "person.badge.plus"
+        case "repost":
+            return "arrow.2.squarepath"
         default:
             return "bell.fill"
         }

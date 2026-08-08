@@ -18,6 +18,9 @@
   const subscriptionAnchorMode = document.getElementById("SubscriptionBillingAnchorMode");
   const subscriptionAnchorDay = document.getElementById("SubscriptionBillingAnchorDay");
   const subscriptionAnchorDayWrap = document.getElementById("subscriptionAnchorDayWrap");
+  const subscriptionHasFreeTrial = document.getElementById("SubscriptionHasFreeTrial");
+  const subscriptionFreeTrialDays = document.getElementById("SubscriptionFreeTrialDays");
+  const subscriptionFreeTrialDaysWrap = document.getElementById("subscriptionFreeTrialDaysWrap");
   const subscriptionCurrency = document.getElementById("SubscriptionCurrency");
 
   // Ensure a default selection (Lead) so required radios don't block submit silently
@@ -90,6 +93,7 @@
     const requiresSignificantOther = isClient && needsSO(status ? status.value : "");
     const useCustomAmount = isClient && subscriptionPriceType?.value === "Custom";
     const useAnchorDay = isClient && subscriptionAnchorMode?.value === "SpecificDayOfMonth";
+    const useFreeTrial = isClient && subscriptionHasFreeTrial?.value === "true";
 
     if (submitBtn) submitBtn.textContent = submitLabel(selected);
 
@@ -162,8 +166,17 @@
       subscriptionAnchorDayWrap.classList.toggle("is-hidden", !useAnchorDay);
     }
     setFieldState(subscriptionAnchorDay, {
-      required: useAnchorDay,
-      enabled: useAnchorDay,
+        required: useAnchorDay,
+        enabled: useAnchorDay,
+        clearWhenDisabled: true
+    });
+
+    if (subscriptionFreeTrialDaysWrap) {
+      subscriptionFreeTrialDaysWrap.classList.toggle("is-hidden", !useFreeTrial);
+    }
+    setFieldState(subscriptionFreeTrialDays, {
+      required: useFreeTrial,
+      enabled: useFreeTrial,
       clearWhenDisabled: true
     });
   }
@@ -177,6 +190,9 @@
   }
   if (subscriptionAnchorMode) {
     subscriptionAnchorMode.addEventListener("change", applyRecordType);
+  }
+  if (subscriptionHasFreeTrial) {
+    subscriptionHasFreeTrial.addEventListener("change", applyRecordType);
   }
   applyRecordType();
 })();

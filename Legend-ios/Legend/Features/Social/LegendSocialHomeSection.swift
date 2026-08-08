@@ -465,7 +465,8 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
     let dashboardContent: DashboardContent
 
     @State private var creationRoute: LegendSocialCreationRoute?
-    @State private var isPresentingActivity = false
+    @State private var isPresentingNotifications = false
+    @State private var isPresentingTodayActivity = false
     @State private var commentTarget: MobileSocialPost?
     @State private var postInsight: MobileSocialPostInsight?
     @State private var storyCollection: MobileSocialStoryCollection?
@@ -501,11 +502,14 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
                 route: $creationRoute,
                 social: social)
         }
-        .sheet(isPresented: $isPresentingActivity) {
-            LegendDailyActivitySheet(
+        .sheet(isPresented: $isPresentingNotifications) {
+            LegendInAppNotificationsSheet(
                 activity: activity,
                 currentIdentity: session.actor.identity,
                 social: social)
+        }
+        .sheet(isPresented: $isPresentingTodayActivity) {
+            LegendDailyActivitySheet(activity: activity)
         }
         .sheet(item: $postInsight) { insight in
             LegendPostInsightsSheet(insight: insight)
@@ -574,14 +578,20 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
         switch request.kind {
         case .create:
             creationRoute = .menu
-        case .activity:
-            openActivity()
+        case .notifications:
+            openNotifications()
+        case .todayActivity:
+            openTodayActivity()
         }
     }
 
-    private func openActivity() {
-        activity.markTodayViewed()
-        isPresentingActivity = true
+    private func openNotifications() {
+        activity.markNotificationsViewed()
+        isPresentingNotifications = true
+    }
+
+    private func openTodayActivity() {
+        isPresentingTodayActivity = true
     }
 
     private var failurePresentation: Binding<Bool> {

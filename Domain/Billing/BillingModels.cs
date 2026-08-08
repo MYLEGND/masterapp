@@ -247,7 +247,8 @@ public sealed record ClientSubscriptionActivationSchedule(
     int SameDayCutoffHourLocal,
     DateTime FirstChargeUtc,
     DateTime FirstRecurringRenewalUtc,
-    DateOnly FirstRecurringRenewalLocalDate);
+    DateOnly FirstRecurringRenewalLocalDate,
+    int FreeTrialDays = 0);
 
 public sealed record ClientSubscriptionRenewalSchedule(
     DateTime PeriodStartUtc,
@@ -264,7 +265,10 @@ public sealed record CreateClientSubscriptionOfferCommand(
     int? SelectedBillingAnchorDay,
     DateTime? EffectiveUtc,
     DateTime? ExpiresUtc,
-    bool AllowFounderZeroDollarCustomAmount = false);
+    bool AllowFounderZeroDollarCustomAmount = false,
+    bool HasFreeTrial = false,
+    int? FreeTrialDays = null,
+    bool AllowFounderFreeTrial = false);
 
 public sealed record CreateSubscriptionActivationInvitationCommand(
     Guid ClientProfileId,
@@ -327,6 +331,16 @@ public sealed record CancelClientSubscriptionCommand(
     bool CancelAtPeriodEnd,
     BillingActorType ActorType,
     string? ActorId,
+    string? CorrelationId = null);
+
+public sealed record UpdateClientSubscriptionCommand(
+    Guid ClientSubscriptionId,
+    ClientSubscriptionOfferPriceType PriceType,
+    int? CustomMonthlyAmountCents,
+    BillingAnchorSelectionMode BillingAnchorSelectionMode,
+    int? SelectedBillingAnchorDay,
+    string ActorId,
+    bool FounderAuthorized,
     string? CorrelationId = null);
 
 /// <summary>

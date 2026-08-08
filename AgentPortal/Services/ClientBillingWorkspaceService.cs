@@ -76,6 +76,8 @@ public sealed class ClientBillingWorkspaceService
 
         var canConfigureSubscription = latestSubscription is null ||
             latestSubscription.Status == ClientSubscriptionStatus.Canceled;
+        var canUpdateLiveSubscription = latestSubscription is not null &&
+            latestSubscription.Status != ClientSubscriptionStatus.Canceled;
 
         return new
         {
@@ -88,6 +90,7 @@ public sealed class ClientBillingWorkspaceService
                 currency = latestOffer.Currency,
                 billingAnchorSelectionMode = latestOffer.BillingAnchorSelectionMode.ToString(),
                 selectedBillingAnchorDay = latestOffer.SelectedBillingAnchorDay,
+                freeTrialDays = latestOffer.FreeTrialDays,
                 effectiveUtc = latestOffer.EffectiveUtc?.ToString("O"),
                 expiresUtc = latestOffer.ExpiresUtc?.ToString("O"),
                 createdUtc = latestOffer.CreatedUtc.ToString("O")
@@ -116,6 +119,7 @@ public sealed class ClientBillingWorkspaceService
                 currentPeriodStartUtc = latestSubscription.CurrentPeriodStartUtc?.ToString("O"),
                 currentPeriodEndUtc = latestSubscription.CurrentPeriodEndUtc?.ToString("O"),
                 nextBillingDateUtc = latestSubscription.NextBillingDateUtc?.ToString("O"),
+                trialEndsUtc = latestSubscription.TrialEndsUtc?.ToString("O"),
                 activatedUtc = latestSubscription.ActivatedUtc?.ToString("O"),
                 cancelledUtc = latestSubscription.CancelledUtc?.ToString("O"),
                 cancelAtPeriodEnd = latestSubscription.CancelAtPeriodEnd
@@ -131,6 +135,7 @@ public sealed class ClientBillingWorkspaceService
             actions = new
             {
                 canConfigureSubscription,
+                canUpdateLiveSubscription,
                 canResendInvitation,
                 canRevokeInvitation,
                 canCancelSubscription

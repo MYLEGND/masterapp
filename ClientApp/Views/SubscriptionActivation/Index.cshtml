@@ -32,9 +32,9 @@
                         <span class="activation-summary-label">Monthly</span>
                         <span class="activation-summary-value">@Model.MonthlyAmountDisplay</span>
                     </div>
-                    <div class="activation-summary-item">
-                        <span class="activation-summary-label">First charge</span>
-                        <span class="activation-summary-value" data-first-charge>@Model.FirstChargeDateDisplay</span>
+                        <div class="activation-summary-item">
+                            <span class="activation-summary-label">@(Model.HasFreeTrial ? "Trial ends / first charge" : "First charge")</span>
+                            <span class="activation-summary-value" data-first-charge>@Model.FirstChargeDateDisplay</span>
                     </div>
                     <div class="activation-summary-item">
                         <span class="activation-summary-label">Renews</span>
@@ -84,6 +84,10 @@
 
                         <div asp-validation-summary="ModelOnly" class="activation-validation"></div>
                         <h2 class="activation-form-title">Payment details</h2>
+                        @if (Model.HasFreeTrial)
+                        {
+                            <p class="activation-trial-copy">Your @Model.FreeTrialDays-day free trial starts when you activate. Your card is saved securely today and will first be charged @Model.MonthlyAmountDisplay on @Model.FirstChargeDateDisplay.</p>
+                        }
 
                         <div class="activation-fields">
                             <div class="activation-field">
@@ -126,7 +130,16 @@
 
                         <label class="activation-authorization" for="billingAuthorizationAccepted">
                             <input type="checkbox" id="billingAuthorizationAccepted" name="BillingAuthorizationAccepted" value="true" required />
-                            <span id="activationAuthorizationCopy" data-monthly-amount="@Model.MonthlyAmountDisplay">I authorize today’s @Model.MonthlyAmountDisplay charge and recurring monthly billing on @Model.BillingAnchorLabel, cancel anytime.</span>
+                            <span id="activationAuthorizationCopy" data-monthly-amount="@Model.MonthlyAmountDisplay">
+                                @if (Model.HasFreeTrial)
+                                {
+                                    @:I authorize secure card storage today and the first @Model.MonthlyAmountDisplay charge on @Model.FirstChargeDateDisplay, followed by recurring monthly billing on @Model.BillingAnchorLabel. I can cancel anytime before the first charge.
+                                }
+                                else
+                                {
+                                    @:I authorize today’s @Model.MonthlyAmountDisplay charge and recurring monthly billing on @Model.BillingAnchorLabel, cancel anytime.
+                                }
+                            </span>
                         </label>
 
                         <div class="activation-actions">

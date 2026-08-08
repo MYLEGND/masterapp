@@ -3,14 +3,12 @@ import EventKit
 import SwiftUI
 import UIKit
 
-/// The one presentation model for the Activity experience. Sources remain
-/// authoritative in their own domains; this projection is the only place they
-/// are combined for a member's local day.
+/// Activity intentionally has two destinations: in-app notifications and the
+/// member's private device planner. They share row presentation only; their
+/// data never mixes into one feed.
 enum LegendDailyActivitySource: String, CaseIterable, Hashable, Sendable {
     case account
     case network
-    case action
-    case appointment
     case calendar
     case reminder
 
@@ -18,8 +16,6 @@ enum LegendDailyActivitySource: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .account: return "Account"
         case .network: return "Network"
-        case .action: return "Actions"
-        case .appointment: return "Appointments"
         case .calendar: return "Calendar"
         case .reminder: return "Reminders"
         }
@@ -29,8 +25,6 @@ enum LegendDailyActivitySource: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .account: return "checkmark.seal.fill"
         case .network: return "heart.fill"
-        case .action: return "checkmark.circle.fill"
-        case .appointment: return "calendar.badge.clock"
         case .calendar: return "calendar"
         case .reminder: return "checklist"
         }
@@ -40,8 +34,6 @@ enum LegendDailyActivitySource: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .account: return .information
         case .network: return .gold
-        case .action: return .warning
-        case .appointment: return .navy
         case .calendar: return .information
         case .reminder: return .success
         }
@@ -142,6 +134,122 @@ enum LegendDevicePlannerCapability: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .calendar: return .calendar
         case .reminders: return .reminder
+        }
+    }
+}
+
+/// A value-only representation of a device calendar or reminders list. It
+/// prevents EventKit objects from leaking outside the planner authority.
+struct LegendDevicePlannerCalendar: Identifiable, Equatable, Sendable {
+    let id: String
+    let title: String
+}
+
+enum LegendPlannerEntryKind: String, CaseIterable, Identifiable, Sendable {
+    case reminder
+    case event
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .reminder: return "Reminder"
+        case .event: return "Event"
+        }
+    }
+
+    var capability: LegendDevicePlannerCapability {
+        switch self {
+        case .reminder: return .reminders
+        case .event: return .calendar
+        }
+    }
+}
+
+enum LegendPlannerRepeat: String, CaseIterable, Identifiable, Sendable {
+    case never
+    case daily
+    case weekly
+    case monthly
+    case yearly
+
+    var id: String { rawValue }
+
+    var title: String { rawValue.capitalized }
+
+    var eventKitRule: EKRecurrenceRule? {
+        let frequency: EKRecurrenceFrequency
+        switch self {
+        case .never: return nil
+        case .daily: frequency = .daily
+        case .weekly: frequency = .weekly
+        case .monthly: frequency = .monthly
+        case .yearly: frequency = .yearly
+        }
+        return EKRecurrenceRule(recurrenceWith: frequency, interval: 1, end: nil)
+    }
+}
+
+struct LegendPlannerEntryDraft: Sendable {
+    let kind: LegendPlannerEntryKind
+    let title: String
+    let notes: String
+    let startDate: Date?
+    let endDate: Date?
+    let isAllDay: Bool
+    let alertsEnabled: Bool
+    let priority: Int
+    let repeatRule: LegendPlannerRepeat
+    let calendarIdentifier: String?
+}
+
+/// Today’s Activity writes private planner items directly to EventKit. This
+/// policy supplies exactly one Apple-native lock-screen alert for each enabled
+/// item and deliberately never duplicates it with a server APNs delivery.
+enum LegendPlannerAlertSchedule: Equatable, Sendable {
+    case none
+    case absolute(Date)
+    case relative(TimeInterval)
+}
+
+enum LegendPlannerAlertPolicy {
+    static func schedule(
+        for kind: LegendPlannerEntryKind,
+        scheduledFor date: Date?,
+        isAllDay: Bool,
+        alertsEnabled: Bool,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> LegendPlannerAlertSchedule {
+        guard alertsEnabled, let date else {
+            return .none
+        }
+
+        switch kind {
+        case .reminder:
+            return .absolute(date)
+
+        case .event where isAllDay:
+            let dayStart = calendar.startOfDay(for: date)
+            let morning = calendar.date(byAdding: .hour, value: 9, to: dayStart) ?? dayStart
+            return .absolute(morning)
+
+        case .event:
+            return .relative(-15 * 60)
+        }
+    }
+
+    static func apply(
+        _ schedule: LegendPlannerAlertSchedule,
+        to item: EKCalendarItem
+    ) {
+        item.alarms?.forEach(item.removeAlarm)
+        switch schedule {
+        case .none:
+            break
+        case .absolute(let date):
+            item.addAlarm(EKAlarm(absoluteDate: date))
+        case .relative(let offset):
+            item.addAlarm(EKAlarm(relativeOffset: offset))
         }
     }
 }
@@ -298,6 +406,115 @@ final class LegendDevicePlannerStore: ObservableObject {
         items = refreshed.sorted { $0.occursAt < $1.occursAt }
     }
 
+    func calendars(
+        for capability: LegendDevicePlannerCapability
+    ) -> [LegendDevicePlannerCalendar] {
+        let entityType: EKEntityType = capability == .calendar ? .event : .reminder
+        guard authorization(for: capability).isAuthorized else { return [] }
+
+        return eventStore.calendars(for: entityType)
+            .map {
+                LegendDevicePlannerCalendar(
+                    id: $0.calendarIdentifier,
+                    title: $0.title.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+            .filter { !$0.title.isEmpty }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    func create(_ draft: LegendPlannerEntryDraft) async throws {
+        let title = sanitized(draft.title, fallback: "")
+        guard !title.isEmpty else {
+            throw LegendDevicePlannerError.titleRequired
+        }
+
+        let capability = draft.kind.capability
+        if !isConnected(capability) {
+            await connect(capability)
+        }
+        guard isConnected(capability) else {
+            throw LegendDevicePlannerError.plannerDisconnected(capability)
+        }
+
+        let notes = draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let destinationCalendar = try resolvedCalendar(
+            identifier: draft.calendarIdentifier,
+            capability: capability)
+
+        switch draft.kind {
+        case .reminder:
+            let reminder = EKReminder(eventStore: eventStore)
+            reminder.calendar = destinationCalendar
+            reminder.title = title
+            reminder.notes = notes.isEmpty ? nil : notes
+            reminder.priority = draft.priority
+
+            if let startDate = draft.startDate {
+                reminder.dueDateComponents = self.calendar.dateComponents(
+                    [.calendar, .timeZone, .year, .month, .day, .hour, .minute],
+                    from: startDate)
+            }
+            LegendPlannerAlertPolicy.apply(
+                LegendPlannerAlertPolicy.schedule(
+                    for: .reminder,
+                    scheduledFor: draft.startDate,
+                    isAllDay: false,
+                    alertsEnabled: draft.alertsEnabled,
+                    calendar: calendar),
+                to: reminder)
+            if let recurrenceRule = draft.repeatRule.eventKitRule {
+                reminder.addRecurrenceRule(recurrenceRule)
+            }
+            try eventStore.save(reminder, commit: true)
+
+        case .event:
+            guard let startDate = draft.startDate else {
+                throw LegendDevicePlannerError.eventStartRequired
+            }
+            let eventStartDate = draft.isAllDay
+                ? calendar.startOfDay(for: startDate)
+                : startDate
+            let requestedEndDate = draft.endDate ?? startDate.addingTimeInterval(60 * 60)
+            let eventEndDate: Date
+            if draft.isAllDay {
+                let dayAfterStart = calendar.date(
+                    byAdding: .day,
+                    value: 1,
+                    to: eventStartDate) ?? eventStartDate.addingTimeInterval(24 * 60 * 60)
+                eventEndDate = max(
+                    calendar.startOfDay(for: requestedEndDate),
+                    dayAfterStart)
+            } else {
+                eventEndDate = requestedEndDate
+            }
+            guard eventEndDate > eventStartDate else {
+                throw LegendDevicePlannerError.eventEndMustFollowStart
+            }
+
+            let event = EKEvent(eventStore: eventStore)
+            event.calendar = destinationCalendar
+            event.title = title
+            event.notes = notes.isEmpty ? nil : notes
+            event.startDate = eventStartDate
+            event.endDate = eventEndDate
+            event.isAllDay = draft.isAllDay
+            LegendPlannerAlertPolicy.apply(
+                LegendPlannerAlertPolicy.schedule(
+                    for: .event,
+                    scheduledFor: eventStartDate,
+                    isAllDay: draft.isAllDay,
+                    alertsEnabled: draft.alertsEnabled,
+                    calendar: calendar),
+                to: event)
+            if let recurrenceRule = draft.repeatRule.eventKitRule {
+                event.addRecurrenceRule(recurrenceRule)
+            }
+            try eventStore.save(event, span: .thisEvent, commit: true)
+        }
+
+        await refresh()
+    }
+
     func setReminder(
         identifier: String,
         completed: Bool
@@ -376,6 +593,29 @@ final class LegendDevicePlannerStore: ObservableObject {
         }
     }
 
+    private func resolvedCalendar(
+        identifier: String?,
+        capability: LegendDevicePlannerCapability
+    ) throws -> EKCalendar {
+        if let identifier,
+           let calendar = eventStore.calendar(withIdentifier: identifier) {
+            return calendar
+        }
+
+        let defaultCalendar: EKCalendar?
+        switch capability {
+        case .calendar:
+            defaultCalendar = eventStore.defaultCalendarForNewEvents
+        case .reminders:
+            defaultCalendar = eventStore.defaultCalendarForNewReminders()
+        }
+
+        guard let defaultCalendar else {
+            throw LegendDevicePlannerError.defaultCalendarUnavailable(capability)
+        }
+        return defaultCalendar
+    }
+
     private static func authorization(
         for entityType: EKEntityType
     ) -> LegendDevicePlannerAuthorization {
@@ -432,6 +672,11 @@ final class LegendDevicePlannerStore: ObservableObject {
 private enum LegendDevicePlannerError: LocalizedError {
     case reminderNotFound
     case remindersDisconnected
+    case plannerDisconnected(LegendDevicePlannerCapability)
+    case titleRequired
+    case eventStartRequired
+    case eventEndMustFollowStart
+    case defaultCalendarUnavailable(LegendDevicePlannerCapability)
 
     var errorDescription: String? {
         switch self {
@@ -439,18 +684,24 @@ private enum LegendDevicePlannerError: LocalizedError {
             return "The device reminder is no longer available."
         case .remindersDisconnected:
             return "Connect device reminders before updating a reminder."
+        case .plannerDisconnected(let capability):
+            return "Connect \(capability.title) before saving this item."
+        case .titleRequired:
+            return "Add a title before saving."
+        case .eventStartRequired:
+            return "Choose when this event starts."
+        case .eventEndMustFollowStart:
+            return "The event must end after it starts."
+        case .defaultCalendarUnavailable(let capability):
+            return "Choose or create a \(capability.title.lowercased()) list on this device, then try again."
         }
     }
 }
 
-/// A deterministic projection used by the store and tests. Its single local-day
-/// range is deliberate: future and prior network events never appear in the
-/// Today view, while incomplete tasks and reminders are available in Past Due.
+/// The Today destination is intentionally limited to the private device
+/// planner. Social/account notifications have their own in-app destination.
 enum LegendDailyActivityProjection {
     static func make(
-        home: MobileHomeResponse?,
-        social: MobileSocialSnapshot?,
-        accountNotifications: [MobileActivityNotification],
         plannerItems: [LegendDevicePlannerItem],
         now: Date = Date(),
         calendar: Calendar = .autoupdatingCurrent
@@ -461,59 +712,6 @@ enum LegendDailyActivityProjection {
         var today: [LegendDailyActivityItem] = []
         var pastDue: [LegendDailyActivityItem] = []
 
-        for notification in accountNotifications where todayRange.contains(notification.occurredUTC) {
-            today.append(LegendDailyActivityItem(
-                id: "account:\(notification.id.uuidString)",
-                source: .account,
-                title: notification.title,
-                detail: notification.detail,
-                occurredAt: notification.occurredUTC))
-        }
-
-        if let social {
-            for item in social.activity where todayRange.contains(item.occurredUTC) {
-                today.append(LegendDailyActivityItem(
-                    id: "network:\(item.id.uuidString)",
-                    source: .network,
-                    title: item.actor.displayName,
-                    detail: item.summary,
-                    occurredAt: item.occurredUTC,
-                    actor: item.actor,
-                    sourcePostID: item.postID))
-            }
-        }
-
-        if let home {
-            for action in home.actions {
-                let dueDate = action.dueDateUTC
-                let occurredAt = dueDate ?? start
-                let item = LegendDailyActivityItem(
-                    id: "action:\(action.id.uuidString)",
-                    source: .action,
-                    title: action.title,
-                    detail: actionDetail(action),
-                    occurredAt: occurredAt,
-                    isCompletable: true,
-                    isPastDue: dueDate.map { $0 < start } ?? false)
-                if item.isPastDue {
-                    pastDue.append(item)
-                } else if dueDate == nil || todayRange.contains(occurredAt) {
-                    today.append(item)
-                }
-            }
-
-            for appointment in home.upcomingAppointments where todayRange.contains(appointment.startUTC) {
-                today.append(LegendDailyActivityItem(
-                    id: "appointment:\(appointment.id.uuidString)",
-                    source: .appointment,
-                    title: "Appointment",
-                    detail: appointment.status.capitalized,
-                    occurredAt: appointment.startUTC,
-                    isCompletable: true))
-            }
-
-        }
-
         for item in plannerItems {
             let activity = LegendDailyActivityItem(
                 id: item.id,
@@ -521,7 +719,7 @@ enum LegendDailyActivityProjection {
                 title: item.title,
                 detail: item.detail,
                 occurredAt: item.occursAt,
-                isCompletable: true,
+                isCompletable: item.source == .reminder,
                 isPastDue: item.isPastDue,
                 nativeReminderIdentifier: item.reminderIdentifier)
             if item.isPastDue {
@@ -535,10 +733,38 @@ enum LegendDailyActivityProjection {
             today: today.sorted(by: { $0.occurredAt < $1.occurredAt }),
             pastDue: pastDue.sorted(by: { $0.occurredAt < $1.occurredAt }))
     }
+}
 
-    private static func actionDetail(_ action: MobileActionItem) -> String {
-        let priority = action.priority.trimmingCharacters(in: .whitespacesAndNewlines)
-        return priority.isEmpty ? "Legend action" : "\(priority.capitalized) priority"
+/// The heart opens this projection only. It is ordered newest-first and keeps
+/// all in-app interaction kinds together without exposing device-planner data.
+enum LegendInAppNotificationProjection {
+    static func make(
+        social: MobileSocialSnapshot?,
+        accountNotifications: [MobileActivityNotification]
+    ) -> [LegendDailyActivityItem] {
+        var notifications = accountNotifications.map {
+            LegendDailyActivityItem(
+                id: "account:\($0.id.uuidString)",
+                source: .account,
+                title: $0.title,
+                detail: $0.detail,
+                occurredAt: $0.occurredUTC)
+        }
+
+        if let social {
+            notifications.append(contentsOf: social.activity.map {
+                LegendDailyActivityItem(
+                    id: "network:\($0.id.uuidString)",
+                    source: .network,
+                    title: $0.actor.displayName,
+                    detail: $0.summary,
+                    occurredAt: $0.occurredUTC,
+                    actor: $0.actor,
+                    sourcePostID: $0.postID)
+            })
+        }
+
+        return notifications.sorted { $0.occurredAt > $1.occurredAt }
     }
 }
 
@@ -548,6 +774,7 @@ enum LegendDailyActivityProjection {
 final class LegendDailyActivityStore: ObservableObject {
     @Published private(set) var today: [LegendDailyActivityItem] = []
     @Published private(set) var pastDue: [LegendDailyActivityItem] = []
+    @Published private(set) var inAppNotifications: [LegendDailyActivityItem] = []
     @Published private(set) var unreadBadgeCount = 0
     @Published private(set) var categoryCounts: [LegendDailyActivityCategoryCount] = []
     @Published private(set) var completionFailure: String?
@@ -555,7 +782,6 @@ final class LegendDailyActivityStore: ObservableObject {
     let planner: LegendDevicePlannerStore
 
     private let identity: LogicalParticipantIdentity
-    private let home: MobileHomeStore
     private let social: MobileSocialStore
     private let messages: MessagingStore
     private let calendar: Calendar
@@ -563,14 +789,12 @@ final class LegendDailyActivityStore: ObservableObject {
 
     init(
         identity: LogicalParticipantIdentity,
-        home: MobileHomeStore,
         social: MobileSocialStore,
         messages: MessagingStore,
         planner: LegendDevicePlannerStore? = nil,
         calendar: Calendar = .autoupdatingCurrent
     ) {
         self.identity = identity
-        self.home = home
         self.social = social
         self.messages = messages
         self.planner = planner ?? LegendDevicePlannerStore(
@@ -603,13 +827,16 @@ final class LegendDailyActivityStore: ObservableObject {
         planner.openDeviceSettings()
     }
 
-    func markTodayViewed() {
-        let identifiers = today
-            .filter { !$0.isCompletable }
-            .map(\.id)
+    func markNotificationsViewed() {
+        let identifiers = inAppNotifications.map(\.id)
         var seen = viewedIdentifiers
         seen.formUnion(identifiers)
         viewedIdentifiers = seen
+        rebuild()
+    }
+
+    func createPlannerEntry(_ draft: LegendPlannerEntryDraft) async throws {
+        try await planner.create(draft)
         rebuild()
     }
 
@@ -678,9 +905,6 @@ final class LegendDailyActivityStore: ObservableObject {
     }
 
     private func observeSources() {
-        home.$state
-            .sink { [weak self] _ in self?.rebuild() }
-            .store(in: &cancellables)
         social.$state
             .sink { [weak self] _ in self?.rebuild() }
             .store(in: &cancellables)
@@ -693,34 +917,29 @@ final class LegendDailyActivityStore: ObservableObject {
     }
 
     private func rebuild() {
-        let projection = LegendDailyActivityProjection.make(
-            home: homeSnapshot,
-            social: socialSnapshot,
-            accountNotifications: messages.activityNotifications,
+        let plannerProjection = LegendDailyActivityProjection.make(
             plannerItems: planner.items,
             calendar: calendar)
-        today = projection.today
-        pastDue = projection.pastDue
+        today = plannerProjection.today
+        pastDue = plannerProjection.pastDue
+        inAppNotifications = LegendInAppNotificationProjection.make(
+            social: socialSnapshot,
+            accountNotifications: messages.activityNotifications)
 
         let incompleteToday = today.filter { !isCompleted($0) }
-        categoryCounts = LegendDailyActivitySource.allCases.compactMap { source in
+        categoryCounts = [
+            LegendDailyActivitySource.calendar,
+            .reminder
+        ].compactMap { source in
             let count = incompleteToday.count { $0.source == source }
             return count > 0
                 ? LegendDailyActivityCategoryCount(source: source, count: count)
                 : nil
         }
 
-        let unreadNotifications = incompleteToday.count {
-            ($0.source == .account || $0.source == .network)
-                && !viewedIdentifiers.contains($0.id)
+        unreadBadgeCount = inAppNotifications.count {
+            !viewedIdentifiers.contains($0.id)
         }
-        let incompleteWork = incompleteToday.count { $0.isCompletable }
-        unreadBadgeCount = unreadNotifications + incompleteWork
-    }
-
-    private var homeSnapshot: MobileHomeResponse? {
-        guard case .loaded(let home) = home.state else { return nil }
-        return home
     }
 
     private var socialSnapshot: MobileSocialSnapshot? {
@@ -743,7 +962,7 @@ final class LegendDailyActivityStore: ObservableObject {
     }
 
     private var viewedKey: String {
-        storageKey("viewed")
+        storageKey("notifications-viewed")
     }
 
     private func storageKey(_ suffix: String) -> String {
@@ -894,14 +1113,11 @@ struct LegendTodayActivitySummaryPill: View {
 
 struct LegendDailyActivitySheet: View {
     @ObservedObject var activity: LegendDailyActivityStore
-    let currentIdentity: LogicalParticipantIdentity
-    @ObservedObject var social: MobileSocialStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var showsPastDue = false
-    @State private var selectedPost: MobileSocialPost?
-    @State private var selectedProfile: LegendPublicProfileRoute?
     @State private var selectedDetail: LegendDailyActivityItem?
+    @State private var isPresentingPlannerComposer = false
 
     var body: some View {
         NavigationStack {
@@ -919,6 +1135,7 @@ struct LegendDailyActivitySheet: View {
                     activityModePicker
 
                     if !showsPastDue {
+                        setReminderButton
                         activitySummary
                         devicePlannerConnection
                     }
@@ -929,7 +1146,7 @@ struct LegendDailyActivitySheet: View {
                             title: showsPastDue ? "Nothing past due" : "Your day is clear",
                             message: showsPastDue
                                 ? "Completed or rescheduled activities will not appear here."
-                                : "Today's account updates, appointments, actions, and connected device planner items appear here.",
+                                : "Your connected calendar events and reminders will appear here.",
                             systemImage: showsPastDue
                                 ? "checkmark.circle"
                                 : "sun.max")
@@ -941,10 +1158,8 @@ struct LegendDailyActivitySheet: View {
                                 toggleCompletion: {
                                     activity.toggleCompletion(for: item)
                                 },
-                                openEvent: { openEvent(item) },
-                                openProfile: item.actor.map { actor in
-                                    { openProfile(actor) }
-                                })
+                                openEvent: { selectedDetail = item },
+                                openProfile: nil)
                         }
                     }
                 }
@@ -955,34 +1170,6 @@ struct LegendDailyActivitySheet: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(
                 isPresented: Binding(
-                    get: { selectedPost != nil },
-                    set: { if !$0 { selectedPost = nil } }
-                )
-            ) {
-                if let selectedPost {
-                    LegendPostDetailView(
-                        post: selectedPost,
-                        currentIdentity: currentIdentity,
-                        social: social)
-                }
-            }
-            .navigationDestination(
-                isPresented: Binding(
-                    get: { selectedProfile != nil },
-                    set: { if !$0 { selectedProfile = nil } }
-                )
-            ) {
-                if let selectedProfile {
-                    LegendPublicProfileView(
-                        profile: selectedProfile.profile,
-                        currentIdentity: currentIdentity,
-                        social: social,
-                        isFollowing: selectedProfile.isFollowing,
-                        isFollowRequestPending: selectedProfile.isFollowRequestPending)
-                }
-            }
-            .navigationDestination(
-                isPresented: Binding(
                     get: { selectedDetail != nil },
                     set: { if !$0 { selectedDetail = nil } }
                 )
@@ -991,6 +1178,9 @@ struct LegendDailyActivitySheet: View {
                     LegendDailyActivityDetailView(item: selectedDetail)
                 }
             }
+        }
+        .sheet(isPresented: $isPresentingPlannerComposer) {
+            LegendPlannerEntryComposer(activity: activity)
         }
         .alert(
             "Device planner unavailable",
@@ -1015,23 +1205,14 @@ struct LegendDailyActivitySheet: View {
         .legendNextSheetChrome(detents: [.large])
     }
 
-    private func openProfile(_ author: MobileSocialAuthor) {
-        selectedProfile = activity.profileRoute(for: author)
-    }
-
-    private func openEvent(_ item: LegendDailyActivityItem) {
-        if let sourcePostID = item.sourcePostID,
-           let post = activity.post(for: sourcePostID) {
-            selectedPost = post
-            return
+    private var setReminderButton: some View {
+        Button {
+            isPresentingPlannerComposer = true
+        } label: {
+            Label("Set reminder", systemImage: "plus.circle.fill")
         }
-
-        if let actor = item.actor {
-            openProfile(actor)
-            return
-        }
-
-        selectedDetail = item
+        .buttonStyle(LegendNextButtonStyle(kind: .primary))
+        .accessibilityHint("Create a reminder or calendar event on this device")
     }
 
     private var activityModePicker: some View {
@@ -1204,6 +1385,402 @@ struct LegendDailyActivitySheet: View {
         if isConnected { return "Connected" }
         if authorization.isAuthorized { return "Not connected" }
         return authorization.statusTitle
+    }
+}
+
+/// The heart's dedicated surface. It contains only Legend notifications, never
+/// personal calendar or reminders data.
+struct LegendInAppNotificationsSheet: View {
+    @ObservedObject var activity: LegendDailyActivityStore
+    let currentIdentity: LogicalParticipantIdentity
+    @ObservedObject var social: MobileSocialStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedPost: MobileSocialPost?
+    @State private var selectedProfile: LegendPublicProfileRoute?
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Your Legend",
+                        title: "Notifications",
+                        detail: "Follows, reactions, comments, reposts, and account updates.",
+                        dismiss: { dismiss() }
+                    )
+
+                    LegendNextSurface(style: .navy, padding: LegendNextSpacing.sm) {
+                        Label(
+                            "IN-APP ACTIVITY",
+                            systemImage: "heart.fill"
+                        )
+                        .font(LegendNextTypography.eyebrow)
+                        .tracking(0.8)
+                        .foregroundStyle(LegendNextColor.goldBright)
+                    }
+
+                    if activity.inAppNotifications.isEmpty {
+                        LegendNextEmptyState(
+                            title: "You're all caught up",
+                            message: "New follows, reactions, comments, reposts, and account updates will appear here.",
+                            systemImage: "heart")
+                    } else {
+                        ForEach(activity.inAppNotifications) { notification in
+                            LegendDailyActivityRow(
+                                item: notification,
+                                isCompleted: false,
+                                toggleCompletion: {},
+                                openEvent: { openNotification(notification) },
+                                openProfile: notification.actor.map { author in
+                                    { openProfile(author) }
+                                })
+                        }
+                    }
+                }
+                .padding(LegendNextSpacing.md)
+                .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(
+                isPresented: Binding(
+                    get: { selectedPost != nil },
+                    set: { if !$0 { selectedPost = nil } }
+                )
+            ) {
+                if let selectedPost {
+                    LegendPostDetailView(
+                        post: selectedPost,
+                        currentIdentity: currentIdentity,
+                        social: social)
+                }
+            }
+            .navigationDestination(
+                isPresented: Binding(
+                    get: { selectedProfile != nil },
+                    set: { if !$0 { selectedProfile = nil } }
+                )
+            ) {
+                if let selectedProfile {
+                    LegendPublicProfileView(
+                        profile: selectedProfile.profile,
+                        currentIdentity: currentIdentity,
+                        social: social,
+                        isFollowing: selectedProfile.isFollowing,
+                        isFollowRequestPending: selectedProfile.isFollowRequestPending)
+                }
+            }
+        }
+        .task {
+            activity.markNotificationsViewed()
+        }
+        .legendNextSheetChrome(detents: [.large])
+    }
+
+    private func openNotification(_ notification: LegendDailyActivityItem) {
+        if let sourcePostID = notification.sourcePostID,
+           let post = activity.post(for: sourcePostID) {
+            selectedPost = post
+            return
+        }
+        if let author = notification.actor {
+            openProfile(author)
+        }
+    }
+
+    private func openProfile(_ author: MobileSocialAuthor) {
+        selectedProfile = activity.profileRoute(for: author)
+    }
+}
+
+/// A compact LEGEND treatment of the core Apple Reminders/Calendar questions.
+/// Saving uses the EventKit planner authority; no planner item is mirrored to
+/// the Legend backend.
+private struct LegendPlannerEntryComposer: View {
+    @ObservedObject var activity: LegendDailyActivityStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var kind: LegendPlannerEntryKind = .reminder
+    @State private var title = ""
+    @State private var notes = ""
+    @State private var includesDate = true
+    @State private var includesTime = true
+    @State private var startDate = Date()
+    @State private var endDate = Date().addingTimeInterval(60 * 60)
+    @State private var isAllDay = false
+    @State private var alertsEnabled = true
+    @State private var priority = 0
+    @State private var repeatRule: LegendPlannerRepeat = .never
+    @State private var selectedCalendarID: String?
+    @State private var isSaving = false
+    @State private var failureMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Today's activity",
+                        title: kind == .reminder ? "Set reminder" : "Add event",
+                        detail: "Saved privately to this device. Nothing is shared with LEGEND.",
+                        dismiss: { dismiss() }
+                    )
+
+                    Picker("Item type", selection: $kind) {
+                        ForEach(LegendPlannerEntryKind.allCases) {
+                            Text($0.title).tag($0)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: kind) { _, _ in
+                        selectedCalendarID = nil
+                        failureMessage = nil
+                    }
+
+                    LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                            Text("DETAILS")
+                                .font(LegendNextTypography.eyebrow)
+                                .tracking(0.8)
+                                .foregroundStyle(LegendNextColor.gold)
+
+                            plannerTextField(
+                                title: "Title",
+                                placeholder: kind == .reminder
+                                    ? "What do you need to remember?"
+                                    : "What is happening?",
+                                text: $title)
+
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                                Text("Notes")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                                TextEditor(text: $notes)
+                                    .font(.subheadline)
+                                    .frame(minHeight: 84)
+                                    .scrollContentBackground(.hidden)
+                                    .padding(LegendNextSpacing.xs)
+                                    .background(
+                                        LegendNextColor.surfaceInset,
+                                        in: RoundedRectangle(
+                                            cornerRadius: LegendNextRadius.compact,
+                                            style: .continuous))
+                            }
+                        }
+                    }
+
+                    timingSection
+                    scheduleSection
+                    destinationSection
+
+                    if let failureMessage {
+                        LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
+                            Label(failureMessage, systemImage: "exclamationmark.triangle.fill")
+                                .font(LegendNextTypography.caption)
+                                .foregroundStyle(LegendNextColor.danger)
+                        }
+                    }
+
+                    Button(isSaving
+                           ? "Saving…"
+                           : kind == .reminder ? "Save reminder" : "Save event") {
+                        save()
+                    }
+                    .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                    .disabled(isSaving || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                .padding(LegendNextSpacing.md)
+                .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .legendNextSheetChrome(detents: [.large])
+    }
+
+    @ViewBuilder
+    private var timingSection: some View {
+        LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                Text("WHEN")
+                    .font(LegendNextTypography.eyebrow)
+                    .tracking(0.8)
+                    .foregroundStyle(LegendNextColor.gold)
+
+                if kind == .reminder {
+                    Toggle("Date", isOn: $includesDate)
+                        .tint(LegendNextColor.gold)
+                    if includesDate {
+                        DatePicker(
+                            "Due date",
+                            selection: $startDate,
+                            displayedComponents: .date)
+
+                        Toggle("Time", isOn: $includesTime)
+                            .tint(LegendNextColor.gold)
+                        if includesTime {
+                            DatePicker(
+                                "Time",
+                                selection: $startDate,
+                                displayedComponents: .hourAndMinute)
+                        }
+                    }
+                } else {
+                    Toggle("All-day", isOn: $isAllDay)
+                        .tint(LegendNextColor.gold)
+                    DatePicker(
+                        "Starts",
+                        selection: $startDate,
+                        displayedComponents: isAllDay ? .date : [.date, .hourAndMinute])
+                    DatePicker(
+                        "Ends",
+                        selection: $endDate,
+                        in: startDate...,
+                        displayedComponents: isAllDay ? .date : [.date, .hourAndMinute])
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(LegendNextColor.textPrimary)
+        }
+    }
+
+    private var scheduleSection: some View {
+        LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                Text("SCHEDULE")
+                    .font(LegendNextTypography.eyebrow)
+                    .tracking(0.8)
+                    .foregroundStyle(LegendNextColor.gold)
+
+                Picker("Repeat", selection: $repeatRule) {
+                    ForEach(LegendPlannerRepeat.allCases) {
+                        Text($0.title).tag($0)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                if kind == .reminder {
+                    Picker("Priority", selection: $priority) {
+                        Text("None").tag(0)
+                        Text("Low").tag(1)
+                        Text("Medium").tag(5)
+                        Text("High").tag(9)
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                Toggle(kind == .reminder ? "Remind me" : "Alert 15 minutes before", isOn: $alertsEnabled)
+                    .tint(LegendNextColor.gold)
+
+                Text(alertsEnabled
+                     ? "A native Apple lock-screen alert is scheduled even when LEGEND is closed."
+                     : "No lock-screen alert will be scheduled for this item.")
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(LegendNextColor.textPrimary)
+        }
+    }
+
+    private var destinationSection: some View {
+        LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                Text(kind == .reminder ? "REMINDERS LIST" : "CALENDAR")
+                    .font(LegendNextTypography.eyebrow)
+                    .tracking(0.8)
+                    .foregroundStyle(LegendNextColor.gold)
+
+                Picker(kind == .reminder ? "List" : "Calendar", selection: $selectedCalendarID) {
+                    Text("Default on this device").tag(Optional<String>.none)
+                    ForEach(availableCalendars) { calendar in
+                        Text(calendar.title).tag(Optional(calendar.id))
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Text(destinationDetail)
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            }
+        }
+    }
+
+    private var availableCalendars: [LegendDevicePlannerCalendar] {
+        activity.planner.calendars(for: kind.capability)
+    }
+
+    private var destinationDetail: String {
+        guard !activity.planner.isConnected(kind.capability) else {
+            return "Choose a destination on this device. Your planner data stays private."
+        }
+        return "LEGEND will ask to connect \(kind.capability.title) when you save."
+    }
+
+    private func plannerTextField(
+        title: String,
+        placeholder: String,
+        text: Binding<String>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(LegendNextColor.textSecondary)
+            TextField(placeholder, text: text)
+                .font(.body)
+                .textInputAutocapitalization(.sentences)
+                .padding(LegendNextSpacing.sm)
+                .background(
+                    LegendNextColor.surfaceInset,
+                    in: RoundedRectangle(
+                        cornerRadius: LegendNextRadius.compact,
+                        style: .continuous))
+        }
+    }
+
+    private func save() {
+        let scheduledDate = resolvedStartDate
+        let draft = LegendPlannerEntryDraft(
+            kind: kind,
+            title: title,
+            notes: notes,
+            startDate: scheduledDate,
+            endDate: kind == .event ? resolvedEndDate : nil,
+            isAllDay: kind == .event && isAllDay,
+            alertsEnabled: alertsEnabled,
+            priority: kind == .reminder ? priority : 0,
+            repeatRule: repeatRule,
+            calendarIdentifier: selectedCalendarID)
+
+        Task {
+            isSaving = true
+            failureMessage = nil
+            do {
+                try await activity.createPlannerEntry(draft)
+                dismiss()
+            } catch {
+                failureMessage = error.localizedDescription
+            }
+            isSaving = false
+        }
+    }
+
+    private var resolvedStartDate: Date? {
+        if kind == .reminder && !includesDate {
+            return nil
+        }
+        guard kind == .reminder && !includesTime else {
+            return startDate
+        }
+        return Calendar.autoupdatingCurrent.startOfDay(for: startDate)
+    }
+
+    private var resolvedEndDate: Date {
+        if isAllDay {
+            let start = Calendar.autoupdatingCurrent.startOfDay(for: startDate)
+            return max(endDate, start.addingTimeInterval(24 * 60 * 60))
+        }
+        return endDate
     }
 }
 

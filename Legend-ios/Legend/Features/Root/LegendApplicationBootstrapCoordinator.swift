@@ -110,7 +110,6 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
             coordinator: coordinator)
         self.activity = LegendDailyActivityStore(
             identity: currentSession.actor.identity,
-            home: stores.home,
             social: stores.social,
             messages: stores.messaging)
         self.authenticationFailureHandler = coordinator.handleAuthenticationFailure
@@ -125,7 +124,6 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
         self.stores = stores
         self.activity = LegendDailyActivityStore(
             identity: currentSession.actor.identity,
-            home: stores.home,
             social: stores.social,
             messages: stores.messaging)
         self.authenticationFailureHandler = authenticationFailureHandler

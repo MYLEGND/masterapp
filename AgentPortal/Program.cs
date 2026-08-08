@@ -331,71 +331,6 @@ static bool IsSqlServerConn(string? cs)
         || cs.Contains("Authentication=", StringComparison.OrdinalIgnoreCase);
 }
 
-static bool IsSqliteConn(string? cs)
-{
-    if (string.IsNullOrWhiteSpace(cs)) return false;
-    return cs.Trim().StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase);
-}
-
-static string ExtractSqlitePath(string connString)
-{
-    var parts = connString.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    foreach (var p in parts)
-    {
-        if (p.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
-            return p.Substring("Data Source=".Length).Trim().Trim('"');
-    }
-    return "";
-}
-
-static void EnsureSqliteDirectoryExists(string sqliteConnString)
-{
-    if (!IsSqliteConn(sqliteConnString)) return;
-
-    var path = ExtractSqlitePath(sqliteConnString);
-    if (string.IsNullOrWhiteSpace(path)) return;
-
-    var dir = Path.GetDirectoryName(path);
-    if (string.IsNullOrWhiteSpace(dir)) return;
-
-    Directory.CreateDirectory(dir);
-}
-
-static void EnsureSqliteBackup(string sqliteConnString, int keepLatest = 20)
-{
-    if (!IsSqliteConn(sqliteConnString)) return;
-
-    var dbPath = ExtractSqlitePath(sqliteConnString);
-    if (string.IsNullOrWhiteSpace(dbPath) || !File.Exists(dbPath)) return;
-
-    var dbDir = Path.GetDirectoryName(dbPath);
-    if (string.IsNullOrWhiteSpace(dbDir)) return;
-
-    var backupDir = Path.Combine(dbDir, "backups");
-    Directory.CreateDirectory(backupDir);
-
-    // Avoid creating multiple backups in the same day.
-    var dayStamp = DateTime.UtcNow.ToString("yyyyMMdd");
-    var existingToday = Directory.EnumerateFiles(backupDir, $"agentportal_masterapp_{dayStamp}_*.db").Any();
-    if (!existingToday)
-    {
-        var fileName = $"agentportal_masterapp_{DateTime.UtcNow:yyyyMMdd_HHmmss}.db";
-        var target = Path.Combine(backupDir, fileName);
-        File.Copy(dbPath, target, overwrite: false);
-    }
-
-    // Keep only the latest N backups.
-    var backups = Directory.EnumerateFiles(backupDir, "agentportal_masterapp_*.db")
-        .Select(p => new FileInfo(p))
-        .OrderByDescending(f => f.LastWriteTimeUtc)
-        .ToList();
-
-    foreach (var old in backups.Skip(Math.Max(keepLatest, 1)))
-    {
-        try { old.Delete(); } catch { /* no-op */ }
-    }
-}
-
 static string? ResolveMasterDb(IConfiguration config)
 {
     // Azure App Service injects Connection Strings as SQLCONNSTR_<Name>.
@@ -415,67 +350,15 @@ static string? ResolveMasterDb(IConfiguration config)
     return null;
 }
 
-static string ResolveDevSqlite(string contentRootPath)
-{
-    var appDataPath = Path.Combine(contentRootPath, "App_Data");
-
-    // If launched from workspace root (e.g., dotnet run --project AgentPortal),
-    // keep using the AgentPortal-local database instead of workspace-level App_Data.
-    if (!Directory.Exists(appDataPath))
-    {
-        var projectAppDataPath = Path.Combine(contentRootPath, "AgentPortal", "App_Data");
-        var projectFolder = Path.Combine(contentRootPath, "AgentPortal");
-        if (Directory.Exists(projectFolder))
-            appDataPath = projectAppDataPath;
-    }
-
-    Directory.CreateDirectory(appDataPath);
-    var dbPath = Path.Combine(appDataPath, "masterapp.db");
-    return $"Data Source={dbPath}";
-}
-
 var configuredDb = ResolveMasterDb(builder.Configuration);
-var useSqlServer = IsSqlServerConn(configuredDb) && !IsSqliteConn(configuredDb);
-var isAzureAppService = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
-var useSqlServerInDevelopment =
-    !string.Equals(
-        builder.Configuration["Database:UseSqlServerInDevelopment"],
-        "false",
-        StringComparison.OrdinalIgnoreCase)
-    || string.Equals(
-        Environment.GetEnvironmentVariable("MASTERAPP_DEV_USE_SQLSERVER"),
-        "true",
-        StringComparison.OrdinalIgnoreCase);
 
-if (builder.Environment.IsDevelopment() &&
-    !isAzureAppService &&
-    useSqlServer &&
-    !useSqlServerInDevelopment)
+if (!IsSqlServerConn(configuredDb))
 {
-    Console.WriteLine(
-        "[INFO] Development environment detected with a SQL Server connection string available. " +
-        "Using SQL Server as the default local provider. " +
-        "Set Database:UseSqlServerInDevelopment=false only if you intentionally want SQLite locally.");
-    useSqlServer = false;
+    throw new InvalidOperationException(
+        "AGENTPORTAL DATABASE MISCONFIG: MasterAppDb must be a SQL Server connection string. " +
+        "Configure ConnectionStrings:MasterAppDb locally or the MasterAppDb SQLAzure " +
+        "connection string in Azure App Service.");
 }
-
-// Resolve SQLite path: on Azure App Service use persistent %HOME%/data/ storage;
-// on local dev use ContentRootPath/App_Data/.
-static string ResolveSqliteForEnvironment(IWebHostEnvironment env)
-{
-    var azureHome = Environment.GetEnvironmentVariable("HOME");
-    var websiteSiteName = Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME");
-    if (!string.IsNullOrEmpty(azureHome) && !string.IsNullOrEmpty(websiteSiteName))
-    {
-        // Azure App Service: %HOME%/data/ is persistent across deployments
-        var dataPath = Path.Combine(azureHome, "data", "App_Data");
-        Directory.CreateDirectory(dataPath);
-        return $"Data Source={Path.Combine(dataPath, "agentportal_masterapp.db")}";
-    }
-    return ResolveDevSqlite(env.ContentRootPath);
-}
-
-var sqliteConn = useSqlServer ? null : ResolveSqliteForEnvironment(builder.Environment);
 
 // ── Founder / owner identity resolution ──────────────────────────────────
 // Primary:   OWNER_EMAIL / FOUNDER_OID  Azure App Service Application Settings (env vars)
@@ -524,24 +407,6 @@ if (string.Equals(builder.Environment.EnvironmentName, "Production", StringCompa
         "or add Founder:Oid to appsettings.Production.json. Founder access is Object-ID-only in production.");
 }
 
-// PRODUCTION GUARD: refuse to start on SQLite when running on Azure App Service.
-// If WEBSITE_SITE_NAME is set, we are in a hosted/deployed environment and must have
-// a SQL Server connection string. A missing or misconfigured connection string must
-// produce a hard startup failure, not a silent SQLite fallback.
-if (!useSqlServer && isAzureAppService)
-{
-    throw new InvalidOperationException(
-        "STARTUP BLOCKED: Deployed to Azure App Service but no SQL Server connection string was resolved. " +
-        "Set the 'MasterAppDb' Connection String (type: SQLServer) in Azure Portal → App Service → " +
-        "Configuration → Connection strings. The app will not start on SQLite in a hosted environment.");
-}
-
-if (sqliteConn != null)
-{
-    EnsureSqliteDirectoryExists(sqliteConn);
-    EnsureSqliteBackup(sqliteConn);
-}
-
 // Migration strictness is opt-in.
 // When enabled, startup will hard-stop on pending migrations and pending model changes.
 // Leave disabled when the priority is app availability over schema enforcement.
@@ -559,17 +424,10 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
             w.Ignore(RelationalEventId.PendingModelChangesWarning);
     });
 
-    if (useSqlServer)
+    options.UseSqlServer(configuredDb!, sql =>
     {
-        options.UseSqlServer(configuredDb!, sql =>
-        {
-            sql.CommandTimeout(120);
-        });
-    }
-    else
-    {
-        options.UseSqlite(sqliteConn!);
-    }
+        sql.CommandTimeout(120);
+    });
 });
 
 // ------------------------------------------------------------
@@ -839,33 +697,17 @@ if (strictMigrations && !builder.Environment.IsDevelopment())
     app.Logger.LogInformation("Migrations applied: {AppliedCount} latest={LatestMigration}", applied.Count, applied.LastOrDefault() ?? "(none)");
 }
 
-// Auto-migrate SQLite (local dev only). SQL Server migrations must be applied explicitly
-// via 'dotnet ef database update' before deployment — never at runtime on production.
+// SQL Server migrations must be applied explicitly before deployment.
+// Runtime schema mutation is intentionally disabled.
 {
     using var scope = app.Services.CreateScope();
     var startupLogger = scope.ServiceProvider
         .GetRequiredService<ILoggerFactory>()
         .CreateLogger("Startup");
 
-    if (useSqlServer)
-    {
-        startupLogger.LogInformation(
-            "SQL Server detected — startup auto-migration is DISABLED. " +
-            "Apply pending migrations with 'dotnet ef database update' before deploying.");
-    }
-    else
-    {
-        var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
-        try
-        {
-            await MasterAppSqliteSchemaBootstrapper.InitializeAsync(db, startupLogger, app.Lifetime.ApplicationStopping);
-            startupLogger.LogInformation("SQLite startup schema bootstrap completed successfully.");
-        }
-        catch (Exception ex)
-        {
-            startupLogger.LogError(ex, "SQLite startup database initialization failed.");
-        }
-    }
+    startupLogger.LogInformation(
+        "SQL Server detected — startup auto-migration is DISABLED. " +
+        "Apply pending migrations with 'dotnet ef database update' before deploying.");
 }
 
 // ------------------------------------------------------------

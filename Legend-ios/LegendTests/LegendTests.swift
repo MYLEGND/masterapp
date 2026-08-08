@@ -6,7 +6,7 @@ final class LegendTests: XCTestCase {
         XCTAssertTrue(true)
     }
 
-    func testDailyActivityProjectionKeepsTodayAndPastDueSeparate() throws {
+    func testTodayActivityProjectionOnlyReturnsDevicePlannerItems() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
 
@@ -18,43 +18,9 @@ final class LegendTests: XCTestCase {
                 hour: hour))!
         }
 
-        let identity = try LogicalParticipantIdentity(
-            userID: "activity-user",
-            participantType: .agent)
         let today = date(2)
-        let home = MobileHomeResponse(
-            identity: MobileHomeIdentity(
-                userID: identity.userID,
-                participantType: .agent,
-                profileID: UUID(),
-                displayName: "Activity User"),
-            messaging: MobileMessagingSummary(unreadCount: 3, conversationCount: 3),
-            journey: nil,
-            upcomingAppointments: [
-                MobileUpcomingAppointment(
-                    id: UUID(), startUTC: date(2, 14), endUTC: nil, status: "Confirmed"),
-                MobileUpcomingAppointment(
-                    id: UUID(), startUTC: date(3, 9), endUTC: nil, status: "Scheduled")
-            ],
-            actions: [
-                MobileActionItem(
-                    id: UUID(), title: "Review policy", status: "Open", priority: "High", dueDateUTC: date(2, 10)),
-                MobileActionItem(
-                    id: UUID(), title: "Past due task", status: "Open", priority: "High", dueDateUTC: date(1, 10))
-            ],
-            dailyScripture: MobileDailyScripture(
-                date: "2026-08-02", reference: "Psalm 23", translation: "KJV", verses: [], text: ""),
-            activeClientCount: 0)
 
         let projection = LegendDailyActivityProjection.make(
-            home: home,
-            social: nil,
-            accountNotifications: [
-                MobileActivityNotification(
-                    id: UUID(), kind: "ControlledResourceApproved", title: "Request approved", detail: "Translation enabled", occurredUTC: date(2, 9), controlledResourceRequestID: nil),
-                MobileActivityNotification(
-                    id: UUID(), kind: "ControlledResourceApproved", title: "Yesterday's update", detail: "Not today", occurredUTC: date(1, 9), controlledResourceRequestID: nil)
-            ],
             plannerItems: [
                 LegendDevicePlannerItem(
                     id: "calendar-today", source: .calendar, title: "Prayer meeting", detail: "Personal", occursAt: date(2, 18), isPastDue: false, reminderIdentifier: nil),
@@ -68,11 +34,81 @@ final class LegendTests: XCTestCase {
 
         XCTAssertEqual(
             Set(projection.today.map(\.source)),
-            [.account, .action, .appointment, .calendar])
+            [.calendar])
         XCTAssertEqual(
             Set(projection.pastDue.map(\.source)),
-            [.action, .reminder])
-        XCTAssertFalse(projection.today.contains { $0.title == "Yesterday's update" })
+            [.reminder])
         XCTAssertFalse(projection.today.contains { $0.title == "Tomorrow" })
+    }
+
+    func testInAppNotificationProjectionKeepsAllNotificationDatesOutOfTodayPlanner() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let yesterday = calendar.date(from: DateComponents(
+            year: 2026,
+            month: 8,
+            day: 1,
+            hour: 9))!
+
+        let notifications = LegendInAppNotificationProjection.make(
+            social: nil,
+            accountNotifications: [
+                MobileActivityNotification(
+                    id: UUID(),
+                    kind: "ControlledResourceApproved",
+                    title: "Request approved",
+                    detail: "Translation enabled",
+                    occurredUTC: yesterday,
+                    controlledResourceRequestID: nil)
+            ])
+
+        XCTAssertEqual(notifications.map(\.source), [.account])
+        XCTAssertEqual(notifications.map(\.title), ["Request approved"])
+    }
+
+    func testPlannerAlertPolicyUsesOneNativeAppleAlertWithoutAnAPNsMirror() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let date = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 8,
+            day: 8,
+            hour: 14)))
+
+        XCTAssertEqual(
+            LegendPlannerAlertPolicy.schedule(
+                for: .reminder,
+                scheduledFor: date,
+                isAllDay: false,
+                alertsEnabled: true,
+                calendar: calendar),
+            .absolute(date))
+        XCTAssertEqual(
+            LegendPlannerAlertPolicy.schedule(
+                for: .event,
+                scheduledFor: date,
+                isAllDay: false,
+                alertsEnabled: true,
+                calendar: calendar),
+            .relative(-15 * 60))
+        XCTAssertEqual(
+            LegendPlannerAlertPolicy.schedule(
+                for: .event,
+                scheduledFor: date,
+                isAllDay: true,
+                alertsEnabled: true,
+                calendar: calendar),
+            .absolute(try XCTUnwrap(calendar.date(
+                byAdding: .hour,
+                value: 9,
+                to: calendar.startOfDay(for: date)))))
+        XCTAssertEqual(
+            LegendPlannerAlertPolicy.schedule(
+                for: .reminder,
+                scheduledFor: date,
+                isAllDay: false,
+                alertsEnabled: false,
+                calendar: calendar),
+            .none)
     }
 }

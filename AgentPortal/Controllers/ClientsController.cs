@@ -145,7 +145,8 @@ namespace AgentPortal.Controllers;
             ClientSubscriptionOfferPriceType PriceType,
             int? CustomMonthlyAmountCents,
             BillingAnchorSelectionMode BillingAnchorMode,
-            int? BillingAnchorDay);
+            int? BillingAnchorDay,
+            int FreeTrialDays);
 
         // Both account creation and CRM quick view use this one validation path.
         // The billing orchestrator remains the authority that persists the offer.
@@ -154,6 +155,8 @@ namespace AgentPortal.Controllers;
             decimal? customMonthlyAmount,
             string? billingAnchorModeValue,
             int? billingAnchorDay,
+            bool hasFreeTrial,
+            int? freeTrialDays,
             bool canSetFounderSubscriptionOptions,
             out SubscriptionOfferSelection selection,
             out string? error)
@@ -170,7 +173,7 @@ namespace AgentPortal.Controllers;
                     throw new InvalidOperationException("Only the founder can set an agent-selected billing day.");
                 }
 
-                _ = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
+                var authoritativeMonthlyAmountCents = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
                     priceType,
                     customMonthlyAmountCents,
                     canSetFounderSubscriptionOptions
@@ -180,12 +183,19 @@ namespace AgentPortal.Controllers;
                 var resolvedAnchorDay = ClientSubscriptionOfferPricing.ResolveBillingAnchorDay(
                     billingAnchorMode,
                     billingAnchorDay);
+                var resolvedFreeTrialDays = ClientSubscriptionTrialPolicy.ResolveFreeTrialDays(
+                    hasFreeTrial,
+                    freeTrialDays,
+                    canSetFounderSubscriptionOptions);
+                if (resolvedFreeTrialDays > 0 && authoritativeMonthlyAmountCents == 0)
+                    throw new InvalidOperationException("A free trial requires a premium monthly amount greater than $0.00.");
 
                 selection = new SubscriptionOfferSelection(
                     priceType,
                     customMonthlyAmountCents,
                     billingAnchorMode,
-                    resolvedAnchorDay);
+                    resolvedAnchorDay,
+                    resolvedFreeTrialDays);
                 error = null;
                 return true;
             }
@@ -3395,6 +3405,7 @@ namespace AgentPortal.Controllers;
         int? subscriptionCustomMonthlyAmountCents = null;
         var subscriptionBillingAnchorMode = BillingAnchorSelectionMode.FirstOfMonth;
         int? subscriptionBillingAnchorDay = null;
+        var subscriptionFreeTrialDays = 0;
 
         if (isPortalClient)
         {
@@ -3403,6 +3414,8 @@ namespace AgentPortal.Controllers;
                     model.SubscriptionCustomMonthlyAmount,
                     model.SubscriptionBillingAnchorMode,
                     model.SubscriptionBillingAnchorDay,
+                    model.SubscriptionHasFreeTrial,
+                    model.SubscriptionFreeTrialDays,
                     canSetFounderSubscriptionOptions,
                     out var selection,
                     out var subscriptionValidationError))
@@ -3417,6 +3430,7 @@ namespace AgentPortal.Controllers;
             subscriptionCustomMonthlyAmountCents = selection.CustomMonthlyAmountCents;
             subscriptionBillingAnchorMode = selection.BillingAnchorMode;
             subscriptionBillingAnchorDay = selection.BillingAnchorDay;
+            subscriptionFreeTrialDays = selection.FreeTrialDays;
         }
 
         if (isPortalClient && string.IsNullOrWhiteSpace(firstName))
@@ -3596,6 +3610,9 @@ namespace AgentPortal.Controllers;
                                 subscriptionBillingAnchorDay,
                                 DateTime.UtcNow,
                                 null,
+                                canSetFounderSubscriptionOptions,
+                                subscriptionFreeTrialDays > 0,
+                                subscriptionFreeTrialDays,
                                 canSetFounderSubscriptionOptions));
 
                         createdSubscriptionInvitation = await _billingOrchestrator.CreateSubscriptionActivationInvitationAsync(
@@ -3770,6 +3787,9 @@ namespace AgentPortal.Controllers;
                         subscriptionBillingAnchorDay,
                         DateTime.UtcNow,
                         null,
+                        canSetFounderSubscriptionOptions,
+                        subscriptionFreeTrialDays > 0,
+                        subscriptionFreeTrialDays,
                         canSetFounderSubscriptionOptions));
 
                 createdSubscriptionInvitation = await _billingOrchestrator.CreateSubscriptionActivationInvitationAsync(
@@ -4126,6 +4146,17 @@ namespace AgentPortal.Controllers;
         public decimal? SubscriptionCustomMonthlyAmount { get; set; }
         public string? SubscriptionBillingAnchorMode { get; set; }
         public int? SubscriptionBillingAnchorDay { get; set; }
+        public bool SubscriptionHasFreeTrial { get; set; }
+        public int? SubscriptionFreeTrialDays { get; set; }
+    }
+
+    public sealed class UpdateClientSubscriptionQuickViewRequest
+    {
+        public Guid ClientProfileId { get; set; }
+        public string? SubscriptionPriceType { get; set; }
+        public decimal? SubscriptionCustomMonthlyAmount { get; set; }
+        public string? SubscriptionBillingAnchorMode { get; set; }
+        public int? SubscriptionBillingAnchorDay { get; set; }
     }
 
     public sealed class ReorderRequest
@@ -4444,6 +4475,8 @@ namespace AgentPortal.Controllers;
                 request.SubscriptionCustomMonthlyAmount,
                 request.SubscriptionBillingAnchorMode,
                 request.SubscriptionBillingAnchorDay,
+                request.SubscriptionHasFreeTrial,
+                request.SubscriptionFreeTrialDays,
                 canSetFounderSubscriptionOptions,
                 out var selection,
                 out var subscriptionValidationError))
@@ -4465,6 +4498,9 @@ namespace AgentPortal.Controllers;
                 selection.BillingAnchorDay,
                 DateTime.UtcNow,
                 null,
+                canSetFounderSubscriptionOptions,
+                selection.FreeTrialDays > 0,
+                selection.FreeTrialDays,
                 canSetFounderSubscriptionOptions));
 
         var invitationResult = await _billingOrchestrator.CreateSubscriptionActivationInvitationAsync(
@@ -4508,6 +4544,69 @@ namespace AgentPortal.Controllers;
         {
             ok = true,
             recipient = invitationResult.Invitation.IntendedNormalizedEmail,
+            billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(profile.Id, agentOid)
+        });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateClientSubscription([FromBody] UpdateClientSubscriptionQuickViewRequest request)
+    {
+        if (!FounderGuard.IsFounder(User))
+            return Forbid();
+
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var profile = await GetOwnedClientProfileAsync(agentOid, request.ClientProfileId);
+        if (profile is null)
+            return Forbid();
+
+        if (!TryResolveSubscriptionOfferSelection(
+                request.SubscriptionPriceType,
+                request.SubscriptionCustomMonthlyAmount,
+                request.SubscriptionBillingAnchorMode,
+                request.SubscriptionBillingAnchorDay,
+                hasFreeTrial: false,
+                freeTrialDays: null,
+                canSetFounderSubscriptionOptions: true,
+                out var selection,
+                out var subscriptionValidationError))
+        {
+            return BadRequest(new
+            {
+                message = subscriptionValidationError ?? "A valid subscription configuration is required."
+            });
+        }
+
+        var subscription = await _db.ClientSubscriptions
+            .AsNoTracking()
+            .Where(x =>
+                x.ClientProfileId == profile.Id &&
+                x.OwnerAgentUserId == agentOid &&
+                x.Status != ClientSubscriptionStatus.Canceled)
+            .OrderByDescending(x => x.UpdatedUtc)
+            .FirstOrDefaultAsync();
+        if (subscription is null)
+            return BadRequest(new { message = "No live subscription is available to update." });
+
+        var update = await _billingOrchestrator.UpdateClientSubscriptionAsync(
+            new UpdateClientSubscriptionCommand(
+                subscription.Id,
+                selection.PriceType,
+                selection.CustomMonthlyAmountCents,
+                selection.BillingAnchorMode,
+                selection.BillingAnchorDay,
+                agentOid,
+                FounderAuthorized: true));
+        if (!update.Success)
+            return BadRequest(new { ok = false, code = update.SafeErrorCode, message = update.SanitizedSummary });
+
+        return Json(new
+        {
+            ok = true,
+            message = update.SanitizedSummary,
             billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(profile.Id, agentOid)
         });
     }

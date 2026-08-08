@@ -14,6 +14,7 @@ public sealed class SubscriptionActivationPageViewModel
     public string BillingAnchorLabel { get; set; } = "Scheduled monthly";
     public string FirstChargeDateDisplay { get; set; } = string.Empty;
     public string FirstRecurringRenewalDateDisplay { get; set; } = string.Empty;
+    public int FreeTrialDays { get; set; }
     public string BillingTimeZoneLabel { get; set; } = "UTC";
     public string? ErrorMessage { get; set; }
     public string? StatusMessage { get; set; }
@@ -24,6 +25,7 @@ public sealed class SubscriptionActivationPageViewModel
     public string SquareEnvironment { get; set; } = "Sandbox";
 
     public bool IsZeroDollarSubscription => MonthlyAmountCents == 0;
+    public bool HasFreeTrial => FreeTrialDays > 0;
 }
 
 public sealed class SubscriptionActivationPaymentInput

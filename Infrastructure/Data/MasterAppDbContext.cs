@@ -347,6 +347,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.PriceType).HasConversion<string>().HasMaxLength(32).IsRequired();
             e.Property(x => x.Currency).HasMaxLength(8).IsRequired();
             e.Property(x => x.BillingAnchorSelectionMode).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.FreeTrialDays).HasDefaultValue(0);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
 
             e.HasIndex(x => x.ClientProfileId);

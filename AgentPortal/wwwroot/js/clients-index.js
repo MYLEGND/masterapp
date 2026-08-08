@@ -6801,6 +6801,7 @@ window.getQuickViewBillingContext = () => ({
   pageKey: "clients",
   actionUrls: {
     configureSubscription: "/Clients/ConfigureSubscriptionOffer",
+    updateSubscription: "/Clients/UpdateClientSubscription",
     resendInvitation: "/Clients/ResendSubscriptionInvitation",
     revokeInvitation: "/Clients/RevokeSubscriptionInvitation",
     cancelSubscription: "/Clients/CancelClientSubscriptionAtPeriodEnd"

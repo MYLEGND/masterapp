@@ -6,6 +6,7 @@
         </div>
         <div class="qv-inline-action-row">
             <button type="button" class="btn btn-gold" id="btnBillingConfigureSubscription">Set Subscription</button>
+            <button type="button" class="btn btn-gold" id="btnBillingUpdateSubscription" hidden>Update Subscription</button>
         </div>
     </div>
     <div class="qv-section-body">
@@ -37,7 +38,19 @@
                     <label for="dBillingSubscriptionAnchorDay">Agent-Selected Day</label>
                     <input id="dBillingSubscriptionAnchorDay" type="number" min="1" max="31" step="1" inputmode="numeric" placeholder="15" />
                 </div>
+                <div class="qv-field" id="dBillingSubscriptionFreeTrialWrap" hidden>
+                    <label for="dBillingSubscriptionFreeTrial">Free Trial</label>
+                    <select id="dBillingSubscriptionFreeTrial">
+                        <option value="false">No free trial</option>
+                        <option value="true">Include free trial</option>
+                    </select>
+                </div>
+                <div class="qv-field" id="dBillingSubscriptionFreeTrialDaysWrap" hidden>
+                    <label for="dBillingSubscriptionFreeTrialDays">Free Trial Days</label>
+                    <input id="dBillingSubscriptionFreeTrialDays" type="number" min="1" max="3650" step="1" inputmode="numeric" placeholder="14" />
+                </div>
             </div>
+            <div class="qv-section-copy" id="dBillingSubscriptionSetupCopy">Subscription terms are validated and saved by the central billing authority.</div>
             <div class="qv-inline-action-row">
                 <button type="button" class="btn btn-gold" id="btnBillingSaveSubscription">Send Activation Invitation</button>
                 <button type="button" class="btn btn-ghost" id="btnBillingCancelSubscriptionSetup">Cancel</button>

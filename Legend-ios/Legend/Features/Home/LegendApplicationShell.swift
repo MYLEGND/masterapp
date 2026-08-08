@@ -420,8 +420,8 @@ private struct LegendAppBrandBar: View {
 
             homeActionButton(
                 systemImage: "heart",
-                label: activityAccessibilityLabel,
-                action: .activity,
+                label: notificationAccessibilityLabel,
+                action: .notifications,
                 badge: activityCount)
         }
         .padding(.horizontal, LegendNextSpacing.sm)
@@ -484,8 +484,8 @@ private struct LegendAppBrandBar: View {
         usesDarkSurface ? LegendNextColor.midnight : LegendNextColor.canvas
     }
 
-    private var activityAccessibilityLabel: String {
-        "Open activity, \(activityCount) recent interactions"
+    private var notificationAccessibilityLabel: String {
+        "Open notifications, \(activityCount) recent interactions"
     }
 }
 
@@ -1521,7 +1521,7 @@ private struct LegendHomeView: View {
                 ) {
                     homeHero(home)
                     LegendTodayActivitySummaryPill(activity: activity) {
-                        scrollChrome.requestHomeAction(.activity)
+                        scrollChrome.requestHomeAction(.todayActivity)
                     }
                 }
             }

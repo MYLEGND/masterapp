@@ -19,16 +19,23 @@ internal sealed class ClientSubscriptionActivationPolicyService : IClientSubscri
         var effectiveNowUtc = EnsureUtc(nowUtc);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(effectiveNowUtc, _businessTimeZone);
         var anchorDay = ResolveAnchorDay(offer);
-        var firstChargeUtc = effectiveNowUtc;
+        var freeTrialDays = offer.FreeTrialDays;
+        if (freeTrialDays < 0 || freeTrialDays > ClientSubscriptionTrialPolicy.MaximumFreeTrialDays)
+            throw new InvalidOperationException("The subscription offer has an invalid free-trial duration.");
+
+        var firstChargeUtc = freeTrialDays == 0
+            ? effectiveNowUtc
+            : effectiveNowUtc.AddDays(freeTrialDays);
+        var firstChargeLocal = TimeZoneInfo.ConvertTimeFromUtc(firstChargeUtc, _businessTimeZone);
 
         DateOnly firstRecurringRenewalLocalDate;
         if (anchorDay.HasValue)
         {
-            firstRecurringRenewalLocalDate = ResolveAnchoredRenewalDate(localNow, anchorDay.Value, _options.SameDayAnchorCutoffHourLocal, _options.MinimumDaysBeforeAnchoredRenewal);
+            firstRecurringRenewalLocalDate = ResolveAnchoredRenewalDate(firstChargeLocal, anchorDay.Value, _options.SameDayAnchorCutoffHourLocal, _options.MinimumDaysBeforeAnchoredRenewal);
         }
         else
         {
-            firstRecurringRenewalLocalDate = DateOnly.FromDateTime(localNow.Date.AddDays(_options.MinimumDaysBeforeAnchoredRenewal));
+            firstRecurringRenewalLocalDate = DateOnly.FromDateTime(firstChargeLocal.Date.AddDays(_options.MinimumDaysBeforeAnchoredRenewal));
         }
 
         var firstRecurringRenewalUtc = TimeZoneInfo.ConvertTimeToUtc(
@@ -44,7 +51,8 @@ internal sealed class ClientSubscriptionActivationPolicyService : IClientSubscri
             _options.SameDayAnchorCutoffHourLocal,
             firstChargeUtc,
             firstRecurringRenewalUtc,
-            firstRecurringRenewalLocalDate);
+            firstRecurringRenewalLocalDate,
+            freeTrialDays);
     }
 
     public ClientSubscriptionRenewalSchedule ResolveRenewalSchedule(ClientSubscription subscription)

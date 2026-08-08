@@ -233,6 +233,7 @@ public sealed class SubscriptionActivationService
             BillingAnchorLabel = BuildAnchorLabel(context.Schedule.BillingAnchorDay),
             FirstChargeDateDisplay = FormatDate(context.Schedule.FirstChargeUtc, context.Schedule.BillingTimeZoneId),
             FirstRecurringRenewalDateDisplay = FormatDate(context.Schedule.FirstRecurringRenewalUtc, context.Schedule.BillingTimeZoneId),
+            FreeTrialDays = context.Schedule.FreeTrialDays,
             BillingTimeZoneLabel = context.Schedule.BillingTimeZoneId,
             ErrorMessage = errorMessage,
             StatusMessage = context.Message,

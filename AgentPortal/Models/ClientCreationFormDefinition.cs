@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Domain.Billing;
 
 namespace AgentPortal.Models;
 
@@ -31,6 +32,8 @@ public sealed record ClientCreationFormDefinition(
             "SubscriptionPriceType", new[] { "Custom" });
         var selectedAnchorCondition = new ClientCreationFieldCondition(
             "SubscriptionBillingAnchorMode", new[] { "SpecificDayOfMonth" });
+        var freeTrialCondition = new ClientCreationFieldCondition(
+            "SubscriptionHasFreeTrial", new[] { "true" });
 
         var sections = new List<ClientCreationFormSectionDefinition>
         {
@@ -115,7 +118,7 @@ public sealed record ClientCreationFormDefinition(
                 "Client Subscription",
                 "Portal clients can leave intake with an agent-scoped Client Portal subscription offer and activation invitation already prepared.",
                 new[] { portalCondition },
-                SubscriptionFields(model, canSetFounderSubscriptionOptions, portalCondition, customSubscriptionCondition, selectedAnchorCondition)),
+                SubscriptionFields(model, canSetFounderSubscriptionOptions, portalCondition, customSubscriptionCondition, selectedAnchorCondition, freeTrialCondition)),
             new(
                 "crm",
                 "CRM",
@@ -199,7 +202,8 @@ public sealed record ClientCreationFormDefinition(
         bool canSetFounderSubscriptionOptions,
         ClientCreationFieldCondition portalCondition,
         ClientCreationFieldCondition customSubscriptionCondition,
-        ClientCreationFieldCondition selectedAnchorCondition)
+        ClientCreationFieldCondition selectedAnchorCondition,
+        ClientCreationFieldCondition freeTrialCondition)
     {
         var anchorOptions = new List<ClientCreationFormOptionDefinition>
         {
@@ -256,6 +260,26 @@ public sealed record ClientCreationFormDefinition(
                 placeholder: "15",
                 minimum: 1,
                 maximum: 31,
+                step: 1));
+            fields.Add(Choice(
+                "SubscriptionHasFreeTrial",
+                "Free Trial",
+                model.SubscriptionHasFreeTrial ? "true" : "false",
+                options: new[]
+                {
+                    Option("false", "No free trial"),
+                    Option("true", "Include free trial")
+                }));
+            fields.Add(Text(
+                "SubscriptionFreeTrialDays",
+                "Free Trial Days",
+                model.SubscriptionFreeTrialDays?.ToString(),
+                "number",
+                requiredWhen: new[] { portalCondition, freeTrialCondition },
+                visibleWhen: new[] { portalCondition, freeTrialCondition },
+                placeholder: "14",
+                minimum: 1,
+                maximum: ClientSubscriptionTrialPolicy.MaximumFreeTrialDays,
                 step: 1));
         }
 

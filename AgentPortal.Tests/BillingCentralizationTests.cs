@@ -261,6 +261,28 @@ public sealed class BillingCentralizationTests
     }
 
     [Fact]
+    public void FreeTrialSchedule_DelaysTheFirstPremiumChargeByTheConfiguredDays()
+    {
+        var nowUtc = DateTime.SpecifyKind(new DateTime(2026, 8, 8, 15, 30, 0), DateTimeKind.Utc);
+        var offer = new ClientSubscriptionOffer
+        {
+            MonthlyAmountCents = ClientSubscriptionOfferPricing.Fixed100Cents,
+            Currency = "USD",
+            BillingAnchorSelectionMode = BillingAnchorSelectionMode.FirstOfMonth,
+            SelectedBillingAnchorDay = 1,
+            FreeTrialDays = 21
+        };
+        var policy = new ClientSubscriptionActivationPolicyService(
+            new ClientSubscriptionActivationPolicyOptions { BusinessTimeZoneId = "UTC" });
+
+        var schedule = policy.ResolveActivationSchedule(offer, nowUtc);
+
+        Assert.Equal(nowUtc.AddDays(21), schedule.FirstChargeUtc);
+        Assert.Equal(21, schedule.FreeTrialDays);
+        Assert.True(schedule.FirstRecurringRenewalUtc > schedule.FirstChargeUtc);
+    }
+
+    [Fact]
     public async Task CreateClientSubscriptionOffer_SupersedesExistingDraft_AndUsesAuthoritativeBillingValues()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -522,6 +544,78 @@ public sealed class BillingCentralizationTests
                     !string.IsNullOrWhiteSpace(request.IdempotencyKey)),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task ActivateClientSubscription_FreeTrialVaultsTheCardWithoutSubmittingAnInitialCharge()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        offer.FreeTrialDays = 14;
+        await db.SaveChangesAsync();
+
+        var gateway = BuildGateway();
+        gateway.Setup(x => x.ResolveCustomerAsync(It.IsAny<BillingCustomerResolutionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingCustomerResolutionResult(true, "cust_trial", "COMPLETED", null, "Customer resolved.", "req_customer", false, "cust_trial"));
+        gateway.Setup(x => x.AttachPaymentMethodAsync(It.IsAny<BillingPaymentMethodAttachmentRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingPaymentMethodAttachmentResult(
+                true,
+                "card_trial",
+                "COMPLETED",
+                null,
+                "Card vaulted.",
+                "req_card",
+                false,
+                "cust_trial",
+                "card_trial",
+                "VISA",
+                "4242",
+                12,
+                2031,
+                "Client One"));
+
+        var nowUtc = DateTime.UtcNow;
+        var firstChargeUtc = nowUtc.AddDays(14);
+        var firstRenewalUtc = firstChargeUtc.AddMonths(1);
+        var orchestrator = new MasterAppBillingOrchestrator(
+            db,
+            gateway.Object,
+            BuildEntitlementService(db),
+            Mock.Of<IClientSubscriptionActivationPolicyService>());
+
+        var result = await orchestrator.ActivateClientSubscriptionAsync(
+            new ActivateClientSubscriptionCommand(
+                profile.Id,
+                offer.Id,
+                "agent-1",
+                "secure-browser-token",
+                "USD",
+                1,
+                "UTC",
+                firstChargeUtc,
+                firstRenewalUtc,
+                DateOnly.FromDateTime(firstRenewalUtc),
+                true,
+                true,
+                true,
+                profile.NormalizedEmail!,
+                null,
+                null,
+                "Client One",
+                "trial-correlation",
+                "trial-idempotency",
+                new BillingPostalAddress("1 Main Street", null, "Phoenix", "AZ", "85001", "US")));
+
+        var subscription = await db.ClientSubscriptions.SingleAsync();
+        Assert.True(result.Success);
+        Assert.Equal(ClientSubscriptionStatus.Active, subscription.Status);
+        Assert.Equal(firstChargeUtc, subscription.TrialEndsUtc);
+        Assert.Equal(firstChargeUtc, subscription.NextBillingDateUtc);
+        Assert.Equal(firstChargeUtc, subscription.NextChargeAttemptUtc);
+        Assert.NotNull(subscription.DefaultPaymentMethodId);
+        Assert.Empty(await db.SubscriptionPayments.ToListAsync());
+        gateway.Verify(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -2127,6 +2221,58 @@ public sealed class BillingCentralizationTests
         Assert.NotNull(updatedSubscription.CancelledUtc);
         Assert.Equal(ClientEntitlementStatus.NotGranted, entitlement.Status);
         Assert.Equal("SUBSCRIPTION_CANCELLED", entitlement.ReasonCode);
+    }
+
+    [Fact]
+    public async Task UpdateClientSubscription_RequiresFounderAuthorityAndPreservesTheCurrentSchedule()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(db, profile.Id);
+        var subscription = await AddSubscriptionAsync(
+            db,
+            profile.Id,
+            offer.Id,
+            ClientSubscriptionStatus.Active,
+            ClientSubscriptionPaymentStanding.Current,
+            "subscription_update");
+        var scheduledCharge = subscription.NextBillingDateUtc;
+        var orchestrator = new MasterAppBillingOrchestrator(
+            db,
+            BuildGateway().Object,
+            Mock.Of<IBillingEntitlementService>(),
+            Mock.Of<IClientSubscriptionActivationPolicyService>());
+
+        var denied = await orchestrator.UpdateClientSubscriptionAsync(
+            new UpdateClientSubscriptionCommand(
+                subscription.Id,
+                ClientSubscriptionOfferPriceType.Fixed150,
+                null,
+                BillingAnchorSelectionMode.SpecificDayOfMonth,
+                20,
+                "agent-1",
+                FounderAuthorized: false));
+        var updated = await orchestrator.UpdateClientSubscriptionAsync(
+            new UpdateClientSubscriptionCommand(
+                subscription.Id,
+                ClientSubscriptionOfferPriceType.Custom,
+                17_500,
+                BillingAnchorSelectionMode.SpecificDayOfMonth,
+                20,
+                "founder-oid",
+                FounderAuthorized: true));
+
+        var persisted = await db.ClientSubscriptions.SingleAsync(x => x.Id == subscription.Id);
+        Assert.False(denied.Success);
+        Assert.Equal("FOUNDER_SUBSCRIPTION_CONTROL_REQUIRED", denied.SafeErrorCode);
+        Assert.True(updated.Success);
+        Assert.Equal(17_500, persisted.MonthlyAmountCents);
+        Assert.Equal(20, persisted.BillingAnchorDay);
+        Assert.Equal(scheduledCharge, persisted.NextBillingDateUtc);
+        Assert.Contains(await db.BillingAuditEntries.ToListAsync(), entry =>
+            entry.EntityType == "ClientSubscription" &&
+            entry.EntityId == subscription.Id.ToString() &&
+            entry.Action == "terms_updated");
     }
 
     private static MasterAppBillingOrchestrator BuildOrchestrator(MasterAppDbContext db)

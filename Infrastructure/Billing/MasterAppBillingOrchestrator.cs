@@ -41,6 +41,15 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         var resolvedBillingAnchorDay = ClientSubscriptionOfferPricing.ResolveBillingAnchorDay(
             command.BillingAnchorSelectionMode,
             command.SelectedBillingAnchorDay);
+        var freeTrialDays = ClientSubscriptionTrialPolicy.ResolveFreeTrialDays(
+            command.HasFreeTrial,
+            command.FreeTrialDays,
+            command.AllowFounderFreeTrial);
+        if (freeTrialDays > 0 && authoritativeAmount == 0)
+        {
+            throw new InvalidOperationException(
+                "A free trial requires a premium monthly amount greater than $0.00.");
+        }
 
         var existingOffers = await _db.ClientSubscriptionOffers
             .Where(x => x.ClientProfileId == command.ClientProfileId &&
@@ -62,6 +71,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             Currency = NormalizeCurrency(command.Currency),
             BillingAnchorSelectionMode = command.BillingAnchorSelectionMode,
             SelectedBillingAnchorDay = resolvedBillingAnchorDay,
+            FreeTrialDays = freeTrialDays,
             Status = command.EffectiveUtc.HasValue && command.EffectiveUtc.Value > nowUtc
                 ? ClientSubscriptionOfferStatus.Draft
                 : ClientSubscriptionOfferStatus.Offered,
@@ -71,8 +81,25 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             UpdatedUtc = nowUtc
         };
 
+        var offerAuditMetadata = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            offer.MonthlyAmountCents,
+            offer.SelectedBillingAnchorDay,
+            offer.FreeTrialDays
+        });
         _db.ClientSubscriptionOffers.Add(offer);
-        AddAuditEntry("ClientSubscriptionOffer", offer.Id, "created", null, offer.Status.ToString(), BillingActorType.Agent, command.OwnerAgentUserId, "billing_orchestrator", null, null);
+        AddAuditEntry(
+            "ClientSubscriptionOffer",
+            offer.Id,
+            "created",
+            null,
+            offer.Status.ToString(),
+            BillingActorType.Agent,
+            command.OwnerAgentUserId,
+            "billing_orchestrator",
+            null,
+            null,
+            offerAuditMetadata);
 
         await _db.SaveChangesAsync(cancellationToken);
         return offer;
@@ -529,6 +556,20 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         subscription.UpdatedUtc = nowUtc;
         await _db.SaveChangesAsync(cancellationToken);
 
+        if (offer.FreeTrialDays > 0)
+        {
+            return await ActivateFreeTrialSubscriptionAsync(
+                subscription,
+                offer,
+                invitation,
+                command,
+                authoritativeCurrency,
+                customerResult.ProviderCustomerId,
+                attachmentResult.ProviderPaymentMethodId,
+                nowUtc,
+                cancellationToken);
+        }
+
         var initialPaymentRecord = new SubscriptionPayment
         {
             ClientSubscriptionId = subscription.Id,
@@ -754,6 +795,107 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             subscription.NextBillingDateUtc,
             subscription.CancelAtPeriodEnd);
         return new CancelClientSubscriptionResult(true, null, cancellationResult.SanitizedSummary, null, false, subscription, entitlement, cancellationResult);
+    }
+
+    public async Task<ClientSubscriptionLifecycleResult> UpdateClientSubscriptionAsync(
+        UpdateClientSubscriptionCommand command,
+        CancellationToken cancellationToken = default)
+    {
+        if (!command.FounderAuthorized)
+        {
+            return new ClientSubscriptionLifecycleResult(
+                false,
+                "FORBIDDEN",
+                "FOUNDER_SUBSCRIPTION_CONTROL_REQUIRED",
+                "Only the founder can update a live client subscription.",
+                null,
+                false);
+        }
+
+        var subscription = await _db.ClientSubscriptions
+            .FirstOrDefaultAsync(x => x.Id == command.ClientSubscriptionId, cancellationToken)
+            ?? throw new InvalidOperationException($"Client subscription {command.ClientSubscriptionId} was not found.");
+
+        if (subscription.Status == ClientSubscriptionStatus.Canceled)
+        {
+            return new ClientSubscriptionLifecycleResult(
+                false,
+                subscription.Status.ToString(),
+                "CANCELED_SUBSCRIPTION_CANNOT_BE_UPDATED",
+                "A canceled subscription must receive a new activation offer.",
+                null,
+                false);
+        }
+
+        if (!subscription.IsPlatformManaged && !string.IsNullOrWhiteSpace(subscription.ProviderSubscriptionId))
+        {
+            return new ClientSubscriptionLifecycleResult(
+                false,
+                subscription.Status.ToString(),
+                "LEGACY_PROVIDER_MANAGED_SUBSCRIPTION",
+                "This historical provider-managed subscription must be migrated before its terms can be updated in Legend.",
+                null,
+                false);
+        }
+
+        var amountCents = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
+            command.PriceType,
+            command.CustomMonthlyAmountCents,
+            ClientSubscriptionOfferPricing.FounderCustomMinimumCents);
+        var billingAnchorDay = ClientSubscriptionOfferPricing.ResolveBillingAnchorDay(
+            command.BillingAnchorSelectionMode,
+            command.SelectedBillingAnchorDay);
+        var nowUtc = DateTime.UtcNow;
+        var correlationId = command.CorrelationId ?? BillingIdempotency.CreateDeterministic(
+            "update-client-subscription",
+            subscription.Id.ToString(),
+            amountCents.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            billingAnchorDay?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none");
+        var previousTerms = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            subscription.MonthlyAmountCents,
+            subscription.BillingAnchorDay,
+            subscription.TrialEndsUtc
+        });
+
+        subscription.MonthlyAmountCents = amountCents;
+        subscription.BillingAnchorDay = billingAnchorDay;
+        subscription.UpdatedUtc = nowUtc;
+        AddAuditEntry(
+            "ClientSubscription",
+            subscription.Id,
+            "terms_updated",
+            previousTerms,
+            System.Text.Json.JsonSerializer.Serialize(new
+            {
+                MonthlyAmountCents = amountCents,
+                BillingAnchorDay = billingAnchorDay,
+                EffectiveAtUtc = subscription.NextBillingDateUtc
+            }),
+            BillingActorType.Agent,
+            command.ActorId,
+            "billing_orchestrator",
+            null,
+            correlationId,
+            "Founder updated the monthly amount and billing anchor. Current-period dates and any accepted trial end remain unchanged.");
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return new ClientSubscriptionLifecycleResult(
+            true,
+            subscription.Status.ToString(),
+            null,
+            "Subscription terms were updated for the next scheduled charge.",
+            null,
+            false,
+            subscription.ProviderCustomerId,
+            await GetDefaultPaymentMethodIdAsync(subscription, cancellationToken),
+            subscription.MonthlyAmountCents,
+            subscription.Currency,
+            subscription.BillingAnchorDay,
+            subscription.CurrentPeriodStartUtc,
+            subscription.CurrentPeriodEndUtc,
+            subscription.NextBillingDateUtc,
+            subscription.CancelAtPeriodEnd);
     }
 
     /// <summary>
@@ -1502,6 +1644,96 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         bool Completed)
     {
         public bool Retryable => Attempt.Retryable;
+    }
+
+    private async Task<ActivateClientSubscriptionResult> ActivateFreeTrialSubscriptionAsync(
+        ClientSubscription subscription,
+        ClientSubscriptionOffer offer,
+        SubscriptionActivationInvitation? invitation,
+        ActivateClientSubscriptionCommand command,
+        string currency,
+        string providerCustomerId,
+        string providerPaymentMethodId,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var previousStatus = subscription.Status;
+        var correlationId = command.CorrelationId ?? BillingIdempotency.CreateDeterministic(
+            "client-subscription-trial-activation",
+            command.ClientProfileId.ToString(),
+            offer.Id.ToString(),
+            subscription.Id.ToString());
+
+        subscription.MonthlyAmountCents = offer.MonthlyAmountCents;
+        subscription.Currency = currency;
+        subscription.ProviderCustomerId = providerCustomerId;
+        subscription.BillingTimeZoneId = string.IsNullOrWhiteSpace(command.BillingTimeZoneId)
+            ? subscription.BillingTimeZoneId
+            : command.BillingTimeZoneId.Trim();
+        subscription.BillingAnchorDay = command.BillingAnchorDay ?? offer.SelectedBillingAnchorDay;
+        subscription.Status = ClientSubscriptionStatus.Active;
+        subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Current;
+        subscription.IsPlatformManaged = true;
+        subscription.PlatformManagedSinceUtc ??= nowUtc;
+        subscription.FirstChargeUtc = command.FirstChargeUtc;
+        subscription.FirstRecurringRenewalUtc = command.FirstRecurringRenewalUtc;
+        subscription.TrialEndsUtc = command.FirstChargeUtc;
+        subscription.CurrentPeriodStartUtc = nowUtc;
+        subscription.CurrentPeriodEndUtc = command.FirstChargeUtc;
+        subscription.NextBillingDateUtc = command.FirstChargeUtc;
+        subscription.NextChargeAttemptUtc = command.FirstChargeUtc;
+        subscription.LastChargeAttemptUtc = null;
+        subscription.LastSuccessfulChargeUtc = null;
+        subscription.ActivatedUtc ??= nowUtc;
+        subscription.UpdatedUtc = nowUtc;
+
+        offer.Status = ClientSubscriptionOfferStatus.Accepted;
+        offer.UpdatedUtc = nowUtc;
+        if (invitation is not null)
+        {
+            invitation.Status = SubscriptionActivationInvitationStatus.Redeemed;
+            invitation.RedeemedUtc = nowUtc;
+        }
+
+        AddAuditEntry(
+            "ClientSubscription",
+            subscription.Id,
+            "trial_activated",
+            previousStatus.ToString(),
+            subscription.Status.ToString(),
+            BillingActorType.System,
+            null,
+            "billing_orchestrator",
+            null,
+            correlationId,
+            $"A {offer.FreeTrialDays}-day free trial is active. The saved payment method will be charged first on {command.FirstChargeUtc:O}.",
+            BuildConsentMetadataJson(command, currency, offer.MonthlyAmountCents));
+        QueueNotification(subscription, ClientBillingNotificationKind.MembershipActivated, $"membership-trial-activated:{subscription.Id:N}");
+        QueueUpcomingRenewalReminder(subscription);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var entitlement = await _entitlements.RefreshAsync(
+            command.ClientProfileId,
+            BillingEntitlementKeys.ClientAppFullAccess,
+            "SUBSCRIPTION_TRIAL_ACTIVATED",
+            cancellationToken);
+        var lifecycle = new ClientSubscriptionLifecycleResult(
+            true,
+            ClientSubscriptionStatus.Active.ToString(),
+            null,
+            "Client subscription activated with a free trial.",
+            null,
+            false,
+            providerCustomerId,
+            providerPaymentMethodId,
+            offer.MonthlyAmountCents,
+            currency,
+            subscription.BillingAnchorDay,
+            subscription.CurrentPeriodStartUtc,
+            subscription.CurrentPeriodEndUtc,
+            subscription.NextBillingDateUtc,
+            false);
+        return new ActivateClientSubscriptionResult(true, null, lifecycle.SanitizedSummary, null, false, subscription, entitlement, lifecycle);
     }
 
     private async Task<ActivateClientSubscriptionResult> ActivateZeroDollarSubscriptionAsync(

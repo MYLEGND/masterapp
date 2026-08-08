@@ -79,6 +79,8 @@ namespace AgentPortal.Models
         public string SubscriptionCurrency { get; set; } = "USD";
         public string SubscriptionBillingAnchorMode { get; set; } = nameof(BillingAnchorSelectionMode.FirstOfMonth);
         public int? SubscriptionBillingAnchorDay { get; set; }
+        public bool SubscriptionHasFreeTrial { get; set; }
+        public int? SubscriptionFreeTrialDays { get; set; }
 
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
         {
@@ -245,6 +247,16 @@ namespace AgentPortal.Models
                             "Agent-selected billing anchors must use a day between 1 and 31.",
                             new[] { nameof(SubscriptionBillingAnchorDay) });
                     }
+                }
+
+                if (SubscriptionHasFreeTrial &&
+                    (!SubscriptionFreeTrialDays.HasValue ||
+                     SubscriptionFreeTrialDays.Value < 1 ||
+                     SubscriptionFreeTrialDays.Value > ClientSubscriptionTrialPolicy.MaximumFreeTrialDays))
+                {
+                    yield return new ValidationResult(
+                        $"Free trial days must be between 1 and {ClientSubscriptionTrialPolicy.MaximumFreeTrialDays}.",
+                        new[] { nameof(SubscriptionFreeTrialDays) });
                 }
             }
         }

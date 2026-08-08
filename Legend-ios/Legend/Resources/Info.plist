@@ -58,7 +58,7 @@
 	<key>LegendTokenEndpoint</key>
 	<string>$(LEGEND_TOKEN_ENDPOINT)</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>LEGEND® reads today’s events from the calendar accounts available on this device only when you choose to connect Calendar to Activity.</string>
+	<string>LEGEND® reads and creates calendar events on this device only when you choose to use Calendar in Today’s Activity.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>LEGEND® uses the camera only when you choose to capture media for a Legend update.</string>
 	<key>NSFaceIDUsageDescription</key>
@@ -68,7 +68,7 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>LEGEND® uses photo access only when you choose to manage media for a Legend update.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>LEGEND® reads and completes reminders available on this device only when you choose to connect Reminders to Activity.</string>
+	<string>LEGEND® reads, creates, and completes reminders on this device only when you choose to use Reminders in Today’s Activity.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UISupportedInterfaceOrientations</key>

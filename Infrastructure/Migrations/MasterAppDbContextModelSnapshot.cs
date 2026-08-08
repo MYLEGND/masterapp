@@ -1946,6 +1946,9 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime?>("FirstRecurringRenewalUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("TrialEndsUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("GracePeriodEndsUtc")
                         .HasColumnType("datetime2");
 
@@ -2068,6 +2071,11 @@ namespace Infrastructure.Migrations
 
                     b.Property<DateTime?>("ExpiresUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("FreeTrialDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<int>("MonthlyAmountCents")
                         .HasColumnType("int");

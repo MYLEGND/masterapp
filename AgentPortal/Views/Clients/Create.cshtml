@@ -263,12 +263,28 @@
                                 <input asp-for="SubscriptionBillingAnchorDay" class="client-create-input" id="SubscriptionBillingAnchorDay" type="number" min="1" max="31" step="1" placeholder="15" />
                                 <span asp-validation-for="SubscriptionBillingAnchorDay" class="text-danger client-create-validation"></span>
                             </div>
+
+                            <div>
+                                <label class="client-create-label" asp-for="SubscriptionHasFreeTrial">Free Trial</label>
+                                <select asp-for="SubscriptionHasFreeTrial" class="client-create-input" id="SubscriptionHasFreeTrial">
+                                    @foreach (var option in createForm.Field("SubscriptionHasFreeTrial").Options)
+                                    {
+                                        <option value="@option.Value">@option.Label</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div id="subscriptionFreeTrialDaysWrap" class="is-hidden">
+                                <label class="client-create-label" asp-for="SubscriptionFreeTrialDays">Free Trial Days</label>
+                                <input asp-for="SubscriptionFreeTrialDays" class="client-create-input" id="SubscriptionFreeTrialDays" type="number" min="1" max="3650" step="1" placeholder="14" />
+                                <span asp-validation-for="SubscriptionFreeTrialDays" class="text-danger client-create-validation"></span>
+                            </div>
                         }
 
                         <div class="client-create-full">
                             <div class="client-create-section-copy">
                                 @(canSetFounderSubscriptionOptions
-                                    ? "Founder custom amounts can start at $0.00."
+                                    ? "Founder controls include custom amounts from $0.00, agent-selected billing days, and free trials. A free-trial client still adds a card, but no charge is made until the trial ends."
                                     : "Custom amounts start at $50.00.") Fixed tiers and billing anchors are enforced on the server.
                             </div>
                         </div>

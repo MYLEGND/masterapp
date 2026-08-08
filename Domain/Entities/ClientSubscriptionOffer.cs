@@ -15,6 +15,7 @@ public sealed class ClientSubscriptionOffer
     public string Currency { get; set; } = "USD";
     public BillingAnchorSelectionMode BillingAnchorSelectionMode { get; set; } = BillingAnchorSelectionMode.FirstOfMonth;
     public int? SelectedBillingAnchorDay { get; set; }
+    public int FreeTrialDays { get; set; }
     public ClientSubscriptionOfferStatus Status { get; set; } = ClientSubscriptionOfferStatus.Draft;
     public DateTime? EffectiveUtc { get; set; }
     public DateTime? ExpiresUtc { get; set; }
