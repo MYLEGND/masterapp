@@ -21,6 +21,18 @@ namespace AgentPortal.Tests;
 public sealed class FinanceToolStatesControllerSqlTranslationTests
 {
     [Fact]
+    public void Controller_HasOneDependencyInjectionConstructor()
+    {
+        var constructor = Assert.Single(typeof(FinanceToolStatesController).GetConstructors());
+
+        Assert.Collection(
+            constructor.GetParameters(),
+            parameter => Assert.Equal(typeof(MasterAppDbContext), parameter.ParameterType),
+            parameter => Assert.Equal(typeof(EffectiveAgentContext), parameter.ParameterType),
+            parameter => Assert.Equal(typeof(IHouseholdMembershipService), parameter.ParameterType));
+    }
+
+    [Fact]
     public async Task Load_WithClientUserId_UsesASqlTranslatableLookup()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

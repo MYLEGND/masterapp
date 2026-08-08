@@ -27,17 +27,12 @@ namespace AgentPortal.Controllers.API
 
         private readonly MasterAppDbContext _db;
         private readonly EffectiveAgentContext _agentContext;
-        private readonly IHouseholdMembershipService? _households;
-
-        public FinanceToolStatesController(MasterAppDbContext db, EffectiveAgentContext agentContext)
-            : this(db, agentContext, households: null)
-        {
-        }
+        private readonly IHouseholdMembershipService _households;
 
         public FinanceToolStatesController(
             MasterAppDbContext db,
             EffectiveAgentContext agentContext,
-            IHouseholdMembershipService? households)
+            IHouseholdMembershipService households)
         {
             _db = db;
             _agentContext = agentContext;
@@ -131,9 +126,6 @@ namespace AgentPortal.Controllers.API
             Guid clientProfileId,
             CancellationToken cancellationToken)
         {
-            if (_households is null)
-                return null;
-
             var access = await _households.ResolveActiveAccessAsync(clientProfileId, cancellationToken);
             return access.HasActiveMembership &&
                    access.HouseholdAccountId.HasValue &&

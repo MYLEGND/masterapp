@@ -28,7 +28,10 @@ public sealed class AgentMobileExpenseLensBridgeTests
             new HttpContextAccessor { HttpContext = http },
             Mock.Of<IAgentTrackingService>(),
             NullLogger<EffectiveAgentContext>.Instance);
-        var controller = new FinanceToolStatesController(db, agentContext)
+        var controller = new FinanceToolStatesController(
+            db,
+            agentContext,
+            Mock.Of<Infrastructure.Households.IHouseholdMembershipService>())
         {
             ControllerContext = new ControllerContext { HttpContext = http }
         };
