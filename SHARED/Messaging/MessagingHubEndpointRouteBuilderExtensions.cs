@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.SignalR;
 
@@ -11,7 +12,7 @@ public static class MessagingHubEndpointRouteBuilderExtensions
     /// by the hosting application. The hub stays shared; each host remains the
     /// authority for the credentials it supports.
     /// </summary>
-    public static HubEndpointConventionBuilder MapLegendMessagingHub(
+    public static IHubEndpointConventionBuilder MapLegendMessagingHub(
         this IEndpointRouteBuilder endpoints,
         string pattern,
         string authenticationSchemes)
