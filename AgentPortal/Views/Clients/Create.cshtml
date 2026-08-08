@@ -15,6 +15,11 @@
     var emailErrors = ViewData.ModelState[nameof(Model.Email)]?.Errors;
     var blocked = emailErrors != null && emailErrors.Any(e => (e.ErrorMessage ?? "").Contains("BLOCKED", StringComparison.OrdinalIgnoreCase));
     var founderConflictClientUserId = (ViewData["FounderConflictClientUserId"] as string ?? string.Empty).Trim();
+    var mobilePortalTicket = ViewData["MobileClientCreationPortalTicket"] as string;
+    var isMobilePortalIntake = !string.IsNullOrWhiteSpace(mobilePortalTicket);
+    var createFormAction = isMobilePortalIntake
+        ? Url.RouteUrl("MobileClientCreationPortalSubmit")
+        : Url.Action("Create", "Clients");
 }
 
 <main class="dashboard-page-shell client-create-page">
@@ -30,8 +35,15 @@
         </div>
 
         <div class="client-create-body">
-            <form asp-action="Create" method="post" novalidate id="createClientForm">
-                @Html.AntiForgeryToken()
+            <form action="@createFormAction" method="post" novalidate id="createClientForm">
+                @if (isMobilePortalIntake)
+                {
+                    <input type="hidden" name="mobilePortalTicket" value="@mobilePortalTicket" />
+                }
+                else
+                {
+                    @Html.AntiForgeryToken()
+                }
 
                 <input type="hidden" name="returnUrl" id="returnUrl" value="@returnUrl" />
                 <input asp-for="SourceLeadClientUserId" type="hidden" />

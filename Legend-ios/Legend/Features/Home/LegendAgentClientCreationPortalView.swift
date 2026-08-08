@@ -129,7 +129,8 @@ private struct LegendAgentClientCreationPortalWebView: UIViewRepresentable {
                 return
             }
 
-            if url.path == "/mobile/agent/clients/create-complete" {
+            let isPortalURL = url.scheme?.lowercased() == "https" && url.host == portalHost
+            if isPortalURL && url.path == "/mobile/agent/clients/create-complete" {
                 decisionHandler(.cancel)
                 if didSubmitClientCreation {
                     onCreated()
@@ -139,13 +140,13 @@ private struct LegendAgentClientCreationPortalWebView: UIViewRepresentable {
                 return
             }
 
-            if navigationAction.navigationType == .formSubmitted && url.path == "/Clients/Create" {
+            if navigationAction.navigationType == .formSubmitted &&
+                (url.path == "/Clients/Create" || url.path == "/mobile/agent/clients/create") {
                 didSubmitClientCreation = true
             }
 
-            guard url.scheme?.lowercased() == "https", url.host == portalHost else {
+            guard isPortalURL else {
                 decisionHandler(.cancel)
-                onFailure("The client intake can only open inside the LEGEND portal.")
                 return
             }
 

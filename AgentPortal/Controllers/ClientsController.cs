@@ -3019,7 +3019,7 @@ namespace AgentPortal.Controllers;
         var ticket = new MobileClientCreationPortalTicket(agentOid, agentUpn, displayName);
         var protectedTicket = _mobileClientCreationPortalTicketProtector.Protect(
             JsonSerializer.Serialize(ticket),
-            TimeSpan.FromMinutes(2));
+            TimeSpan.FromMinutes(20));
         var launchPath = Url.RouteUrl(
             "MobileClientCreationPortal",
             new { ticket = protectedTicket });
@@ -3047,44 +3047,14 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(ticket))
             return Unauthorized();
 
-        MobileClientCreationPortalTicket? portalTicket;
-        try
-        {
-            portalTicket = JsonSerializer.Deserialize<MobileClientCreationPortalTicket>(
-                _mobileClientCreationPortalTicketProtector.Unprotect(ticket));
-        }
-        catch (CryptographicException)
-        {
+        var portalTicket = ReadMobileClientCreationPortalTicket(ticket);
+        if (portalTicket is null)
             return Unauthorized();
-        }
-        catch (JsonException)
-        {
-            return Unauthorized();
-        }
 
-        if (portalTicket is null ||
-            string.IsNullOrWhiteSpace(portalTicket.AgentOid) ||
-            string.IsNullOrWhiteSpace(portalTicket.AgentUpn))
-        {
-            return Unauthorized();
-        }
-
-        var agentExists = await _db.AgentProfiles
-            .AsNoTracking()
-            .AnyAsync(profile => profile.AgentUserId == portalTicket.AgentOid, cancellationToken);
-        if (!agentExists)
+        if (!await IsActiveMobileClientCreationPortalTicketAsync(portalTicket, cancellationToken))
             return Forbid();
 
-        var claims = new[]
-        {
-            new Claim("oid", portalTicket.AgentOid),
-            new Claim("preferred_username", portalTicket.AgentUpn),
-            new Claim(ClaimTypes.Name, portalTicket.DisplayName),
-            new Claim(ClaimTypes.Email, portalTicket.AgentUpn)
-        };
-        var principal = new ClaimsPrincipal(new ClaimsIdentity(
-            claims,
-            CookieAuthenticationDefaults.AuthenticationScheme));
+        var principal = CreateMobileClientCreationPortalPrincipal(portalTicket);
         // The first portal response is the canonical Create view itself. The
         // browser session is also issued for that view's normal POST, but there
         // is no intermediate redirect for WKWebView to misclassify.
@@ -3099,12 +3069,88 @@ namespace AgentPortal.Controllers;
                 ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(10)
             });
 
+        ViewData["MobileClientCreationPortalTicket"] = ticket;
         return await Create(returnUrl: "/mobile/agent/clients/create-complete");
+    }
+
+    [AllowAnonymous]
+    [HttpPost("/mobile/agent/clients/create", Name = "MobileClientCreationPortalSubmit")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> MobileClientCreationPortalSubmit(
+        [FromForm] string? mobilePortalTicket,
+        [FromForm] CreateClientViewModel model,
+        [FromForm] string? returnUrl,
+        CancellationToken cancellationToken)
+    {
+        var portalTicket = ReadMobileClientCreationPortalTicket(mobilePortalTicket);
+        if (portalTicket is null)
+            return Unauthorized();
+
+        if (!await IsActiveMobileClientCreationPortalTicketAsync(portalTicket, cancellationToken))
+            return Forbid();
+
+        // The protected, short-lived ticket is the embedded form's request
+        // authorization. The canonical Create action below remains the only
+        // validation, provisioning, and CRM write path.
+        HttpContext.User = CreateMobileClientCreationPortalPrincipal(portalTicket);
+        ViewData["MobileClientCreationPortalTicket"] = mobilePortalTicket;
+        return await Create(model, returnUrl);
     }
 
     [HttpGet("/mobile/agent/clients/create-complete", Name = "MobileClientCreationPortalComplete")]
     public IActionResult MobileClientCreationPortalComplete()
         => NoContent();
+
+    private MobileClientCreationPortalTicket? ReadMobileClientCreationPortalTicket(string? protectedTicket)
+    {
+        if (string.IsNullOrWhiteSpace(protectedTicket))
+            return null;
+
+        try
+        {
+            var ticket = JsonSerializer.Deserialize<MobileClientCreationPortalTicket>(
+                _mobileClientCreationPortalTicketProtector.Unprotect(protectedTicket));
+            return ticket is null ||
+                   string.IsNullOrWhiteSpace(ticket.AgentOid) ||
+                   string.IsNullOrWhiteSpace(ticket.AgentUpn)
+                ? null
+                : ticket;
+        }
+        catch (CryptographicException)
+        {
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private Task<bool> IsActiveMobileClientCreationPortalTicketAsync(
+        MobileClientCreationPortalTicket ticket,
+        CancellationToken cancellationToken)
+    {
+        return _db.AgentProfiles
+            .AsNoTracking()
+            .AnyAsync(
+                profile => profile.AgentUserId == ticket.AgentOid && profile.IsActive,
+                cancellationToken);
+    }
+
+    private static ClaimsPrincipal CreateMobileClientCreationPortalPrincipal(
+        MobileClientCreationPortalTicket ticket)
+    {
+        var claims = new[]
+        {
+            new Claim("oid", ticket.AgentOid),
+            new Claim("preferred_username", ticket.AgentUpn),
+            new Claim(ClaimTypes.Name, ticket.DisplayName),
+            new Claim(ClaimTypes.Email, ticket.AgentUpn)
+        };
+        return new ClaimsPrincipal(new ClaimsIdentity(
+            claims,
+            CookieAuthenticationDefaults.AuthenticationScheme));
+    }
 
     private async Task<IActionResult?> MobileAgentAccessFailureAsync(
         CancellationToken cancellationToken)

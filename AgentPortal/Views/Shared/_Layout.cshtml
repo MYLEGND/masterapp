@@ -49,6 +49,8 @@
     var isFounder = AgentPortal.Security.FounderGuard.IsFounder(User);
     var isOnboardingPublic = string.Equals(currentController, "OnboardingPublic", StringComparison.OrdinalIgnoreCase);
     var isFinancePage = string.Equals(currentController, "Finance", StringComparison.OrdinalIgnoreCase);
+    var isMobileEmbeddedClientCreation = ViewData["MobileClientCreationPortalTicket"] is string mobileClientCreationTicket
+        && !string.IsNullOrWhiteSpace(mobileClientCreationTicket);
     var layoutBodyClass = "d-flex flex-column min-vh-100"
         + (isOnboardingPublic ? " onboarding-public-only" : "")
         + (isFinancePage ? " finance-page" : "");
@@ -694,7 +696,7 @@
     </nav>
 </header>
 
-@if (!isAssistant && !isOnboardingPublic && !string.IsNullOrWhiteSpace(messagingActorId))
+@if (!isMobileEmbeddedClientCreation && !isAssistant && !isOnboardingPublic && !string.IsNullOrWhiteSpace(messagingActorId))
 {
     @await Html.PartialAsync("~/Views/Messaging/_CommandCenter.cshtml", new MessagingCommandCenterViewModel(
         messagingActorId,
@@ -1659,10 +1661,16 @@
         };
     }
 </script>
-<script src="~/js/live-sync.js" asp-append-version="true"></script>
+@if (!isMobileEmbeddedClientCreation)
+{
+    <script src="~/js/live-sync.js" asp-append-version="true"></script>
+}
 <script src="~/_content/Shared/js/legend-global-navigation.js" asp-append-version="true"></script>
 <script src="~/_content/Shared/js/life-hac.js" asp-append-version="true"></script>
-<script src="~/_content/Shared/js/messaging.js" asp-append-version="true"></script>
+@if (!isMobileEmbeddedClientCreation)
+{
+    <script src="~/_content/Shared/js/messaging.js" asp-append-version="true"></script>
+}
 
 <script>
     (function () {
