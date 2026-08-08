@@ -2858,17 +2858,13 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
                 streamingAsset.resourceLoader.setDelegate(
                     loader,
                     queue: loader.callbackQueue)
-                if await self.loadPlaybackMetadata(for: streamingAsset) {
-                    asset = streamingAsset
-                } else {
-                    // Range playback is the production path. If a legacy
-                    // proxy or server configuration cannot satisfy the
-                    // AVFoundation resource-loader contract, use the same
-                    // authenticated media source through the established
-                    // bounded file resolver rather than leaving the Hac
-                    // permanently unplayable.
-                    self.resourceLoaders.removeValue(forKey: media.id)
-                }
+                // Do not gate protected range playback on eager tracks/duration
+                // metadata. AVPlayerItem below already owns the authoritative
+                // readiness transition through its status observer. Eager metadata
+                // loading can force an unnecessarily broad range request and can
+                // push a valid protected stream into the full-file compatibility
+                // fallback before playback has even started.
+                asset = streamingAsset
             }
 
             if asset == nil,

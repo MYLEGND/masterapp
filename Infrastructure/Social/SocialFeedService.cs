@@ -1860,10 +1860,22 @@ public sealed class SocialFeedService : ISocialFeedService
 
         var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
         var actorUserIds = await AuthorUserIdFormsAsync(actorKey, cancellationToken);
+
+        // Historical affinity can only change the score of authors represented
+        // by this request's candidate set. Keep the existing ranking authority
+        // and weights, but stop joining engagement history through unrelated
+        // published posts. This preserves ordering semantics while bounding the
+        // database work to the feed actually being ranked.
+        var candidateAuthorProfileIds = posts
+            .Select(post => post.AuthorProfileId)
+            .Where(profileId => profileId != Guid.Empty)
+            .Distinct()
+            .ToArray();
         var socialPosts = _db.SocialPosts
             .AsNoTracking()
             .Where(post => post.PublicationState == SocialPostPublicationStates.Published &&
-                           post.DeletedUtc == null);
+                           post.DeletedUtc == null &&
+                           candidateAuthorProfileIds.Contains(post.AuthorProfileId));
         var authorAffinity = new Dictionary<Guid, decimal>();
 
         void AddAffinity(Guid authorProfileId, decimal value)
