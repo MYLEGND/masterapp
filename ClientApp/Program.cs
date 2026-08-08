@@ -121,124 +121,25 @@ static bool IsSqlServerConn(string? cs)
         || cs.Contains("Authentication=", StringComparison.OrdinalIgnoreCase);
 }
 
-static bool IsSqliteConn(string? cs)
-{
-    if (string.IsNullOrWhiteSpace(cs)) return false;
-    return cs.Trim().StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase);
-}
-
-static string ExtractSqlitePath(string connString)
-{
-    var parts = connString.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    foreach (var p in parts)
-    {
-        if (p.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
-            return p.Substring("Data Source=".Length).Trim().Trim('"');
-    }
-    return "";
-}
-
-static string ResolveSqliteConnectionString(string? configuredConnString, IWebHostEnvironment env)
-{
-    // If explicitly set and sqlite, honor it when the file exists.
-    if (!string.IsNullOrWhiteSpace(configuredConnString) && IsSqliteConn(configuredConnString))
-    {
-        var configured = configuredConnString.Trim();
-        var configuredPath = ExtractSqlitePath(configured);
-        if (string.IsNullOrWhiteSpace(configuredPath) || File.Exists(configuredPath))
-            return configured;
-    }
-
-    // Local dev fallback
-    if (env.IsDevelopment())
-    {
-        var siblingAgentDb = Path.Combine(env.ContentRootPath, "..", "AgentPortal", "App_Data", "masterapp.db");
-        if (File.Exists(siblingAgentDb))
-            return $"Data Source={Path.GetFullPath(siblingAgentDb)}";
-
-        var workspaceDb = Path.Combine(env.ContentRootPath, "..", "App_Data", "masterapp.db");
-        if (File.Exists(workspaceDb))
-            return $"Data Source={Path.GetFullPath(workspaceDb)}";
-
-        Directory.CreateDirectory("App_Data");
-        return "Data Source=App_Data/masterapp.db";
-    }
-
-    // Production fallback (ONLY used if you didn't provide SQL Server)
-    var home = Environment.GetEnvironmentVariable("HOME");
-    if (string.IsNullOrWhiteSpace(home))
-        home = "D:\\home";
-
-    var dataDir = Path.Combine(home, "data");
-    Directory.CreateDirectory(dataDir);
-
-    var dbFile = Path.Combine(dataDir, "masterapp.db");
-    return $"Data Source={dbFile}";
-}
-
-static void EnsureSqliteDirectoryExists(string sqliteConnString)
-{
-    if (!IsSqliteConn(sqliteConnString)) return;
-
-    var path = ExtractSqlitePath(sqliteConnString);
-    if (string.IsNullOrWhiteSpace(path)) return;
-
-    var dir = Path.GetDirectoryName(path);
-    if (string.IsNullOrWhiteSpace(dir)) return;
-
-    Directory.CreateDirectory(dir);
-}
-
-// Pull the connection string Azure injects (or secrets/local)
+// ClientApp database authority:
+// MasterAppDb is SQL Server only. ClientApp must never create, select,
+// or fall back to a local SQLite database.
 var configuredDb = builder.Configuration.GetConnectionString("MasterAppDb");
 
-// Development provider selection:
-// - If Azure SQL connection string exists, use it by default for parity with live data.
-// - Set USE_SQLITE_IN_DEV=true to force local SQLite.
-// - Legacy toggle USE_SQLSERVER_IN_DEV=false also forces SQLite.
-var forceSqliteInDev = string.Equals(
-    Environment.GetEnvironmentVariable("USE_SQLITE_IN_DEV"),
-    "true",
-    StringComparison.OrdinalIgnoreCase);
-
-var disableSqlServerInDev = string.Equals(
-    Environment.GetEnvironmentVariable("USE_SQLSERVER_IN_DEV"),
-    "false",
-    StringComparison.OrdinalIgnoreCase);
-
-if (builder.Environment.IsDevelopment() && (forceSqliteInDev || disableSqlServerInDev) && IsSqlServerConn(configuredDb))
-    configuredDb = null;
-
-// Decide provider
-var useSqlServer = IsSqlServerConn(configuredDb) && !IsSqliteConn(configuredDb);
-
-// NO SQLITE FALLBACK IN PRODUCTION
-if (!builder.Environment.IsDevelopment() && !useSqlServer)
+if (!IsSqlServerConn(configuredDb))
 {
     throw new InvalidOperationException(
-        "PRODUCTION MISCONFIG: MasterAppDb connection string not found or not Azure SQL. " +
-        "Set App Service > Configuration > Connection strings: name=MasterAppDb type=SQLAzure."
-    );
+        "CLIENTAPP DATABASE MISCONFIG: MasterAppDb must be a SQL Server connection string. " +
+        "Configure ConnectionStrings:MasterAppDb locally or the MasterAppDb SQLAzure " +
+        "connection string in Azure App Service.");
 }
 
-// Dev-only sqlite fallback
-var sqliteConn = useSqlServer ? null : ResolveSqliteConnectionString(configuredDb, builder.Environment);
-if (sqliteConn != null)
-    EnsureSqliteDirectoryExists(sqliteConn);
-
-// DB
 builder.Services.AddDbContext<MasterAppDbContext>(options =>
 {
-    options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
-
-    if (useSqlServer)
+    options.UseSqlServer(configuredDb!, sql =>
     {
-        options.UseSqlServer(configuredDb!);
-    }
-    else
-    {
-        options.UseSqlite(sqliteConn!);
-    }
+        sql.CommandTimeout(120);
+    });
 });
 
 // ------------------------------------------------------------
@@ -485,10 +386,7 @@ var app = builder.Build();
 
     log.LogWarning("ENV={Env} ContentRoot={ContentRoot}", app.Environment.EnvironmentName, app.Environment.ContentRootPath);
 
-    if (useSqlServer)
-        log.LogWarning("DB Provider = SQLSERVER (Azure SQL).");
-    else
-        log.LogWarning("DB Provider = SQLITE. Conn={Conn}", sqliteConn);
+    log.LogWarning("DB Provider = SQLSERVER (Azure SQL).");
 
     log.LogWarning("AzureAd:TenantId={TenantId} ClientId={ClientId} CallbackPath={CallbackPath}", tenantId, clientId, callbackPath);
     log.LogWarning("AzureAd secret present? {Present} len={Len}", !string.IsNullOrWhiteSpace(aadSecret), aadSecret?.Length ?? 0);
@@ -544,9 +442,6 @@ app.Use(async (context, next) =>
     {
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
-
-        if (!useSqlServer && sqliteConn != null)
-            EnsureSqliteDirectoryExists(sqliteConn);
 
         // ✅ IMPORTANT: Do NOT auto-run migrations in production for ClientApp.
         // Migrations should be applied by you (CI/CD or manual) to Azure SQL.
