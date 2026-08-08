@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
 using Domain.Billing;
 using Domain.Enums;
 
@@ -42,29 +41,6 @@ namespace AgentPortal.Models
 
         public string? SignificantOtherPhone { get; set; }
 
-        // ===================== CRM (PERSISTED TO DB) =====================
-
-        public string CrmStatus { get; set; } = "Lead";   // Lead | Prospect | Active | Dormant
-
-        public string CrmPriority { get; set; } = "Normal"; // Low | Normal | High | Urgent
-
-        // Comma separated tags: "Mortgage, Gym, Referral"
-        public string? CrmTags { get; set; }
-
-        [DataType(DataType.Date)]
-        public DateTime? CrmLastTouch { get; set; }
-
-        [DataType(DataType.Date)]
-        public DateTime? CrmNextDate { get; set; }
-
-        // "Send quote", "Call to schedule review", etc.
-        public string? CrmNextText { get; set; }
-
-        // Extra relationship notes collected at creation (optional)
-        public string? CrmNotes { get; set; }
-
-        public string PipelineStage { get; set; } = "NewLead";
-
         // Agent licensing (persisted per-agent and reused)
         public string? AgentNpn { get; set; }
         [Phone(ErrorMessage = "Enter a valid agent phone number.")]
@@ -79,7 +55,7 @@ namespace AgentPortal.Models
         public string SubscriptionCurrency { get; set; } = "USD";
         public string SubscriptionBillingAnchorMode { get; set; } = nameof(BillingAnchorSelectionMode.FirstOfMonth);
         public int? SubscriptionBillingAnchorDay { get; set; }
-        public bool SubscriptionHasFreeTrial { get; set; }
+        public bool? SubscriptionHasFreeTrial { get; set; }
         public int? SubscriptionFreeTrialDays { get; set; }
 
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
@@ -144,45 +120,6 @@ namespace AgentPortal.Models
                         "Significant other date of birth is required for this marital status.",
                         new[] { nameof(SignificantOtherDOB) });
             }
-
-            // ---- CRM validation ----
-            var allowedStatus = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Lead", "Prospect", "Active", "Dormant" };
-
-            if (string.IsNullOrWhiteSpace(CrmStatus) || !allowedStatus.Contains(CrmStatus.Trim()))
-                yield return new ValidationResult(
-                    "CRM status must be one of: Lead, Prospect, Active, Dormant.",
-                    new[] { nameof(CrmStatus) });
-
-            var allowedPriority = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Low", "Normal", "High", "Urgent" };
-
-            if (string.IsNullOrWhiteSpace(CrmPriority) || !allowedPriority.Contains(CrmPriority.Trim()))
-                yield return new ValidationResult(
-                    "Priority must be one of: Low, Normal, High, Urgent.",
-                    new[] { nameof(CrmPriority) });
-
-            var allowedPipelineStages = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "NewLead", "Opportunities", "Contacted", "Qualified", "MeetingScheduled", "ProposalSent", "ApplicationStarted", "Submitted", "BusinessClient", "ClosedWon", "ClosedLost", "Nurture", "Client" };
-
-            if (string.IsNullOrWhiteSpace(PipelineStage) || !allowedPipelineStages.Contains(PipelineStage.Trim()))
-                yield return new ValidationResult(
-                    "Pipeline stage is invalid.",
-                    new[] { nameof(PipelineStage) });
-
-            // keep Next Action structured
-            var hasNextDate = CrmNextDate.HasValue;
-            var hasNextText = !string.IsNullOrWhiteSpace(CrmNextText);
-
-            if (hasNextDate && !hasNextText)
-                yield return new ValidationResult(
-                    "Next Action text is required when Next Action date is set.",
-                    new[] { nameof(CrmNextText) });
-
-            if (hasNextText && !hasNextDate)
-                yield return new ValidationResult(
-                    "Next Action date is required when Next Action text is set.",
-                    new[] { nameof(CrmNextDate) });
 
             if (!string.IsNullOrWhiteSpace(OneTimePassword) && OneTimePassword.Trim().Length < 8)
                 yield return new ValidationResult(
@@ -249,7 +186,7 @@ namespace AgentPortal.Models
                     }
                 }
 
-                if (SubscriptionHasFreeTrial &&
+                if (SubscriptionHasFreeTrial is true &&
                     (!SubscriptionFreeTrialDays.HasValue ||
                      SubscriptionFreeTrialDays.Value < 1 ||
                      SubscriptionFreeTrialDays.Value > ClientSubscriptionTrialPolicy.MaximumFreeTrialDays))

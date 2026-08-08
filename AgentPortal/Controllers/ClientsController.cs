@@ -155,7 +155,7 @@ namespace AgentPortal.Controllers;
             decimal? customMonthlyAmount,
             string? billingAnchorModeValue,
             int? billingAnchorDay,
-            bool hasFreeTrial,
+            bool? hasFreeTrial,
             int? freeTrialDays,
             bool canSetFounderSubscriptionOptions,
             out SubscriptionOfferSelection selection,
@@ -163,6 +163,9 @@ namespace AgentPortal.Controllers;
         {
             try
             {
+                if (canSetFounderSubscriptionOptions && !hasFreeTrial.HasValue)
+                    throw new InvalidOperationException("Select whether this subscription includes a free trial.");
+
                 var priceType = ParseSubscriptionPriceType(priceTypeValue);
                 var customMonthlyAmountCents = ConvertMonthlyAmountToCents(customMonthlyAmount);
                 var billingAnchorMode = ParseBillingAnchorSelectionMode(billingAnchorModeValue);
@@ -184,7 +187,7 @@ namespace AgentPortal.Controllers;
                     billingAnchorMode,
                     billingAnchorDay);
                 var resolvedFreeTrialDays = ClientSubscriptionTrialPolicy.ResolveFreeTrialDays(
-                    hasFreeTrial,
+                    hasFreeTrial.GetValueOrDefault(),
                     freeTrialDays,
                     canSetFounderSubscriptionOptions);
                 if (resolvedFreeTrialDays > 0 && authoritativeMonthlyAmountCents == 0)
@@ -1141,14 +1144,6 @@ namespace AgentPortal.Controllers;
         model.SignificantOtherDOB = profile.SignificantOtherDOB;
         model.SignificantOtherEmail = profile.SignificantOtherEmail;
         model.SignificantOtherPhone = profile.SignificantOtherPhone;
-        model.CrmStatus = string.IsNullOrWhiteSpace(profile.CrmStatus) ? "Lead" : profile.CrmStatus;
-        model.CrmPriority = string.IsNullOrWhiteSpace(profile.CrmPriority) ? "Normal" : profile.CrmPriority;
-        model.CrmTags = profile.CrmTags;
-        model.CrmLastTouch = profile.CrmLastTouch;
-        model.CrmNextDate = profile.CrmNextDate;
-        model.CrmNextText = profile.CrmNextText;
-        model.CrmNotes = profile.AgentNotes;
-        model.PipelineStage = DefaultPipelineStageForRecordType(recordType);
         model.SubscriptionBillingAnchorMode = nameof(BillingAnchorSelectionMode.FirstOfMonth);
     }
 
@@ -1157,8 +1152,6 @@ namespace AgentPortal.Controllers;
         WorkstationLeadProfile lead,
         string recordType)
     {
-        var meta = EnsureMeta(WorkstationLeadConversionLifecycle.ReadMetadata(lead));
-
         model.RecordType = recordType;
         model.SourceWorkstationLeadId = lead.LeadId;
         model.FirstName = lead.FirstName;
@@ -1166,14 +1159,6 @@ namespace AgentPortal.Controllers;
         model.Email = IsLeadPlaceholderEmail(lead.Email) ? string.Empty : lead.Email;
         model.Phone = lead.Phone;
         model.DOB = lead.DOB;
-        model.CrmStatus = string.IsNullOrWhiteSpace(lead.CrmStatus) ? "Lead" : lead.CrmStatus;
-        model.CrmPriority = string.IsNullOrWhiteSpace(meta.CrmPriority) ? "Normal" : meta.CrmPriority;
-        model.CrmTags = string.IsNullOrWhiteSpace(meta.CrmTags) ? lead.Bucket : meta.CrmTags;
-        model.CrmLastTouch = lead.UpdatedUtc;
-        model.CrmNextDate = meta.CrmNextDate;
-        model.CrmNextText = meta.CrmNextText;
-        model.CrmNotes = meta.AgentNotes;
-        model.PipelineStage = DefaultPipelineStageForRecordType(recordType);
         model.SubscriptionBillingAnchorMode = nameof(BillingAnchorSelectionMode.FirstOfMonth);
     }
 
@@ -1298,10 +1283,6 @@ namespace AgentPortal.Controllers;
         string emailNorm,
         string phone,
         string maritalStatus,
-        string crmStatus,
-        string crmPriority,
-        string crmTags,
-        string crmNotes,
         string recordType,
         string pipelineStage,
         string agentUpn)
@@ -1318,13 +1299,9 @@ namespace AgentPortal.Controllers;
         profile.SignificantOtherDOB = model.SignificantOtherDOB;
         profile.SignificantOtherEmail = (model.SignificantOtherEmail ?? string.Empty).Trim();
         profile.SignificantOtherPhone = (model.SignificantOtherPhone ?? string.Empty).Trim();
-        profile.CrmStatus = crmStatus;
-        profile.CrmPriority = crmPriority;
-        profile.CrmLastTouch = model.CrmLastTouch;
-        profile.CrmNextDate = model.CrmNextDate;
-        profile.CrmNextText = (model.CrmNextText ?? string.Empty).Trim();
-        profile.CrmTags = crmTags;
-        profile.AgentNotes = crmNotes;
+        profile.CrmStatus = IsPortalRecordType(recordType) ? "Active" : "Lead";
+        if (string.IsNullOrWhiteSpace(profile.CrmPriority))
+            profile.CrmPriority = "Normal";
         profile.UpdatedUtc = DateTime.UtcNow;
 
         var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
@@ -3420,8 +3397,11 @@ namespace AgentPortal.Controllers;
                     out var selection,
                     out var subscriptionValidationError))
             {
+                var subscriptionErrorField = canSetFounderSubscriptionOptions && !model.SubscriptionHasFreeTrial.HasValue
+                    ? nameof(CreateClientViewModel.SubscriptionHasFreeTrial)
+                    : nameof(CreateClientViewModel.SubscriptionPriceType);
                 ModelState.AddModelError(
-                    nameof(CreateClientViewModel.SubscriptionPriceType),
+                    subscriptionErrorField,
                     subscriptionValidationError ?? "A valid subscription configuration is required.");
                 return View(model);
             }
@@ -3451,63 +3431,10 @@ namespace AgentPortal.Controllers;
             return View(model);
         }
 
-        // =========================
-        // CRM fields (DB-backed) - defaults if UI doesn't send them
-        // =========================
-        var crmStatus = (model.CrmStatus ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(crmStatus)) crmStatus = "Lead";
-
-        var crmPriority = (model.CrmPriority ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(crmPriority)) crmPriority = "Normal";
-
-        var allowedStatus = new[] { "Lead", "Prospect", "Active", "Dormant" };
-        if (!allowedStatus.Contains(crmStatus, StringComparer.OrdinalIgnoreCase))
-            crmStatus = "Lead";
-
-        var allowedPriority = new[] { "Low", "Normal", "High", "Urgent" };
-        if (!allowedPriority.Contains(crmPriority, StringComparer.OrdinalIgnoreCase))
-            crmPriority = "Normal";
-
-        var crmTags = (model.CrmTags ?? "").Trim();
-        crmTags = string.Join(", ",
-            crmTags
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(t => t.Trim())
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-        );
-
-        var crmLastTouch = model.CrmLastTouch;
-        var crmNextDate = model.CrmNextDate;
-        var crmNextText = (model.CrmNextText ?? "").Trim();
-        var crmNotes = (model.CrmNotes ?? "").Trim(); // maps into AgentNotes
-        var pipelineStage = NormalizePipelineStage(model.PipelineStage);
-        if (isPortalClient)
-        {
-            pipelineStage = DefaultPipelineStageForRecordType(recordType);
-            if (string.IsNullOrWhiteSpace(crmStatus) || crmStatus.Equals("Lead", StringComparison.OrdinalIgnoreCase) || crmStatus.Equals("Prospect", StringComparison.OrdinalIgnoreCase))
-                crmStatus = "Active";
-        }
-        else if (pipelineStage is "Client" or "BusinessClient")
-        {
-            pipelineStage = ClientCrmMeta.DefaultPipelineStage;
-        }
-
-        // Keep "Next Action" coherent (if one is set, require both)
-        var hasNextDate = crmNextDate.HasValue;
-        var hasNextText = !string.IsNullOrWhiteSpace(crmNextText);
-        if (hasNextDate && !hasNextText)
-        {
-            ModelState.AddModelError(nameof(CreateClientViewModel.CrmNextText),
-                "Next Action text is required when Next Action date is set.");
-            return View(model);
-        }
-        if (hasNextText && !hasNextDate)
-        {
-            ModelState.AddModelError(nameof(CreateClientViewModel.CrmNextDate),
-                "Next Action date is required when Next Action text is set.");
-            return View(model);
-        }
+        // Initial CRM placement is deterministic. Relationship tracking is maintained only in Quick View.
+        var crmStatus = isPortalClient ? "Active" : "Lead";
+        const string crmPriority = "Normal";
+        var pipelineStage = DefaultPipelineStageForRecordType(recordType);
 
         // =========================
         // Significant Other rules
@@ -3582,10 +3509,6 @@ namespace AgentPortal.Controllers;
                     personalEmail,
                     phone,
                     maritalStatus,
-                    crmStatus,
-                    crmPriority,
-                    crmTags,
-                    crmNotes,
                     recordType,
                     pipelineStage,
                     agentUpn);
@@ -3723,13 +3646,8 @@ namespace AgentPortal.Controllers;
                 SignificantOtherEmail = (model.SignificantOtherEmail ?? string.Empty).Trim(),
                 SignificantOtherPhone = (model.SignificantOtherPhone ?? string.Empty).Trim(),
 
-                // ✅ CRM (DB-backed)
                 CrmStatus = crmStatus,
                 CrmPriority = crmPriority,
-                CrmLastTouch = crmLastTouch,
-                CrmNextDate = crmNextDate,
-                CrmNextText = crmNextText,
-                CrmTags = crmTags,
                 CrmNotes = ClientCrmMetaSerializer.Serialize(new ClientCrmMeta
                 {
                     RecordType = recordType,
@@ -3740,9 +3658,6 @@ namespace AgentPortal.Controllers;
                         Owner = agentUpn
                     }
                 }),
-
-                // Relationship notes (DB)
-                AgentNotes = crmNotes,
                 AccountManagementMode = accountManagementMode,
 
                 CreatedUtc = DateTime.UtcNow,
@@ -4146,7 +4061,7 @@ namespace AgentPortal.Controllers;
         public decimal? SubscriptionCustomMonthlyAmount { get; set; }
         public string? SubscriptionBillingAnchorMode { get; set; }
         public int? SubscriptionBillingAnchorDay { get; set; }
-        public bool SubscriptionHasFreeTrial { get; set; }
+        public bool? SubscriptionHasFreeTrial { get; set; }
         public int? SubscriptionFreeTrialDays { get; set; }
     }
 

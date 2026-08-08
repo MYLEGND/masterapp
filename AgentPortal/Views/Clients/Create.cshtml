@@ -272,6 +272,7 @@
                                         <option value="@option.Value">@option.Label</option>
                                     }
                                 </select>
+                                <span asp-validation-for="SubscriptionHasFreeTrial" class="text-danger client-create-validation"></span>
                             </div>
 
                             <div id="subscriptionFreeTrialDaysWrap" class="is-hidden">
@@ -288,81 +289,6 @@
                                     : "Custom amounts start at $50.00.") Fixed tiers and billing anchors are enforced on the server.
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                <div class="client-create-section client-create-section-shell" id="crmSeed">
-                    <div class="client-create-section-head">
-                        <div class="client-create-section-title">CRM</div>
-                        <p class="client-create-section-copy">Seed relationship tracking details now if this record should land in a specific pipeline state the moment it is created.</p>
-                    </div>
-
-                    <div class="client-create-grid">
-                        <div>
-                            <label class="client-create-label" for="CrmStatus">CRM Status</label>
-                            <select asp-for="CrmStatus" class="client-create-input" id="CrmStatus">
-                                @foreach (var option in createForm.Field("CrmStatus").Options)
-                                {
-                                    <option value="@option.Value">@option.Label</option>
-                                }
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="client-create-label" for="PipelineStage">Pipeline Stage</label>
-                            <select asp-for="PipelineStage" class="client-create-input" id="PipelineStage">
-                                @foreach (var option in createForm.Field("PipelineStage").Options)
-                                {
-                                    <option value="@option.Value">@option.Label</option>
-                                }
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="client-create-label" for="CrmPriority">Priority</label>
-                            <select asp-for="CrmPriority" class="client-create-input" id="CrmPriority">
-                                @foreach (var option in createForm.Field("CrmPriority").Options)
-                                {
-                                    <option value="@option.Value">@option.Label</option>
-                                }
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="client-create-label" for="CrmLastTouch">Last Touch</label>
-                            <input asp-for="CrmLastTouch" type="date" class="client-create-input" id="CrmLastTouch" />
-                            <span asp-validation-for="CrmLastTouch" class="text-danger client-create-validation"></span>
-                        </div>
-
-                        <div>
-                            <label class="client-create-label" for="CrmNextDate">Next Action Date</label>
-                            <input asp-for="CrmNextDate" type="date" class="client-create-input" id="CrmNextDate" />
-                            <span asp-validation-for="CrmNextDate" class="text-danger client-create-validation"></span>
-                        </div>
-
-                        <div class="client-create-full">
-                            <label class="client-create-label" for="CrmNextText">Next Action (what will you do?)</label>
-                            <input asp-for="CrmNextText" type="text" class="client-create-input" id="CrmNextText" />
-                            <span asp-validation-for="CrmNextText" class="text-danger client-create-validation"></span>
-                        </div>
-
-                        <div class="client-create-full">
-                            <label class="client-create-label" for="CrmTags">Tags (comma separated)</label>
-                            <input asp-for="CrmTags" type="text" class="client-create-input" id="CrmTags" />
-                            <span asp-validation-for="CrmTags" class="text-danger client-create-validation"></span>
-                        </div>
-
-                        <div class="client-create-full">
-                            <label class="client-create-label" for="CrmNotes">Relationship Notes</label>
-                            <textarea asp-for="CrmNotes" class="client-create-input client-create-notes" id="CrmNotes"></textarea>
-                            <span asp-validation-for="CrmNotes" class="text-danger client-create-validation"></span>
-                        </div>
-                    </div>
-
-                    <div class="client-create-actions">
-                        <button type="button" class="client-create-button" id="btnCrmTouchToday">Today for Last Touch</button>
-                        <button type="button" class="client-create-button" id="btnCrmNextToday">Today for Next Action</button>
-                        <button type="button" class="client-create-button" id="btnCrmClear">Clear CRM</button>
                     </div>
                 </div>
 

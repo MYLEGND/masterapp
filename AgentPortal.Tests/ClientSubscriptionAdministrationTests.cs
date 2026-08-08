@@ -89,6 +89,34 @@ public sealed class ClientSubscriptionAdministrationTests
     }
 
     [Fact]
+    public async Task BillingWorkspace_WithLiveSubscription_ExposesFounderUpdateAction()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddOwnedProfileAsync(db, "agent-1", Guid.NewGuid().ToString(), "client1@example.com");
+        var offer = await AddOfferAsync(db, profile.Id, "agent-1");
+        await AddSubscriptionAsync(db, profile.Id, offer.Id, "agent-1");
+
+        var snapshot = await new ClientBillingWorkspaceService(db).BuildSnapshotAsync(profile.Id, "agent-1");
+        var snapshotJson = JsonSerializer.Serialize(snapshot);
+
+        Assert.Contains("\"canConfigureSubscription\":false", snapshotJson, StringComparison.Ordinal);
+        Assert.Contains("\"canUpdateLiveSubscription\":true", snapshotJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task BillingWorkspace_WithPendingOffer_ExposesFounderOfferUpdateAction()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddOwnedProfileAsync(db, "agent-1", Guid.NewGuid().ToString(), "client1@example.com");
+        await AddOfferAsync(db, profile.Id, "agent-1");
+
+        var snapshot = await new ClientBillingWorkspaceService(db).BuildSnapshotAsync(profile.Id, "agent-1");
+        var snapshotJson = JsonSerializer.Serialize(snapshot);
+
+        Assert.Contains("\"canUpdatePendingOffer\":true", snapshotJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ResendSubscriptionInvitation_UnownedClientProfile_ReturnsForbid()
     {
         await using var db = ControllerTestHelpers.BuildDb();

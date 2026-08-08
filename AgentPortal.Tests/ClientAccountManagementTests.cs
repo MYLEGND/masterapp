@@ -28,9 +28,6 @@ public sealed class ClientAccountManagementTests
             FirstName = "Taylor",
             LastName = "Client",
             Email = "taylor@example.com",
-            CrmStatus = "Active",
-            CrmPriority = "Normal",
-            PipelineStage = "Client",
             SubscriptionPriceType = "Fixed100",
             SubscriptionBillingAnchorMode = "FirstOfMonth"
         };
@@ -41,15 +38,27 @@ public sealed class ClientAccountManagementTests
 
         var lead = new CreateClientViewModel
         {
-            RecordType = "Lead",
-            CrmStatus = "Lead",
-            CrmPriority = "Normal",
-            PipelineStage = "NewLead"
+            RecordType = "Lead"
         };
 
         var leadResults = Validate(lead);
         Assert.DoesNotContain(leadResults, result =>
             result.MemberNames.Contains(nameof(CreateClientViewModel.AccountManagementMode)));
+    }
+
+    [Fact]
+    public void ClientCreationForm_LeavesRelationshipTrackingToQuickView_AndRequiresFounderTrialDecision()
+    {
+        var form = ClientCreationFormDefinition.Create(new CreateClientViewModel(), canSetFounderSubscriptionOptions: true);
+
+        Assert.DoesNotContain(form.Sections, section => section.Key == "crm");
+        Assert.Empty(form.Actions);
+
+        var freeTrial = form.Field("SubscriptionHasFreeTrial");
+        Assert.Equal(string.Empty, freeTrial.DefaultValue);
+        Assert.Contains(freeTrial.Options, option => option.Value == string.Empty && option.Label == "Select option");
+        Assert.Contains(freeTrial.RequiredWhen, condition =>
+            condition.Field == "RecordType" && condition.EqualsAny.Contains("Client"));
     }
 
     [Fact]

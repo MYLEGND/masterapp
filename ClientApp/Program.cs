@@ -463,7 +463,9 @@ app.Use(async (context, next) =>
 
 // ✅ MVC endpoints
 app.MapControllers();
-app.MapHub<MessagingHub>("/messaginghub");
+app.MapLegendMessagingHub(
+    "/messaginghub",
+    CookieAuthenticationDefaults.AuthenticationScheme);
 
 app.MapControllerRoute(
     name: "default",

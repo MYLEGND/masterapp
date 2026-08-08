@@ -76,6 +76,9 @@ public sealed class ClientBillingWorkspaceService
 
         var canConfigureSubscription = latestSubscription is null ||
             latestSubscription.Status == ClientSubscriptionStatus.Canceled;
+        var canUpdatePendingOffer = latestSubscription is null &&
+            latestOffer is not null &&
+            latestOffer.Status is ClientSubscriptionOfferStatus.Draft or ClientSubscriptionOfferStatus.Offered;
         var canUpdateLiveSubscription = latestSubscription is not null &&
             latestSubscription.Status != ClientSubscriptionStatus.Canceled;
 
@@ -135,6 +138,7 @@ public sealed class ClientBillingWorkspaceService
             actions = new
             {
                 canConfigureSubscription,
+                canUpdatePendingOffer,
                 canUpdateLiveSubscription,
                 canResendInvitation,
                 canRevokeInvitation,

@@ -279,7 +279,7 @@ public class ClientsControllerTests
 
 
     [Fact]
-    public async Task Create_WhenLeadCreated_PersistsRequestedLeadBucket()
+    public async Task Create_WhenLeadCreated_UsesTheDefaultCrmPlacement()
     {
         using var db = ControllerTestHelpers.BuildDb();
         const string agentId = "agent-1";
@@ -297,10 +297,7 @@ public class ClientsControllerTests
             LastName = "Lead",
             Email = string.Empty,
             Phone = "555-222-3333",
-            MaritalStatus = string.Empty,
-            CrmStatus = "Lead",
-            CrmPriority = "Normal",
-            PipelineStage = "Qualified"
+            MaritalStatus = string.Empty
         });
 
         var redirect = Assert.IsType<RedirectToActionResult>(result);
@@ -309,7 +306,7 @@ public class ClientsControllerTests
         var persisted = await db.ClientProfiles.SingleAsync();
         var persistedMeta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);
         Assert.Equal("Lead", persistedMeta.RecordType);
-        Assert.Equal("Qualified", persistedMeta.PipelineStage);
+        Assert.Equal("NewLead", persistedMeta.PipelineStage);
         Assert.False(Guid.TryParse(persisted.ClientUserId, out _));
     }
 
@@ -393,8 +390,6 @@ public class ClientsControllerTests
         Assert.Equal(leadId, model.SourceWorkstationLeadId);
         Assert.Equal("Client", model.RecordType);
         Assert.Equal("Taylor", model.FirstName);
-        Assert.Equal("High", model.CrmPriority);
-        Assert.Equal("Life", model.CrmTags);
     }
 
     [Fact]

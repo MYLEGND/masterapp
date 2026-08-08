@@ -176,7 +176,9 @@ builder.Services.AddScoped<IDecisionService, DecisionService>();
 builder.Services.AddScoped<IBlockerService, BlockerService>();
 builder.Services.AddScoped<ICommitmentService, CommitmentService>();
 builder.Services.AddScoped<IPlaybookEngine, PlaybookEngine>();
-builder.Services.AddHostedService<MigrationHealthHostedService>();
+builder.Services.AddSingleton<MigrationHealthHostedService>();
+builder.Services.AddHostedService(static services =>
+    services.GetRequiredService<MigrationHealthHostedService>());
 builder.Services.AddHostedService<AccountClosureHostedService>();
 builder.Services.AddHostedService<AgentProfileImageLegacyBackfillHostedService>();
 builder.Services.AddHostedService<AnalyticsIncidentResponseHostedService>();
@@ -651,6 +653,10 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+await app.Services
+    .GetRequiredService<MigrationHealthHostedService>()
+    .EnsureSchemaReadyAsync(CancellationToken.None);
+
 var oidcCallbackPathForDiagnostics = builder.Configuration["AzureAd:CallbackPath"];
 if (string.IsNullOrWhiteSpace(oidcCallbackPathForDiagnostics))
     oidcCallbackPathForDiagnostics = "/signin-oidc";
@@ -877,6 +883,8 @@ app.MapControllerRoute(
 
 app.MapHub<LiveSyncHub>("/livesync");
 app.MapHub<LeadBridgeHub>("/leadbridgehub");
-app.MapHub<MessagingHub>("/messaginghub");
+app.MapLegendMessagingHub(
+    "/messaginghub",
+    $"{CookieAuthenticationDefaults.AuthenticationScheme},{MobileApiAuthorization.BearerScheme}");
 
 app.Run();

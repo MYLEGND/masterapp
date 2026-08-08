@@ -1,8 +1,6 @@
 (function () {
   const recordTypeRadios = Array.from(document.querySelectorAll('input[name="RecordType"]'));
   const submitBtn = document.getElementById("submitCreateBtn");
-  const pipelineStage = document.getElementById("PipelineStage");
-  const crmStatus = document.getElementById("CrmStatus");
   const status = document.getElementById("MaritalStatus");
   const soCard = document.getElementById("soCard");
   const soFirst = document.getElementById("SignificantOtherFirstName");
@@ -81,12 +79,6 @@
     return "Create Lead";
   }
 
-  function defaultPipelineStage(value) {
-    if (value === "BusinessClient") return "BusinessClient";
-    if (value === "Client") return "Client";
-    return "NewLead";
-  }
-
   function applyRecordType() {
     const selected = recordTypeRadios.find((x) => x.checked)?.value || "Lead";
     const isClient = isPortalRecordType(selected);
@@ -100,22 +92,6 @@
     requiredForClient.forEach((element) => {
       setRequiredState(element, isClient);
     });
-
-    if (pipelineStage) {
-      if (isClient) {
-        pipelineStage.value = defaultPipelineStage(selected);
-        pipelineStage.setAttribute("disabled", "disabled");
-      } else {
-        pipelineStage.removeAttribute("disabled");
-        if (pipelineStage.value === "Client" || pipelineStage.value === "BusinessClient") {
-          pipelineStage.value = "NewLead";
-        }
-      }
-    }
-
-    if (crmStatus && isClient && (crmStatus.value === "Lead" || crmStatus.value === "Prospect")) {
-      crmStatus.value = "Active";
-    }
 
     if (subscriptionCard) {
       subscriptionCard.classList.toggle("is-hidden", !isClient);
@@ -166,9 +142,15 @@
       subscriptionAnchorDayWrap.classList.toggle("is-hidden", !useAnchorDay);
     }
     setFieldState(subscriptionAnchorDay, {
-        required: useAnchorDay,
-        enabled: useAnchorDay,
-        clearWhenDisabled: true
+      required: useAnchorDay,
+      enabled: useAnchorDay,
+      clearWhenDisabled: true
+    });
+
+    setFieldState(subscriptionHasFreeTrial, {
+      required: isClient,
+      enabled: isClient,
+      clearWhenDisabled: true
     });
 
     if (subscriptionFreeTrialDaysWrap) {
@@ -195,48 +177,4 @@
     subscriptionHasFreeTrial.addEventListener("change", applyRecordType);
   }
   applyRecordType();
-})();
-
-(function () {
-  const lastTouch = document.getElementById("CrmLastTouch");
-  const nextDate = document.getElementById("CrmNextDate");
-  const nextText = document.getElementById("CrmNextText");
-  const tags = document.getElementById("CrmTags");
-  const notes = document.getElementById("CrmNotes");
-  const status = document.getElementById("CrmStatus");
-  const priority = document.getElementById("CrmPriority");
-
-  const touchBtn = document.getElementById("btnCrmTouchToday");
-  const nextBtn = document.getElementById("btnCrmNextToday");
-  const clearBtn = document.getElementById("btnCrmClear");
-
-  function todayISO() {
-    const date = new Date();
-    const tzDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-    return tzDate.toISOString().slice(0, 10);
-  }
-
-  if (touchBtn) {
-    touchBtn.addEventListener("click", () => {
-      if (lastTouch) lastTouch.value = todayISO();
-    });
-  }
-
-  if (nextBtn) {
-    nextBtn.addEventListener("click", () => {
-      if (nextDate) nextDate.value = todayISO();
-    });
-  }
-
-  if (clearBtn) {
-    clearBtn.addEventListener("click", () => {
-      if (status) status.value = "Lead";
-      if (priority) priority.value = "Normal";
-      if (lastTouch) lastTouch.value = "";
-      if (nextDate) nextDate.value = "";
-      if (nextText) nextText.value = "";
-      if (tags) tags.value = "";
-      if (notes) notes.value = "";
-    });
-  }
 })();

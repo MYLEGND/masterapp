@@ -1522,7 +1522,7 @@ private struct LegendPlannerEntryComposer: View {
                     LegendNextSheetHeader(
                         eyebrow: "Today's activity",
                         title: kind == .reminder ? "Set reminder" : "Add event",
-                        detail: "Saved privately to this device. Nothing is shared with LEGEND.",
+                        detail: nil,
                         dismiss: { dismiss() }
                     )
 
@@ -1532,6 +1532,7 @@ private struct LegendPlannerEntryComposer: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .tint(LegendNextColor.gold)
                     .onChange(of: kind) { _, _ in
                         selectedCalendarID = nil
                         failureMessage = nil
@@ -1539,10 +1540,7 @@ private struct LegendPlannerEntryComposer: View {
 
                     LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                            Text("DETAILS")
-                                .font(LegendNextTypography.eyebrow)
-                                .tracking(0.8)
-                                .foregroundStyle(LegendNextColor.gold)
+                            sectionTitle("DETAILS")
 
                             plannerTextField(
                                 title: "Title",
@@ -1557,7 +1555,7 @@ private struct LegendPlannerEntryComposer: View {
                                     .foregroundStyle(LegendNextColor.textSecondary)
                                 TextEditor(text: $notes)
                                     .font(.subheadline)
-                                    .frame(minHeight: 84)
+                                    .frame(height: 72)
                                     .scrollContentBackground(.hidden)
                                     .padding(LegendNextSpacing.xs)
                                     .background(
@@ -1570,8 +1568,7 @@ private struct LegendPlannerEntryComposer: View {
                     }
 
                     timingSection
-                    scheduleSection
-                    destinationSection
+                    preferencesSection
 
                     if let failureMessage {
                         LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
@@ -1601,11 +1598,8 @@ private struct LegendPlannerEntryComposer: View {
     @ViewBuilder
     private var timingSection: some View {
         LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                Text("WHEN")
-                    .font(LegendNextTypography.eyebrow)
-                    .tracking(0.8)
-                    .foregroundStyle(LegendNextColor.gold)
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                sectionTitle("WHEN")
 
                 if kind == .reminder {
                     Toggle("Date", isOn: $includesDate)
@@ -1644,13 +1638,10 @@ private struct LegendPlannerEntryComposer: View {
         }
     }
 
-    private var scheduleSection: some View {
+    private var preferencesSection: some View {
         LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                Text("SCHEDULE")
-                    .font(LegendNextTypography.eyebrow)
-                    .tracking(0.8)
-                    .foregroundStyle(LegendNextColor.gold)
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                sectionTitle("SCHEDULE")
 
                 Picker("Repeat", selection: $repeatRule) {
                     ForEach(LegendPlannerRepeat.allCases) {
@@ -1672,37 +1663,22 @@ private struct LegendPlannerEntryComposer: View {
                 Toggle(kind == .reminder ? "Remind me" : "Alert 15 minutes before", isOn: $alertsEnabled)
                     .tint(LegendNextColor.gold)
 
-                Text(alertsEnabled
-                     ? "A native Apple lock-screen alert is scheduled even when LEGEND is closed."
-                     : "No lock-screen alert will be scheduled for this item.")
-                    .font(LegendNextTypography.caption)
-                    .foregroundStyle(LegendNextColor.textSecondary)
-            }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(LegendNextColor.textPrimary)
-        }
-    }
+                Divider()
+                    .overlay(LegendNextColor.separator)
+                    .padding(.vertical, LegendNextSpacing.micro)
 
-    private var destinationSection: some View {
-        LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                Text(kind == .reminder ? "REMINDERS LIST" : "CALENDAR")
-                    .font(LegendNextTypography.eyebrow)
-                    .tracking(0.8)
-                    .foregroundStyle(LegendNextColor.gold)
+                sectionTitle(kind == .reminder ? "REMINDERS LIST" : "CALENDAR")
 
                 Picker(kind == .reminder ? "List" : "Calendar", selection: $selectedCalendarID) {
-                    Text("Default on this device").tag(Optional<String>.none)
+                    Text(primaryDestinationTitle).tag(Optional<String>.none)
                     ForEach(availableCalendars) { calendar in
                         Text(calendar.title).tag(Optional(calendar.id))
                     }
                 }
                 .pickerStyle(.menu)
-
-                Text(destinationDetail)
-                    .font(LegendNextTypography.caption)
-                    .foregroundStyle(LegendNextColor.textSecondary)
             }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(LegendNextColor.textPrimary)
         }
     }
 
@@ -1710,11 +1686,15 @@ private struct LegendPlannerEntryComposer: View {
         activity.planner.calendars(for: kind.capability)
     }
 
-    private var destinationDetail: String {
-        guard !activity.planner.isConnected(kind.capability) else {
-            return "Choose a destination on this device. Your planner data stays private."
-        }
-        return "LEGEND will ask to connect \(kind.capability.title) when you save."
+    private var primaryDestinationTitle: String {
+        kind == .reminder ? "Primary list" : "Primary calendar"
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(LegendNextTypography.eyebrow)
+            .tracking(0.8)
+            .foregroundStyle(LegendNextColor.gold)
     }
 
     private func plannerTextField(

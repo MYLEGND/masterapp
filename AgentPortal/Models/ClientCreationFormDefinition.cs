@@ -118,83 +118,14 @@ public sealed record ClientCreationFormDefinition(
                 "Client Subscription",
                 "Portal clients can leave intake with an agent-scoped Client Portal subscription offer and activation invitation already prepared.",
                 new[] { portalCondition },
-                SubscriptionFields(model, canSetFounderSubscriptionOptions, portalCondition, customSubscriptionCondition, selectedAnchorCondition, freeTrialCondition)),
-            new(
-                "crm",
-                "CRM",
-                "Seed relationship tracking details now if this record should land in a specific pipeline state the moment it is created.",
-                Array.Empty<ClientCreationFieldCondition>(),
-                new[]
-                {
-                    Choice(
-                        "CrmStatus",
-                        "CRM Status",
-                        model.CrmStatus,
-                        options: new[]
-                        {
-                            Option("Lead", "Lead"),
-                            Option("Prospect", "Prospect"),
-                            Option("Active", "Active Client"),
-                            Option("Dormant", "Inactive")
-                        },
-                        valueRules: new[]
-                        {
-                            Rule("Active", portalCondition)
-                        }),
-                    Choice(
-                        "PipelineStage",
-                        "Pipeline Stage",
-                        model.PipelineStage,
-                        options: new[]
-                        {
-                            Option("NewLead", "Lead"),
-                            Option("Opportunities", "Opportunities"),
-                            Option("Contacted", "Contacted"),
-                            Option("Qualified", "Qualified"),
-                            Option("Client", "Clients"),
-                            Option("BusinessClient", "Business Clients"),
-                            Option("MeetingScheduled", "Meeting Scheduled"),
-                            Option("ProposalSent", "Proposal Sent"),
-                            Option("ApplicationStarted", "Application Started"),
-                            Option("Submitted", "Submitted"),
-                            Option("ClosedLost", "Not Moving Forward"),
-                            Option("Nurture", "Nurture")
-                        },
-                        valueRules: new[]
-                        {
-                            Rule("NewLead", new ClientCreationFieldCondition("RecordType", new[] { "Lead" })),
-                            Rule("Client", new ClientCreationFieldCondition("RecordType", new[] { "Client" })),
-                            Rule("BusinessClient", new ClientCreationFieldCondition("RecordType", new[] { "BusinessClient" }))
-                        }),
-                    Choice(
-                        "CrmPriority",
-                        "Priority",
-                        model.CrmPriority,
-                        options: new[]
-                        {
-                            Option("Low", "Low"),
-                            Option("Normal", "Normal"),
-                            Option("High", "High"),
-                            Option("Urgent", "Urgent")
-                        }),
-                    Text("CrmLastTouch", "Last Touch", Date(model.CrmLastTouch), "date"),
-                    Text("CrmNextDate", "Next Action Date", Date(model.CrmNextDate), "date"),
-                    Text("CrmNextText", "Next Action", model.CrmNextText, "text", placeholder: "What will you do?"),
-                    Text("CrmTags", "Tags", model.CrmTags, "text", placeholder: "Comma separated"),
-                    Text("CrmNotes", "Relationship Notes", model.CrmNotes, "multiline", placeholder: "Add private relationship context")
-                })
+                SubscriptionFields(model, canSetFounderSubscriptionOptions, portalCondition, customSubscriptionCondition, selectedAnchorCondition, freeTrialCondition))
         };
 
         return new ClientCreationFormDefinition(
             "Create Client",
             "Complete client intake without leaving LEGEND. The same AgentPortal workflow validates, provisions, and saves this record.",
             sections,
-            new[]
-            {
-                new ClientCreationFormActionDefinition("today-last-touch", "Today for Last Touch", "CrmLastTouch", "today"),
-                new ClientCreationFormActionDefinition("today-next-action", "Today for Next Action", "CrmNextDate", "today"),
-                new ClientCreationFormActionDefinition("clear-crm", "Clear CRM", null, "clear-crm")
-            });
+            Array.Empty<ClientCreationFormActionDefinition>());
     }
 
     private static IReadOnlyList<ClientCreationFormFieldDefinition> SubscriptionFields(
@@ -264,9 +195,11 @@ public sealed record ClientCreationFormDefinition(
             fields.Add(Choice(
                 "SubscriptionHasFreeTrial",
                 "Free Trial",
-                model.SubscriptionHasFreeTrial ? "true" : "false",
+                model.SubscriptionHasFreeTrial is true ? "true" : model.SubscriptionHasFreeTrial is false ? "false" : string.Empty,
+                requiredWhen: new[] { portalCondition },
                 options: new[]
                 {
+                    Option("", "Select option"),
                     Option("false", "No free trial"),
                     Option("true", "Include free trial")
                 }));
@@ -334,9 +267,6 @@ public sealed record ClientCreationFormDefinition(
             null, null, null, null, null, null);
 
     private static ClientCreationFormOptionDefinition Option(string value, string label) => new(value, label);
-
-    private static ClientCreationFormValueRule Rule(string value, params ClientCreationFieldCondition[] conditions)
-        => new(value, conditions);
 
     private static string? Date(DateTime? value) => value?.ToString("yyyy-MM-dd");
 }
