@@ -3085,6 +3085,10 @@ namespace AgentPortal.Controllers;
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             claims,
             CookieAuthenticationDefaults.AuthenticationScheme));
+        // The first portal response is the canonical Create view itself. The
+        // browser session is also issued for that view's normal POST, but there
+        // is no intermediate redirect for WKWebView to misclassify.
+        HttpContext.User = principal;
         await HttpContext.SignInAsync(
             CookieAuthenticationDefaults.AuthenticationScheme,
             principal,
@@ -3095,9 +3099,7 @@ namespace AgentPortal.Controllers;
                 ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(10)
             });
 
-        return RedirectToAction(
-            nameof(Create),
-            new { returnUrl = "/mobile/agent/clients/create-complete" });
+        return await Create(returnUrl: "/mobile/agent/clients/create-complete");
     }
 
     [HttpGet("/mobile/agent/clients/create-complete", Name = "MobileClientCreationPortalComplete")]

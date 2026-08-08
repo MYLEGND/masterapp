@@ -122,6 +122,13 @@ private struct LegendAgentClientCreationPortalWebView: UIViewRepresentable {
                 return
             }
 
+            // WKWebView begins with its own about:blank document before the
+            // requested portal page. It is not an external navigation.
+            if url.scheme?.lowercased() == "about" {
+                decisionHandler(.allow)
+                return
+            }
+
             if url.path == "/mobile/agent/clients/create-complete" {
                 decisionHandler(.cancel)
                 if didSubmitClientCreation {
@@ -136,7 +143,7 @@ private struct LegendAgentClientCreationPortalWebView: UIViewRepresentable {
                 didSubmitClientCreation = true
             }
 
-            guard url.host == portalHost else {
+            guard url.scheme?.lowercased() == "https", url.host == portalHost else {
                 decisionHandler(.cancel)
                 onFailure("The client intake can only open inside the LEGEND portal.")
                 return
