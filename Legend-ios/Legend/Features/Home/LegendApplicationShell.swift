@@ -2263,9 +2263,9 @@ private struct LegendAgentClientsView: View {
         .fullScreenCover(isPresented: $isClientCreationPresented, onDismiss: {
             Task { await bootstrap.refreshClients() }
         }) {
-            LegendAgentClientCreationPortalView(store: store) {
+            LegendAgentClientCreationPortalView(store: store, onClose: {
                 isClientCreationPresented = false
-            }
+            })
         }
     }
 
