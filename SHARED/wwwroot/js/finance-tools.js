@@ -25,6 +25,11 @@ document.addEventListener("DOMContentLoaded", async function () {
     if (!dropdown || !embedContainer) return;
     const clientProfileId = financeRoot?.dataset.clientProfileId?.trim() || "";
     const clientUserId = financeRoot?.dataset.clientUserId?.trim() || "";
+    const EMPTY_GUID = "00000000-0000-0000-0000-000000000000";
+    const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const serverClientProfileId = GUID_PATTERN.test(clientProfileId)
+        ? clientProfileId
+        : EMPTY_GUID;
     const isBusinessClient = (financeRoot?.dataset.isBusinessClient || "").toLowerCase() === "true";
     const clientFirstName = financeRoot?.dataset.clientFirstName?.trim() || "";
     const spouseFirstName = financeRoot?.dataset.spouseFirstName?.trim() || "";
@@ -483,7 +488,12 @@ document.addEventListener("DOMContentLoaded", async function () {
             method: "POST",
             credentials: "include",
             headers,
-            body: JSON.stringify({ clientProfileId, clientUserId, toolId: primaryKey, jsonState }),
+            body: JSON.stringify({
+                clientProfileId: serverClientProfileId,
+                clientUserId,
+                toolId: primaryKey,
+                jsonState
+            }),
             keepalive
         });
     }
