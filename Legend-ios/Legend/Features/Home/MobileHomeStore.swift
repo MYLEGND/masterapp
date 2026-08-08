@@ -64,11 +64,7 @@ extension MobileJourneyCirclesAPI {
 protocol MobileAgentWorkspaceAPI: Sendable {
     func clients(accessToken: String) async throws -> [MobileAgentClientSummary]
     func leads(accessToken: String) async throws -> [MobileAgentLeadSummary]
-    func clientCreationForm(accessToken: String) async throws -> MobileClientCreationForm
-    func createClient(
-        _ request: MobileClientCreationRequest,
-        accessToken: String
-    ) async throws -> MobileClientCreationResult
+    func clientCreationPortalLaunch(accessToken: String) async throws -> MobileClientCreationPortalLaunch
 }
 
 struct MobileUnavailableHomeAPI: MobileHomeAPI {
@@ -110,14 +106,7 @@ struct MobileUnavailableAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
         throw MobileAPIError.forbidden(correlationID: nil)
     }
 
-    func clientCreationForm(accessToken: String) async throws -> MobileClientCreationForm {
-        throw MobileAPIError.forbidden(correlationID: nil)
-    }
-
-    func createClient(
-        _ request: MobileClientCreationRequest,
-        accessToken: String
-    ) async throws -> MobileClientCreationResult {
+    func clientCreationPortalLaunch(accessToken: String) async throws -> MobileClientCreationPortalLaunch {
         throw MobileAPIError.forbidden(correlationID: nil)
     }
 }
@@ -251,25 +240,22 @@ struct URLSessionMobileAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
             response: [MobileAgentLeadSummary].self)
     }
 
-    func clientCreationForm(accessToken: String) async throws -> MobileClientCreationForm {
-        try await client.get(
-            "/api/v1/mobile/agent/clients/create-form",
-            accessToken: accessToken,
-            headers: participantHeader,
-            response: MobileClientCreationForm.self)
-    }
-
-    func createClient(
-        _ request: MobileClientCreationRequest,
-        accessToken: String
-    ) async throws -> MobileClientCreationResult {
-        try await client.post(
-            "/api/v1/mobile/agent/clients",
-            body: request,
+    func clientCreationPortalLaunch(accessToken: String) async throws -> MobileClientCreationPortalLaunch {
+        let launch: MobileClientCreationPortalLaunch = try await client.post(
+            "/api/v1/mobile/agent/clients/portal-launch",
+            body: MobileEmptyRequest(),
             accessToken: accessToken,
             idempotencyKey: UUID(),
             headers: participantHeader,
-            response: MobileClientCreationResult.self)
+            response: MobileClientCreationPortalLaunch.self)
+
+        guard let launchURL = URL(string: launch.launchPath, relativeTo: client.baseURL)?.absoluteURL,
+              launchURL.scheme == client.baseURL.scheme,
+              launchURL.host == client.baseURL.host else {
+            throw MobileAPIError.invalidServerResponse
+        }
+
+        return MobileClientCreationPortalLaunch(launchPath: launchURL.absoluteString)
     }
 }
 
@@ -833,18 +819,13 @@ final class MobileAgentWorkspaceStore: ObservableObject {
         await requestLeads(preservingCachedValue: hasLeads)
     }
 
-    func clientCreationForm() async throws -> MobileClientCreationForm {
+    func clientCreationPortalLaunch() async throws -> URL {
         let accessToken = try await accessTokenProvider()
-        return try await api.clientCreationForm(accessToken: accessToken)
-    }
-
-    func createClient(
-        fields: [String: String]
-    ) async throws -> MobileClientCreationResult {
-        let accessToken = try await accessTokenProvider()
-        return try await api.createClient(
-            MobileClientCreationRequest(fields: fields),
-            accessToken: accessToken)
+        let launch = try await api.clientCreationPortalLaunch(accessToken: accessToken)
+        guard let url = URL(string: launch.launchPath) else {
+            throw MobileAPIError.invalidServerResponse
+        }
+        return url
     }
 
     private var hasClients: Bool {

@@ -328,6 +328,8 @@ final class MessagingStore: ObservableObject {
     @Published private(set) var isSubmittingControlledResourceRequest = false
     @Published private(set) var activityNotifications: [MobileActivityNotification] = []
     @Published private(set) var isRefreshing = false
+    @Published private(set) var isLoadingMoreConversations = false
+    @Published private(set) var hasMoreConversations = true
     @Published private(set) var refreshFailure: UserFacingFailure?
 
     private let api: any MessagingAPI
@@ -355,6 +357,7 @@ final class MessagingStore: ObservableObject {
     private static let recipientSearchDebounceNanoseconds: UInt64 = 90_000_000
     private static let maximumCachedRecipientSearches = 20
     private static let maximumCachedConversationDetails = 12
+    private static let inboxPageSize = 24
 
     init(
         api: any MessagingAPI,
@@ -441,11 +444,46 @@ final class MessagingStore: ObservableObject {
             detailState = .loading
         }
 
-        Task {
+        // A direct tap is foreground work. It must begin ahead of inbox
+        // pagination, activity refreshes, and any realtime reconciliation.
+        Task(priority: .userInitiated) {
             await refreshConversation(
                 conversationID,
                 presentsResult: true,
                 marksRead: true)
+        }
+    }
+
+    func loadMoreConversations() {
+        guard !isLoadingMoreConversations,
+              hasMoreConversations,
+              case .loaded(let loadedConversations) = state else {
+            return
+        }
+
+        isLoadingMoreConversations = true
+        refreshFailure = nil
+        Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            defer { self.isLoadingMoreConversations = false }
+
+            do {
+                let page = try await self.api.conversations(
+                    offset: loadedConversations.count,
+                    limit: Self.inboxPageSize,
+                    accessToken: try await self.accessTokenProvider())
+                guard case .loaded(let currentConversations) = self.state else {
+                    return
+                }
+
+                self.state = .loaded(self.orderedInbox(
+                    currentConversations + page.map(self.preservingCachedGroupAvatar)))
+                self.hasMoreConversations = page.count == Self.inboxPageSize
+            } catch {
+                self.refreshFailure = self.failure(
+                    for: error,
+                    title: "Earlier conversations unavailable")
+            }
         }
     }
 
@@ -1141,13 +1179,8 @@ final class MessagingStore: ObservableObject {
         transform: (ConversationSummary) -> ConversationSummary
     ) {
         guard case .loaded(let conversations) = state else { return }
-        let updated = conversations
-            .map { $0.id == conversationID ? transform($0) : $0 }
-            .sorted { left, right in
-                if left.isPinned != right.isPinned { return left.isPinned }
-                return (left.lastMessageUTC ?? .distantPast) > (right.lastMessageUTC ?? .distantPast)
-            }
-        state = .loaded(updated)
+        state = .loaded(orderedInbox(
+            conversations.map { $0.id == conversationID ? transform($0) : $0 }))
     }
 
     private func replaceMessage(
@@ -1338,14 +1371,17 @@ final class MessagingStore: ObservableObject {
         do {
             let accessToken = try await accessTokenProvider()
             let conversations = try await api.conversations(
-                accessToken: accessToken
-            )
+                offset: 0,
+                limit: Self.inboxPageSize,
+                accessToken: accessToken)
             // The server-owned messaging service is the sole authority for
             // inbox visibility. Do not apply a second client-side persistence
             // rule here. The server intentionally hides empty direct drafts,
             // while allowing explicit user-created groups and every persisted
             // conversation that belongs in this actor's inbox.
-            state = .loaded(conversations.map(preservingCachedGroupAvatar))
+            state = .loaded(orderedInbox(
+                conversations.map(preservingCachedGroupAvatar)))
+            hasMoreConversations = conversations.count == Self.inboxPageSize
             refreshFailure = nil
             return .loaded
         } catch {
@@ -1361,7 +1397,7 @@ final class MessagingStore: ObservableObject {
 
     private func updateUnreadCount(for conversationID: UUID) {
         guard case .loaded(let conversations) = state else { return }
-        state = .loaded(conversations.map { conversation in
+        state = .loaded(orderedInbox(conversations.map { conversation in
             guard conversation.id == conversationID else { return conversation }
             return ConversationSummary(
                 id: conversation.id,
@@ -1376,7 +1412,27 @@ final class MessagingStore: ObservableObject {
                 groupAvatar: conversation.groupAvatar,
                 isPinned: conversation.isPinned,
                 isMuted: conversation.isMuted)
-        })
+        }))
+    }
+
+    /// This local ordering is intentionally the same as the server ordering.
+    /// It protects the UI from an out-of-order response or equal timestamps
+    /// without creating a second persistence rule for the inbox.
+    private func orderedInbox(
+        _ conversations: [ConversationSummary]
+    ) -> [ConversationSummary] {
+        let uniqueConversations = Dictionary(
+            conversations.map { ($0.id, $0) },
+            uniquingKeysWith: { latest, _ in latest })
+
+        return uniqueConversations.values.sorted { left, right in
+            let leftTimestamp = left.lastMessageUTC ?? .distantPast
+            let rightTimestamp = right.lastMessageUTC ?? .distantPast
+            if leftTimestamp != rightTimestamp {
+                return leftTimestamp > rightTimestamp
+            }
+            return left.id.uuidString > right.id.uuidString
+        }
     }
 
     private func reconcileRealtimeEvent(_ event: MobileMessagingRealtimeEvent) {

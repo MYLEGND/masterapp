@@ -688,14 +688,7 @@ private actor AgentWorkspaceBootstrapAPI: MobileAgentWorkspaceAPI {
         return []
     }
 
-    func clientCreationForm(accessToken: String) async throws -> MobileClientCreationForm {
-        throw MobileAPIError.forbidden(correlationID: nil)
-    }
-
-    func createClient(
-        _ request: MobileClientCreationRequest,
-        accessToken: String
-    ) async throws -> MobileClientCreationResult {
+    func clientCreationPortalLaunch(accessToken: String) async throws -> MobileClientCreationPortalLaunch {
         throw MobileAPIError.forbidden(correlationID: nil)
     }
 

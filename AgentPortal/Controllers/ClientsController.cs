@@ -16,7 +16,10 @@ using Infrastructure.Data;
 using Infrastructure.Identity;
 using Infrastructure.Households;
 using Infrastructure.Mobile;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
@@ -61,15 +64,11 @@ namespace AgentPortal.Controllers;
         private readonly ClientSubscriptionInvitationEmailService _subscriptionInvitationEmailService;
         private readonly HouseholdPartnerInvitationEmailService _householdPartnerInvitationEmailService;
         private readonly IMobileActorResolver _mobileActorResolver;
+        private readonly ITimeLimitedDataProtector _mobileClientCreationPortalTicketProtector;
         private const string AdvancedMarketsToolId = "AdvancedMarketsInputs";
         private static readonly JsonSerializerOptions AdvancedMarketsStateJsonOptions = new(JsonSerializerDefaults.Web)
         {
             Converters = { new JsonStringEnumConverter() }
-        };
-        private static readonly JsonSerializerOptions MobileClientCreationJsonOptions = new(JsonSerializerDefaults.Web)
-        {
-            PropertyNameCaseInsensitive = true,
-            NumberHandling = JsonNumberHandling.AllowReadingFromString
         };
 
         public ClientsController(
@@ -89,7 +88,8 @@ namespace AgentPortal.Controllers;
             ClientBillingWorkspaceService clientBillingWorkspaceService,
             ClientSubscriptionInvitationEmailService subscriptionInvitationEmailService,
             HouseholdPartnerInvitationEmailService householdPartnerInvitationEmailService,
-            IMobileActorResolver mobileActorResolver)
+            IMobileActorResolver mobileActorResolver,
+            IDataProtectionProvider dataProtectionProvider)
         {
             _db = db;
             _provisioning = provisioning;
@@ -108,6 +108,9 @@ namespace AgentPortal.Controllers;
             _subscriptionInvitationEmailService = subscriptionInvitationEmailService;
             _householdPartnerInvitationEmailService = householdPartnerInvitationEmailService;
             _mobileActorResolver = mobileActorResolver;
+            _mobileClientCreationPortalTicketProtector = dataProtectionProvider
+                .CreateProtector("AgentPortal.MobileClientCreationPortalTicket.v1")
+                .ToTimeLimitedDataProtector();
         }
 
         private static string NormLower(string? v) => (v ?? "").Trim().ToLowerInvariant();
@@ -427,10 +430,12 @@ namespace AgentPortal.Controllers;
         public DateTimeOffset? DueDateUtc { get; set; }
     }
 
-    public sealed record MobileClientCreationRequest(
-        IReadOnlyDictionary<string, string?>? Fields);
+    public sealed record MobileClientCreationPortalLaunch(string LaunchPath);
 
-    public sealed record MobileClientCreationResult(bool Created, string Message);
+    private sealed record MobileClientCreationPortalTicket(
+        string AgentOid,
+        string AgentUpn,
+        string DisplayName);
 
     private static string CommitmentsUnavailableMessage => "Commitments are not live yet in this environment. Apply the latest migrations to enable them.";
 
@@ -2978,17 +2983,19 @@ namespace AgentPortal.Controllers;
     }
 
     // =====================================================================
-    // Native mobile client intake. The screen is rendered in SwiftUI from the
-    // same field contract as AgentPortal, then invokes the existing Create
-    // action below. There is deliberately no second provisioning workflow.
+    // Native mobile client intake entry. The app obtains a short-lived ticket
+    // then renders the existing AgentPortal Create view inside its own sheet.
+    // The Razor view and its POST action remain the only form, validation, and
+    // CRM provisioning implementation.
     // =====================================================================
-    [HttpGet("/api/v1/mobile/agent/clients/create-form")]
+    [HttpPost("/api/v1/mobile/agent/clients/portal-launch")]
     [Authorize(Policy = MobileApiAuthorization.PolicyName)]
     [IgnoreAntiforgeryToken]
     [TypeFilter(typeof(MobileApiExceptionFilter))]
-    public async Task<IActionResult> MobileCreateForm(CancellationToken cancellationToken)
+    public async Task<IActionResult> MobileClientCreationPortalLaunchRequest(
+        CancellationToken cancellationToken)
     {
-        var accessFailure = await MobileClientCreationAccessFailureAsync(cancellationToken);
+        var accessFailure = await MobileAgentAccessFailureAsync(cancellationToken);
         if (accessFailure is not null)
             return accessFailure;
 
@@ -2996,111 +3003,11 @@ namespace AgentPortal.Controllers;
         var agentProfile = await _db.AgentProfiles
             .AsNoTracking()
             .FirstOrDefaultAsync(profile => profile.AgentUserId == agentOid, cancellationToken);
+        var agentUpn = GetAgentUpnForAudit();
+        if (string.IsNullOrWhiteSpace(agentUpn))
+            agentUpn = agentProfile?.AgentUpn?.Trim() ?? string.Empty;
 
-        var model = new CreateClientViewModel
-        {
-            RecordType = "Client",
-            CrmStatus = "Active",
-            CrmPriority = "Normal",
-            PipelineStage = "Client",
-            SubscriptionCurrency = "USD",
-            SubscriptionBillingAnchorMode = nameof(BillingAnchorSelectionMode.FirstOfMonth),
-            AgentNpn = agentProfile?.Npn,
-            AgentPhone = agentProfile?.Phone
-        };
-
-        return Ok(ClientCreationFormDefinition.Create(
-            model,
-            FounderGuard.IsFounder(User)));
-    }
-
-    [HttpPost("/api/v1/mobile/agent/clients")]
-    [Authorize(Policy = MobileApiAuthorization.PolicyName)]
-    [IgnoreAntiforgeryToken]
-    [TypeFilter(typeof(MobileApiExceptionFilter))]
-    public async Task<IActionResult> MobileCreateClient(
-        [FromBody] MobileClientCreationRequest? request,
-        CancellationToken cancellationToken)
-    {
-        var accessFailure = await MobileClientCreationAccessFailureAsync(cancellationToken);
-        if (accessFailure is not null)
-            return accessFailure;
-
-        if (request?.Fields is null || request.Fields.Count == 0)
-        {
-            return MobileClientCreationError(
-                StatusCodes.Status400BadRequest,
-                "mobile_client_creation_invalid",
-                "Enter the client details before creating this record.");
-        }
-
-        var allowedFields = typeof(CreateClientViewModel)
-            .GetProperties()
-            .Select(property => property.Name)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var unknownFields = request.Fields.Keys
-            .Where(key => !allowedFields.Contains(key))
-            .OrderBy(key => key, StringComparer.Ordinal)
-            .ToArray();
-        if (unknownFields.Length > 0)
-        {
-            return MobileClientCreationError(
-                StatusCodes.Status400BadRequest,
-                "mobile_client_creation_contract_mismatch",
-                "The client intake form has changed. Refresh it and try again.");
-        }
-
-        CreateClientViewModel? model;
-        try
-        {
-            var payload = JsonSerializer.Serialize(request.Fields, MobileClientCreationJsonOptions);
-            model = JsonSerializer.Deserialize<CreateClientViewModel>(
-                payload,
-                MobileClientCreationJsonOptions);
-        }
-        catch (JsonException)
-        {
-            return MobileClientCreationError(
-                StatusCodes.Status400BadRequest,
-                "mobile_client_creation_invalid",
-                "One or more client details could not be read. Review the form and try again.");
-        }
-
-        if (model is null)
-        {
-            return MobileClientCreationError(
-                StatusCodes.Status400BadRequest,
-                "mobile_client_creation_invalid",
-                "The client intake request was empty.");
-        }
-
-        // This explicitly runs the data annotations and IValidatableObject
-        // rules before the canonical AgentPortal action performs its deeper
-        // ownership, subscription, Graph, and database checks.
-        TryValidateModel(model);
-        var result = await Create(model);
-
-        if (result is RedirectResult or LocalRedirectResult or RedirectToRouteResult or RedirectToActionResult)
-        {
-            var message = TempData["Created"] as string ?? "Client created.";
-            TempData.Remove("Created");
-            return StatusCode(
-                StatusCodes.Status201Created,
-                new MobileClientCreationResult(true, message));
-        }
-
-        if (result is ViewResult)
-            return MobileClientCreationValidationFailure();
-
-        if (result is ForbidResult)
-        {
-            return MobileClientCreationError(
-                StatusCodes.Status403Forbidden,
-                "mobile_client_creation_forbidden",
-                "You do not have permission to create a client record.");
-        }
-
-        if (result is ChallengeResult)
+        if (string.IsNullOrWhiteSpace(agentUpn))
         {
             return MobileClientCreationError(
                 StatusCodes.Status401Unauthorized,
@@ -3108,17 +3015,96 @@ namespace AgentPortal.Controllers;
                 "A valid mobile session is required.");
         }
 
-        _logger.LogError(
-            "Unexpected result {ResultType} from the canonical client creation workflow for mobile agent {AgentOid}.",
-            result.GetType().Name,
-            GetAgentOidOrThrow());
-        return MobileClientCreationError(
-            StatusCodes.Status500InternalServerError,
-            "mobile_client_creation_failed",
-            "The client could not be created. Please try again.");
+        var displayName = (User.Identity?.Name ?? agentProfile?.FullName ?? agentUpn).Trim();
+        var ticket = new MobileClientCreationPortalTicket(agentOid, agentUpn, displayName);
+        var protectedTicket = _mobileClientCreationPortalTicketProtector.Protect(
+            JsonSerializer.Serialize(ticket),
+            TimeSpan.FromMinutes(2));
+        var launchPath = Url.RouteUrl(
+            "MobileClientCreationPortal",
+            new { ticket = protectedTicket });
+
+        if (string.IsNullOrWhiteSpace(launchPath))
+        {
+            _logger.LogError(
+                "Could not generate the AgentPortal client-creation launch path for mobile agent {AgentOid}.",
+                agentOid);
+            return MobileClientCreationError(
+                StatusCodes.Status500InternalServerError,
+                "mobile_client_creation_unavailable",
+                "The client intake could not be opened. Please try again.");
+        }
+
+        return Ok(new MobileClientCreationPortalLaunch(launchPath));
     }
 
-    private async Task<IActionResult?> MobileClientCreationAccessFailureAsync(
+    [AllowAnonymous]
+    [HttpGet("/mobile/agent/clients/create", Name = "MobileClientCreationPortal")]
+    public async Task<IActionResult> MobileClientCreationPortal(
+        [FromQuery] string? ticket,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(ticket))
+            return Unauthorized();
+
+        MobileClientCreationPortalTicket? portalTicket;
+        try
+        {
+            portalTicket = JsonSerializer.Deserialize<MobileClientCreationPortalTicket>(
+                _mobileClientCreationPortalTicketProtector.Unprotect(ticket));
+        }
+        catch (CryptographicException)
+        {
+            return Unauthorized();
+        }
+        catch (JsonException)
+        {
+            return Unauthorized();
+        }
+
+        if (portalTicket is null ||
+            string.IsNullOrWhiteSpace(portalTicket.AgentOid) ||
+            string.IsNullOrWhiteSpace(portalTicket.AgentUpn))
+        {
+            return Unauthorized();
+        }
+
+        var agentExists = await _db.AgentProfiles
+            .AsNoTracking()
+            .AnyAsync(profile => profile.AgentUserId == portalTicket.AgentOid, cancellationToken);
+        if (!agentExists)
+            return Forbid();
+
+        var claims = new[]
+        {
+            new Claim("oid", portalTicket.AgentOid),
+            new Claim("preferred_username", portalTicket.AgentUpn),
+            new Claim(ClaimTypes.Name, portalTicket.DisplayName),
+            new Claim(ClaimTypes.Email, portalTicket.AgentUpn)
+        };
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            claims,
+            CookieAuthenticationDefaults.AuthenticationScheme));
+        await HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            principal,
+            new AuthenticationProperties
+            {
+                IsPersistent = false,
+                AllowRefresh = false,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(10)
+            });
+
+        return RedirectToAction(
+            nameof(Create),
+            new { returnUrl = "/mobile/agent/clients/create-complete" });
+    }
+
+    [HttpGet("/mobile/agent/clients/create-complete", Name = "MobileClientCreationPortalComplete")]
+    public IActionResult MobileClientCreationPortalComplete()
+        => NoContent();
+
+    private async Task<IActionResult?> MobileAgentAccessFailureAsync(
         CancellationToken cancellationToken)
     {
         var resolution = await _mobileActorResolver.ResolveAsync(
@@ -3139,26 +3125,6 @@ namespace AgentPortal.Controllers;
             StatusCodes.Status403Forbidden,
             "mobile_agent_role_required",
             "Client creation is available from an agent mobile identity.");
-    }
-
-    private IActionResult MobileClientCreationValidationFailure()
-    {
-        var errors = ModelState
-            .Where(entry => entry.Value is { Errors.Count: > 0 })
-            .ToDictionary(
-                entry => entry.Key,
-                entry => entry.Value!.Errors
-                    .Select(error => string.IsNullOrWhiteSpace(error.ErrorMessage)
-                        ? "Invalid value."
-                        : error.ErrorMessage)
-                    .ToArray(),
-                StringComparer.Ordinal);
-
-        return MobileClientCreationError(
-            StatusCodes.Status422UnprocessableEntity,
-            "mobile_client_creation_invalid",
-            "Review the highlighted fields and try again.",
-            errors);
     }
 
     private IActionResult MobileClientCreationError(

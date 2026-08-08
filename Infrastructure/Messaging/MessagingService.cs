@@ -105,6 +105,7 @@ internal sealed class MessagingService : IMessagingService
             return MessagingConversationListResult.Failure("MESSAGING_ACTOR_INVALID", "Messaging is not available for this user.");
 
         var take = Math.Clamp(query.Take, 1, 100);
+        var skip = Math.Clamp(query.Skip, 0, 10_000);
         var includeGroupImages = query.IncludeGroupImages;
         var search = NormalizeOptional(query.Search);
         if (!Fits(search, MaximumConversationSubjectLength))
@@ -177,9 +178,12 @@ internal sealed class MessagingService : IMessagingService
                         : null,
                     participant.PinnedUtc
                 })
-            .OrderByDescending(x => x.PinnedUtc.HasValue)
-            .ThenByDescending(x => x.PinnedUtc)
-            .ThenByDescending(x => x.LastMessageUtc ?? DateTime.MinValue)
+            // Inbox position is determined solely by the latest message. A
+            // pinned conversation remains marked as pinned, but never moves an
+            // older message above a newer sent or received message.
+            .OrderByDescending(x => x.LastMessageUtc ?? DateTime.MinValue)
+            .ThenByDescending(x => x.Id)
+            .Skip(skip)
             .Take(take)
             .ToListAsync(cancellationToken);
 
@@ -372,8 +376,7 @@ internal sealed class MessagingService : IMessagingService
             .Select(group =>
             {
                 var canonical = group
-                    .OrderByDescending(conversation => conversation.IsPinned)
-                    .ThenByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
+                    .OrderByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
                     .ThenByDescending(conversation => conversation.Id)
                     .First();
 
@@ -383,8 +386,7 @@ internal sealed class MessagingService : IMessagingService
                     IsPinned = group.Any(conversation => conversation.IsPinned)
                 };
             })
-            .OrderByDescending(conversation => conversation.IsPinned)
-            .ThenByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
+            .OrderByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
             .ThenByDescending(conversation => conversation.Id)
             .ToArray();
 

@@ -744,6 +744,18 @@ protocol MessagingAPI: Sendable {
 }
 
 extension MessagingAPI {
+    /// Older test doubles and integration implementations can continue to
+    /// provide the original inbox contract. The production transport supplies
+    /// the bounded server page below so the Messages landing screen never has
+    /// to wait for the entire inbox.
+    func conversations(
+        offset: Int,
+        limit: Int,
+        accessToken: String
+    ) async throws -> [ConversationSummary] {
+        try await conversations(accessToken: accessToken)
+    }
+
     func conversation(
         id: UUID,
         beforeUTC: Date?,
@@ -1011,9 +1023,21 @@ struct URLSessionMessagingAPI: MessagingAPI {
     }
 
     func conversations(accessToken: String) async throws -> [ConversationSummary] {
+        try await conversations(offset: 0, limit: 24, accessToken: accessToken)
+    }
+
+    func conversations(
+        offset: Int,
+        limit: Int,
+        accessToken: String
+    ) async throws -> [ConversationSummary] {
         try await client.get(
             "/api/v1/mobile/messaging/conversations",
             accessToken: accessToken,
+            queryItems: [
+                URLQueryItem(name: "take", value: "\(max(1, min(limit, 50)))"),
+                URLQueryItem(name: "skip", value: "\(max(0, offset))")
+            ],
             headers: participantHeader,
             response: [ConversationSummary].self
         )

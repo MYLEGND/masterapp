@@ -306,9 +306,6 @@ struct MessagingHomeView: View {
     private func conversationSection(
         _ conversations: [ConversationSummary]
     ) -> some View {
-        let pinned = Array(conversations.filter(\.isPinned).prefix(6))
-        let remaining = conversations.filter { !$0.isPinned }
-
         return VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
             if store.isRefreshing {
                 HStack(spacing: LegendNextSpacing.xs) {
@@ -322,37 +319,37 @@ struct MessagingHomeView: View {
                 .padding(.horizontal, LegendNextSpacing.pageHorizontal)
             }
 
-            if !pinned.isEmpty {
-                Text("Pinned")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(LegendNextColor.gold)
-                    .textCase(.uppercase)
-                    .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-
-                LegendPinnedConversationGrid(
-                    conversations: pinned,
-                    openConversation: openConversation,
-                    setPinned: { conversation, isPinned in
-                        store.setPinned(conversationID: conversation.id, isPinned: isPinned)
-                    },
-                    setMuted: { conversation, isMuted in
-                        store.setMuted(conversationID: conversation.id, isMuted: isMuted)
-                    },
-                    remove: { conversation in
-                        conversationPendingRemoval = conversation
-                    })
-                    .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-                    .padding(.bottom, LegendNextSpacing.xs)
-            }
-
-            if !remaining.isEmpty {
-                LazyVStack(spacing: LegendNextSpacing.sm) {
-                    ForEach(remaining) { conversation in
-                        conversationButton(conversation)
-                    }
+            LazyVStack(spacing: LegendNextSpacing.sm) {
+                ForEach(conversations) { conversation in
+                    conversationButton(conversation)
                 }
-                .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+
+                if store.hasMoreConversations {
+                    Button {
+                        store.loadMoreConversations()
+                    } label: {
+                        HStack(spacing: LegendNextSpacing.xs) {
+                            if store.isLoadingMoreConversations {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(LegendNextColor.gold)
+                            }
+
+                            Text(store.isLoadingMoreConversations
+                                 ? "Loading earlier conversations"
+                                 : "Load earlier conversations")
+                        }
+                    }
+                    .buttonStyle(LegendNextButtonStyle(
+                        kind: .secondary,
+                        controlHeight: 38))
+                    .disabled(store.isLoadingMoreConversations)
+                    .padding(.top, LegendNextSpacing.xs)
+                    .accessibilityHint(
+                        "Loads the next oldest conversations without delaying the latest messages.")
+                }
             }
+            .padding(.horizontal, LegendNextSpacing.pageHorizontal)
         }
     }
 
@@ -449,75 +446,6 @@ struct MessagingHomeView: View {
             .padding(.bottom, 118)
         }
         .scrollIndicators(.hidden)
-    }
-}
-
-private struct LegendPinnedConversationGrid: View {
-    let conversations: [ConversationSummary]
-    let openConversation: (UUID) -> Void
-    let setPinned: (ConversationSummary, Bool) -> Void
-    let setMuted: (ConversationSummary, Bool) -> Void
-    let remove: (ConversationSummary) -> Void
-
-    private let columns = Array(
-        repeating: GridItem(.flexible(minimum: 72), spacing: LegendNextSpacing.sm),
-        count: 3)
-
-    var body: some View {
-        LazyVGrid(columns: columns, spacing: LegendNextSpacing.md) {
-            ForEach(conversations) { conversation in
-                Button {
-                    openConversation(conversation.id)
-                } label: {
-                    VStack(spacing: 7) {
-                        Group {
-                            if conversation.conversationType == "Group" {
-                                LegendMessagingGroupAvatar(
-                                    avatar: conversation.groupAvatar,
-                                    size: 58)
-                            } else {
-                                LegendMessagingAvatar(
-                                    participant: conversation.counterparty,
-                                    size: 58,
-                                    showsGoldRing: conversation.unreadCount > 0)
-                            }
-                        }
-
-                        Text(conversation.title)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(LegendNextColor.textPrimary)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel("Pinned conversation with \(conversation.title)")
-                .contextMenu {
-                    Button {
-                        setPinned(conversation, false)
-                    } label: {
-                        Label("Unpin", systemImage: "pin.slash")
-                    }
-
-                    Button {
-                        setMuted(conversation, !conversation.isMuted)
-                    } label: {
-                        Label(
-                            conversation.isMuted ? "Unmute" : "Mute",
-                            systemImage: conversation.isMuted ? "bell" : "bell.slash")
-                    }
-
-                    Divider()
-
-                    Button(role: .destructive) {
-                        remove(conversation)
-                    } label: {
-                        Label("Remove from inbox", systemImage: "trash")
-                    }
-                }
-            }
-        }
     }
 }
 

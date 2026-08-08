@@ -147,6 +147,70 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task Inbox_OrdersNewestMessagesFirstAndPagesOlderConversations()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "client-2",
+            ExternalIdentityObjectId = "client-2",
+            FirstName = "Client",
+            LastName = "Two",
+            Email = "client.two@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        });
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "agent-1",
+            AgentUpn = "agent.one@mylegnd.com",
+            ClientUserId = "client-2"
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var older = Assert.IsType<MessagingConversationDetail>((await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                agent,
+                "client-1",
+                MessagingParticipantTypes.Client,
+                InitialMessageBody: "Older message."))).Conversation);
+        var newer = Assert.IsType<MessagingConversationDetail>((await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                agent,
+                "client-2",
+                MessagingParticipantTypes.Client,
+                InitialMessageBody: "Newest message."))).Conversation);
+
+        var olderTimestamp = DateTime.UtcNow.AddHours(-2);
+        var newerTimestamp = DateTime.UtcNow.AddHours(-1);
+        var olderConversation = await db.MessageConversations.FindAsync(older.Id);
+        var newerConversation = await db.MessageConversations.FindAsync(newer.Id);
+        Assert.NotNull(olderConversation);
+        Assert.NotNull(newerConversation);
+        olderConversation!.LastMessageUtc = olderTimestamp;
+        newerConversation!.LastMessageUtc = newerTimestamp;
+        (await db.InternalMessages.SingleAsync(message => message.ConversationId == older.Id)).SentUtc = olderTimestamp;
+        (await db.InternalMessages.SingleAsync(message => message.ConversationId == newer.Id)).SentUtc = newerTimestamp;
+        await db.SaveChangesAsync();
+
+        Assert.True((await service.SetConversationPinnedAsync(
+            new SetMessagingConversationPinnedCommand(agent, older.Id, true))).Succeeded);
+
+        var newestPage = await service.ListConversationsAsync(
+            agent,
+            new MessagingConversationListQuery(Take: 1));
+        var olderPage = await service.ListConversationsAsync(
+            agent,
+            new MessagingConversationListQuery(Take: 1, Skip: 1));
+
+        Assert.Equal(newer.Id, Assert.Single(newestPage.Conversations).Id);
+        Assert.Equal(older.Id, Assert.Single(olderPage.Conversations).Id);
+    }
+
+    [Fact]
     public async Task FirstPersistedMessage_MakesTheCanonicalConversationVisibleToBothParticipants()
     {
         await using var db = ControllerTestHelpers.BuildDb();

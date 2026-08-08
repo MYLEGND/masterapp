@@ -76,7 +76,10 @@ public sealed class MobileMessagingController : MobileApiControllerBase
     }
 
     [HttpGet("messaging/conversations")]
-    public async Task<IActionResult> ListConversations(CancellationToken cancellationToken)
+    public async Task<IActionResult> ListConversations(
+        CancellationToken cancellationToken,
+        [FromQuery] int? take = null,
+        [FromQuery] int? skip = null)
     {
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null)
@@ -87,7 +90,10 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             // A group picture belongs to the conversation, not to any member
             // profile. Include that authoritative media in the inbox so an
             // owner-selected picture cannot disappear outside the thread.
-            new MessagingConversationListQuery(IncludeGroupImages: true),
+            new MessagingConversationListQuery(
+                Take: Math.Clamp(take ?? 24, 1, 50),
+                IncludeGroupImages: true,
+                Skip: Math.Max(skip ?? 0, 0)),
             cancellationToken);
         if (!result.Succeeded)
             return MessagingFailure(result.ErrorCode, result.ErrorMessage);

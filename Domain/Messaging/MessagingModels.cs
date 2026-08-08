@@ -137,7 +137,8 @@ public sealed record MessagingConversationListQuery(
     string? Search = null,
     bool IncludeClosed = false,
     int Take = 50,
-    bool IncludeGroupImages = true);
+    bool IncludeGroupImages = true,
+    int Skip = 0);
 
 /// <summary>
 /// A bounded history window for a conversation. The caller may only page a

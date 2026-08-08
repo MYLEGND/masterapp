@@ -12,6 +12,8 @@ using AgentPortal.Hubs;
 using Infrastructure.Data;
 using Infrastructure.Identity;
 using Infrastructure.Households;
+using Infrastructure.Mobile;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
@@ -169,7 +171,9 @@ internal static class ControllerTestHelpers
         var accessor = new HttpContextAccessor { HttpContext = http };
         var tracking = Mock.Of<IAgentTrackingService>();
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
-        var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, entraLifecycle.Object, households.Object, subscriptionIdentitySync.Object, prod, effCtx, execution, commitments, billingOrchestrator, clientBillingWorkspaceService, subscriptionInvitationEmailService, householdPartnerInvitationEmailService)
+        var mobileActorResolver = Mock.Of<IMobileActorResolver>();
+        var dataProtectionProvider = new EphemeralDataProtectionProvider();
+        var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, entraLifecycle.Object, households.Object, subscriptionIdentitySync.Object, prod, effCtx, execution, commitments, billingOrchestrator, clientBillingWorkspaceService, subscriptionInvitationEmailService, householdPartnerInvitationEmailService, mobileActorResolver, dataProtectionProvider)
         {
             ControllerContext = new ControllerContext { HttpContext = http },
             TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>())
