@@ -339,8 +339,16 @@
     .layout-content { padding-top: 2rem; padding-bottom: 3rem; }
 
     @media (max-width: 840px) {
-        .explore-trigger { top: 185px; left: 12px; }
-        .explore-drawer  { top: 185px; left: 70px; }
+        .explore-trigger { top: auto; left: auto; }
+        .explore-drawer {
+            top: 12px;
+            left: 12px;
+            width: calc(100vw - 24px);
+            max-width: 320px;
+        }
+        .explore-list {
+            max-height: calc(100dvh - 170px);
+        }
     }
 
         @media (max-width: 768px) {

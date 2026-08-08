@@ -10847,7 +10847,7 @@ body.finance-dual-tools-open .layout-content {
 
 @media (max-width: 760px) {
     .networth-tool.el-shell {
-        padding: 22px;
+        padding: 16px;
     }
 
     .networth-tool.el-shell .el-title {
@@ -10856,7 +10856,12 @@ body.finance-dual-tools-open .layout-content {
 
     .networth-tool.el-shell .el-toolbar,
     .networth-tool.el-shell .el-toolbar-actions {
-        gap: 10px;
+        width: 100%;
+        gap: 8px;
+    }
+
+    .networth-tool.el-shell .el-toolbar-actions > * {
+        min-width: 0;
     }
 
     .networth-tool.el-shell .el-top-controls--personal,
@@ -10948,11 +10953,13 @@ body.finance-dual-tools-open .layout-content {
 
 @media (max-width: 575.98px) {
     .finance-shell {
-        margin-top: 1.25rem;
+        margin-top: 0.75rem;
+        padding-left: 8px;
+        padding-right: 8px;
     }
 
     .finance-header {
-        padding: 18px 14px;
+        padding: 16px 12px;
         border-radius: 16px;
     }
 
@@ -10968,7 +10975,9 @@ body.finance-dual-tools-open .layout-content {
 
     .finance-select,
     .finance-toolbar-btn {
-        min-height: 54px;
+        min-width: 0;
+        min-height: 48px;
+        font-size: 16px;
     }
 
     .finance-side-card {
@@ -10977,8 +10986,13 @@ body.finance-dual-tools-open .layout-content {
     }
 
     .finance-main {
+        min-width: 0;
+        padding: 10px;
+        border-radius: 16px;
+    }
+
+    .networth-tool.el-shell {
         padding: 12px;
-        border-radius: 18px;
     }
 
     #budget-embed .networth-tool {

@@ -13,7 +13,7 @@
 }
 
 body.client-auth-page {
-    min-width: 320px;
+    min-width: 0;
     min-height: 100vh;
     margin: 0;
     background: #ffffff;
@@ -194,14 +194,47 @@ body.client-auth-page {
 @media (max-width: 520px) {
     .client-auth-shell {
         align-items: start;
-        padding: 18px 12px;
+        padding: 12px 10px;
     }
 
     .client-auth-card {
         border-radius: 14px;
     }
 
+    .client-auth-brand {
+        gap: 14px;
+        padding: 20px;
+    }
+
+    .client-auth-brand img {
+        width: 88px;
+        height: 88px;
+        flex: 0 0 88px;
+    }
+
+    .client-auth-brand-name {
+        font-size: 1.08rem;
+        letter-spacing: 0.06em;
+    }
+
+    .client-auth-brand-label {
+        font-size: 0.78rem;
+        letter-spacing: 0.09em;
+    }
+
     .client-auth-content {
-        padding: 30px 24px;
+        padding: 26px 20px 28px;
+    }
+
+    .client-auth-content h1 {
+        font-size: clamp(1.7rem, 9vw, 2rem);
+    }
+
+    .client-auth-intro {
+        font-size: 0.96rem;
+    }
+
+    .client-auth-field input {
+        font-size: 16px;
     }
 }

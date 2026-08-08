@@ -323,8 +323,8 @@ body.subscription-activation-standalone {
 
 @media (max-width: 760px) {
     .activation-page {
-        width: min(100% - 20px, 1040px);
-        padding: 10px 0;
+        width: min(100% - 16px, 1040px);
+        padding: 8px 0;
     }
 
     .activation-header,
@@ -335,11 +335,31 @@ body.subscription-activation-standalone {
     .activation-header,
     .activation-body,
     .activation-confirmation-body {
-        padding: 19px;
+        padding: 16px;
     }
 
     .activation-summary {
         grid-template-columns: 1fr;
+    }
+
+    .activation-summary-value {
+        overflow: visible;
+        text-overflow: clip;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .activation-field input,
+    .activation-field select {
+        font-size: 16px;
+    }
+
+    .activation-actions {
+        justify-content: stretch;
+    }
+
+    .activation-actions .activation-button {
+        width: 100%;
     }
 
     .activation-notice-card {
@@ -348,6 +368,16 @@ body.subscription-activation-standalone {
 
     .activation-notice-card header,
     .activation-notice-actions {
-        padding: 20px;
+        padding: 18px;
+    }
+
+    .activation-notice-actions {
+        flex-direction: column;
+    }
+
+    .activation-notice-actions .activation-link {
+        width: 100%;
+        justify-content: center;
+        text-align: center;
     }
 }

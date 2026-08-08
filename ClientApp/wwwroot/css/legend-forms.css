@@ -167,10 +167,40 @@
 }
 
 @media (max-width: 768px) {
-    .legend-hero-body {
-        padding: 20px 18px;
+    .legend-shell {
+        margin-top: 10px;
+        margin-bottom: 20px;
+        padding: 0 10px;
     }
+
+    .legend-hero {
+        border-radius: 16px;
+    }
+
+    .legend-hero-body {
+        padding: 18px 16px;
+    }
+
     .legend-title {
         font-size: 1.7rem;
+    }
+
+    .legend-card,
+    .legend-section {
+        border-radius: 14px;
+    }
+
+    .legend-form input.form-control,
+    .legend-form select.form-select,
+    .legend-form textarea.form-control {
+        min-width: 0;
+        font-size: 16px;
+    }
+
+    .legend-form .table-responsive {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
     }
 }

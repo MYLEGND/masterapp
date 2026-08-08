@@ -2916,18 +2916,26 @@ header .legend-global-nav .container-fluid {
 
 @media (max-width: 840px) {
     .legend-global-nav {
-        padding: 14px 14px 12px;
+        min-height: 0;
+        padding: 10px 12px;
         border-radius: 16px;
     }
 
     header .legend-global-nav .container-fluid {
         display: flex !important;
         flex-wrap: wrap;
+        align-items: center !important;
         gap: 0.5rem;
     }
 
+    .legend-global-nav .navbar-brand img {
+        max-height: 64px;
+    }
+
     .legend-global-nav .navbar-right {
-        flex-wrap: wrap;
+        flex-direction: column;
+        flex-wrap: nowrap;
+        align-items: stretch;
     }
 
     .legend-global-nav .nav-toggle {
@@ -2973,9 +2981,23 @@ header .legend-global-nav .container-fluid {
 
     .legend-global-nav .nav-context-row,
     .legend-global-nav .nav-context-pill,
-    .legend-global-nav .nav-context-exit {
+    .legend-global-nav .nav-context-exit,
+    .legend-global-nav .profile-chip {
         width: 100%;
         max-width: 100%;
+    }
+
+    .legend-global-nav .dropdown,
+    .legend-global-nav .dropdown-menu-centered,
+    .legend-global-nav .dropdown-menu {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .legend-global-nav .dropdown-menu-centered,
+    .legend-global-nav .dropdown-menu {
+        position: static;
+        margin-top: 0.35rem;
     }
 }
 
