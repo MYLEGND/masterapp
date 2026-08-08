@@ -21,6 +21,29 @@ namespace AgentPortal.Tests;
 public sealed class FinanceToolStatesControllerSqlTranslationTests
 {
     [Fact]
+    public void SaveRequest_AllowsMissingClientUserId_ForAgentWorkspace()
+    {
+        var property = typeof(FinanceToolStatesController.SaveFinanceStateRequest)
+            .GetProperty(nameof(FinanceToolStatesController.SaveFinanceStateRequest.ClientUserId));
+
+        Assert.NotNull(property);
+
+        var nullability = new System.Reflection.NullabilityInfoContext()
+            .Create(property!);
+
+        Assert.Equal(System.Reflection.NullabilityState.Nullable, nullability.WriteState);
+
+        var request = new FinanceToolStatesController.SaveFinanceStateRequest
+        {
+            ClientProfileId = Guid.Empty,
+            ToolId = "LegendLivingBalanceSheet",
+            JsonState = "{}"
+        };
+
+        Assert.Null(request.ClientUserId);
+    }
+
+    [Fact]
     public void Controller_HasOneDependencyInjectionConstructor()
     {
         var constructor = Assert.Single(typeof(FinanceToolStatesController).GetConstructors());

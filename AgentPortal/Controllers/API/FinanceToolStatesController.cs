@@ -167,7 +167,7 @@ namespace AgentPortal.Controllers.API
         public class SaveFinanceStateRequest
         {
             public Guid ClientProfileId { get; set; }
-            public string ClientUserId { get; set; } = "";
+            public string? ClientUserId { get; set; }
             public string ToolId { get; set; } = "";
             public string JsonState { get; set; } = "{}";
         }
