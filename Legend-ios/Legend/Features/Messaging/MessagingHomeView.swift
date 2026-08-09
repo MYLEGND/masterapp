@@ -2602,6 +2602,13 @@ private struct LegendConversationRow: View {
                             .lineLimit(1)
                     }
 
+                    if conversation.isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.gold)
+                            .accessibilityLabel("Pinned conversation")
+                    }
+
                     if conversation.unreadCount > 0 {
                         Text(unreadText)
                             .font(.caption2.weight(.bold))

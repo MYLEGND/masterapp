@@ -1415,9 +1415,11 @@ final class MessagingStore: ObservableObject {
         }))
     }
 
-    /// This local ordering is intentionally the same as the server ordering.
-    /// It protects the UI from an out-of-order response or equal timestamps
-    /// without creating a second persistence rule for the inbox.
+    /// This local presentation order is intentionally the same as the server
+    /// order: the actor's pinned chats remain first (maximum six on the
+    /// server), then every section is ordered by its latest sent or received
+    /// message. It only guards against an out-of-order response; persistence
+    /// and pin eligibility remain server-owned.
     private func orderedInbox(
         _ conversations: [ConversationSummary]
     ) -> [ConversationSummary] {
@@ -1426,6 +1428,9 @@ final class MessagingStore: ObservableObject {
             uniquingKeysWith: { latest, _ in latest })
 
         return uniqueConversations.values.sorted { left, right in
+            if left.isPinned != right.isPinned {
+                return left.isPinned
+            }
             let leftTimestamp = left.lastMessageUTC ?? .distantPast
             let rightTimestamp = right.lastMessageUTC ?? .distantPast
             if leftTimestamp != rightTimestamp {

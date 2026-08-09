@@ -179,10 +179,12 @@ internal sealed class MessagingService : IMessagingService
                         : null,
                     participant.PinnedUtc
                 })
-            // Inbox position is determined solely by the latest message. A
-            // pinned conversation remains marked as pinned, but never moves an
-            // older message above a newer sent or received message.
-            .OrderByDescending(x => x.LastMessageUtc ?? DateTime.MinValue)
+            // Pins create the only inbox ordering exception. Within the pinned
+            // and unpinned sections alike, the most recently sent or received
+            // message is always first. This keeps up to six actor-owned pins
+            // durable without introducing a separate manual sort order.
+            .OrderByDescending(x => x.PinnedUtc.HasValue)
+            .ThenByDescending(x => x.LastMessageUtc ?? DateTime.MinValue)
             .ThenByDescending(x => x.Id)
             .Skip(skip)
             .Take(take)
@@ -387,7 +389,8 @@ internal sealed class MessagingService : IMessagingService
                     IsPinned = group.Any(conversation => conversation.IsPinned)
                 };
             })
-            .OrderByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
+            .OrderByDescending(conversation => conversation.IsPinned)
+            .ThenByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
             .ThenByDescending(conversation => conversation.Id)
             .ToArray();
 

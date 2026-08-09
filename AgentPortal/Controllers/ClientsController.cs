@@ -16,8 +16,6 @@ using Infrastructure.Data;
 using Infrastructure.Identity;
 using Infrastructure.Households;
 using Infrastructure.Mobile;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -66,6 +64,7 @@ namespace AgentPortal.Controllers;
         private readonly IMobileActorResolver _mobileActorResolver;
         private readonly ITimeLimitedDataProtector _mobileClientCreationPortalTicketProtector;
         private const string AdvancedMarketsToolId = "AdvancedMarketsInputs";
+        private const string MobileClientCreationPortalAuthenticationType = "MobileClientCreationPortal";
         private static readonly JsonSerializerOptions AdvancedMarketsStateJsonOptions = new(JsonSerializerDefaults.Web)
         {
             Converters = { new JsonStringEnumConverter() }
@@ -3042,19 +3041,11 @@ namespace AgentPortal.Controllers;
             return Forbid();
 
         var principal = CreateMobileClientCreationPortalPrincipal(portalTicket);
-        // The first portal response is the canonical Create view itself. The
-        // browser session is also issued for that view's normal POST, but there
-        // is no intermediate redirect for WKWebView to misclassify.
+        // The protected ticket is the complete authorization boundary for the
+        // embedded intake's GET and POST. Do not also issue a browser cookie:
+        // WKWebView can interrupt its initial frame while applying that cookie,
+        // and the ticket already provides the exact short-lived authority needed.
         HttpContext.User = principal;
-        await HttpContext.SignInAsync(
-            CookieAuthenticationDefaults.AuthenticationScheme,
-            principal,
-            new AuthenticationProperties
-            {
-                IsPersistent = false,
-                AllowRefresh = false,
-                ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(10)
-            });
 
         ViewData["MobileClientCreationPortalTicket"] = ticket;
         return await Create(returnUrl: "/mobile/agent/clients/create-complete");
@@ -3136,7 +3127,7 @@ namespace AgentPortal.Controllers;
         };
         return new ClaimsPrincipal(new ClaimsIdentity(
             claims,
-            CookieAuthenticationDefaults.AuthenticationScheme));
+            MobileClientCreationPortalAuthenticationType));
     }
 
     private async Task<IActionResult?> MobileAgentAccessFailureAsync(

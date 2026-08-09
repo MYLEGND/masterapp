@@ -147,7 +147,7 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
-    public async Task Inbox_OrdersNewestMessagesFirstAndPagesOlderConversations()
+    public async Task Inbox_KeepsPinsFirstAndOrdersEverySectionByMostRecentMessage()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
@@ -201,15 +201,22 @@ public sealed class MessagingServiceTests
         Assert.True((await service.SetConversationPinnedAsync(
             new SetMessagingConversationPinnedCommand(agent, older.Id, true))).Succeeded);
 
-        var newestPage = await service.ListConversationsAsync(
+        var pinnedPage = await service.ListConversationsAsync(
             agent,
             new MessagingConversationListQuery(Take: 1));
-        var olderPage = await service.ListConversationsAsync(
+        var newestUnpinnedPage = await service.ListConversationsAsync(
             agent,
             new MessagingConversationListQuery(Take: 1, Skip: 1));
+        var inbox = await service.ListConversationsAsync(
+            agent,
+            new MessagingConversationListQuery(Take: 10));
 
-        Assert.Equal(newer.Id, Assert.Single(newestPage.Conversations).Id);
-        Assert.Equal(older.Id, Assert.Single(olderPage.Conversations).Id);
+        Assert.Equal(older.Id, Assert.Single(pinnedPage.Conversations).Id);
+        Assert.Equal(newer.Id, Assert.Single(newestUnpinnedPage.Conversations).Id);
+        Assert.Collection(
+            inbox.Conversations,
+            first => Assert.Equal(older.Id, first.Id),
+            second => Assert.Equal(newer.Id, second.Id));
     }
 
     [Fact]
@@ -284,9 +291,11 @@ public sealed class MessagingServiceTests
 
         Assert.True((await service.SetConversationPinnedAsync(
             new SetMessagingConversationPinnedCommand(client, conversationId, true))).Succeeded);
-        Assert.True(Assert.Single((await service.ListConversationsAsync(
+        var pinnedClientConversation = Assert.Single((await service.ListConversationsAsync(
             client,
-            new MessagingConversationListQuery())).Conversations).IsPinned);
+            new MessagingConversationListQuery())).Conversations);
+        Assert.True(pinnedClientConversation.IsPinned);
+        Assert.Equal(1, pinnedClientConversation.UnreadCount);
         Assert.False(Assert.Single((await service.ListConversationsAsync(
             agent,
             new MessagingConversationListQuery())).Conversations).IsPinned);

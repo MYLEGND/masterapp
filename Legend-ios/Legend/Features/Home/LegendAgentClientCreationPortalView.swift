@@ -58,6 +58,7 @@ struct LegendAgentClientCreationPortalView: View {
                     .padding(LegendNextSpacing.sm)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(LegendNextCanvas())
         .safeAreaInset(edge: .top, spacing: 0) {
             portalHeader
@@ -352,8 +353,23 @@ private struct LegendAgentClientCreationPortalWebView: UIViewRepresentable {
 
         private func reportFailure(_ error: Error) {
             let nsError = error as NSError
-            guard nsError.code != NSURLErrorCancelled else { return }
+            guard !isExpectedNavigationInterruption(nsError) else { return }
             onFailure(error.localizedDescription)
+        }
+
+        /// WKWebView reports its own policy cancellations as a failed frame
+        /// navigation after the delegate already handled the destination (for
+        /// example, the native completion route or an expired-ticket refresh).
+        /// They are not transport failures and must not replace the intake UI
+        /// with a misleading error state.
+        private func isExpectedNavigationInterruption(_ error: NSError) -> Bool {
+            if error.domain == NSURLErrorDomain {
+                return error.code == NSURLErrorCancelled
+            }
+
+            // WebKit's documented legacy policy-interruption NSError is not
+            // represented by a Swift WKError.Code case.
+            return error.domain == "WebKitErrorDomain" && error.code == 102
         }
     }
 }
