@@ -4493,11 +4493,7 @@ internal sealed class MessagingService : IMessagingService
             return null;
 
         if (string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
-        {
-            if (persistChanges)
-                await PersistPendingMessageTranslationChangesAsync(cancellationToken);
             return null;
-        }
 
         var local = _db.MessageTranslations.Local
             .FirstOrDefault(translation =>
@@ -4517,11 +4513,7 @@ internal sealed class MessagingService : IMessagingService
                 translation.Provider))
             .SingleOrDefaultAsync(cancellationToken);
         if (cached is not null)
-        {
-            if (persistChanges)
-                await PersistPendingMessageTranslationChangesAsync(cancellationToken);
             return cached;
-        }
 
         TranslationProviderResult providerResult;
         try
@@ -4633,29 +4625,61 @@ internal sealed class MessagingService : IMessagingService
             return null;
         }
 
-        var messageEntity = _db.InternalMessages.Local
+        var trackedMessage = _db.InternalMessages.Local
             .FirstOrDefault(candidate => candidate.Id == message.Id);
-        if (messageEntity is null)
+        if (trackedMessage is not null &&
+            _db.Entry(trackedMessage).State == EntityState.Added)
         {
-            messageEntity = new InternalMessage { Id = message.Id };
-            _db.Attach(messageEntity);
+            // A message being composed in this unit of work has no persisted
+            // row version yet. Let its normal authoritative save include the
+            // detected language rather than issuing a second write.
+            trackedMessage.OriginalLanguage = sourceLanguage;
+            return sourceLanguage;
         }
-        messageEntity.OriginalLanguage = sourceLanguage;
-        _db.Entry(messageEntity).Property(entity => entity.OriginalLanguage).IsModified = true;
-        return sourceLanguage;
-    }
 
-    private async Task PersistPendingMessageTranslationChangesAsync(
-        CancellationToken cancellationToken)
-    {
-        var hasPendingSourceLanguage = _db.ChangeTracker.Entries<InternalMessage>()
-            .Any(entry =>
-                entry.State == EntityState.Added ||
-                entry.Property(message => message.OriginalLanguage).IsModified);
-        var hasPendingTranslation = _db.ChangeTracker.Entries<MessageTranslation>()
-            .Any(entry => entry.State == EntityState.Added);
-        if (hasPendingSourceLanguage || hasPendingTranslation)
-            await _db.SaveChangesAsync(cancellationToken);
+        if (!_db.Database.IsRelational())
+        {
+            // EF's in-memory provider does not implement ExecuteUpdate. It
+            // also does not emulate SQL Server row-version concurrency, so a
+            // tracked test-provider update is the equivalent persistence
+            // operation without altering the relational production path.
+            var inMemoryMessage = await _db.InternalMessages
+                .SingleOrDefaultAsync(candidate => candidate.Id == message.Id, cancellationToken);
+            if (inMemoryMessage is null)
+                return sourceLanguage;
+
+            if (string.IsNullOrWhiteSpace(inMemoryMessage.OriginalLanguage))
+            {
+                inMemoryMessage.OriginalLanguage = sourceLanguage;
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+
+            return CommunicationLanguages.NormalizeOrNull(inMemoryMessage.OriginalLanguage) ?? sourceLanguage;
+        }
+
+        // Projection requests frequently arrive concurrently (home, inbox,
+        // thread, and realtime refresh). InternalMessage has an optimistic
+        // concurrency token, so attaching an Id-only stub and saving it sends
+        // an empty row version and turns a harmless language cache fill into a
+        // 500. Persist only this missing value atomically at the database; the
+        // conditional update has no stale row-version dependency and never
+        // overwrites a language another request already established.
+        var updated = await _db.InternalMessages
+            .Where(candidate =>
+                candidate.Id == message.Id &&
+                (candidate.OriginalLanguage == null || candidate.OriginalLanguage == string.Empty))
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(candidate => candidate.OriginalLanguage, sourceLanguage),
+                cancellationToken);
+        if (updated != 0)
+            return sourceLanguage;
+
+        var persistedLanguage = await _db.InternalMessages
+            .AsNoTracking()
+            .Where(candidate => candidate.Id == message.Id)
+            .Select(candidate => candidate.OriginalLanguage)
+            .SingleOrDefaultAsync(cancellationToken);
+        return CommunicationLanguages.NormalizeOrNull(persistedLanguage) ?? sourceLanguage;
     }
 
     private static MessageTranslationSource ToTranslationSource(MessageDetailRow message) => new(

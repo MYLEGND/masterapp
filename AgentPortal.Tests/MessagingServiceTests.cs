@@ -5,12 +5,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Domain.Billing;
 using Domain.Entities;
+using Infrastructure.Data;
 using Infrastructure.JourneyCircles;
 using Domain.Messaging;
 using Infrastructure.Moderation;
 using Infrastructure.Messaging;
 using Infrastructure.Notifications;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -1197,6 +1199,66 @@ public sealed class MessagingServiceTests
         Assert.Equal("Welcome to Legend (ht)",
             Assert.Single(Assert.IsType<MessagingConversationDetail>(secondView.Conversation).Messages).Body);
         Assert.Single(await db.MessageTranslations.ToListAsync());
+    }
+
+    [Fact]
+    public async Task MessageTranslation_UnknownSourceWithPersistedRowVersionDoesNotBreakConversationProjection()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var clientProfile = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");
+        db.ControlledResourceGrants.Add(new ControlledResourceGrant
+        {
+            UserId = "client-1",
+            ParticipantType = MessagingParticipantTypes.Client,
+            ResourceType = ControlledResourceTypes.LanguageTranslation,
+            IsActive = true,
+            GrantedUtc = DateTime.UtcNow,
+            GrantedByUserId = "zac-founder-oid"
+        });
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            ProfileId = clientProfile.Id,
+            ParticipantType = MessagingParticipantTypes.Client,
+            PreferredCommunicationLanguage = "ht"
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db, new TestTranslationService());
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var started = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent,
+            client.UserId,
+            client.ParticipantType,
+            InitialMessageBody: "Welcome to Legend"));
+        var source = Assert.Single(await db.InternalMessages.ToListAsync());
+
+        // SQL Server generates a non-empty row version. Reproduce that here
+        // after clearing the detected language so the projection must refill
+        // it without attaching an Id-only, stale-concurrency entity.
+        source.OriginalLanguage = null;
+        await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE \"InternalMessages\" SET \"RowVersion\" = X'01020304' WHERE \"Id\" = {source.Id}");
+        db.ChangeTracker.Clear();
+
+        var projection = await service.GetConversationAsync(client, started.Conversation!.Id);
+
+        Assert.True(projection.Succeeded);
+        var message = Assert.Single(projection.Conversation!.Messages);
+        Assert.Equal("Welcome to Legend (ht)", message.Body);
+        Assert.Equal("Welcome to Legend", message.OriginalBody);
+        Assert.Equal("en", await db.InternalMessages
+            .Where(candidate => candidate.Id == source.Id)
+            .Select(candidate => candidate.OriginalLanguage)
+            .SingleAsync());
     }
 
     [Fact]
