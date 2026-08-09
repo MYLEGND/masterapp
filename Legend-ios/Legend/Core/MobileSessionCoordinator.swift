@@ -608,6 +608,30 @@ final class MobileSessionCoordinator: ObservableObject {
             diagnostics: diagnostics)
     }
 
+    /// Community review has its own narrow store, while authority remains on
+    /// the server. Creating it through the session coordinator guarantees it
+    /// uses the same token source and typed participant header as every other
+    /// protected mobile feature.
+    func makeCommunitySafetyStore() -> MobileCommunitySafetyStore {
+        guard let apiBaseURL = configuration.apiBaseURL,
+              case .authenticated(let currentSession) = state else {
+            return MobileCommunitySafetyStore(
+                api: MobileUnavailableCommunitySafetyAPI(),
+                accessTokenProvider: { throw MobileAPIError.unauthorized(correlationID: nil) },
+                diagnostics: diagnostics)
+        }
+
+        return MobileCommunitySafetyStore(
+            api: URLSessionMobileCommunitySafetyAPI(
+                client: MobileHTTPClient(baseURL: apiBaseURL),
+                participantType: currentSession.actor.identity.participantType),
+            accessTokenProvider: { [weak self] in
+                guard let self else { throw MobileAPIError.unauthorized(correlationID: nil) }
+                return try await self.accessTokenForRequest()
+            },
+            diagnostics: diagnostics)
+    }
+
     func makeFinancialStore() -> MobileFinancialStore {
         guard let apiBaseURL = configuration.apiBaseURL,
               case .authenticated(let currentSession) = state else {
@@ -797,18 +821,27 @@ final class MobileSessionCoordinator: ObservableObject {
         return session
     }
 
-    /// Revalidation refreshes the persisted session without remounting an already
-    /// visible shell for the same typed account. A different Agent/Client identity
-    /// is a real account switch and remains the sole reason to rebuild the shell.
+    /// Revalidation applies the server-confirmed session even when the typed
+    /// identity is unchanged. The Root view is keyed by that identity, so this
+    /// updates capabilities (for example, a newly granted Community Manager role)
+    /// without remounting the visible account shell. A different Agent/Client
+    /// identity remains the sole reason to rebuild the shell.
     private func commitConfirmedSession(_ session: MobileSession, reason: String) {
         cacheSession(session)
         authenticationRecoveryAttempts = 0
 
         if case .authenticated(let activeSession) = state,
            activeSession.actor.identity == session.actor.identity {
+            guard activeSession != session else {
+                diagnostics.record(
+                    category: .authentication,
+                    summary: "Validated the active mobile identity; its server-authorized session is unchanged.")
+                return
+            }
             diagnostics.record(
                 category: .authentication,
-                summary: "Validated the active mobile identity without remounting its application shell.")
+                summary: "Updated the active mobile identity with its latest server-authorized capabilities without remounting its application shell.")
+            transition(to: .authenticated(session), reason: reason)
             return
         }
 
@@ -1386,19 +1419,22 @@ struct MobileCapabilities: Decodable {
     let messaging: Bool
     let isFounder: Bool
     let canManageScripture: Bool
+    let canManageCommunity: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case messaging, isFounder, canManageScripture
+        case messaging, isFounder, canManageScripture, canManageCommunity
     }
 
     init(
         messaging: Bool,
         isFounder: Bool = false,
-        canManageScripture: Bool = false
+        canManageScripture: Bool = false,
+        canManageCommunity: Bool = false
     ) {
         self.messaging = messaging
         self.isFounder = isFounder
         self.canManageScripture = canManageScripture
+        self.canManageCommunity = canManageCommunity
     }
 
     init(from decoder: Decoder) throws {
@@ -1406,6 +1442,7 @@ struct MobileCapabilities: Decodable {
         messaging = try container.decodeIfPresent(Bool.self, forKey: .messaging) ?? false
         isFounder = try container.decodeIfPresent(Bool.self, forKey: .isFounder) ?? false
         canManageScripture = try container.decodeIfPresent(Bool.self, forKey: .canManageScripture) ?? false
+        canManageCommunity = try container.decodeIfPresent(Bool.self, forKey: .canManageCommunity) ?? false
     }
 
     var sessionCapabilities: Set<String> {
@@ -1415,6 +1452,9 @@ struct MobileCapabilities: Decodable {
         }
         if canManageScripture {
             capabilities.insert("scripture-management")
+        }
+        if canManageCommunity {
+            capabilities.insert("community-management")
         }
         return capabilities
     }

@@ -3661,7 +3661,11 @@ internal sealed class MessagingService : IMessagingService
             };
         }
 
-        if (resourceType is not (ControlledResourceTypes.LanguageTranslation or ControlledResourceTypes.ScriptureManagement))
+        if (resourceType is not (
+            ControlledResourceTypes.LanguageTranslation or
+            ControlledResourceTypes.ScriptureManagement or
+            ControlledResourceTypes.CommunityManagement or
+            ControlledResourceTypes.SocialContentPriority))
             return false;
 
         var grant = await _db.ControlledResourceGrants.SingleOrDefaultAsync(candidate =>
@@ -3711,7 +3715,9 @@ internal sealed class MessagingService : IMessagingService
         MessagingActor actor,
         string resourceType,
         CancellationToken cancellationToken) =>
-        resourceType == ControlledResourceTypes.ScriptureManagement
+        resourceType is ControlledResourceTypes.ScriptureManagement or
+            ControlledResourceTypes.CommunityManagement or
+            ControlledResourceTypes.SocialContentPriority
             ? _controlledResources.IsCanonicalFounderManagerAsync(actor, cancellationToken)
             : _controlledResources.IsFounderManagerAsync(actor, cancellationToken);
 

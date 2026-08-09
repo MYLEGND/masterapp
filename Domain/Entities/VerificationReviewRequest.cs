@@ -42,11 +42,26 @@ public static class ControlledResourceTypes
     public const string VerificationBadge = "VerificationBadge";
     public const string LanguageTranslation = "LanguageTranslation";
     public const string ScriptureManagement = "ScriptureManagement";
+    /// <summary>
+    /// Founder-issued permission to review and resolve community-safety reports.
+    /// It is intentionally scoped to moderation; it never conveys founder
+    /// authority, account access, or the ability to grant other permissions.
+    /// </summary>
+    public const string CommunityManagement = "CommunityManagement";
+
+    /// <summary>
+    /// Founder-issued editorial priority for a member's eligible Posts and Hacs.
+    /// The feed still enforces publication state, media readiness, blocks, and
+    /// private-account audience rules before this rank signal is considered.
+    /// </summary>
+    public const string SocialContentPriority = "SocialContentPriority";
 
     public static bool IsSupported(string? value) =>
         string.Equals(value, VerificationBadge, StringComparison.Ordinal) ||
         string.Equals(value, LanguageTranslation, StringComparison.Ordinal) ||
-        string.Equals(value, ScriptureManagement, StringComparison.Ordinal);
+        string.Equals(value, ScriptureManagement, StringComparison.Ordinal) ||
+        string.Equals(value, CommunityManagement, StringComparison.Ordinal) ||
+        string.Equals(value, SocialContentPriority, StringComparison.Ordinal);
 
     /// <summary>
     /// Scripture management is issued only through an explicit Founder grant;

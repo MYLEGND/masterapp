@@ -1132,7 +1132,12 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 actor.Actor,
                 ControlledResourceTypes.ScriptureManagement,
                 cancellationToken)).State == ControlledResourceAccessStates.Granted);
-        return new MobileCapabilitiesDto(true, isFounder, canManageScripture);
+        var canManageCommunity = isFounder || (actor is not null &&
+            (await _controlledResources.GetAccessAsync(
+                actor.Actor,
+                ControlledResourceTypes.CommunityManagement,
+                cancellationToken)).State == ControlledResourceAccessStates.Granted);
+        return new MobileCapabilitiesDto(true, isFounder, canManageScripture, canManageCommunity);
     }
 
     private IActionResult MessagingFailure(string? errorCode, string? errorMessage)
@@ -1177,7 +1182,8 @@ public sealed record MobileSessionResponse(
 public sealed record MobileCapabilitiesDto(
     bool Messaging,
     bool IsFounder = false,
-    bool CanManageScripture = false);
+    bool CanManageScripture = false,
+    bool CanManageCommunity = false);
 
 public sealed record MobileRoleSelectionResponse(
     MobileActorDto Actor,

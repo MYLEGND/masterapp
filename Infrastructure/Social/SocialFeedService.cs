@@ -88,6 +88,7 @@ public sealed class SocialFeedService : ISocialFeedService
             .ToArray();
         var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
         var audience = await LoadAudienceGraphAsync(actor, cancellationToken);
+        var featuredAuthorProfileIds = await GetFeaturedAuthorProfileIdsAsync(cancellationToken);
 
         // Each surface has its own source collection. Home carries regular posts,
         // Stories remain ephemeral, and Hacs are video-only candidates for the FYP.
@@ -121,6 +122,7 @@ public sealed class SocialFeedService : ISocialFeedService
                 post.PostedUtc >= candidateSince),
             actor,
             audience,
+            featuredAuthorProfileIds,
             MaximumFeedPosts,
             cancellationToken);
         var hacPosts = await LoadRankableCandidatesAsync(
@@ -132,6 +134,7 @@ public sealed class SocialFeedService : ISocialFeedService
                 post.PostedUtc >= candidateSince),
             actor,
             audience,
+            featuredAuthorProfileIds,
             MaximumHacPosts,
             cancellationToken);
 
@@ -155,6 +158,7 @@ public sealed class SocialFeedService : ISocialFeedService
             audience,
             now,
             feedMetrics,
+            featuredAuthorProfileIds,
             cancellationToken);
         var rankedFeed = rankedCandidates
             .Where(post => post.ContentType == SocialPostContentTypes.Post)
@@ -1816,6 +1820,7 @@ public sealed class SocialFeedService : ISocialFeedService
         IQueryable<SocialPost> candidates,
         SocialFeedActor actor,
         AudienceGraph audience,
+        IReadOnlySet<Guid> featuredAuthorProfileIds,
         int outputLimit,
         CancellationToken cancellationToken)
     {
@@ -1828,13 +1833,25 @@ public sealed class SocialFeedService : ISocialFeedService
             .OrderByDescending(post => post.PostedUtc)
             .Take(outputLimit)
             .ToArrayAsync(cancellationToken);
+        // Featured creators receive an editorial placement signal in the same
+        // bounded candidate set. This is not a visibility bypass: private
+        // account, block, media-readiness, and publication checks still run
+        // before ranking.
+        var featuredCandidates = featuredAuthorProfileIds.Count == 0
+            ? Array.Empty<SocialPost>()
+            : await candidates
+                .Where(post => featuredAuthorProfileIds.Contains(post.AuthorProfileId))
+                .OrderByDescending(post => post.PostedUtc)
+                .Take(outputLimit)
+                .ToArrayAsync(cancellationToken);
         var publicCandidates = await candidates
             .Where(post => !prioritizedProfileIds.Contains(post.AuthorProfileId))
             .OrderByDescending(post => post.PostedUtc)
             .Take(outputLimit * 4)
             .ToArrayAsync(cancellationToken);
 
-        return relationshipCandidates
+        return featuredCandidates
+            .Concat(relationshipCandidates)
             .Concat(publicCandidates)
             .DistinctBy(post => post.Id)
             .ToArray();
@@ -1853,6 +1870,7 @@ public sealed class SocialFeedService : ISocialFeedService
         AudienceGraph audience,
         DateTime now,
         IReadOnlyDictionary<Guid, SocialPostMetrics> metricsByPost,
+        IReadOnlySet<Guid> featuredAuthorProfileIds,
         CancellationToken cancellationToken)
     {
         if (posts.Count == 0)
@@ -2016,7 +2034,8 @@ public sealed class SocialFeedService : ISocialFeedService
         }
 
         return posts
-            .OrderByDescending(post => RelationshipTier(post, actor, audience))
+            .OrderByDescending(post => featuredAuthorProfileIds.Contains(post.AuthorProfileId))
+            .ThenByDescending(post => RelationshipTier(post, actor, audience))
             .ThenByDescending(Score)
             .ThenByDescending(post => post.PostedUtc)
             .ToArray();
@@ -2033,6 +2052,76 @@ public sealed class SocialFeedService : ISocialFeedService
                 : audience.FollowedProfileIds.Contains(post.AuthorProfileId)
                     ? 1
                     : 0;
+
+    /// <summary>
+    /// Resolves active founder-issued featured-creator grants to profile IDs.
+    /// A client may have historical content under either of its supported user
+    /// ID forms, so the grant is matched against both forms and ranking uses
+    /// the stable profile ID. Revocation removes this result immediately on the
+    /// next server feed request.
+    /// </summary>
+    private async Task<HashSet<Guid>> GetFeaturedAuthorProfileIdsAsync(
+        CancellationToken cancellationToken)
+    {
+        var grants = await _db.ControlledResourceGrants
+            .AsNoTracking()
+            .Where(grant => grant.IsActive &&
+                            grant.ResourceType == ControlledResourceTypes.SocialContentPriority)
+            .Select(grant => new { grant.UserId, grant.ParticipantType })
+            .ToArrayAsync(cancellationToken);
+        if (grants.Length == 0)
+            return [];
+
+        var agentIds = grants
+            .Where(grant => grant.ParticipantType == MessagingParticipantTypes.Agent)
+            .Select(grant => Normalize(grant.UserId))
+            .Where(userId => !string.IsNullOrWhiteSpace(userId))
+            .Distinct()
+            .ToArray();
+        var clientIds = grants
+            .Where(grant => grant.ParticipantType == MessagingParticipantTypes.Client)
+            .Select(grant => Normalize(grant.UserId))
+            .Where(userId => !string.IsNullOrWhiteSpace(userId))
+            .ToHashSet();
+        var profileIds = new HashSet<Guid>();
+
+        if (agentIds.Length > 0)
+        {
+            var agents = await _db.AgentProfiles.AsNoTracking()
+                .Where(profile => profile.IsActive &&
+                                  agentIds.Contains(profile.AgentUserId.ToLower()))
+                .Select(profile => profile.Id)
+                .ToArrayAsync(cancellationToken);
+            profileIds.UnionWith(agents);
+        }
+
+        if (clientIds.Count > 0)
+        {
+            var clients = await _db.ClientProfiles.AsNoTracking()
+                .Where(profile => profile.CrmStatus == null ||
+                                  profile.CrmStatus == "" ||
+                                  profile.CrmStatus == "Active")
+                .Select(profile => new
+                {
+                    profile.Id,
+                    profile.ClientUserId,
+                    profile.ExternalIdentityObjectId
+                })
+                .ToArrayAsync(cancellationToken);
+            foreach (var client in clients)
+            {
+                if (LogicalParticipantIdentity.ClientUserIdForms(
+                        client.ClientUserId,
+                        client.ExternalIdentityObjectId)
+                    .Any(clientIds.Contains))
+                {
+                    profileIds.Add(client.Id);
+                }
+            }
+        }
+
+        return profileIds;
+    }
 
     private async Task<SocialPost?> GetVisiblePostAsync(
         SocialFeedActor actor,

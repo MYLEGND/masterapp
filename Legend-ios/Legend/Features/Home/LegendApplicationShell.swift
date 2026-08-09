@@ -6351,10 +6351,12 @@ private struct LegendAccountView: View {
 
     private enum ProfileSettingsPresentation: String, Identifiable {
         case creatorInsights
+        case founderCommandCenter
         case followRequests
         case translationLanguage
         case translationManagement
         case dailyScriptureManagement
+        case communitySafety
         case accountAccess
         case pushNotificationStatus
         case privacyPolicy
@@ -6428,6 +6430,21 @@ private struct LegendAccountView: View {
                         }
                     }
 
+                    if currentSession.capabilities.contains("founder") {
+                        LegendProfileSettingsSection(title: "Founder command") {
+                            Button {
+                                profileSettingsPresentation = .founderCommandCenter
+                            } label: {
+                                LegendProfileSettingsRow(
+                                    title: "Founder command center",
+                                    detail: "Grant member roles and prioritize eligible creator content.",
+                                    systemImage: "crown.fill",
+                                    showsChevron: true)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
                     if currentSession.capabilities.contains("scripture-management") {
                         LegendProfileSettingsSection(title: "Daily scripture") {
                             Button {
@@ -6437,6 +6454,21 @@ private struct LegendAccountView: View {
                                     title: "Manage Daily Scripture",
                                     detail: "Schedule and review the scripture shown across Legend.",
                                     systemImage: "book.closed",
+                                    showsChevron: true)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    if currentSession.capabilities.contains("community-management") {
+                        LegendProfileSettingsSection(title: "Community") {
+                            Button {
+                                profileSettingsPresentation = .communitySafety
+                            } label: {
+                                LegendProfileSettingsRow(
+                                    title: "Community review",
+                                    detail: "Review open member safety reports",
+                                    systemImage: "shield.lefthalf.filled",
                                     showsChevron: true)
                             }
                             .buttonStyle(.plain)
@@ -6667,6 +6699,8 @@ private struct LegendAccountView: View {
                         insights: snapshot.creatorInsights,
                         profileMetrics: snapshot.currentProfileMetrics)
                 }
+            case .founderCommandCenter:
+                LegendFounderCommandCenter(messages: messages)
             case .followRequests:
                 LegendFollowRequestsSheet(social: social)
             case .translationLanguage:
@@ -6682,6 +6716,10 @@ private struct LegendAccountView: View {
                 LegendDailyScriptureManagementView(
                     store: bootstrap.stores.dailyScriptureManagement,
                     messages: messages,
+                    isFounder: currentSession.capabilities.contains("founder"))
+            case .communitySafety:
+                LegendCommunitySafetyReview(
+                    store: coordinator.makeCommunitySafetyStore(),
                     isFounder: currentSession.capabilities.contains("founder"))
             case .accountAccess:
                 LegendAccountAccessSheet(account: account)
@@ -7277,6 +7315,395 @@ private struct LegendTranslationLanguagePicker: View {
     }
 }
 
+struct LegendCommunitySafetyReview: View {
+    @StateObject private var store: MobileCommunitySafetyStore
+    let isFounder: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    init(store: MobileCommunitySafetyStore, isFounder: Bool) {
+        _store = StateObject(wrappedValue: store)
+        self.isFounder = isFounder
+    }
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Community",
+                        title: "Safety review",
+                        detail: "Open reports requiring a recorded decision.",
+                        dismiss: { dismiss() })
+
+                    content
+                }
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .tint(LegendNextColor.gold)
+        .legendNextSheetChrome(detents: [.large])
+        .task { await store.load() }
+        .alert(
+            store.actionFailure?.title ?? "Community review unavailable",
+            isPresented: Binding(
+                get: { store.actionFailure != nil },
+                set: { if !$0 { store.dismissActionFailure() } })
+        ) {
+            Button("OK", role: .cancel) { store.dismissActionFailure() }
+        } message: {
+            Text(store.actionFailure?.message ?? "The report could not be updated.")
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch store.state {
+        case .idle, .loading:
+            ProgressView("Loading community reports")
+                .frame(maxWidth: .infinity, minHeight: 180)
+        case .unavailable(let failure):
+            LegendNextErrorState(
+                title: failure.title,
+                message: failure.message,
+                retryTitle: "Retry",
+                retry: { Task { await store.load() } })
+        case .loaded(let reports):
+            if reports.isEmpty {
+                LegendNextEmptyState(
+                    title: "All caught up",
+                    message: "There are no open community reports.",
+                    systemImage: "checkmark.shield")
+            } else {
+                LazyVStack(spacing: LegendNextSpacing.sm) {
+                    ForEach(reports) { report in
+                        reportRow(report)
+                    }
+                }
+            }
+        }
+    }
+
+    private func reportRow(_ report: MobileCommunitySafetyReport) -> some View {
+        let isResolving = store.isResolvingReportID == report.id
+        return VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .foregroundStyle(LegendNextColor.gold)
+                    .frame(width: 34, height: 34)
+                    .background(LegendNextColor.gold.opacity(0.12), in: Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(report.category)
+                        .font(LegendNextTypography.section)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                    Text(report.targetKind)
+                        .font(LegendNextTypography.caption)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                }
+
+                Spacer(minLength: 0)
+
+                Menu {
+                    Button(MobileCommunitySafetyResolution.dismissed.title) {
+                        Task { _ = await store.resolve(report, as: .dismissed) }
+                    }
+                    Button(MobileCommunitySafetyResolution.needsInvestigation.title) {
+                        Task { _ = await store.resolve(report, as: .needsInvestigation) }
+                    }
+                    if isFounder, report.targetKind == "SocialPost" {
+                        Button(
+                            MobileCommunitySafetyResolution.actioned.title,
+                            role: .destructive
+                        ) {
+                            Task { _ = await store.resolve(report, as: .actioned) }
+                        }
+                    }
+                } label: {
+                    if isResolving {
+                        ProgressView()
+                            .tint(LegendNextColor.gold)
+                            .frame(width: 34, height: 34)
+                    } else {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.gold)
+                            .frame(width: 34, height: 34)
+                    }
+                }
+                .disabled(isResolving)
+            }
+
+            if let detail = report.detail?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !detail.isEmpty {
+                Text(detail)
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text(report.createdUTC.formatted(date: .abbreviated, time: .shortened))
+                .font(LegendNextTypography.caption)
+                .foregroundStyle(LegendNextColor.textSecondary.opacity(0.8))
+        }
+        .padding(LegendNextSpacing.sm)
+        .background(LegendNextColor.surface, in: RoundedRectangle(
+            cornerRadius: LegendNextRadius.compact,
+            style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: LegendNextRadius.compact, style: .continuous)
+                .strokeBorder(LegendNextColor.gold.opacity(0.30), lineWidth: 1)
+        }
+    }
+}
+
+/// One founder-only directory for the two community-wide authorities. Both
+/// switches write through the existing typed controlled-resource endpoint and
+/// its durable server grant—not a local role flag.
+struct LegendFounderCommandCenter: View {
+    @ObservedObject var messages: MessagingStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedResource: ControlledResourceType?
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Founder command",
+                        title: "Member authority",
+                        detail: "Choose a capability, then grant or revoke it for a specific active Legend member.",
+                        dismiss: { dismiss() })
+
+                    capabilityRow(
+                        .communityManagement,
+                        icon: "person.badge.shield.checkmark",
+                        detail: "Review community reports. Content removal remains Founder-only.")
+
+                    capabilityRow(
+                        .socialContentPriority,
+                        icon: "sparkles.tv.fill",
+                        detail: "Prioritize eligible Posts and Hacs above the standard feed ranking.")
+                }
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .tint(LegendNextColor.gold)
+        .legendNextSheetChrome(detents: [.medium, .large])
+        .sheet(item: $selectedResource) { resourceType in
+            LegendControlledResourceAccessManager(
+                messages: messages,
+                resourceType: resourceType)
+        }
+    }
+
+    private func capabilityRow(
+        _ resourceType: ControlledResourceType,
+        icon: String,
+        detail: String
+    ) -> some View {
+        Button {
+            selectedResource = resourceType
+        } label: {
+            HStack(spacing: LegendNextSpacing.sm) {
+                Image(systemName: icon)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.gold)
+                    .frame(width: 38, height: 38)
+                    .background(LegendNextColor.gold.opacity(0.12), in: Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(resourceType.displayName)
+                        .font(LegendNextTypography.section)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                    Text(detail)
+                        .font(LegendNextTypography.caption)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(LegendNextColor.gold)
+            }
+            .padding(LegendNextSpacing.sm)
+            .background(LegendNextColor.surface, in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.compact,
+                style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: LegendNextRadius.compact, style: .continuous)
+                    .strokeBorder(LegendNextColor.gold.opacity(0.35), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Compact founder controls for the profile currently being viewed. It uses the
+/// same member identity and grant API as the command-center directory, so the
+/// member state cannot drift between the two presentations.
+struct LegendFounderMemberControls: View {
+    private enum AccessState: Equatable {
+        case loading
+        case granted
+        case notGranted
+        case unavailable
+    }
+
+    let profile: MobileSocialAuthor
+    @ObservedObject var messages: MessagingStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var communityManagement: AccessState = .loading
+    @State private var contentPriority: AccessState = .loading
+    @State private var updatingResource: ControlledResourceType?
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Founder controls",
+                        title: profile.displayName,
+                        detail: "Manage only the authorities you intend to delegate.",
+                        dismiss: { dismiss() })
+
+                    authorityRow(
+                        .communityManagement,
+                        title: "Community Manager",
+                        detail: "Can triage reports. You retain content-removal authority.",
+                        state: communityManagement,
+                        icon: "person.badge.shield.checkmark")
+
+                    authorityRow(
+                        .socialContentPriority,
+                        title: "Featured Creator",
+                        detail: "Their eligible Posts and Hacs lead the normal For You ranking.",
+                        state: contentPriority,
+                        icon: "sparkles.tv.fill")
+                }
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .tint(LegendNextColor.gold)
+        .legendNextSheetChrome(detents: [.medium, .large])
+        .task { await loadAccess() }
+    }
+
+    private func authorityRow(
+        _ resourceType: ControlledResourceType,
+        title: String,
+        detail: String,
+        state: AccessState,
+        icon: String
+    ) -> some View {
+        let isUpdating = updatingResource == resourceType
+        let isGranted = state == .granted
+        return HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+            Image(systemName: icon)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(LegendNextColor.gold)
+                .frame(width: 38, height: 38)
+                .background(LegendNextColor.gold.opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(LegendNextTypography.section)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                Text(detail)
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            switch state {
+            case .loading:
+                ProgressView()
+                    .tint(LegendNextColor.gold)
+                    .frame(width: 68, height: 34)
+            case .unavailable:
+                Text("Unavailable")
+                    .font(LegendNextTypography.caption.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.textSecondary)
+            case .granted, .notGranted:
+                Button(isUpdating ? "Saving…" : (isGranted ? "Revoke" : "Grant")) {
+                    Task { await update(resourceType, isGranted: !isGranted) }
+                }
+                .buttonStyle(LegendNextButtonStyle(
+                    kind: isGranted ? .secondary : .primary,
+                    isFullWidth: false,
+                    controlHeight: 34))
+                .disabled(isUpdating)
+            }
+        }
+        .padding(LegendNextSpacing.sm)
+        .background(LegendNextColor.surface, in: RoundedRectangle(
+            cornerRadius: LegendNextRadius.compact,
+            style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: LegendNextRadius.compact, style: .continuous)
+                .strokeBorder(LegendNextColor.gold.opacity(0.35), lineWidth: 1)
+        }
+    }
+
+    private var recipient: MessagingRecipient {
+        MessagingRecipient(
+            identity: profile.identity,
+            profileID: profile.profileID,
+            displayName: profile.displayName,
+            email: profile.publicEmail,
+            roleLabel: profile.roleLabel,
+            relationshipLabel: nil,
+            existingConversationID: nil,
+            avatar: profile.avatar,
+            isVerified: profile.isVerified)
+    }
+
+    private func loadAccess() async {
+        async let community = state(for: .communityManagement)
+        async let priority = state(for: .socialContentPriority)
+        communityManagement = await community
+        contentPriority = await priority
+    }
+
+    private func state(for resourceType: ControlledResourceType) async -> AccessState {
+        guard let members = await messages.controlledResourceRecipients(
+            resourceType,
+            search: profile.displayName),
+              let member = members.first(where: { $0.identity == profile.identity }) else {
+            return .unavailable
+        }
+        return member.resourceAccessState == "Granted" ? .granted : .notGranted
+    }
+
+    private func update(_ resourceType: ControlledResourceType, isGranted: Bool) async {
+        updatingResource = resourceType
+        defer { updatingResource = nil }
+        guard await messages.setControlledResourceGrant(
+            resourceType,
+            recipient: recipient,
+            isGranted: isGranted) else {
+            return
+        }
+        if resourceType == .communityManagement {
+            communityManagement = isGranted ? .granted : .notGranted
+        } else if resourceType == .socialContentPriority {
+            contentPriority = isGranted ? .granted : .notGranted
+        }
+    }
+}
+
 struct LegendControlledResourceAccessManager: View {
     @ObservedObject var messages: MessagingStore
     let resourceType: ControlledResourceType
@@ -7630,6 +8057,8 @@ struct LegendPublicProfileView: View {
     let currentIdentity: LogicalParticipantIdentity
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.legendMessagingStore) private var messaging
+    @EnvironmentObject private var session: MobileSessionCoordinator
     @ObservedObject private var social: MobileSocialStore
     @State private var metricsState: MobileDataLoadState<MobileSocialProfileMetrics> = .idle
     @State private var postsState: MobileDataLoadState<[MobileSocialPost]> = .idle
@@ -7644,6 +8073,7 @@ struct LegendPublicProfileView: View {
     @State private var verificationReview: VerificationReview?
     @State private var isResolvingVerification = false
     @State private var verificationResolutionNote = ""
+    @State private var isPresentingFounderControls = false
     private let journeyConnectionID: UUID?
     private let disconnectConnection: ((UUID) async -> Bool)?
     private let journeyClientProfileID: UUID?
@@ -7727,6 +8157,8 @@ struct LegendPublicProfileView: View {
 
                 journeySafetySection
 
+                founderMemberControls
+
                 verificationDecisionSection
 
                 aboutSection
@@ -7762,6 +8194,13 @@ struct LegendPublicProfileView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes the Journey Circles connection and prevents client-to-client messaging with this profile.")
+        }
+        .sheet(isPresented: $isPresentingFounderControls) {
+            if let messaging {
+                LegendFounderMemberControls(
+                    profile: displayedProfile,
+                    messages: messaging)
+            }
         }
         .onAppear {
             Task { await refresh() }
@@ -7874,6 +8313,28 @@ struct LegendPublicProfileView: View {
             journeyClientProfileID != nil &&
             blockJourneyProfile != nil &&
             reportJourneyProfile != nil
+    }
+
+    private var canManageFounderControls: Bool {
+        guard case .authenticated(let currentSession) = session.state else {
+            return false
+        }
+        return currentSession.capabilities.contains("founder") &&
+            profile.identity != currentIdentity
+    }
+
+    @ViewBuilder
+    private var founderMemberControls: some View {
+        if canManageFounderControls, messaging != nil {
+            Button {
+                isPresentingFounderControls = true
+            } label: {
+                Label("Founder controls", systemImage: "crown.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(LegendNextButtonStyle(kind: .secondary, isFullWidth: true))
+            .accessibilityHint("Manage (displayedProfile.displayName)'s Community Manager and Featured Creator access")
+        }
     }
 
     @ViewBuilder

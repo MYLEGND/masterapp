@@ -1437,6 +1437,113 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task FeaturedCreatorGrant_LeadsEligiblePostsAndHacsWithoutBypassingPrivateAudience()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var viewer = Client("featured-viewer", "Featured", "Viewer");
+        var followed = Client("featured-followed", "Followed", "Creator");
+        var featured = Client("featured-creator", "Featured", "Creator");
+        var privateFeatured = Client("featured-private", "Private", "Creator");
+        db.ClientProfiles.AddRange(viewer, followed, featured, privateFeatured);
+        db.SocialFollows.Add(new SocialFollow
+        {
+            Id = Guid.NewGuid(),
+            FollowerUserId = viewer.ClientUserId,
+            FollowerParticipantType = MessagingParticipantTypes.Client,
+            FollowedUserId = followed.ClientUserId,
+            FollowedParticipantType = MessagingParticipantTypes.Client,
+            Status = SocialFollowStatuses.Accepted,
+            CreatedUtc = DateTime.UtcNow
+        });
+        db.ControlledResourceGrants.AddRange(
+            new ControlledResourceGrant
+            {
+                UserId = featured.ClientUserId,
+                ParticipantType = MessagingParticipantTypes.Client,
+                ResourceType = ControlledResourceTypes.SocialContentPriority,
+                IsActive = true,
+                GrantedByUserId = "founder"
+            },
+            new ControlledResourceGrant
+            {
+                UserId = privateFeatured.ClientUserId,
+                ParticipantType = MessagingParticipantTypes.Client,
+                ResourceType = ControlledResourceTypes.SocialContentPriority,
+                IsActive = true,
+                GrantedByUserId = "founder"
+            });
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            ProfileId = privateFeatured.Id,
+            ParticipantType = MessagingParticipantTypes.Client,
+            IsPrivate = true
+        });
+
+        var now = DateTime.UtcNow;
+        var followedPost = TextPost(followed, "Followed post", now);
+        var featuredPost = TextPost(featured, "Featured post", now.AddDays(-2));
+        var privatePost = TextPost(privateFeatured, "Private featured post", now);
+        var followedHac = VideoHac(followed, "Followed Hac", now);
+        var featuredHac = VideoHac(featured, "Featured Hac", now.AddDays(-2));
+        var privateHac = VideoHac(privateFeatured, "Private featured Hac", now);
+        db.SocialPosts.AddRange(
+            followedPost,
+            featuredPost,
+            privatePost,
+            followedHac,
+            featuredHac,
+            privateHac);
+        await db.SaveChangesAsync();
+
+        var feed = await CreateService(db).GetFeedAsync(ClientActor(viewer));
+
+        Assert.True(feed.Succeeded);
+        Assert.Equal(featuredPost.Id, feed.Value!.Posts.First().Id);
+        Assert.Equal(featuredHac.Id, feed.Value.Hacs.First().Id);
+        Assert.DoesNotContain(feed.Value.Posts, post => post.Id == privatePost.Id);
+        Assert.DoesNotContain(feed.Value.Hacs, post => post.Id == privateHac.Id);
+
+        static SocialPost TextPost(ClientProfile author, string body, DateTime postedUtc) => new()
+        {
+            Id = Guid.NewGuid(),
+            AuthorUserId = author.ClientUserId,
+            AuthorParticipantType = MessagingParticipantTypes.Client,
+            AuthorProfileId = author.Id,
+            ContentType = SocialPostContentTypes.Post,
+            Audience = SocialPostAudiences.AuthorizedNetwork,
+            Body = body,
+            PostedUtc = postedUtc
+        };
+
+        SocialPost VideoHac(ClientProfile author, string body, DateTime postedUtc)
+        {
+            var post = new SocialPost
+            {
+                Id = Guid.NewGuid(),
+                AuthorUserId = author.ClientUserId,
+                AuthorParticipantType = MessagingParticipantTypes.Client,
+                AuthorProfileId = author.Id,
+                ContentType = SocialPostContentTypes.Reel,
+                Audience = SocialPostAudiences.AuthorizedNetwork,
+                Body = body,
+                PostedUtc = postedUtc
+            };
+            db.SocialPostMediaAssets.Add(new SocialPostMediaAsset
+            {
+                Id = Guid.NewGuid(),
+                SocialPostId = post.Id,
+                DisplayOrder = 0,
+                MediaKind = "Video",
+                MimeType = "video/mp4",
+                FileSizeBytes = 1,
+                StorageKey = $"test/{post.Id:N}.mp4",
+                ProcessingState = "Ready"
+            });
+            return post;
+        }
+    }
+
+    [Fact]
     public async Task StoryRail_SurvivesABurstOfFeedPostsThatWouldFillACombinedPage()
     {
         await using var db = ControllerTestHelpers.BuildDb();

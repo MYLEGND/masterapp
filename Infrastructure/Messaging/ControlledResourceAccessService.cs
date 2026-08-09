@@ -54,14 +54,21 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
         if (!ControlledResourceTypes.IsSupported(resourceType))
             return new ControlledResourceAccess(resourceType, ControlledResourceAccessStates.NotGranted, false);
 
-        var canManage = resourceType == ControlledResourceTypes.ScriptureManagement
+        var requiresCanonicalFounderAuthority = resourceType is
+            ControlledResourceTypes.ScriptureManagement or
+            ControlledResourceTypes.CommunityManagement or
+            ControlledResourceTypes.SocialContentPriority;
+        var canManage = requiresCanonicalFounderAuthority
             ? await IsCanonicalFounderManagerAsync(actor, cancellationToken)
             : await IsFounderManagerAsync(actor, cancellationToken);
         var actorUserIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
         var granted = resourceType switch
         {
             ControlledResourceTypes.VerificationBadge => await IsVerificationGrantedAsync(actor, cancellationToken),
-            ControlledResourceTypes.LanguageTranslation or ControlledResourceTypes.ScriptureManagement =>
+            ControlledResourceTypes.LanguageTranslation or
+            ControlledResourceTypes.ScriptureManagement or
+            ControlledResourceTypes.CommunityManagement or
+            ControlledResourceTypes.SocialContentPriority =>
                 canManage || await HasActiveGrantAsync(actor, actorUserIds, resourceType, cancellationToken),
             _ => false
         };
@@ -105,9 +112,6 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
         CancellationToken cancellationToken = default)
     {
         actor = Normalize(actor);
-        if (actor.ParticipantType != MessagingParticipantTypes.Agent)
-            return Task.FromResult(false);
-
         var configuredFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID")
             ?? Environment.GetEnvironmentVariable("FounderOid")
             ?? _configuration["Founder:Oid"];

@@ -7,7 +7,7 @@ import UIKit
 
 /// Supplies the already-existing account-scoped MessagingStore to every
 /// share surface without creating another messaging object or data authority.
-private struct LegendMessagingStoreEnvironmentKey: EnvironmentKey {
+struct LegendMessagingStoreEnvironmentKey: EnvironmentKey {
     static let defaultValue: MessagingStore? = nil
 }
 

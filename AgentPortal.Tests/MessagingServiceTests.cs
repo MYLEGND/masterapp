@@ -919,6 +919,78 @@ public sealed class MessagingServiceTests
         Assert.False((await db.ControlledResourceGrants.SingleAsync()).IsActive);
     }
 
+    [Theory]
+    [InlineData(ControlledResourceTypes.CommunityManagement)]
+    [InlineData(ControlledResourceTypes.SocialContentPriority)]
+    public async Task FounderGovernanceResources_RequireCanonicalFounderAndSupportRevocation(string resourceType)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founderId = Guid.NewGuid().ToString();
+        var memberId = Guid.NewGuid().ToString();
+        db.AgentProfiles.AddRange(
+            new AgentProfile
+            {
+                AgentUserId = founderId,
+                FullName = "Founder",
+                IsActive = true
+            },
+            new AgentProfile
+            {
+                AgentUserId = memberId,
+                FullName = "Member",
+                IsActive = true
+            });
+        await db.SaveChangesAsync();
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new[]
+            {
+                new KeyValuePair<string, string?>("Founder:Oid", founderId)
+            })
+            .Build();
+        var service = CreateService(
+            db,
+            configuredFounderOid: founderId,
+            configuration: configuration);
+        var founder = new MessagingActor(founderId, MessagingParticipantTypes.Agent);
+        var member = new MessagingActor(memberId, MessagingParticipantTypes.Agent);
+
+        var unauthorized = await service.SetControlledResourceGrantAsync(
+            new SetControlledResourceGrantCommand(
+                member,
+                resourceType,
+                memberId,
+                MessagingParticipantTypes.Agent,
+                IsGranted: true));
+        Assert.False(unauthorized.Succeeded);
+
+        var grant = await service.SetControlledResourceGrantAsync(
+            new SetControlledResourceGrantCommand(
+                founder,
+                resourceType,
+                memberId,
+                MessagingParticipantTypes.Agent,
+                IsGranted: true));
+        Assert.True(grant.Succeeded, grant.ErrorMessage);
+
+        var access = new ControlledResourceAccessService(db, configuration);
+        Assert.Equal(
+            ControlledResourceAccessStates.Granted,
+            (await access.GetAccessAsync(member, resourceType)).State);
+
+        var revoke = await service.SetControlledResourceGrantAsync(
+            new SetControlledResourceGrantCommand(
+                founder,
+                resourceType,
+                memberId,
+                MessagingParticipantTypes.Agent,
+                IsGranted: false));
+        Assert.True(revoke.Succeeded, revoke.ErrorMessage);
+        Assert.Equal(
+            ControlledResourceAccessStates.NotGranted,
+            (await access.GetAccessAsync(member, resourceType)).State);
+    }
+
     [Fact]
     public async Task ActivityNotifications_ResolveBothClientIdentityForms()
     {

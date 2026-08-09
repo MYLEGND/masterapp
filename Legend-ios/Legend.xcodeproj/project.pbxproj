@@ -49,6 +49,7 @@
 		AB65D31B53580AC6C46A9AFB /* MobileConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55FB2460CFBD95299E4F7590 /* MobileConfiguration.swift */; };
 		B08DF9F51CABC3BC27A79143 /* MessagingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D35703BC894AC8E986DFF8 /* MessagingModels.swift */; };
 		B1DAD101B1DAD101B1DAD101 /* DailyScriptureManagementStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DAD001B1DAD001B1DAD001 /* DailyScriptureManagementStore.swift */; };
+		F0C0A101F0C0A101F0C0A101 /* MobileCommunitySafetyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C0A001F0C0A001F0C0A001 /* MobileCommunitySafetyStore.swift */; };
 		B1DAD102B1DAD102B1DAD102 /* DailyScriptureManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DAD002B1DAD002B1DAD002 /* DailyScriptureManagementView.swift */; };
 		B1DAD103B1DAD103B1DAD103 /* DailyScripturePassageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DAD003B1DAD003B1DAD003 /* DailyScripturePassageView.swift */; };
 		B389C8E0455AC63F91D431A2 /* LegendNextStates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 538A9E85B3309A6AEE9BC228 /* LegendNextStates.swift */; };
@@ -164,6 +165,7 @@
 		B1DAD001B1DAD001B1DAD001 /* DailyScriptureManagementStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyScriptureManagementStore.swift; sourceTree = "<group>"; };
 		B1DAD002B1DAD002B1DAD002 /* DailyScriptureManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyScriptureManagementView.swift; sourceTree = "<group>"; };
 		B1DAD003B1DAD003B1DAD003 /* DailyScripturePassageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyScripturePassageView.swift; sourceTree = "<group>"; };
+		F0C0A001F0C0A001F0C0A001 /* MobileCommunitySafetyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCommunitySafetyStore.swift; sourceTree = "<group>"; };
 		BFB20FC38AF33536CB3A2564 /* LegendOpenMusicPreviewPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendOpenMusicPreviewPlayer.swift; sourceTree = "<group>"; };
 		CABC5E1EA20C8BA90033A2AC /* LegendNotificationService.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = LegendNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		CB26E12CD661DE7C441F7218 /* LogicalParticipantIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicalParticipantIdentity.swift; sourceTree = "<group>"; };
@@ -354,6 +356,7 @@
 				B1DAD001B1DAD001B1DAD001 /* DailyScriptureManagementStore.swift */,
 				B1DAD002B1DAD002B1DAD002 /* DailyScriptureManagementView.swift */,
 				B1DAD003B1DAD003B1DAD003 /* DailyScripturePassageView.swift */,
+				F0C0A001F0C0A001F0C0A001 /* MobileCommunitySafetyStore.swift */,
 			);
 			path = Home;
 			sourceTree = "<group>";
@@ -652,6 +655,7 @@
 				B1DAD101B1DAD101B1DAD101 /* DailyScriptureManagementStore.swift in Sources */,
 				B1DAD102B1DAD102B1DAD102 /* DailyScriptureManagementView.swift in Sources */,
 				B1DAD103B1DAD103B1DAD103 /* DailyScripturePassageView.swift in Sources */,
+				F0C0A101F0C0A101F0C0A101 /* MobileCommunitySafetyStore.swift in Sources */,
 				9A370F97BA5B167EC3385274 /* MobileNotificationStore.swift in Sources */,
 				A6D192A9E5A5D1D51224F3F5 /* MobileSessionCoordinator.swift in Sources */,
 				ED6F8CA9B2F56B434459B527 /* MobileSocialModels.swift in Sources */,
