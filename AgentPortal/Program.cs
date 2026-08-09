@@ -100,6 +100,7 @@ builder.Services.AddScoped<IMobileActorResolver, MobileActorResolver>();
 builder.Services.AddScoped<IMobileAccountService, MobileAccountService>();
 builder.Services.AddScoped<IAccountLifecycleService, AccountLifecycleService>();
 builder.Services.AddScoped<IAccountClosureService, AccountClosureService>();
+builder.Services.AddScoped<IFounderAccountRemovalService, FounderAccountRemovalService>();
 builder.Services.AddScoped<
     IMobileFinancialOperatingSystemProjectionService,
     MobileFinancialOperatingSystemProjectionService>();

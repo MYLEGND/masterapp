@@ -7535,6 +7535,7 @@ struct LegendFounderManagementModel: View {
     private let resolveVerification: ((VerificationReview, Bool, String?) async -> Bool)?
     @Environment(\.dismiss) private var dismiss
     @State private var selectedResource: ControlledResourceType?
+    @State private var isPresentingAccountRemoval = false
 
     init(
         messages: MessagingStore,
@@ -7570,6 +7571,13 @@ struct LegendFounderManagementModel: View {
                         ForEach(LegendFounderAuthority.allCases) { authority in
                             capabilityRow(authority)
                         }
+
+                        Button {
+                            isPresentingAccountRemoval = true
+                        } label: {
+                            LegendFounderAccountRemovalRow()
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(LegendNextSpacing.sm)
@@ -7584,6 +7592,9 @@ struct LegendFounderManagementModel: View {
             LegendControlledResourceAccessManager(
                 messages: messages,
                 resourceType: resourceType)
+        }
+        .sheet(isPresented: $isPresentingAccountRemoval) {
+            LegendFounderAccountRemovalManager(messages: messages)
         }
     }
 
@@ -7655,6 +7666,12 @@ private struct LegendFounderMemberAuthorityList: View {
 
             ForEach(LegendFounderAuthority.allCases) { authority in
                 authorityRow(authority)
+            }
+
+            if let account = managedAccount {
+                LegendFounderAccountRemovalAction(
+                    account: account,
+                    messages: messages)
             }
         }
         .task { await loadAccess() }
@@ -7797,6 +7814,19 @@ private struct LegendFounderMemberAuthorityList: View {
             existingConversationID: nil,
             avatar: profile.avatar,
             isVerified: profile.isVerified)
+    }
+
+    private var managedAccount: FounderManagedAccount? {
+        guard let profileID = UUID(uuidString: profile.profileID) else { return nil }
+        return FounderManagedAccount(
+            profileID: profileID,
+            userID: profile.identity.userID,
+            participantType: profile.identity.participantType,
+            displayName: profile.displayName,
+            email: profile.publicEmail,
+            lifecycleState: "Active",
+            hasCancelableSubscription: false,
+            isActive: true)
     }
 
     private func loadAccess() async {
@@ -7997,6 +8027,316 @@ struct LegendControlledResourceAccessManager: View {
             return
         }
         await reloadDirectory()
+    }
+}
+
+/// Account removal is intentionally part of Founder Management, but its server
+/// authority is separate from public member discovery. This lets the Founder
+/// locate unsubscribed or inactive accounts without widening anyone else's
+/// social-search visibility.
+private struct LegendFounderAccountRemovalManager: View {
+    @ObservedObject var messages: MessagingStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var accounts: MobileDataLoadState<[FounderManagedAccount]> = .idle
+    @State private var search = ""
+    @State private var selectedAccount: FounderManagedAccount?
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Founder management",
+                        title: "Account removal",
+                        detail: "Find any Legend account and remove access through the protected closure workflow.",
+                        dismiss: { dismiss() })
+
+                    TextField("Search name, email, or account ID", text: $search)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .padding(.horizontal, LegendNextSpacing.sm)
+                        .frame(minHeight: 44)
+                        .background(LegendNextColor.brandBlueSurface, in: RoundedRectangle(
+                            cornerRadius: LegendNextRadius.control,
+                            style: .continuous))
+                        .overlay {
+                            RoundedRectangle(
+                                cornerRadius: LegendNextRadius.control,
+                                style: .continuous)
+                                .strokeBorder(LegendNextColor.navy.opacity(0.18), lineWidth: 1)
+                        }
+
+                    content
+                }
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .tint(LegendNextColor.gold)
+        .legendNextSheetChrome(detents: [.large])
+        .task { await reload() }
+        .onChange(of: search) { _, _ in
+            Task { await reload() }
+        }
+        .sheet(item: $selectedAccount) { account in
+            LegendFounderAccountRemovalConfirmation(
+                account: account,
+                messages: messages,
+                completed: {
+                    selectedAccount = nil
+                    Task { await reload() }
+                })
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch accounts {
+        case .idle, .loading:
+            ProgressView("Loading accounts")
+                .frame(maxWidth: .infinity, minHeight: 144)
+
+        case .unavailable(let failure):
+            LegendNextErrorState(
+                title: failure.title,
+                message: failure.message,
+                retryTitle: "Retry",
+                retry: { Task { await reload() } })
+
+        case .loaded(let directory):
+            if directory.isEmpty {
+                LegendNextEmptyState(
+                    title: "No accounts found",
+                    message: "Search by name, email address, or account ID.",
+                    systemImage: "person.crop.circle.badge.questionmark")
+            } else {
+                LazyVStack(spacing: LegendNextSpacing.xs) {
+                    ForEach(directory) { account in
+                        Button {
+                            selectedAccount = account
+                        } label: {
+                            accountRow(account)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func accountRow(_ account: FounderManagedAccount) -> some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            Image(systemName: account.participantType == .agent ? "briefcase.fill" : "person.fill")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(LegendNextColor.gold)
+                .frame(width: 38, height: 38)
+                .background(LegendNextColor.gold.opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(account.displayName)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .lineLimit(1)
+                Text(account.email ?? account.participantType.rawValue)
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .lineLimit(1)
+                Text(account.lifecycleState == "Closed" ? "Removed" : "Account active")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(account.lifecycleState == "Closed"
+                        ? LegendNextColor.textSecondary
+                        : LegendNextColor.gold)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "trash")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.red)
+        }
+        .padding(LegendNextSpacing.sm)
+        .background(LegendNextColor.surface, in: RoundedRectangle(
+            cornerRadius: LegendNextRadius.compact,
+            style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: LegendNextRadius.compact, style: .continuous)
+                .strokeBorder(LegendNextColor.gold.opacity(0.30), lineWidth: 1)
+        }
+    }
+
+    private func reload() async {
+        accounts = .loading
+        guard let directory = await messages.founderAccounts(
+            search: search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : search) else {
+            accounts = .unavailable(UserFacingFailure(
+                title: "Account directory unavailable",
+                message: "Legend could not load the Founder account directory. Try again.",
+                correlationID: nil))
+            return
+        }
+        accounts = .loaded(directory)
+    }
+}
+
+private struct LegendFounderAccountRemovalAction: View {
+    let account: FounderManagedAccount
+    @ObservedObject var messages: MessagingStore
+    @State private var isPresentingConfirmation = false
+
+    var body: some View {
+        Button {
+            isPresentingConfirmation = true
+        } label: {
+            LegendFounderAccountRemovalRow()
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $isPresentingConfirmation) {
+            LegendFounderAccountRemovalConfirmation(
+                account: account,
+                messages: messages,
+                completed: { isPresentingConfirmation = false })
+        }
+    }
+}
+
+private struct LegendFounderAccountRemovalRow: View {
+    var body: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            Image(systemName: "trash.fill")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.red)
+                .frame(width: 38, height: 38)
+                .background(.red.opacity(0.10), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Remove account")
+                    .font(LegendNextTypography.section)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                Text("Cancel access and permanently remove this Legend account.")
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.red)
+        }
+        .padding(LegendNextSpacing.sm)
+        .background(LegendNextColor.surface, in: RoundedRectangle(
+            cornerRadius: LegendNextRadius.compact,
+            style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: LegendNextRadius.compact, style: .continuous)
+                .strokeBorder(.red.opacity(0.45), lineWidth: 1)
+        }
+    }
+}
+
+private struct LegendFounderAccountRemovalConfirmation: View {
+    let account: FounderManagedAccount
+    @ObservedObject var messages: MessagingStore
+    let completed: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmation = ""
+    @State private var outcome: FounderAccountRemovalOutcome?
+    @State private var failure: UserFacingFailure?
+
+    private var isConfirmed: Bool {
+        confirmation.trimmingCharacters(in: .whitespacesAndNewlines) == "DELETE"
+    }
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(
+                        eyebrow: "Founder action",
+                        title: "Remove \(account.displayName)",
+                        detail: "Any active subscription is cancelled before this account is removed.",
+                        dismiss: { dismiss() })
+
+                    LegendNextSurface(style: .navy) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                            Label("Permanent Legend removal", systemImage: "exclamationmark.triangle.fill")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(LegendNextColor.gold)
+                            Text("This closes sign-in access and removes the account's Legend content. Type DELETE to continue.")
+                                .font(LegendNextTypography.caption)
+                                .foregroundStyle(.white.opacity(0.78))
+                        }
+                    }
+
+                    TextField("Type DELETE", text: $confirmation)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .padding(.horizontal, LegendNextSpacing.sm)
+                        .frame(minHeight: 48)
+                        .background(LegendNextColor.brandBlueSurface, in: RoundedRectangle(
+                            cornerRadius: LegendNextRadius.control,
+                            style: .continuous))
+
+                    if let outcome {
+                        LegendNextSurface(style: .navy) {
+                            Text(outcome.message)
+                                .font(LegendNextTypography.caption)
+                                .foregroundStyle(.white.opacity(0.80))
+                        }
+                    }
+
+                    if let failure {
+                        LegendNextErrorState(
+                            title: failure.title,
+                            message: failure.message,
+                            retryTitle: "Try again",
+                            retry: { Task { await remove() } })
+                    }
+
+                    Button(role: .destructive) {
+                        Task { await remove() }
+                    } label: {
+                        if messages.isRemovingFounderAccount {
+                            ProgressView()
+                                .tint(.white)
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("Remove account")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(LegendNextButtonStyle(kind: .secondary))
+                    .disabled(!isConfirmed || messages.isRemovingFounderAccount)
+                }
+                .padding(LegendNextSpacing.sm)
+                .padding(.bottom, LegendNextSpacing.xl)
+            }
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+        .tint(LegendNextColor.gold)
+        .legendNextSheetChrome(detents: [.medium, .large])
+    }
+
+    private func remove() async {
+        failure = nil
+        outcome = nil
+        guard let result = await messages.removeFounderAccount(account, confirmation: confirmation) else {
+            failure = messages.sendFailure ?? UserFacingFailure(
+                title: "Account removal not completed",
+                message: "Legend could not complete this account removal. Try again.",
+                correlationID: nil)
+            return
+        }
+
+        outcome = result
+        if result.completed {
+            completed()
+            dismiss()
+        }
     }
 }
 

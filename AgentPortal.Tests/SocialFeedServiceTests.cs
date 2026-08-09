@@ -650,6 +650,39 @@ public sealed class SocialFeedServiceTests
     }
 
     [Fact]
+    public async Task AccountClosure_RemovesAnUnsubscribedClientsSocialContent()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var departing = Client("lapsed-closure", "Lapsed", "Closure");
+        db.ClientProfiles.Add(departing);
+        var post = new SocialPost
+        {
+            Id = Guid.NewGuid(),
+            AuthorUserId = departing.ClientUserId,
+            AuthorParticipantType = MessagingParticipantTypes.Client,
+            AuthorProfileId = departing.Id,
+            ContentType = SocialPostContentTypes.Post,
+            Audience = SocialPostAudiences.AuthorizedNetwork,
+            Body = "Remove this after membership ends.",
+            PostedUtc = DateTime.UtcNow
+        };
+        db.SocialPosts.Add(post);
+        await db.SaveChangesAsync();
+
+        var result = await new SocialFeedService(
+            db,
+            new UnavailableTestSocialMediaStorage(),
+            new CuratedOpenMusicCatalog(),
+            new MemoryCache(new MemoryCacheOptions()),
+            moderation: new CommunityTextModerationService(new ConfigurationBuilder().Build()))
+            .RemoveAccountContentForClosureAsync(ClientActor(departing));
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(1, result.Value!.DeletedPostCount);
+        Assert.False(await db.SocialPosts.AnyAsync(candidate => candidate.Id == post.Id));
+    }
+
+    [Fact]
     public async Task CommunityBlock_ImmediatelyExcludesTheBlockedAuthorFromTheSocialFeed()
     {
         await using var db = ControllerTestHelpers.BuildDb();

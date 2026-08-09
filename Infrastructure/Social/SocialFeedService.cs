@@ -712,11 +712,25 @@ public sealed class SocialFeedService : ISocialFeedService
                 "Your mobile identity is not available for Legend updates.");
         }
 
-        var author = AuthorKey.From(command.Actor.Identity.UserId, command.Actor.Identity.ParticipantType);
+        return await DeleteOwnedPostAsync(command.Actor, command.PostId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Removes one post after its caller has established an appropriate owner
+    /// or system-closure authority. Keeping the physical media and relational
+    /// cleanup in this method guarantees account closure never forks a weaker
+    /// deletion implementation from the member-facing delete path.
+    /// </summary>
+    private async Task<SocialOperationResult<bool>> DeleteOwnedPostAsync(
+        SocialFeedActor actor,
+        Guid postId,
+        CancellationToken cancellationToken)
+    {
+        var author = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
         var post = await _db.SocialPosts
             .Include(item => item.MediaAssets)
             .SingleOrDefaultAsync(
-            item => item.Id == command.PostId &&
+            item => item.Id == postId &&
                     item.DeletedUtc == null &&
                     item.AuthorUserId == author.UserId &&
                     item.AuthorParticipantType == author.ParticipantType,
@@ -816,7 +830,11 @@ public sealed class SocialFeedService : ISocialFeedService
         SocialFeedActor actor,
         CancellationToken cancellationToken = default)
     {
-        if (!await IsValidActorAsync(actor, cancellationToken))
+        // A Founder may close a non-subscribed account. Normal social actions
+        // remain subscription-gated, but closure must still be able to remove
+        // the account's historic content before profile redaction and identity
+        // deletion make it unreachable.
+        if (!await IsClosureSubjectAsync(actor, cancellationToken))
         {
             return SocialOperationResult<SocialAccountClosureDisposition>.Failure(
                 "social_actor_invalid",
@@ -835,7 +853,7 @@ public sealed class SocialFeedService : ISocialFeedService
 
         foreach (var postId in postIds)
         {
-            var deleted = await DeletePostAsync(new SocialPostMutationCommand(actor, postId), cancellationToken);
+            var deleted = await DeleteOwnedPostAsync(actor, postId, cancellationToken);
             if (!deleted.Succeeded)
             {
                 return SocialOperationResult<SocialAccountClosureDisposition>.Failure(
@@ -2518,6 +2536,35 @@ public sealed class SocialFeedService : ISocialFeedService
             MessagingParticipantTypes.Client => IsActiveMemberClientIdentityAsync(
                 actor.ProfileId,
                 userId,
+                cancellationToken),
+            _ => Task.FromResult(false)
+        });
+    }
+
+    /// <summary>
+    /// The lifecycle executor calls this only after it has resolved a durable
+    /// account subject. Unlike member-facing social actions it intentionally
+    /// does not require a current subscription, because cancellation can be
+    /// the reason the account is being closed.
+    /// </summary>
+    private async Task<bool> IsClosureSubjectAsync(SocialFeedActor actor, CancellationToken cancellationToken)
+    {
+        var identity = actor.Identity;
+        var userId = Normalize(identity.UserId);
+        if (actor.ProfileId == Guid.Empty || string.IsNullOrWhiteSpace(userId))
+            return false;
+
+        return await (identity.ParticipantType switch
+        {
+            MessagingParticipantTypes.Agent => _db.AgentProfiles.AsNoTracking().AnyAsync(
+                profile => profile.Id == actor.ProfileId &&
+                           profile.AgentUserId.ToLower() == userId,
+                cancellationToken),
+            MessagingParticipantTypes.Client => _db.ClientProfiles.AsNoTracking().AnyAsync(
+                profile => profile.Id == actor.ProfileId &&
+                           (profile.ClientUserId.ToLower() == userId ||
+                            (profile.ExternalIdentityObjectId != null &&
+                             profile.ExternalIdentityObjectId.ToLower() == userId)),
                 cancellationToken),
             _ => Task.FromResult(false)
         });

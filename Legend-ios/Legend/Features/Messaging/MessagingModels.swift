@@ -640,6 +640,43 @@ struct ResolveVerificationRequest: Encodable, Sendable {
     let note: String?
 }
 
+struct FounderManagedAccount: Codable, Equatable, Identifiable, Sendable {
+    let profileID: UUID
+    let userID: String
+    let participantType: ParticipantType
+    let displayName: String
+    let email: String?
+    let lifecycleState: String
+    let hasCancelableSubscription: Bool
+    let isActive: Bool
+
+    var id: UUID { profileID }
+
+    private enum CodingKeys: String, CodingKey {
+        case userID = "userId"
+        case profileID = "profileId"
+        case participantType, displayName, email, lifecycleState
+        case hasCancelableSubscription, isActive
+    }
+}
+
+struct FounderAccountRemovalRequest: Encodable, Sendable {
+    let profileID: UUID
+    let participantType: ParticipantType
+    let confirmation: String
+
+    private enum CodingKeys: String, CodingKey {
+        case profileID = "profileId"
+        case participantType, confirmation
+    }
+}
+
+struct FounderAccountRemovalOutcome: Codable, Equatable, Sendable {
+    let completed: Bool
+    let message: String
+    let lifecycleState: String
+}
+
 protocol MessagingAPI: Sendable {
     func conversations(accessToken: String) async throws -> [ConversationSummary]
     func recipients(
@@ -679,6 +716,12 @@ protocol MessagingAPI: Sendable {
         isGranted: Bool,
         accessToken: String
     ) async throws
+    func founderAccounts(search: String?, accessToken: String) async throws -> [FounderManagedAccount]
+    func removeFounderAccount(
+        account: FounderManagedAccount,
+        confirmation: String,
+        accessToken: String
+    ) async throws -> FounderAccountRemovalOutcome
     func resolveControlledResourceRequest(
         requestID: UUID,
         approve: Bool,
@@ -826,6 +869,18 @@ extension MessagingAPI {
         isGranted: Bool,
         accessToken: String
     ) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func founderAccounts(search: String?, accessToken: String) async throws -> [FounderManagedAccount] {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func removeFounderAccount(
+        account: FounderManagedAccount,
+        confirmation: String,
+        accessToken: String
+    ) async throws -> FounderAccountRemovalOutcome {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -1191,6 +1246,36 @@ struct URLSessionMessagingAPI: MessagingAPI {
                 isGranted: isGranted),
             accessToken: accessToken,
             headers: participantHeader)
+    }
+
+    func founderAccounts(search: String?, accessToken: String) async throws -> [FounderManagedAccount] {
+        var queryItems = [URLQueryItem(name: "take", value: "100")]
+        if search?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            queryItems.append(URLQueryItem(name: "search", value: search))
+        }
+        return try await client.get(
+            "/api/v1/mobile/founder/accounts",
+            accessToken: accessToken,
+            queryItems: queryItems,
+            headers: participantHeader,
+            response: [FounderManagedAccount].self)
+    }
+
+    func removeFounderAccount(
+        account: FounderManagedAccount,
+        confirmation: String,
+        accessToken: String
+    ) async throws -> FounderAccountRemovalOutcome {
+        try await client.post(
+            "/api/v1/mobile/founder/accounts/remove",
+            body: FounderAccountRemovalRequest(
+                profileID: account.profileID,
+                participantType: account.participantType,
+                confirmation: confirmation),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader,
+            response: FounderAccountRemovalOutcome.self)
     }
 
     func resolveControlledResourceRequest(

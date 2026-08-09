@@ -567,6 +567,32 @@ public sealed class SocialDiscoveryServiceTests
             result.ParticipantType == MessagingParticipantTypes.Agent);
     }
 
+    [Fact]
+    public async Task EveryActiveMemberCanSearchForTheFounderWithoutAgentOwnershipScoping()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var viewer = Member(db, "member-viewer", "Member Viewer");
+        var founderObjectId = Guid.NewGuid().ToString();
+        var founder = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = founderObjectId,
+            AgentUpn = "founder@example.test",
+            FullName = "Legend Founder",
+            IsActive = true
+        };
+        db.AgentProfiles.Add(founder);
+        await db.SaveChangesAsync();
+
+        var page = await new SocialDiscoveryService(db, founderObjectId).SearchAsync(
+            new SocialDiscoveryQuery(Actor(viewer), "Founder", 0, 20));
+
+        Assert.True(page.Succeeded);
+        Assert.Contains(page.Value!.Results, result =>
+            result.UserId == founderObjectId &&
+            result.ParticipantType == MessagingParticipantTypes.Agent);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private sealed record TestMember(ClientProfile Client, JourneyCircleProfile Journey)
