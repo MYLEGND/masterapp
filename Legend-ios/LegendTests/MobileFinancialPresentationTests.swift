@@ -244,7 +244,7 @@ final class MobileFinancialPresentationTests: XCTestCase {
                         "metrics": [
                           {
                             "key": "primary-status",
-                            "label": "Primary Status",
+                            "label": "Jordan Status",
                             "valueType": "Text",
                             "amountCents": null,
                             "numericValue": null,
@@ -253,7 +253,7 @@ final class MobileFinancialPresentationTests: XCTestCase {
                           },
                           {
                             "key": "primary-gap",
-                            "label": "Primary Gap",
+                            "label": "Jordan Gap",
                             "valueType": "Currency",
                             "amountCents": 6000000,
                             "numericValue": null,
@@ -277,7 +277,9 @@ final class MobileFinancialPresentationTests: XCTestCase {
 
         let protection = try XCTUnwrap(snapshot.section(for: .protection))
         XCTAssertEqual(protection.groups.first?.title, "If You Get Sick")
+        XCTAssertEqual(protection.groups.first?.metrics.first?.label, "Jordan Status")
         XCTAssertEqual(protection.groups.first?.metrics.first?.textValue, "Partial")
+        XCTAssertEqual(protection.groups.first?.metrics.last?.label, "Jordan Gap")
         XCTAssertEqual(protection.groups.first?.metrics.last?.amountCents, 6000000)
     }
 

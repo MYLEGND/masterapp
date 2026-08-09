@@ -11,9 +11,11 @@ public static class MobileFinancialHealthSnapshotProjection
 {
     public static MobileFinancialHealthSnapshot Create(
         LegendLivingBalanceSheetState state,
-        DateTime updatedUtc)
+        DateTime updatedUtc,
+        MobileFinancialProtectionPeople people)
     {
         ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(people);
 
         return new MobileFinancialHealthSnapshot(
             updatedUtc,
@@ -21,7 +23,7 @@ public static class MobileFinancialHealthSnapshotProjection
                 Assets(state),
                 Liabilities(state),
                 CashFlow(state),
-                Protection(state),
+                Protection(state, people),
                 TaxProfile(state)
             ]);
     }
@@ -93,16 +95,17 @@ public static class MobileFinancialHealthSnapshotProjection
             state.CashFlow.LifestyleRemaining));
 
     private static MobileFinancialHealthSection Protection(
-        LegendLivingBalanceSheetState state) => new(
+        LegendLivingBalanceSheetState state,
+        MobileFinancialProtectionPeople people) => new(
         Key: "protection",
         Title: "Protection",
         Semantic: "protection",
         Period: null,
         Groups:
         [
-            DualProtection("if-sick", "If You Get Sick", state.Protection.IfSick),
-            DualProtection("if-sued", "If You Are Sued", state.Protection.IfSued),
-            DualProtection("if-die", "If You Die", state.Protection.IfDie),
+            DualProtection("if-sick", "If You Get Sick", state.Protection.IfSick, people),
+            DualProtection("if-sued", "If You Are Sued", state.Protection.IfSued, people),
+            DualProtection("if-die", "If You Die", state.Protection.IfDie, people),
             new MobileFinancialHealthGroup(
                 "wills-trusts",
                 "Wills & Trusts",
@@ -153,17 +156,18 @@ public static class MobileFinancialHealthSnapshotProjection
     private static MobileFinancialHealthGroup DualProtection(
         string key,
         string title,
-        LegendDualProtectionItem item) => new(
+        LegendDualProtectionItem item,
+        MobileFinancialProtectionPeople people) => new(
         key,
         title,
         [
-            Text("active-person", "Active Person", item.ActivePerson),
-            Text("primary-status", "Primary Status", item.Primary.Status, item.Primary.Status),
-            Currency("primary-coverage", "Primary Coverage", item.Primary.CoverageAmount),
-            Currency("primary-gap", "Primary Gap", item.Primary.GapAmount),
-            Text("spouse-status", "Spouse Status", item.Spouse.Status, item.Spouse.Status),
-            Currency("spouse-coverage", "Spouse Coverage", item.Spouse.CoverageAmount),
-            Currency("spouse-gap", "Spouse Gap", item.Spouse.GapAmount)
+            Text("active-person", "Coverage Focus", people.ActiveName(item.ActivePerson)),
+            Text("primary-status", $"{people.PrimaryName} Status", item.Primary.Status, item.Primary.Status),
+            Currency("primary-coverage", $"{people.PrimaryName} Coverage", item.Primary.CoverageAmount),
+            Currency("primary-gap", $"{people.PrimaryName} Gap", item.Primary.GapAmount),
+            Text("spouse-status", $"{people.PartnerName} Status", item.Spouse.Status, item.Spouse.Status),
+            Currency("spouse-coverage", $"{people.PartnerName} Coverage", item.Spouse.CoverageAmount),
+            Currency("spouse-gap", $"{people.PartnerName} Gap", item.Spouse.GapAmount)
         ]);
 
     private static MobileFinancialHealthMetric Currency(
@@ -207,4 +211,34 @@ public static class MobileFinancialHealthSnapshotProjection
         amount * 100m,
         0,
         MidpointRounding.AwayFromZero));
+}
+
+/// <summary>
+/// Presentation names resolved from the existing profile records that own the
+/// financial state. They never affect the calculated balance-sheet state,
+/// metric keys, or persistence.
+/// </summary>
+public sealed record MobileFinancialProtectionPeople(
+    string? PrimaryFirstName,
+    string? PartnerFirstName)
+{
+    public string PrimaryName => DisplayName(PrimaryFirstName, "Primary");
+
+    public string PartnerName => DisplayName(PartnerFirstName, "Partner");
+
+    public string ActiveName(string? activePerson) => string.Equals(
+        activePerson?.Trim(),
+        "spouse",
+        StringComparison.OrdinalIgnoreCase)
+        ? PartnerName
+        : PrimaryName;
+
+    private static string DisplayName(string? value, string fallback)
+    {
+        var firstName = value?
+            .Trim()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+        return string.IsNullOrWhiteSpace(firstName) ? fallback : firstName;
+    }
 }

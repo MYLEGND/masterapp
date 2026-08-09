@@ -215,7 +215,7 @@ public sealed class MobileHomeFinancialServiceTests
         var result = await service.GetFinancialAsync(new MobileResolvedActor(
             new MessagingActor("agent-oid", MessagingParticipantTypes.Agent),
             Guid.NewGuid(),
-            "Agent"));
+            "Taylor Reed"));
 
         Assert.True(result.Succeeded);
         var snapshot = Assert.IsType<MobileFinancialSnapshot>(result.Snapshot);
@@ -231,6 +231,16 @@ public sealed class MobileHomeFinancialServiceTests
         Assert.Contains(
             presentation.PrioritySections,
             section => section.Key == "current-outlook");
+        var protection = Assert.Single(
+            health.Sections,
+            section => section.Key == "protection");
+        var sick = Assert.Single(protection.Groups, group => group.Key == "if-sick");
+        Assert.Equal(
+            "Taylor",
+            Assert.Single(sick.Metrics, metric => metric.Key == "active-person").TextValue);
+        Assert.Equal(
+            "Taylor Status",
+            Assert.Single(sick.Metrics, metric => metric.Key == "primary-status").Label);
     }
 
     [Fact]
@@ -244,6 +254,7 @@ public sealed class MobileHomeFinancialServiceTests
             ClientUserId = "household-owner-oid",
             FirstName = "Owner",
             LastName = "Client",
+            SignificantOtherFirstName = "Member",
             Email = "owner@example.test"
         };
         var member = new ClientProfile
@@ -314,6 +325,16 @@ public sealed class MobileHomeFinancialServiceTests
         Assert.Equal(236_100m, snapshot.Position?.LiabilitiesTotal);
         Assert.Equal("Annual", Assert.Single(health.Sections,
             section => section.Key == "cash-flow").Period);
+        var protection = Assert.Single(
+            health.Sections,
+            section => section.Key == "protection");
+        var sick = Assert.Single(protection.Groups, group => group.Key == "if-sick");
+        Assert.Equal(
+            "Owner Status",
+            Assert.Single(sick.Metrics, metric => metric.Key == "primary-status").Label);
+        Assert.Equal(
+            "Member Status",
+            Assert.Single(sick.Metrics, metric => metric.Key == "spouse-status").Label);
         households.VerifyAll();
     }
 

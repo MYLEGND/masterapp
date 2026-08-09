@@ -68,7 +68,10 @@ public sealed class MobileFinancialHealthSnapshotProjectionTests
             });
         var updatedUtc = new DateTime(2026, 8, 8, 15, 0, 0, DateTimeKind.Utc);
 
-        var snapshot = MobileFinancialHealthSnapshotProjection.Create(state, updatedUtc);
+        var snapshot = MobileFinancialHealthSnapshotProjection.Create(
+            state,
+            updatedUtc,
+            new MobileFinancialProtectionPeople("Jordan", "Riley"));
 
         Assert.Equal(updatedUtc, snapshot.UpdatedUtc);
         Assert.Equal(
@@ -110,9 +113,21 @@ public sealed class MobileFinancialHealthSnapshotProjectionTests
             Assert.Single(sickProtection.Metrics,
                 metric => metric.Key == "primary-status").TextValue);
         Assert.Equal(
-            "primary",
+            "Jordan",
             Assert.Single(sickProtection.Metrics,
                 metric => metric.Key == "active-person").TextValue);
+        Assert.Equal(
+            "Coverage Focus",
+            Assert.Single(sickProtection.Metrics,
+                metric => metric.Key == "active-person").Label);
+        Assert.Equal(
+            "Jordan Status",
+            Assert.Single(sickProtection.Metrics,
+                metric => metric.Key == "primary-status").Label);
+        Assert.Equal(
+            "Riley Coverage",
+            Assert.Single(sickProtection.Metrics,
+                metric => metric.Key == "spouse-coverage").Label);
         Assert.Equal(
             ToCents(state.Protection.IfSick.Primary.CoverageAmount),
             Assert.Single(sickProtection.Metrics,

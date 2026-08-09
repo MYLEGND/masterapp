@@ -128,12 +128,19 @@ public sealed class MobileHomeService : IMobileHomeService
                 state.ToolId == LegendLivingBalanceSheetConstants.ToolId)
             .Select(state => new MobilePersistedFinanceState(state.JsonState, state.UpdatedUtc))
             .FirstOrDefaultAsync(cancellationToken);
-
-        var healthProjection = persistedState is null
-            ? null
-            : TryProjectFinancialHealth(
+        MobileFinancialHealthProjection? healthProjection = null;
+        if (persistedState is not null)
+        {
+            var protectionPeople = await ResolveClientProtectionPeopleAsync(
+                financialScope.HouseholdAccountId.Value,
+                financialScope.SubscriptionOwnerClientProfileId.Value,
+                actor.DisplayName,
+                cancellationToken);
+            healthProjection = TryProjectFinancialHealth(
                 persistedState,
-                financialScope.SubscriptionOwnerClientProfileId.Value);
+                financialScope.SubscriptionOwnerClientProfileId.Value,
+                protectionPeople);
+        }
         var position = healthProjection?.Position;
 
         var intelligence = await _financialIntelligence.GetSnapshotAsync(
@@ -222,7 +229,12 @@ public sealed class MobileHomeService : IMobileHomeService
 
         var healthProjection = persistedState is null
             ? null
-            : TryProjectFinancialHealth(persistedState, clientProfileId: null);
+            : TryProjectFinancialHealth(
+                persistedState,
+                clientProfileId: null,
+                new MobileFinancialProtectionPeople(
+                    FirstName(actor.DisplayName),
+                    PartnerFirstName: null));
         var position = healthProjection?.Position;
 
         var operatingSystem = await _financialOperatingSystem.ProjectAgentAsync(
@@ -254,7 +266,8 @@ public sealed class MobileHomeService : IMobileHomeService
     /// </summary>
     private static MobileFinancialHealthProjection? TryProjectFinancialHealth(
         MobilePersistedFinanceState persistedState,
-        Guid? clientProfileId)
+        Guid? clientProfileId,
+        MobileFinancialProtectionPeople protectionPeople)
     {
         if (string.IsNullOrWhiteSpace(persistedState.JsonState))
             return null;
@@ -295,13 +308,62 @@ public sealed class MobileHomeService : IMobileHomeService
                     persistedState.UpdatedUtc),
                 MobileFinancialHealthSnapshotProjection.Create(
                     state,
-                    persistedState.UpdatedUtc));
+                    persistedState.UpdatedUtc,
+                    protectionPeople));
         }
         catch (System.Text.Json.JsonException)
         {
             return null;
         }
     }
+
+    private async Task<MobileFinancialProtectionPeople>
+        ResolveClientProtectionPeopleAsync(
+            Guid householdAccountId,
+            Guid subscriptionOwnerClientProfileId,
+            string actorDisplayName,
+            CancellationToken cancellationToken)
+    {
+        var owner = await _db.ClientProfiles
+            .AsNoTracking()
+            .Where(profile => profile.Id == subscriptionOwnerClientProfileId)
+            .Select(profile => new MobileFinancialProfileNames(
+                profile.FirstName,
+                profile.SignificantOtherFirstName))
+            .SingleOrDefaultAsync(cancellationToken);
+
+        var householdPeople = await (
+                from membership in _db.HouseholdMemberships.AsNoTracking()
+                join profile in _db.ClientProfiles.AsNoTracking()
+                    on membership.ClientProfileId equals profile.Id
+                where membership.HouseholdAccountId == householdAccountId &&
+                    membership.Status == HouseholdMembershipStatus.Active
+                select new MobileFinancialHouseholdPerson(
+                    membership.Role,
+                    profile.FirstName))
+            .ToListAsync(cancellationToken);
+
+        var primaryFirstName = householdPeople
+            .Where(person => person.Role == HouseholdMemberRole.PrimaryOwner)
+            .Select(person => FirstName(person.FirstName))
+            .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name))
+            ?? FirstName(owner?.FirstName)
+            ?? FirstName(actorDisplayName);
+        var partnerFirstName = householdPeople
+            .Where(person => person.Role == HouseholdMemberRole.Partner)
+            .Select(person => FirstName(person.FirstName))
+            .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name))
+            ?? FirstName(owner?.SignificantOtherFirstName);
+
+        return new MobileFinancialProtectionPeople(
+            primaryFirstName,
+            partnerFirstName);
+    }
+
+    private static string? FirstName(string? displayName) => displayName?
+        .Trim()
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+        .FirstOrDefault();
 
     private async Task<MobileFinancialAssignedAgentContext>
         ResolveFinancialAssignedAgentAsync(
@@ -546,6 +608,14 @@ public sealed class MobileHomeService : IMobileHomeService
     }
 
     private sealed record MobilePersistedFinanceState(string JsonState, DateTime UpdatedUtc);
+
+    private sealed record MobileFinancialProfileNames(
+        string? FirstName,
+        string? SignificantOtherFirstName);
+
+    private sealed record MobileFinancialHouseholdPerson(
+        HouseholdMemberRole Role,
+        string? FirstName);
 
     private sealed record MobileFinancialHealthProjection(
         MobileFinancialPosition Position,

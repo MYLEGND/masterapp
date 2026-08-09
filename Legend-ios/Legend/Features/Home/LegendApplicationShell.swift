@@ -77,6 +77,13 @@ private enum LegendAppTab: String, Identifiable {
     }
 }
 
+/// Routes attached to the stable account NavigationStack. Profile and finance
+/// data refresh independently, so a refresh must never dismiss navigation a
+/// member explicitly initiated.
+private enum LegendAccountNavigationRoute: Hashable {
+    case financialIntelligence
+}
+
 struct LegendApplicationShell: View {
     @EnvironmentObject private var scrollChrome: LegendScrollChrome
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -92,6 +99,7 @@ struct LegendApplicationShell: View {
     @ObservedObject private var activity: LegendDailyActivityStore
     @State private var isMessageThreadActive = false
     @State private var pendingMessageConversationID: UUID?
+    @State private var accountNavigationPath: [LegendAccountNavigationRoute] = []
 
     init(
         currentSession: MobileSession,
@@ -186,6 +194,9 @@ struct LegendApplicationShell: View {
             value: scrollChrome.isBottomNavigationVisible)
         .onChange(of: selectedTab) {
             scrollChrome.reset()
+            if selectedTab != .account {
+                accountNavigationPath.removeAll()
+            }
         }
     }
 
@@ -257,7 +268,7 @@ struct LegendApplicationShell: View {
             .task { messages.load() }
 
         case .account:
-            NavigationStack {
+            NavigationStack(path: $accountNavigationPath) {
                 LegendAccountView(
                     currentSession: currentSession,
                     coordinator: coordinator,
@@ -265,14 +276,32 @@ struct LegendApplicationShell: View {
                     messages: messages,
                     social: social,
                     bootstrap: bootstrap,
+                    openFinancialIntelligence: openFinancialIntelligence,
                     onSignOut: onSignOut
                 )
+                .navigationDestination(for: LegendAccountNavigationRoute.self) { route in
+                    switch route {
+                    case .financialIntelligence:
+                        LegendFinanceView(
+                            currentSession: currentSession,
+                            store: bootstrap.stores.financial,
+                            bootstrap: bootstrap
+                        )
+                    }
+                }
             }
             .task {
                 bootstrap.stores.account.load()
                 social.loadProfilePosts()
             }
         }
+    }
+
+    private func openFinancialIntelligence() {
+        guard !accountNavigationPath.contains(.financialIntelligence) else {
+            return
+        }
+        accountNavigationPath.append(.financialIntelligence)
     }
 
     private var unavailableTab: some View {
@@ -2937,7 +2966,7 @@ private struct LegendFinancialProfilePanel: View {
                 LegendNextHero(
                     eyebrow: "Financial Intelligence",
                     title: "Cash flow at a glance",
-                    detail: "Swipe back any time. This view keeps your current week and month within reach."
+                    detail: "Current week and month"
                 ) {
                     Button(action: openFinancialIntelligence) {
                         Label(
@@ -3040,7 +3069,7 @@ private struct LegendFinancialProfilePanel: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "\(title). \(status). Open the complete synced financial breakdown."
+            "\(title). \(status). View details."
         )
     }
 
@@ -3139,18 +3168,6 @@ private struct LegendFinancialProfilePanel: View {
                     )
                 }
 
-                HStack(spacing: LegendNextSpacing.micro) {
-                    Text("Open full breakdown")
-                        .font(LegendNextTypography.caption)
-                        .foregroundStyle(LegendNextColor.goldBright)
-
-                    Spacer(minLength: 0)
-
-                    Image(systemName: "arrow.up.right.square")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.goldBright)
-                        .accessibilityHidden(true)
-                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -3710,8 +3727,7 @@ private struct LegendFinancialOutlookSheet: View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
             LegendNextSectionHeader(
                 eyebrow: "Synced schedule",
-                title: "Scheduled activity",
-                detail: "Every dated cash-flow event returned by your saved projection."
+                title: "Scheduled activity"
             )
 
             if events.isEmpty {
@@ -3785,8 +3801,7 @@ private struct LegendFinancialOutlookSheet: View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
             LegendNextSectionHeader(
                 eyebrow: "Monthly breakdown",
-                title: "Week by week",
-                detail: "The full weekly cash and debt rollup saved for this month."
+                title: "Week by week"
             )
 
             if weeks.isEmpty {
@@ -4036,13 +4051,8 @@ private struct LegendFinanceView: View {
                     availabilityNotice(availability)
                 }
 
-                if let position = financial.position {
-                    financialHealth(position)
-                }
-
-                if let healthSnapshot = financial.healthSnapshot {
-                    financialHealthSections(healthSnapshot)
-                } else if financial.position == nil {
+                if financial.healthSnapshot == nil,
+                   financial.position == nil {
                     LegendNextEmptyState(
                         title: "Financial snapshot incomplete",
                         message:
@@ -4052,9 +4062,9 @@ private struct LegendFinanceView: View {
                     )
                 }
 
-                lastUpdated(financial)
-
                 financialDashboard(financial)
+
+                lastUpdated(financial)
             }
             .padding(
                 .horizontal,
@@ -4117,12 +4127,6 @@ private struct LegendFinanceView: View {
                     alignment: .leading,
                     spacing: LegendNextSpacing.sm
                 ) {
-                    LegendNextSectionHeader(
-                        eyebrow: "Prioritized view",
-                        title: "Next financial focus",
-                        detail: "Open a card to review the complete synced breakdown."
-                    )
-
                     ForEach(orderedSections) { section in
                         if let destination = MobileFinancialDetailDestination(
                             rawValue: section.key
@@ -4430,7 +4434,7 @@ private struct LegendFinanceView: View {
                         if let position = financial.position {
                             financialHealth(position)
                         }
-                        financialHealthSections(healthSnapshot)
+                        financialHealthSectionGrid(healthSnapshot)
                     } else {
                         LegendNextEmptyState(
                             title: "Financial snapshot incomplete",
@@ -4645,17 +4649,10 @@ private struct LegendFinanceView: View {
                 alignment: .leading,
                 spacing: LegendNextSpacing.sm
             ) {
-                Text("FINANCIAL HEALTH")
+                Text("BALANCE SHEET")
                     .font(LegendNextTypography.eyebrow)
                     .tracking(0.7)
                     .foregroundStyle(LegendNextColor.goldBright)
-
-                Text(
-                    "This score reflects your saved balance-sheet and cash-flow information."
-                )
-                .font(LegendNextTypography.supporting)
-                .foregroundStyle(Color.white.opacity(0.72))
-                .fixedSize(horizontal: false, vertical: true)
 
                 HStack(
                     alignment: .firstTextBaseline,
@@ -4698,40 +4695,29 @@ private struct LegendFinanceView: View {
 
 
 
-    private func financialHealthSections(
+    private func financialHealthSectionGrid(
         _ snapshot: MobileFinancialHealthSnapshotResponse
     ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.sm
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), spacing: LegendNextSpacing.xs),
+                GridItem(.flexible(), spacing: LegendNextSpacing.xs)
+            ],
+            spacing: LegendNextSpacing.xs
         ) {
-            LegendNextSectionHeader(
-                eyebrow: "Financial Health Snapshot",
-                title: "Your connected financial journey",
-                detail: "Open a section to review its complete saved composition."
-            )
-
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: LegendNextSpacing.xs),
-                    GridItem(.flexible(), spacing: LegendNextSpacing.xs)
-                ],
-                spacing: LegendNextSpacing.xs
-            ) {
-                ForEach(snapshot.sections) { section in
-                    if let destination = MobileFinancialDetailDestination(
-                        rawValue: section.key
-                    ) {
-                        Button {
-                            detailDestination = destination
-                        } label: {
-                            financialHealthSectionCard(section)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(
-                            "\(section.title). \(sectionSummary(section)). Open details."
-                        )
+            ForEach(snapshot.sections) { section in
+                if let destination = MobileFinancialDetailDestination(
+                    rawValue: section.key
+                ) {
+                    Button {
+                        detailDestination = destination
+                    } label: {
+                        financialHealthSectionCard(section)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        "\(section.title). \(sectionSummary(section)). Open details."
+                    )
                 }
             }
         }
@@ -5109,9 +5095,7 @@ private struct LegendFinanceView: View {
         ) {
             financeSectionLabel(
                 eyebrow: "UPCOMING",
-                title: "Recurring Bills",
-                detail:
-                    "Your next scheduled obligations, ordered for quick awareness."
+                title: "Recurring Bills"
             )
 
             LegendNextSurface(
@@ -5304,8 +5288,7 @@ private struct LegendFinanceView: View {
 
     private func financeSectionLabel(
         eyebrow: String,
-        title: String,
-        detail: String
+        title: String
     ) -> some View {
         VStack(
             alignment: .leading,
@@ -5321,20 +5304,6 @@ private struct LegendFinanceView: View {
             Text(title)
                 .font(LegendNextTypography.title)
                 .foregroundStyle(.white)
-
-            if !detail.isEmpty {
-                Text(detail)
-                    .font(
-                        LegendNextTypography.supporting
-                    )
-                    .foregroundStyle(
-                        Color.white.opacity(0.65)
-                    )
-                    .fixedSize(
-                        horizontal: false,
-                        vertical: true
-                    )
-            }
         }
     }
 
@@ -5434,6 +5403,7 @@ private enum LegendProfileContentFilter: String, CaseIterable, Identifiable {
 private struct LegendAccountView: View {
     @EnvironmentObject private var pushNotifications: LegendPushNotificationDelegate
     let currentSession: MobileSession
+    let openFinancialIntelligence: () -> Void
     let onSignOut: () -> Void
 
     @ObservedObject private var coordinator: MobileSessionCoordinator
@@ -5453,7 +5423,6 @@ private struct LegendAccountView: View {
     @State private var editingHac: MobileSocialPost?
     @State private var deletionTarget: MobileSocialPost?
     @State private var profilePage = 0
-    @State private var isFinancialIntelligencePresented = false
     @State private var controlledResourceRequestFeedback: LegendRequestSubmissionFeedback?
     @State private var selectedProfilePhoto: PhotosPickerItem?
 
@@ -5464,9 +5433,11 @@ private struct LegendAccountView: View {
         messages: MessagingStore,
         social: MobileSocialStore,
         bootstrap: LegendApplicationBootstrapCoordinator,
+        openFinancialIntelligence: @escaping () -> Void,
         onSignOut: @escaping () -> Void
     ) {
         self.currentSession = currentSession
+        self.openFinancialIntelligence = openFinancialIntelligence
         self.onSignOut = onSignOut
         _coordinator = ObservedObject(wrappedValue: coordinator)
         _account = ObservedObject(wrappedValue: account)
@@ -5708,9 +5679,7 @@ private struct LegendAccountView: View {
             LegendFinancialProfilePanel(
                 store: bootstrap.stores.financial,
                 bootstrap: bootstrap,
-                openFinancialIntelligence: {
-                    isFinancialIntelligencePresented = true
-                }
+                openFinancialIntelligence: openFinancialIntelligence
             )
             .tag(1)
         }
@@ -5738,15 +5707,6 @@ private struct LegendAccountView: View {
             Task {
                 await bootstrap.loadFinancialIntelligenceIfNeeded()
             }
-        }
-        .navigationDestination(
-            isPresented: $isFinancialIntelligencePresented
-        ) {
-            LegendFinanceView(
-                currentSession: currentSession,
-                store: bootstrap.stores.financial,
-                bootstrap: bootstrap
-            )
         }
     }
 
