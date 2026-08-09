@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
+using Domain.Enums;
 using Domain.FinancialIntelligence;
 using Domain.JourneyCircles;
 using Domain.Messaging;
@@ -254,18 +255,35 @@ public sealed class MobileHomeFinancialServiceTests
             ClientUserId = "household-owner-oid",
             FirstName = "Owner",
             LastName = "Client",
-            SignificantOtherFirstName = "Member",
+            SignificantOtherFirstName = "Stale Partner",
             Email = "owner@example.test"
         };
         var member = new ClientProfile
         {
             Id = Guid.NewGuid(),
             ClientUserId = "household-member-oid",
-            FirstName = "Member",
+            FirstName = "Current Partner",
             LastName = "Client",
             Email = "member@example.test"
         };
         db.AddRange(owner, member);
+        db.HouseholdMemberships.AddRange(
+            new HouseholdMembership
+            {
+                HouseholdAccountId = householdId,
+                ClientProfileId = owner.Id,
+                Role = HouseholdMemberRole.PrimaryOwner,
+                Status = HouseholdMembershipStatus.Active,
+                NormalizedEmail = owner.Email
+            },
+            new HouseholdMembership
+            {
+                HouseholdAccountId = householdId,
+                ClientProfileId = member.Id,
+                Role = HouseholdMemberRole.Partner,
+                Status = HouseholdMembershipStatus.Active,
+                NormalizedEmail = member.Email
+            });
         db.FinanceToolStates.AddRange(
             new FinanceToolState
             {
@@ -333,7 +351,7 @@ public sealed class MobileHomeFinancialServiceTests
             "Owner Status",
             Assert.Single(sick.Metrics, metric => metric.Key == "primary-status").Label);
         Assert.Equal(
-            "Member Status",
+            "Current Status",
             Assert.Single(sick.Metrics, metric => metric.Key == "spouse-status").Label);
         households.VerifyAll();
     }
