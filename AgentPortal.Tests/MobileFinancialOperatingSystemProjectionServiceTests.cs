@@ -265,6 +265,75 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
     }
 
     [Fact]
+    public async Task ProjectAsync_UsesNewestSavedStateWhenLegacyDuplicatesExist()
+    {
+        await using var db = CreateDbContext();
+
+        var clientProfileId = Guid.NewGuid();
+        var olderUtc = new DateTime(
+            2026,
+            8,
+            1,
+            12,
+            0,
+            0,
+            DateTimeKind.Utc);
+        var newestUtc = olderUtc.AddMinutes(1);
+
+        db.FinanceToolStates.AddRange(
+            new FinanceToolState
+            {
+                ClientProfileId = clientProfileId,
+                ToolId = "ExpenseLens",
+                CreatedUtc = olderUtc,
+                UpdatedUtc = olderUtc,
+                JsonState = "{invalid-json"
+            },
+            new FinanceToolState
+            {
+                ClientProfileId = clientProfileId,
+                ToolId = "ExpenseLens",
+                CreatedUtc = newestUtc,
+                UpdatedUtc = newestUtc,
+                JsonState =
+                    """
+                    {
+                      "mobileWeekProjection": {
+                        "schemaVersion": 1,
+                        "weekId": "newest-saved-state",
+                        "startDate": "2026-08-01",
+                        "endDate": "2026-08-07",
+                        "openingCashCents": 987654,
+                        "incomeCents": 0,
+                        "debitBillsCents": 0,
+                        "creditBillsCents": 0,
+                        "requiredDebtMinimumCents": 0,
+                        "extraDebtPaymentCents": 0,
+                        "closingCashCents": 987654,
+                        "openingDebtCents": 0,
+                        "closingDebtCents": 0,
+                        "status": "current",
+                        "weekLabel": "Aug 1 – Aug 7",
+                        "events": []
+                      }
+                    }
+                    """
+            });
+
+        await db.SaveChangesAsync();
+
+        var snapshot = await new MobileFinancialOperatingSystemProjectionService(db)
+            .ProjectAsync(clientProfileId);
+
+        var week = Assert.IsType<MobileFinancialWeekAtGlance>(
+            snapshot.WeekAtGlance);
+        Assert.Equal("Available", snapshot.Projection.Status);
+        Assert.Equal("newest-saved-state", week.WeekKey);
+        Assert.Equal(987654, week.OpeningCashCents);
+        Assert.Equal(newestUtc, snapshot.Freshness.FinanceStateUpdatedUtc);
+    }
+
+    [Fact]
     public async Task ProjectAsync_ReturnsUnavailableWhenMobileWeekProjectionIsMissing()
     {
         await using var db = CreateDbContext();

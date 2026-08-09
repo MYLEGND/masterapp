@@ -64,10 +64,18 @@ public sealed class MobileFinancialOperatingSystemProjectionService
             .Where(row =>
                 row.ClientProfileId == clientProfileId &&
                 row.ToolId == ExpenseLensToolId)
+            // Historical profile-scoped Expense Lens rows can coexist from
+            // before household-scoped persistence was introduced. The saved
+            // state with the newest update is the authoritative projection;
+            // choosing it preserves the existing data and prevents a stale
+            // duplicate from making the read-only mobile bridge fail.
+            .OrderByDescending(row => row.UpdatedUtc)
+            .ThenByDescending(row => row.CreatedUtc)
+            .ThenByDescending(row => row.Id)
             .Select(row => new MobilePersistedExpenseLensState(
                 row.JsonState,
                 row.UpdatedUtc))
-            .SingleOrDefaultAsync(cancellationToken);
+            .FirstOrDefaultAsync(cancellationToken);
 
         return await ProjectPersistedStateAsync(
             state,
