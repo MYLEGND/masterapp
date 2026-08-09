@@ -1200,6 +1200,339 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
+    public async Task MessageTranslation_SameRecipientLanguage_DetectsOnceAndNeverCallsTranslate()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+
+        var agentProfile = await db.AgentProfiles.SingleAsync(profile => profile.AgentUserId == "agent-1");
+        var clientProfile = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");
+        db.ControlledResourceGrants.AddRange(
+            new ControlledResourceGrant
+            {
+                UserId = "agent-1",
+                ParticipantType = MessagingParticipantTypes.Agent,
+                ResourceType = ControlledResourceTypes.LanguageTranslation,
+                IsActive = true,
+                GrantedUtc = DateTime.UtcNow,
+                GrantedByUserId = "zac-founder-oid"
+            },
+            new ControlledResourceGrant
+            {
+                UserId = "client-1",
+                ParticipantType = MessagingParticipantTypes.Client,
+                ResourceType = ControlledResourceTypes.LanguageTranslation,
+                IsActive = true,
+                GrantedUtc = DateTime.UtcNow,
+                GrantedByUserId = "zac-founder-oid"
+            });
+        var agentSettings = new MobileProfileSettings
+        {
+            ProfileId = agentProfile.Id,
+            ParticipantType = MessagingParticipantTypes.Agent,
+            PreferredCommunicationLanguage = "en"
+        };
+        var clientSettings = new MobileProfileSettings
+        {
+            ProfileId = clientProfile.Id,
+            ParticipantType = MessagingParticipantTypes.Client,
+            PreferredCommunicationLanguage = "en"
+        };
+        db.MobileProfileSettings.AddRange(agentSettings, clientSettings);
+        await db.SaveChangesAsync();
+
+        var translator = new TestTranslationService();
+        var service = CreateService(db, translator);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        const string englishBody = "Hello, how are you?";
+        const string creoleBody = "Mwen espere ou pase yon bon jounen.";
+
+        var started = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent,
+            client.UserId,
+            client.ParticipantType,
+            InitialMessageBody: englishBody));
+
+        Assert.True(started.Succeeded);
+        Assert.Equal(1, translator.DetectionCallCount);
+        Assert.Equal(0, translator.TranslationCallCount);
+        var englishSource = Assert.Single(await db.InternalMessages.ToListAsync());
+        Assert.Equal("en", englishSource.OriginalLanguage);
+        Assert.Empty(await db.MessageTranslations.ToListAsync());
+        Assert.Equal(
+            englishBody,
+            Assert.Single(await db.MobileActivityNotifications.ToListAsync()).Detail);
+
+        var englishRecipient = await service.GetConversationAsync(client, started.Conversation!.Id);
+        var englishPresented = Assert.Single(englishRecipient.Conversation!.Messages);
+        Assert.Equal(englishBody, englishPresented.Body);
+        Assert.Null(englishPresented.Translation);
+        Assert.Equal(1, translator.DetectionCallCount);
+        Assert.Equal(0, translator.TranslationCallCount);
+
+        agentSettings.PreferredCommunicationLanguage = "ht";
+        clientSettings.PreferredCommunicationLanguage = "ht";
+        await db.SaveChangesAsync();
+
+        var sent = await service.SendMessageAsync(new SendMessagingMessageCommand(
+            client,
+            started.Conversation.Id,
+            creoleBody));
+
+        Assert.True(sent.Succeeded);
+        Assert.Equal(2, translator.DetectionCallCount);
+        Assert.Equal(0, translator.TranslationCallCount);
+        var creoleSource = await db.InternalMessages.SingleAsync(message => message.Body == creoleBody);
+        Assert.Equal("ht", creoleSource.OriginalLanguage);
+        Assert.Empty(await db.MessageTranslations.ToListAsync());
+        Assert.Equal(
+            creoleBody,
+            await db.MobileActivityNotifications
+                .Where(notification => notification.SourceMessageId == creoleSource.Id)
+                .Select(notification => notification.Detail)
+                .SingleAsync());
+
+        var creoleRecipient = await service.GetConversationAsync(agent, started.Conversation.Id);
+        var creolePresented = Assert.Single(creoleRecipient.Conversation!.Messages
+            .Where(message => message.Id == creoleSource.Id));
+        Assert.Equal(creoleBody, creolePresented.Body);
+        Assert.Null(creolePresented.Translation);
+        Assert.Equal(2, translator.DetectionCallCount);
+        Assert.Equal(0, translator.TranslationCallCount);
+    }
+
+    [Fact]
+    public async Task MessageTranslation_UsesRecipientPresentationForNotificationsAndPreservesTheOriginal()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var clientProfile = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");
+        db.ControlledResourceGrants.Add(new ControlledResourceGrant
+        {
+            UserId = "client-1",
+            ParticipantType = MessagingParticipantTypes.Client,
+            ResourceType = ControlledResourceTypes.LanguageTranslation,
+            IsActive = true,
+            GrantedUtc = DateTime.UtcNow,
+            GrantedByUserId = "zac-founder-oid"
+        });
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            ProfileId = clientProfile.Id,
+            ParticipantType = MessagingParticipantTypes.Client,
+            PreferredCommunicationLanguage = "ht"
+        });
+        await db.SaveChangesAsync();
+
+        var translator = new TestTranslationService();
+        var service = CreateService(db, translator);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        const string original = "Hello, how are you?";
+
+        var started = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent,
+            client.UserId,
+            client.ParticipantType,
+            InitialMessageBody: original));
+
+        Assert.True(started.Succeeded);
+        Assert.Equal(1, translator.DetectionCallCount);
+        Assert.Equal(1, translator.TranslationCallCount);
+        var source = Assert.Single(await db.InternalMessages.ToListAsync());
+        Assert.Equal(original, source.Body);
+        Assert.Equal("en", source.OriginalLanguage);
+        Assert.Equal(
+            $"{original} (ht)",
+            Assert.Single(await db.MobileActivityNotifications.ToListAsync()).Detail);
+
+        var recipient = await service.GetConversationAsync(client, started.Conversation!.Id);
+        var presented = Assert.Single(recipient.Conversation!.Messages);
+        Assert.Equal($"{original} (ht)", presented.Body);
+        Assert.Equal(original, presented.OriginalBody);
+        Assert.Equal("ht", presented.Translation!.TargetLanguage);
+        Assert.Equal(1, translator.TranslationCallCount);
+    }
+
+    [Fact]
+    public async Task MessageTranslation_ProviderFailureKeepsTheOriginalAndDoesNotCreateAFalseCache()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var clientProfile = await db.ClientProfiles.SingleAsync(profile => profile.ClientUserId == "client-1");
+        db.ControlledResourceGrants.Add(new ControlledResourceGrant
+        {
+            UserId = "client-1",
+            ParticipantType = MessagingParticipantTypes.Client,
+            ResourceType = ControlledResourceTypes.LanguageTranslation,
+            IsActive = true,
+            GrantedUtc = DateTime.UtcNow,
+            GrantedByUserId = "zac-founder-oid"
+        });
+        db.MobileProfileSettings.Add(new MobileProfileSettings
+        {
+            ProfileId = clientProfile.Id,
+            ParticipantType = MessagingParticipantTypes.Client,
+            PreferredCommunicationLanguage = "ht"
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService(db, new FailingTranslationService());
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        const string original = "Hello, how are you?";
+
+        var started = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent,
+            client.UserId,
+            client.ParticipantType,
+            InitialMessageBody: original));
+
+        Assert.True(started.Succeeded);
+        var source = Assert.Single(await db.InternalMessages.ToListAsync());
+        Assert.Equal(original, source.Body);
+        Assert.Null(source.OriginalLanguage);
+        Assert.Empty(await db.MessageTranslations.ToListAsync());
+        Assert.Equal(original, Assert.Single(await db.MobileActivityNotifications.ToListAsync()).Detail);
+
+        var recipient = await service.GetConversationAsync(client, started.Conversation!.Id);
+        var presented = Assert.Single(recipient.Conversation!.Messages);
+        Assert.Equal(original, presented.Body);
+        Assert.Null(presented.OriginalBody);
+        Assert.Null(presented.Translation);
+        Assert.Empty(await db.MessageTranslations.ToListAsync());
+    }
+
+    [Fact]
+    public async Task MessageTranslation_GroupRecipientsReceiveIndependentTargetLanguagePresentations()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var englishSender = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "group-en",
+            AgentUpn = "group-en@example.test",
+            FullName = "English Sender",
+            IsActive = true
+        };
+        var creoleRecipient = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "group-ht",
+            AgentUpn = "group-ht@example.test",
+            FullName = "Creole Recipient",
+            IsActive = true
+        };
+        var spanishRecipient = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "group-es",
+            AgentUpn = "group-es@example.test",
+            FullName = "Spanish Recipient",
+            IsActive = true
+        };
+        db.AgentProfiles.AddRange(englishSender, creoleRecipient, spanishRecipient);
+        db.ControlledResourceGrants.AddRange(
+            new ControlledResourceGrant
+            {
+                UserId = creoleRecipient.AgentUserId,
+                ParticipantType = MessagingParticipantTypes.Agent,
+                ResourceType = ControlledResourceTypes.LanguageTranslation,
+                IsActive = true,
+                GrantedUtc = DateTime.UtcNow,
+                GrantedByUserId = "zac-founder-oid"
+            },
+            new ControlledResourceGrant
+            {
+                UserId = spanishRecipient.AgentUserId,
+                ParticipantType = MessagingParticipantTypes.Agent,
+                ResourceType = ControlledResourceTypes.LanguageTranslation,
+                IsActive = true,
+                GrantedUtc = DateTime.UtcNow,
+                GrantedByUserId = "zac-founder-oid"
+            });
+        db.MobileProfileSettings.AddRange(
+            new MobileProfileSettings
+            {
+                ProfileId = creoleRecipient.Id,
+                ParticipantType = MessagingParticipantTypes.Agent,
+                PreferredCommunicationLanguage = "ht"
+            },
+            new MobileProfileSettings
+            {
+                ProfileId = spanishRecipient.Id,
+                ParticipantType = MessagingParticipantTypes.Agent,
+                PreferredCommunicationLanguage = "es"
+            });
+        var conversation = new MessageConversation
+        {
+            Id = Guid.NewGuid(),
+            ConversationType = MessagingConversationTypes.Group,
+            Subject = "Translation group",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow,
+            CreatedByUserId = englishSender.AgentUserId,
+            OwnerUserId = englishSender.AgentUserId,
+            OwnerParticipantType = MessagingParticipantTypes.Agent
+        };
+        db.MessageConversations.Add(conversation);
+        db.MessageConversationParticipants.AddRange(
+            new[] { englishSender, creoleRecipient, spanishRecipient }.Select(profile => new MessageConversationParticipant
+            {
+                Id = Guid.NewGuid(),
+                ConversationId = conversation.Id,
+                UserId = profile.AgentUserId,
+                ParticipantType = MessagingParticipantTypes.Agent,
+                IsActive = true,
+                JoinedUtc = conversation.CreatedUtc
+            }));
+        db.InternalMessages.Add(new InternalMessage
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = conversation.Id,
+            SenderUserId = englishSender.AgentUserId,
+            SenderType = MessagingParticipantTypes.Agent,
+            Body = "Hello, how are you?",
+            SentUtc = conversation.CreatedUtc
+        });
+        await db.SaveChangesAsync();
+
+        var translator = new TestTranslationService();
+        var service = CreateService(db, translator);
+
+        var creoleView = await service.GetConversationAsync(
+            new MessagingActor(creoleRecipient.AgentUserId, MessagingParticipantTypes.Agent),
+            conversation.Id);
+        var spanishView = await service.GetConversationAsync(
+            new MessagingActor(spanishRecipient.AgentUserId, MessagingParticipantTypes.Agent),
+            conversation.Id);
+        var senderView = await service.GetConversationAsync(
+            new MessagingActor(englishSender.AgentUserId, MessagingParticipantTypes.Agent),
+            conversation.Id);
+
+        Assert.Equal(
+            "Hello, how are you? (ht)",
+            Assert.Single(creoleView.Conversation!.Messages).Body);
+        Assert.Equal(
+            "Hello, how are you? (es)",
+            Assert.Single(spanishView.Conversation!.Messages).Body);
+        Assert.Equal(
+            "Hello, how are you?",
+            Assert.Single(senderView.Conversation!.Messages).Body);
+        var source = Assert.Single(await db.InternalMessages.ToListAsync());
+        Assert.Equal("Hello, how are you?", source.Body);
+        Assert.Equal("en", source.OriginalLanguage);
+        Assert.Equal(1, translator.DetectionCallCount);
+        Assert.Equal(2, translator.TranslationCallCount);
+        Assert.Equal(
+            ["es", "ht"],
+            (await db.MessageTranslations.ToListAsync())
+                .Select(translation => translation.TargetLanguage)
+                .OrderBy(language => language));
+    }
+
+    [Fact]
     public async Task LanguageTranslationRequest_AgentCanUseSharedControlledResourceRequest()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -3248,7 +3581,7 @@ public sealed class MessagingServiceTests
 
     private static MessagingService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
-        TestTranslationService? translation = null,
+        ITranslationService? translation = null,
         string? configuredFounderOid = null,
         IConfiguration? configuration = null)
     {
@@ -3325,6 +3658,29 @@ public sealed class MessagingServiceTests
                     detectedSource,
                     "TestTranslator"));
         }
+    }
+
+    private sealed class FailingTranslationService : ITranslationService
+    {
+        public Task<TranslationDetectionResult> DetectLanguageAsync(
+            string text,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new TranslationDetectionResult(
+                false,
+                null,
+                "translation_provider_timeout"));
+
+        public Task<TranslationProviderResult> TranslateAsync(
+            string text,
+            string targetLanguage,
+            string? sourceLanguage = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new TranslationProviderResult(
+                false,
+                null,
+                sourceLanguage,
+                "TestTranslator",
+                "translation_provider_timeout"));
     }
 
     private static async Task SeedAgentAndClientAsync(

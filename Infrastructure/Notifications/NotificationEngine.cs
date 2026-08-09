@@ -49,6 +49,15 @@ public sealed record NotificationRealtimeEvent(
     long Revision,
     DateTime OccurredUtc);
 
+/// <summary>
+/// A recipient-specific message presentation prepared by the messaging
+/// authority. Notification delivery persists this presentation verbatim; it
+/// never decides a recipient's language or performs translation itself.
+/// </summary>
+public sealed record MessagingNotificationRecipient(
+    MessagingActor Recipient,
+    string Detail);
+
 public interface INotificationRealtimePublisher
 {
     Task PublishAsync(
@@ -79,6 +88,21 @@ public interface INotificationEngine
         string body,
         DateTime occurredUtc,
         IEnumerable<MessagingActor> recipients,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stages a first message using recipient presentations produced by the
+    /// shared messaging authority. This keeps activity and APNs text aligned
+    /// with the recipient-facing conversation projection.
+    /// </summary>
+    Task<IReadOnlyList<MessagingActor>> StageMessageForRecipientsAsync(
+        MessagingActor sender,
+        Guid conversationId,
+        Guid messageId,
+        string body,
+        DateTime occurredUtc,
+        IEnumerable<MessagingActor> recipients,
+        IReadOnlyCollection<MessagingNotificationRecipient> recipientPresentations,
         CancellationToken cancellationToken = default);
 
     /// <summary>Stages a non-message event in the caller's current database unit of work.</summary>
@@ -191,9 +215,34 @@ internal sealed class NotificationEngine : INotificationEngine
         DateTime occurredUtc,
         IEnumerable<MessagingActor> recipients,
         CancellationToken cancellationToken = default)
+        => await StageMessageForRecipientsAsync(
+            sender,
+            conversationId,
+            messageId,
+            body,
+            occurredUtc,
+            recipients,
+            Array.Empty<MessagingNotificationRecipient>(),
+            cancellationToken);
+
+    public async Task<IReadOnlyList<MessagingActor>> StageMessageForRecipientsAsync(
+        MessagingActor sender,
+        Guid conversationId,
+        Guid messageId,
+        string body,
+        DateTime occurredUtc,
+        IEnumerable<MessagingActor> recipients,
+        IReadOnlyCollection<MessagingNotificationRecipient> recipientPresentations,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(recipients);
+        ArgumentNullException.ThrowIfNull(recipientPresentations);
         var normalizedSender = Normalize(sender);
+        var presentationsByRecipient = recipientPresentations
+            .GroupBy(presentation => Normalize(presentation.Recipient))
+            .ToDictionary(
+                group => group.Key,
+                group => Clip(group.Last().Detail, MaximumDetailLength));
         var senderTitle = await ResolveMessageSenderTitleAsync(normalizedSender, cancellationToken);
         var stagedRecipients = new List<MessagingActor>();
         foreach (var recipient in recipients.Select(Normalize).Distinct())
@@ -216,7 +265,9 @@ internal sealed class NotificationEngine : INotificationEngine
                 RecipientParticipantType = recipient.ParticipantType,
                 Kind = "Message",
                 Title = senderTitle,
-                Detail = Clip(body, MaximumDetailLength),
+                Detail = presentationsByRecipient.TryGetValue(recipient, out var presentation)
+                    ? presentation
+                    : Clip(body, MaximumDetailLength),
                 ConversationId = conversationId,
                 SourceMessageId = messageId,
                 OccurredUtc = occurredUtc,

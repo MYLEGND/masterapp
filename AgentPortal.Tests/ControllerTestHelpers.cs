@@ -120,7 +120,8 @@ internal static class ControllerTestHelpers
         IBillingOrchestrator? billingOrchestrator = null,
         IEmailSender? emailSender = null,
         IConfiguration? configuration = null,
-        IAgentTimeZoneResolver? timeResolver = null)
+        IAgentTimeZoneResolver? timeResolver = null,
+        IMobileActorResolver? mobileActorResolver = null)
     {
         var config = configuration ?? new ConfigurationBuilder()
             .AddInMemoryCollection(new[]
@@ -171,7 +172,7 @@ internal static class ControllerTestHelpers
         var accessor = new HttpContextAccessor { HttpContext = http };
         var tracking = Mock.Of<IAgentTrackingService>();
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
-        var mobileActorResolver = Mock.Of<IMobileActorResolver>();
+        mobileActorResolver ??= Mock.Of<IMobileActorResolver>();
         var dataProtectionProvider = new EphemeralDataProtectionProvider();
         var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, entraLifecycle.Object, households.Object, subscriptionIdentitySync.Object, prod, effCtx, execution, commitments, billingOrchestrator, clientBillingWorkspaceService, subscriptionInvitationEmailService, householdPartnerInvitationEmailService, mobileActorResolver, dataProtectionProvider)
         {

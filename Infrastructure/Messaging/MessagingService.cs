@@ -503,6 +503,7 @@ internal sealed class MessagingService : IMessagingService
                         x.ReplyToMessage.SenderUserId,
                         x.ReplyToMessage.SenderType,
                         x.ReplyToMessage.Body,
+                        x.ReplyToMessage.OriginalLanguage,
                         x.ReplyToMessage.IsDeleted)))
             .ToListAsync(cancellationToken);
         var messages = newestMessages
@@ -839,15 +840,24 @@ internal sealed class MessagingService : IMessagingService
             _db.InternalMessages.Add(message);
             conversation.LastMessageUtc = nowUtc;
             AddAudit(actor.UserId, "MessageSent", conversation.Id, message.Id, null, null, nowUtc);
+            var messageRecipients = participants
+                .Select(participant => new MessagingActor(
+                    participant.UserId,
+                    participant.ParticipantType))
+                .ToArray();
+            var recipientPresentations = await BuildNotificationRecipientPresentationsAsync(
+                actor,
+                message,
+                messageRecipients,
+                cancellationToken);
             notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
                 actor,
                 conversation.Id,
                 message.Id,
                 message.Body,
                 nowUtc,
-                participants.Select(participant => new MessagingActor(
-                    participant.UserId,
-                    participant.ParticipantType)),
+                messageRecipients,
+                recipientPresentations,
                 cancellationToken);
         }
 
@@ -2042,6 +2052,16 @@ internal sealed class MessagingService : IMessagingService
             ReplyToMessageId = command.ReplyToMessageId
         };
         _db.InternalMessages.Add(message);
+        var messageRecipients = await _db.MessageConversationParticipants
+            .AsNoTracking()
+            .Where(participant => participant.ConversationId == conversation.Id && participant.IsActive)
+            .Select(participant => new MessagingActor(participant.UserId, participant.ParticipantType))
+            .ToListAsync(cancellationToken);
+        var recipientPresentations = await BuildNotificationRecipientPresentationsAsync(
+            actor,
+            message,
+            messageRecipients,
+            cancellationToken);
         var hiddenParticipants = await _db.MessageConversationParticipants
             .Where(participant => participant.ConversationId == conversation.Id &&
                                   participant.IsActive &&
@@ -2052,12 +2072,14 @@ internal sealed class MessagingService : IMessagingService
         conversation.LastMessageUtc = nowUtc;
         conversation.UpdatedUtc = nowUtc;
         AddAudit(actor.UserId, "MessageSent", conversation.Id, message.Id, null, null, nowUtc);
-        var notificationRecipients = await _notifications.StageMessageAsync(
+        var notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
             actor,
             conversation.Id,
             message.Id,
             message.Body,
             nowUtc,
+            messageRecipients,
+            recipientPresentations,
             cancellationToken);
 
         try
@@ -3366,15 +3388,24 @@ internal sealed class MessagingService : IMessagingService
             _db.InternalMessages.Add(message);
             conversation.LastMessageUtc = nowUtc;
             AddAudit(actor.UserId, "MessageSent", conversation.Id, message.Id, null, null, nowUtc);
+            var messageRecipients = participants
+                .Select(participant => new MessagingActor(
+                    participant.UserId,
+                    participant.ParticipantType))
+                .ToArray();
+            var recipientPresentations = await BuildNotificationRecipientPresentationsAsync(
+                actor,
+                message,
+                messageRecipients,
+                cancellationToken);
             notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
                 actor,
                 conversation.Id,
                 message.Id,
                 message.Body,
                 nowUtc,
-                participants.Select(participant => new MessagingActor(
-                    participant.UserId,
-                    participant.ParticipantType)),
+                messageRecipients,
+                recipientPresentations,
                 cancellationToken);
         }
 
@@ -4313,46 +4344,168 @@ internal sealed class MessagingService : IMessagingService
         var presented = new List<MessagingMessageSummary>(summaries.Count);
         foreach (var summary in summaries)
         {
-            if (!sources.TryGetValue(summary.Id, out var source) ||
-                summary.IsDeleted ||
-                summary.VerificationReview is not null ||
-                IsSameParticipant(summary.SenderUserId, summary.SenderType, actor.UserId, actor.ParticipantType))
+            var presentation = summary;
+            if (sources.TryGetValue(summary.Id, out var source) &&
+                !summary.IsDeleted &&
+                summary.VerificationReview is null &&
+                !IsSameParticipant(summary.SenderUserId, summary.SenderType, actor.UserId, actor.ParticipantType))
             {
-                presented.Add(summary);
-                continue;
-            }
-
-            if (string.Equals(
-                    CommunicationLanguages.NormalizeOrNull(source.OriginalLanguage),
+                var translation = await GetOrCreateMessageTranslationAsync(
+                    ToTranslationSource(source),
                     targetLanguage,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                presented.Add(summary);
-                continue;
+                    cancellationToken);
+                if (translation is not null)
+                {
+                    presentation = presentation with
+                    {
+                        Body = translation.TranslatedText,
+                        OriginalBody = source.Body,
+                        Translation = new MessagingTranslationPresentation(
+                            translation.OriginalLanguage,
+                            targetLanguage,
+                            translation.Provider)
+                    };
+                }
             }
 
-            var translation = await GetOrCreateMessageTranslationAsync(source, targetLanguage, cancellationToken);
-            presented.Add(translation is null
-                ? summary
-                : summary with
-                {
-                    Body = translation.TranslatedText,
-                    OriginalBody = source.Body,
-                    Translation = new MessagingTranslationPresentation(
-                        translation.OriginalLanguage,
-                        targetLanguage,
-                        translation.Provider)
-                });
+            presented.Add(await ApplyReplyTranslationPresentationAsync(
+                presentation,
+                source,
+                actor,
+                targetLanguage,
+                cancellationToken));
         }
 
         return presented;
     }
 
-    private async Task<CachedMessageTranslation?> GetOrCreateMessageTranslationAsync(
-        MessageDetailRow message,
+    private async Task<MessagingMessageSummary> ApplyReplyTranslationPresentationAsync(
+        MessagingMessageSummary summary,
+        MessageDetailRow? source,
+        MessagingActor actor,
         string targetLanguage,
         CancellationToken cancellationToken)
     {
+        if (summary.Reply is null ||
+            source?.Reply is null ||
+            summary.Reply.IsDeleted ||
+            IsSameParticipant(
+                summary.Reply.SenderUserId,
+                summary.Reply.SenderType,
+                actor.UserId,
+                actor.ParticipantType))
+        {
+            return summary;
+        }
+
+        var translation = await GetOrCreateMessageTranslationAsync(
+            ToTranslationSource(source.Reply),
+            targetLanguage,
+            cancellationToken);
+        return translation is null
+            ? summary
+            : summary with { Reply = summary.Reply with { Body = translation.TranslatedText } };
+    }
+
+    private async Task<IReadOnlyList<MessagingNotificationRecipient>> BuildNotificationRecipientPresentationsAsync(
+        MessagingActor sender,
+        InternalMessage message,
+        IEnumerable<MessagingActor> recipients,
+        CancellationToken cancellationToken)
+    {
+        var normalizedSender = NormalizeActor(sender);
+        var distinctRecipients = recipients
+            .Select(NormalizeActor)
+            .Where(recipient => !IsSameParticipant(
+                recipient.UserId,
+                recipient.ParticipantType,
+                normalizedSender.UserId,
+                normalizedSender.ParticipantType))
+            .Distinct()
+            .ToArray();
+        if (distinctRecipients.Length == 0)
+            return Array.Empty<MessagingNotificationRecipient>();
+
+        var recipientLanguages = new Dictionary<MessagingActor, string?>();
+        foreach (var recipient in distinctRecipients)
+        {
+            recipientLanguages[recipient] = await _controlledResources
+                .GetPreferredLanguageAsync(recipient, cancellationToken);
+        }
+
+        if (recipientLanguages.Values.All(language => language is null))
+        {
+            return distinctRecipients
+                .Select(recipient => new MessagingNotificationRecipient(recipient, message.Body))
+                .ToArray();
+        }
+
+        var source = ToTranslationSource(message);
+        var sourceLanguage = await ResolveOriginalLanguageAsync(source, cancellationToken);
+        if (sourceLanguage is null)
+        {
+            return distinctRecipients
+                .Select(recipient => new MessagingNotificationRecipient(recipient, message.Body))
+                .ToArray();
+        }
+
+        var detailsByTargetLanguage = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var targetLanguage in recipientLanguages.Values
+                     .Where(language => language is not null)
+                     .Cast<string>()
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
+            {
+                detailsByTargetLanguage[targetLanguage] = message.Body;
+                continue;
+            }
+
+            var translation = await GetOrCreateMessageTranslationAsync(
+                source with { OriginalLanguage = sourceLanguage },
+                targetLanguage,
+                cancellationToken,
+                persistChanges: false);
+            detailsByTargetLanguage[targetLanguage] = translation?.TranslatedText ?? message.Body;
+        }
+
+        return distinctRecipients
+            .Select(recipient =>
+            {
+                var targetLanguage = recipientLanguages[recipient];
+                var detail = targetLanguage is not null &&
+                             detailsByTargetLanguage.TryGetValue(targetLanguage, out var translated)
+                    ? translated
+                    : message.Body;
+                return new MessagingNotificationRecipient(recipient, detail);
+            })
+            .ToArray();
+    }
+
+    private async Task<CachedMessageTranslation?> GetOrCreateMessageTranslationAsync(
+        MessageTranslationSource message,
+        string targetLanguage,
+        CancellationToken cancellationToken,
+        bool persistChanges = true)
+    {
+        var sourceLanguage = await ResolveOriginalLanguageAsync(message, cancellationToken);
+        if (sourceLanguage is null)
+            return null;
+
+        if (string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
+        {
+            if (persistChanges)
+                await PersistPendingMessageTranslationChangesAsync(cancellationToken);
+            return null;
+        }
+
+        var local = _db.MessageTranslations.Local
+            .FirstOrDefault(translation =>
+                translation.InternalMessageId == message.Id &&
+                string.Equals(translation.TargetLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase));
+        if (local is not null)
+            return new CachedMessageTranslation(local.TranslatedText, sourceLanguage, local.Provider);
+
         var cached = await _db.MessageTranslations
             .AsNoTracking()
             .Where(translation =>
@@ -4360,17 +4513,15 @@ internal sealed class MessagingService : IMessagingService
                 translation.TargetLanguage == targetLanguage)
             .Select(translation => new CachedMessageTranslation(
                 translation.TranslatedText,
-                message.OriginalLanguage ?? string.Empty,
+                sourceLanguage,
                 translation.Provider))
             .SingleOrDefaultAsync(cancellationToken);
         if (cached is not null)
-            return cached.OriginalLanguage.Length == 0
-                ? null
-                : cached;
-
-        var sourceLanguage = CommunicationLanguages.NormalizeOrNull(message.OriginalLanguage);
-        if (string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
-            return null;
+        {
+            if (persistChanges)
+                await PersistPendingMessageTranslationChangesAsync(cancellationToken);
+            return cached;
+        }
 
         TranslationProviderResult providerResult;
         try
@@ -4391,26 +4542,15 @@ internal sealed class MessagingService : IMessagingService
             return null;
         }
 
-        var detectedLanguage = CommunicationLanguages.NormalizeOrNull(providerResult.DetectedLanguage) ?? sourceLanguage;
         if (!providerResult.Succeeded ||
-            string.IsNullOrWhiteSpace(providerResult.TranslatedText) ||
-            detectedLanguage is null ||
-            string.Equals(detectedLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
+            string.IsNullOrWhiteSpace(providerResult.TranslatedText))
         {
+            _logger.LogWarning(
+                "Message translation was unavailable. MessageId={MessageId} TargetLanguage={TargetLanguage} ErrorCode={ErrorCode}",
+                message.Id,
+                targetLanguage,
+                providerResult.ErrorCode ?? "translation_provider_failed");
             return null;
-        }
-
-        if (!string.Equals(message.OriginalLanguage, detectedLanguage, StringComparison.OrdinalIgnoreCase))
-        {
-            var messageEntity = _db.InternalMessages.Local
-                .FirstOrDefault(candidate => candidate.Id == message.Id);
-            if (messageEntity is null)
-            {
-                messageEntity = new InternalMessage { Id = message.Id };
-                _db.Attach(messageEntity);
-            }
-            messageEntity.OriginalLanguage = detectedLanguage;
-            _db.Entry(messageEntity).Property(entity => entity.OriginalLanguage).IsModified = true;
         }
 
         var created = new MessageTranslation
@@ -4423,6 +4563,9 @@ internal sealed class MessagingService : IMessagingService
             CreatedUtc = DateTime.UtcNow
         };
         _db.MessageTranslations.Add(created);
+        if (!persistChanges)
+            return new CachedMessageTranslation(created.TranslatedText, sourceLanguage, created.Provider);
+
         try
         {
             await _db.SaveChangesAsync(cancellationToken);
@@ -4437,7 +4580,7 @@ internal sealed class MessagingService : IMessagingService
                     translation.TargetLanguage == targetLanguage)
                 .Select(translation => new CachedMessageTranslation(
                     translation.TranslatedText,
-                    detectedLanguage,
+                    sourceLanguage,
                     translation.Provider))
                 .SingleOrDefaultAsync(cancellationToken);
             if (concurrent is null)
@@ -4445,8 +4588,90 @@ internal sealed class MessagingService : IMessagingService
             return concurrent;
         }
 
-        return new CachedMessageTranslation(created.TranslatedText, detectedLanguage, created.Provider);
+        return new CachedMessageTranslation(created.TranslatedText, sourceLanguage, created.Provider);
     }
+
+    private async Task<string?> ResolveOriginalLanguageAsync(
+        MessageTranslationSource message,
+        CancellationToken cancellationToken)
+    {
+        var trackedLanguage = _db.InternalMessages.Local
+            .Where(candidate => candidate.Id == message.Id)
+            .Select(candidate => CommunicationLanguages.NormalizeOrNull(candidate.OriginalLanguage))
+            .FirstOrDefault(language => language is not null);
+        var sourceLanguage = CommunicationLanguages.NormalizeOrNull(message.OriginalLanguage) ?? trackedLanguage;
+        if (sourceLanguage is not null)
+            return sourceLanguage;
+
+        TranslationDetectionResult detection;
+        try
+        {
+            detection = await _translation.DetectLanguageAsync(message.Body, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Message language detection failed. MessageId={MessageId}",
+                message.Id);
+            return null;
+        }
+
+        sourceLanguage = detection.Succeeded
+            ? CommunicationLanguages.NormalizeOrNull(detection.Language)
+            : null;
+        if (sourceLanguage is null)
+        {
+            _logger.LogWarning(
+                "Message language detection was unavailable. MessageId={MessageId} ErrorCode={ErrorCode}",
+                message.Id,
+                detection.ErrorCode ?? "translation_language_unsupported");
+            return null;
+        }
+
+        var messageEntity = _db.InternalMessages.Local
+            .FirstOrDefault(candidate => candidate.Id == message.Id);
+        if (messageEntity is null)
+        {
+            messageEntity = new InternalMessage { Id = message.Id };
+            _db.Attach(messageEntity);
+        }
+        messageEntity.OriginalLanguage = sourceLanguage;
+        _db.Entry(messageEntity).Property(entity => entity.OriginalLanguage).IsModified = true;
+        return sourceLanguage;
+    }
+
+    private async Task PersistPendingMessageTranslationChangesAsync(
+        CancellationToken cancellationToken)
+    {
+        var hasPendingSourceLanguage = _db.ChangeTracker.Entries<InternalMessage>()
+            .Any(entry =>
+                entry.State == EntityState.Added ||
+                entry.Property(message => message.OriginalLanguage).IsModified);
+        var hasPendingTranslation = _db.ChangeTracker.Entries<MessageTranslation>()
+            .Any(entry => entry.State == EntityState.Added);
+        if (hasPendingSourceLanguage || hasPendingTranslation)
+            await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static MessageTranslationSource ToTranslationSource(MessageDetailRow message) => new(
+        message.Id,
+        message.Body,
+        message.OriginalLanguage);
+
+    private static MessageTranslationSource ToTranslationSource(ReplyDetailRow message) => new(
+        message.Id,
+        message.Body,
+        message.OriginalLanguage);
+
+    private static MessageTranslationSource ToTranslationSource(InternalMessage message) => new(
+        message.Id,
+        message.Body,
+        message.OriginalLanguage);
 
     private static MessagingAttachmentSummary ToAttachmentSummary(AttachmentRow attachment) => new(
         attachment.Id,
@@ -4650,11 +4875,17 @@ internal sealed class MessagingService : IMessagingService
         string OriginalLanguage,
         string Provider);
 
+    private sealed record MessageTranslationSource(
+        Guid Id,
+        string Body,
+        string? OriginalLanguage);
+
     private sealed record ReplyDetailRow(
         Guid Id,
         string SenderUserId,
         string SenderType,
         string Body,
+        string? OriginalLanguage,
         bool IsDeleted);
 
     private sealed record AttachmentRow(

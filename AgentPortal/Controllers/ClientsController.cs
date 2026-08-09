@@ -3048,7 +3048,8 @@ namespace AgentPortal.Controllers;
         HttpContext.User = principal;
 
         ViewData["MobileClientCreationPortalTicket"] = ticket;
-        return await Create(returnUrl: "/mobile/agent/clients/create-complete");
+        return RenderMobileClientCreationPortal(
+            await Create(returnUrl: "/mobile/agent/clients/create-complete"));
     }
 
     [AllowAnonymous]
@@ -3072,12 +3073,25 @@ namespace AgentPortal.Controllers;
         // validation, provisioning, and CRM write path.
         HttpContext.User = CreateMobileClientCreationPortalPrincipal(portalTicket);
         ViewData["MobileClientCreationPortalTicket"] = mobilePortalTicket;
-        return await Create(model, returnUrl);
+        return RenderMobileClientCreationPortal(await Create(model, returnUrl));
     }
 
     [HttpGet("/mobile/agent/clients/create-complete", Name = "MobileClientCreationPortalComplete")]
     public IActionResult MobileClientCreationPortalComplete()
         => NoContent();
+
+    private IActionResult RenderMobileClientCreationPortal(IActionResult result)
+    {
+        // Calling the shared Create action from a second action does not alter
+        // MVC's active ActionDescriptor. Without an explicit view name MVC
+        // therefore looks for MobileClientCreationPortal.cshtml rather than
+        // the authoritative Create.cshtml form. Keep form ownership in Create
+        // while making the embedded route render that exact view.
+        if (result is ViewResult viewResult && string.IsNullOrWhiteSpace(viewResult.ViewName))
+            viewResult.ViewName = nameof(Create);
+
+        return result;
+    }
 
     private MobileClientCreationPortalTicket? ReadMobileClientCreationPortalTicket(string? protectedTicket)
     {
