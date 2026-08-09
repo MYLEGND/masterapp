@@ -172,7 +172,17 @@ public class WebsiteAnalyticsInitialQualityModeTests
             Environment = "production",
             Host = "portal.mylegnd.com",
             IsInternal = isInternal,
-            PageKey = "quote_life"
+            PageKey = "quote_life",
+            UserAgent = "Mozilla/5.0",
+            WebDriver = false,
+            IsHeadless = false,
+            EngagedMilliseconds = eventType == "page_engaged_15s" ? 15000 : 0,
+            DwellMilliseconds = eventType == "page_engaged_15s" ? 20000 : 0,
+            ScrollPercent = eventType == "page_engaged_15s" ? 80 : 0,
+            HumanInteractionCount = eventType == "page_engaged_15s" ? 4 : 0,
+            MouseMoveCount = eventType == "page_engaged_15s" ? 12 : 0,
+            IsBounceCandidate = eventType == "page_engaged_15s" ? false : null,
+            IsExitPage = false
         };
     }
 }
