@@ -108,6 +108,50 @@ public sealed class SocialDiscoveryServiceTests
     }
 
     [Fact]
+    public async Task DirectorySearch_ExcludesLeadRecordsAndCollapsesDuplicateMemberIdentities()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var viewer = Member(db, "viewer", "Vera");
+        var visible = Member(db, "visible", "Vince");
+        var lead = Member(db, "lead", "Vince Lead");
+        lead.Client.CrmStatus = "Lead";
+        lead.Client.CrmNotes = "{\"recordType\":\"Lead\",\"pipelineStage\":\"NewLead\"}";
+
+        var legacyDuplicate = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "visible-legacy",
+            ExternalIdentityObjectId = visible.Client.ExternalIdentityObjectId,
+            FirstName = "Vince",
+            LastName = "Member",
+            Email = "visible.legacy@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}",
+            UpdatedUtc = DateTime.UtcNow.AddMinutes(1)
+        };
+        db.ClientProfiles.Add(legacyDuplicate);
+        db.ClientEntitlements.Add(new ClientEntitlement
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = legacyDuplicate.Id,
+            EntitlementKey = BillingEntitlementKeys.ClientAppFullAccess,
+            Status = ClientEntitlementStatus.Active,
+            SourceType = ClientEntitlementSourceType.Subscription,
+            SourceId = "legacy-visible-membership",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var page = await new SocialDiscoveryService(db).SearchAsync(
+            new SocialDiscoveryQuery(Actor(viewer), "Vince", 0, 20));
+
+        Assert.True(page.Succeeded);
+        Assert.DoesNotContain(page.Value!.Results, result => result.ClientProfileId == lead.Id);
+        Assert.Single(page.Value.Results.Where(result => result.UserId == visible.Client.ClientUserId));
+        Assert.Equal(1, page.Value.Results.Count(result => result.UserId == visible.Client.ClientUserId));
+    }
+
+    [Fact]
     public async Task CommunitySearch_MatchesTextAndPagesDeterministically()
     {
         await using var db = ControllerTestHelpers.BuildDb();

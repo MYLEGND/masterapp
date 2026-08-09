@@ -141,17 +141,20 @@ internal sealed class NotificationEngine : INotificationEngine
     private readonly MasterAppDbContext _db;
     private readonly IMessagingProfileImageResolver _participantIdentities;
     private readonly INotificationRealtimePublisher _realtime;
+    private readonly IApplePushDeliverySignal _deliverySignal;
     private readonly ILogger<NotificationEngine> _logger;
 
     public NotificationEngine(
         MasterAppDbContext db,
         IMessagingProfileImageResolver participantIdentities,
         INotificationRealtimePublisher realtime,
+        IApplePushDeliverySignal deliverySignal,
         ILogger<NotificationEngine> logger)
     {
         _db = db;
         _participantIdentities = participantIdentities;
         _realtime = realtime;
+        _deliverySignal = deliverySignal;
         _logger = logger;
     }
 
@@ -372,6 +375,11 @@ internal sealed class NotificationEngine : INotificationEngine
                 new NotificationRealtimeEvent(null, badge.UnreadCount, badge.Revision, badge.UpdatedUtc),
                 cancellationToken);
         }
+
+        // Every caller reaches this only after saving its notification outbox
+        // entries. Waking the local worker here removes its normal polling wait;
+        // the durable outbox remains the source of truth if this process restarts.
+        _deliverySignal.Notify();
 
         return first ?? new NotificationBadgeSnapshot(0, 0, DateTime.UtcNow);
     }

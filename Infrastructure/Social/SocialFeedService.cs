@@ -4,6 +4,7 @@ using Domain.Messaging;
 using Domain.Moderation;
 using Domain.Social;
 using Infrastructure.Data;
+using Infrastructure.Mobile;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Shared.Auth;
@@ -1329,12 +1330,27 @@ public sealed class SocialFeedService : ISocialFeedService
         var authors = await ResolveAuthorsAsync(
             requests.Select(request => new AuthorReference(request.FollowerUserId, request.FollowerParticipantType, Guid.Empty)),
             cancellationToken);
-        return SocialOperationResult<IReadOnlyList<SocialFollowRequestView>>.Success(
-            requests.Select(request => new SocialFollowRequestView(
-                request.Id,
-                authors.GetValueOrDefault(AuthorKey.From(request.FollowerUserId, request.FollowerParticipantType))
-                    ?? ToUnknownAuthor(request.FollowerUserId, request.FollowerParticipantType, Guid.Empty),
-                request.CreatedUtc)).ToArray());
+        var visibleRequests = requests
+            .Select(request => new
+            {
+                Request = request,
+                Author = authors.GetValueOrDefault(AuthorKey.From(
+                    request.FollowerUserId,
+                    request.FollowerParticipantType))
+            })
+            .Where(item => item.Author is not null)
+            .GroupBy(item => AuthorKey.From(
+                item.Author!.UserId,
+                item.Author.ParticipantType))
+            .Select(group => group
+                .OrderByDescending(item => item.Request.CreatedUtc)
+                .First())
+            .Select(item => new SocialFollowRequestView(
+                item.Request.Id,
+                item.Author!,
+                item.Request.CreatedUtc))
+            .ToArray();
+        return SocialOperationResult<IReadOnlyList<SocialFollowRequestView>>.Success(visibleRequests);
     }
 
     public async Task<SocialOperationResult<SocialFollowResult>> DecideFollowRequestAsync(
@@ -2097,20 +2113,12 @@ public sealed class SocialFeedService : ISocialFeedService
 
         if (clientIds.Count > 0)
         {
-            var clients = await _db.ClientProfiles.AsNoTracking()
-                .Where(profile => profile.CrmStatus == null ||
-                                  profile.CrmStatus == "" ||
-                                  profile.CrmStatus == "Active")
-                .Select(profile => new
-                {
-                    profile.Id,
-                    profile.ClientUserId,
-                    profile.ExternalIdentityObjectId
-                })
+            var clients = await LegendMemberDirectory.ActiveSubscribedProfiles(_db)
                 .ToArrayAsync(cancellationToken);
             foreach (var client in clients)
             {
-                if (LogicalParticipantIdentity.ClientUserIdForms(
+                if (LegendMemberDirectory.IsMemberRecord(client) &&
+                    LogicalParticipantIdentity.ClientUserIdForms(
                         client.ClientUserId,
                         client.ExternalIdentityObjectId)
                     .Any(clientIds.Contains))
@@ -2150,15 +2158,9 @@ public sealed class SocialFeedService : ISocialFeedService
                         profile.Id == post.AuthorProfileId &&
                         profile.IsActive,
                     cancellationToken),
-            MessagingParticipantTypes.Client => await _db.ClientProfiles
-                .AsNoTracking()
-                .AnyAsync(
-                    profile =>
-                        profile.Id == post.AuthorProfileId &&
-                        (profile.CrmStatus == null ||
-                         profile.CrmStatus == "" ||
-                         profile.CrmStatus == "Active"),
-                    cancellationToken),
+            MessagingParticipantTypes.Client => await IsActiveMemberClientProfileAsync(
+                post.AuthorProfileId,
+                cancellationToken),
             _ => false
         };
 
@@ -2499,28 +2501,50 @@ public sealed class SocialFeedService : ISocialFeedService
     private static SocialOperationResult<T> ContentBlocked<T>() =>
         SocialOperationResult<T>.Failure("social_content_blocked", RespectfulCommunityMessage);
 
-    private Task<bool> IsValidActorAsync(SocialFeedActor actor, CancellationToken cancellationToken)
+    private async Task<bool> IsValidActorAsync(SocialFeedActor actor, CancellationToken cancellationToken)
     {
         var identity = actor.Identity;
         var userId = Normalize(identity.UserId);
         if (actor.ProfileId == Guid.Empty || string.IsNullOrWhiteSpace(userId))
-            return Task.FromResult(false);
+            return false;
 
-        return identity.ParticipantType switch
+        return await (identity.ParticipantType switch
         {
             MessagingParticipantTypes.Agent => _db.AgentProfiles.AsNoTracking().AnyAsync(
                 profile => profile.IsActive &&
                            profile.Id == actor.ProfileId &&
                            profile.AgentUserId.ToLower() == userId,
                 cancellationToken),
-            MessagingParticipantTypes.Client => _db.ClientProfiles.AsNoTracking().AnyAsync(
-                profile => profile.Id == actor.ProfileId &&
-                           (profile.CrmStatus == null || profile.CrmStatus == "" || profile.CrmStatus == "Active") &&
-                           (profile.ClientUserId.ToLower() == userId ||
-                            (profile.ExternalIdentityObjectId != null && profile.ExternalIdentityObjectId.ToLower() == userId)),
+            MessagingParticipantTypes.Client => IsActiveMemberClientIdentityAsync(
+                actor.ProfileId,
+                userId,
                 cancellationToken),
             _ => Task.FromResult(false)
-        };
+        });
+    }
+
+    private async Task<bool> IsActiveMemberClientProfileAsync(
+        Guid clientProfileId,
+        CancellationToken cancellationToken)
+    {
+        var profile = await LegendMemberDirectory.ActiveSubscribedProfiles(_db)
+            .SingleOrDefaultAsync(candidate => candidate.Id == clientProfileId, cancellationToken);
+        return profile is not null && LegendMemberDirectory.IsMemberRecord(profile);
+    }
+
+    private async Task<bool> IsActiveMemberClientIdentityAsync(
+        Guid clientProfileId,
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var profile = await LegendMemberDirectory.ActiveSubscribedProfiles(_db)
+            .SingleOrDefaultAsync(candidate =>
+                candidate.Id == clientProfileId &&
+                (candidate.ClientUserId.ToLower() == userId ||
+                 (candidate.ExternalIdentityObjectId != null &&
+                  candidate.ExternalIdentityObjectId.ToLower() == userId)),
+                cancellationToken);
+        return profile is not null && LegendMemberDirectory.IsMemberRecord(profile);
     }
 
     private async Task<IReadOnlyList<SocialPostView>> BuildPostViewsAsync(
@@ -3007,15 +3031,29 @@ public sealed class SocialFeedService : ISocialFeedService
             .Select(reference => CanonicalAuthorKey(reference, authors))
             .ToHashSet();
 
-        return rawEntries.Select(entry =>
-        {
-            var reference = new AuthorReference(entry.UserId, entry.ParticipantType, Guid.Empty);
-            var author = authors.GetValueOrDefault(AuthorKey.From(entry.UserId, entry.ParticipantType))
-                         ?? ToUnknownAuthor(entry.UserId, entry.ParticipantType, Guid.Empty);
-            return new SocialFollowListEntry(
-                author,
-                followedByViewer.Contains(CanonicalAuthorKey(reference, authors)));
-        }).ToArray();
+        return rawEntries
+            .Select(entry => new
+            {
+                Entry = entry,
+                Reference = new AuthorReference(
+                    entry.UserId,
+                    entry.ParticipantType,
+                    Guid.Empty),
+                Author = authors.GetValueOrDefault(AuthorKey.From(
+                    entry.UserId,
+                    entry.ParticipantType))
+            })
+            .Where(item => item.Author is not null)
+            .GroupBy(item => AuthorKey.From(
+                item.Author!.UserId,
+                item.Author.ParticipantType))
+            .Select(group => group
+                .OrderByDescending(item => item.Entry.CreatedUtc)
+                .First())
+            .Select(item => new SocialFollowListEntry(
+                item.Author!,
+                followedByViewer.Contains(CanonicalAuthorKey(item.Reference, authors))))
+            .ToArray();
     }
 
     private static AuthorKey CanonicalAuthorKey(
@@ -3042,12 +3080,13 @@ public sealed class SocialFeedService : ISocialFeedService
         foreach (var userId in agents)
             active.Add(AuthorKey.From(userId, MessagingParticipantTypes.Agent));
 
-        var clients = await _db.ClientProfiles.AsNoTracking()
-            .Where(profile => profile.CrmStatus == null || profile.CrmStatus == "" || profile.CrmStatus == "Active")
-            .Select(profile => new { profile.ClientUserId, profile.ExternalIdentityObjectId })
+        var clients = await LegendMemberDirectory.ActiveSubscribedProfiles(_db)
             .ToArrayAsync(cancellationToken);
         foreach (var client in clients)
         {
+            if (!LegendMemberDirectory.IsMemberRecord(client))
+                continue;
+
             foreach (var userId in LogicalParticipantIdentity.ClientUserIdForms(
                          client.ClientUserId,
                          client.ExternalIdentityObjectId))
@@ -3104,13 +3143,11 @@ public sealed class SocialFeedService : ISocialFeedService
         if (clientReferences.Length > 0)
         {
             var ids = clientReferences.Select(reference => reference.UserId).Distinct().ToArray();
-            var clients = await _db.ClientProfiles
-                .AsNoTracking()
+            var clients = await LegendMemberDirectory.ActiveSubscribedProfiles(_db)
                 .Where(profile => ids.Contains(profile.ClientUserId.ToLower()) ||
                                   (profile.ExternalIdentityObjectId != null && ids.Contains(profile.ExternalIdentityObjectId.ToLower())))
-                .Select(profile => new { profile.Id, profile.ClientUserId, profile.ExternalIdentityObjectId, profile.FirstName, profile.LastName, profile.Email, profile.Phone })
                 .ToListAsync(cancellationToken);
-            foreach (var profile in clients)
+            foreach (var profile in LegendMemberDirectory.Collapse(clients))
             {
                 // One client profile can be referenced by two stored identity forms: the
                 // Entra object ID and the legacy ClientUserId. Historical posts exist under

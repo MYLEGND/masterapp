@@ -3,6 +3,7 @@ using Domain.Entities;
 using Domain.Messaging;
 using Domain.Moderation;
 using Infrastructure.Data;
+using Infrastructure.Mobile;
 using Infrastructure.Notifications;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -1813,7 +1814,7 @@ internal sealed class MessagingService : IMessagingService
         {
             return MessagingOperationResult.Failure("MESSAGING_RESOURCE_REVIEWER_FORBIDDEN", "Only the Founder can manage this resource.");
         }
-        if (!await IsValidActorAsync(target, cancellationToken))
+        if (!await IsEligibleControlledResourceRecipientAsync(target, cancellationToken))
             return MessagingOperationResult.Failure("MESSAGING_RESOURCE_RECIPIENT_UNAVAILABLE", "This person is no longer available.");
 
         var targetAccess = await _controlledResources.GetAccessAsync(target, resourceType, cancellationToken);
@@ -2576,7 +2577,6 @@ internal sealed class MessagingService : IMessagingService
         if (actorParticipantType == MessagingParticipantTypes.Agent)
         {
             var authorizedClientIds = AuthorizedClientIdsForAgentQuery(actorUserId);
-            var activeLeadUserIds = await ActiveLeadUserIdsAsync(cancellationToken);
             var founderObjectId = FounderAuthority.GetConfiguredObjectId(_configuredFounderOid);
             var founderClientUserIds = ActiveMessagingClientProfilesQuery()
                 .Where(profile => founderObjectId != null &&
@@ -2602,7 +2602,6 @@ internal sealed class MessagingService : IMessagingService
                     .All(client => activeClientUserIds.Contains(client.UserId.ToLower())) &&
                 conversation.Participants.Where(participant => participant.IsActive && participant.ParticipantType == MessagingParticipantTypes.Client)
                     .Any(client => authorizedClientIds.Contains(client.UserId.ToLower()) ||
-                        activeLeadUserIds.Contains(client.UserId.ToLower()) ||
                         founderClientUserIds.Contains(client.UserId.ToLower())));
             return agentDirectConversations
                 .Union(clientAgentConversations)
@@ -2766,12 +2765,42 @@ internal sealed class MessagingService : IMessagingService
             MessagingParticipantTypes.Agent => await _db.AgentProfiles.AsNoTracking().AnyAsync(
                 x => x.IsActive && x.AgentUserId.ToLower() == normalizedActor.UserId,
                 cancellationToken),
-            MessagingParticipantTypes.Client => await ActiveMessagingClientProfilesQuery().AnyAsync(
-                x => x.ClientUserId.ToLower() == normalizedActor.UserId ||
-                     (x.ExternalIdentityObjectId != null && x.ExternalIdentityObjectId.ToLower() == normalizedActor.UserId),
+            MessagingParticipantTypes.Client => await IsActiveSubscribedClientIdentityAsync(
+                normalizedActor.UserId,
                 cancellationToken),
             _ => false
         };
+    }
+
+    private async Task<bool> IsEligibleControlledResourceRecipientAsync(
+        MessagingActor target,
+        CancellationToken cancellationToken)
+    {
+        if (target.ParticipantType == MessagingParticipantTypes.Client)
+        {
+            return await IsActiveSubscribedClientIdentityAsync(
+                target.UserId,
+                cancellationToken);
+        }
+
+        return await IsValidActorAsync(target, cancellationToken);
+    }
+
+    private async Task<bool> IsActiveSubscribedClientIdentityAsync(
+        string userId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedUserId = NormalizeUserId(userId);
+        if (string.IsNullOrWhiteSpace(normalizedUserId))
+            return false;
+
+        var profiles = await ActiveMessagingClientProfilesQuery()
+            .Where(profile => profile.ClientUserId.ToLower() == normalizedUserId ||
+                (profile.ExternalIdentityObjectId != null &&
+                 profile.ExternalIdentityObjectId.ToLower() == normalizedUserId))
+            .ToListAsync(cancellationToken);
+
+        return profiles.Any(LegendMemberDirectory.IsMemberRecord);
     }
 
     /// <summary>
@@ -2859,6 +2888,35 @@ internal sealed class MessagingService : IMessagingService
                 "Agent"));
     }
 
+    private static IEnumerable<MessagingRecipientSummary> CanonicalClientRecipients(
+        IEnumerable<RecipientClientRow> rows,
+        Func<RecipientClientRow, bool>? isAuthorized = null)
+    {
+        return rows
+            .Where(row =>
+                (isAuthorized?.Invoke(row) ?? true) &&
+                LegendMemberDirectory.IsMemberRecord(
+                    row.UserId,
+                    row.CrmNotes,
+                    row.CrmStatus))
+            .GroupBy(
+                row => LegendMemberDirectory.CanonicalIdentityKey(
+                    row.UserId,
+                    row.ExternalIdentityObjectId),
+                StringComparer.Ordinal)
+            .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+            .Select(group => group
+                .OrderBy(row => row.UserId, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(row => row.Email, StringComparer.OrdinalIgnoreCase)
+                .First())
+            .Select(row => new MessagingRecipientSummary(
+                row.UserId,
+                MessagingParticipantTypes.Client,
+                FirstNonEmpty($"{row.FirstName} {row.LastName}".Trim(), row.Email, "Client"),
+                row.Email,
+                "Client"));
+    }
+
     private static bool MatchesContactSearch(MessagingRecipientSummary recipient, string search)
     {
         var normalizedSearch = NormalizeSearchText(search);
@@ -2892,7 +2950,7 @@ internal sealed class MessagingService : IMessagingService
         CancellationToken cancellationToken)
     {
         var recipients = new List<MessagingRecipientSummary>();
-        if (recipientScope is not MessagingRecipientScopes.Clients and not MessagingRecipientScopes.Leads)
+        if (recipientScope is not MessagingRecipientScopes.Clients)
         {
             var agentRows = await ActiveMessagingAgentProfilesQuery()
                 .Select(x => new RecipientAgentRow(
@@ -2926,28 +2984,11 @@ internal sealed class MessagingService : IMessagingService
                     x.ExternalIdentityObjectId))
                 .ToListAsync(cancellationToken);
 
-            recipients.AddRange(clientRows
-                .Where(x => recipientScope switch
-                {
-                    MessagingRecipientScopes.Clients =>
-                        (isFounder ||
-                         linkedClientIds.Contains(x.UserId.ToLower()) ||
-                         IsFounderIdentity(x.ExternalIdentityObjectId)) &&
-                        ClientRecordClassification.IsClientOrBusinessClient(x.UserId, x.CrmNotes, x.CrmStatus),
-                    MessagingRecipientScopes.Leads => ClientRecordClassification.IsLead(x.UserId, x.CrmNotes, x.CrmStatus),
-                    _ =>
-                        ClientRecordClassification.IsLead(x.UserId, x.CrmNotes, x.CrmStatus) ||
-                        ((isFounder ||
-                          linkedClientIds.Contains(x.UserId.ToLower()) ||
-                          IsFounderIdentity(x.ExternalIdentityObjectId)) &&
-                         ClientRecordClassification.IsClientOrBusinessClient(x.UserId, x.CrmNotes, x.CrmStatus))
-                })
-                .Select(x => new MessagingRecipientSummary(
-                    x.UserId,
-                    MessagingParticipantTypes.Client,
-                    FirstNonEmpty($"{x.FirstName} {x.LastName}".Trim(), x.Email, "Client"),
-                    x.Email,
-                    ClientRecordClassification.IsLead(x.UserId, x.CrmNotes, x.CrmStatus) ? "Lead" : "Client")));
+            recipients.AddRange(CanonicalClientRecipients(
+                clientRows,
+                row => isFounder ||
+                       linkedClientIds.Contains(row.UserId.ToLower()) ||
+                       IsFounderIdentity(row.ExternalIdentityObjectId)));
         }
 
         return recipients;
@@ -2999,17 +3040,17 @@ internal sealed class MessagingService : IMessagingService
                     .ToHashSet();
             var clientRows = await ActiveMessagingClientProfilesQuery()
                 .Where(profile => !blockedProfileIds.Contains(profile.Id))
-                .Select(profile => new RecipientClientRow(profile.ClientUserId, profile.FirstName, profile.LastName, profile.Email, profile.CrmNotes, profile.CrmStatus))
+                .Select(profile => new RecipientClientRow(
+                    profile.ClientUserId,
+                    profile.FirstName,
+                    profile.LastName,
+                    profile.Email,
+                    profile.CrmNotes,
+                    profile.CrmStatus,
+                    profile.ExternalIdentityObjectId))
                 .ToListAsync(cancellationToken);
 
-            recipients.AddRange(clientRows
-                .Where(row => ClientRecordClassification.IsClientOrBusinessClient(row.UserId, row.CrmNotes, row.CrmStatus))
-                .Select(row => new MessagingRecipientSummary(
-                    row.UserId,
-                    MessagingParticipantTypes.Client,
-                    FirstNonEmpty($"{row.FirstName} {row.LastName}".Trim(), row.Email, "Client"),
-                    row.Email,
-                    "Client")));
+            recipients.AddRange(CanonicalClientRecipients(clientRows));
         }
 
         return recipients;
@@ -3092,6 +3133,13 @@ internal sealed class MessagingService : IMessagingService
                         (identity.ProfileId, identity.ParticipantType))
                 };
             })
+            .GroupBy(recipient => (recipient.UserId, recipient.ParticipantType))
+            .Select(group => group
+                .OrderBy(recipient => recipient.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(recipient => recipient.Email, StringComparer.OrdinalIgnoreCase)
+                .First())
+            .OrderBy(recipient => recipient.ParticipantType)
+            .ThenBy(recipient => recipient.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
@@ -3202,33 +3250,7 @@ internal sealed class MessagingService : IMessagingService
                 assistant.AssistantUserId.ToLower() == profile.AgentUserId.ToLower()));
 
     private IQueryable<ClientProfile> ActiveMessagingClientProfilesQuery() =>
-        _db.ClientProfiles.AsNoTracking()
-            .Where(profile => profile.CrmStatus == null ||
-                !new[] { "dormant", "inactive", "deleted", "blocked", "suspended", "cancelled", "canceled", "paused" }
-                    .Contains(profile.CrmStatus.ToLower()))
-            .Where(profile => !_db.ClientSubscriptions.Any(subscription => subscription.ClientProfileId == profile.Id) ||
-                _db.ClientSubscriptions.Any(subscription =>
-                    subscription.ClientProfileId == profile.Id &&
-                    (subscription.Status == ClientSubscriptionStatus.Active ||
-                     subscription.Status == ClientSubscriptionStatus.GracePeriod)));
-
-    private async Task<HashSet<string>> ActiveLeadUserIdsAsync(CancellationToken cancellationToken)
-    {
-        var clientRows = await ActiveMessagingClientProfilesQuery()
-            .Select(profile => new RecipientClientRow(
-                profile.ClientUserId,
-                profile.FirstName,
-                profile.LastName,
-                profile.Email,
-                profile.CrmNotes,
-                profile.CrmStatus))
-            .ToListAsync(cancellationToken);
-
-        return clientRows
-            .Where(profile => ClientRecordClassification.IsLead(profile.UserId, profile.CrmNotes, profile.CrmStatus))
-            .Select(profile => NormalizeUserId(profile.UserId))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-    }
+        LegendMemberDirectory.ActiveSubscribedProfiles(_db);
 
     private IQueryable<string> ActiveClientMembershipUserIdsQuery() =>
         ActiveMessagingClientProfilesQuery()
@@ -3625,16 +3647,12 @@ internal sealed class MessagingService : IMessagingService
                 profile.LastName,
                 profile.Email,
                 profile.CrmNotes,
-                profile.CrmStatus))
+                profile.CrmStatus,
+                profile.ExternalIdentityObjectId))
             .ToListAsync(cancellationToken);
 
-        var candidates = CanonicalAgentRecipients(agentRows).Concat(clientRows.Select(row =>
-            new MessagingRecipientSummary(
-                row.UserId,
-                MessagingParticipantTypes.Client,
-                FirstNonEmpty($"{row.FirstName} {row.LastName}".Trim(), row.Email, "Client"),
-                row.Email,
-                ClientRecordClassification.IsLead(row.UserId, row.CrmNotes, row.CrmStatus) ? "Lead" : "Client")))
+        var candidates = CanonicalAgentRecipients(agentRows).Concat(
+            CanonicalClientRecipients(clientRows))
             .GroupBy(recipient => (NormalizeUserId(recipient.UserId), recipient.ParticipantType))
             .Select(group => group.First())
             .OrderBy(recipient => recipient.DisplayName, StringComparer.OrdinalIgnoreCase)
@@ -4208,12 +4226,11 @@ internal sealed class MessagingService : IMessagingService
             null => null,
             "agents" => MessagingRecipientScopes.Agents,
             "clients" => MessagingRecipientScopes.Clients,
-            "leads" => MessagingRecipientScopes.Leads,
             _ => string.Empty
         };
 
         return actor.ParticipantType == MessagingParticipantTypes.Agent
-            ? normalizedScope is null or MessagingRecipientScopes.Agents or MessagingRecipientScopes.Clients or MessagingRecipientScopes.Leads
+            ? normalizedScope is null or MessagingRecipientScopes.Agents or MessagingRecipientScopes.Clients
             : normalizedScope is null or MessagingRecipientScopes.Agents or MessagingRecipientScopes.Clients;
     }
 

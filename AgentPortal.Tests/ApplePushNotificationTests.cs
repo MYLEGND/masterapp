@@ -47,6 +47,11 @@ public sealed class ApplePushNotificationTests
         Assert.Equal("com.mylegnd.legend.registered", handler.Headers["apns-topic"]);
         Assert.Equal("alert", handler.Headers["apns-push-type"]);
         Assert.Equal("10", handler.Headers["apns-priority"]);
+        Assert.True(long.TryParse(handler.Headers["apns-expiration"], out var expiration));
+        Assert.InRange(
+            expiration,
+            DateTimeOffset.UtcNow.AddHours(23).ToUnixTimeSeconds(),
+            DateTimeOffset.UtcNow.AddHours(25).ToUnixTimeSeconds());
         Assert.Equal("bearer", handler.AuthorizationScheme);
         Assert.False(string.IsNullOrWhiteSpace(handler.ProviderToken));
 
@@ -239,6 +244,30 @@ public sealed class ApplePushNotificationTests
     }
 
     [Fact]
+    public async Task Committed_notification_wakes_the_local_apns_outbox_immediately()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var signal = new ApplePushDeliverySignal();
+        var engine = CreateEngine(db, signal);
+        var recipient = new MessagingActor("push-recipient", MessagingParticipantTypes.Client);
+
+        await engine.StageAsync(new MobileActivityNotification
+        {
+            RecipientUserId = recipient.UserId,
+            RecipientParticipantType = recipient.ParticipantType,
+            Kind = "Message",
+            Title = "Jordan Lee",
+            Detail = "Ready when you are.",
+            OccurredUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        await engine.ReconcileAndPublishAsync([recipient]);
+
+        Assert.True(await signal.WaitAsync(TimeSpan.FromMilliseconds(100)));
+    }
+
+    [Fact]
     public async Task Push_diagnostic_is_actor_scoped_and_contains_no_token_material()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -305,13 +334,16 @@ public sealed class ApplePushNotificationTests
         Assert.DoesNotContain("abcdef", serialized, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static NotificationEngine CreateEngine(Infrastructure.Data.MasterAppDbContext db) =>
+    private static NotificationEngine CreateEngine(
+        Infrastructure.Data.MasterAppDbContext db,
+        IApplePushDeliverySignal? deliverySignal = null) =>
         new(
             db,
             new MessagingProfileImageResolver(
                 db,
                 NullLogger<MessagingProfileImageResolver>.Instance),
             new NoopRealtimePublisher(),
+            deliverySignal ?? new ApplePushDeliverySignal(),
             NullLogger<NotificationEngine>.Instance);
 
     private static ApplePushGateway CreateGateway(HttpClient client, string privateKey)

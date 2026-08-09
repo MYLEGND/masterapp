@@ -151,7 +151,7 @@ public sealed class MessagingServiceTests
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
-        db.ClientProfiles.Add(new ClientProfile
+        var clientTwo = new ClientProfile
         {
             Id = Guid.NewGuid(),
             ClientUserId = "client-2",
@@ -160,7 +160,9 @@ public sealed class MessagingServiceTests
             LastName = "Two",
             Email = "client.two@example.test",
             CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
-        });
+        };
+        db.ClientProfiles.Add(clientTwo);
+        GrantClientAppAccess(db, clientTwo);
         db.AgentClients.Add(new AgentClient
         {
             AgentUserId = "agent-1",
@@ -431,6 +433,12 @@ public sealed class MessagingServiceTests
         db.AgentClients.AddRange(
             new AgentClient { AgentUserId = "agent-1", AgentUpn = "agent.one@mylegnd.com", ClientUserId = "client-2" },
             new AgentClient { AgentUserId = "agent-1", AgentUpn = "agent.one@mylegnd.com", ClientUserId = "client-3" });
+        await db.SaveChangesAsync();
+        GrantClientAppAccess(
+            db,
+            await db.ClientProfiles.Where(profile =>
+                profile.ClientUserId == "client-2" ||
+                profile.ClientUserId == "client-3").ToArrayAsync());
         await db.SaveChangesAsync();
 
         var service = CreateService(db);
@@ -919,6 +927,88 @@ public sealed class MessagingServiceTests
         Assert.False((await db.ControlledResourceGrants.SingleAsync()).IsActive);
     }
 
+    [Fact]
+    public async Task FounderResourceDirectory_ExcludesLeadsAndCollapsesDuplicateMemberProfiles()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founderId = Guid.NewGuid().ToString();
+        var activeMember = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "active-member",
+            ExternalIdentityObjectId = "member-identity",
+            FirstName = "Active",
+            LastName = "Member",
+            Email = "active.member@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        };
+        var duplicate = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "active-member-legacy",
+            ExternalIdentityObjectId = "member-identity",
+            FirstName = "Active",
+            LastName = "Member",
+            Email = "active.member.legacy@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}",
+            UpdatedUtc = DateTime.UtcNow.AddMinutes(1)
+        };
+        var lead = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "lead-record",
+            ExternalIdentityObjectId = "lead-record",
+            FirstName = "Lead",
+            LastName = "Record",
+            Email = "lead.record@example.test",
+            CrmStatus = "Lead",
+            CrmNotes = "{\"recordType\":\"Lead\",\"pipelineStage\":\"NewLead\"}"
+        };
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = founderId,
+            FullName = "Founder",
+            IsActive = true
+        });
+        db.ClientProfiles.AddRange(activeMember, duplicate, lead);
+        GrantClientAppAccess(db, activeMember, duplicate, lead);
+        await db.SaveChangesAsync();
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection([
+                new KeyValuePair<string, string?>("Founder:Oid", founderId)
+            ])
+            .Build();
+        var service = CreateService(
+            db,
+            configuredFounderOid: founderId,
+            configuration: configuration);
+        var founder = new MessagingActor(founderId, MessagingParticipantTypes.Agent);
+
+        var directory = await service.ListControlledResourceRecipientsAsync(
+            founder,
+            ControlledResourceTypes.CommunityManagement);
+        var leadGrant = await service.SetControlledResourceGrantAsync(
+            new SetControlledResourceGrantCommand(
+                founder,
+                ControlledResourceTypes.CommunityManagement,
+                lead.ClientUserId,
+                MessagingParticipantTypes.Client,
+                IsGranted: true));
+
+        Assert.True(directory.Succeeded);
+        var memberResults = directory.Recipients
+            .Where(entry => entry.Recipient.ParticipantType == MessagingParticipantTypes.Client)
+            .ToArray();
+        Assert.Single(memberResults);
+        Assert.Equal("active-member", memberResults[0].Recipient.UserId);
+        Assert.DoesNotContain(directory.Recipients,
+            entry => entry.Recipient.UserId == lead.ClientUserId);
+        Assert.False(leadGrant.Succeeded);
+        Assert.Equal("MESSAGING_RESOURCE_RECIPIENT_UNAVAILABLE", leadGrant.ErrorCode);
+    }
+
     [Theory]
     [InlineData(ControlledResourceTypes.CommunityManagement)]
     [InlineData(ControlledResourceTypes.SocialContentPriority)]
@@ -1340,6 +1430,12 @@ public sealed class MessagingServiceTests
             });
 
         await db.SaveChangesAsync();
+        GrantClientAppAccess(
+            db,
+            await db.ClientProfiles.Where(profile =>
+                profile.ClientUserId == "client-en" ||
+                profile.ClientUserId == "client-ht").ToArrayAsync());
+        await db.SaveChangesAsync();
 
         var englishProfile = await db.ClientProfiles.SingleAsync(
             x => x.ClientUserId == "client-en");
@@ -1564,6 +1660,7 @@ public sealed class MessagingServiceTests
             x => x.AgentUserId == "agent-ht");
         var clientProfile = await db.ClientProfiles.SingleAsync(
             x => x.ClientUserId == "client-en");
+        GrantClientAppAccess(db, clientProfile);
 
         db.ControlledResourceGrants.AddRange(
             new ControlledResourceGrant
@@ -2055,6 +2152,7 @@ public sealed class MessagingServiceTests
         var first = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "journey-client-one", FirstName = "Journey", LastName = "One", Email = "one@example.test" };
         var second = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "journey-client-two", FirstName = "Journey", LastName = "Two", Email = "two@example.test" };
         db.ClientProfiles.AddRange(first, second);
+        GrantClientAppAccess(db, first, second);
         db.JourneyCircleProfiles.AddRange(
             new JourneyCircleProfile { Id = Guid.NewGuid(), ClientProfileId = first.Id, ConsentAffirmedUtc = DateTime.UtcNow, IsOptedIn = true, IsDiscoverable = true, AllowSuggestions = true, AllowConnectionRequests = true, DisplayName = "Journey One", CommunityAccessState = "Active" },
             new JourneyCircleProfile { Id = Guid.NewGuid(), ClientProfileId = second.Id, ConsentAffirmedUtc = DateTime.UtcNow, IsOptedIn = true, IsDiscoverable = true, AllowSuggestions = true, AllowConnectionRequests = true, DisplayName = "Journey Two", CommunityAccessState = "Active" });
@@ -2110,6 +2208,7 @@ public sealed class MessagingServiceTests
         };
 
         db.ClientProfiles.AddRange(first, second);
+        GrantClientAppAccess(db, first, second);
         db.AgentProfiles.AddRange(
             new AgentProfile
             {
@@ -2347,6 +2446,10 @@ public sealed class MessagingServiceTests
             ClientUserId = "agent-1"
         });
         await db.SaveChangesAsync();
+        GrantClientAppAccess(
+            db,
+            await db.ClientProfiles.Where(profile => profile.ClientUserId == "agent-1").ToArrayAsync());
+        await db.SaveChangesAsync();
         var service = CreateService(db);
         var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
         var client = new MessagingActor("agent-1", MessagingParticipantTypes.Client);
@@ -2517,6 +2620,10 @@ public sealed class MessagingServiceTests
             ClientUserId = "client-2"
         });
         await db.SaveChangesAsync();
+        GrantClientAppAccess(
+            db,
+            await db.ClientProfiles.Where(profile => profile.ClientUserId == "client-2").ToArrayAsync());
+        await db.SaveChangesAsync();
         var service = CreateService(db);
 
         var clientRecipients = await service.ListRecipientsAsync(
@@ -2533,7 +2640,7 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
-    public async Task AgentRecipientLookup_SeparatesAssignedClientsAndLeads()
+    public async Task AgentRecipientLookup_ExposesAssignedSubscribedClientsAndExcludesLeads()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
@@ -2572,34 +2679,38 @@ public sealed class MessagingServiceTests
             new AgentClient { AgentUserId = "agent-1", AgentUpn = "agent.one@mylegnd.com", ClientUserId = "lead-client" },
             new AgentClient { AgentUserId = "agent-2", AgentUpn = "agent.two@mylegnd.com", ClientUserId = "global-lead" });
         await db.SaveChangesAsync();
+        GrantClientAppAccess(
+            db,
+            await db.ClientProfiles.Where(profile => profile.ClientUserId == "business-client").ToArrayAsync());
+        await db.SaveChangesAsync();
         var service = CreateService(db);
         var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
 
         var recipients = await service.ListRecipientsAsync(agent);
         var clientRecipients = await service.ListRecipientsAsync(agent, recipientScope: MessagingRecipientScopes.Clients);
-        var leadRecipients = await service.ListRecipientsAsync(agent, recipientScope: MessagingRecipientScopes.Leads);
+        var leadRecipients = await service.ListRecipientsAsync(agent, recipientScope: "leads");
         var leadStart = await service.StartConversationAsync(
             new StartMessagingConversationCommand(
                 agent,
                 "lead-client",
                 MessagingParticipantTypes.Client,
-                InitialMessageBody: "This active lead can be messaged from the lead recipient search."));
+                InitialMessageBody: "A lead must not be available to a member-facing conversation."));
         var globalLeadStart = await service.StartConversationAsync(
             new StartMessagingConversationCommand(
                 agent,
                 "global-lead",
                 MessagingParticipantTypes.Client,
-                InitialMessageBody: "This active lead remains available outside assigned client ownership."));
+                InitialMessageBody: "A lead must not appear in a member-facing result."));
 
         Assert.Contains(recipients.Recipients, recipient => recipient.UserId == "client-1");
         Assert.Contains(recipients.Recipients, recipient => recipient.UserId == "business-client");
-        Assert.Contains(recipients.Recipients, recipient => recipient.UserId == "lead-client" && recipient.RelationshipLabel == "Lead");
-        Assert.Contains(recipients.Recipients, recipient => recipient.UserId == "global-lead" && recipient.RelationshipLabel == "Lead");
+        Assert.DoesNotContain(recipients.Recipients, recipient => recipient.UserId == "lead-client");
+        Assert.DoesNotContain(recipients.Recipients, recipient => recipient.UserId == "global-lead");
         Assert.DoesNotContain(clientRecipients.Recipients, recipient => recipient.UserId == "lead-client");
-        Assert.Contains(leadRecipients.Recipients, recipient => recipient.UserId == "lead-client" && recipient.RelationshipLabel == "Lead");
-        Assert.Contains(leadRecipients.Recipients, recipient => recipient.UserId == "global-lead" && recipient.RelationshipLabel == "Lead");
-        Assert.True(leadStart.Succeeded);
-        Assert.True(globalLeadStart.Succeeded, globalLeadStart.ErrorMessage);
+        Assert.False(leadRecipients.Succeeded);
+        Assert.Equal("MESSAGING_RECIPIENT_SCOPE_INVALID", leadRecipients.ErrorCode);
+        Assert.False(leadStart.Succeeded);
+        Assert.False(globalLeadStart.Succeeded);
     }
 
     [Fact]
@@ -2637,6 +2748,10 @@ public sealed class MessagingServiceTests
             AgentUpn = "agent.one@mylegnd.com",
             ClientUserId = "business-client"
         });
+        await db.SaveChangesAsync();
+        GrantClientAppAccess(
+            db,
+            await db.ClientProfiles.Where(profile => profile.ClientUserId == "business-client").ToArrayAsync());
         await db.SaveChangesAsync();
 
         var service = CreateService(db);
@@ -2680,7 +2795,7 @@ public sealed class MessagingServiceTests
             recipientScope: MessagingRecipientScopes.Clients);
         var leadResult = await service.ListRecipientsAsync(
             new MessagingActor("client-1", MessagingParticipantTypes.Client),
-            recipientScope: MessagingRecipientScopes.Leads);
+            recipientScope: "leads");
 
         Assert.True(agentResult.Succeeded);
         Assert.All(agentResult.Recipients, recipient => Assert.Equal(MessagingParticipantTypes.Agent, recipient.ParticipantType));
@@ -2734,6 +2849,8 @@ public sealed class MessagingServiceTests
             Email = "peer.blocked@example.test"
         };
         db.ClientProfiles.AddRange(activeClient, inactiveClient, blockedClient, suspendedClient, peerBlockedByActor);
+        await db.SaveChangesAsync();
+        GrantClientAppAccess(db, activeClient, peerBlockedByActor);
         await db.SaveChangesAsync();
         db.ClientSubscriptions.Add(new ClientSubscription
         {
@@ -3005,6 +3122,12 @@ public sealed class MessagingServiceTests
             CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
         });
         await db.SaveChangesAsync();
+        GrantClientAppAccess(
+            db,
+            await db.ClientProfiles.Where(profile =>
+                profile.ClientUserId == "client-2" ||
+                profile.ClientUserId == "client-3").ToArrayAsync());
+        await db.SaveChangesAsync();
         var service = CreateService(db, configuredFounderOid: founderObjectId);
 
         var created = await service.CreateGroupAsync(new CreateMessagingGroupCommand(
@@ -3068,6 +3191,11 @@ public sealed class MessagingServiceTests
             CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
         });
         await db.SaveChangesAsync();
+        GrantClientAppAccess(
+            db,
+            await db.ClientProfiles.Where(profile =>
+                profile.ClientUserId == "founder-client-legacy-id").ToArrayAsync());
+        await db.SaveChangesAsync();
         var service = CreateService(db, configuredFounderOid: founderObjectId);
         var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
 
@@ -3130,6 +3258,7 @@ public sealed class MessagingServiceTests
                 db,
                 images,
                 new NoopNotificationRealtimePublisher(),
+                new ApplePushDeliverySignal(),
                 NullLogger<NotificationEngine>.Instance),
             configuredFounderOid);
     }
@@ -3201,15 +3330,18 @@ public sealed class MessagingServiceTests
             FullName = "Agent One",
             IsActive = true
         });
-        db.ClientProfiles.Add(new ClientProfile
+        var client = new ClientProfile
         {
+            Id = Guid.NewGuid(),
             ClientUserId = "client-1",
             ExternalIdentityObjectId = "client-1",
             FirstName = "Client",
             LastName = "One",
             Email = "client.one@example.test",
             CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
-        });
+        };
+        db.ClientProfiles.Add(client);
+        GrantClientAppAccess(db, client);
         if (linkClientToAgent)
         {
             db.AgentClients.Add(new AgentClient
@@ -3234,5 +3366,25 @@ public sealed class MessagingServiceTests
         }
 
         await db.SaveChangesAsync();
+    }
+
+    private static void GrantClientAppAccess(
+        Infrastructure.Data.MasterAppDbContext db,
+        params ClientProfile[] clients)
+    {
+        foreach (var client in clients)
+        {
+            db.ClientEntitlements.Add(new ClientEntitlement
+            {
+                Id = Guid.NewGuid(),
+                ClientProfileId = client.Id,
+                EntitlementKey = BillingEntitlementKeys.ClientAppFullAccess,
+                Status = ClientEntitlementStatus.Active,
+                SourceType = ClientEntitlementSourceType.Subscription,
+                SourceId = $"test-member-{client.Id:N}",
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            });
+        }
     }
 }

@@ -1,4 +1,5 @@
 import XCTest
+import UserNotifications
 @testable import Legend
 
 final class LegendTests: XCTestCase {
@@ -66,7 +67,7 @@ final class LegendTests: XCTestCase {
         XCTAssertEqual(notifications.map(\.title), ["Request approved"])
     }
 
-    func testPlannerAlertPolicyUsesOneNativeAppleAlertWithoutAnAPNsMirror() throws {
+    func testPlannerAlertPolicyUsesOneLegendLocalAlertWithoutAnAPNsMirror() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
         let date = try XCTUnwrap(calendar.date(from: DateComponents(
@@ -110,5 +111,35 @@ final class LegendTests: XCTestCase {
                 alertsEnabled: false,
                 calendar: calendar),
             .none)
+    }
+
+    func testTodayActivityAlertUsesLegendBrandAndAStableLocalTrigger() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 8,
+            day: 8,
+            hour: 9)))
+        let fireDate = try XCTUnwrap(calendar.date(byAdding: .minute, value: 15, to: now))
+        let plan = try XCTUnwrap(LegendTodayActivityNotificationPlan.make(
+            itemIdentifier: "event-123",
+            kind: .event,
+            entryTitle: "Client review",
+            scheduledFor: fireDate,
+            alertSchedule: .absolute(fireDate),
+            repeatRule: .weekly,
+            now: now))
+
+        XCTAssertEqual(plan.identifier, "legend.today.event.event-123")
+        XCTAssertEqual(plan.title, "LEGEND®")
+        XCTAssertEqual(plan.subtitle, "Event")
+        XCTAssertEqual(plan.body, "Client review")
+
+        let trigger: UNCalendarNotificationTrigger = plan.trigger(calendar: calendar)
+        XCTAssertTrue(trigger.repeats)
+        XCTAssertEqual(trigger.dateComponents.weekday, calendar.component(.weekday, from: fireDate))
+        XCTAssertEqual(trigger.dateComponents.hour, 9)
+        XCTAssertEqual(trigger.dateComponents.minute, 15)
     }
 }

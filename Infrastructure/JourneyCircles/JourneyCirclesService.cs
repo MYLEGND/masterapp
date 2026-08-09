@@ -4,6 +4,7 @@ using Domain.JourneyCircles;
 using Domain.Messaging;
 using Domain.Moderation;
 using Infrastructure.Data;
+using Infrastructure.Mobile;
 using Infrastructure.Moderation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -123,7 +124,7 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
     {
         var sender = await FindClientAsync(clientUserId, cancellationToken);
         if (sender is null || sender.Id == targetClientProfileId) return JourneyCircleOperationResult.Failure("JOURNEY_REQUEST_INVALID", "This connection request is not available.");
-        var target = await _db.ClientProfiles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == targetClientProfileId, cancellationToken);
+        var target = await FindActiveMemberAsync(targetClientProfileId, cancellationToken);
         var senderProfile = await _db.JourneyCircleProfiles.FirstOrDefaultAsync(x => x.ClientProfileId == sender.Id, cancellationToken);
         var targetProfile = await _db.JourneyCircleProfiles.AsNoTracking().FirstOrDefaultAsync(x => x.ClientProfileId == targetClientProfileId, cancellationToken);
         if (target is null || !Eligible(senderProfile) || targetProfile is null || !Eligible(targetProfile) || !targetProfile.AllowConnectionRequests || await IsBlockedAsync(sender.Id, targetClientProfileId, cancellationToken))
@@ -172,7 +173,7 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
     {
         var client = await FindClientAsync(clientUserId, cancellationToken);
         if (client is null || client.Id == targetClientProfileId) return JourneyCircleOperationResult.Failure("JOURNEY_BLOCK_INVALID", "This community control is not available.");
-        var target = await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetClientProfileId, cancellationToken);
+        var target = await FindActiveMemberAsync(targetClientProfileId, cancellationToken);
         if (target is null) return JourneyCircleOperationResult.Failure("JOURNEY_BLOCK_INVALID", "This community control is not available.");
         var block = await _communitySafety.BlockAsync(
             new CommunitySafetyBlockCommand(
@@ -187,7 +188,7 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
     public async Task<JourneyCircleOperationResult> ReportAsync(string clientUserId, Guid targetClientProfileId, string category, string? detail, CancellationToken cancellationToken = default)
     {
         var client = await FindClientAsync(clientUserId, cancellationToken); if (client is null || client.Id == targetClientProfileId || string.IsNullOrWhiteSpace(category)) return JourneyCircleOperationResult.Failure("JOURNEY_REPORT_INVALID", "This report is not available.");
-        var target = await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetClientProfileId, cancellationToken);
+        var target = await FindActiveMemberAsync(targetClientProfileId, cancellationToken);
         if (target is null) return JourneyCircleOperationResult.Failure("JOURNEY_REPORT_INVALID", "This report is not available.");
         var report = await _communitySafety.ReportAsync(
             new CommunitySafetyReportCommand(
@@ -204,10 +205,19 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
 
     public async Task<bool> CanMessageAsync(string firstClientUserId, string secondClientUserId, CancellationToken cancellationToken = default)
     {
-        var ids = await _db.ClientProfiles.AsNoTracking().Where(x => x.ClientUserId.ToLower() == firstClientUserId.ToLower() || x.ClientUserId.ToLower() == secondClientUserId.ToLower() || (x.ExternalIdentityObjectId != null && (x.ExternalIdentityObjectId.ToLower() == firstClientUserId.ToLower() || x.ExternalIdentityObjectId.ToLower() == secondClientUserId.ToLower()))).Select(x => x.Id).Distinct().ToListAsync(cancellationToken);
-        if (ids.Count != 2 || await IsBlockedAsync(ids[0], ids[1], cancellationToken)) return false;
-        if (await _db.JourneyCircleProfiles.AsNoTracking().CountAsync(x => ids.Contains(x.ClientProfileId) && x.IsOptedIn && x.CommunityAccessState == "Active", cancellationToken) != 2) return false;
-        return await _db.JourneyCircleConnections.AsNoTracking().AnyAsync(x => x.ConnectionKey == PairKey(ids[0], ids[1]) && x.Status == JourneyCircleConnectionStatuses.Accepted, cancellationToken);
+        var ids = await LegendMemberDirectory.ActiveSubscribedProfiles(_db)
+            .Where(x => x.ClientUserId.ToLower() == firstClientUserId.ToLower() ||
+                x.ClientUserId.ToLower() == secondClientUserId.ToLower() ||
+                (x.ExternalIdentityObjectId != null &&
+                 (x.ExternalIdentityObjectId.ToLower() == firstClientUserId.ToLower() ||
+                  x.ExternalIdentityObjectId.ToLower() == secondClientUserId.ToLower())))
+            .ToListAsync(cancellationToken);
+        var activeMemberIds = LegendMemberDirectory.Collapse(ids)
+            .Select(profile => profile.Id)
+            .ToList();
+        if (activeMemberIds.Count != 2 || await IsBlockedAsync(activeMemberIds[0], activeMemberIds[1], cancellationToken)) return false;
+        if (await _db.JourneyCircleProfiles.AsNoTracking().CountAsync(x => activeMemberIds.Contains(x.ClientProfileId) && x.IsOptedIn && x.CommunityAccessState == "Active", cancellationToken) != 2) return false;
+        return await _db.JourneyCircleConnections.AsNoTracking().AnyAsync(x => x.ConnectionKey == PairKey(activeMemberIds[0], activeMemberIds[1]) && x.Status == JourneyCircleConnectionStatuses.Accepted, cancellationToken);
     }
 
     public async Task<IReadOnlyList<(string UserId, string DisplayName)>> ListConnectedPeersAsync(string clientUserId, CancellationToken cancellationToken = default)
@@ -218,16 +228,33 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
             .Select(x => x.RequesterClientProfileId == client.Id ? x.RecipientClientProfileId : x.RequesterClientProfileId)
             .Distinct()
             .ToArray();
-        var profiles = await _db.JourneyCircleProfiles.AsNoTracking().Include(x => x.ClientProfile).Where(x => peerIds.Contains(x.ClientProfileId) && x.IsOptedIn && x.CommunityAccessState == "Active").ToListAsync(cancellationToken);
+        var profiles = await (from journey in _db.JourneyCircleProfiles.AsNoTracking()
+                              join member in LegendMemberDirectory.ActiveSubscribedProfiles(_db)
+                                  on journey.ClientProfileId equals member.Id
+                              where peerIds.Contains(journey.ClientProfileId) &&
+                                    journey.IsOptedIn &&
+                                    journey.CommunityAccessState == "Active"
+                              select journey)
+            .Include(x => x.ClientProfile)
+            .ToListAsync(cancellationToken);
         var blockedPeerIds = await _db.JourneyCircleBlocks.AsNoTracking()
             .Where(x => x.BlockerClientProfileId == client.Id || x.BlockedClientProfileId == client.Id)
             .Select(x => x.BlockerClientProfileId == client.Id ? x.BlockedClientProfileId : x.BlockerClientProfileId)
             .ToListAsync(cancellationToken);
         return profiles
-            .Where(x => !blockedPeerIds.Contains(x.ClientProfileId) &&
+            .Where(x => x.ClientProfile is not null &&
+                        LegendMemberDirectory.IsMemberRecord(x.ClientProfile) &&
+                        !blockedPeerIds.Contains(x.ClientProfileId) &&
                         !string.IsNullOrWhiteSpace(x.ClientProfile.ClientUserId))
-            .GroupBy(x => x.ClientProfile.ClientUserId, StringComparer.OrdinalIgnoreCase)
-            .Select(group => (group.First().ClientProfile.ClientUserId, SafeDisplayName(group.First(), group.First().ClientProfile)))
+            .GroupBy(x => LegendMemberDirectory.CanonicalIdentityKey(x.ClientProfile), StringComparer.Ordinal)
+            .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+            .Select(group => group
+                .OrderByDescending(profile => profile.UpdatedUtc)
+                .ThenBy(profile => profile.ClientProfileId)
+                .First())
+            .Select(profile => (
+                profile.ClientProfile.ExternalIdentityObjectId ?? profile.ClientProfile.ClientUserId,
+                SafeDisplayName(profile, profile.ClientProfile)))
             .ToArray();
     }
 
@@ -284,9 +311,11 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
             return hash;
         }
 
-        var candidates = await _db.JourneyCircleProfiles
-            .AsNoTracking()
-            .Where(JourneyCircleParticipationPolicy.RecommendationCandidateExpression)
+        var candidates = await (from journey in _db.JourneyCircleProfiles.AsNoTracking()
+                                    .Where(JourneyCircleParticipationPolicy.RecommendationCandidateExpression)
+                                join member in LegendMemberDirectory.ActiveSubscribedProfiles(_db)
+                                    on journey.ClientProfileId equals member.Id
+                                select journey)
             .Include(x => x.ClientProfile)
             .Where(x =>
                 x.ClientProfileId != client.Id)
@@ -328,10 +357,17 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
         var eligibleCandidates = candidates
             .Where(x =>
                 x.ClientProfile is not null &&
+                LegendMemberDirectory.IsMemberRecord(x.ClientProfile) &&
                 !blockedSet.Contains(x.ClientProfileId) &&
                 !unavailableSet.Contains(x.ClientProfileId))
-            .GroupBy(x => x.ClientProfileId)
-            .Select(x => x.First())
+            .GroupBy(
+                x => LegendMemberDirectory.CanonicalIdentityKey(x.ClientProfile!),
+                StringComparer.Ordinal)
+            .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+            .Select(group => group
+                .OrderByDescending(profile => profile.UpdatedUtc)
+                .ThenBy(profile => profile.ClientProfileId)
+                .First())
             .ToArray();
 
         if (eligibleCandidates.Length == 0)
@@ -444,11 +480,34 @@ internal sealed class JourneyCirclesService : IJourneyCirclesService
     private async Task<IReadOnlyList<JourneyCircleConnectionSummary>> ConnectionSummariesAsync(ClientProfile client, string status, bool recipientOnly, CancellationToken ct)
     {
         var connections = await _db.JourneyCircleConnections.AsNoTracking().Where(x => x.Status == status && (recipientOnly ? x.RecipientClientProfileId == client.Id : (x.RequesterClientProfileId == client.Id || x.RecipientClientProfileId == client.Id))).ToListAsync(ct);
-        var ids = connections.Select(x => x.RequesterClientProfileId == client.Id ? x.RecipientClientProfileId : x.RequesterClientProfileId).ToArray(); var profiles = await _db.JourneyCircleProfiles.AsNoTracking().Include(x => x.ClientProfile).Where(x => ids.Contains(x.ClientProfileId)).ToDictionaryAsync(x => x.ClientProfileId, ct);
-        return connections.Where(x => profiles.ContainsKey(x.RequesterClientProfileId == client.Id ? x.RecipientClientProfileId : x.RequesterClientProfileId)).Select(x => { var id = x.RequesterClientProfileId == client.Id ? x.RecipientClientProfileId : x.RequesterClientProfileId; return new JourneyCircleConnectionSummary(x.Id, ToPublic(profiles[id], profiles[id].ClientProfile), x.Status, x.ConnectionReason, x.Introduction, x.CreatedUtc); }).ToArray();
+        var ids = connections.Select(x => x.RequesterClientProfileId == client.Id ? x.RecipientClientProfileId : x.RequesterClientProfileId).ToArray();
+        var profiles = await (from journey in _db.JourneyCircleProfiles.AsNoTracking()
+                              join member in LegendMemberDirectory.ActiveSubscribedProfiles(_db)
+                                  on journey.ClientProfileId equals member.Id
+                              where ids.Contains(journey.ClientProfileId)
+                              select journey)
+            .Include(x => x.ClientProfile)
+            .ToListAsync(ct);
+        var profilesById = profiles
+            .Where(profile => profile.ClientProfile is not null && LegendMemberDirectory.IsMemberRecord(profile.ClientProfile))
+            .GroupBy(profile => LegendMemberDirectory.CanonicalIdentityKey(profile.ClientProfile), StringComparer.Ordinal)
+            .Select(group => group
+                .OrderByDescending(profile => profile.UpdatedUtc)
+                .ThenBy(profile => profile.ClientProfileId)
+                .First())
+            .ToDictionary(profile => profile.ClientProfileId);
+        return connections.Where(x => profilesById.ContainsKey(x.RequesterClientProfileId == client.Id ? x.RecipientClientProfileId : x.RequesterClientProfileId)).Select(x => { var id = x.RequesterClientProfileId == client.Id ? x.RecipientClientProfileId : x.RequesterClientProfileId; return new JourneyCircleConnectionSummary(x.Id, ToPublic(profilesById[id], profilesById[id].ClientProfile), x.Status, x.ConnectionReason, x.Introduction, x.CreatedUtc); }).ToArray();
     }
 
     private async Task<ClientProfile?> FindClientAsync(string userId, CancellationToken ct) => await _db.ClientProfiles.FirstOrDefaultAsync(x => x.ClientUserId.ToLower() == userId.ToLower() || (x.ExternalIdentityObjectId != null && x.ExternalIdentityObjectId.ToLower() == userId.ToLower()), ct);
+    private async Task<ClientProfile?> FindActiveMemberAsync(Guid clientProfileId, CancellationToken ct)
+    {
+        var profile = await LegendMemberDirectory.ActiveSubscribedProfiles(_db)
+            .SingleOrDefaultAsync(x => x.Id == clientProfileId, ct);
+        return profile is not null && LegendMemberDirectory.IsMemberRecord(profile)
+            ? profile
+            : null;
+    }
     private Task<bool> IsBlockedAsync(Guid first, Guid second, CancellationToken ct) => _db.JourneyCircleBlocks.AsNoTracking().AnyAsync(x => (x.BlockerClientProfileId == first && x.BlockedClientProfileId == second) || (x.BlockerClientProfileId == second && x.BlockedClientProfileId == first), ct);
     private static bool Eligible(JourneyCircleProfile? profile) =>
         JourneyCircleParticipationPolicy.IsEligibleForMatching(profile);

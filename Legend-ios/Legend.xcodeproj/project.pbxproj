@@ -49,6 +49,7 @@
 		AB65D31B53580AC6C46A9AFB /* MobileConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55FB2460CFBD95299E4F7590 /* MobileConfiguration.swift */; };
 		B08DF9F51CABC3BC27A79143 /* MessagingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D35703BC894AC8E986DFF8 /* MessagingModels.swift */; };
 		B1DAD101B1DAD101B1DAD101 /* DailyScriptureManagementStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DAD001B1DAD001B1DAD001 /* DailyScriptureManagementStore.swift */; };
+		B3A01001B3A01001B3A01001 /* LegendTodayActivityNotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3A01000B3A01000B3A01000 /* LegendTodayActivityNotificationScheduler.swift */; };
 		F0C0A101F0C0A101F0C0A101 /* MobileCommunitySafetyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C0A001F0C0A001F0C0A001 /* MobileCommunitySafetyStore.swift */; };
 		B1DAD102B1DAD102B1DAD102 /* DailyScriptureManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DAD002B1DAD002B1DAD002 /* DailyScriptureManagementView.swift */; };
 		B1DAD103B1DAD103B1DAD103 /* DailyScripturePassageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1DAD003B1DAD003B1DAD003 /* DailyScripturePassageView.swift */; };
@@ -145,6 +146,7 @@
 		6AE49C94AC5A246F497EF096 /* MobileSocialContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialContractTests.swift; sourceTree = "<group>"; };
 		72C9D00CE99AA225824D8CEC /* LegendNextTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextTheme.swift; sourceTree = "<group>"; };
 		73B79374AB1BC2E063C1D801 /* LegendDailyActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDailyActivity.swift; sourceTree = "<group>"; };
+		B3A01000B3A01000B3A01000 /* LegendTodayActivityNotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendTodayActivityNotificationScheduler.swift; sourceTree = "<group>"; };
 		78035FC866AB942A4F9F45F0 /* LegendNextButtons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextButtons.swift; sourceTree = "<group>"; };
 		78E9CB9087E03621529FA288 /* LegendDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendDiagnostics.swift; sourceTree = "<group>"; };
 		7934CB78A5F42B17F1842D23 /* LegendSocialHomeSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendSocialHomeSection.swift; sourceTree = "<group>"; };
@@ -351,6 +353,7 @@
 				E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */,
 				E682CA4E7BA829CAC4259297 /* LegendAgentClientCreationPortalView.swift */,
 				73B79374AB1BC2E063C1D801 /* LegendDailyActivity.swift */,
+				B3A01000B3A01000B3A01000 /* LegendTodayActivityNotificationScheduler.swift */,
 				9467A7141E660E53B92CCE3C /* MobileHomeModels.swift */,
 				429B3A8DF2A854EC227E0EED /* MobileHomeStore.swift */,
 				B1DAD001B1DAD001B1DAD001 /* DailyScriptureManagementStore.swift */,
@@ -625,6 +628,7 @@
 				844E717BB59A21BFDC60BB35 /* LegendComponents.swift in Sources */,
 				D9F04664BBC390218ACB8B88 /* LegendContactCard.swift in Sources */,
 				9C51AD4CB76219CECD8ADF2E /* LegendDailyActivity.swift in Sources */,
+				B3A01001B3A01001B3A01001 /* LegendTodayActivityNotificationScheduler.swift in Sources */,
 				5EF643842D57B1E5FCAF8499 /* LegendDesignSystem.swift in Sources */,
 				956B671334A52CF106C5B414 /* LegendDiagnostics.swift in Sources */,
 				1E4040D561918A449BB09314 /* LegendDiscoverView.swift in Sources */,

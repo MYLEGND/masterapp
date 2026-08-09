@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Domain.Billing;
 using Domain.Entities;
 using Domain.JourneyCircles;
 using Infrastructure.JourneyCircles;
@@ -20,6 +21,7 @@ public sealed class JourneyCirclesServiceTests
         var first = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "client-one", FirstName = "One", LastName = "Client", Email = "one@example.test" };
         var second = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "client-two", FirstName = "Two", LastName = "Client", Email = "two@example.test" };
         db.ClientProfiles.AddRange(first, second);
+        GrantClientAppAccess(db, first, second);
         db.JourneyCircleProfiles.AddRange(
             new JourneyCircleProfile
             {
@@ -100,6 +102,7 @@ public sealed class JourneyCirclesServiceTests
         };
 
         db.ClientProfiles.AddRange(viewer, visibleCandidate);
+        GrantClientAppAccess(db, viewer, visibleCandidate);
         await db.SaveChangesAsync();
 
         var service = new JourneyCirclesService(
@@ -189,6 +192,7 @@ public sealed class JourneyCirclesServiceTests
             Email = "one.choice.candidate@example.test"
         };
         db.ClientProfiles.AddRange(viewer, candidate);
+        GrantClientAppAccess(db, viewer, candidate);
         await db.SaveChangesAsync();
 
         var service = new JourneyCirclesService(
@@ -285,6 +289,12 @@ public sealed class JourneyCirclesServiceTests
         };
 
         db.ClientProfiles.AddRange(
+            viewer,
+            hiddenCandidate,
+            noConsentCandidate,
+            visibleCandidate);
+        GrantClientAppAccess(
+            db,
             viewer,
             hiddenCandidate,
             noConsentCandidate,
@@ -397,6 +407,7 @@ public sealed class JourneyCirclesServiceTests
         var first = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "client-one", FirstName = "One", LastName = "Client", Email = "one@example.test" };
         var second = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "client-two", FirstName = "Two", LastName = "Client", Email = "two@example.test" };
         db.ClientProfiles.AddRange(first, second);
+        GrantClientAppAccess(db, first, second);
         await db.SaveChangesAsync();
         var moderation = new CommunityTextModerationService(new ConfigurationBuilder().Build());
         var service = new JourneyCirclesService(db, moderation, NullLogger<JourneyCirclesService>.Instance);
@@ -448,6 +459,7 @@ public sealed class JourneyCirclesServiceTests
         };
 
         db.ClientProfiles.AddRange(viewer, candidate);
+        GrantClientAppAccess(db, viewer, candidate);
         await db.SaveChangesAsync();
 
         var service = new JourneyCirclesService(
@@ -515,6 +527,75 @@ public sealed class JourneyCirclesServiceTests
     }
 
     [Fact]
+    public async Task DiscoverFeed_ExcludesLeadRecordsAndCollapsesDuplicateMemberIdentities()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var viewer = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "journey-viewer",
+            ExternalIdentityObjectId = "journey-viewer",
+            FirstName = "Viewer",
+            LastName = "Member",
+            Email = "viewer@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        };
+        var member = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "journey-member",
+            ExternalIdentityObjectId = "journey-member",
+            FirstName = "Member",
+            LastName = "One",
+            Email = "member@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        };
+        var legacyDuplicate = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "journey-member-legacy",
+            ExternalIdentityObjectId = "journey-member",
+            FirstName = "Member",
+            LastName = "One",
+            Email = "member.legacy@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        };
+        var lead = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "journey-lead",
+            ExternalIdentityObjectId = "journey-lead",
+            FirstName = "Lead",
+            LastName = "Record",
+            Email = "lead@example.test",
+            CrmStatus = "Lead",
+            CrmNotes = "{\"recordType\":\"Lead\",\"pipelineStage\":\"NewLead\"}"
+        };
+        var now = DateTime.UtcNow;
+        db.ClientProfiles.AddRange(viewer, member, legacyDuplicate, lead);
+        GrantClientAppAccess(db, viewer, member, legacyDuplicate, lead);
+        db.JourneyCircleProfiles.AddRange(
+            JourneyProfile(viewer.Id, "Viewer", now),
+            JourneyProfile(member.Id, "Member", now),
+            JourneyProfile(legacyDuplicate.Id, "Member", now.AddMinutes(1)),
+            JourneyProfile(lead.Id, "Lead", now.AddMinutes(2)));
+        await db.SaveChangesAsync();
+
+        var service = new JourneyCirclesService(
+            db,
+            new CommunityTextModerationService(new ConfigurationBuilder().Build()),
+            NullLogger<JourneyCirclesService>.Instance);
+
+        var dashboard = await service.GetDashboardAsync(viewer.ClientUserId);
+
+        Assert.Single(dashboard.Recommendations);
+        Assert.Equal(legacyDuplicate.Id, dashboard.Recommendations[0].Profile.ClientProfileId);
+        Assert.DoesNotContain(
+            dashboard.Recommendations,
+            recommendation => recommendation.Profile.ClientProfileId == lead.Id);
+    }
+
+    [Fact]
     public async Task DiscoverFeed_PrioritizesRecommendations_BeforeGeneralProfiles()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -547,6 +628,7 @@ public sealed class JourneyCirclesServiceTests
         };
 
         db.ClientProfiles.AddRange(viewer, recommended, general);
+        GrantClientAppAccess(db, viewer, recommended, general);
         await db.SaveChangesAsync();
 
         var service = new JourneyCirclesService(
@@ -619,4 +701,45 @@ public sealed class JourneyCirclesServiceTests
             dashboard.Recommendations[1].Explanation);
     }
 
+    private static void GrantClientAppAccess(
+        Infrastructure.Data.MasterAppDbContext db,
+        params ClientProfile[] clients)
+    {
+        foreach (var client in clients)
+        {
+            db.ClientEntitlements.Add(new ClientEntitlement
+            {
+                Id = Guid.NewGuid(),
+                ClientProfileId = client.Id,
+                EntitlementKey = BillingEntitlementKeys.ClientAppFullAccess,
+                Status = ClientEntitlementStatus.Active,
+                SourceType = ClientEntitlementSourceType.Subscription,
+                SourceId = $"test-member-{client.Id:N}",
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            });
+        }
+    }
+
+    private static JourneyCircleProfile JourneyProfile(
+        Guid clientProfileId,
+        string displayName,
+        DateTime updatedUtc) => new()
+    {
+        Id = Guid.NewGuid(),
+        ClientProfileId = clientProfileId,
+        ConsentAffirmedUtc = updatedUtc,
+        IsOptedIn = true,
+        IsDiscoverable = true,
+        AllowSuggestions = true,
+        AllowConnectionRequests = true,
+        DisplayName = displayName,
+        CommunityAccessState = "Active",
+        GoalsJson = "[\"Growing a business\"]",
+        InterestsJson = "[]",
+        CircleCodesJson = "[]",
+        ConnectionTypesJson = "[]",
+        CreatedUtc = updatedUtc,
+        UpdatedUtc = updatedUtc
+    };
 }

@@ -105,7 +105,6 @@ public static class MessagingRecipientScopes
 {
     public const string Agents = "Agents";
     public const string Clients = "Clients";
-    public const string Leads = "Leads";
 }
 
 public static class MessagingAttachmentScanStatuses

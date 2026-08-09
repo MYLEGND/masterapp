@@ -1,9 +1,9 @@
-using Domain.Billing;
 using Domain.Entities;
 using Domain.JourneyCircles;
 using Domain.Messaging;
 using Domain.Social;
 using Infrastructure.Data;
+using Infrastructure.Mobile;
 using Microsoft.EntityFrameworkCore;
 using Shared.Auth;
 
@@ -148,21 +148,18 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         from journey in _db.JourneyCircleProfiles
             .AsNoTracking()
             .Where(JourneyCircleParticipationPolicy.RecommendationCandidateExpression)
-        join client in _db.ClientProfiles.AsNoTracking()
+        join client in LegendMemberDirectory.ActiveSubscribedProfiles(_db)
             on journey.ClientProfileId equals client.Id
         where journey.ClientProfileId != viewerProfileId
               && !blockedIds.Contains(journey.ClientProfileId)
-              && _db.ClientEntitlements.Any(entitlement =>
-                  entitlement.ClientProfileId == client.Id
-                  && entitlement.EntitlementKey == BillingEntitlementKeys.ClientAppFullAccess
-                  && (entitlement.Status == ClientEntitlementStatus.Active
-                      || entitlement.Status == ClientEntitlementStatus.GracePeriod))
         select new CommunityCandidate
         {
             Journey = journey,
             ClientProfileId = client.Id,
             ClientUserId = client.ClientUserId,
             ExternalIdentityObjectId = client.ExternalIdentityObjectId,
+            CrmNotes = client.CrmNotes,
+            CrmStatus = client.CrmStatus,
             Phone = client.Phone
         };
 
@@ -210,11 +207,23 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             .AsNoTracking()
             .FirstOrDefaultAsync(profile => profile.ClientProfileId == viewer.Id, cancellationToken);
 
-        var window = await candidates
+        var window = (await candidates
             .OrderByDescending(candidate => candidate.Journey.UpdatedUtc)
             .ThenBy(candidate => candidate.ClientProfileId)
             .Take(RankingWindow)
-            .ToArrayAsync(cancellationToken);
+            .ToArrayAsync(cancellationToken))
+            .Where(IsMemberCandidate)
+            .GroupBy(
+                candidate => LegendMemberDirectory.CanonicalIdentityKey(
+                    candidate.ClientUserId,
+                    candidate.ExternalIdentityObjectId),
+                StringComparer.Ordinal)
+            .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+            .Select(group => group
+                .OrderByDescending(candidate => candidate.Journey.UpdatedUtc)
+                .ThenBy(candidate => candidate.ClientProfileId)
+                .First())
+            .ToArray();
 
         var viewerTraits = viewerJourney is null
             ? null
@@ -328,8 +337,17 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         }
 
         var clients = clientRows
-            .GroupBy(row => row.Client.Id)
-            .Select(group => ToDirectoryCandidate(group.First()))
+            .Where(row => LegendMemberDirectory.IsMemberRecord(row.Client))
+            .GroupBy(
+                row => LegendMemberDirectory.CanonicalIdentityKey(row.Client),
+                StringComparer.Ordinal)
+            .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+            .Select(group => group
+                .OrderByDescending(row => row.Client.UpdatedUtc)
+                .ThenByDescending(row => row.Client.CreatedUtc)
+                .ThenBy(row => row.Client.Id)
+                .First())
+            .Select(ToDirectoryCandidate)
             .ToArray();
         // Load all active agents before removing the actor's identity group. If a
         // legacy profile is an alias of the current actor, filtering only by its
@@ -391,18 +409,12 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         Guid? viewerProfileId,
         IReadOnlyCollection<Guid> blockedIds,
         CancellationToken cancellationToken) =>
-        (from client in _db.ClientProfiles.AsNoTracking()
+        (from client in LegendMemberDirectory.ActiveSubscribedProfiles(_db)
          join journey in _db.JourneyCircleProfiles.AsNoTracking()
              on client.Id equals journey.ClientProfileId into journeys
          from journey in journeys.DefaultIfEmpty()
          where (!viewerProfileId.HasValue || client.Id != viewerProfileId.Value)
                && !blockedIds.Contains(client.Id)
-               && (client.CrmStatus == null || client.CrmStatus == "Active")
-               && _db.ClientEntitlements.Any(entitlement =>
-                   entitlement.ClientProfileId == client.Id
-                   && entitlement.EntitlementKey == BillingEntitlementKeys.ClientAppFullAccess
-                   && (entitlement.Status == ClientEntitlementStatus.Active
-                       || entitlement.Status == ClientEntitlementStatus.GracePeriod))
          select new ClientDirectoryRow(client, journey))
             .ToArrayAsync(cancellationToken);
 
@@ -412,7 +424,7 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
     {
         var normalizedAgentId = Normalize(agentUserId);
         return (from link in _db.AgentClients.AsNoTracking()
-                join client in _db.ClientProfiles.AsNoTracking()
+                join client in LegendMemberDirectory.ActiveSubscribedProfiles(_db)
                     on link.ClientUserId.ToLower() equals client.ClientUserId.ToLower()
                 join journey in _db.JourneyCircleProfiles.AsNoTracking()
                     on client.Id equals journey.ClientProfileId into journeys
@@ -854,6 +866,12 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
             ? profile.ClientUserId
             : profile.ExternalIdentityObjectId);
 
+    private static bool IsMemberCandidate(CommunityCandidate candidate) =>
+        LegendMemberDirectory.IsMemberRecord(
+            candidate.ClientUserId,
+            candidate.CrmNotes,
+            candidate.CrmStatus);
+
     private bool IsFounderIdentity(string? userId) =>
         FounderAuthority.IsConfiguredFounderIdentity(
             userId,
@@ -949,6 +967,8 @@ public sealed class SocialDiscoveryService : ISocialDiscoveryService
         public required Guid ClientProfileId { get; init; }
         public required string ClientUserId { get; init; }
         public required string? ExternalIdentityObjectId { get; init; }
+        public required string? CrmNotes { get; init; }
+        public required string? CrmStatus { get; init; }
         public required string? Phone { get; init; }
     }
 }

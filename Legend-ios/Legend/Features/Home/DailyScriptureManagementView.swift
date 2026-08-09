@@ -2,14 +2,11 @@ import SwiftUI
 
 struct LegendDailyScriptureManagementView: View {
     @ObservedObject var store: MobileDailyScriptureManagementStore
-    @ObservedObject var messages: MessagingStore
-    let isFounder: Bool
 
     @Environment(\.dismiss) private var dismiss
     @State private var editor: DailyScriptureOverrideEditorRoute?
     @State private var preview: MobileDailyScripture?
     @State private var removalTarget: MobileDailyScriptureOverride?
-    @State private var isManagingAccess = false
 
     var body: some View {
         NavigationStack {
@@ -44,11 +41,6 @@ struct LegendDailyScriptureManagementView: View {
         }
         .sheet(item: $preview) { scripture in
             DailyScriptureSheet(scripture: scripture)
-        }
-        .sheet(isPresented: $isManagingAccess) {
-            LegendControlledResourceAccessManager(
-                messages: messages,
-                resourceType: .scriptureManagement)
         }
         .confirmationDialog(
             "Remove this scheduled scripture?",
@@ -114,21 +106,6 @@ struct LegendDailyScriptureManagementView: View {
                             LegendProfileSettingsDivider()
                             upcomingOverrides(snapshot)
                         }
-                    }
-                }
-
-                if isFounder {
-                    LegendProfileSettingsSection(title: "Access") {
-                        Button {
-                            isManagingAccess = true
-                        } label: {
-                            LegendProfileSettingsRow(
-                                title: "Manage scripture access",
-                                detail: "Grant or remove Daily Scripture Management.",
-                                systemImage: "person.badge.key",
-                                showsChevron: true)
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
             }

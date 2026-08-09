@@ -391,7 +391,7 @@ final class MessagingStore: ObservableObject {
 
     var availableRecipientScopes: [MessagingRecipientScope] {
         actorParticipantType == .agent
-            ? [.clients, .agents, .leads]
+            ? [.clients, .agents]
             : [.clients, .agents]
     }
 

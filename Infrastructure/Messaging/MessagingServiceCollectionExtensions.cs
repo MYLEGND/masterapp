@@ -37,6 +37,7 @@ public static class MessagingServiceCollectionExtensions
             provider.GetRequiredService<MessagingProfileImageResolver>());
         services.AddScoped<IProfileImageWriter>(provider =>
             provider.GetRequiredService<MessagingProfileImageResolver>());
+        services.AddSingleton<IApplePushDeliverySignal, ApplePushDeliverySignal>();
         services.AddScoped<INotificationEngine, NotificationEngine>();
         services.AddSingleton<INotificationRealtimePublisher, NotificationRealtimePublisher>();
         services.AddHttpClient("ApplePush", client =>

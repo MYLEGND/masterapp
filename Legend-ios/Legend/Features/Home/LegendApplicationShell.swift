@@ -3965,6 +3965,7 @@ private struct LegendFinancialOutlookSheet: View {
 
 private struct LegendFinanceView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
 
     let currentSession: MobileSession
     @ObservedObject private var store: MobileFinancialStore
@@ -3985,8 +3986,10 @@ private struct LegendFinanceView: View {
         Group {
             switch store.state {
             case .idle, .loading:
-                LegendHomeSkeleton()
-                    .accessibilityLabel("Loading financial intelligence")
+                financialStateContent {
+                    LegendHomeSkeleton()
+                        .accessibilityLabel("Loading financial intelligence")
+                }
 
             case .available(let financial):
                 financialContent(financial)
@@ -4010,22 +4013,24 @@ private struct LegendFinanceView: View {
                 )
 
             case .authenticationRequired(let failure):
-                LegendNextErrorState(
-                    title: failure.title,
-                    message: failure.message,
-                    retryTitle: "Sign in again",
-                    retry: { Task { await bootstrap.refreshFinancial() } }
-                )
-                .padding(LegendNextSpacing.sm)
+                financialStateContent {
+                    LegendNextErrorState(
+                        title: failure.title,
+                        message: failure.message,
+                        retryTitle: "Sign in again",
+                        retry: { Task { await bootstrap.refreshFinancial() } }
+                    )
+                }
 
             case .retryableFailure(let failure):
-                LegendNextErrorState(
-                    title: failure.title,
-                    message: failure.message,
-                    retryTitle: "Retry",
-                    retry: { Task { await bootstrap.refreshFinancial() } }
-                )
-                .padding(LegendNextSpacing.sm)
+                financialStateContent {
+                    LegendNextErrorState(
+                        title: failure.title,
+                        message: failure.message,
+                        retryTitle: "Retry",
+                        retry: { Task { await bootstrap.refreshFinancial() } }
+                    )
+                }
             }
         }
         .background(
@@ -4047,6 +4052,8 @@ private struct LegendFinanceView: View {
                 alignment: .leading,
                 spacing: LegendNextSpacing.xs
             ) {
+                financialReportExitControl()
+
                 if let availability {
                     availabilityNotice(availability)
                 }
@@ -4374,7 +4381,7 @@ private struct LegendFinanceView: View {
                 alignment: .leading,
                 spacing: LegendNextSpacing.xs
             ) {
-                financialDetailBackControl()
+                financialDetailNavigation()
 
                 if destination.healthSectionKey == nil,
                    let section = financial.presentation?.prioritySections.first(
@@ -4489,34 +4496,72 @@ private struct LegendFinanceView: View {
         }
     }
 
-    private func financialDetailBackControl() -> some View {
+    private func financialStateContent<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        LegendScrollView {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                financialReportExitControl()
+                content()
+            }
+            .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+            .padding(.top, LegendNextSpacing.xs)
+            .padding(.bottom, LegendNextSpacing.xl)
+        }
+        .background(
+            LegendNextGradient.pageWash(for: colorScheme)
+                .ignoresSafeArea()
+        )
+    }
+
+    private func financialReportExitControl() -> some View {
         Button {
-            detailDestination = nil
+            dismiss()
         } label: {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 15, weight: .bold))
+            Label("Profile", systemImage: "chevron.left")
+                .font(.subheadline.weight(.bold))
                 .foregroundStyle(LegendNextColor.navy)
-                .frame(width: 40, height: 40)
-                .background(
-                    LegendNextColor.canvas,
-                    in: Circle()
-                )
+                .padding(.horizontal, LegendNextSpacing.sm)
+                .frame(minHeight: 40)
+                .background(LegendNextColor.canvas, in: Capsule())
                 .overlay {
-                    Circle()
+                    Capsule()
                         .strokeBorder(
                             LegendNextColor.gold.opacity(0.38),
                             lineWidth: 1
                         )
                 }
-                .shadow(
-                    color: LegendNextColor.ambientShadow(for: colorScheme)
-                        .opacity(0.22),
-                    radius: 8,
-                    y: 3
-                )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Back to Financial Intelligence")
+        .accessibilityLabel("Back to Profile")
+    }
+
+    private func financialDetailNavigation() -> some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            Button {
+                detailDestination = nil
+            } label: {
+                Label("Financial Intelligence", systemImage: "chevron.left")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(LegendNextColor.navy)
+                    .padding(.horizontal, LegendNextSpacing.sm)
+                    .frame(minHeight: 40)
+                    .background(LegendNextColor.canvas, in: Capsule())
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(
+                                LegendNextColor.gold.opacity(0.38),
+                                lineWidth: 1
+                            )
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to Financial Intelligence")
+
+            Spacer(minLength: 0)
+
+            financialReportExitControl()
+        }
     }
 
     private enum FinancialAvailability {
@@ -6351,10 +6396,9 @@ private struct LegendAccountView: View {
 
     private enum ProfileSettingsPresentation: String, Identifiable {
         case creatorInsights
-        case founderCommandCenter
+        case founderManagement
         case followRequests
         case translationLanguage
-        case translationManagement
         case dailyScriptureManagement
         case communitySafety
         case accountAccess
@@ -6431,13 +6475,13 @@ private struct LegendAccountView: View {
                     }
 
                     if currentSession.capabilities.contains("founder") {
-                        LegendProfileSettingsSection(title: "Founder command") {
+                        LegendProfileSettingsSection(title: "Founder management") {
                             Button {
-                                profileSettingsPresentation = .founderCommandCenter
+                                profileSettingsPresentation = .founderManagement
                             } label: {
                                 LegendProfileSettingsRow(
-                                    title: "Founder command center",
-                                    detail: "Grant member roles and prioritize eligible creator content.",
+                                    title: "Founder management",
+                                    detail: "Manage member access, leadership authority, and creator priority in one place.",
                                     systemImage: "crown.fill",
                                     showsChevron: true)
                             }
@@ -6568,20 +6612,6 @@ private struct LegendAccountView: View {
                                 }
                                 .buttonStyle(.plain)
 
-                                if profile.translationAccess.canManage {
-                                    LegendProfileSettingsDivider()
-
-                                    Button {
-                                        profileSettingsPresentation = .translationManagement
-                                    } label: {
-                                        LegendProfileSettingsRow(
-                                            title: "Manage translation access",
-                                            detail: "Grant or remove access for any Legend profile.",
-                                            systemImage: "person.badge.key",
-                                            showsChevron: true)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
                             } else {
                                 Button {
                                     submitControlledResourceRequest(.languageTranslation)
@@ -6699,8 +6729,8 @@ private struct LegendAccountView: View {
                         insights: snapshot.creatorInsights,
                         profileMetrics: snapshot.currentProfileMetrics)
                 }
-            case .founderCommandCenter:
-                LegendFounderCommandCenter(messages: messages)
+            case .founderManagement:
+                LegendFounderManagementModel(messages: messages)
             case .followRequests:
                 LegendFollowRequestsSheet(social: social)
             case .translationLanguage:
@@ -6708,15 +6738,9 @@ private struct LegendAccountView: View {
                     profile: profile,
                     store: account,
                     messages: messages)
-            case .translationManagement:
-                LegendControlledResourceAccessManager(
-                    messages: messages,
-                    resourceType: .languageTranslation)
             case .dailyScriptureManagement:
                 LegendDailyScriptureManagementView(
-                    store: bootstrap.stores.dailyScriptureManagement,
-                    messages: messages,
-                    isFounder: currentSession.capabilities.contains("founder"))
+                    store: bootstrap.stores.dailyScriptureManagement)
             case .communitySafety:
                 LegendCommunitySafetyReview(
                     store: coordinator.makeCommunitySafetyStore(),
@@ -7459,33 +7483,94 @@ struct LegendCommunitySafetyReview: View {
     }
 }
 
-/// One founder-only directory for the two community-wide authorities. Both
-/// switches write through the existing typed controlled-resource endpoint and
-/// its durable server grant—not a local role flag.
-struct LegendFounderCommandCenter: View {
+/// The catalog of member authorities is defined once and rendered by the one
+/// founder-management model from either Settings or a member profile.
+private enum LegendFounderAuthority: CaseIterable, Identifiable {
+    case languageTranslation
+    case scriptureManagement
+    case communityManagement
+    case socialContentPriority
+
+    var id: String { resourceType.rawValue }
+
+    var resourceType: ControlledResourceType {
+        switch self {
+        case .languageTranslation: .languageTranslation
+        case .scriptureManagement: .scriptureManagement
+        case .communityManagement: .communityManagement
+        case .socialContentPriority: .socialContentPriority
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .languageTranslation:
+            "Grant or revoke access to LEGEND language translation."
+        case .scriptureManagement:
+            "Delegate Daily Scripture scheduling and editorial management."
+        case .communityManagement:
+            "Delegate report triage while content removal remains Founder-only."
+        case .socialContentPriority:
+            "Prioritize eligible Posts and Hacs above the standard feed ranking."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .languageTranslation: "character.bubble.fill"
+        case .scriptureManagement: "book.closed.fill"
+        case .communityManagement: "person.badge.shield.checkmark"
+        case .socialContentPriority: "sparkles.tv.fill"
+        }
+    }
+}
+
+/// The one founder-only authority surface. A Settings launch manages the
+/// directory, while a profile launch opens the same control model scoped to
+/// that member. Every grant writes through the existing typed server endpoint.
+struct LegendFounderManagementModel: View {
     @ObservedObject var messages: MessagingStore
+    let member: MobileSocialAuthor?
+    @Binding private var verificationReview: VerificationReview?
+    private let resolveVerification: ((VerificationReview, Bool, String?) async -> Bool)?
     @Environment(\.dismiss) private var dismiss
     @State private var selectedResource: ControlledResourceType?
+
+    init(
+        messages: MessagingStore,
+        member: MobileSocialAuthor? = nil,
+        verificationReview: Binding<VerificationReview?> = .constant(nil),
+        resolveVerification: ((VerificationReview, Bool, String?) async -> Bool)? = nil
+    ) {
+        _messages = ObservedObject(wrappedValue: messages)
+        self.member = member
+        _verificationReview = verificationReview
+        self.resolveVerification = resolveVerification
+    }
 
     var body: some View {
         NavigationStack {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Founder command",
-                        title: "Member authority",
-                        detail: "Choose a capability, then grant or revoke it for a specific active Legend member.",
+                        eyebrow: "Founder management",
+                        title: member?.displayName ?? "Member authority",
+                        detail: member == nil
+                            ? "Manage Founder-only member authority from one place."
+                            : "Review and update this member's Founder-managed access in one place.",
                         dismiss: { dismiss() })
 
-                    capabilityRow(
-                        .communityManagement,
-                        icon: "person.badge.shield.checkmark",
-                        detail: "Review community reports. Content removal remains Founder-only.")
-
-                    capabilityRow(
-                        .socialContentPriority,
-                        icon: "sparkles.tv.fill",
-                        detail: "Prioritize eligible Posts and Hacs above the standard feed ranking.")
+                    if let member {
+                        LegendFounderMemberAuthorityList(
+                            profile: member,
+                            messages: messages,
+                            verificationReview: $verificationReview,
+                            resolveVerification: resolveVerification)
+                    } else {
+                        ForEach(LegendFounderAuthority.allCases) { authority in
+                            capabilityRow(authority)
+                        }
+                    }
                 }
                 .padding(LegendNextSpacing.sm)
                 .padding(.bottom, LegendNextSpacing.xl)
@@ -7503,25 +7588,23 @@ struct LegendFounderCommandCenter: View {
     }
 
     private func capabilityRow(
-        _ resourceType: ControlledResourceType,
-        icon: String,
-        detail: String
+        _ authority: LegendFounderAuthority
     ) -> some View {
         Button {
-            selectedResource = resourceType
+            selectedResource = authority.resourceType
         } label: {
             HStack(spacing: LegendNextSpacing.sm) {
-                Image(systemName: icon)
+                Image(systemName: authority.systemImage)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(LegendNextColor.gold)
                     .frame(width: 38, height: 38)
                     .background(LegendNextColor.gold.opacity(0.12), in: Circle())
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(resourceType.displayName)
+                    Text(authority.resourceType.displayName)
                         .font(LegendNextTypography.section)
                         .foregroundStyle(LegendNextColor.textPrimary)
-                    Text(detail)
+                    Text(authority.detail)
                         .font(LegendNextTypography.caption)
                         .foregroundStyle(LegendNextColor.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -7546,10 +7629,10 @@ struct LegendFounderCommandCenter: View {
     }
 }
 
-/// Compact founder controls for the profile currently being viewed. It uses the
-/// same member identity and grant API as the command-center directory, so the
-/// member state cannot drift between the two presentations.
-struct LegendFounderMemberControls: View {
+/// The member-specific content of the shared founder-management model. It
+/// receives its authority definitions from the shared catalog so Settings and
+/// profile launches cannot drift.
+private struct LegendFounderMemberAuthorityList: View {
     private enum AccessState: Equatable {
         case loading
         case granted
@@ -7559,67 +7642,113 @@ struct LegendFounderMemberControls: View {
 
     let profile: MobileSocialAuthor
     @ObservedObject var messages: MessagingStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var communityManagement: AccessState = .loading
-    @State private var contentPriority: AccessState = .loading
+    @Binding var verificationReview: VerificationReview?
+    let resolveVerification: ((VerificationReview, Bool, String?) async -> Bool)?
+    @State private var accessStates: [ControlledResourceType: AccessState] = [:]
     @State private var updatingResource: ControlledResourceType?
+    @State private var isResolvingVerification = false
+    @State private var verificationResolutionNote = ""
 
     var body: some View {
-        NavigationStack {
-            LegendScrollView(tracksNavigationChrome: false) {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                    LegendNextSheetHeader(
-                        eyebrow: "Founder controls",
-                        title: profile.displayName,
-                        detail: "Manage only the authorities you intend to delegate.",
-                        dismiss: { dismiss() })
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            verificationResolutionCard
 
-                    authorityRow(
-                        .communityManagement,
-                        title: "Community Manager",
-                        detail: "Can triage reports. You retain content-removal authority.",
-                        state: communityManagement,
-                        icon: "person.badge.shield.checkmark")
-
-                    authorityRow(
-                        .socialContentPriority,
-                        title: "Featured Creator",
-                        detail: "Their eligible Posts and Hacs lead the normal For You ranking.",
-                        state: contentPriority,
-                        icon: "sparkles.tv.fill")
-                }
-                .padding(LegendNextSpacing.sm)
-                .padding(.bottom, LegendNextSpacing.xl)
+            ForEach(LegendFounderAuthority.allCases) { authority in
+                authorityRow(authority)
             }
-            .background(LegendNextCanvas())
-            .toolbar(.hidden, for: .navigationBar)
         }
-        .tint(LegendNextColor.gold)
-        .legendNextSheetChrome(detents: [.medium, .large])
         .task { await loadAccess() }
     }
 
+    @ViewBuilder
+    private var verificationResolutionCard: some View {
+        if let verificationReview,
+           verificationReview.canResolve,
+           verificationReview.status == "Pending",
+           resolveVerification != nil {
+            LegendNextSurface(style: .navy) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                    Label(
+                        "\(verificationReview.resourceType.displayName) review",
+                        systemImage: "checkmark.seal.fill"
+                    )
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+
+                    Text("Resolve this member's pending request from Founder management.")
+                        .font(LegendNextTypography.caption)
+                        .foregroundStyle(.white.opacity(0.74))
+
+                    TextField(
+                        "Optional member update",
+                        text: $verificationResolutionNote,
+                        axis: .vertical
+                    )
+                    .font(LegendNextTypography.caption)
+                    .foregroundStyle(.white)
+                    .lineLimit(1...3)
+                    .padding(.horizontal, LegendNextSpacing.sm)
+                    .padding(.vertical, LegendNextSpacing.xs)
+                    .background(.white.opacity(0.12), in: RoundedRectangle(
+                        cornerRadius: LegendNextRadius.compact,
+                        style: .continuous
+                    ))
+
+                    HStack(spacing: LegendNextSpacing.sm) {
+                        Button(role: .destructive) {
+                            Task { await resolve(verificationReview, approved: false) }
+                        } label: {
+                            Text("Decline")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(LegendNextButtonStyle(
+                            kind: .secondary,
+                            controlHeight: 40
+                        ))
+                        .disabled(isResolvingVerification)
+
+                        Button {
+                            Task { await resolve(verificationReview, approved: true) }
+                        } label: {
+                            if isResolvingVerification {
+                                ProgressView()
+                                    .tint(LegendNextColor.midnight)
+                                    .frame(maxWidth: .infinity)
+                            } else {
+                                Text("Approve")
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .buttonStyle(LegendNextButtonStyle(
+                            kind: .primary,
+                            controlHeight: 40
+                        ))
+                        .disabled(isResolvingVerification)
+                    }
+                }
+            }
+        }
+    }
+
     private func authorityRow(
-        _ resourceType: ControlledResourceType,
-        title: String,
-        detail: String,
-        state: AccessState,
-        icon: String
+        _ authority: LegendFounderAuthority
     ) -> some View {
+        let resourceType = authority.resourceType
+        let state = accessStates[resourceType] ?? .loading
         let isUpdating = updatingResource == resourceType
         let isGranted = state == .granted
         return HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
-            Image(systemName: icon)
+            Image(systemName: authority.systemImage)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(LegendNextColor.gold)
                 .frame(width: 38, height: 38)
                 .background(LegendNextColor.gold.opacity(0.12), in: Circle())
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(title)
+                Text(resourceType.displayName)
                     .font(LegendNextTypography.section)
                     .foregroundStyle(LegendNextColor.textPrimary)
-                Text(detail)
+                Text(authority.detail)
                     .font(LegendNextTypography.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -7671,10 +7800,10 @@ struct LegendFounderMemberControls: View {
     }
 
     private func loadAccess() async {
-        async let community = state(for: .communityManagement)
-        async let priority = state(for: .socialContentPriority)
-        communityManagement = await community
-        contentPriority = await priority
+        for authority in LegendFounderAuthority.allCases {
+            accessStates[authority.resourceType] = await state(
+                for: authority.resourceType)
+        }
     }
 
     private func state(for resourceType: ControlledResourceType) async -> AccessState {
@@ -7696,11 +7825,29 @@ struct LegendFounderMemberControls: View {
             isGranted: isGranted) else {
             return
         }
-        if resourceType == .communityManagement {
-            communityManagement = isGranted ? .granted : .notGranted
-        } else if resourceType == .socialContentPriority {
-            contentPriority = isGranted ? .granted : .notGranted
+        accessStates[resourceType] = isGranted ? .granted : .notGranted
+    }
+
+    private func resolve(
+        _ review: VerificationReview,
+        approved: Bool
+    ) async {
+        guard let resolveVerification else { return }
+        isResolvingVerification = true
+        defer { isResolvingVerification = false }
+
+        let note = verificationResolutionNote
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard await resolveVerification(
+            review,
+            approved,
+            note.isEmpty ? nil : note
+        ) else {
+            return
         }
+
+        verificationReview = nil
+        verificationResolutionNote = ""
     }
 }
 
@@ -8071,9 +8218,7 @@ struct LegendPublicProfileView: View {
     @State private var isReportOptionsPresented = false
     @State private var isBlockConfirmationPresented = false
     @State private var verificationReview: VerificationReview?
-    @State private var isResolvingVerification = false
-    @State private var verificationResolutionNote = ""
-    @State private var isPresentingFounderControls = false
+    @State private var isPresentingFounderManagement = false
     private let journeyConnectionID: UUID?
     private let disconnectConnection: ((UUID) async -> Bool)?
     private let journeyClientProfileID: UUID?
@@ -8157,9 +8302,7 @@ struct LegendPublicProfileView: View {
 
                 journeySafetySection
 
-                founderMemberControls
-
-                verificationDecisionSection
+                founderManagementEntry
 
                 aboutSection
                 updatesSection
@@ -8195,11 +8338,26 @@ struct LegendPublicProfileView: View {
         } message: {
             Text("This removes the Journey Circles connection and prevents client-to-client messaging with this profile.")
         }
-        .sheet(isPresented: $isPresentingFounderControls) {
+        .sheet(isPresented: $isPresentingFounderManagement) {
             if let messaging {
-                LegendFounderMemberControls(
-                    profile: displayedProfile,
-                    messages: messaging)
+                LegendFounderManagementModel(
+                    messages: messaging,
+                    member: displayedProfile,
+                    verificationReview: $verificationReview,
+                    resolveVerification: { review, approved, note in
+                        guard let performVerificationResolution else {
+                            return false
+                        }
+                        guard await performVerificationResolution(
+                            review,
+                            approved,
+                            note
+                        ) else {
+                            return false
+                        }
+                        await refresh()
+                        return true
+                    })
             }
         }
         .onAppear {
@@ -8208,89 +8366,6 @@ struct LegendPublicProfileView: View {
         .refreshable {
             await refresh()
         }
-    }
-
-    @ViewBuilder
-    private var verificationDecisionSection: some View {
-        if let verificationReview,
-           verificationReview.canResolve,
-           verificationReview.status == "Pending" {
-            LegendNextSurface(style: .navy) {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                    Label("\(verificationReview.resourceType.displayName) review", systemImage: "checkmark.seal.fill")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.white)
-
-                    Text("This member requested \(verificationReview.resourceType.displayName). The decision is recorded in the private founder queue and delivered to the member’s Activity—never as a new chat.")
-                        .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.74))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    TextField(
-                        "Optional personal update",
-                        text: $verificationResolutionNote,
-                        axis: .vertical)
-                        .font(LegendNextTypography.caption)
-                        .foregroundStyle(.white)
-                        .lineLimit(1...3)
-                        .padding(.horizontal, LegendNextSpacing.sm)
-                        .padding(.vertical, LegendNextSpacing.xs)
-                        .background(.white.opacity(0.12), in: RoundedRectangle(
-                            cornerRadius: LegendNextRadius.compact,
-                            style: .continuous))
-                        .overlay {
-                            RoundedRectangle(
-                                cornerRadius: LegendNextRadius.compact,
-                                style: .continuous)
-                                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
-                        }
-
-                    HStack(spacing: LegendNextSpacing.sm) {
-                        Button(role: .destructive) {
-                            Task { await resolveVerification(verificationReview, approve: false) }
-                        } label: {
-                            Text("Decline")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(LegendNextButtonStyle(kind: .secondary, controlHeight: 40))
-                        .disabled(isResolvingVerification)
-
-                        Button {
-                            Task { await resolveVerification(verificationReview, approve: true) }
-                        } label: {
-                            if isResolvingVerification {
-                                ProgressView()
-                                    .tint(LegendNextColor.midnight)
-                                    .frame(maxWidth: .infinity)
-                            } else {
-                                Text("Approve")
-                                    .frame(maxWidth: .infinity)
-                            }
-                        }
-                        .buttonStyle(LegendNextButtonStyle(kind: .primary, controlHeight: 40))
-                        .disabled(isResolvingVerification)
-                    }
-                }
-            }
-        }
-    }
-
-    private func resolveVerification(
-        _ review: VerificationReview,
-        approve: Bool
-    ) async {
-        guard let performVerificationResolution else { return }
-        isResolvingVerification = true
-        defer { isResolvingVerification = false }
-        let note = verificationResolutionNote
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard await performVerificationResolution(
-            review,
-            approve,
-            note.isEmpty ? nil : note) else { return }
-        verificationReview = nil
-        verificationResolutionNote = ""
-        await refresh()
     }
 
     private var displayedProfile: MobileSocialAuthor {
@@ -8324,16 +8399,16 @@ struct LegendPublicProfileView: View {
     }
 
     @ViewBuilder
-    private var founderMemberControls: some View {
+    private var founderManagementEntry: some View {
         if canManageFounderControls, messaging != nil {
             Button {
-                isPresentingFounderControls = true
+                isPresentingFounderManagement = true
             } label: {
-                Label("Founder controls", systemImage: "crown.fill")
+                Label("Founder management", systemImage: "crown.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(LegendNextButtonStyle(kind: .secondary, isFullWidth: true))
-            .accessibilityHint("Manage (displayedProfile.displayName)'s Community Manager and Featured Creator access")
+            .accessibilityHint("Manage \(displayedProfile.displayName)'s Founder-controlled access")
         }
     }
 

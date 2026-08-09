@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using Domain.Billing;
 using Domain.Entities;
 using System.Threading.Tasks;
 using Domain.Messaging;
@@ -666,6 +667,7 @@ public sealed class SocialFeedServiceTests
         });
         await db.SaveChangesAsync();
 
+        EnsureActiveTestClientEntitlements(db);
         var safety = new CommunitySafetyService(db);
         var blocked = await safety.BlockAsync(new CommunitySafetyBlockCommand(
             ClientActor(viewer).Identity,
@@ -1856,6 +1858,8 @@ public sealed class SocialFeedServiceTests
         string? configuredFounderOid = null,
         ICommunitySafetyService? communitySafety = null)
     {
+        EnsureActiveTestClientEntitlements(db);
+
         return new SocialFeedService(
             db,
             mediaStorage ?? new UnavailableTestSocialMediaStorage(),
@@ -1865,6 +1869,46 @@ public sealed class SocialFeedServiceTests
                 new ConfigurationBuilder().Build()),
             configuredFounderOid: configuredFounderOid,
             communitySafety: communitySafety);
+    }
+
+    // SocialFeed accepts a client actor only when that profile represents a current
+    // Client CRM member with ClientApp access. Feed tests describe active members
+    // unless a test explicitly constructs a negative authorization scenario, so
+    // keep that shared fixture state aligned with the production eligibility rule.
+    private static void EnsureActiveTestClientEntitlements(
+        Infrastructure.Data.MasterAppDbContext db)
+    {
+        var entitledProfileIds = db.ClientEntitlements.Local
+            .Where(entitlement =>
+                string.Equals(entitlement.EntitlementKey, BillingEntitlementKeys.ClientAppFullAccess, StringComparison.OrdinalIgnoreCase))
+            .Select(entitlement => entitlement.ClientProfileId)
+            .ToHashSet();
+
+        foreach (var profile in db.ClientProfiles.Local)
+        {
+            if (!entitledProfileIds.Add(profile.Id))
+            {
+                continue;
+            }
+
+            db.ClientEntitlements.Add(new ClientEntitlement
+            {
+                Id = Guid.NewGuid(),
+                ClientProfileId = profile.Id,
+                EntitlementKey = BillingEntitlementKeys.ClientAppFullAccess,
+                Status = ClientEntitlementStatus.Active,
+                SourceType = ClientEntitlementSourceType.Subscription,
+                SourceId = $"test-active-member-{profile.Id:N}",
+                EffectiveUtc = DateTime.UtcNow,
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            });
+        }
+
+        if (db.ChangeTracker.HasChanges())
+        {
+            db.SaveChanges();
+        }
     }
 
     // Minimal ISO base media header. The social service now verifies that a

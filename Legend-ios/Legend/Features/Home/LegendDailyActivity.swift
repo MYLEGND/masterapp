@@ -204,8 +204,8 @@ struct LegendPlannerEntryDraft: Sendable {
 }
 
 /// Today’s Activity writes private planner items directly to EventKit. This
-/// policy supplies exactly one Apple-native lock-screen alert for each enabled
-/// item and deliberately never duplicates it with a server APNs delivery.
+/// policy determines the single LEGEND-owned local alert for each enabled item;
+/// EventKit stores the planner record but never owns its lock-screen alert.
 enum LegendPlannerAlertSchedule: Equatable, Sendable {
     case none
     case absolute(Date)
@@ -238,20 +238,6 @@ enum LegendPlannerAlertPolicy {
         }
     }
 
-    static func apply(
-        _ schedule: LegendPlannerAlertSchedule,
-        to item: EKCalendarItem
-    ) {
-        item.alarms?.forEach(item.removeAlarm)
-        switch schedule {
-        case .none:
-            break
-        case .absolute(let date):
-            item.addAlarm(EKAlarm(absoluteDate: date))
-        case .relative(let offset):
-            item.addAlarm(EKAlarm(relativeOffset: offset))
-        }
-    }
 }
 
 /// Owns the device-planner access boundary. The system permission and the
@@ -270,12 +256,14 @@ final class LegendDevicePlannerStore: ObservableObject {
     private let calendar: Calendar
     private let storageScope: String
     private let defaults: UserDefaults
+    private let notificationScheduler: any LegendTodayActivityNotificationScheduling
 
     init(
         eventStore: EKEventStore = EKEventStore(),
         calendar: Calendar = .autoupdatingCurrent,
         storageScope: String = "default",
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        notificationScheduler: (any LegendTodayActivityNotificationScheduling)? = nil
     ) {
         let initialCalendarAuthorization = Self.authorization(for: .event)
         let initialRemindersAuthorization = Self.authorization(for: .reminder)
@@ -284,6 +272,7 @@ final class LegendDevicePlannerStore: ObservableObject {
         self.calendar = calendar
         self.storageScope = storageScope
         self.defaults = defaults
+        self.notificationScheduler = notificationScheduler ?? LegendTodayActivityNotificationScheduler()
 
         self.calendarAuthorization = initialCalendarAuthorization
         self.remindersAuthorization = initialRemindersAuthorization
@@ -441,6 +430,17 @@ final class LegendDevicePlannerStore: ObservableObject {
             identifier: draft.calendarIdentifier,
             capability: capability)
 
+        let alertSchedule = LegendPlannerAlertPolicy.schedule(
+            for: draft.kind,
+            scheduledFor: draft.startDate,
+            isAllDay: draft.isAllDay,
+            alertsEnabled: draft.alertsEnabled,
+            calendar: calendar)
+        if alertSchedule != .none {
+            try await notificationScheduler.verifyAuthorization()
+        }
+
+        let savedItem: EKCalendarItem
         switch draft.kind {
         case .reminder:
             let reminder = EKReminder(eventStore: eventStore)
@@ -454,18 +454,11 @@ final class LegendDevicePlannerStore: ObservableObject {
                     [.calendar, .timeZone, .year, .month, .day, .hour, .minute],
                     from: startDate)
             }
-            LegendPlannerAlertPolicy.apply(
-                LegendPlannerAlertPolicy.schedule(
-                    for: .reminder,
-                    scheduledFor: draft.startDate,
-                    isAllDay: false,
-                    alertsEnabled: draft.alertsEnabled,
-                    calendar: calendar),
-                to: reminder)
             if let recurrenceRule = draft.repeatRule.eventKitRule {
                 reminder.addRecurrenceRule(recurrenceRule)
             }
             try eventStore.save(reminder, commit: true)
+            savedItem = reminder
 
         case .event:
             guard let startDate = draft.startDate else {
@@ -498,18 +491,26 @@ final class LegendDevicePlannerStore: ObservableObject {
             event.startDate = eventStartDate
             event.endDate = eventEndDate
             event.isAllDay = draft.isAllDay
-            LegendPlannerAlertPolicy.apply(
-                LegendPlannerAlertPolicy.schedule(
-                    for: .event,
-                    scheduledFor: eventStartDate,
-                    isAllDay: draft.isAllDay,
-                    alertsEnabled: draft.alertsEnabled,
-                    calendar: calendar),
-                to: event)
             if let recurrenceRule = draft.repeatRule.eventKitRule {
                 event.addRecurrenceRule(recurrenceRule)
             }
             try eventStore.save(event, span: .thisEvent, commit: true)
+            savedItem = event
+        }
+
+        if let plan = LegendTodayActivityNotificationPlan.make(
+            itemIdentifier: savedItem.calendarItemIdentifier,
+            kind: draft.kind,
+            entryTitle: title,
+            scheduledFor: draft.startDate,
+            alertSchedule: alertSchedule,
+            repeatRule: draft.repeatRule) {
+            do {
+                try await notificationScheduler.schedule(plan)
+            } catch {
+                try? remove(savedItem, for: draft.kind)
+                throw error
+            }
         }
 
         await refresh()
@@ -529,6 +530,11 @@ final class LegendDevicePlannerStore: ObservableObject {
 
         reminder.isCompleted = completed
         try eventStore.save(reminder, commit: true)
+        if completed {
+            notificationScheduler.cancel(
+                kind: .reminder,
+                itemIdentifier: reminder.calendarItemIdentifier)
+        }
     }
 
     func dismissFailure() {
@@ -614,6 +620,20 @@ final class LegendDevicePlannerStore: ObservableObject {
             throw LegendDevicePlannerError.defaultCalendarUnavailable(capability)
         }
         return defaultCalendar
+    }
+
+    private func remove(
+        _ item: EKCalendarItem,
+        for kind: LegendPlannerEntryKind
+    ) throws {
+        switch kind {
+        case .reminder:
+            guard let reminder = item as? EKReminder else { return }
+            try eventStore.remove(reminder, commit: true)
+        case .event:
+            guard let event = item as? EKEvent else { return }
+            try eventStore.remove(event, span: .thisEvent, commit: true)
+        }
     }
 
     private static func authorization(

@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Domain.Billing;
 using Domain.Entities;
 using Domain.Messaging;
 using Domain.Moderation;
@@ -42,6 +43,17 @@ public sealed class CommunitySafetyServiceTests
             Body = "Reportable post"
         };
         db.AddRange(client, agent, post);
+        db.ClientEntitlements.Add(new ClientEntitlement
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = client.Id,
+            EntitlementKey = BillingEntitlementKeys.ClientAppFullAccess,
+            Status = ClientEntitlementStatus.Active,
+            SourceType = ClientEntitlementSourceType.Subscription,
+            SourceId = "safety-client-membership",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
         await db.SaveChangesAsync();
 
         var service = new CommunitySafetyService(db);

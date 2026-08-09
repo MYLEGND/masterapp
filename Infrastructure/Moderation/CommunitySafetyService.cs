@@ -2,6 +2,7 @@ using Domain.Entities;
 using Domain.Messaging;
 using Domain.Moderation;
 using Infrastructure.Data;
+using Infrastructure.Mobile;
 using Microsoft.EntityFrameworkCore;
 using Shared.Auth;
 
@@ -332,11 +333,12 @@ public sealed class CommunitySafetyService : ICommunitySafetyService
         if (actor.ParticipantType != MessagingParticipantTypes.Client)
             return null;
 
-        var client = await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(
-            profile => (profile.CrmStatus == null || profile.CrmStatus == "" || profile.CrmStatus == "Active") &&
-                       (profile.ClientUserId.ToLower() == userId ||
-                        (profile.ExternalIdentityObjectId != null && profile.ExternalIdentityObjectId.ToLower() == userId)),
-            cancellationToken);
+        var clients = await LegendMemberDirectory.ActiveSubscribedProfiles(_db)
+            .Where(
+            profile => profile.ClientUserId.ToLower() == userId ||
+                       (profile.ExternalIdentityObjectId != null && profile.ExternalIdentityObjectId.ToLower() == userId))
+            .ToListAsync(cancellationToken);
+        var client = LegendMemberDirectory.Collapse(clients).FirstOrDefault();
         return client is null ? null : ToClientParticipant(client);
     }
 
@@ -344,9 +346,10 @@ public sealed class CommunitySafetyService : ICommunitySafetyService
         Guid profileId,
         CancellationToken cancellationToken)
     {
-        var client = await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(
-            profile => profile.Id == profileId,
-            cancellationToken);
+        var clients = await LegendMemberDirectory.ActiveSubscribedProfiles(_db)
+            .Where(profile => profile.Id == profileId)
+            .ToListAsync(cancellationToken);
+        var client = LegendMemberDirectory.Collapse(clients).FirstOrDefault();
         return client is null ? null : ToClientParticipant(client);
     }
 

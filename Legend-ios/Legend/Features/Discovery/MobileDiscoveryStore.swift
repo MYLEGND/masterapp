@@ -96,8 +96,11 @@ final class MobileDiscoveryStore: ObservableObject {
     /// Search should react within a typing frame, while still coalescing a burst of
     /// keystrokes before it reaches the server.
     private static let searchDebounce = Duration.milliseconds(90)
-    private static let pageSize = 20
-    private static let recommendationPageSize = 6
+    /// The first paint is intentionally tiny: three server-authorized members
+    /// arrive before the wider directory warms in the background.
+    private static let initialPageSize = 3
+    private static let warmPageSize = 20
+    private static let recommendationPageSize = 3
     private static let maximumCachedSearches = 20
 
     private let api: any MobileDiscoveryAPI
@@ -176,6 +179,8 @@ final class MobileDiscoveryStore: ObservableObject {
 
     private func scheduleSearch() {
         searchTask?.cancel()
+        loadMoreTask?.cancel()
+        loadMoreTask = nil
         // Supersede an in-flight request as soon as the text changes, not after
         // the debounce expires. This prevents an older result from flashing over
         // a newly typed query.
@@ -238,7 +243,7 @@ final class MobileDiscoveryStore: ObservableObject {
                 async let directoryRequest = api.search(
                     query: nil,
                     offset: 0,
-                    pageSize: Self.pageSize,
+                    pageSize: Self.initialPageSize,
                     sort: .directory,
                     accessToken: token)
                 (page, concurrentDirectory) = try await (
@@ -250,7 +255,7 @@ final class MobileDiscoveryStore: ObservableObject {
                     offset: 0,
                     pageSize: query == nil && sort == .recommended
                         ? Self.recommendationPageSize
-                        : Self.pageSize,
+                        : Self.initialPageSize,
                     sort: sort,
                     accessToken: token)
                 concurrentDirectory = nil
@@ -270,7 +275,7 @@ final class MobileDiscoveryStore: ObservableObject {
                     directory = try await api.search(
                         query: nil,
                         offset: 0,
-                        pageSize: Self.pageSize,
+                        pageSize: Self.initialPageSize,
                         sort: .directory,
                         accessToken: token)
                 }
@@ -280,10 +285,12 @@ final class MobileDiscoveryStore: ObservableObject {
                     directory: directory)
                 apply(cached)
                 cache(cached, for: cacheKey)
+                scheduleWarmup(for: generation)
             } else {
                 let cached = CachedInitialSearch(page: page, directory: nil)
                 apply(cached)
                 cache(cached, for: cacheKey)
+                scheduleWarmup(for: generation)
             }
         } catch {
             guard generation == requestGeneration else { return }
@@ -297,7 +304,7 @@ final class MobileDiscoveryStore: ObservableObject {
     }
 
     private func loadNextPage() async {
-        guard hasMore else { return }
+        guard hasMore, !Task.isCancelled else { return }
         let generation = requestGeneration
         let current = results
         isLoadingMore = true
@@ -310,12 +317,12 @@ final class MobileDiscoveryStore: ObservableObject {
             let page = try await api.search(
                 query: trimmed.isEmpty ? nil : trimmed,
                 offset: current.count,
-                pageSize: Self.pageSize,
+                pageSize: Self.warmPageSize,
                 sort: sortMode,
                 accessToken: token)
 
             // Discard a late page that belongs to a superseded query.
-            guard generation == requestGeneration else { return }
+            guard generation == requestGeneration, !Task.isCancelled else { return }
 
             // Guard against duplicates if the directory shifted between pages.
             var seen = Set(current.map(\.id))
@@ -333,6 +340,24 @@ final class MobileDiscoveryStore: ObservableObject {
     private var hasLoadedResults: Bool {
         if case .loaded = state { return true }
         return false
+    }
+
+    /// Warms one wider page after the three-result first paint. It uses the
+    /// same paged server endpoint as manual scrolling, so the device never
+    /// maintains a second directory or ranking path.
+    private func scheduleWarmup(for generation: Int) {
+        guard hasMore, loadMoreTask == nil else { return }
+
+        loadMoreTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled,
+                  generation == self.requestGeneration else {
+                return
+            }
+            await self.loadNextPage()
+            self.loadMoreTask = nil
+        }
     }
 
     private func apply(_ cached: CachedInitialSearch) {

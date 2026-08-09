@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
@@ -122,6 +123,57 @@ internal interface IApplePushGateway
 }
 
 /// <summary>
+/// Wakes the local APNs outbox worker immediately after a notification has been
+/// committed. The database remains the durable cross-instance authority; the
+/// one-second polling fallback handles deployments with more than one worker
+/// or a process restart without delaying the normal, in-process path.
+/// </summary>
+internal interface IApplePushDeliverySignal
+{
+    void Notify();
+
+    Task<bool> WaitAsync(
+        TimeSpan fallbackInterval,
+        CancellationToken cancellationToken = default);
+}
+
+internal sealed class ApplePushDeliverySignal : IApplePushDeliverySignal
+{
+    private readonly Channel<byte> _signals = Channel.CreateBounded<byte>(
+        new BoundedChannelOptions(1)
+        {
+            FullMode = BoundedChannelFullMode.DropWrite,
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+    public void Notify() => _signals.Writer.TryWrite(0);
+
+    public async Task<bool> WaitAsync(
+        TimeSpan fallbackInterval,
+        CancellationToken cancellationToken = default)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(fallbackInterval);
+        try
+        {
+            await _signals.Reader.ReadAsync(timeout.Token);
+            while (_signals.Reader.TryRead(out _))
+            {
+                // Coalesce a burst of committed notification entries into one
+                // outbox pass; every entry is still read from the database.
+            }
+
+            return true;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+    }
+}
+
+/// <summary>
 /// Token-based APNs sender. It is deliberately configuration-gated: absent
 /// production credentials suppress delivery safely while the database ledger
 /// and foreground WebSocket synchronization remain fully authoritative.
@@ -178,6 +230,12 @@ internal sealed class ApplePushGateway : IApplePushGateway
             message.Headers.TryAddWithoutValidation("apns-topic", configuration.BundleId);
             message.Headers.TryAddWithoutValidation("apns-push-type", "alert");
             message.Headers.TryAddWithoutValidation("apns-priority", "10");
+            // APNs defaults this to immediate expiry. Keep an authenticated alert
+            // available for a day when the phone is briefly offline, while still
+            // using priority 10 for immediate delivery whenever it is reachable.
+            message.Headers.TryAddWithoutValidation(
+                "apns-expiration",
+                DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds().ToString());
             message.Content = new StringContent(
                 JsonSerializer.Serialize(new
                 {
@@ -446,17 +504,21 @@ internal sealed class ApplePushGateway : IApplePushGateway
 internal sealed class ApplePushDeliveryHostedService : BackgroundService
 {
     private const int MaximumAttempts = 6;
+    private static readonly TimeSpan FallbackPollInterval = TimeSpan.FromSeconds(1);
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IApplePushGateway _gateway;
+    private readonly IApplePushDeliverySignal _signal;
     private readonly ILogger<ApplePushDeliveryHostedService> _logger;
 
     public ApplePushDeliveryHostedService(
         IServiceScopeFactory scopeFactory,
         IApplePushGateway gateway,
+        IApplePushDeliverySignal signal,
         ILogger<ApplePushDeliveryHostedService> logger)
     {
         _scopeFactory = scopeFactory;
         _gateway = gateway;
+        _signal = signal;
         _logger = logger;
     }
 
@@ -477,14 +539,7 @@ internal sealed class ApplePushDeliveryHostedService : BackgroundService
                 _logger.LogError(exception, "APNs notification delivery pass failed.");
             }
 
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
+            await _signal.WaitAsync(FallbackPollInterval, stoppingToken);
         }
     }
 

@@ -438,21 +438,11 @@ public sealed class MobileHomeService : IMobileHomeService
             .Distinct()
             .ToListAsync(cancellationToken);
 
-        var profileRows = await _db.ClientProfiles
-            .AsNoTracking()
+        var profiles = await LegendMemberDirectory.ActiveSubscribedProfiles(_db)
             .Where(profile => assignedClientUserIds.Contains(profile.ClientUserId.ToLower()))
-            .Select(profile => new MobileAgentClientProfileRow(
-                profile.Id,
-                profile.ClientUserId,
-                profile.FirstName,
-                profile.LastName,
-                profile.Email,
-                profile.CrmStatus,
-                profile.CrmNotes))
             .ToListAsync(cancellationToken);
 
-        var clients = profileRows
-            .Where(profile => ClientRecordClassification.IsClientOrBusinessClient(profile.ClientUserId, profile.CrmNotes))
+        var clients = LegendMemberDirectory.Collapse(profiles)
             .Select(profile => new MobileAgentClient(
                 profile.Id,
                 string.Join(" ", new[] { profile.FirstName, profile.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim(),
@@ -620,15 +610,6 @@ public sealed class MobileHomeService : IMobileHomeService
     private sealed record MobileFinancialHealthProjection(
         MobileFinancialPosition Position,
         MobileFinancialHealthSnapshot HealthSnapshot);
-
-    private sealed record MobileAgentClientProfileRow(
-        Guid Id,
-        string ClientUserId,
-        string FirstName,
-        string LastName,
-        string Email,
-        string? CrmStatus,
-        string? CrmNotes);
 
     private sealed record MobileAgentLeadProfileRow(
         string LeadId,
