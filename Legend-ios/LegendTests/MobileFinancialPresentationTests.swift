@@ -74,7 +74,7 @@ final class MobileFinancialPresentationTests: XCTestCase {
             .success)
         XCTAssertEqual(
             MobileFinancialAmountSemantic.tone(for: 12_000, kind: .liabilities),
-            .warning)
+            .danger)
         XCTAssertEqual(
             MobileFinancialAmountSemantic.tone(for: 12_000, kind: .debt),
             .danger)
@@ -90,6 +90,52 @@ final class MobileFinancialPresentationTests: XCTestCase {
         XCTAssertEqual(
             MobileFinancialAmountSemantic.tone(for: 2_500, kind: .historical),
             .neutral)
+        XCTAssertEqual(
+            MobileFinancialAmountSemantic.tone(for: -2_500, kind: .historical),
+            .danger)
+    }
+
+    func testSharedHealthSnapshotPresentationNeverUsesSuccessForNegativeOrOutflowAmounts() {
+        let negativeLifestyle = MobileFinancialHealthMetricResponse(
+            key: "annual-lifestyle-remaining",
+            label: "What's Left for Lifestyle",
+            valueType: "Currency",
+            amountCents: -1,
+            numericValue: nil,
+            textValue: nil,
+            status: nil)
+        let insuranceCost = MobileFinancialHealthMetricResponse(
+            key: "annual-insurance-costs",
+            label: "Insurance Costs",
+            valueType: "Currency",
+            amountCents: 1,
+            numericValue: nil,
+            textValue: nil,
+            status: nil)
+        let earnings = MobileFinancialHealthMetricResponse(
+            key: "annual-earnings",
+            label: "Earnings",
+            valueType: "Currency",
+            amountCents: 1,
+            numericValue: nil,
+            textValue: nil,
+            status: nil)
+
+        XCTAssertEqual(
+            LegendFinancialPresentation.metricTone(
+                negativeLifestyle,
+                sectionSemantic: "cash-flow"),
+            .danger)
+        XCTAssertEqual(
+            LegendFinancialPresentation.metricTone(
+                insuranceCost,
+                sectionSemantic: "cash-flow"),
+            .danger)
+        XCTAssertEqual(
+            LegendFinancialPresentation.metricTone(
+                earnings,
+                sectionSemantic: "cash-flow"),
+            .success)
     }
 
     func testNavigationDestinationMappingHasOneSupportedDetailForEachServerSection() {

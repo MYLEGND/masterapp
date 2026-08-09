@@ -358,7 +358,13 @@ enum MobileFinancialAmountSemantic {
         for amount: Decimal,
         kind: MobileFinancialAmountKind
     ) -> LegendNextTone {
-        guard amount != 0 else {
+        // Sign always wins. A negative financial value is never presented as
+        // a positive/success state, regardless of its category.
+        if amount < 0 {
+            return .danger
+        }
+
+        guard amount > 0 else {
             return .neutral
         }
 
@@ -369,12 +375,10 @@ enum MobileFinancialAmountSemantic {
              .endingCash,
              .openingCash,
              .payoffProgress:
-            return amount > 0
-                ? .success
-                : .danger
+            return .success
 
         case .liabilities:
-            return .warning
+            return .danger
 
         case .bills,
              .debt,
@@ -601,6 +605,94 @@ enum MobileFinancialAmountSemantic {
         candidates.contains {
             value.contains($0)
         }
+    }
+}
+
+/// The shared visual semantics for every native Financial Health Snapshot
+/// section. It only selects presentation tone from server-supplied facts; it
+/// never alters, calculates, or reclassifies financial values.
+enum LegendFinancialPresentation {
+    static func sectionTone(for semantic: String) -> LegendNextTone {
+        switch semantic.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+        case "assets":
+            return .information
+        case "liabilities":
+            return .danger
+        case "cash-flow":
+            return .success
+        case "protection", "tax-profile":
+            return .gold
+        default:
+            return .neutral
+        }
+    }
+
+    static func metricTone(
+        _ metric: MobileFinancialHealthMetricResponse,
+        sectionSemantic: String
+    ) -> LegendNextTone {
+        if let amountCents = metric.amountCents {
+            if amountCents < 0 {
+                return .danger
+            }
+
+            if amountCents == 0 {
+                return .neutral
+            }
+        }
+
+        if let status = metric.status,
+           !status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return statusTone(status, fallback: sectionTone(for: sectionSemantic))
+        }
+
+        let descriptor = "\(metric.key) \(metric.label)"
+            .lowercased()
+
+        if containsAny(
+            descriptor,
+            ["cost", "debt", "liabilit", "obligation", "outflow"]
+        ) {
+            return .danger
+        }
+
+        if descriptor.contains("tax") {
+            return .warning
+        }
+
+        if containsAny(
+            descriptor,
+            ["earnings", "income", "savings", "lifestyle remaining"]
+        ) {
+            return .success
+        }
+
+        return sectionTone(for: sectionSemantic)
+    }
+
+    static func statusTone(
+        _ status: String?,
+        fallback: LegendNextTone
+    ) -> LegendNextTone {
+        switch status?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() {
+        case "protected", "covered", "low", "current", "complete":
+            return .success
+        case "partial", "moderate", "review", "pending":
+            return .warning
+        case "exposed", "high", "not covered", "critical", "negative":
+            return .danger
+        default:
+            return fallback
+        }
+    }
+
+    private static func containsAny(
+        _ value: String,
+        _ terms: [String]
+    ) -> Bool {
+        terms.contains { value.contains($0) }
     }
 }
 

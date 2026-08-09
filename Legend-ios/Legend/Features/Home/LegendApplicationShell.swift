@@ -4016,8 +4016,10 @@ private struct LegendFinanceView: View {
         .background(
             LegendNextColor.canvas.ignoresSafeArea()
         )
-        .navigationTitle("Financial intelligence")
-        .navigationBarTitleDisplayMode(.inline)
+        // The application shell already owns the Legend wordmark. Keeping a
+        // second navigation title here pushes the financial journey below the
+        // fold and repeats information the report itself already provides.
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     @ViewBuilder
@@ -4060,7 +4062,7 @@ private struct LegendFinanceView: View {
             )
             .padding(
                 .top,
-                LegendNextSpacing.sm
+                LegendNextSpacing.xs
             )
             .padding(
                 .bottom,
@@ -4115,9 +4117,9 @@ private struct LegendFinanceView: View {
                     alignment: .leading,
                     spacing: LegendNextSpacing.sm
                 ) {
-                    LegendNextHero(
+                    LegendNextSectionHeader(
                         eyebrow: "Prioritized view",
-                        title: "Financial intelligence",
+                        title: "Next financial focus",
                         detail: "Open a card to review the complete synced breakdown."
                     )
 
@@ -4237,6 +4239,11 @@ private struct LegendFinanceView: View {
     private func financialSummaryTone(
         _ metric: MobileFinancialSummaryMetricResponse
     ) -> LegendNextTone {
+        if let amountCents = metric.amountCents,
+           amountCents < 0 {
+            return .danger
+        }
+
         let normalizedLabel = metric.label
             .trimmingCharacters(
                 in: .whitespacesAndNewlines
@@ -4363,9 +4370,12 @@ private struct LegendFinanceView: View {
                 alignment: .leading,
                 spacing: LegendNextSpacing.xs
             ) {
-                if let section = financial.presentation?.prioritySections.first(
+                financialDetailBackControl()
+
+                if destination.healthSectionKey == nil,
+                   let section = financial.presentation?.prioritySections.first(
                     where: { $0.key == destination.rawValue }
-                ) {
+                   ) {
                     financialIntelligenceStatusBanner(
                         title: section.status,
                         detail: "\(section.reason) \(section.discussionPrompt)",
@@ -4461,18 +4471,48 @@ private struct LegendFinanceView: View {
                 }
             }
             .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-            .padding(.top, LegendNextSpacing.sm)
+            .padding(.top, LegendNextSpacing.xs)
             .padding(.bottom, LegendNextSpacing.xl)
         }
         .background(
             LegendNextGradient.pageWash(for: colorScheme)
                 .ignoresSafeArea()
         )
-        .navigationTitle(destination.title)
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden()
+        .toolbar(.hidden, for: .navigationBar)
         .refreshable {
             await bootstrap.refreshFinancial()
         }
+    }
+
+    private func financialDetailBackControl() -> some View {
+        Button {
+            detailDestination = nil
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(LegendNextColor.navy)
+                .frame(width: 40, height: 40)
+                .background(
+                    LegendNextColor.canvas,
+                    in: Circle()
+                )
+                .overlay {
+                    Circle()
+                        .strokeBorder(
+                            LegendNextColor.gold.opacity(0.38),
+                            lineWidth: 1
+                        )
+                }
+                .shadow(
+                    color: LegendNextColor.ambientShadow(for: colorScheme)
+                        .opacity(0.22),
+                    radius: 8,
+                    y: 3
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Back to Financial Intelligence")
     }
 
     private enum FinancialAvailability {
@@ -4665,9 +4705,9 @@ private struct LegendFinanceView: View {
             alignment: .leading,
             spacing: LegendNextSpacing.sm
         ) {
-            financeSectionLabel(
+            LegendNextSectionHeader(
                 eyebrow: "Financial Health Snapshot",
-                title: "Synced breakdowns",
+                title: "Your connected financial journey",
                 detail: "Open a section to review its complete saved composition."
             )
 
@@ -4700,7 +4740,15 @@ private struct LegendFinanceView: View {
     private func financialHealthSectionCard(
         _ section: MobileFinancialHealthSectionResponse
     ) -> some View {
-        let tone = financialHealthTone(section.semantic)
+        let tone = LegendFinancialPresentation.sectionTone(
+            for: section.semantic
+        )
+        let summaryTone = section.total.map {
+            LegendFinancialPresentation.metricTone(
+                $0,
+                sectionSemantic: section.semantic
+            )
+        } ?? tone
 
         return LegendNextSurface(
             style: .navy,
@@ -4736,7 +4784,7 @@ private struct LegendFinanceView: View {
 
                 Text(sectionSummary(section))
                     .font(LegendNextTypography.bodyEmphasis)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(summaryTone.color)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.68)
@@ -4748,26 +4796,22 @@ private struct LegendFinanceView: View {
                         .lineLimit(1)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 122, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 106, alignment: .topLeading)
         }
     }
 
     private func financialHealthSectionDetail(
         _ section: MobileFinancialHealthSectionResponse
     ) -> some View {
-        let tone = financialHealthTone(section.semantic)
+        let tone = LegendFinancialPresentation.sectionTone(
+            for: section.semantic
+        )
 
         return VStack(
             alignment: .leading,
             spacing: LegendNextSpacing.sm
         ) {
-            financialIntelligenceStatusBanner(
-                title: section.title,
-                detail: section.period.map { "\($0) values from your saved Financial Health Snapshot." }
-                    ?? "Values from your saved Financial Health Snapshot.",
-                tone: tone,
-                systemImage: financialHealthSymbol(section.key)
-            )
+            financialSnapshotSectionHeader(section, tone: tone)
 
             LegendNextSurface(
                 style: .navy,
@@ -4791,7 +4835,10 @@ private struct LegendFinanceView: View {
                         ForEach(Array(group.metrics.enumerated()), id: \.element.id) {
                             metricIndex,
                             metric in
-                            financialHealthMetricRow(metric, tone: tone)
+                            financialHealthMetricRow(
+                                metric,
+                                sectionSemantic: section.semantic
+                            )
 
                             if metricIndex < group.metrics.count - 1 {
                                 LegendNextDivider()
@@ -4811,7 +4858,7 @@ private struct LegendFinanceView: View {
 
                         financialHealthMetricRow(
                             total,
-                            tone: tone,
+                            sectionSemantic: section.semantic,
                             isTotal: true
                         )
                     }
@@ -4822,10 +4869,15 @@ private struct LegendFinanceView: View {
 
     private func financialHealthMetricRow(
         _ metric: MobileFinancialHealthMetricResponse,
-        tone: LegendNextTone,
+        sectionSemantic: String,
         isTotal: Bool = false
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: LegendNextSpacing.sm) {
+        let metricTone = LegendFinancialPresentation.metricTone(
+            metric,
+            sectionSemantic: sectionSemantic
+        )
+
+        return HStack(alignment: .firstTextBaseline, spacing: LegendNextSpacing.sm) {
             Text(metric.label)
                 .font(isTotal ? LegendNextTypography.bodyEmphasis : LegendNextTypography.supporting)
                 .foregroundStyle(isTotal ? .white : Color.white.opacity(0.78))
@@ -4835,18 +4887,14 @@ private struct LegendFinanceView: View {
 
             Text(metric.displayValue)
                 .font(isTotal ? LegendNextTypography.bodyEmphasis : LegendNextTypography.supporting)
-                .foregroundStyle(
-                    metric.status == nil
-                        ? tone.color
-                        : financialHealthStatusTone(metric.status, fallback: tone).color
-                )
+                .foregroundStyle(metricTone.color)
                 .monospacedDigit()
                 .multilineTextAlignment(.trailing)
                 .lineLimit(2)
                 .minimumScaleFactor(0.76)
         }
         .padding(.horizontal, LegendNextSpacing.sm)
-        .padding(.vertical, isTotal ? LegendNextSpacing.sm : LegendNextSpacing.xs)
+        .padding(.vertical, isTotal ? LegendNextSpacing.sm : LegendNextSpacing.tiny)
         .accessibilityElement(children: .combine)
     }
 
@@ -4856,36 +4904,46 @@ private struct LegendFinanceView: View {
         section.total?.displayValue ?? "Open details"
     }
 
-    private func financialHealthTone(
-        _ semantic: String
-    ) -> LegendNextTone {
-        switch semantic {
-        case "assets":
-            return .information
-        case "liabilities":
-            return .danger
-        case "cash-flow":
-            return .success
-        case "protection", "tax-profile":
-            return .gold
-        default:
-            return .neutral
-        }
-    }
+    private func financialSnapshotSectionHeader(
+        _ section: MobileFinancialHealthSectionResponse,
+        tone: LegendNextTone
+    ) -> some View {
+        LegendNextSurface(
+            style: .navy,
+            cornerRadius: LegendNextRadius.card,
+            padding: LegendNextSpacing.sm
+        ) {
+            HStack(alignment: .center, spacing: LegendNextSpacing.sm) {
+                Image(systemName: financialHealthSymbol(section.key))
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(tone.color)
+                    .frame(width: 40, height: 40)
+                    .background(tone.color.opacity(0.16), in: Circle())
+                    .accessibilityHidden(true)
 
-    private func financialHealthStatusTone(
-        _ status: String?,
-        fallback: LegendNextTone
-    ) -> LegendNextTone {
-        switch status?.lowercased() {
-        case "protected", "low":
-            return .success
-        case "partial", "moderate":
-            return .warning
-        case "exposed", "high":
-            return .danger
-        default:
-            return fallback
+                VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                    Text("FINANCIAL JOURNEY")
+                        .font(LegendNextTypography.eyebrow)
+                        .tracking(0.8)
+                        .foregroundStyle(LegendNextColor.goldBright)
+
+                    LegendNextBadge(
+                        section.title.uppercased(),
+                        tone: tone
+                    )
+                }
+
+                Spacer(minLength: LegendNextSpacing.xs)
+
+                if let period = section.period {
+                    Text(period.uppercased())
+                        .font(LegendNextTypography.eyebrow)
+                        .tracking(0.6)
+                        .foregroundStyle(Color.white.opacity(0.58))
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(2)
+                }
+            }
         }
     }
 
