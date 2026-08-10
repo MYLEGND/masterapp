@@ -20,6 +20,14 @@ protocol LegendLaunchCaching: Sendable {
     func readPayload(_ kind: LegendLaunchPayloadKind, actorKey: String) -> Data?
     func writePayload(_ data: Data, kind: LegendLaunchPayloadKind, actorKey: String)
 
+    /// Returns bytes for this exact, immutable profile-media resource version.
+    func readProtectedImage(resourcePath: String) -> Data?
+    /// Returns the most recently authorized bytes for the same profile-media
+    /// resource, even when the server has advertised a newer version. This is
+    /// presentation-only stale-while-revalidate data.
+    func readLastKnownProtectedImage(resourcePath: String) -> Data?
+    func writeProtectedImage(_ data: Data, resourcePath: String)
+
     func clear()
 }
 
@@ -103,6 +111,12 @@ extension LegendLaunchCaching {
         }
         return entry
     }
+
+    // Caches used by tests or previews that do not opt into persisted launch
+    // state remain valid without being forced to invent a second image store.
+    func readProtectedImage(resourcePath: String) -> Data? { nil }
+    func readLastKnownProtectedImage(resourcePath: String) -> Data? { nil }
+    func writeProtectedImage(_ data: Data, resourcePath: String) {}
 }
 
 /// A cache key that changes with the acting identity, so switching roles never shows
@@ -145,6 +159,23 @@ final class LegendLaunchCache: LegendLaunchCaching, @unchecked Sendable {
         write(data, fileNamed: fileName(for: kind, actorKey: actorKey))
     }
 
+    func readProtectedImage(resourcePath: String) -> Data? {
+        read(fileNamed: protectedImageFileName(for: resourcePath, kind: .version))
+    }
+
+    func readLastKnownProtectedImage(resourcePath: String) -> Data? {
+        read(fileNamed: protectedImageFileName(for: resourcePath, kind: .latest))
+    }
+
+    func writeProtectedImage(_ data: Data, resourcePath: String) {
+        // Persist both the immutable version and the stable profile-media key.
+        // The exact entry prevents a needless network request for an unchanged
+        // image. The stable entry lets launch display the prior authorized image
+        // while the newer immutable version is fetched and verified.
+        write(data, fileNamed: protectedImageFileName(for: resourcePath, kind: .version))
+        write(data, fileNamed: protectedImageFileName(for: resourcePath, kind: .latest))
+    }
+
     func clear() {
         guard let directory else { return }
         lock.lock()
@@ -154,6 +185,32 @@ final class LegendLaunchCache: LegendLaunchCaching, @unchecked Sendable {
 
     private func fileName(for kind: LegendLaunchPayloadKind, actorKey: String) -> String {
         "\(kind.rawValue)-\(actorKey).json"
+    }
+
+    private enum ProtectedImageCacheKind: String {
+        case version
+        case latest
+    }
+
+    private func protectedImageFileName(
+        for resourcePath: String,
+        kind: ProtectedImageCacheKind
+    ) -> String {
+        let source: String
+        switch kind {
+        case .version:
+            source = resourcePath
+        case .latest:
+            // Profile image versions are query parameters on a stable protected
+            // route. The route is typed and profile-specific, so it is the safe
+            // stale-while-revalidate identity for that image only.
+            source = resourcePath.split(separator: "?", maxSplits: 1).first.map(String.init) ?? resourcePath
+        }
+
+        let digest = SHA256.hash(data: Data(source.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "protected-image-\(kind.rawValue)-\(digest).bin"
     }
 
     private func read(fileNamed name: String) -> Data? {

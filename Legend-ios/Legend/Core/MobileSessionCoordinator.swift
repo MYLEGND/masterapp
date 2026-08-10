@@ -89,9 +89,9 @@ final class MobileSessionCoordinator: ObservableObject {
     let launchCache: any LegendLaunchCaching
     private var activeTokens: OAuthTokenSet?
 
-    /// Presentation cache for protected avatar resources. The resource URL
-    /// contains a server-generated content version, so a changed image gets a
-    /// new key instead of overwriting or competing with authoritative state.
+    /// Hot-memory tier for the account-bound protected-image cache. Its durable
+    /// tier is the existing launch cache, which is wiped with the account cache
+    /// at sign-out or credential rejection.
     private let protectedImageCache: NSCache<NSString, NSData> = {
         let cache = NSCache<NSString, NSData>()
         cache.countLimit = 256
@@ -854,7 +854,24 @@ final class MobileSessionCoordinator: ObservableObject {
         let path = resourcePath.trimmingCharacters(
             in: .whitespacesAndNewlines)
         guard path.hasPrefix("/") else { return nil }
-        return protectedImageCache.object(forKey: path as NSString) as Data?
+
+        let key = path as NSString
+        if let cached = protectedImageCache.object(forKey: key) {
+            return cached as Data
+        }
+
+        if let cached = launchCache.readProtectedImage(resourcePath: path) {
+            protectedImageCache.setObject(
+                cached as NSData,
+                forKey: key,
+                cost: cached.count)
+            return cached
+        }
+
+        // A profile photo update receives a new immutable resource version.
+        // Until that version arrives, show the same profile's last authorized
+        // image rather than briefly replacing it with initials at launch.
+        return launchCache.readLastKnownProtectedImage(resourcePath: path)
     }
 
     func protectedImageData(
@@ -872,6 +889,14 @@ final class MobileSessionCoordinator: ObservableObject {
 
         if let cached = protectedImageCache.object(forKey: key) {
             return cached as Data
+        }
+
+        if let cached = launchCache.readProtectedImage(resourcePath: path) {
+            protectedImageCache.setObject(
+                cached as NSData,
+                forKey: key,
+                cost: cached.count)
+            return cached
         }
 
         if let existing = protectedImageLoadTasks[path] {
@@ -908,6 +933,7 @@ final class MobileSessionCoordinator: ObservableObject {
                 data as NSData,
                 forKey: key,
                 cost: data.count)
+            launchCache.writeProtectedImage(data, resourcePath: path)
         }
 
         return data

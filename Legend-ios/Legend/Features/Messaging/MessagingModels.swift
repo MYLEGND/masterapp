@@ -677,6 +677,40 @@ struct FounderAccountRemovalOutcome: Codable, Equatable, Sendable {
     let lifecycleState: String
 }
 
+enum FounderAccountDirectoryScope: String, Sendable {
+    case active
+    case archive
+}
+
+struct FounderAccountTargetRequest: Encodable, Sendable {
+    let profileID: UUID
+    let participantType: ParticipantType
+
+    private enum CodingKeys: String, CodingKey {
+        case profileID = "profileId"
+        case participantType
+    }
+}
+
+struct FounderAccountBatchRequest: Encodable, Sendable {
+    let accounts: [FounderAccountTargetRequest]
+    let confirmation: String
+}
+
+struct FounderAccountBatchItemOutcome: Codable, Equatable, Sendable {
+    let succeeded: Bool
+    let completed: Bool
+    let errorCode: String?
+    let message: String
+    let lifecycleState: String
+}
+
+struct FounderAccountBatchOutcome: Codable, Equatable, Sendable {
+    let completedCount: Int
+    let failedCount: Int
+    let results: [FounderAccountBatchItemOutcome]
+}
+
 protocol MessagingAPI: Sendable {
     func conversations(accessToken: String) async throws -> [ConversationSummary]
     func recipients(
@@ -717,11 +751,26 @@ protocol MessagingAPI: Sendable {
         accessToken: String
     ) async throws
     func founderAccounts(search: String?, accessToken: String) async throws -> [FounderManagedAccount]
+    func founderAccounts(
+        search: String?,
+        scope: FounderAccountDirectoryScope,
+        accessToken: String
+    ) async throws -> [FounderManagedAccount]
     func removeFounderAccount(
         account: FounderManagedAccount,
         confirmation: String,
         accessToken: String
     ) async throws -> FounderAccountRemovalOutcome
+    func removeFounderAccounts(
+        accounts: [FounderManagedAccount],
+        confirmation: String,
+        accessToken: String
+    ) async throws -> FounderAccountBatchOutcome
+    func purgeFounderAccounts(
+        accounts: [FounderManagedAccount],
+        confirmation: String,
+        accessToken: String
+    ) async throws -> FounderAccountBatchOutcome
     func resolveControlledResourceRequest(
         requestID: UUID,
         approve: Bool,
@@ -876,11 +925,35 @@ extension MessagingAPI {
         throw MobileMessagingContractError.unavailable
     }
 
+    func founderAccounts(
+        search: String?,
+        scope: FounderAccountDirectoryScope,
+        accessToken: String
+    ) async throws -> [FounderManagedAccount] {
+        try await founderAccounts(search: search, accessToken: accessToken)
+    }
+
     func removeFounderAccount(
         account: FounderManagedAccount,
         confirmation: String,
         accessToken: String
     ) async throws -> FounderAccountRemovalOutcome {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func removeFounderAccounts(
+        accounts: [FounderManagedAccount],
+        confirmation: String,
+        accessToken: String
+    ) async throws -> FounderAccountBatchOutcome {
+        throw MobileMessagingContractError.unavailable
+    }
+
+    func purgeFounderAccounts(
+        accounts: [FounderManagedAccount],
+        confirmation: String,
+        accessToken: String
+    ) async throws -> FounderAccountBatchOutcome {
         throw MobileMessagingContractError.unavailable
     }
 
@@ -1249,7 +1322,16 @@ struct URLSessionMessagingAPI: MessagingAPI {
     }
 
     func founderAccounts(search: String?, accessToken: String) async throws -> [FounderManagedAccount] {
+        try await founderAccounts(search: search, scope: .active, accessToken: accessToken)
+    }
+
+    func founderAccounts(
+        search: String?,
+        scope: FounderAccountDirectoryScope,
+        accessToken: String
+    ) async throws -> [FounderManagedAccount] {
         var queryItems = [URLQueryItem(name: "take", value: "100")]
+        queryItems.append(URLQueryItem(name: "scope", value: scope.rawValue))
         if search?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
             queryItems.append(URLQueryItem(name: "search", value: search))
         }
@@ -1276,6 +1358,46 @@ struct URLSessionMessagingAPI: MessagingAPI {
             idempotencyKey: UUID(),
             headers: participantHeader,
             response: FounderAccountRemovalOutcome.self)
+    }
+
+    func removeFounderAccounts(
+        accounts: [FounderManagedAccount],
+        confirmation: String,
+        accessToken: String
+    ) async throws -> FounderAccountBatchOutcome {
+        try await client.post(
+            "/api/v1/mobile/founder/accounts/remove-batch",
+            body: FounderAccountBatchRequest(
+                accounts: accounts.map {
+                    FounderAccountTargetRequest(
+                        profileID: $0.profileID,
+                        participantType: $0.participantType)
+                },
+                confirmation: confirmation),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader,
+            response: FounderAccountBatchOutcome.self)
+    }
+
+    func purgeFounderAccounts(
+        accounts: [FounderManagedAccount],
+        confirmation: String,
+        accessToken: String
+    ) async throws -> FounderAccountBatchOutcome {
+        try await client.post(
+            "/api/v1/mobile/founder/accounts/archive/purge",
+            body: FounderAccountBatchRequest(
+                accounts: accounts.map {
+                    FounderAccountTargetRequest(
+                        profileID: $0.profileID,
+                        participantType: $0.participantType)
+                },
+                confirmation: confirmation),
+            accessToken: accessToken,
+            idempotencyKey: UUID(),
+            headers: participantHeader,
+            response: FounderAccountBatchOutcome.self)
     }
 
     func resolveControlledResourceRequest(

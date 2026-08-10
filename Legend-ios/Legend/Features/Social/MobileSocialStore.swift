@@ -123,6 +123,96 @@ enum LegendSocialVideoPreparation {
         throw PreparationError.exportFailed
     }
 
+    /// Renders the creator's real video edit decision through the same native
+    /// H.264/AAC preparation authority used for every social video.  A source
+    /// with no trim or audio change is deliberately reused; creating another
+    /// lossy export would add cost without changing what the member published.
+    static func prepareEditedForPublication(
+        from sourceURL: URL,
+        trimStartSeconds: Double,
+        trimEndSeconds: Double?,
+        muteOriginalAudio: Bool
+    ) async throws -> URL {
+        let source = AVURLAsset(url: sourceURL)
+        try await validate(asset: source, enforcingPublicationDuration: true)
+        let sourceHasAudio = try await hasAudioTrack(in: source)
+
+        let duration = try await source.load(.duration).seconds
+        let start = min(max(0, trimStartSeconds), max(0, duration - 0.01))
+        let end = min(max(start + 0.01, trimEndSeconds ?? duration), duration)
+
+        guard end > start else {
+            throw PreparationError.unreadableSource
+        }
+
+        let needsTrim = start > 0.01 || end < duration - 0.01
+        guard needsTrim || muteOriginalAudio else {
+            return sourceURL
+        }
+
+        let videoTracks = try await source.loadTracks(withMediaType: .video)
+        let composition = AVMutableComposition()
+        guard let sourceVideo = videoTracks.first,
+              let compositionVideo = composition.addMutableTrack(
+                withMediaType: .video,
+                preferredTrackID: kCMPersistentTrackID_Invalid) else {
+            throw PreparationError.noVideoTrack
+        }
+
+        let range = CMTimeRange(
+            start: CMTime(seconds: start, preferredTimescale: 600),
+            end: CMTime(seconds: end, preferredTimescale: 600))
+        try compositionVideo.insertTimeRange(range, of: sourceVideo, at: .zero)
+        compositionVideo.preferredTransform = try await sourceVideo.load(.preferredTransform)
+
+        if !muteOriginalAudio,
+           let sourceAudio = try await source.loadTracks(withMediaType: .audio).first,
+           let compositionAudio = composition.addMutableTrack(
+               withMediaType: .audio,
+               preferredTrackID: kCMPersistentTrackID_Invalid) {
+            try compositionAudio.insertTimeRange(range, of: sourceAudio, at: .zero)
+        }
+
+        for preset in preferredExportPresets {
+            let compatible = await AVAssetExportSession.compatibility(
+                ofExportPreset: preset,
+                with: composition,
+                outputFileType: .mp4)
+            guard compatible else { continue }
+
+            let outputURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("legend-social-edited-video-\(UUID().uuidString)")
+                .appendingPathExtension("mp4")
+
+            do {
+                try await export(asset: composition, preset: preset, outputURL: outputURL)
+                let fileSize = try outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard fileSize > 0,
+                      fileSize <= maximumUploadBytes,
+                      await isPlayableVideo(at: outputURL) else {
+                    try? FileManager.default.removeItem(at: outputURL)
+                    continue
+                }
+
+                if !muteOriginalAudio, sourceHasAudio {
+                    let outputHasAudio = await hasAudioTrack(at: outputURL)
+                    guard outputHasAudio else {
+                        try? FileManager.default.removeItem(at: outputURL)
+                        continue
+                    }
+                }
+                return outputURL
+            } catch is CancellationError {
+                try? FileManager.default.removeItem(at: outputURL)
+                throw CancellationError()
+            } catch {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+        }
+
+        throw PreparationError.exportFailed
+    }
+
     /// The same playback check is used for the newly exported file and for a
     /// protected video received from the API. A bad media object is surfaced as
     /// an actionable error instead of a silent black AVPlayer view.
@@ -1511,11 +1601,22 @@ final class MobileSocialStore: ObservableObject {
                 }
             }
             guard publication?.id == identifier else { return }
-            applyPublishedPost(post)
             discardStagedFiles(in: request)
             pendingPublicationRequest = nil
-            publication?.stage = .published
             publication?.uploadProgress = 1
+
+            guard post.media.allSatisfy({ $0.processingState == "Ready" }) else {
+                // The API has accepted the post, but the established server
+                // worker still owns video conversion. Do not show a false
+                // "shared" result or insert a not-yet-playable Hac into the
+                // feed; observe the same authoritative profile projection
+                // until that worker marks the media ready.
+                publication?.stage = .processing
+                await awaitMediaReadiness(for: post.id, publicationID: identifier)
+                return
+            }
+
+            completePublication(post, identifier: identifier)
         } catch {
             guard publication?.id == identifier else { return }
             let presentation = failure(
@@ -1540,6 +1641,59 @@ final class MobileSocialStore: ObservableObject {
         if progress >= 1, publication?.stage == .uploading {
             publication?.stage = .processing
         }
+    }
+
+    private func awaitMediaReadiness(
+        for postID: UUID,
+        publicationID: UUID
+    ) async {
+        while publication?.id == publicationID,
+              publication?.stage == .processing,
+              !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled,
+                  publication?.id == publicationID,
+                  publication?.stage == .processing else {
+                return
+            }
+
+            do {
+                let token = try await accessTokenProvider()
+                let posts = try await api.currentProfilePosts(accessToken: token)
+                guard let refreshed = posts.first(where: { $0.id == postID }) else {
+                    continue
+                }
+
+                if refreshed.media.allSatisfy({ $0.processingState == "Ready" }) {
+                    completePublication(refreshed, identifier: publicationID)
+                    return
+                }
+
+                if refreshed.media.contains(where: { $0.processingState == "Failed" }) {
+                    actionFailure = UserFacingFailure(
+                        title: "Video processing needs attention",
+                        message: "Legend could not finish preparing this video. Choose the video again and try publishing.",
+                        correlationID: nil)
+                    publication?.stage = .failed
+                    publication?.failureMessage = actionFailure?.message
+                    return
+                }
+            } catch {
+                // The post is already persisted. A temporary refresh failure
+                // must not be presented as a failed upload or erase the real
+                // server processing status; the next observation retries.
+            }
+        }
+    }
+
+    private func completePublication(
+        _ post: MobileSocialPost,
+        identifier: UUID
+    ) {
+        guard publication?.id == identifier else { return }
+        applyPublishedPost(post)
+        publication?.stage = .published
+        publication?.uploadProgress = 1
     }
 
     private func applyPublishedPost(_ post: MobileSocialPost) {

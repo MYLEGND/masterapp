@@ -169,6 +169,28 @@ final class LegendLaunchCacheTests: XCTestCase {
         XCTAssertNil(cache.readSession())
     }
 
+    func testProtectedImageCachePersistsAcrossLaunchAndRefreshesByVersion() {
+        let directoryName = "LegendAvatarCacheTests-\(UUID().uuidString)"
+        let originalPath = "/api/v1/mobile/profile-images/Client/00000000-0000-0000-0000-000000000001?v=before"
+        let updatedPath = "/api/v1/mobile/profile-images/Client/00000000-0000-0000-0000-000000000001?v=after"
+        let originalData = Data("last authorized avatar".utf8)
+
+        let writer = LegendLaunchCache(directoryName: directoryName)
+        defer { writer.clear() }
+        writer.writeProtectedImage(originalData, resourcePath: originalPath)
+
+        // A fresh cache instance models a cold application launch.
+        let reader = LegendLaunchCache(directoryName: directoryName)
+        XCTAssertEqual(reader.readProtectedImage(resourcePath: originalPath), originalData)
+        XCTAssertEqual(
+            reader.readLastKnownProtectedImage(resourcePath: updatedPath),
+            originalData,
+            "The previous authorized photo remains visible while the new immutable version revalidates.")
+        XCTAssertNil(
+            reader.readProtectedImage(resourcePath: updatedPath),
+            "A changed version must still make a network request for the replacement image.")
+    }
+
     /// Home renders last-known content on its first frame instead of a loading state.
     func testHomeStoreHydratesFromCacheBeforeAnyRequest() throws {
         let box = PayloadBox()

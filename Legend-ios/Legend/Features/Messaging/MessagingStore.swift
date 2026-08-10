@@ -660,11 +660,15 @@ final class MessagingStore: ObservableObject {
     /// Founder account administration has its own server-authorized directory.
     /// It intentionally does not reuse the public/member recipient list because
     /// operational closure must be able to locate unsubscribed accounts too.
-    func founderAccounts(search: String? = nil) async -> [FounderManagedAccount]? {
+    func founderAccounts(
+        search: String? = nil,
+        scope: FounderAccountDirectoryScope = .active
+    ) async -> [FounderManagedAccount]? {
         guard isFounder else { return nil }
         do {
             return try await api.founderAccounts(
                 search: search,
+                scope: scope,
                 accessToken: try await accessTokenProvider())
         } catch {
             sendFailure = failure(for: error, title: "Account directory unavailable")
@@ -691,6 +695,52 @@ final class MessagingStore: ObservableObject {
             return result
         } catch {
             sendFailure = failure(for: error, title: "Account removal not completed")
+            return nil
+        }
+    }
+
+    @discardableResult
+    func removeFounderAccounts(
+        _ accounts: [FounderManagedAccount],
+        confirmation: String
+    ) async -> FounderAccountBatchOutcome? {
+        guard isFounder, !accounts.isEmpty, !isRemovingFounderAccount else { return nil }
+        isRemovingFounderAccount = true
+        sendFailure = nil
+        defer { isRemovingFounderAccount = false }
+
+        do {
+            let result = try await api.removeFounderAccounts(
+                accounts: accounts,
+                confirmation: confirmation,
+                accessToken: try await accessTokenProvider())
+            _ = await refresh()
+            return result
+        } catch {
+            sendFailure = failure(for: error, title: "Account removal not completed")
+            return nil
+        }
+    }
+
+    @discardableResult
+    func purgeFounderAccounts(
+        _ accounts: [FounderManagedAccount],
+        confirmation: String
+    ) async -> FounderAccountBatchOutcome? {
+        guard isFounder, !accounts.isEmpty, !isRemovingFounderAccount else { return nil }
+        isRemovingFounderAccount = true
+        sendFailure = nil
+        defer { isRemovingFounderAccount = false }
+
+        do {
+            let result = try await api.purgeFounderAccounts(
+                accounts: accounts,
+                confirmation: confirmation,
+                accessToken: try await accessTokenProvider())
+            _ = await refresh()
+            return result
+        } catch {
+            sendFailure = failure(for: error, title: "Account erase not completed")
             return nil
         }
     }

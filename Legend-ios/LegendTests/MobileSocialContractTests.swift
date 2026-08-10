@@ -4,6 +4,77 @@ import XCTest
 
 @MainActor
 final class MobileSocialContractTests: XCTestCase {
+    func testCreatorImageRendererFlattensAppearanceAndStoryTextIntoPublishedJPEG() throws {
+        let source = UIGraphicsImageRenderer(size: CGSize(width: 80, height: 80)).jpegData(
+            withCompressionQuality: 1) { context in
+                UIColor.systemBlue.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 80, height: 80))
+                UIColor.systemYellow.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 40, height: 80))
+            }
+
+        var edit = LegendSocialMediaEditState.initial
+        edit.filter = .mono
+        edit.storyOverlay.text = "Legend"
+        edit.storyOverlay.color = .gold
+
+        let rendered = try XCTUnwrap(LegendSocialMediaRenderer.jpegData(
+            from: source,
+            edit: edit,
+            aspectRatio: 9 / 16))
+
+        XCTAssertNotEqual(rendered, source)
+        XCTAssertNotNil(UIImage(data: rendered))
+    }
+
+    func testVideoEditOnlyReexportsWhenTheAudienceWouldReceiveAChangedVideo() {
+        XCTAssertFalse(LegendSocialVideoEdit().requiresRendering(for: 30))
+        XCTAssertTrue(LegendSocialVideoEdit(
+            trimStartSeconds: 2,
+            trimEndSeconds: 28,
+            isOriginalAudioMuted: false).requiresRendering(for: 30))
+        XCTAssertTrue(LegendSocialVideoEdit(
+            trimStartSeconds: 0,
+            trimEndSeconds: nil,
+            isOriginalAudioMuted: true).requiresRendering(for: 30))
+    }
+
+    func testVideoPublicationRemainsProcessingUntilTheServerProjectionIsReady() async throws {
+        let author = try socialAuthor()
+        let pending = socialVideoPost(
+            author: author,
+            processingState: "PendingProcessing")
+        let ready = socialVideoPost(
+            id: pending.id,
+            author: author,
+            processingState: "Ready")
+        let api = RecordingSocialAPI(post: pending, profilePosts: [pending, ready])
+        let store = MobileSocialStore(
+            api: api,
+            accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics())
+
+        XCTAssertTrue(store.beginPublication(MobileSocialPublishRequest(
+            contentType: .hac,
+            body: "A prepared Hac.",
+            files: [MultipartFormFile(
+                fieldName: "files",
+                fileName: "legend-hac.mp4",
+                mimeType: "video/mp4",
+                data: Data([0, 1, 2, 3]))],
+            accessibilityText: nil,
+            music: nil,
+            audience: .authorizedNetwork,
+            location: nil,
+            commentsEnabled: true)))
+
+        for _ in 0..<30 where store.publication?.stage != .published {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+
+        XCTAssertEqual(store.publication?.stage, .published)
+    }
+
     func testProtectedQuickTimeVideoUsesMOVPlaybackExtension() {
         let quickTime = MobileSocialMedia(
             id: UUID(),
@@ -907,6 +978,8 @@ private struct StubSocialAPI: MobileSocialAPI {
 
 private actor RecordingSocialAPI: MobileSocialAPI {
     private let post: MobileSocialPost
+    private let profilePosts: [MobileSocialPost]
+    private var profilePostReadCount = 0
     private let reactionDelay: Duration?
     private var recordedMediaContentTypes: [MobileSocialContentType] = []
     private var recordedFollowRequest: MobileToggleSocialFollow?
@@ -920,9 +993,14 @@ private actor RecordingSocialAPI: MobileSocialAPI {
     private var recordedMediaCommentsEnabled: Bool?
     private var recordedReactionCallCount = 0
 
-    init(post: MobileSocialPost, reactionDelay: Duration? = nil) {
+    init(
+        post: MobileSocialPost,
+        reactionDelay: Duration? = nil,
+        profilePosts: [MobileSocialPost]? = nil
+    ) {
         self.post = post
         self.reactionDelay = reactionDelay
+        self.profilePosts = profilePosts ?? [post]
     }
 
     func feed(accessToken: String) async throws -> MobileSocialSnapshot {
@@ -930,7 +1008,9 @@ private actor RecordingSocialAPI: MobileSocialAPI {
     }
 
     func currentProfilePosts(accessToken: String) async throws -> [MobileSocialPost] {
-        [post]
+        let index = min(profilePostReadCount, profilePosts.count - 1)
+        profilePostReadCount += 1
+        return [profilePosts[index]]
     }
 
     func createPost(
@@ -1084,6 +1164,54 @@ private func updatedSocialPost(
         music: post.music,
         media: post.media,
         comments: post.comments)
+}
+
+private func socialAuthor() throws -> MobileSocialAuthor {
+    MobileSocialAuthor(
+        identity: try LogicalParticipantIdentity(
+            userID: "client-one",
+            participantType: .client),
+        profileID: "00000000-0000-0000-0000-000000000002",
+        displayName: "Client One",
+        avatar: nil)
+}
+
+private func socialVideoPost(
+    id: UUID = UUID(),
+    author: MobileSocialAuthor,
+    processingState: String
+) -> MobileSocialPost {
+    MobileSocialPost(
+        id: id,
+        author: author,
+        contentType: MobileSocialContentType.hac.rawValue,
+        body: "A prepared Hac.",
+        audience: MobileSocialAudience.authorizedNetwork.rawValue,
+        location: nil,
+        commentsEnabled: true,
+        postedUTC: .now,
+        expiresUTC: nil,
+        reactionCount: 0,
+        commentCount: 0,
+        reactedByCurrentActor: false,
+        followedByCurrentActor: false,
+        savedByCurrentActor: false,
+        repostedByCurrentActor: false,
+        metrics: testSocialMetrics,
+        music: nil,
+        media: [MobileSocialMedia(
+            id: UUID(),
+            displayOrder: 0,
+            mediaKind: "Video",
+            mimeType: "video/mp4",
+            fileSizeBytes: 4,
+            width: 1_080,
+            height: 1_920,
+            aspectRatio: 0.5625,
+            durationSeconds: 10,
+            processingState: processingState,
+            accessibilityText: nil)],
+        comments: [])
 }
 
 private func socialPost(

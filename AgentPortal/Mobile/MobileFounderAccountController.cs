@@ -1,4 +1,5 @@
 using AgentPortal.Security;
+using Domain.Accounts;
 using Infrastructure.Identity;
 using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Authorization;
@@ -20,6 +21,7 @@ namespace AgentPortal.Mobile;
 public sealed class MobileFounderAccountController : MobileApiControllerBase
 {
     private const string RemovalConfirmation = "DELETE";
+    private const string PurgeConfirmation = "ERASE";
 
     private readonly IFounderAccountRemovalService _accounts;
 
@@ -36,6 +38,7 @@ public sealed class MobileFounderAccountController : MobileApiControllerBase
     public async Task<IActionResult> List(
         [FromQuery] string? search,
         [FromQuery] int? take,
+        [FromQuery] string? scope,
         CancellationToken cancellationToken)
     {
         if (!FounderGuard.IsFounder(User))
@@ -45,7 +48,10 @@ public sealed class MobileFounderAccountController : MobileApiControllerBase
         if (founder.Error is not null || founder.Actor is null)
             return founder.Error!;
 
-        var accounts = await _accounts.ListAsync(search, take ?? 50, cancellationToken);
+        var directoryScope = string.Equals(scope, "archive", StringComparison.OrdinalIgnoreCase)
+            ? FounderAccountDirectoryScope.Archive
+            : FounderAccountDirectoryScope.Active;
+        var accounts = await _accounts.ListAsync(search, take ?? 50, directoryScope, cancellationToken);
         return Ok(accounts.Select(ToDto));
     }
 
@@ -61,7 +67,7 @@ public sealed class MobileFounderAccountController : MobileApiControllerBase
             return Error(
                 StatusCodes.Status400BadRequest,
                 "founder_account_removal_confirmation_required",
-                "Type DELETE to confirm permanent Legend account removal.");
+                "Type DELETE to confirm account closure and archive.");
         }
 
         var founder = await ResolveActorAsync(cancellationToken);
@@ -94,6 +100,84 @@ public sealed class MobileFounderAccountController : MobileApiControllerBase
             result.LifecycleState));
     }
 
+    [HttpPost("remove-batch")]
+    public async Task<IActionResult> RemoveBatch(
+        [FromBody] MobileFounderAccountBatchRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (!FounderGuard.IsFounder(User))
+            return Forbid();
+        if (!string.Equals(request?.Confirmation?.Trim(), RemovalConfirmation, StringComparison.Ordinal))
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "founder_account_removal_confirmation_required",
+                "Type DELETE to confirm account removal.");
+        }
+
+        var founder = await ResolveActorAsync(cancellationToken);
+        if (founder.Error is not null || founder.Actor is null)
+            return founder.Error!;
+
+        var result = await _accounts.RemoveManyAsync(
+            new FounderAccountRemovalBatchCommand(
+                ToTargets(request?.Accounts),
+                founder.Actor.Actor.UserId,
+                CorrelationId()),
+            cancellationToken);
+        return Ok(new MobileFounderAccountBatchResponse(
+            result.CompletedCount,
+            result.FailedCount,
+            result.Results.Select(item => new MobileFounderAccountBatchItemResponse(
+                item.Succeeded,
+                item.Completed,
+                item.ErrorCode,
+                item.Message,
+                item.LifecycleState)).ToArray()));
+    }
+
+    [HttpPost("archive/purge")]
+    public async Task<IActionResult> PurgeArchive(
+        [FromBody] MobileFounderAccountBatchRequest? request,
+        CancellationToken cancellationToken)
+    {
+        if (!FounderGuard.IsFounder(User))
+            return Forbid();
+        if (!string.Equals(request?.Confirmation?.Trim(), PurgeConfirmation, StringComparison.Ordinal))
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "founder_account_purge_confirmation_required",
+                "Type ERASE to permanently remove archived accounts from the Legend application database.");
+        }
+
+        var founder = await ResolveActorAsync(cancellationToken);
+        if (founder.Error is not null || founder.Actor is null)
+            return founder.Error!;
+
+        var result = await _accounts.PurgeArchivedManyAsync(
+            new FounderAccountRemovalBatchCommand(
+                ToTargets(request?.Accounts),
+                founder.Actor.Actor.UserId,
+                CorrelationId()),
+            cancellationToken);
+        return Ok(new MobileFounderAccountBatchResponse(
+            result.CompletedCount,
+            result.FailedCount,
+            result.Results.Select(item => new MobileFounderAccountBatchItemResponse(
+                item.Succeeded,
+                item.Succeeded,
+                item.ErrorCode,
+                item.Message,
+                AccountLifecycleStates.Closed)).ToArray()));
+    }
+
+    private static IReadOnlyCollection<FounderAccountTarget> ToTargets(
+        IReadOnlyCollection<MobileFounderAccountTargetRequest>? accounts) =>
+        (accounts ?? Array.Empty<MobileFounderAccountTargetRequest>())
+        .Select(item => new FounderAccountTarget(item.ProfileId, item.ParticipantType ?? string.Empty))
+        .ToArray();
+
     private static MobileFounderManagedAccountDto ToDto(FounderManagedAccount account) =>
         new(
             account.ProfileId,
@@ -111,6 +195,14 @@ public sealed record MobileFounderAccountRemovalRequest(
     string? ParticipantType,
     string? Confirmation);
 
+public sealed record MobileFounderAccountTargetRequest(
+    Guid ProfileId,
+    string? ParticipantType);
+
+public sealed record MobileFounderAccountBatchRequest(
+    IReadOnlyCollection<MobileFounderAccountTargetRequest>? Accounts,
+    string? Confirmation);
+
 public sealed record MobileFounderManagedAccountDto(
     Guid ProfileId,
     string UserId,
@@ -125,3 +217,15 @@ public sealed record MobileFounderAccountRemovalResponse(
     bool Completed,
     string Message,
     string LifecycleState);
+
+public sealed record MobileFounderAccountBatchItemResponse(
+    bool Succeeded,
+    bool Completed,
+    string? ErrorCode,
+    string Message,
+    string LifecycleState);
+
+public sealed record MobileFounderAccountBatchResponse(
+    int CompletedCount,
+    int FailedCount,
+    IReadOnlyList<MobileFounderAccountBatchItemResponse> Results);

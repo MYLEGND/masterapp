@@ -1,5 +1,6 @@
 import AVFoundation
 import AVKit
+import CoreImage
 import Photos
 import PhotosUI
 import SwiftUI
@@ -41,63 +42,47 @@ private struct LegendSocialCreationModeMenu: View {
                 LegendNextGradient.hero
                     .ignoresSafeArea()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.xl) {
-                        HStack {
-                            Button(action: dismiss) {
-                                Image(systemName: "xmark")
-                                    .font(.title3.weight(.semibold))
-                                    .frame(
-                                        width: LegendNextSize.prominentControlHeight,
-                                        height: LegendNextSize.prominentControlHeight)
-                                    .background(
-                                        Color.white.opacity(0.12),
-                                        in: Circle())
+                VStack(spacing: 0) {
+                    HStack {
+                        Button(action: dismiss) {
+                            Image(systemName: "xmark")
+                                .font(.headline.weight(.semibold))
+                                .frame(width: 44, height: 44)
+                                .background(Color.white.opacity(0.12), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.white)
+                        .accessibilityLabel("Close creator")
+
+                        Spacer()
+
+                        Text("Create")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(.white)
+
+                        Spacer()
+
+                        Color.clear.frame(width: 44, height: 44)
+                    }
+                    .padding(.horizontal, LegendNextSpacing.md)
+                    .padding(.top, LegendNextSpacing.xs)
+
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                        Text("Choose a format")
+                            .font(.title2.weight(.bold))
+                            .foregroundStyle(.white)
+
+                        ForEach(MobileSocialContentType.allCases) { candidate in
+                            Button { select(candidate) } label: {
+                                creationOption(candidate)
                             }
                             .buttonStyle(.plain)
-                            .foregroundStyle(.white)
-                            .accessibilityLabel("Close creator")
-
-                            Spacer()
-
-                            Text("Create")
-                                .font(LegendNextTypography.hero)
-                                .foregroundStyle(.white)
-
-                            Spacer()
-
-                            Color.clear
-                                .frame(
-                                    width: LegendNextSize.prominentControlHeight,
-                                    height: LegendNextSize.prominentControlHeight)
+                            .accessibilityLabel("Create \(candidate.displayName)")
+                            .accessibilityHint(candidate.creationPrompt)
                         }
-
-                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                            Text("Share what matters")
-                                .font(LegendNextTypography.display)
-                                .foregroundStyle(.white)
-                            Text("Choose how you want to share with your Legend network.")
-                                .font(LegendNextTypography.body)
-                                .foregroundStyle(Color.white.opacity(0.72))
-                        }
-
-                        VStack(spacing: LegendNextSpacing.sm) {
-                            ForEach(MobileSocialContentType.allCases) { candidate in
-                                Button {
-                                    select(candidate)
-                                } label: {
-                                    creationOption(candidate)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Create \(candidate.displayName)")
-                                .accessibilityHint(candidate.creationPrompt)
-                            }
-                        }
-
-                        Spacer(minLength: LegendNextSpacing.scene)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     .padding(.horizontal, LegendNextSpacing.lg)
-                    .padding(.vertical, LegendNextSpacing.md)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -106,142 +91,34 @@ private struct LegendSocialCreationModeMenu: View {
     }
 
     private func creationOption(_ type: MobileSocialContentType) -> some View {
-        HStack(spacing: LegendNextSpacing.md) {
+        HStack(spacing: LegendNextSpacing.sm) {
             Image(systemName: type.systemImage)
-                .font(.title2.weight(.semibold))
-                .frame(width: 52, height: 52)
+                .font(.body.weight(.semibold))
+                .frame(width: 40, height: 40)
                 .foregroundStyle(LegendNextColor.goldBright)
-                .background(LegendNextColor.midnight, in: Circle())
+                .background(Color.white.opacity(0.11), in: Circle())
 
-            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(type.displayName)
-                    .font(LegendNextTypography.section)
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(.white)
-                Text(type.creationPrompt)
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(Color.white.opacity(0.68))
-                    .lineLimit(2)
             }
 
             Spacer(minLength: LegendNextSpacing.xs)
 
-            Image(systemName: "arrow.right")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(LegendNextColor.goldBright)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.white.opacity(0.55))
                 .accessibilityHidden(true)
         }
-        .padding(LegendNextSpacing.md)
+        .padding(.horizontal, LegendNextSpacing.sm)
+        .frame(height: 64)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous))
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.13), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
         }
-    }
-}
-
-private struct LegendSocialCreationModeRail: View {
-    @Binding var selection: MobileSocialContentType
-
-    var body: some View {
-        HStack(spacing: LegendNextSpacing.tiny) {
-            ForEach(MobileSocialContentType.allCases) { candidate in
-                Button {
-                    withAnimation(LegendNextMotion.tab) {
-                        selection = candidate
-                    }
-                } label: {
-                    Label(candidate.displayName, systemImage: candidate.systemImage)
-                        .font(LegendNextTypography.label)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: LegendNextSize.compactControlHeight)
-                        .foregroundStyle(candidate == selection ? LegendNextColor.midnight : Color.white.opacity(0.72))
-                        .background(
-                            candidate == selection ? LegendNextColor.goldBright : Color.clear,
-                            in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Create \(candidate.displayName)")
-                .accessibilityAddTraits(candidate == selection ? .isSelected : [])
-            }
-        }
-        .padding(LegendNextSpacing.tiny)
-        .background(Color.white.opacity(0.10), in: Capsule())
-        .overlay {
-            Capsule()
-                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
-        }
-    }
-}
-
-/// Shared progression chrome for every creation surface. The user is always
-/// editing one draft, moving through Media → Edit → Share; the view never
-/// manufactures a second route or a parallel draft state.
-private struct LegendSocialCreationProgress: View {
-    private enum Step: Int, CaseIterable {
-        case media
-        case edit
-        case share
-
-        var title: String {
-            switch self {
-            case .media: "Media"
-            case .edit: "Edit"
-            case .share: "Share"
-            }
-        }
-    }
-
-    let stage: LegendSocialCreationStage
-    let isDark: Bool
-
-    private var currentStep: Step {
-        switch stage {
-        case .library, .preparingMedia, .camera, .failed:
-            .media
-        case .metadata, .music:
-            .edit
-        case .share, .handedOff:
-            .share
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: LegendNextSpacing.xs) {
-            ForEach(Step.allCases, id: \.rawValue) { step in
-                HStack(spacing: LegendNextSpacing.micro) {
-                    Image(systemName: step.rawValue < currentStep.rawValue
-                          ? "checkmark"
-                          : "circle.fill")
-                        .font(.system(size: step.rawValue < currentStep.rawValue ? 9 : 6, weight: .bold))
-                    Text(step.title)
-                        .font(.caption2.weight(.bold))
-                }
-                .foregroundStyle(foreground(for: step))
-
-                if step != .share {
-                    Capsule()
-                        .fill(connectorColor(after: step))
-                        .frame(width: 24, height: 2)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Creation step \(currentStep.rawValue + 1) of 3: \(currentStep.title)")
-    }
-
-    private func foreground(for step: Step) -> Color {
-        guard step.rawValue <= currentStep.rawValue else {
-            return isDark ? Color.white.opacity(0.38) : LegendNextColor.textSecondary.opacity(0.58)
-        }
-        return isDark ? LegendNextColor.goldBright : LegendNextColor.royal
-    }
-
-    private func connectorColor(after step: Step) -> Color {
-        step.rawValue < currentStep.rawValue
-            ? foreground(for: step)
-            : (isDark ? Color.white.opacity(0.22) : LegendNextColor.separator)
     }
 }
 
@@ -253,19 +130,27 @@ struct LegendSocialComposer: View {
     @State private var caption = ""
     @State private var type: MobileSocialContentType
     @State private var selectedMedia: [LegendSocialMediaDraft] = []
+    /// One draft-level edit authority. It stays with the selected source until
+    /// publication, then the same renderer supplies the preview and uploaded
+    /// bytes. No visual-only editor state is allowed to escape this composer.
+    @State private var mediaEdits: [UUID: LegendSocialMediaEditState] = [:]
+    @State private var activeMediaID: UUID?
     @State private var accessibilityText = ""
     @State private var tagsAndMentions = ""
     @State private var shareLocation = ""
     @State private var commentsEnabled = true
     @State private var mediaSelectionError: String?
     @State private var stage: LegendSocialCreationStage = .library
-    @State private var musicReturnStage: LegendSocialCreationStage = .metadata
-    @State private var selectedMusic: LegendSocialMusicDraft?
     @State private var activeEditorTool: LegendSocialEditingTool = .text
     @State private var ownsMediaAfterDismissal = false
     @State private var selectedHacPreviewData: Data?
     @State private var isSelectingHacPreview = false
+    @State private var isTrimmingVideo = false
+    @State private var isPreparingPublication = false
+    @State private var showsDiscardConfirmation = false
     @State private var postCanvas = LegendSocialPostCanvas.portrait
+    @State private var selectedAdjustment: LegendSocialImageAdjustment = .brightness
+    @State private var detailEditor: LegendSocialPublicationDetail?
 
     init(
         type: MobileSocialContentType,
@@ -293,44 +178,57 @@ struct LegendSocialComposer: View {
                 case .share:
                     shareDetailsContent
 
-                case .music:
-                    if musicReturnStage == .share {
-                        shareDetailsContent
-                    } else {
-                        metadataContent
-                    }
-
                 case .handedOff:
                     shareDetailsContent
+
+                case .music:
+                    // Music attachment playback has no production mix/export
+                    // authority yet. This legacy state remains source-compatible
+                    // but is never routed from the creator.
+                    metadataContent
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
         }
         .legendNextSheetChrome(detents: [.large], showsDragIndicator: false)
-        .sheet(isPresented: musicPickerPresented) {
-            LegendSocialMusicSelectionSheet(
-                social: social,
-                selection: selectedMusic,
-                save: {
-                    selectedMusic = $0
-                    stage = musicReturnStage
-                },
-                cancel: {
-                    stage = musicReturnStage
-                })
-        }
         .sheet(isPresented: $isSelectingHacPreview) {
             if let sourceURL = selectedMedia.first?.videoFileURL {
                 LegendHacPreviewSelector(
                     sourceURL: sourceURL,
+                    selectedRange: activeVideoEdit.selectedRange,
                     save: { previewData in
                         selectedHacPreviewData = previewData
                         isSelectingHacPreview = false
                     },
                     cancel: {
                         isSelectingHacPreview = false
-                    })
+                })
             }
+        }
+        .sheet(isPresented: $isTrimmingVideo) {
+            if let video = activeMedia,
+               let sourceURL = video.videoFileURL {
+                LegendSocialVideoTrimSheet(
+                    sourceURL: sourceURL,
+                    selection: activeVideoEdit,
+                    save: { trim in
+                        updateActiveEdit { $0.video = trim }
+                        if type.requiresVideo {
+                            selectedHacPreviewData = LegendHacPreviewFrame.jpegData(
+                                from: sourceURL,
+                                at: trim.trimStartSeconds)
+                        }
+                        isTrimmingVideo = false
+                    },
+                    cancel: { isTrimmingVideo = false })
+            }
+        }
+        .sheet(item: $detailEditor) { detail in
+            LegendSocialPublicationDetailSheet(
+                detail: detail,
+                tagsAndMentions: $tagsAndMentions,
+                location: $shareLocation,
+                accessibilityText: $accessibilityText)
         }
         .fullScreenCover(isPresented: cameraPresented) {
             LegendSocialCameraCapture(
@@ -364,6 +262,19 @@ struct LegendSocialComposer: View {
             if !ownsMediaAfterDismissal {
                 discardTemporaryMedia()
             }
+        }
+        .confirmationDialog(
+            "Discard this creation?",
+            isPresented: $showsDiscardConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Discard creation", role: .destructive) {
+                discardTemporaryMedia()
+                dismiss()
+            }
+            Button("Keep editing", role: .cancel) {}
+        } message: {
+            Text("Your selected media, edits, and publishing details will be removed.")
         }
     }
 
@@ -400,23 +311,52 @@ struct LegendSocialComposer: View {
         }
     }
 
-    private var musicPickerPresented: Binding<Bool> {
-        Binding(
-            get: {
-                stage == .music
-            },
-            set: {
-                if !$0 && stage == .music {
-                    stage = musicReturnStage
-                }
-            }
-        )
-    }
-
     private var cameraPresented: Binding<Bool> {
         Binding(
             get: { stage == .camera },
             set: { if !$0 && stage == .camera { stage = .library } })
+    }
+
+    /// The selected position is the one editing target for a multi-media Post.
+    /// Stories and Hacs are constrained to a single item by the shared format
+    /// contract, so they naturally resolve to that item.
+    private var activeMedia: LegendSocialMediaDraft? {
+        if let activeMediaID,
+           let selected = selectedMedia.first(where: { $0.id == activeMediaID }) {
+            return selected
+        }
+        return selectedMedia.first
+    }
+
+    private var activeEdit: LegendSocialMediaEditState {
+        guard let activeMedia else { return .initial }
+        return mediaEdits[activeMedia.id] ?? .initial
+    }
+
+    private var activeVideoEdit: LegendSocialVideoEdit {
+        activeEdit.video
+    }
+
+    private func edit(for media: LegendSocialMediaDraft) -> LegendSocialMediaEditState {
+        mediaEdits[media.id] ?? .initial
+    }
+
+    private func updateActiveEdit(
+        _ transform: (inout LegendSocialMediaEditState) -> Void
+    ) {
+        guard let activeMedia else { return }
+        var updated = edit(for: activeMedia)
+        transform(&updated)
+        mediaEdits[activeMedia.id] = updated
+    }
+
+    private func activeEditBinding() -> Binding<LegendSocialMediaEditState> {
+        Binding(
+            get: { activeEdit },
+            set: { updated in
+                guard let activeMedia else { return }
+                mediaEdits[activeMedia.id] = updated
+            })
     }
 
     private var libraryContent: some View {
@@ -428,25 +368,19 @@ struct LegendSocialComposer: View {
                 libraryHeader
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
-                        selectionPreview(isDark: true)
-                        legendModeRail
-                        photoLibraryStatus
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                        mediaLibraryToolbar
 
-                        HStack(alignment: .firstTextBaseline) {
-                            Text("Recents")
-                                .font(LegendNextTypography.title)
-                                .foregroundStyle(.white)
-                            Spacer()
-                            Text("Select media")
-                                .font(LegendNextTypography.label)
-                                .foregroundStyle(LegendNextColor.goldBright)
+                        if !selectedMedia.isEmpty {
+                            compactSelectionStrip
                         }
+
+                        photoLibraryStatus
 
                         mediaGrid
                     }
-                    .padding(.horizontal, LegendNextSpacing.md)
-                    .padding(.bottom, LegendNextSpacing.xl)
+                    .padding(.horizontal, LegendNextSpacing.sm)
+                    .padding(.bottom, LegendNextSpacing.lg)
                 }
                 .scrollIndicators(.hidden)
             }
@@ -454,49 +388,37 @@ struct LegendSocialComposer: View {
     }
 
     private var libraryHeader: some View {
-        VStack(spacing: LegendNextSpacing.micro) {
-            HStack {
-                Button(action: cancel) {
-                    Image(systemName: "xmark")
-                        .font(.title3.weight(.semibold))
-                        .frame(
-                            width: LegendNextSize.prominentControlHeight,
-                            height: LegendNextSize.prominentControlHeight)
-                        .background(Color.white.opacity(0.12), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white)
-                .accessibilityLabel("Close creator")
-
-                Spacer()
-
-                Text(type.newContentTitle)
-                    .font(LegendNextTypography.section)
-                    .foregroundStyle(.white)
-
-                Spacer()
-
-                Button(action: primaryAction) {
-                    Text(primaryActionTitle)
-                        .font(LegendNextTypography.label)
-                        .foregroundStyle(canContinue ? LegendNextColor.goldBright : Color.white.opacity(0.38))
-                        .frame(
-                            width: LegendNextSize.prominentControlHeight,
-                            height: LegendNextSize.prominentControlHeight)
-                }
-                .buttonStyle(.plain)
-                .disabled(!canContinue)
-                .accessibilityLabel("Continue to \(type.displayName) details")
+        HStack {
+            Button(action: cancel) {
+                Image(systemName: "xmark")
+                    .font(.headline.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .background(Color.white.opacity(0.12), in: Circle())
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .accessibilityLabel("Cancel \(type.displayName) creation")
 
-            LegendSocialCreationProgress(stage: stage, isDark: true)
+            Spacer()
+
+            Text(type.newContentTitle)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.white)
+
+            Spacer()
+
+            Button(action: primaryAction) {
+                Text("Next")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(canContinue ? LegendNextColor.goldBright : Color.white.opacity(0.36))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canContinue)
+            .accessibilityLabel("Continue to \(type.displayName) editor")
         }
-        .padding(.horizontal, LegendNextSpacing.md)
-        .padding(.vertical, LegendNextSpacing.sm)
-    }
-
-    private var legendModeRail: some View {
-        LegendSocialCreationModeRail(selection: $type)
+        .padding(.horizontal, LegendNextSpacing.sm)
+        .padding(.vertical, LegendNextSpacing.xs)
     }
 
     private var eligibleLibraryAssets: [LegendPhotoLibraryAsset] {
@@ -507,107 +429,106 @@ struct LegendSocialComposer: View {
         1
     }
 
-    private var emptyPreviewHeight: CGFloat {
-        CGFloat(type.format.emptyPreviewHeight)
-    }
-
     private var selectionPreviewSide: CGFloat {
-        CGFloat(type.format.selectionThumbnailSide)
+        66
     }
 
-    @ViewBuilder
-    private func selectionPreview(isDark: Bool) -> some View {
-        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(type.mediaSelectionTitle)
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
-                    Text(type.mediaSelectionHint)
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(isDark ? Color.white.opacity(0.68) : LegendNextColor.textSecondary)
-                        .lineLimit(2)
-                }
-                Spacer(minLength: LegendNextSpacing.sm)
-                Button {
-                    stage = .camera
-                } label: {
-                    Image(systemName: "camera.fill")
-                        .font(.title3.weight(.bold))
-                        .frame(width: LegendNextSize.controlHeight, height: LegendNextSize.controlHeight)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(LegendNextColor.midnight)
-                .background(LegendNextColor.goldBright, in: Circle())
-                .accessibilityLabel("Open camera for \(type.displayName)")
+    private var mediaLibraryToolbar: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Recents")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                Text(type.maximumMediaItems == 1
+                     ? "Select one \(type.displayName.lowercased()) item"
+                     : "Select up to \(type.maximumMediaItems) items")
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.62))
             }
 
-            if selectedMedia.isEmpty {
-                VStack(spacing: LegendNextSpacing.sm) {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 34, weight: .semibold))
-                    Text("Choose from your library below")
-                        .font(LegendNextTypography.cardTitle)
-                    Text("or use the camera above")
-                        .font(LegendNextTypography.supporting)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: emptyPreviewHeight)
-                .foregroundStyle(
-                    isDark
-                        ? Color.white.opacity(0.80)
-                        : LegendNextColor.textSecondary
-                )
-                .background(
-                    isDark ? Color.white.opacity(0.08) : LegendNextColor.surfaceInset,
-                    in: RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous)
-                        .strokeBorder(
-                            isDark ? Color.white.opacity(0.13) : LegendNextColor.separator,
-                            style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Select media from your library below, or use the camera above")
-            } else {
-                mediaPreviewStrip(isDark: isDark)
-            }
+            Spacer()
 
-            if let mediaSelectionError {
-                Label(mediaSelectionError, systemImage: "exclamationmark.triangle.fill")
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(LegendNextColor.warning)
-                    .fixedSize(horizontal: false, vertical: true)
+            Button { stage = .camera } label: {
+                Image(systemName: "camera.fill")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 42, height: 42)
+                    .foregroundStyle(LegendNextColor.midnight)
+                    .background(LegendNextColor.goldBright, in: Circle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open camera for \(type.displayName)")
         }
     }
 
     @ViewBuilder
-    private func mediaPreviewStrip(
-        isDark: Bool,
-        overlayText: String? = nil
-    ) -> some View {
+    private var compactSelectionStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: LegendNextSpacing.xs) {
+            HStack(alignment: .center, spacing: LegendNextSpacing.xs) {
                 ForEach(selectedMedia) { media in
                     LegendSocialMediaPreview(
                         media: media,
                         presentation: .selection,
-                        overlayText: overlayText,
                         remove: { remove(media) })
                     .frame(width: selectionPreviewSide, height: selectionPreviewSide)
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: LegendNextRadius.control,
+                            style: .continuous)
+                        .strokeBorder(
+                            media.id == activeMedia?.id
+                                ? LegendNextColor.goldBright
+                                : Color.clear,
+                            lineWidth: 3)
+                    }
+                    .onTapGesture { activeMediaID = media.id }
+                    .accessibilityAddTraits(
+                        media.id == activeMedia?.id ? .isSelected : [])
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.horizontal, 2)
         }
         .scrollIndicators(.hidden)
-        .background(
-            isDark ? Color.clear : LegendNextColor.surfaceInset,
-            in: RoundedRectangle(
-                cornerRadius: LegendNextRadius.card,
-                style: .continuous
-            )
-        )
+        .overlay(alignment: .bottomTrailing) {
+            if type.maximumMediaItems > 1, selectedMedia.count > 1 {
+                HStack(spacing: 0) {
+                    Button { moveActiveMedia(by: -1) } label: {
+                        Image(systemName: "arrow.left")
+                    }
+                    .disabled(activeMediaIndex == 0)
+                    Button { moveActiveMedia(by: 1) } label: {
+                        Image(systemName: "arrow.right")
+                    }
+                    .disabled(activeMediaIndex >= selectedMedia.count - 1)
+                }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(LegendNextColor.midnight)
+                .padding(8)
+                .background(LegendNextColor.goldBright, in: Capsule())
+                .padding(6)
+                .accessibilityLabel("Reorder selected media")
+            }
+        }
+
+        if let mediaSelectionError {
+            Label(mediaSelectionError, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(LegendNextColor.warning)
+        }
+    }
+
+    private var activeMediaIndex: Int {
+        guard let activeMediaID,
+              let index = selectedMedia.firstIndex(where: { $0.id == activeMediaID }) else {
+            return 0
+        }
+        return index
+    }
+
+    private func moveActiveMedia(by offset: Int) {
+        let source = activeMediaIndex
+        let destination = min(max(0, source + offset), selectedMedia.count - 1)
+        guard source != destination else { return }
+        selectedMedia.swapAt(source, destination)
     }
 
     /// The full eligible library, laid out inline so the enclosing ScrollView owns the
@@ -760,98 +681,78 @@ struct LegendSocialComposer: View {
     }
 
     private var immersiveEditingContent: some View {
+        Group {
+            if type == .story {
+                storyEditingContent
+            } else {
+                standardEditingContent
+            }
+        }
+    }
+
+    private var standardEditingContent: some View {
         ZStack {
-            LegendNextColor.midnight
-                .ignoresSafeArea()
+            LegendNextColor.midnight.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 immersiveEditorHeader
 
                 GeometryReader { geometry in
-                    let availableWidth = max(
-                        0,
-                        geometry.size.width -
-                            LegendNextSpacing.md * 2
-                    )
-                    let availableHeight = max(
-                        0,
-                        geometry.size.height -
-                            LegendNextSpacing.sm * 2
-                    )
-                    let widthFromHeight =
-                        availableHeight *
-                        editorCanvasAspectRatio
-                    let canvasWidth = min(
+                    let horizontalInset = LegendNextSpacing.sm * 2
+                    let availableWidth = max(0, geometry.size.width - horizontalInset)
+                    let availableHeight = max(0, geometry.size.height - LegendNextSpacing.xs)
+                    let width = min(
                         editorCanvasMaximumWidth,
                         availableWidth,
-                        widthFromHeight
-                    )
-                    let canvasHeight =
-                        canvasWidth /
-                        editorCanvasAspectRatio
+                        availableHeight * editorCanvasAspectRatio)
 
-                    ZStack(alignment: .trailing) {
-                        editorMediaCanvas
-                            .frame(
-                                width: canvasWidth,
-                                height: canvasHeight
-                            )
-                            .clipShape(
-                                RoundedRectangle(
-                                    cornerRadius: 22,
-                                    style: .continuous
-                                )
-                            )
-                            .overlay {
-                                RoundedRectangle(
-                                    cornerRadius: 22,
-                                    style: .continuous
-                                )
-                                .strokeBorder(
-                                    Color.white.opacity(0.18),
-                                    lineWidth: 1
-                                )
-                            }
-                            .frame(
-                                maxWidth: .infinity,
-                                maxHeight: .infinity,
-                                alignment: .center
-                            )
-
-                        immersiveToolRail
-                            .padding(.trailing, LegendNextSpacing.sm)
-                    }
-                    .frame(
-                        maxWidth: .infinity,
-                        maxHeight: .infinity
-                    )
+                    editorMediaCanvas
+                        .frame(width: width, height: width / editorCanvasAspectRatio)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
-                immersiveEditorFooter
+                editorControlDeck
+            }
+        }
+    }
+
+    private var storyEditingContent: some View {
+        ZStack {
+            LegendNextColor.midnight.ignoresSafeArea()
+
+            editorMediaCanvas
+                .ignoresSafeArea(edges: .bottom)
+
+            VStack(spacing: 0) {
+                immersiveEditorHeader
+                    .background(
+                        LinearGradient(
+                            colors: [LegendNextColor.midnight.opacity(0.90), .clear],
+                            startPoint: .top,
+                            endPoint: .bottom))
+
+                Spacer(minLength: 0)
+
+                editorControlDeck
+                    .background(
+                        LinearGradient(
+                            colors: [.clear, LegendNextColor.midnight.opacity(0.94)],
+                            startPoint: .top,
+                            endPoint: .bottom))
             }
         }
     }
 
     private var immersiveEditorHeader: some View {
-        VStack(spacing: LegendNextSpacing.micro) {
-            HStack {
+        HStack {
                 Button {
                     stage = .library
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.title2.weight(.medium))
-                        .frame(
-                            width:
-                                LegendNextSize
-                                    .prominentControlHeight,
-                            height:
-                                LegendNextSize
-                                    .prominentControlHeight
-                        )
-                        .background(
-                            Color.white.opacity(0.20),
-                            in: Circle()
-                        )
+                    Image(systemName: "chevron.left")
+                        .font(.headline.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                        .background(Color.white.opacity(0.14), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
@@ -860,26 +761,25 @@ struct LegendSocialComposer: View {
                 Spacer(minLength: 0)
 
                 Text(type.editingTitle)
-                    .font(LegendNextTypography.section)
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(.white)
 
                 Spacer(minLength: 0)
 
-                Color.clear
-                    .frame(
-                        width:
-                            LegendNextSize
-                                .prominentControlHeight,
-                        height:
-                            LegendNextSize
-                                .prominentControlHeight
-                    )
-            }
-
-            LegendSocialCreationProgress(stage: stage, isDark: true)
+                Button {
+                    primaryAction()
+                } label: {
+                    Text("Next")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(canContinue ? LegendNextColor.goldBright : Color.white.opacity(0.38))
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canContinue)
+                .accessibilityLabel("Continue to \(type.displayName) details")
         }
-        .padding(.horizontal, LegendNextSpacing.md)
-        .padding(.vertical, LegendNextSpacing.sm)
+        .padding(.horizontal, LegendNextSpacing.sm)
+        .padding(.vertical, LegendNextSpacing.xs)
     }
 
     @ViewBuilder
@@ -906,66 +806,76 @@ struct LegendSocialComposer: View {
             ZStack {
                 LegendNextColor.midnight
 
-                if let primaryMedia = selectedMedia.first {
-                    LegendSocialMediaPreview(
-                        media: primaryMedia,
-                        presentation: .canvas,
-                        overlayText:
-                            editorOverlayText,
-                        dimmingEdges: type.format.usesFixedCanvasAspectRatio,
-                        remove: {
-                            remove(primaryMedia)
+                if let primaryMedia = activeMedia {
+                    Group {
+                        if let sourceURL = primaryMedia.videoFileURL {
+                            LegendSocialPlayableVideoPreview(
+                                sourceURL: sourceURL,
+                                trim: activeVideoEdit,
+                                isMuted: activeVideoEdit.isOriginalAudioMuted,
+                                showsAudioControl: false,
+                                onMutedChanged: { isMuted in
+                                    updateActiveEdit { $0.video.isOriginalAudioMuted = isMuted }
+                                })
+                        } else {
+                            LegendSocialEditableImageCanvas(
+                                media: primaryMedia,
+                                edit: activeEditBinding(),
+                                aspectRatio: editorCanvasAspectRatio,
+                                allowsStoryOverlay: type == .story)
                         }
-                    )
-                    .frame(
-                        maxWidth: .infinity,
-                        maxHeight: .infinity
-                    )
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
                 }
 
-                if type.format.maximumMediaItems > 1 &&
-                    selectedMedia.count > 1 {
-                    VStack {
-                        Spacer()
+                if type.maximumMediaItems > 1 && selectedMedia.count > 1 {
+                    HStack(spacing: LegendNextSpacing.xs) {
+                        Button("Previous", systemImage: "chevron.left") {
+                            moveActiveMediaSelection(by: -1)
+                        }
+                        .disabled(activeMediaIndex == 0)
 
-                        Text(
-                            "1 of \(selectedMedia.count)"
-                        )
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(
-                            LegendNextColor.midnight.opacity(0.55),
-                            in: Capsule()
-                        )
-                        .padding(.bottom, 12)
+                        Text("\(activeMediaIndex + 1) of \(selectedMedia.count)")
+                            .font(.caption.weight(.bold))
+                            .monospacedDigit()
+
+                        Button("Next", systemImage: "chevron.right") {
+                            moveActiveMediaSelection(by: 1)
+                        }
+                        .disabled(activeMediaIndex >= selectedMedia.count - 1)
                     }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(LegendNextColor.midnight.opacity(0.62), in: Capsule())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 12)
                 }
             }
         }
     }
 
-    private var editorOverlayText: String? {
-        guard type == .story else {
-            return nil
-        }
-
-        let value = caption.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-
-        return value.isEmpty
-            ? nil
-            : value
+    private func moveActiveMediaSelection(by offset: Int) {
+        let next = min(max(0, activeMediaIndex + offset), selectedMedia.count - 1)
+        activeMediaID = selectedMedia[next].id
     }
 
     private var immersiveToolRail: some View {
-        VStack(spacing: LegendNextSpacing.xs) {
-            ForEach(LegendSocialEditingTool.allCases) { tool in
-                editorToolButton(tool: tool)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: LegendNextSpacing.sm) {
+                ForEach(availableEditingTools) { tool in
+                    editorToolButton(tool: tool)
+                }
             }
+            .padding(.horizontal, LegendNextSpacing.sm)
+        }
+    }
+
+    private var availableEditingTools: [LegendSocialEditingTool] {
+        guard let activeMedia else { return [] }
+        return LegendSocialEditingTool.allCases.filter {
+            $0.isAvailable(for: activeMedia, contentType: type)
         }
     }
 
@@ -974,33 +884,20 @@ struct LegendSocialComposer: View {
     ) -> some View {
         Button {
             activeEditorTool = tool
-
-            if tool == .audio {
-                musicReturnStage = .metadata
-                stage = .music
-            }
         } label: {
-            Image(systemName: tool.systemImage)
-                .font(.title3.weight(.semibold))
-                .frame(width: 50, height: 50)
-                .foregroundStyle(
-                    activeEditorTool == tool
-                        ? LegendNextColor.midnight
-                        : .white
-                )
-                .background(
-                    activeEditorTool == tool
-                        ? LegendNextColor.goldBright
-                        : LegendNextColor.midnight.opacity(0.56),
-                    in: Circle()
-                )
-                .overlay {
-                    Circle()
-                        .strokeBorder(
-                            Color.white.opacity(0.22),
-                            lineWidth: 1
-                        )
-                }
+            VStack(spacing: 4) {
+                Image(systemName: tool.systemImage)
+                    .font(.body.weight(.semibold))
+                    .frame(width: 40, height: 32)
+                Text(tool.title)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .frame(minWidth: 54, minHeight: 54)
+            .foregroundStyle(activeEditorTool == tool ? LegendNextColor.midnight : .white)
+            .background(
+                activeEditorTool == tool ? LegendNextColor.goldBright : Color.white.opacity(0.11),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tool.title)
@@ -1015,49 +912,219 @@ struct LegendSocialComposer: View {
     private var immersiveToolDetail: some View {
         switch activeEditorTool {
         case .audio:
-            EmptyView()
+            videoAudioEditor
+
+        case .transform:
+            imageTransformEditor
+
+        case .style:
+            imageStyleEditor
+
+        case .adjust:
+            imageAdjustmentEditor
 
         case .text:
-            TextField(
-                type == .story
-                    ? "Add text..."
-                    : "Add a caption...",
-                text: $caption,
-                axis: .vertical
-            )
+            storyTextEditor
+        }
+    }
+
+    @ViewBuilder
+    private var videoAudioEditor: some View {
+        if activeMedia?.isVideo == true {
+            HStack(spacing: LegendNextSpacing.md) {
+                Toggle(
+                    "Original audio",
+                    isOn: Binding(
+                        get: { !activeVideoEdit.isOriginalAudioMuted },
+                        set: { isEnabled in
+                            updateActiveEdit { $0.video.isOriginalAudioMuted = !isEnabled }
+                        }))
+                .tint(LegendNextColor.goldBright)
+                .foregroundStyle(.white)
+
+                Button("Trim", systemImage: "scissors") {
+                    isTrimmingVideo = true
+                }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(LegendNextColor.goldBright)
+                .accessibilityLabel("Trim selected video")
+            }
+            .padding(.horizontal, LegendNextSpacing.md)
+            .padding(.vertical, LegendNextSpacing.sm)
+        }
+    }
+
+    private var imageTransformEditor: some View {
+        HStack(spacing: LegendNextSpacing.md) {
+            Text("Pinch to zoom · Drag to position")
+                .font(.caption)
+                .foregroundStyle(Color.white.opacity(0.70))
+            Spacer(minLength: 0)
+            HStack(spacing: LegendNextSpacing.sm) {
+                Button("Rotate left", systemImage: "rotate.left") {
+                    updateActiveEdit { $0.rotationDegrees = max(-180, $0.rotationDegrees - 90) }
+                }
+                Button("Rotate right", systemImage: "rotate.right") {
+                    updateActiveEdit { $0.rotationDegrees = min(180, $0.rotationDegrees + 90) }
+                }
+                Button("Reset") { updateActiveEdit { $0.resetTransform() } }
+            }
+            .font(.caption.weight(.bold))
+            .foregroundStyle(LegendNextColor.goldBright)
+        }
+        .padding(.horizontal, LegendNextSpacing.md)
+        .padding(.vertical, LegendNextSpacing.sm)
+    }
+
+    private var imageStyleEditor: some View {
+        VStack(spacing: LegendNextSpacing.xs) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: LegendNextSpacing.sm) {
+                    ForEach(LegendSocialImageFilter.allCases) { filter in
+                        filterButton(filter)
+                    }
+                }
+                .padding(.horizontal, LegendNextSpacing.sm)
+            }
+            if activeEdit.filter != .original {
+                LegendSocialAdjustmentSlider(
+                    title: "Intensity",
+                    value: Binding(
+                        get: { activeEdit.filterIntensity },
+                        set: { value in updateActiveEdit { $0.filterIntensity = value } }),
+                    range: 0...1)
+            }
+        }
+        .padding(.vertical, LegendNextSpacing.xs)
+    }
+
+    @ViewBuilder
+    private func filterButton(_ filter: LegendSocialImageFilter) -> some View {
+        if let media = activeMedia {
+            Button {
+                updateActiveEdit { $0.filter = filter }
+            } label: {
+                VStack(spacing: 4) {
+                    LegendSocialRenderedImagePreview(
+                        media: media,
+                        edit: filterPreviewEdit(filter),
+                        aspectRatio: 1)
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .strokeBorder(
+                                activeEdit.filter == filter ? LegendNextColor.goldBright : .white.opacity(0.18),
+                                lineWidth: activeEdit.filter == filter ? 2 : 1)
+                    }
+
+                    Text(filter.title)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(activeEdit.filter == filter ? LegendNextColor.goldBright : .white.opacity(0.76))
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Apply \(filter.title) filter")
+            .accessibilityAddTraits(activeEdit.filter == filter ? .isSelected : [])
+        }
+    }
+
+    private func filterPreviewEdit(_ filter: LegendSocialImageFilter) -> LegendSocialMediaEditState {
+        var edit = activeEdit
+        edit.filter = filter
+        return edit
+    }
+
+    private var imageAdjustmentEditor: some View {
+        VStack(spacing: LegendNextSpacing.sm) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: LegendNextSpacing.sm) {
+                    ForEach(LegendSocialImageAdjustment.allCases) { adjustment in
+                        Button(adjustment.title) { selectedAdjustment = adjustment }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(selectedAdjustment == adjustment ? LegendNextColor.midnight : .white)
+                            .padding(.horizontal, LegendNextSpacing.sm)
+                            .frame(height: 30)
+                            .background(
+                                selectedAdjustment == adjustment ? LegendNextColor.goldBright : Color.white.opacity(0.11),
+                                in: Capsule())
+                            .accessibilityAddTraits(selectedAdjustment == adjustment ? .isSelected : [])
+                    }
+                }
+                .padding(.horizontal, LegendNextSpacing.sm)
+            }
+
+            LegendSocialAdjustmentSlider(
+                title: selectedAdjustment.title,
+                value: adjustmentBinding(selectedAdjustment.keyPath),
+                range: selectedAdjustment.range)
+                .padding(.horizontal, LegendNextSpacing.md)
+
+            HStack {
+                Spacer()
+                Button("Reset") { updateActiveEdit { $0.resetAdjustments() } }
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(LegendNextColor.goldBright)
+                    .padding(.trailing, LegendNextSpacing.md)
+            }
+        }
+    }
+
+    private func adjustmentBinding(
+        _ keyPath: WritableKeyPath<LegendSocialMediaEditState, Double>
+    ) -> Binding<Double> {
+        Binding(
+            get: { activeEdit[keyPath: keyPath] },
+            set: { value in updateActiveEdit { $0[keyPath: keyPath] = value } })
+    }
+
+    private var storyTextEditor: some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+            TextField("Add story text…", text: Binding(
+                get: { activeEdit.storyOverlay.text },
+                set: { text in updateActiveEdit { $0.storyOverlay.text = text } }),
+                axis: .vertical)
             .lineLimit(1...3)
             .font(LegendNextTypography.body)
             .foregroundStyle(.white)
             .tint(LegendNextColor.goldBright)
-            .padding(.horizontal, LegendNextSpacing.md)
-            .frame(
-                minHeight:
-                    LegendNextSize.controlHeight
-            )
-            .background(
-                Color.white.opacity(0.14),
-                in: RoundedRectangle(
-                    cornerRadius:
-                        LegendNextRadius.control,
-                    style: .continuous
-                )
-            )
-            .accessibilityLabel(
-                type == .story
-                    ? "Story text"
-                    : "\(type.displayName) caption"
-            )
 
-        case .describe:
-            accessibilityEditor(isDark: true)
+            HStack(spacing: LegendNextSpacing.xs) {
+                ForEach(LegendSocialStoryTextColor.allCases) { color in
+                    Button {
+                        updateActiveEdit { $0.storyOverlay.color = color }
+                    } label: {
+                        Circle()
+                            .fill(color.swiftUIColor)
+                            .frame(width: 26, height: 26)
+                            .overlay {
+                                Circle().strokeBorder(
+                                    activeEdit.storyOverlay.color == color ? LegendNextColor.goldBright : .white.opacity(0.36),
+                                    lineWidth: activeEdit.storyOverlay.color == color ? 3 : 1)
+                            }
+                    }
+                    .accessibilityLabel("Story text color \(color.title)")
+                    .accessibilityAddTraits(activeEdit.storyOverlay.color == color ? .isSelected : [])
+                }
+                Spacer(minLength: 0)
+                LegendSocialAdjustmentSlider(
+                    title: "Size",
+                    value: Binding(
+                        get: { activeEdit.storyOverlay.scale },
+                        set: { value in updateActiveEdit { $0.storyOverlay.scale = value } }),
+                    range: 0.7...1.7,
+                    compact: true)
+            }
         }
+        .padding(.horizontal, LegendNextSpacing.md)
+        .padding(.vertical, LegendNextSpacing.sm)
     }
 
-    private var immersiveEditorFooter: some View {
+    private var editorControlDeck: some View {
         VStack(spacing: LegendNextSpacing.sm) {
             if type == .post {
                 HStack(spacing: LegendNextSpacing.xs) {
-                    Text("Post format")
+                    Text("Format")
                         .font(LegendNextTypography.label)
                         .foregroundStyle(Color.white.opacity(0.72))
                     Spacer(minLength: 0)
@@ -1083,29 +1150,11 @@ struct LegendSocialComposer: View {
                     }
                 }
             }
+            immersiveToolRail
             immersiveToolDetail
             publicationFailure
-
-            Button {
-                stage = .share
-            } label: {
-                Label(
-                    "Next",
-                    systemImage: "arrow.right"
-                )
-                .font(LegendNextTypography.section)
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(
-                LegendNextButtonStyle(kind: .primary)
-            )
-            .disabled(!canContinue)
-            .accessibilityLabel(
-                "Continue to share \(type.displayName)"
-            )
         }
-        .padding(.horizontal, LegendNextSpacing.md)
-        .padding(.top, LegendNextSpacing.sm)
+        .padding(.top, LegendNextSpacing.xs)
         .padding(.bottom, LegendNextSpacing.sm)
         .background(
             LinearGradient(
@@ -1123,49 +1172,36 @@ struct LegendSocialComposer: View {
         VStack(spacing: 0) {
             shareHeader
 
-            Divider()
-                .overlay(LegendNextColor.separator)
-
             ScrollView {
-                VStack(spacing: 0) {
+                VStack(spacing: LegendNextSpacing.md) {
+                    finalReview
+
                     captionComposer
 
-                    Divider()
-                        .padding(.leading, 96)
-
-                    tagsRow
-
-                    Divider()
-                        .padding(.leading, 56)
-
-                    locationRow
-
-                    Divider()
-                        .padding(.leading, 56)
-
-                    musicRow
-
-                    if type.requiresVideo {
-                        Divider()
-                            .padding(.leading, 56)
-
-                        hacPreviewRow
-                    }
-
-                    Divider()
-                        .padding(.leading, 56)
-
-                    accessibilityRow
-
-                    Divider()
-                        .padding(.leading, 56)
-
-                    commentsRow
+                    publicationSettings
 
                     publicationFailure
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+
+                    if let mediaSelectionError {
+                        Label(mediaSelectionError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(LegendNextColor.warning)
+                            .padding(.horizontal, 16)
+                    }
+
+                    if isPreparingPublication {
+                        HStack(spacing: LegendNextSpacing.xs) {
+                            ProgressView()
+                            Text("Preparing your final media…")
+                                .font(LegendNextTypography.supporting)
+                        }
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .padding(.vertical, LegendNextSpacing.sm)
+                    }
                 }
+                .padding(.horizontal, LegendNextSpacing.md)
+                .padding(.vertical, LegendNextSpacing.sm)
             }
             .scrollIndicators(.hidden)
         }
@@ -1173,15 +1209,14 @@ struct LegendSocialComposer: View {
     }
 
     private var shareHeader: some View {
-        VStack(spacing: LegendNextSpacing.micro) {
-            HStack(spacing: 12) {
+        HStack(spacing: 12) {
                 Button {
                     stage = .metadata
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 20, weight: .semibold))
-                        .frame(width: 32, height: 44)
-                        .contentShape(Rectangle())
+                        .font(.headline.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                        .background(LegendNextColor.surfaceInset, in: Circle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(LegendNextColor.textPrimary)
@@ -1190,34 +1225,63 @@ struct LegendSocialComposer: View {
                 Spacer(minLength: 0)
 
                 Text(type.newContentTitle)
-                    .font(.headline)
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(LegendNextColor.textPrimary)
 
                 Spacer(minLength: 0)
 
                 Button(action: publish) {
                     Text("Share")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.body.weight(.semibold))
                         .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(
-                    canPublish && !social.isPublishing
+                    canPublish && !social.isPublishing && !isPreparingPublication
                         ? LegendNextColor.goldBright
                         : LegendNextColor.textSecondary.opacity(0.45)
                 )
-                .disabled(!canPublish || social.isPublishing)
+                .disabled(!canPublish || social.isPublishing || isPreparingPublication)
                 .accessibilityLabel(
                     "Publish \(type.displayName)"
                 )
-            }
-
-            LegendSocialCreationProgress(stage: stage, isDark: false)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, LegendNextSpacing.micro)
+        .padding(.horizontal, LegendNextSpacing.sm)
+        .padding(.vertical, LegendNextSpacing.xs)
         .background(LegendNextColor.surface)
+    }
+
+    @ViewBuilder
+    private var finalReview: some View {
+        if let media = activeMedia {
+            Group {
+                if let sourceURL = media.videoFileURL {
+                    LegendSocialPlayableVideoPreview(
+                        sourceURL: sourceURL,
+                        trim: activeVideoEdit,
+                        isMuted: activeVideoEdit.isOriginalAudioMuted,
+                        onMutedChanged: { isMuted in
+                            updateActiveEdit { $0.video.isOriginalAudioMuted = isMuted }
+                        })
+                    .frame(height: reviewMediaHeight)
+                } else {
+                    LegendSocialRenderedImagePreview(
+                        media: media,
+                        edit: activeEdit,
+                        aspectRatio: editorCanvasAspectRatio)
+                    .frame(height: reviewMediaHeight)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+
+    private var reviewMediaHeight: CGFloat {
+        switch type {
+        case .hac: 390
+        case .story: 360
+        case .post: 248
+        }
     }
 
     private var captionComposer: some View {
@@ -1246,7 +1310,7 @@ struct LegendSocialComposer: View {
                         LegendNextColor.textPrimary
                     )
                     .scrollContentBackground(.hidden)
-                    .frame(minHeight: 92)
+                    .frame(minHeight: 84)
                     .padding(.horizontal, 0)
                     .padding(.vertical, 0)
                     .background(Color.clear)
@@ -1256,8 +1320,9 @@ struct LegendSocialComposer: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(LegendNextColor.surfaceInset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     @ViewBuilder
@@ -1299,282 +1364,143 @@ struct LegendSocialComposer: View {
         }
     }
 
-    private var tagsRow: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "person.crop.circle.badge.plus")
-                .font(.system(size: 20))
-                .frame(width: 26)
-                .foregroundStyle(
-                    LegendNextColor.textPrimary
-                )
+    private var publicationSettings: some View {
+        VStack(spacing: 0) {
+            publicationSettingButton(
+                icon: "number",
+                title: "Topics & mentions",
+                value: tagsAndMentions.isEmpty ? "Add" : tagsAndMentions,
+                action: { detailEditor = .topics })
+            publicationSeparator
+            publicationSettingButton(
+                icon: "mappin.and.ellipse",
+                title: "Location",
+                value: shareLocation.isEmpty ? "Add" : shareLocation,
+                action: { detailEditor = .location })
 
-            TextField(
-                "Tag people or add mentions",
-                text: $tagsAndMentions,
-                axis: .vertical
-            )
-            .lineLimit(1...2)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .font(.system(size: 15))
-            .foregroundStyle(
-                LegendNextColor.textPrimary
-            )
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(
-                    LegendNextColor.textSecondary.opacity(0.55)
-                )
-        }
-        .padding(.horizontal, 16)
-        .frame(minHeight: 54)
-        .background(LegendNextColor.surface)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var locationRow: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "mappin.and.ellipse")
-                .font(.system(size: 20))
-                .frame(width: 26)
-                .foregroundStyle(
-                    LegendNextColor.textPrimary
-                )
-
-            TextField(
-                "Add location",
-                text: $shareLocation
-            )
-            .font(.system(size: 15))
-            .foregroundStyle(
-                LegendNextColor.textPrimary
-            )
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(
-                    LegendNextColor.textSecondary.opacity(0.55)
-                )
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 54)
-        .background(LegendNextColor.surface)
-    }
-
-    private var musicRow: some View {
-        Button {
-            musicReturnStage = .share
-            stage = .music
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "music.note")
-                    .font(.system(size: 20))
-                    .frame(width: 26)
-                    .foregroundStyle(
-                        LegendNextColor.textPrimary
-                    )
-
-                VStack(
-                    alignment: .leading,
-                    spacing: 2
-                ) {
-                    Text("Add music")
-                        .font(.system(size: 15))
-                        .foregroundStyle(
-                            LegendNextColor.textPrimary
-                        )
-
-                    if let selectedMusic {
-                        Text(
-                            "\(selectedMusic.track.trackTitle) · " +
-                            selectedMusic.track.artistName
-                        )
-                        .font(.system(size: 12))
-                        .foregroundStyle(
-                            LegendNextColor.textSecondary
-                        )
-                        .lineLimit(1)
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(
-                        .system(
-                            size: 13,
-                            weight: .semibold
-                        )
-                    )
-                    .foregroundStyle(
-                        LegendNextColor.textSecondary.opacity(0.55)
-                    )
+            publicationSeparator
+            HStack(spacing: LegendNextSpacing.sm) {
+                Image(systemName: "person.2")
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .frame(width: 24)
+                Text("Audience")
+                    .font(.subheadline)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                Spacer()
+                Text("Legend network")
+                    .font(.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
             }
-            .padding(.horizontal, 16)
-            .frame(minHeight: 54)
+            .padding(.horizontal, LegendNextSpacing.sm)
+            .frame(minHeight: 52)
+
+            if type.requiresVideo {
+                publicationSeparator
+                hacCoverSetting
+            }
+
+            publicationSeparator
+            publicationSettingButton(
+                icon: "accessibility",
+                title: "Alt text",
+                value: accessibilityText.isEmpty ? "Add" : "Added",
+                action: { detailEditor = .accessibility })
+            publicationSeparator
+
+            HStack(spacing: LegendNextSpacing.sm) {
+                Image(systemName: "ellipsis.bubble")
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .frame(width: 24)
+                Text("Allow comments")
+                    .font(.subheadline)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                Spacer()
+                Toggle("Allow comments", isOn: $commentsEnabled)
+                    .labelsHidden()
+                    .tint(LegendNextColor.goldBright)
+            }
+            .padding(.horizontal, LegendNextSpacing.sm)
+            .frame(minHeight: 52)
+        }
+        .background(LegendNextColor.surfaceInset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var publicationSeparator: some View {
+        Divider().padding(.leading, 52)
+    }
+
+    private func publicationSettingButton(
+        icon: String,
+        title: String,
+        value: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: LegendNextSpacing.sm) {
+                Image(systemName: icon)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .frame(width: 24)
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(LegendNextColor.textPrimary)
+                Spacer()
+                Text(value)
+                    .font(.caption)
+                    .foregroundStyle(LegendNextColor.textSecondary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.textSecondary.opacity(0.65))
+            }
+            .padding(.horizontal, LegendNextSpacing.sm)
+            .frame(minHeight: 52)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(selectedMedia.isEmpty)
-        .background(LegendNextColor.surface)
-        .accessibilityLabel(
-            selectedMusic == nil
-                ? "Add music"
-                : "Change music"
-        )
     }
 
     @ViewBuilder
-    private var hacPreviewRow: some View {
-        if type.requiresVideo,
-           let sourceURL = selectedMedia.first?.videoFileURL {
+    private var hacCoverSetting: some View {
+        if let sourceURL = selectedMedia.first?.videoFileURL {
             Button {
-                // The picker reads the same prepared MP4 that will be uploaded,
-                // so the selected frame always represents the published Hac.
                 guard FileManager.default.fileExists(atPath: sourceURL.path) else {
-                    mediaSelectionError = "Legend could not read this video preview. Choose the video again and try once more."
+                    mediaSelectionError = "Legend could not read this video cover. Choose the video again and try once more."
                     return
                 }
                 isSelectingHacPreview = true
             } label: {
-                HStack(spacing: 14) {
+                HStack(spacing: LegendNextSpacing.sm) {
                     Group {
                         if let selectedHacPreviewData,
                            let preview = UIImage(data: selectedHacPreviewData) {
-                            Image(uiImage: preview)
-                                .resizable()
-                                .scaledToFill()
+                            Image(uiImage: preview).resizable().scaledToFill()
                         } else {
                             Image(systemName: "film")
-                                .font(.system(size: 20, weight: .semibold))
                                 .foregroundStyle(LegendNextColor.goldBright)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .background(LegendNextColor.navy)
+                                .background(LegendNextColor.midnight)
                         }
                     }
-                    .frame(width: 38, height: 48)
+                    .frame(width: 28, height: 36)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Preview frame")
-                            .font(.system(size: 15))
-                            .foregroundStyle(LegendNextColor.textPrimary)
-                        Text("Choose what appears in home and your profile")
-                            .font(.system(size: 12))
-                            .foregroundStyle(LegendNextColor.textSecondary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 8)
-
+                    Text("Cover")
+                        .font(.subheadline)
+                        .foregroundStyle(LegendNextColor.textPrimary)
+                    Spacer()
+                    Text("Choose frame")
+                        .font(.caption)
+                        .foregroundStyle(LegendNextColor.textSecondary)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(LegendNextColor.textSecondary.opacity(0.55))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(LegendNextColor.textSecondary.opacity(0.65))
                 }
-                .padding(.horizontal, 16)
-                .frame(minHeight: 62)
+                .padding(.horizontal, LegendNextSpacing.sm)
+                .frame(minHeight: 52)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .background(LegendNextColor.surface)
-            .accessibilityLabel("Choose Hac preview frame")
-        }
-    }
-
-    private var accessibilityRow: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "accessibility")
-                .font(.system(size: 20))
-                .frame(width: 26)
-                .foregroundStyle(
-                    LegendNextColor.textPrimary
-                )
-                .padding(.top, 9)
-
-            TextField(
-                "Write alt text",
-                text: $accessibilityText,
-                axis: .vertical
-            )
-            .lineLimit(1...3)
-            .font(.system(size: 15))
-            .foregroundStyle(
-                LegendNextColor.textPrimary
-            )
-            .padding(.vertical, 9)
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(
-                    LegendNextColor.textSecondary.opacity(0.55)
-                )
-                .padding(.top, 12)
-        }
-        .padding(.horizontal, 16)
-        .frame(minHeight: 54)
-        .background(LegendNextColor.surface)
-    }
-
-    private var commentsRow: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "ellipsis.bubble")
-                .font(.system(size: 20))
-                .frame(width: 26)
-                .foregroundStyle(
-                    LegendNextColor.textPrimary
-                )
-
-            VStack(
-                alignment: .leading,
-                spacing: 2
-            ) {
-                Text("Allow comments")
-                    .font(.system(size: 15))
-                    .foregroundStyle(
-                        LegendNextColor.textPrimary
-                    )
-
-                Text("Advanced settings")
-                    .font(.system(size: 12))
-                    .foregroundStyle(
-                        LegendNextColor.textSecondary
-                    )
-            }
-
-            Spacer(minLength: 8)
-
-            Toggle(
-                "",
-                isOn: $commentsEnabled
-            )
-            .labelsHidden()
-            .tint(LegendNextColor.goldBright)
-        }
-        .padding(.horizontal, 16)
-        .frame(minHeight: 58)
-        .background(LegendNextColor.surface)
-    }
-
-    @ViewBuilder
-    private func accessibilityEditor(isDark: Bool) -> some View {
-        if !selectedMedia.isEmpty {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                Text("Accessibility")
-                    .font(LegendNextTypography.label)
-                    .foregroundStyle(isDark ? Color.white.opacity(0.80) : LegendNextColor.textSecondary)
-                TextField(
-                    "Describe this media",
-                    text: $accessibilityText,
-                    axis: .vertical)
-                .textFieldStyle(.plain)
-                .foregroundStyle(isDark ? .white : LegendNextColor.textPrimary)
-                .padding(LegendNextSpacing.sm)
-                .background(
-                    isDark ? Color.white.opacity(0.10) : LegendNextColor.surfaceInset,
-                    in: RoundedRectangle(cornerRadius: LegendNextRadius.control, style: .continuous))
-                .accessibilityLabel("Media description")
-            }
+            .accessibilityLabel("Choose Hac cover")
         }
     }
 
@@ -1600,6 +1526,7 @@ struct LegendSocialComposer: View {
     private func primaryAction() {
         switch stage {
         case .library:
+            activeEditorTool = preferredInitialEditingTool
             stage = .metadata
 
         case .metadata:
@@ -1611,6 +1538,12 @@ struct LegendSocialComposer: View {
         default:
             break
         }
+    }
+
+    private var preferredInitialEditingTool: LegendSocialEditingTool {
+        guard let activeMedia else { return .style }
+        if activeMedia.isVideo { return .audio }
+        return type == .story ? .text : .style
     }
 
     private func select(_ asset: LegendPhotoLibraryAsset) {
@@ -1643,6 +1576,8 @@ struct LegendSocialComposer: View {
                 } else {
                     selectedMedia.append(media)
                 }
+                activeMediaID = media.id
+                mediaEdits[media.id] = .initial
                 refreshDefaultHacPreview(for: media)
             } catch {
                 mediaSelectionError = "Legend could not prepare this media. The draft was kept intact."
@@ -1653,6 +1588,10 @@ struct LegendSocialComposer: View {
 
     private func remove(_ media: LegendSocialMediaDraft) {
         selectedMedia.removeAll { $0.id == media.id }
+        mediaEdits.removeValue(forKey: media.id)
+        if activeMediaID == media.id {
+            activeMediaID = selectedMedia.first?.id
+        }
         media.discardTemporaryFile()
         if media.isVideo {
             selectedHacPreviewData = nil
@@ -1673,6 +1612,8 @@ struct LegendSocialComposer: View {
             let previous = selectedMedia
             selectedMedia = [media]
             previous.forEach { $0.discardTemporaryFile() }
+            mediaEdits = [media.id: .initial]
+            activeMediaID = media.id
             refreshDefaultHacPreview(for: media)
             mediaSelectionError = nil
             stage = .library
@@ -1684,21 +1625,82 @@ struct LegendSocialComposer: View {
     }
 
     private func publish() {
-        let request = MobileSocialPublishRequest(
-            contentType: type,
-            body: normalizedPublicationBody,
-            files: selectedMedia.map(\.multipartFile),
-            accessibilityText: normalizedAccessibilityText,
-            music: selectedMusic?.selection,
-            audience: .authorizedNetwork,
-            location: normalizedLocation,
-            commentsEnabled: commentsEnabled,
-            previewImage: hacPreviewMultipartFile)
+        guard !isPreparingPublication, canPublish else { return }
+        isPreparingPublication = true
+        mediaSelectionError = nil
 
-        if social.beginPublication(request) {
-            ownsMediaAfterDismissal = true
-            stage = .handedOff
-            dismiss()
+        Task {
+            do {
+                let files = try await renderedPublicationFiles()
+                let request = MobileSocialPublishRequest(
+                    contentType: type,
+                    body: normalizedPublicationBody,
+                    files: files,
+                    accessibilityText: normalizedAccessibilityText,
+                    // Music metadata remains supported for existing content,
+                    // but the creator no longer exposes an unrendered music
+                    // control. Original audio and trim are committed into the
+                    // uploaded video by the shared native media authority.
+                    music: nil,
+                    audience: .authorizedNetwork,
+                    location: normalizedLocation,
+                    commentsEnabled: commentsEnabled,
+                    previewImage: hacPreviewMultipartFile)
+
+                guard social.beginPublication(request) else {
+                    discardGeneratedRenderedFiles(in: files)
+                    isPreparingPublication = false
+                    return
+                }
+
+                // The upload store now owns rendered temporary video files.
+                // Release a source only if the final upload is a separately
+                // rendered file. When the editor correctly reuses an unchanged
+                // source URL, the store owns that file and must keep it until
+                // its existing upload/retry lifecycle completes.
+                discardSupersededSourceFiles(uploading: files)
+                ownsMediaAfterDismissal = true
+                stage = .handedOff
+                dismiss()
+            } catch {
+                mediaSelectionError = error.localizedDescription
+                isPreparingPublication = false
+            }
+        }
+    }
+
+    private func renderedPublicationFiles() async throws -> [MultipartFormFile] {
+        var files: [MultipartFormFile] = []
+        for media in selectedMedia {
+            let file = try await media.renderedMultipartFile(
+                edit: edit(for: media),
+                aspectRatio: type == .post
+                    ? CGFloat(postCanvas.rawValue)
+                    : CGFloat(type.format.mediaAspectRatio))
+            files.append(file)
+        }
+        return files
+    }
+
+    private var selectedVideoSourceURLs: Set<URL> {
+        Set(selectedMedia.compactMap(\.videoFileURL))
+    }
+
+    private func discardGeneratedRenderedFiles(in files: [MultipartFormFile]) {
+        for file in files {
+            guard case let .file(url) = file.source,
+                  !selectedVideoSourceURLs.contains(url) else { continue }
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    private func discardSupersededSourceFiles(uploading files: [MultipartFormFile]) {
+        let uploadURLs = Set(files.compactMap { file -> URL? in
+            guard case let .file(url) = file.source else { return nil }
+            return url
+        })
+        for sourceURL in selectedVideoSourceURLs where !uploadURLs.contains(sourceURL) {
+            try? FileManager.default.removeItem(at: sourceURL)
         }
     }
 
@@ -1772,8 +1774,20 @@ struct LegendSocialComposer: View {
     }
 
     private func cancel() {
-        discardTemporaryMedia()
-        dismiss()
+        if hasMeaningfulDraft {
+            showsDiscardConfirmation = true
+        } else {
+            dismiss()
+        }
+    }
+
+    private var hasMeaningfulDraft: Bool {
+        !selectedMedia.isEmpty ||
+            !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !accessibilityText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !tagsAndMentions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !shareLocation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            mediaEdits.values.contains(where: { $0 != .initial })
     }
 }
 
@@ -2131,60 +2145,991 @@ private struct LegendSocialMusicArtwork: View {
     }
 }
 
-/// Editing tools that are actually wired to behaviour.
-///
-/// `overlay` and `filter` were removed rather than left on screen: `overlay` bound to
-/// the same caption field as `text`, and `filter` rendered a fixed "Original
-/// presentation" label with no filter pipeline behind it. Adjustment, crop, and filter
-/// tooling returns when the rendering pipeline that backs it exists.
+/// One serializable-in-memory edit authority for the active creation session.
+/// The source remains untouched while the member explores. At publish time the
+/// renderer below produces the actual uploaded bytes from this state, so the
+/// final audience never sees a client-only interpretation.
+struct LegendSocialMediaEditState: Equatable {
+    var filter: LegendSocialImageFilter = .original
+    var filterIntensity = 1.0
+    var brightness = 0.0
+    var contrast = 0.0
+    var saturation = 0.0
+    var warmth = 0.0
+    var highlights = 0.0
+    var shadows = 0.0
+    var sharpness = 0.0
+    var cropZoom = 1.0
+    var cropOffset = CGSize.zero
+    var rotationDegrees = 0.0
+    var storyOverlay = LegendSocialStoryOverlay()
+    var video = LegendSocialVideoEdit()
+
+    static let initial = LegendSocialMediaEditState()
+
+    mutating func resetTransform() {
+        cropZoom = 1
+        cropOffset = .zero
+        rotationDegrees = 0
+    }
+
+    mutating func resetAdjustments() {
+        brightness = 0
+        contrast = 0
+        saturation = 0
+        warmth = 0
+        highlights = 0
+        shadows = 0
+        sharpness = 0
+        filter = .original
+        filterIntensity = 1
+    }
+}
+
+struct LegendSocialVideoEdit: Equatable {
+    var trimStartSeconds = 0.0
+    var trimEndSeconds: Double?
+    var isOriginalAudioMuted = false
+
+    var selectedRange: ClosedRange<Double>? {
+        guard let trimEndSeconds,
+              trimEndSeconds > trimStartSeconds else {
+            return nil
+        }
+        return trimStartSeconds ... trimEndSeconds
+    }
+
+    func requiresRendering(for duration: Double) -> Bool {
+        isOriginalAudioMuted ||
+            trimStartSeconds > 0.01 ||
+            (trimEndSeconds ?? duration) < duration - 0.01
+    }
+}
+
+enum LegendSocialImageFilter: String, CaseIterable, Identifiable {
+    case original
+    case clean
+    case warm
+    case cool
+    case rich
+    case golden
+    case soft
+    case contrast
+    case mono
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .original: "Original"
+        case .clean: "Clean"
+        case .warm: "Warm"
+        case .cool: "Cool"
+        case .rich: "Rich"
+        case .golden: "Golden"
+        case .soft: "Soft"
+        case .contrast: "Contrast"
+        case .mono: "Mono"
+        }
+    }
+}
+
+enum LegendSocialStoryTextColor: String, CaseIterable, Identifiable {
+    case white
+    case gold
+    case navy
+    case sky
+    case rose
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+
+    var swiftUIColor: Color {
+        switch self {
+        case .white: .white
+        case .gold: LegendNextColor.goldBright
+        case .navy: LegendNextColor.midnight
+        case .sky: LegendNextColor.information
+        case .rose: Color(red: 0.93, green: 0.35, blue: 0.49)
+        }
+    }
+
+    var uiColor: UIColor { UIColor(swiftUIColor) }
+}
+
+struct LegendSocialStoryOverlay: Equatable {
+    var text = ""
+    var position = CGSize.zero
+    var scale = 1.0
+    var color: LegendSocialStoryTextColor = .white
+
+    var hasText: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+private enum LegendSocialImageAdjustment: CaseIterable, Identifiable {
+    case brightness
+    case contrast
+    case saturation
+    case warmth
+    case highlights
+    case shadows
+    case sharpness
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .brightness: "Brightness"
+        case .contrast: "Contrast"
+        case .saturation: "Saturation"
+        case .warmth: "Warmth"
+        case .highlights: "Highlights"
+        case .shadows: "Shadows"
+        case .sharpness: "Sharpness"
+        }
+    }
+
+    var keyPath: WritableKeyPath<LegendSocialMediaEditState, Double> {
+        switch self {
+        case .brightness: \.brightness
+        case .contrast: \.contrast
+        case .saturation: \.saturation
+        case .warmth: \.warmth
+        case .highlights: \.highlights
+        case .shadows: \.shadows
+        case .sharpness: \.sharpness
+        }
+    }
+
+    var range: ClosedRange<Double> {
+        self == .sharpness ? 0...1 : -1...1
+    }
+}
+
+private enum LegendSocialPublicationDetail: String, Identifiable {
+    case topics
+    case location
+    case accessibility
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .topics: "Topics & mentions"
+        case .location: "Location"
+        case .accessibility: "Alt text"
+        }
+    }
+
+    var prompt: String {
+        switch self {
+        case .topics: "Add #topics or @mentions"
+        case .location: "Add a location"
+        case .accessibility: "Describe this media"
+        }
+    }
+
+    var isMultiline: Bool {
+        self != .location
+    }
+}
+
+private struct LegendSocialPublicationDetailSheet: View {
+    let detail: LegendSocialPublicationDetail
+    @Binding var tagsAndMentions: String
+    @Binding var location: String
+    @Binding var accessibilityText: String
+    @Environment(\.dismiss) private var dismiss
+
+    private var value: Binding<String> {
+        switch detail {
+        case .topics: $tagsAndMentions
+        case .location: $location
+        case .accessibility: $accessibilityText
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                if detail.isMultiline {
+                    TextEditor(text: value)
+                        .font(.body)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 156)
+                        .padding(LegendNextSpacing.sm)
+                        .background(LegendNextColor.surfaceInset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                } else {
+                    TextField(detail.prompt, text: value)
+                        .font(.body)
+                        .padding(LegendNextSpacing.sm)
+                        .background(LegendNextColor.surfaceInset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(LegendNextSpacing.md)
+            .background(LegendNextColor.canvas)
+            .navigationTitle(detail.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+/// Editing tools are present only when they mutate the final image/video that
+/// is submitted through the existing social upload authority.
 private enum LegendSocialEditingTool: CaseIterable, Identifiable {
     case audio
+    case transform
+    case style
+    case adjust
     case text
-    case describe
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .audio: "Audio"
+        case .transform: "Crop"
+        case .style: "Filters"
+        case .adjust: "Adjust"
         case .text: "Text"
-        case .describe: "Alt text"
         }
     }
 
     var systemImage: String {
         switch self {
         case .audio: "music.note"
+        case .transform: "crop"
+        case .style: "camera.filters"
+        case .adjust: "slider.horizontal.3"
         case .text: "textformat"
-        case .describe: "text.below.photo"
         }
+    }
+
+    func isAvailable(
+        for media: LegendSocialMediaDraft,
+        contentType: MobileSocialContentType
+    ) -> Bool {
+        switch self {
+        case .audio:
+            media.isVideo
+        case .transform, .style, .adjust:
+            !media.isVideo
+        case .text:
+            contentType == .story && !media.isVideo
+        }
+    }
+}
+
+private struct LegendSocialAdjustmentSlider: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    var compact = false
+
+    var body: some View {
+        HStack(spacing: LegendNextSpacing.xs) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: compact ? 32 : 72, alignment: .leading)
+            Slider(value: $value, in: range)
+                .tint(LegendNextColor.goldBright)
+            Text(displayValue)
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(Color.white.opacity(0.72))
+                .frame(width: 34, alignment: .trailing)
+        }
+    }
+
+    private var displayValue: String {
+        if range.lowerBound >= 0, range.upperBound <= 2 {
+            return "\(Int((value * 100).rounded()))%"
+        }
+        return String(format: "%+.1f", value)
+    }
+}
+
+/// The image renderer is shared by editing preview, final review, and upload.
+/// Keeping those three consumers on this one path prevents a visual-only
+/// filter/crop/overlay from being shown in the composer and then disappearing
+/// once the Post or Story is published.
+enum LegendSocialMediaRenderer {
+    private static let imageContext = CIContext(options: nil)
+
+    static func renderedImage(
+        from data: Data,
+        edit: LegendSocialMediaEditState,
+        aspectRatio: CGFloat
+    ) -> UIImage? {
+        guard let source = UIImage(data: data),
+              source.size.width > 0,
+              source.size.height > 0,
+              aspectRatio.isFinite,
+              aspectRatio > 0 else {
+            return nil
+        }
+
+        let longestEdge = min(max(source.size.width, source.size.height), 2_048)
+        let targetSize = CGSize(
+            width: max(1, longestEdge.rounded()),
+            height: max(1, (longestEdge / aspectRatio).rounded()))
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = true
+        let base = UIGraphicsImageRenderer(size: targetSize, format: format).image { context in
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: targetSize))
+
+            let sourceScale = max(
+                targetSize.width / source.size.width,
+                targetSize.height / source.size.height)
+                * max(1, edit.cropZoom)
+            let drawSize = CGSize(
+                width: source.size.width * sourceScale,
+                height: source.size.height * sourceScale)
+
+            context.cgContext.saveGState()
+            context.cgContext.translateBy(
+                x: targetSize.width / 2 + edit.cropOffset.width * targetSize.width * 0.28,
+                y: targetSize.height / 2 + edit.cropOffset.height * targetSize.height * 0.28)
+            context.cgContext.rotate(by: edit.rotationDegrees * .pi / 180)
+            source.draw(in: CGRect(
+                x: -drawSize.width / 2,
+                y: -drawSize.height / 2,
+                width: drawSize.width,
+                height: drawSize.height))
+            context.cgContext.restoreGState()
+        }
+
+        let styled = applyingAppearance(to: base, edit: edit) ?? base
+        guard edit.storyOverlay.hasText else { return styled }
+        return renderingStoryOverlay(edit.storyOverlay, on: styled)
+    }
+
+    static func jpegData(
+        from data: Data,
+        edit: LegendSocialMediaEditState,
+        aspectRatio: CGFloat
+    ) -> Data? {
+        renderedImage(from: data, edit: edit, aspectRatio: aspectRatio)?
+            .jpegData(compressionQuality: 0.9)
+    }
+
+    private static func applyingAppearance(
+        to image: UIImage,
+        edit: LegendSocialMediaEditState
+    ) -> UIImage? {
+        guard var output = CIImage(image: image) else { return nil }
+        let intensity = min(max(edit.filterIntensity, 0), 1)
+        let recipe = appearanceRecipe(for: edit.filter, intensity: intensity)
+
+        if let controls = CIFilter(name: "CIColorControls") {
+            controls.setValue(output, forKey: kCIInputImageKey)
+            controls.setValue(edit.brightness + recipe.brightness, forKey: kCIInputBrightnessKey)
+            controls.setValue(max(0.1, 1 + edit.contrast + recipe.contrast), forKey: kCIInputContrastKey)
+            controls.setValue(max(0, 1 + edit.saturation + recipe.saturation), forKey: kCIInputSaturationKey)
+            if let filtered = controls.outputImage { output = filtered }
+        }
+
+        if let exposure = CIFilter(name: "CIExposureAdjust") {
+            exposure.setValue(output, forKey: kCIInputImageKey)
+            exposure.setValue(recipe.exposure, forKey: kCIInputEVKey)
+            if let filtered = exposure.outputImage { output = filtered }
+        }
+
+        if abs(edit.warmth + recipe.warmth) > 0.001,
+           let temperature = CIFilter(name: "CITemperatureAndTint") {
+            temperature.setValue(output, forKey: kCIInputImageKey)
+            temperature.setValue(CIVector(x: 6_500, y: 0), forKey: "inputNeutral")
+            temperature.setValue(
+                CIVector(x: 6_500 + (edit.warmth + recipe.warmth) * 2_000, y: 0),
+                forKey: "inputTargetNeutral")
+            if let filtered = temperature.outputImage { output = filtered }
+        }
+
+        if abs(edit.highlights) > 0.001 || abs(edit.shadows) > 0.001,
+           let highlights = CIFilter(name: "CIHighlightShadowAdjust") {
+            highlights.setValue(output, forKey: kCIInputImageKey)
+            highlights.setValue(max(0, 1 - edit.highlights), forKey: "inputHighlightAmount")
+            highlights.setValue(max(0, 1 + edit.shadows), forKey: "inputShadowAmount")
+            if let filtered = highlights.outputImage { output = filtered }
+        }
+
+        if edit.sharpness > 0.001,
+           let sharpen = CIFilter(name: "CISharpenLuminance") {
+            sharpen.setValue(output, forKey: kCIInputImageKey)
+            sharpen.setValue(edit.sharpness * 2, forKey: "inputSharpness")
+            if let filtered = sharpen.outputImage { output = filtered }
+        }
+
+        guard let cgImage = imageContext.createCGImage(output, from: output.extent) else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage)
+    }
+
+    private static func appearanceRecipe(
+        for filter: LegendSocialImageFilter,
+        intensity: Double
+    ) -> (brightness: Double, contrast: Double, saturation: Double, warmth: Double, exposure: Double) {
+        let raw: (Double, Double, Double, Double, Double)
+        switch filter {
+        case .original: raw = (0, 0, 0, 0, 0)
+        case .clean: raw = (0.02, 0.06, 0.03, 0, 0.03)
+        case .warm: raw = (0.02, 0.04, 0.06, 0.36, 0.04)
+        case .cool: raw = (0, 0.04, 0.02, -0.32, 0)
+        case .rich: raw = (-0.01, 0.18, 0.22, 0.04, 0.02)
+        case .golden: raw = (0.04, 0.10, 0.10, 0.48, 0.08)
+        case .soft: raw = (0.05, -0.14, -0.08, 0.10, 0.04)
+        case .contrast: raw = (0, 0.30, -0.03, 0, 0)
+        case .mono: raw = (0, 0.10, -1, 0, 0)
+        }
+        return (raw.0 * intensity, raw.1 * intensity, raw.2 * intensity, raw.3 * intensity, raw.4 * intensity)
+    }
+
+    private static func renderingStoryOverlay(
+        _ overlay: LegendSocialStoryOverlay,
+        on image: UIImage
+    ) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: image.size)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+            let fontSize = max(20, image.size.width * 0.078 * overlay.scale)
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: fontSize, weight: .bold),
+                .foregroundColor: overlay.color.uiColor,
+                .paragraphStyle: paragraph,
+                .shadow: {
+                    let shadow = NSShadow()
+                    shadow.shadowColor = UIColor.black.withAlphaComponent(0.58)
+                    shadow.shadowBlurRadius = 5
+                    shadow.shadowOffset = CGSize(width: 0, height: 2)
+                    return shadow
+                }()
+            ]
+            let width = image.size.width * 0.80
+            let origin = CGPoint(
+                x: (image.size.width - width) / 2 + overlay.position.width * image.size.width * 0.25,
+                y: image.size.height * 0.45 + overlay.position.height * image.size.height * 0.25)
+            (overlay.text as NSString).draw(
+                in: CGRect(x: origin.x, y: origin.y, width: width, height: image.size.height * 0.42),
+                withAttributes: attributes)
+        }
+    }
+}
+
+private struct LegendSocialEditableImageCanvas: View {
+    let media: LegendSocialMediaDraft
+    @Binding var edit: LegendSocialMediaEditState
+    let aspectRatio: CGFloat
+    let allowsStoryOverlay: Bool
+
+    @State private var cropStart = CGSize.zero
+    @State private var zoomStart = 1.0
+    @State private var textStart = CGSize.zero
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                if let data = media.imageData,
+                   let rendered = LegendSocialMediaRenderer.renderedImage(
+                    from: data,
+                    edit: canvasEdit,
+                    aspectRatio: aspectRatio) {
+                    Image(uiImage: rendered)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                } else {
+                    Image(systemName: "photo")
+                        .font(.largeTitle)
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+
+                if allowsStoryOverlay, edit.storyOverlay.hasText {
+                    Text(edit.storyOverlay.text)
+                        .font(.system(
+                            size: max(18, geometry.size.width * 0.078 * edit.storyOverlay.scale),
+                            weight: .bold))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(edit.storyOverlay.color.swiftUIColor)
+                        .shadow(color: .black.opacity(0.58), radius: 4, y: 2)
+                        .frame(maxWidth: geometry.size.width * 0.80)
+                        .position(
+                            x: geometry.size.width / 2 + edit.storyOverlay.position.width * geometry.size.width * 0.25,
+                            y: geometry.size.height * 0.52 + edit.storyOverlay.position.height * geometry.size.height * 0.25)
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    edit.storyOverlay.position = CGSize(
+                                        width: textStart.width + value.translation.width / max(geometry.size.width, 1),
+                                        height: textStart.height + value.translation.height / max(geometry.size.height, 1))
+                                }
+                                .onEnded { _ in textStart = edit.storyOverlay.position })
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        edit.cropOffset = CGSize(
+                            width: cropStart.width + value.translation.width / max(geometry.size.width, 1),
+                            height: cropStart.height + value.translation.height / max(geometry.size.height, 1))
+                    }
+                    .onEnded { _ in cropStart = edit.cropOffset })
+            .simultaneousGesture(
+                MagnificationGesture()
+                    .onChanged { value in
+                        edit.cropZoom = min(max(1, zoomStart * value), 3)
+                    }
+                    .onEnded { _ in zoomStart = edit.cropZoom })
+            .onAppear {
+                cropStart = edit.cropOffset
+                zoomStart = edit.cropZoom
+                textStart = edit.storyOverlay.position
+            }
+        }
+    }
+
+    private var canvasEdit: LegendSocialMediaEditState {
+        var value = edit
+        value.storyOverlay.text = ""
+        return value
+    }
+}
+
+private struct LegendSocialRenderedImagePreview: View {
+    let media: LegendSocialMediaDraft
+    let edit: LegendSocialMediaEditState
+    let aspectRatio: CGFloat
+
+    var body: some View {
+        Group {
+            if let data = media.imageData,
+               let rendered = LegendSocialMediaRenderer.renderedImage(
+                from: data,
+                edit: edit,
+                aspectRatio: aspectRatio) {
+                Image(uiImage: rendered)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                ContentUnavailableView("Media unavailable", systemImage: "photo")
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous))
+    }
+}
+
+private struct LegendSocialPlayableVideoPreview: View {
+    let sourceURL: URL
+    let trim: LegendSocialVideoEdit
+    let isMuted: Bool
+    var showsAudioControl = true
+    let onMutedChanged: (Bool) -> Void
+
+    @State private var player: AVPlayer?
+    @State private var duration = 0.0
+    @State private var position = 0.0
+    @State private var isPlaying = false
+    @State private var failureMessage: String?
+    @State private var timeObserver: Any?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                Color.black
+
+                if let player {
+                    VideoPlayer(player: player)
+                        .allowsHitTesting(false)
+                } else if let failureMessage {
+                    ContentUnavailableView(
+                        "Video unavailable",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text(failureMessage))
+                        .foregroundStyle(.white)
+                } else {
+                    ProgressView()
+                        .tint(.white)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if let player, duration > 0 {
+                VStack(spacing: LegendNextSpacing.xs) {
+                    Slider(
+                        value: Binding(
+                            get: { position },
+                            set: { seek(player, to: $0) }),
+                        in: playableRange)
+                    .tint(LegendNextColor.goldBright)
+
+                    HStack(spacing: LegendNextSpacing.sm) {
+                        Button {
+                            isPlaying ? pause(player) : play(player)
+                        } label: {
+                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                .frame(width: 34, height: 30)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.white)
+                        .accessibilityLabel(isPlaying ? "Pause preview" : "Play preview")
+
+                        Text("\(LegendHacPreviewFrame.timeLabel(position)) / \(LegendHacPreviewFrame.timeLabel(playableRange.upperBound))")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.76))
+
+                        if showsAudioControl {
+                            Spacer(minLength: 0)
+
+                            Button {
+                                player.isMuted.toggle()
+                                onMutedChanged(player.isMuted)
+                            } label: {
+                                Image(systemName: player.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                    .frame(width: 34, height: 30)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.white)
+                            .accessibilityLabel(player.isMuted ? "Enable original audio" : "Mute original audio")
+                        }
+                    }
+                }
+                .padding(.horizontal, LegendNextSpacing.sm)
+                .padding(.vertical, LegendNextSpacing.xs)
+                .background(LegendNextColor.midnight.opacity(0.92))
+            }
+        }
+        .background(Color.black)
+        .clipShape(RoundedRectangle(cornerRadius: LegendNextRadius.card, style: .continuous))
+        .task(id: sourceURL) { await loadPlayer() }
+        .onChange(of: trim) { _, _ in applyTrim() }
+        .onChange(of: isMuted) { _, muted in player?.isMuted = muted }
+        .onDisappear { tearDown() }
+    }
+
+    private var playableRange: ClosedRange<Double> {
+        let lower = min(max(0, trim.trimStartSeconds), max(0, duration - 0.01))
+        let requestedEnd = trim.trimEndSeconds ?? duration
+        let upper = max(lower + 0.01, min(max(requestedEnd, lower + 0.01), duration))
+        return lower ... upper
+    }
+
+    private func loadPlayer() async {
+        tearDown()
+        let asset = AVURLAsset(url: sourceURL)
+        do {
+            let loadedDuration = try await asset.load(.duration).seconds
+            guard loadedDuration.isFinite, loadedDuration > 0 else {
+                failureMessage = "This video has no playable duration."
+                return
+            }
+            duration = loadedDuration
+            let newPlayer = AVPlayer(url: sourceURL)
+            newPlayer.isMuted = isMuted
+            player = newPlayer
+            installObserver(on: newPlayer)
+            applyTrim()
+        } catch {
+            failureMessage = "Legend could not open this video preview."
+        }
+    }
+
+    private func installObserver(on player: AVPlayer) {
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.15, preferredTimescale: 600),
+            queue: .main) { time in
+                let seconds = time.seconds
+                guard seconds.isFinite else { return }
+                if seconds >= playableRange.upperBound - 0.02 {
+                    pause(player)
+                    seek(player, to: playableRange.lowerBound)
+                    return
+                }
+                position = min(max(seconds, playableRange.lowerBound), playableRange.upperBound)
+            }
+    }
+
+    private func applyTrim() {
+        guard let player, duration > 0 else { return }
+        player.currentItem?.forwardPlaybackEndTime = CMTime(
+            seconds: playableRange.upperBound,
+            preferredTimescale: 600)
+        seek(player, to: playableRange.lowerBound)
+    }
+
+    private func play(_ player: AVPlayer) {
+        if position >= playableRange.upperBound - 0.02 {
+            seek(player, to: playableRange.lowerBound)
+        }
+        player.play()
+        isPlaying = true
+    }
+
+    private func pause(_ player: AVPlayer) {
+        player.pause()
+        isPlaying = false
+    }
+
+    private func seek(_ player: AVPlayer, to seconds: Double) {
+        let clamped = min(max(seconds, playableRange.lowerBound), playableRange.upperBound)
+        player.seek(
+            to: CMTime(seconds: clamped, preferredTimescale: 600),
+            toleranceBefore: .zero,
+            toleranceAfter: .zero)
+        position = clamped
+    }
+
+    private func tearDown() {
+        if let timeObserver, let player {
+            player.removeTimeObserver(timeObserver)
+        }
+        timeObserver = nil
+        player?.pause()
+        player = nil
+        isPlaying = false
+    }
+}
+
+private struct LegendSocialVideoTrimSheet: View {
+    let sourceURL: URL
+    let selection: LegendSocialVideoEdit
+    let save: (LegendSocialVideoEdit) -> Void
+    let cancel: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer
+    @State private var duration = 0.0
+    @State private var startSeconds: Double
+    @State private var endSeconds: Double
+
+    init(
+        sourceURL: URL,
+        selection: LegendSocialVideoEdit,
+        save: @escaping (LegendSocialVideoEdit) -> Void,
+        cancel: @escaping () -> Void
+    ) {
+        self.sourceURL = sourceURL
+        self.selection = selection
+        self.save = save
+        self.cancel = cancel
+        _player = State(initialValue: AVPlayer(url: sourceURL))
+        _startSeconds = State(initialValue: selection.trimStartSeconds)
+        _endSeconds = State(initialValue: selection.trimEndSeconds ?? 0)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: LegendNextSpacing.md) {
+                VideoPlayer(player: player)
+                    .aspectRatio(9 / 16, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                    HStack {
+                        Text("Trim")
+                            .font(.headline.weight(.semibold))
+                        Spacer()
+                        Text("\(LegendHacPreviewFrame.timeLabel(startSeconds)) – \(LegendHacPreviewFrame.timeLabel(endSeconds))")
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                    }
+
+                    LegendSocialVideoRangeTimeline(
+                        sourceURL: sourceURL,
+                        duration: duration,
+                        startSeconds: $startSeconds,
+                        endSeconds: $endSeconds,
+                        rangeChanged: previewRange)
+                        .frame(height: 76)
+
+                    HStack {
+                        Button("Preview", systemImage: "play.fill") {
+                            player.currentItem?.forwardPlaybackEndTime = CMTime(
+                                seconds: endSeconds,
+                                preferredTimescale: 600)
+                            player.seek(to: CMTime(seconds: startSeconds, preferredTimescale: 600))
+                            player.play()
+                        }
+                        Spacer()
+                        Button("Reset") {
+                            startSeconds = 0
+                            endSeconds = duration
+                            previewRange()
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LegendNextColor.goldBright)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(LegendNextSpacing.md)
+            .background(LegendNextColor.midnight)
+            .navigationTitle("Trim")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        player.pause()
+                        cancel()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        player.pause()
+                        save(LegendSocialVideoEdit(
+                            trimStartSeconds: startSeconds,
+                            trimEndSeconds: endSeconds,
+                            isOriginalAudioMuted: selection.isOriginalAudioMuted))
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+            .task {
+                duration = await LegendHacPreviewFrame.duration(of: sourceURL)
+                if endSeconds <= 0 || endSeconds > duration { endSeconds = duration }
+                startSeconds = min(max(0, startSeconds), max(0, endSeconds - 0.05))
+                previewRange()
+            }
+            .onDisappear { player.pause() }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func previewRange() {
+        player.pause()
+        player.currentItem?.forwardPlaybackEndTime = CMTime(
+            seconds: endSeconds,
+            preferredTimescale: 600)
+        player.seek(to: CMTime(seconds: startSeconds, preferredTimescale: 600))
+    }
+}
+
+private struct LegendSocialVideoRangeTimeline: View {
+    let sourceURL: URL
+    let duration: Double
+    @Binding var startSeconds: Double
+    @Binding var endSeconds: Double
+    let rangeChanged: () -> Void
+    @State private var frames: [Data] = []
+
+    private let minimumSelection = 0.05
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = max(1, geometry.size.width)
+            let safeDuration = max(duration, minimumSelection)
+            let startX = CGFloat(startSeconds / safeDuration) * width
+            let endX = CGFloat(endSeconds / safeDuration) * width
+
+            ZStack(alignment: .leading) {
+                Color.black
+
+                HStack(spacing: 1) {
+                    ForEach(Array(frames.enumerated()), id: \.offset) { _, data in
+                        Group {
+                            if let image = UIImage(data: data) {
+                                Image(uiImage: image).resizable().scaledToFill()
+                            } else {
+                                Color.black
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
+                }
+
+                Color.black.opacity(0.46)
+                    .frame(width: max(0, startX))
+                    .allowsHitTesting(false)
+                Color.black.opacity(0.46)
+                    .frame(width: max(0, width - endX))
+                    .offset(x: endX)
+                    .allowsHitTesting(false)
+
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(LegendNextColor.goldBright, lineWidth: 3)
+                    .frame(width: max(14, endX - startX), height: geometry.size.height)
+                    .offset(x: startX)
+                    .allowsHitTesting(false)
+
+                trimHandle(at: startX, width: width, isStart: true)
+                trimHandle(at: endX, width: width, isStart: false)
+            }
+        }
+        .task(id: duration) {
+            guard duration > 0 else { return }
+            frames = await LegendHacPreviewFrame.timelineFrames(
+                from: sourceURL,
+                range: 0...duration,
+                count: 10)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Trim range from \(LegendHacPreviewFrame.timeLabel(startSeconds)) to \(LegendHacPreviewFrame.timeLabel(endSeconds))")
+    }
+
+    private func trimHandle(at x: CGFloat, width: CGFloat, isStart: Bool) -> some View {
+        Capsule()
+            .fill(LegendNextColor.goldBright)
+            .frame(width: 14, height: 42)
+            .shadow(color: .black.opacity(0.28), radius: 3, y: 1)
+            .position(x: min(max(7, x), width - 7), y: 38)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let seconds = min(max(0, Double(value.location.x / width) * duration), duration)
+                        if isStart {
+                            startSeconds = min(seconds, endSeconds - minimumSelection)
+                        } else {
+                            endSeconds = max(seconds, startSeconds + minimumSelection)
+                        }
+                        rangeChanged()
+                    })
     }
 }
 
 private enum LegendSocialMediaPreviewPresentation {
     case selection
-    case canvas
     case thumbnail
 }
 
 private struct LegendSocialMediaPreview: View {
     let media: LegendSocialMediaDraft
     let presentation: LegendSocialMediaPreviewPresentation
-    let overlayText: String?
-    let dimmingEdges: Bool
     let remove: () -> Void
 
     init(
         media: LegendSocialMediaDraft,
         presentation: LegendSocialMediaPreviewPresentation,
-        overlayText: String? = nil,
-        dimmingEdges: Bool = false,
         remove: @escaping () -> Void
     ) {
         self.media = media
         self.presentation = presentation
-        self.overlayText = overlayText
-        self.dimmingEdges = dimmingEdges
         self.remove = remove
     }
 
@@ -2197,58 +3142,6 @@ private struct LegendSocialMediaPreview: View {
                 )
                 .clipped()
                 .background(LegendNextColor.midnight.opacity(0.16))
-
-            if dimmingEdges {
-                LinearGradient(
-                    colors: [
-                        .clear,
-                        LegendNextColor.midnight.opacity(0.30)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom)
-
-                LinearGradient(
-                    colors: [
-                        .clear,
-                        LegendNextColor.midnight.opacity(0.30)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing)
-            }
-
-            if presentation == .thumbnail {
-                LinearGradient(
-                    colors: [.clear, LegendNextColor.midnight.opacity(0.68)],
-                    startPoint: .center,
-                    endPoint: .bottom)
-
-                VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                    Spacer(minLength: 0)
-                    Text(media.kindDescription)
-                        .font(.caption.weight(.bold))
-                    Text(media.fileName)
-                        .font(.caption2)
-                        .lineLimit(1)
-                }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                .padding(LegendNextSpacing.sm)
-            }
-
-            if presentation == .canvas,
-               let overlayText,
-               !overlayText.isEmpty {
-                Text(overlayText)
-                    .font(LegendNextTypography.cardTitle)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.white)
-                    .padding(LegendNextSpacing.sm)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .background(LegendNextColor.midnight.opacity(0.38), in: Capsule())
-                    .padding(LegendNextSpacing.md)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .accessibilityLabel("Story text: \(overlayText)")
-            }
 
             if presentation == .selection {
                 Button(action: remove) {
@@ -2351,6 +3244,11 @@ private enum LegendSocialMediaDraft: Identifiable {
         return fileURL
     }
 
+    var imageData: Data? {
+        guard case .image(_, let data, _, _, _) = self else { return nil }
+        return data
+    }
+
     var sourceAssetIdentifier: String? {
         switch self {
         case .image(_, _, _, _, let identifier), .video(_, _, _, _, let identifier):
@@ -2372,6 +3270,43 @@ private enum LegendSocialMediaDraft: Identifiable {
                 fileName: fileName,
                 mimeType: mimeType,
                 fileURL: fileURL)
+        }
+    }
+
+    /// Builds the one final media payload used by the established mobile
+    /// social upload contract. Image edits are flattened into the JPEG and
+    /// video trim/audio edits are exported by `LegendSocialVideoPreparation`.
+    /// The selected source itself is never mutated in the editor.
+    func renderedMultipartFile(
+        edit: LegendSocialMediaEditState,
+        aspectRatio: CGFloat
+    ) async throws -> MultipartFormFile {
+        switch self {
+        case .image(_, let data, _, _, _):
+            guard let rendered = LegendSocialMediaRenderer.jpegData(
+                from: data,
+                edit: edit,
+                aspectRatio: aspectRatio) else {
+                throw LegendSocialMediaLoadingError.unavailable
+            }
+            return MultipartFormFile(
+                fieldName: "files",
+                fileName: "legend-edited-image.jpg",
+                mimeType: "image/jpeg",
+                data: rendered)
+
+        case .video(_, let fileURL, _, _, _):
+            let outputURL = try await LegendSocialVideoPreparation
+                .prepareEditedForPublication(
+                    from: fileURL,
+                    trimStartSeconds: edit.video.trimStartSeconds,
+                    trimEndSeconds: edit.video.trimEndSeconds,
+                    muteOriginalAudio: edit.video.isOriginalAudioMuted)
+            return MultipartFormFile(
+                fieldName: "files",
+                fileName: "legend-video.mp4",
+                mimeType: "video/mp4",
+                fileURL: outputURL)
         }
     }
 
@@ -2439,6 +3374,7 @@ private enum LegendSocialMediaDraft: Identifiable {
 /// aligned with the video ultimately sent to the server.
 private struct LegendHacPreviewSelector: View {
     let sourceURL: URL
+    let selectedRange: ClosedRange<Double>?
     let save: (Data) -> Void
     let cancel: () -> Void
 
@@ -2449,10 +3385,12 @@ private struct LegendHacPreviewSelector: View {
 
     init(
         sourceURL: URL,
+        selectedRange: ClosedRange<Double>? = nil,
         save: @escaping (Data) -> Void,
         cancel: @escaping () -> Void
     ) {
         self.sourceURL = sourceURL
+        self.selectedRange = selectedRange
         self.save = save
         self.cancel = cancel
         _player = State(initialValue: AVPlayer(url: sourceURL))
@@ -2460,40 +3398,40 @@ private struct LegendHacPreviewSelector: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
+            VStack(spacing: LegendNextSpacing.md) {
                 VideoPlayer(player: player)
                     .aspectRatio(9 / 16, contentMode: .fit)
                     .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(
-                        cornerRadius: LegendNextRadius.card,
-                        style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                    Text("Scroll to choose the preview frame")
-                        .font(LegendNextTypography.section)
-                        .foregroundStyle(LegendNextColor.textPrimary)
+                    HStack {
+                        Text("Cover")
+                            .font(.headline.weight(.semibold))
+                        Spacer()
+                        Text(LegendHacPreviewFrame.timeLabel(selectedSeconds))
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(LegendNextColor.textSecondary)
+                    }
 
-                    Slider(
-                        value: $selectedSeconds,
-                        in: 0 ... max(duration, 0.1))
-                    .tint(LegendNextColor.goldBright)
-                    .onChange(of: selectedSeconds) { _, seconds in
+                    LegendHacCoverTimeline(
+                        sourceURL: sourceURL,
+                        range: selectableRange,
+                        selectedSeconds: $selectedSeconds)
+                        .frame(height: 76)
+                        .onChange(of: selectedSeconds) { _, seconds in
                         player.seek(
                             to: CMTime(seconds: seconds, preferredTimescale: 600),
                             toleranceBefore: .zero,
                             toleranceAfter: .zero)
                     }
-
-                    Text(LegendHacPreviewFrame.timeLabel(selectedSeconds))
-                        .font(LegendNextTypography.caption.monospacedDigit())
-                        .foregroundStyle(LegendNextColor.textSecondary)
                 }
 
                 Spacer(minLength: 0)
             }
             .padding(LegendNextSpacing.md)
-            .background(LegendNextColor.canvas)
-            .navigationTitle("Hac preview")
+            .background(LegendNextColor.midnight)
+            .navigationTitle("Cover")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -2518,12 +3456,84 @@ private struct LegendHacPreviewSelector: View {
             }
             .task {
                 duration = await LegendHacPreviewFrame.duration(of: sourceURL)
-                await player.seek(to: .zero)
+                selectedSeconds = selectableRange.lowerBound
+                await player.seek(to: CMTime(
+                    seconds: selectableRange.lowerBound,
+                    preferredTimescale: 600))
             }
             .onDisappear {
                 player.pause()
             }
         }
+        .preferredColorScheme(.dark)
+    }
+
+    private var selectableRange: ClosedRange<Double> {
+        let fallback = 0 ... max(duration, 0.1)
+        guard let selectedRange else { return fallback }
+        let lower = min(max(0, selectedRange.lowerBound), fallback.upperBound)
+        let upper = max(lower, min(selectedRange.upperBound, fallback.upperBound))
+        return lower ... max(lower + 0.01, upper)
+    }
+}
+
+private struct LegendHacCoverTimeline: View {
+    let sourceURL: URL
+    let range: ClosedRange<Double>
+    @Binding var selectedSeconds: Double
+    @State private var frames: [Data] = []
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = max(1, geometry.size.width)
+            let span = max(0.01, range.upperBound - range.lowerBound)
+            let selectedX = CGFloat((selectedSeconds - range.lowerBound) / span) * width
+
+            ZStack(alignment: .leading) {
+                Color.black
+
+                HStack(spacing: 1) {
+                    ForEach(Array(frames.enumerated()), id: \.offset) { _, data in
+                        Group {
+                            if let image = UIImage(data: data) {
+                                Image(uiImage: image).resizable().scaledToFill()
+                            } else {
+                                Color.black
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                    }
+                }
+
+                Rectangle()
+                    .fill(LegendNextColor.goldBright)
+                    .frame(width: 3, height: geometry.size.height + 8)
+                    .offset(x: min(max(0, selectedX), width - 3))
+                    .shadow(color: .black.opacity(0.34), radius: 2)
+                    .allowsHitTesting(false)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let progress = min(max(0, Double(value.location.x / width)), 1)
+                        selectedSeconds = range.lowerBound + span * progress
+                    })
+        }
+        .task(id: range) {
+            frames = await LegendHacPreviewFrame.timelineFrames(
+                from: sourceURL,
+                range: range,
+                count: 10)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Cover frame at \(LegendHacPreviewFrame.timeLabel(selectedSeconds))")
     }
 }
 
@@ -2572,15 +3582,41 @@ private enum LegendHacPreviewFrame {
         return nil
     }
 
+    static func timelineFrames(
+        from url: URL,
+        range: ClosedRange<Double>,
+        count: Int
+    ) async -> [Data] {
+        let safeCount = max(2, count)
+        return await Task.detached(priority: .userInitiated) {
+            let span = max(0.01, range.upperBound - range.lowerBound)
+            return (0..<safeCount).compactMap { index in
+                let progress = Double(index) / Double(max(1, safeCount - 1))
+                return LegendHacPreviewFrame.jpegData(
+                    from: url,
+                    at: range.lowerBound + span * progress)
+            }
+        }.value
+    }
+
     static func timeLabel(_ seconds: Double) -> String {
         let wholeSeconds = max(0, Int(seconds.rounded(.down)))
         return String(format: "%d:%02d", wholeSeconds / 60, wholeSeconds % 60)
     }
 }
 
-private enum LegendSocialMediaLoadingError: Error {
+private enum LegendSocialMediaLoadingError: LocalizedError {
     case unavailable
     case unsupported
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable:
+            "Legend could not prepare this media for publishing."
+        case .unsupported:
+            "This media format is not supported for this update."
+        }
+    }
 }
 
 private struct LegendSocialCameraCapture: UIViewControllerRepresentable {
