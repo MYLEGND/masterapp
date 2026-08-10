@@ -12,6 +12,7 @@ import com.mylegnd.legend.registered.core.design.LegendDesignAuthority
 import com.mylegnd.legend.registered.core.network.AccessTokenProvider
 import com.mylegnd.legend.registered.core.network.LegendApiClient
 import com.mylegnd.legend.registered.core.media.AuthenticatedMediaRepository
+import com.mylegnd.legend.registered.core.realtime.MobileMessagingRealtimeClient
 import com.mylegnd.legend.registered.core.session.SessionRepository
 import com.mylegnd.legend.registered.data.*
 
@@ -25,6 +26,11 @@ class LegendContainer(application: Application) {
     private val notificationDeviceRepository by lazy { NotificationDeviceRepository(apiClient) }
     val fcmPushRegistration = FcmPushRegistrationCoordinator(application, notificationDeviceRepository, sessionStore)
     val sessionRepository = SessionRepository(configuration, auth, { apiClient }, sessionStore) { fcmPushRegistration.deactivateForCurrentActor() }
-    val homeRepository by lazy { HomeRepository(apiClient) }; val financialRepository by lazy { FinancialRepository(apiClient) }; val accountRepository by lazy { AccountRepository(apiClient) }
-    val messagingRepository by lazy { MessagingRepository(apiClient) }; val socialRepository by lazy { SocialRepository(apiClient) }; val authenticatedMediaRepository by lazy { AuthenticatedMediaRepository(application, apiClient) }; val discoveryRepository by lazy { DiscoveryRepository(apiClient) }; val journeyRepository by lazy { JourneyRepository(apiClient) }; val communityRepository by lazy { CommunityRepository(apiClient) }
+    val homeRepository by lazy { HomeRepository(apiClient) }; val agentWorkspaceRepository by lazy { AgentWorkspaceRepository(apiClient) }; val financialRepository by lazy { FinancialRepository(apiClient) }; val accountRepository by lazy { AccountRepository(apiClient) }; val founderAccountRepository by lazy { FounderAccountRepository(apiClient) }; val dailyScriptureManagementRepository by lazy { DailyScriptureManagementRepository(apiClient) }
+    val messagingRepository by lazy { MessagingRepository(apiClient) }; val socialRepository by lazy { SocialRepository(apiClient) }; val notificationRepository by lazy { NotificationRepository(apiClient) }; val authenticatedMediaRepository by lazy { AuthenticatedMediaRepository(application, apiClient) }; val discoveryRepository by lazy { DiscoveryRepository(apiClient) }; val journeyRepository by lazy { JourneyRepository(apiClient) }; val communityRepository by lazy { CommunityRepository(apiClient) }
+    fun messagingRealtime(participantType: String): MobileMessagingRealtimeClient = MobileMessagingRealtimeClient(
+        apiBaseUrl = configuration.apiBaseUrl,
+        participantType = participantType,
+        tokenProvider = object : AccessTokenProvider { override suspend fun accessToken() = auth.restoreAccessToken() },
+    )
 }

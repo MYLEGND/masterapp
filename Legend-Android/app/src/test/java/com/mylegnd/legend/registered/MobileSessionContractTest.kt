@@ -2,7 +2,13 @@ package com.mylegnd.legend.registered
 
 import com.mylegnd.legend.registered.core.model.MobileSessionResponse
 import com.mylegnd.legend.registered.core.model.ConversationMessage
+import com.mylegnd.legend.registered.core.model.ConversationDetail
 import com.mylegnd.legend.registered.core.model.SocialPost
+import com.mylegnd.legend.registered.core.model.SocialSnapshot
+import com.mylegnd.legend.registered.core.network.JourneyDashboard
+import com.mylegnd.legend.registered.core.model.FounderManagedAccount
+import com.mylegnd.legend.registered.core.model.DailyScriptureManagementSnapshot
+import com.mylegnd.legend.registered.core.model.CommunitySafetyReport
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
@@ -22,10 +28,60 @@ class MobileSessionContractTest {
         assertEquals("Hello", message.originalBody)
     }
 
+    @Test fun `conversation fixture preserves the full server messaging projection`() {
+        val fixture = """{"id":"conversation-1","conversationType":"Group","title":"Sanitized group","participants":[{"identity":{"userId":"member-1","participantType":"Client"},"profileId":"profile-1","displayName":"Sanitized Member","isGroupManager":true}],"messages":[{"id":"message-1","conversationId":"conversation-1","sender":{"identity":{"userId":"member-1","participantType":"Client"},"profileId":"profile-1","displayName":"Sanitized Member"},"body":"Recipient-facing body","originalBody":"Original body","sentUtc":"2026-01-01T00:00:00Z","attachments":[{"id":"attachment-1","originalFileName":"sanitized.pdf","contentType":"application/pdf","sizeBytes":42,"scanStatus":"Clean","createdUtc":"2026-01-01T00:00:01Z","canDownload":true}],"isMine":false,"isDeleted":false,"reply":{"id":"reply-1","sender":{"identity":{"userId":"member-2","participantType":"Client"},"profileId":"profile-2","displayName":"Sanitized Reply"},"body":"Context","isDeleted":false},"translation":{"originalLanguage":"en","targetLanguage":"ht","provider":"Server"}}],"isMuted":false,"isClosed":false,"canManageMembers":true,"canManageCollaborators":true,"canDeleteGroup":true,"isPromoted":true,"canManagePromotion":true,"meeting":{"host":{"identity":{"userId":"member-1","participantType":"Client"},"profileId":"profile-1","displayName":"Sanitized Member"},"linkLabel":"Weekly call","linkUrl":"https://example.invalid/meeting","schedule":{"frequency":"Weekly","weekdays":["Monday"],"localTime":"10:00","timeZoneId":"UTC"}},"canManageMeeting":true,"hasOlderMessages":true}"""
+        val conversation = json.decodeFromString(ConversationDetail.serializer(), fixture)
+        assertEquals("Group", conversation.conversationType)
+        assertTrue(conversation.participants.single().isGroupManager)
+        assertTrue(conversation.hasOlderMessages)
+        assertEquals("ht", conversation.messages.single().translation?.targetLanguage)
+        assertEquals("sanitized.pdf", conversation.messages.single().attachments.single().originalFileName)
+        assertEquals("Weekly call", conversation.meeting?.linkLabel)
+    }
+
     @Test fun `social fixture preserves server processing and visibility state`() {
         val fixture = """{"id":"post-1","author":{"identity":{"userId":"member-1","participantType":"Client"},"profileId":"profile-1","displayName":"Sanitized Member"},"contentType":"Post","body":"Server content","audience":"Public","commentsEnabled":true,"postedUtc":"2026-01-01T00:00:00Z","reactionCount":2,"commentCount":1,"reactedByCurrentActor":false,"followedByCurrentActor":false,"followRequestPending":false,"savedByCurrentActor":false,"repostedByCurrentActor":false,"media":[{"id":"asset-1","displayOrder":0,"mediaKind":"Video","mimeType":"video/mp4","fileSizeBytes":100,"processingState":"Ready","hasPreviewImage":true}]}"""
         val post = json.decodeFromString(SocialPost.serializer(), fixture)
         assertEquals("Ready", post.media.single().processingState)
         assertEquals("Public", post.audience)
+    }
+
+    @Test fun `social feed fixture keeps the server promoted group projection separate from posts`() {
+        val fixture = """{"stories":[],"posts":[],"hacs":[],"activity":[],"activityCount":1,"currentProfileMetrics":null,"creatorInsights":null,"promotedGroups":[{"conversationId":"00000000-0000-0000-0000-000000000123","subject":"Sanitized group","owner":{"identity":{"userId":"owner-1","participantType":"Client"},"profileId":"profile-owner","displayName":"Sanitized Owner"},"groupAvatar":null,"activeMemberCount":4,"isJoinedByCurrentActor":false,"promotionStartedUtc":"2026-01-01T00:00:00Z"}]}"""
+        val snapshot = json.decodeFromString(SocialSnapshot.serializer(), fixture)
+        assertEquals("Sanitized group", snapshot.promotedGroups.single().subject)
+        assertFalse(snapshot.promotedGroups.single().isJoinedByCurrentActor)
+        assertTrue(snapshot.posts.isEmpty())
+    }
+
+    @Test fun `journey fixture preserves consent taxonomy and connection context`() {
+        val fixture = """{"profile":{"clientProfileId":"profile-1","displayName":"Sanitized Member","introduction":"A new season","lifeStages":["Adult"],"locations":["Sanitized city"],"goals":["Growth"],"interests":["Service"],"circleCodes":["Community"],"connectionTypes":["Mentorship"],"communicationStyles":["Direct"],"accountabilityFrequencies":["Weekly"]},"preferences":{"consentAffirmed":true,"isOptedIn":true,"isDiscoverable":true,"allowSuggestions":true,"allowConnectionRequests":true},"recommendations":[],"connections":[{"id":"connection-1","profile":{"clientProfileId":"profile-2","displayName":"Sanitized Connection"},"status":"Connected","connectionReason":"Shared goal","introduction":"Hello","createdUtc":"2026-01-01T00:00:00Z"}],"requests":[],"taxonomy":{"goals":["Growth"],"circles":["Community"],"lifeStages":["Adult"],"locations":["Sanitized city"],"interests":["Service"],"connectionTypes":["Mentorship"],"communicationStyles":["Direct"],"accountabilityFrequencies":["Weekly"]}}"""
+        val dashboard = json.decodeFromString(JourneyDashboard.serializer(), fixture)
+        assertTrue(dashboard.preferences?.consentAffirmed == true)
+        assertEquals("Shared goal", dashboard.connections.single().connectionReason)
+        assertEquals("Community", dashboard.taxonomy.circles.single())
+    }
+
+    @Test fun `founder account fixture retains lifecycle and subscription state`() {
+        val fixture = """{"profileId":"00000000-0000-0000-0000-000000000001","userId":"sanitized-user","participantType":"Client","displayName":"Sanitized Account","email":"member@example.invalid","lifecycleState":"Active","hasCancelableSubscription":true,"isActive":true}"""
+        val account = json.decodeFromString(FounderManagedAccount.serializer(), fixture)
+        assertEquals("Active", account.lifecycleState)
+        assertTrue(account.hasCancelableSubscription)
+    }
+
+    @Test fun `daily scripture management fixture preserves the server business date and exact passage`() {
+        val fixture = """{"businessDate":"2026-08-10","current":{"date":"2026-08-10","reference":"Psalm 100","translation":"KJV","text":"Sanitized daily passage","source":"ScheduledOverride"},"upcoming":[{"id":"override-1","displayDate":"2026-08-11","reference":"Psalm 121","translation":"KJV","passageText":"Sanitized scheduled passage","createdUtc":"2026-08-01T00:00:00Z","updatedUtc":"2026-08-01T00:00:00Z"}]}"""
+        val snapshot = json.decodeFromString(DailyScriptureManagementSnapshot.serializer(), fixture)
+        assertEquals("2026-08-10", snapshot.businessDate)
+        assertEquals("Psalm 121", snapshot.upcoming.single().reference)
+        assertEquals("Sanitized daily passage", snapshot.current.text)
+    }
+
+    @Test fun `community review fixture preserves only server-projected report state`() {
+        val fixture = """{"id":"report-1","targetKind":"SocialPost","targetEntityId":"post-1","category":"Safety","detail":"Sanitized report detail","status":"Open","createdUtc":"2026-08-10T00:00:00Z","reporterParticipantType":"Client","reportedParticipantType":"Client"}"""
+        val report = json.decodeFromString(CommunitySafetyReport.serializer(), fixture)
+        assertEquals("SocialPost", report.targetKind)
+        assertEquals("Open", report.status)
+        assertEquals("Sanitized report detail", report.detail)
     }
 }
