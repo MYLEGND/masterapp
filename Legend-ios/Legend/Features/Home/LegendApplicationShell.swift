@@ -45,12 +45,12 @@ private enum LegendAppTab: String, Identifiable {
 
     var title: String {
         switch self {
-        case .home: return "Home"
-        case .clients: return "Clients"
-        case .discover: return "Discover"
-        case .fyp: return "For You"
-        case .messages: return "Messages"
-        case .account: return "Account"
+        case .home: return LegendSharedDesign.copy("tab.home")
+        case .clients: return LegendSharedDesign.copy("tab.clients")
+        case .discover: return LegendSharedDesign.copy("tab.discover")
+        case .fyp: return LegendSharedDesign.copy("tab.forYou")
+        case .messages: return LegendSharedDesign.copy("tab.messages")
+        case .account: return LegendSharedDesign.copy("tab.account")
         }
     }
 

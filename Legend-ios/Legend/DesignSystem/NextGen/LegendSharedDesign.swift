@@ -84,6 +84,10 @@ enum LegendSharedDesign {
         }
     }
 
+    static func copy(_ key: String) -> String {
+        required(specification.copy[key], named: "copy \(key)")
+    }
+
     private static func fontWeight(_ value: String) -> Font.Weight {
         switch value {
         case "regular": return .regular
@@ -134,6 +138,7 @@ enum LegendSharedDesign {
         fileprivate let typography: [String: TypographyToken]
         fileprivate let motion: MotionToken
         fileprivate let elevation: [String: ElevationToken]
+        fileprivate let copy: [String: String]
     }
 
     fileprivate struct ColorToken: Decodable {

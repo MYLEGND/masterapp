@@ -31,6 +31,7 @@ import androidx.core.content.ContextCompat
 import com.mylegnd.legend.registered.LegendContainer
 import com.mylegnd.legend.registered.LegendViewModelFactory
 import com.mylegnd.legend.registered.core.design.LegendColors
+import com.mylegnd.legend.registered.core.design.LegendCopy
 import com.mylegnd.legend.registered.core.design.LegendShapes
 import com.mylegnd.legend.registered.core.design.LegendSpacing
 import com.mylegnd.legend.registered.core.model.*
@@ -123,12 +124,14 @@ private fun RoleSelectionScreen(roles: List<String>, select: (String) -> Unit) {
     }
 }
 
-private enum class LegendTab(val label: String) {
-    HOME("Home"),
-    DISCOVER("Discover"),
-    SOCIAL("For You"),
-    MESSAGES("Messages"),
-    ACCOUNT("Account"),
+private enum class LegendTab(private val copyKey: String) {
+    HOME("tab.home"),
+    DISCOVER("tab.discover"),
+    SOCIAL("tab.forYou"),
+    MESSAGES("tab.messages"),
+    ACCOUNT("tab.account");
+
+    val label get() = LegendCopy.value(copyKey)
 }
 
 @Composable
@@ -221,7 +224,7 @@ private fun DiscoverScreen(viewModel: DiscoveryViewModel, participantType: Strin
     var query by remember { mutableStateOf("") }
     var safetyTarget by remember { mutableStateOf<DiscoveryResult?>(null) }
     LaunchedEffect(Unit) { viewModel.load() }
-    LegendScreen("Discover") {
+    LegendScreen(LegendCopy.value("tab.discover")) {
         when (page) {
             LoadState.Idle,
             LoadState.Loading -> LegendLoadingState()
@@ -452,7 +455,7 @@ private fun MessagesScreen(
     }
 
     if (selected == null) {
-        LegendScreen("Messages") {
+        LegendScreen(LegendCopy.value("tab.messages")) {
             when (conversations) {
                 LoadState.Idle,
                 LoadState.Loading -> LegendLoadingState()
@@ -538,7 +541,7 @@ private fun MessageThread(
                         Column(Modifier.padding(LegendSpacing.Sm)) {
                             Text(message.body, color = if (message.isMine) LegendColors.OnNavy else LegendColors.TextPrimary)
                             message.originalBody?.takeIf { it != message.body }?.let {
-                                Text("Original: $it", style = MaterialTheme.typography.labelSmall, color = LegendColors.TextSecondary)
+                                Text("${LegendCopy.value("message.original")}: $it", style = MaterialTheme.typography.labelSmall, color = LegendColors.TextSecondary)
                             }
                         }
                     }
@@ -582,7 +585,7 @@ private fun SocialScreen(
     LaunchedEffect(Unit) { viewModel.load() }
 
     LegendScreen(
-        title = "For You",
+        title = LegendCopy.value("tab.forYou"),
         actions = {
             IconButton(onClick = { creating = true }) {
                 Icon(Icons.Default.Add, "Create LEGEND update", tint = LegendColors.Navy)
@@ -720,7 +723,7 @@ private fun CreatePostSheet(
     createText: (String, String, String?) -> Unit,
     createMedia: (List<Uri>, String, String, String) -> Unit,
 ) {
-    var contentType by remember { mutableStateOf("Post") }
+    var contentType by remember { mutableStateOf(LegendCopy.value("content.post")) }
     var body by remember { mutableStateOf("") }
     var audience by remember { mutableStateOf("Public") }
     var selected by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -735,7 +738,11 @@ private fun CreatePostSheet(
         ) {
             Text("Create a LEGEND update", color = LegendColors.OnNavy, style = MaterialTheme.typography.headlineMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                listOf("Post", "Story", "Hac").forEach { choice ->
+                listOf(
+                    LegendCopy.value("content.post"),
+                    LegendCopy.value("content.story"),
+                    LegendCopy.value("content.hac"),
+                ).forEach { choice ->
                     FilterChip(
                         selected = contentType == choice,
                         onClick = { contentType = choice },
@@ -825,7 +832,7 @@ private fun AccountScreen(
         FinancialScreen(financialRepository, participantType) { financial = false }
     } else {
         LegendScreen(
-            title = "Account",
+            title = LegendCopy.value("tab.account"),
             actions = {
                 IconButton(onClick = signOut) { Icon(Icons.AutoMirrored.Filled.Logout, "Sign out") }
             },

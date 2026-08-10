@@ -39,6 +39,7 @@ object LegendDesignAuthority {
         val token = required().typography.required(name)
         return TextStyle(fontSize = token.size.sp, fontWeight = token.weight.asFontWeight())
     }
+    internal fun copy(key: String): String = required().copy.required(key)
 
     private fun required(): LegendDesignSpecification = checkNotNull(specification) {
         "LEGEND design authority must be initialized before Compose renders."
@@ -127,7 +128,12 @@ private data class LegendDesignSpecification(
     val radii: Map<String, Float>,
     val sizes: Map<String, Float>,
     val typography: Map<String, LegendTypographyToken>,
+    val copy: Map<String, String>,
 )
+
+object LegendCopy {
+    fun value(key: String): String = LegendDesignAuthority.copy(key)
+}
 
 @Serializable
 private data class LegendColorToken(

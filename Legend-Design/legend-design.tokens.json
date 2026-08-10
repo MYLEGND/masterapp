@@ -158,5 +158,18 @@
     "journeyCircles": "Journey Circles",
     "originalMessageLabel": "Original",
     "accountDeletion": "Request account deletion"
+  },
+  "copy": {
+    "tab.home": "Home",
+    "tab.clients": "Clients",
+    "tab.discover": "Discover",
+    "tab.forYou": "For You",
+    "tab.messages": "Messages",
+    "tab.account": "Account",
+    "content.post": "Post",
+    "content.story": "Story",
+    "content.hac": "Hac",
+    "message.original": "Original",
+    "account.deletion": "Request account deletion"
   }
 }
