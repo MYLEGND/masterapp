@@ -1,0 +1,7 @@
+{
+  "apiBaseUrl": "",
+  "entraClientId": "",
+  "entraAuthority": "",
+  "entraScope": "",
+  "msalRedirectUri": ""
+}

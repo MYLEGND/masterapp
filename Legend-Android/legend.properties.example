@@ -1,0 +1,10 @@
+# Supply in untracked Legend-Android/legend.properties or CI secrets, then render both
+# app/src/main/assets/legend-runtime.json and app/src/main/res/raw/legend_msal_config.json.
+# No bearer token, refresh token, client secret, Firebase service-account credential, or translator key belongs here.
+LEGEND_API_BASE_URL=
+LEGEND_ENTRA_TENANT_ID=
+LEGEND_ENTRA_CLIENT_ID=
+LEGEND_ENTRA_AUTHORITY=
+LEGEND_ENTRA_SCOPE=
+LEGEND_MSAL_REDIRECT_URI=
+LEGEND_MSAL_SIGNATURE_HASH=

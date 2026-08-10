@@ -1,0 +1,11 @@
+.gradle/
+gradle/gradle-daemon-jvm.properties
+.idea/
+local.properties
+legend.properties
+build/
+app/build/
+app/google-services.json
+app/src/*/assets/legend-runtime.json
+*.jks
+*.keystore
