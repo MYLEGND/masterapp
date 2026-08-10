@@ -8,13 +8,14 @@ import com.mylegnd.legend.registered.core.push.FcmPushRegistrationCoordinator
 import com.mylegnd.legend.registered.core.push.LegendFirebaseMessagingService
 import com.mylegnd.legend.registered.core.navigation.LegendNotificationNavigation
 import com.mylegnd.legend.registered.core.config.LegendRuntimeConfigurationLoader
+import com.mylegnd.legend.registered.core.design.LegendDesignAuthority
 import com.mylegnd.legend.registered.core.network.AccessTokenProvider
 import com.mylegnd.legend.registered.core.network.LegendApiClient
 import com.mylegnd.legend.registered.core.media.AuthenticatedMediaRepository
 import com.mylegnd.legend.registered.core.session.SessionRepository
 import com.mylegnd.legend.registered.data.*
 
-class LegendApplication : Application() { lateinit var container: LegendContainer; private set; override fun onCreate() { super.onCreate(); LegendFirebaseMessagingService.ensureNotificationChannel(this); container = LegendContainer(this) } }
+class LegendApplication : Application() { lateinit var container: LegendContainer; private set; override fun onCreate() { super.onCreate(); LegendDesignAuthority.initialize(this); LegendFirebaseMessagingService.ensureNotificationChannel(this); container = LegendContainer(this) } }
 class LegendContainer(application: Application) {
     val configuration = LegendRuntimeConfigurationLoader.load(application)
     val auth: LegendAuthClient = MsalLegendAuthClient(application, configuration)

@@ -23,10 +23,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
@@ -95,17 +93,17 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
 private fun SignInScreen(onSignIn: (Activity) -> Unit) {
     val activity = LocalActivity.current
     Column(
-        Modifier.fillMaxSize().padding(32.dp),
+        Modifier.fillMaxSize().padding(LegendSpacing.Xxl),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Text("LEGEND®", style = MaterialTheme.typography.displayLarge, color = LegendColors.Navy)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(LegendSpacing.Md))
         Text(
             "Your account is secured by the LEGEND mobile identity service.",
             color = LegendColors.TextSecondary,
         )
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(LegendSpacing.PageBottom))
         LegendPrimaryButton("Sign in securely", enabled = activity != null) {
             activity?.let(onSignIn)
         }
@@ -114,9 +112,9 @@ private fun SignInScreen(onSignIn: (Activity) -> Unit) {
 
 @Composable
 private fun RoleSelectionScreen(roles: List<String>, select: (String) -> Unit) {
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+    Column(Modifier.fillMaxSize().padding(LegendSpacing.PageBottom), verticalArrangement = Arrangement.Center) {
         Text("Choose your experience", style = MaterialTheme.typography.headlineMedium, color = LegendColors.Navy)
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(LegendSpacing.PageHorizontal))
         roles.forEach { role ->
             LegendCard(Modifier.fillMaxWidth().clickable { select(role) }) {
                 Text("Continue as $role", style = MaterialTheme.typography.titleMedium)
@@ -264,7 +262,7 @@ private fun DiscoverScreen(viewModel: DiscoveryViewModel, participantType: Strin
                             LegendCard {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     LegendAvatar(result.displayName)
-                                    Spacer(Modifier.width(10.dp))
+                                    Spacer(Modifier.width(LegendSpacing.Sm))
                                     Column(Modifier.weight(1f)) {
                                         Text(result.displayName, style = MaterialTheme.typography.titleMedium)
                                         result.headline?.let { Text(it, color = LegendColors.TextSecondary) }
@@ -319,7 +317,7 @@ private fun CommunitySafetyDialog(
         title = { Text(if (reporting) "Report ${target.displayName}" else "Safety actions") },
         text = {
             if (reporting) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                     OutlinedTextField(category, { category = it }, label = { Text("Reason") }, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(detail, { detail = it }, label = { Text("Details (optional)") }, modifier = Modifier.fillMaxWidth())
                 }
@@ -527,7 +525,7 @@ private fun MessageThread(
 ) {
     var draft by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
             items(messages, key = { it.id }) { message ->
                 Row(
                     Modifier.fillMaxWidth(),
@@ -537,8 +535,8 @@ private fun MessageThread(
                         color = if (message.isMine) LegendColors.Navy else LegendColors.SurfaceInset,
                         shape = LegendShapes.Control,
                     ) {
-                        Column(Modifier.padding(10.dp)) {
-                            Text(message.body, color = if (message.isMine) Color.White else LegendColors.TextPrimary)
+                        Column(Modifier.padding(LegendSpacing.Sm)) {
+                            Text(message.body, color = if (message.isMine) LegendColors.OnNavy else LegendColors.TextPrimary)
                             message.originalBody?.takeIf { it != message.body }?.let {
                                 Text("Original: $it", style = MaterialTheme.typography.labelSmall, color = LegendColors.TextSecondary)
                             }
@@ -604,7 +602,7 @@ private fun SocialScreen(
                     SocialCollection.HACS -> snapshot.hacs
                 }
                 Column {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                         SocialCollection.entries.forEach { item ->
                             FilterChip(
                                 selected = collection == item,
@@ -674,7 +672,7 @@ private fun SocialPostCard(
     LegendCard(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             LegendAvatar(post.author.displayName)
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(LegendSpacing.Sm))
             Column(Modifier.weight(1f)) {
                 Text(post.author.displayName, style = MaterialTheme.typography.titleMedium)
                 post.author.username?.let { Text("@$it", style = MaterialTheme.typography.labelLarge, color = LegendColors.TextSecondary) }
@@ -704,12 +702,12 @@ private fun SocialPostCard(
                     "React",
                     tint = LegendColors.Gold,
                 )
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(LegendSpacing.Micro))
                 Text(post.reactionCount.toString())
             }
             TextButton(onClick = onComment, enabled = post.commentsEnabled) {
                 Icon(Icons.Default.ChatBubbleOutline, "Comments")
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(LegendSpacing.Micro))
                 Text(post.commentCount.toString())
             }
         }
@@ -732,11 +730,11 @@ private fun CreatePostSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = LegendColors.Midnight) {
         Column(
-            Modifier.fillMaxWidth().padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth().padding(LegendSpacing.Lg),
+            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md),
         ) {
-            Text("Create a LEGEND update", color = Color.White, style = MaterialTheme.typography.headlineMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Create a LEGEND update", color = LegendColors.OnNavy, style = MaterialTheme.typography.headlineMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 listOf("Post", "Story", "Hac").forEach { choice ->
                     FilterChip(
                         selected = contentType == choice,
@@ -765,7 +763,7 @@ private fun CreatePostSheet(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Default.PermMedia, null)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(LegendSpacing.Xs))
                 Text(if (selected.isEmpty()) "Add photo or video" else "${selected.size} media item(s) selected")
             }
             Button(
@@ -847,7 +845,7 @@ private fun AccountScreen(
                             LegendCard {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     LegendAvatar(account.displayName)
-                                    Spacer(Modifier.width(12.dp))
+                                    Spacer(Modifier.width(LegendSpacing.Md))
                                     Column {
                                         Text(account.displayName, style = MaterialTheme.typography.headlineMedium)
                                         account.username?.let { Text("@$it", color = LegendColors.TextSecondary) }

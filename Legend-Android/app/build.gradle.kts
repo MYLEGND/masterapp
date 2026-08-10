@@ -25,6 +25,8 @@ fun legendValue(name: String): String = legendProperties.getProperty(name)?.trim
 val legendRuntimeRoot = layout.buildDirectory.dir("generated/legend-runtime")
 val legendRuntimeAssets = legendRuntimeRoot.map { it.dir("assets") }
 val legendRuntimeRes = legendRuntimeRoot.map { it.dir("res") }
+val sharedLegendDesignSpec = rootProject.file("../Legend-Design/legend-design.tokens.json")
+val legendDesignAssets = layout.buildDirectory.dir("generated/legend-design/assets")
 val msalRedirectUri = legendValue("LEGEND_MSAL_REDIRECT_URI")
 // MSAL's config/Entra URI uses a URL-encoded Base64 hash. Android's manifest intent filter
 // needs that same hash decoded for its path matcher. Deriving both from one value prevents drift.
@@ -54,6 +56,12 @@ val generateLegendRuntimeConfiguration by tasks.registering(Sync::class) {
             "msalRedirectUri" to msalRedirectUri,
         ),
     )
+}
+
+/** Bundles the single cross-platform design authority without copying it into Android source. */
+val bundleLegendDesignSpecification by tasks.registering(Sync::class) {
+    from(sharedLegendDesignSpec)
+    into(legendDesignAssets)
 }
 
 android {
@@ -107,12 +115,14 @@ android {
 
     sourceSets.getByName("main") {
         assets.directories.add(legendRuntimeAssets.get().asFile.absolutePath)
+        assets.directories.add(legendDesignAssets.get().asFile.absolutePath)
         res.directories.add(legendRuntimeRes.get().asFile.absolutePath)
     }
 }
 
 tasks.named("preBuild").configure {
     dependsOn(generateLegendRuntimeConfiguration)
+    dependsOn(bundleLegendDesignSpecification)
 }
 
 dependencies {
