@@ -140,6 +140,8 @@ private fun AuthenticatedShell(
     signOut: () -> Unit,
 ) {
     var tab by remember { mutableStateOf(LegendTab.HOME) }
+    var requestedConversationId by remember { mutableStateOf<String?>(null) }
+    val notificationDestination by container.notificationNavigation.destination.collectAsStateWithLifecycle()
     val participantType = session.actor.identity.participantType
     val home: HomeViewModel = viewModel(
         factory = LegendViewModelFactory { HomeViewModel(container.homeRepository, participantType) },
@@ -158,6 +160,15 @@ private fun AuthenticatedShell(
     val account: AccountViewModel = viewModel(
         factory = LegendViewModelFactory { AccountViewModel(container.accountRepository, participantType) },
     )
+    LaunchedEffect(participantType) { container.fcmPushRegistration.registerForAuthenticatedActor(participantType) }
+    LaunchedEffect(notificationDestination) {
+        val destination = notificationDestination ?: return@LaunchedEffect
+        destination.conversationId?.let {
+            tab = LegendTab.MESSAGES
+            requestedConversationId = it
+        }
+        container.notificationNavigation.markHandled(destination)
+    }
 
     Scaffold(
         bottomBar = {
@@ -194,7 +205,11 @@ private fun AuthenticatedShell(
                 LegendTab.HOME -> HomeScreen(home)
                 LegendTab.DISCOVER -> DiscoverScreen(discovery, participantType)
                 LegendTab.SOCIAL -> SocialScreen(social, container.authenticatedMediaRepository, participantType)
-                LegendTab.MESSAGES -> MessagesScreen(messages)
+                LegendTab.MESSAGES -> MessagesScreen(
+                    viewModel = messages,
+                    requestedConversationId = requestedConversationId,
+                    onRequestedConversationOpened = { requestedConversationId = null },
+                )
                 LegendTab.ACCOUNT -> AccountScreen(account, container.financialRepository, participantType, signOut)
             }
         }
@@ -411,11 +426,24 @@ private fun HomeScreen(viewModel: HomeViewModel) {
 }
 
 @Composable
-private fun MessagesScreen(viewModel: MessagingViewModel) {
+private fun MessagesScreen(
+    viewModel: MessagingViewModel,
+    requestedConversationId: String?,
+    onRequestedConversationOpened: () -> Unit,
+) {
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<ConversationSummary?>(null) }
     LaunchedEffect(Unit) { viewModel.load() }
+    LaunchedEffect(requestedConversationId, conversations) {
+        val requestedId = requestedConversationId ?: return@LaunchedEffect
+        val rows = (conversations as? LoadState.Data<List<ConversationSummary>>)?.value ?: return@LaunchedEffect
+        rows.firstOrNull { it.id == requestedId }?.let { conversation ->
+            selected = conversation
+            viewModel.open(conversation.id)
+            onRequestedConversationOpened()
+        }
+    }
     LaunchedEffect(selected?.id) {
         LegendRealtimeEvents.conversationUpdates.collectLatest { changed ->
             if (changed == null || changed == selected?.id) {

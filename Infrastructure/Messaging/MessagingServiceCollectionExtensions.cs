@@ -59,6 +59,13 @@ public static class MessagingServiceCollectionExtensions
         .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
         services.AddSingleton<IApplePushGateway, ApplePushGateway>();
         services.AddHostedService<ApplePushDeliveryHostedService>();
+        services.AddHttpClient("FirebasePush", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddSingleton<IFirebaseAccessTokenProvider, FirebaseAccessTokenProvider>();
+        services.AddSingleton<IFirebasePushGateway, FirebasePushGateway>();
+        services.AddHostedService<FirebasePushDeliveryHostedService>();
         services.AddSingleton<IMessagingContactKeyProtector, MessagingContactKeyProtector>();
         services.AddSingleton<IMessageAttachmentStorage, MessagingAttachmentStorage>();
         services.AddSingleton<IMessagingRealtimePublisher, MessagingRealtimePublisher>();

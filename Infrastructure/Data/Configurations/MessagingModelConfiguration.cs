@@ -347,10 +347,16 @@ internal static class MessagingModelConfiguration
         entity.HasKey(x => x.Id);
         entity.Property(x => x.UserId).IsRequired().HasMaxLength(450);
         entity.Property(x => x.ParticipantType).IsRequired().HasMaxLength(40);
-        entity.Property(x => x.DeviceToken).IsRequired().HasMaxLength(512);
+        entity.Property(x => x.DeviceToken).IsRequired().HasMaxLength(4_096);
         entity.Property(x => x.TokenHash).IsRequired().HasMaxLength(128);
+        entity.Property(x => x.Provider)
+            .IsRequired()
+            .HasMaxLength(16)
+            // Existing rows are APNs registrations; this protects them during
+            // the provider-scoped unique-index migration.
+            .HasDefaultValue(MobilePushProviders.Apns);
         entity.Property(x => x.Environment).IsRequired().HasMaxLength(24);
-        entity.HasIndex(x => x.TokenHash).IsUnique();
+        entity.HasIndex(x => new { x.Provider, x.TokenHash }).IsUnique();
         entity.HasIndex(x => new { x.UserId, x.ParticipantType, x.IsActive });
     }
 

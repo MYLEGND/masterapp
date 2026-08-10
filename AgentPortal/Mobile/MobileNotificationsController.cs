@@ -202,6 +202,88 @@ public sealed class MobileNotificationsController : MobileApiControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Registers Android's opaque FCM transport token against the current typed
+    /// actor. Notification content, language, targeting, and badges continue to
+    /// originate exclusively from the server notification ledger.
+    /// </summary>
+    [HttpPut("devices/fcm")]
+    public async Task<IActionResult> RegisterFcmDevice(
+        [FromBody] MobileFcmDeviceRegistrationRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        if (string.IsNullOrWhiteSpace(request?.DeviceToken))
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "mobile_notification_device_required",
+                "An FCM device token is required.");
+        }
+
+        try
+        {
+            await _notifications.RegisterFcmDeviceAsync(
+                resolved.Actor!.Actor,
+                request.DeviceToken,
+                cancellationToken);
+        }
+        catch (ArgumentException)
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "mobile_notification_device_invalid",
+                "The FCM device token is invalid.");
+        }
+
+        var snapshot = await _notifications.GetSnapshotAsync(
+            resolved.Actor!.Actor,
+            take: 1,
+            cancellationToken);
+        return Ok(new MobileNotificationUnreadCountDto(
+            snapshot.Badge.UnreadCount,
+            snapshot.Badge.Revision,
+            snapshot.Badge.UpdatedUtc));
+    }
+
+    [HttpDelete("devices/fcm")]
+    public async Task<IActionResult> DeactivateFcmDevice(
+        [FromBody] MobileFcmDeviceRemovalRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        if (string.IsNullOrWhiteSpace(request?.DeviceToken))
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "mobile_notification_device_required",
+                "An FCM device token is required.");
+        }
+
+        try
+        {
+            await _notifications.DeactivateFcmDeviceAsync(
+                resolved.Actor!.Actor,
+                request.DeviceToken,
+                cancellationToken);
+        }
+        catch (ArgumentException)
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "mobile_notification_device_invalid",
+                "The FCM device token is invalid.");
+        }
+
+        return NoContent();
+    }
+
     private static MobileNotificationSnapshotDto ToResponse(NotificationSnapshot snapshot) => new(
         new MobileNotificationUnreadCountDto(
             snapshot.Badge.UnreadCount,
@@ -242,6 +324,10 @@ public sealed record MobileApnsDeviceRegistrationRequest(
     string? Environment = null);
 
 public sealed record MobileApnsDeviceRemovalRequest(string? DeviceToken);
+
+public sealed record MobileFcmDeviceRegistrationRequest(string? DeviceToken);
+
+public sealed record MobileFcmDeviceRemovalRequest(string? DeviceToken);
 
 public sealed record MobilePushDiagnosticDto(
     string RegistrationState,

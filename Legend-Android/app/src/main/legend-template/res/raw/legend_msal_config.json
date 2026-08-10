@@ -1,0 +1,13 @@
+{
+  "client_id": "${entraClientId}",
+  "redirect_uri": "${msalRedirectUri}",
+  "broker_redirect_uri_registered": true,
+  "account_mode": "SINGLE",
+  "authorities": [{
+    "type": "AAD",
+    "audience": {
+      "type": "AzureADMyOrg",
+      "tenant_id": "${entraTenantId}"
+    }
+  }]
+}

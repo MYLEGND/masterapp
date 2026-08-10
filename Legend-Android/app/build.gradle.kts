@@ -1,4 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.api.tasks.Sync
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.util.Properties
 
 plugins {
@@ -19,48 +22,38 @@ val legendProperties = Properties().apply {
 }
 fun legendValue(name: String): String = legendProperties.getProperty(name)?.trim().orEmpty()
 
-val legendRuntimeAssets = layout.buildDirectory.dir("generated/legend-runtime/assets")
-val legendRuntimeRes = layout.buildDirectory.dir("generated/legend-runtime/res")
+val legendRuntimeRoot = layout.buildDirectory.dir("generated/legend-runtime")
+val legendRuntimeAssets = legendRuntimeRoot.map { it.dir("assets") }
+val legendRuntimeRes = legendRuntimeRoot.map { it.dir("res") }
 val msalRedirectUri = legendValue("LEGEND_MSAL_REDIRECT_URI")
-val msalSignatureHash = msalRedirectUri.substringAfterLast('/', missingDelimiterValue = "")
+// MSAL's config/Entra URI uses a URL-encoded Base64 hash. Android's manifest intent filter
+// needs that same hash decoded for its path matcher. Deriving both from one value prevents drift.
+val msalSignatureHash = URLDecoder.decode(
+    msalRedirectUri.substringAfterLast('/', missingDelimiterValue = ""),
+    StandardCharsets.UTF_8,
+)
     .takeIf { it.isNotBlank() }
     ?: "unconfigured"
 
-val generateLegendRuntimeConfiguration by tasks.registering {
+/**
+ * Packages non-secret environment values into generated runtime resources.  A Sync task keeps
+ * this work configuration-cache compatible: it owns only immutable input values and declared
+ * output directories, rather than a build-script closure captured by a DefaultTask action.
+ */
+val generateLegendRuntimeConfiguration by tasks.registering(Sync::class) {
     inputs.file(rootProject.file("legend.properties")).optional()
-    outputs.dir(legendRuntimeAssets)
-    outputs.dir(legendRuntimeRes)
-    doLast {
-        fun String.jsonEscaped() = replace("\\", "\\\\").replace("\"", "\\\"")
-        val assetsDirectory = legendRuntimeAssets.get().asFile.apply { mkdirs() }
-        assetsDirectory.resolve("legend-runtime.json").writeText(
-            """{
-              |  "apiBaseUrl": "${legendValue("LEGEND_API_BASE_URL").jsonEscaped()}",
-              |  "entraClientId": "${legendValue("LEGEND_ENTRA_CLIENT_ID").jsonEscaped()}",
-              |  "entraAuthority": "${legendValue("LEGEND_ENTRA_AUTHORITY").jsonEscaped()}",
-              |  "entraScope": "${legendValue("LEGEND_ENTRA_SCOPE").jsonEscaped()}",
-              |  "msalRedirectUri": "${msalRedirectUri.jsonEscaped()}"
-              |}
-            """.trimMargin(),
-        )
-        val rawDirectory = legendRuntimeRes.get().asFile.resolve("raw").apply { mkdirs() }
-        rawDirectory.resolve("legend_msal_config.json").writeText(
-            """{
-              |  "client_id": "${legendValue("LEGEND_ENTRA_CLIENT_ID").jsonEscaped()}",
-              |  "redirect_uri": "${msalRedirectUri.jsonEscaped()}",
-              |  "broker_redirect_uri_registered": true,
-              |  "account_mode": "SINGLE",
-              |  "authorities": [{
-              |    "type": "AAD",
-              |    "audience": {
-              |      "type": "AzureADMyOrg",
-              |      "tenant_id": "${legendValue("LEGEND_ENTRA_TENANT_ID").jsonEscaped()}"
-              |    }
-              |  }]
-              |}
-            """.trimMargin(),
-        )
-    }
+    from("src/main/legend-template")
+    into(legendRuntimeRoot)
+    expand(
+        mapOf(
+            "apiBaseUrl" to legendValue("LEGEND_API_BASE_URL"),
+            "entraClientId" to legendValue("LEGEND_ENTRA_CLIENT_ID"),
+            "entraAuthority" to legendValue("LEGEND_ENTRA_AUTHORITY"),
+            "entraScope" to legendValue("LEGEND_ENTRA_SCOPE"),
+            "entraTenantId" to legendValue("LEGEND_ENTRA_TENANT_ID"),
+            "msalRedirectUri" to msalRedirectUri,
+        ),
+    )
 }
 
 android {
@@ -113,8 +106,8 @@ android {
     }
 
     sourceSets.getByName("main") {
-        assets.srcDir(legendRuntimeAssets.get().asFile)
-        res.srcDir(legendRuntimeRes.get().asFile)
+        assets.directories.add(legendRuntimeAssets.get().asFile.absolutePath)
+        res.directories.add(legendRuntimeRes.get().asFile.absolutePath)
     }
 }
 
@@ -150,6 +143,7 @@ dependencies {
     implementation(libs.msal)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
+    implementation(libs.firebase.installations)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

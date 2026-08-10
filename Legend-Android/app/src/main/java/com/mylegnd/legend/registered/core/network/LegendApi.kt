@@ -47,6 +47,8 @@ interface LegendApi {
     @POST("api/v1/mobile/social/posts/{id}/view") suspend fun recordView(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: SocialViewRequest): Response<JsonObject>
 
     @GET("api/v1/mobile/notifications") suspend fun notifications(@Header("X-Legend-Participant-Type") participantType: String): Response<NotificationSnapshot>
+    @PUT("api/v1/mobile/notifications/devices/fcm") suspend fun registerFcmDevice(@Header("X-Legend-Participant-Type") participantType: String, @Body request: FcmDeviceTokenRequest): Response<NotificationBadge>
+    @HTTP(method = "DELETE", path = "api/v1/mobile/notifications/devices/fcm", hasBody = true) suspend fun deactivateFcmDevice(@Header("X-Legend-Participant-Type") participantType: String, @Body request: FcmDeviceTokenRequest): Response<Unit>
     @GET("api/v1/mobile/journey-circles") suspend fun journeyCircles(@Header("X-Legend-Participant-Type") participantType: String): Response<JourneyDashboard>
     @POST("api/v1/mobile/journey-circles/connections") suspend fun requestJourneyConnection(@Header("X-Legend-Participant-Type") participantType: String, @Body request: JourneyConnectionRequest): Response<Unit>
     @GET("api/v1/mobile/discovery/search") suspend fun discovery(@Header("X-Legend-Participant-Type") participantType: String, @Query("query") query: String? = null, @Query("offset") offset: Int = 0, @Query("pageSize") pageSize: Int = 24, @Query("sort") sort: String? = null): Response<DiscoveryPage>
@@ -55,6 +57,7 @@ interface LegendApi {
 }
 
 @kotlinx.serialization.Serializable data class EmptyRequest(val value: String? = null)
+@kotlinx.serialization.Serializable data class FcmDeviceTokenRequest(val deviceToken: String)
 @kotlinx.serialization.Serializable data class SocialViewRequest(val watchDurationSeconds: Double? = null, val watchCompletionPercentage: Double? = null, val storyInteractionType: String? = null)
 @kotlinx.serialization.Serializable data class NotificationSnapshot(val badge: NotificationBadge, val notifications: List<NotificationItem> = emptyList())
 @kotlinx.serialization.Serializable data class NotificationBadge(val unreadCount: Int, val revision: Long, val updatedUtc: String)

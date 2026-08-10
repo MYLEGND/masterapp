@@ -15,7 +15,9 @@ import com.mylegnd.legend.registered.ui.LegendRoot
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); val container = (application as LegendApplication).container
+        container.notificationNavigation.capture(intent)
         setContent { LegendTheme { val session: SessionViewModel = viewModel(factory = LegendViewModelFactory { SessionViewModel(container.sessionRepository) }); LaunchedEffect(Unit) { session.restore() }; LegendRoot(session, container) } }
     }
+    override fun onNewIntent(intent: android.content.Intent) { super.onNewIntent(intent); setIntent(intent); (application as LegendApplication).container.notificationNavigation.capture(intent) }
 }
 class LegendViewModelFactory<T : ViewModel>(private val creator: () -> T) : ViewModelProvider.Factory { @Suppress("UNCHECKED_CAST") override fun <R : ViewModel> create(modelClass: Class<R>): R = creator() as R }

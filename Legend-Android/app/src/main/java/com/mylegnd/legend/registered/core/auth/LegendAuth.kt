@@ -6,6 +6,7 @@ import com.microsoft.identity.client.*
 import com.microsoft.identity.client.exception.MsalException
 import com.mylegnd.legend.registered.R
 import com.mylegnd.legend.registered.core.config.LegendRuntimeConfiguration
+import com.mylegnd.legend.registered.core.logging.LegendLogger
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -22,7 +23,10 @@ class MsalLegendAuthClient(private val context: Context, private val configurati
         PublicClientApplication.createSingleAccountPublicClientApplication(context.applicationContext, R.raw.legend_msal_config,
             object : IPublicClientApplication.ISingleAccountApplicationCreatedListener {
                 override fun onCreated(application: ISingleAccountPublicClientApplication) = continuation.resume(application)
-                override fun onError(exception: MsalException) = continuation.resumeWithException(exception)
+                override fun onError(exception: MsalException) {
+                    LegendLogger.authenticationFailure("initialize", exception)
+                    continuation.resumeWithException(exception)
+                }
             })
     }
 
@@ -33,7 +37,10 @@ class MsalLegendAuthClient(private val context: Context, private val configurati
             app.getCurrentAccountAsync(object : ISingleAccountPublicClientApplication.CurrentAccountCallback {
                 override fun onAccountLoaded(activeAccount: IAccount?) = continuation.resume(activeAccount)
                 override fun onAccountChanged(priorAccount: IAccount?, currentAccount: IAccount?) = continuation.resume(currentAccount)
-                override fun onError(exception: MsalException) = continuation.resumeWithException(exception)
+                override fun onError(exception: MsalException) {
+                    LegendLogger.authenticationFailure("current_account", exception)
+                    continuation.resumeWithException(exception)
+                }
             })
         } ?: return null
         return acquireSilent(app, account)
@@ -47,7 +54,10 @@ class MsalLegendAuthClient(private val context: Context, private val configurati
                 .withScopes(resourceScopes())
                 .withCallback(object : AuthenticationCallback {
                     override fun onSuccess(result: IAuthenticationResult) = continuation.resume(result.accessToken)
-                    override fun onError(exception: MsalException) = continuation.resumeWithException(exception)
+                    override fun onError(exception: MsalException) {
+                        LegendLogger.authenticationFailure("interactive", exception)
+                        continuation.resumeWithException(exception)
+                    }
                     override fun onCancel() = continuation.resumeWithException(AuthenticationCancelledException())
                 }).build()
             app.signIn(parameters)

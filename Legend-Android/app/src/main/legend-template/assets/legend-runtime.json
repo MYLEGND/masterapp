@@ -1,0 +1,7 @@
+{
+  "apiBaseUrl": "${apiBaseUrl}",
+  "entraClientId": "${entraClientId}",
+  "entraAuthority": "${entraAuthority}",
+  "entraScope": "${entraScope}",
+  "msalRedirectUri": "${msalRedirectUri}"
+}

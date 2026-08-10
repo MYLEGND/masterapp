@@ -141,7 +141,21 @@ public interface INotificationEngine
         string environment,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Registers an FCM transport token for the typed actor. This does not
+    /// create a notification, choose a recipient, or translate any content.
+    /// </summary>
+    Task RegisterFcmDeviceAsync(
+        MessagingActor actor,
+        string deviceToken,
+        CancellationToken cancellationToken = default);
+
     Task DeactivateDeviceAsync(
+        MessagingActor actor,
+        string deviceToken,
+        CancellationToken cancellationToken = default);
+
+    Task DeactivateFcmDeviceAsync(
         MessagingActor actor,
         string deviceToken,
         CancellationToken cancellationToken = default);
@@ -161,7 +175,7 @@ internal sealed class NotificationEngine : INotificationEngine
 {
     private const int MaximumTitleLength = 240;
     private const int MaximumDetailLength = 1_000;
-    private const int MaximumDeviceTokenLength = 512;
+    private const int MaximumDeviceTokenLength = 4_096;
     private readonly MasterAppDbContext _db;
     private readonly IMessagingProfileImageResolver _participantIdentities;
     private readonly INotificationRealtimePublisher _realtime;
@@ -440,14 +454,41 @@ internal sealed class NotificationEngine : INotificationEngine
         string deviceToken,
         string environment,
         CancellationToken cancellationToken = default)
+        => await RegisterDeviceAsync(
+            actor,
+            MobilePushProviders.Apns,
+            deviceToken,
+            environment,
+            cancellationToken);
+
+    public async Task RegisterFcmDeviceAsync(
+        MessagingActor actor,
+        string deviceToken,
+        CancellationToken cancellationToken = default)
+        => await RegisterDeviceAsync(
+            actor,
+            MobilePushProviders.Fcm,
+            deviceToken,
+            environment: null,
+            cancellationToken);
+
+    private async Task RegisterDeviceAsync(
+        MessagingActor actor,
+        string provider,
+        string deviceToken,
+        string? environment,
+        CancellationToken cancellationToken)
     {
         var recipient = Normalize(actor);
-        var token = NormalizeDeviceToken(deviceToken);
-        var normalizedEnvironment = NormalizeEnvironment(environment);
+        var normalizedProvider = NormalizeProvider(provider);
+        var token = NormalizeDeviceToken(normalizedProvider, deviceToken);
+        var normalizedEnvironment = normalizedProvider == MobilePushProviders.Apns
+            ? NormalizeEnvironment(environment)
+            : "not-applicable";
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
         var now = DateTime.UtcNow;
         var device = await _db.MobilePushDevices.SingleOrDefaultAsync(
-            candidate => candidate.TokenHash == hash,
+            candidate => candidate.Provider == normalizedProvider && candidate.TokenHash == hash,
             cancellationToken);
         if (device is null)
         {
@@ -457,6 +498,7 @@ internal sealed class NotificationEngine : INotificationEngine
                 ParticipantType = recipient.ParticipantType,
                 DeviceToken = token,
                 TokenHash = hash,
+                Provider = normalizedProvider,
                 Environment = normalizedEnvironment,
                 IsActive = true,
                 CreatedUtc = now,
@@ -470,6 +512,7 @@ internal sealed class NotificationEngine : INotificationEngine
             device.UserId = recipient.UserId;
             device.ParticipantType = recipient.ParticipantType;
             device.DeviceToken = token;
+            device.Provider = normalizedProvider;
             device.Environment = normalizedEnvironment;
             device.IsActive = true;
             device.InvalidatedUtc = null;
@@ -484,12 +527,35 @@ internal sealed class NotificationEngine : INotificationEngine
         MessagingActor actor,
         string deviceToken,
         CancellationToken cancellationToken = default)
+        => await DeactivateDeviceAsync(
+            actor,
+            MobilePushProviders.Apns,
+            deviceToken,
+            cancellationToken);
+
+    public async Task DeactivateFcmDeviceAsync(
+        MessagingActor actor,
+        string deviceToken,
+        CancellationToken cancellationToken = default)
+        => await DeactivateDeviceAsync(
+            actor,
+            MobilePushProviders.Fcm,
+            deviceToken,
+            cancellationToken);
+
+    private async Task DeactivateDeviceAsync(
+        MessagingActor actor,
+        string provider,
+        string deviceToken,
+        CancellationToken cancellationToken)
     {
         var recipient = Normalize(actor);
-        var token = NormalizeDeviceToken(deviceToken);
+        var normalizedProvider = NormalizeProvider(provider);
+        var token = NormalizeDeviceToken(normalizedProvider, deviceToken);
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
         var device = await _db.MobilePushDevices.SingleOrDefaultAsync(
             candidate =>
+                candidate.Provider == normalizedProvider &&
                 candidate.TokenHash == hash &&
                 candidate.UserId == recipient.UserId &&
                 candidate.ParticipantType == recipient.ParticipantType,
@@ -513,7 +579,8 @@ internal sealed class NotificationEngine : INotificationEngine
             .AsNoTracking()
             .Where(candidate =>
                 candidate.UserId == recipient.UserId &&
-                candidate.ParticipantType == recipient.ParticipantType)
+                candidate.ParticipantType == recipient.ParticipantType &&
+                candidate.Provider == MobilePushProviders.Apns)
             .OrderByDescending(candidate => candidate.LastSeenUtc ?? candidate.UpdatedUtc)
             .ThenByDescending(candidate => candidate.UpdatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
@@ -586,13 +653,30 @@ internal sealed class NotificationEngine : INotificationEngine
             delivery.AttemptCount);
     }
 
-    private static string NormalizeDeviceToken(string? deviceToken)
+    private static string NormalizeProvider(string? provider) =>
+        string.Equals(provider, MobilePushProviders.Apns, StringComparison.OrdinalIgnoreCase)
+            ? MobilePushProviders.Apns
+            : string.Equals(provider, MobilePushProviders.Fcm, StringComparison.OrdinalIgnoreCase)
+                ? MobilePushProviders.Fcm
+                : throw new ArgumentException("The mobile push provider is invalid.", nameof(provider));
+
+    private static string NormalizeDeviceToken(string provider, string? deviceToken)
     {
-        var token = deviceToken?.Trim().ToLowerInvariant() ?? string.Empty;
-        if (token.Length is 0 or > MaximumDeviceTokenLength ||
-            token.Any(character => !Uri.IsHexDigit(character)))
+        var token = deviceToken?.Trim() ?? string.Empty;
+        if (token.Length is 0 or > MaximumDeviceTokenLength)
         {
-            throw new ArgumentException("The APNs device token is invalid.", nameof(deviceToken));
+            throw new ArgumentException("The mobile push device token is invalid.", nameof(deviceToken));
+        }
+
+        if (provider == MobilePushProviders.Apns)
+        {
+            token = token.ToLowerInvariant();
+            if (token.Any(character => !Uri.IsHexDigit(character)))
+                throw new ArgumentException("The APNs device token is invalid.", nameof(deviceToken));
+        }
+        else if (token.Any(character => !char.IsLetterOrDigit(character) && character is not '-' and not '_' and not ':'))
+        {
+            throw new ArgumentException("The FCM device token is invalid.", nameof(deviceToken));
         }
 
         return token;

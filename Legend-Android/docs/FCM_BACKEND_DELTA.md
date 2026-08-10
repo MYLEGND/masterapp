@@ -1,13 +1,14 @@
 # FCM backend delta
 
-Backend work is required before Android FCM tokens can be registered or delivered. This is a genuine platform-neutral transport gap, not an Android business rule.
+The required backend transport extension is implemented. It is a platform-neutral
+delivery change—not an Android business rule or a second notification system.
 
 Current `MobilePushDevices` is APNs-specific: one token hash, APNs `Environment`, APNs-only routes, diagnostics, and outbox worker. The minimum safe extension is:
 
-1. Add a provider discriminator (`apns` / `fcm`) to `MobilePushDevice`; scope uniqueness by `(provider, tokenHash)`.
-2. Generalize registration/deactivation behind `NotificationEngine` without changing ledger creation, recipient targeting, localization, or badge reconciliation.
-3. Add `PUT`/`DELETE /api/v1/mobile/notifications/devices/fcm` with the same typed actor resolution and token redaction as APNs.
-4. Add an FCM outbox transport that consumes the existing `MobilePushDelivery` records only for `fcm` devices. It must use the server's recipient-localized notification title/detail and current server badge—not Android-generated notification semantics.
-5. Preserve the existing APNs routes and worker unchanged in behavior.
+1. `MobilePushDevice.Provider` distinguishes `apns` and `fcm`; uniqueness is `(provider, tokenHash)`. Existing rows migrate as `apns`.
+2. `NotificationEngine` owns both registration paths while preserving its existing ledger creation, recipient targeting, localization, and badge reconciliation.
+3. Authenticated typed-actor endpoints exist at `PUT`/`DELETE /api/v1/mobile/notifications/devices/fcm`; opaque tokens are never returned or logged.
+4. The FCM HTTP v1 worker consumes only existing `MobilePushDelivery` records for `fcm` devices. It forwards server-created recipient-localized title/detail, current badge, notification id, and conversation id.
+5. APNs routes and APNs worker behavior remain unchanged; the APNs worker filters `Provider = apns`.
 
-No backend code or schema is changed in this Android bootstrap. The Android `FirebaseMessagingService` receives server messages and triggers REST reconciliation, but intentionally neither logs nor persists a raw FCM token until this contract exists.
+FCM delivery remains configuration-gated until a LEGEND Firebase project supplies its Android `google-services.json`, FCM project id, and a server-side service-account JSON through the deployment secret store. Neither artifact belongs in source control. Without those values, Android does not manufacture an FCM identity and the server safely suppresses FCM delivery while its notification ledger remains authoritative.

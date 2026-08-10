@@ -24,7 +24,13 @@ sealed interface SessionState {
     data class Failure(val message: String, val correlationId: String? = null) : SessionState
 }
 
-class SessionRepository(private val configuration: LegendRuntimeConfiguration, private val auth: LegendAuthClient, private val apiClient: () -> LegendApiClient, private val cache: SecureSessionStore) {
+class SessionRepository(
+    private val configuration: LegendRuntimeConfiguration,
+    private val auth: LegendAuthClient,
+    private val apiClient: () -> LegendApiClient,
+    private val cache: SecureSessionStore,
+    private val beforeSignOut: suspend () -> Unit = {},
+) {
     suspend fun restore(): SessionState {
         if (!configuration.isReady) return SessionState.ConfigurationRequired
         val cachedParticipantType = runCatching { cache.read()?.participantType }.getOrNull()
@@ -37,7 +43,7 @@ class SessionRepository(private val configuration: LegendRuntimeConfiguration, p
         val response = apiClient().api.selectRole(SelectRoleRequest(role)).legendBody()
         return authenticated(response.actor, response.permittedParticipantTypes, response.capabilities ?: MobileCapabilities())
     }
-    suspend fun signOut() { runCatching { auth.signOut() }; cache.clear() }
+    suspend fun signOut() { runCatching { beforeSignOut() }; runCatching { auth.signOut() }; cache.clear() }
     private suspend fun establish(preferredRole: String?): SessionState {
         val response = apiClient().api.session(preferredRole).legendBody()
         if (!response.authenticated) return SessionState.SignedOut

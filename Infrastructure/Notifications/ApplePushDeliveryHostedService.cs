@@ -557,7 +557,8 @@ internal sealed class ApplePushDeliveryHostedService : BackgroundService
                       delivery.AbandonedUtc == null &&
                       delivery.NextAttemptUtc <= now &&
                       delivery.AttemptCount < MaximumAttempts &&
-                      device.IsActive
+                      device.IsActive &&
+                      device.Provider == MobilePushProviders.Apns
                 orderby delivery.NextAttemptUtc, delivery.Id
                 select new DeliveryCandidate(
                     delivery.Id,
