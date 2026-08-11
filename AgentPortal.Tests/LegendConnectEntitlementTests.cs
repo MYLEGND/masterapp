@@ -212,6 +212,20 @@ public sealed class LegendConnectEntitlementTests
     public async Task EntitlementMutation_RequiresFounderAuthorityAndDoesNotContainMessageBodies()
     {
         await using var db = ControllerTestHelpers.BuildDb();
+        var client = Client(Account.UserId, "Entitlement");
+        db.ClientProfiles.Add(client);
+        db.ClientSubscriptions.Add(new ClientSubscription
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = client.Id,
+            AcceptedOfferId = Guid.NewGuid(),
+            OwnerAgentUserId = "founder",
+            Status = ClientSubscriptionStatus.Active,
+            PaymentStanding = ClientSubscriptionPaymentStanding.Current,
+            MonthlyAmountCents = 1,
+            Currency = "USD"
+        });
+        await db.SaveChangesAsync();
         var denied = Authority(db, new TranslationAccessStub(granted: true, founder: false), allowance: 100);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => denied.SetEntitlementAsync(
             "founder", new TranslationEntitlementMutation(Account, 250, false, "FounderCustom", true)));
@@ -225,6 +239,71 @@ public sealed class LegendConnectEntitlementTests
         Assert.DoesNotContain(typeof(LegendTranslationUsageLedger).GetProperties(), property =>
             property.Name.Contains("body", StringComparison.OrdinalIgnoreCase) ||
             property.Name.Contains("text", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task FounderAccountSearch_UsesOnlyActiveCurrentPayingClientCrmProfilesAndBoundsPreviews()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        for (var index = 1; index <= 9; index++)
+        {
+            var client = Client($"paid-client-{index}", index == 9 ? "Marisol" : $"Preview {index}");
+            client.CrmStatus = "Active";
+            db.ClientProfiles.Add(client);
+            db.ClientSubscriptions.Add(CurrentSubscription(client));
+        }
+
+        var closed = Client("lead-closed-account", "Closed");
+        closed.CrmStatus = "Active";
+        var noSubscription = Client("lead-no-subscription", "No Subscription");
+        noSubscription.CrmStatus = "Active";
+        var inactiveCrm = Client("lead-inactive-crm", "Inactive");
+        inactiveCrm.CrmStatus = "Lead";
+        db.ClientProfiles.AddRange(closed, noSubscription, inactiveCrm);
+        db.ClientSubscriptions.Add(CurrentSubscription(closed));
+        db.ClientSubscriptions.Add(CurrentSubscription(inactiveCrm));
+        db.AccountLifecycleRecords.Add(new AccountLifecycleRecord
+        {
+            Id = Guid.NewGuid(),
+            ProfileId = closed.Id,
+            UserId = closed.ClientUserId,
+            ParticipantType = MessagingParticipantTypes.Client,
+            State = Domain.Accounts.AccountLifecycleStates.Closed,
+            ClosedUtc = DateTime.UtcNow
+        });
+        db.ControlledResourceGrants.Add(new ControlledResourceGrant
+        {
+            UserId = closed.ClientUserId,
+            ParticipantType = MessagingParticipantTypes.Client,
+            ResourceType = ControlledResourceTypes.LanguageTranslation,
+            IsActive = true,
+            GrantedUtc = DateTime.UtcNow,
+            GrantedByUserId = "founder"
+        });
+        db.LegendTranslationEntitlements.Add(new LegendTranslationEntitlement
+        {
+            Id = Guid.NewGuid(),
+            UserId = closed.ClientUserId,
+            ParticipantType = MessagingParticipantTypes.Client,
+            MonthlyCharacterAllowance = 5,
+            EntitlementSource = "FounderManaged"
+        });
+        await db.SaveChangesAsync();
+
+        var authority = Authority(db, new TranslationAccessStub(granted: true, founder: true), allowance: 100);
+
+        var preview = await authority.SearchFounderAccountsAsync(null, 50);
+        var search = await authority.SearchFounderAccountsAsync("mar", 8);
+
+        Assert.Equal(8, preview.Accounts.Count);
+        Assert.True(preview.HasMore);
+        Assert.DoesNotContain(preview.Accounts, account => account.Account.UserId.StartsWith("lead-", StringComparison.Ordinal));
+        Assert.Single(search.Accounts);
+        Assert.Equal("paid-client-9", search.Accounts[0].Account.UserId);
+        Assert.False(search.HasMore);
+        Assert.True(await authority.IsFounderEntitlementEligibleAsync(new MessagingActor("paid-client-1", MessagingParticipantTypes.Client)));
+        Assert.False(await authority.IsFounderEntitlementEligibleAsync(new MessagingActor(closed.ClientUserId, MessagingParticipantTypes.Client)));
+        Assert.False(await authority.IsFounderEntitlementEligibleAsync(new MessagingActor(noSubscription.ClientUserId, MessagingParticipantTypes.Client)));
     }
 
     [Fact]
@@ -406,6 +485,18 @@ public sealed class LegendConnectEntitlementTests
         Id = Guid.NewGuid(), ClientUserId = userId, ExternalIdentityObjectId = userId,
         FirstName = "Group", LastName = suffix, Email = $"{userId}@example.test",
         CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+    };
+
+    private static ClientSubscription CurrentSubscription(ClientProfile client) => new()
+    {
+        Id = Guid.NewGuid(),
+        ClientProfileId = client.Id,
+        AcceptedOfferId = Guid.NewGuid(),
+        OwnerAgentUserId = "founder",
+        Status = ClientSubscriptionStatus.Active,
+        PaymentStanding = ClientSubscriptionPaymentStanding.Current,
+        MonthlyAmountCents = 1,
+        Currency = "USD"
     };
 
     private sealed class GroupCountingTranslationService : IAccountScopedTranslationService

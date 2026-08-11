@@ -1,3 +1,4 @@
+using Domain.Billing;
 using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
@@ -63,60 +64,75 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         return ToSnapshot(access, entitlement, usage, period);
     }
 
-    public async Task<IReadOnlyList<TranslationFounderAccountUsageSnapshot>> ListFounderAccountsAsync(
+    public async Task<TranslationFounderAccountSearchSnapshot> SearchFounderAccountsAsync(
+        string? search,
+        int take,
         CancellationToken cancellationToken = default)
     {
         var currentPeriod = CurrentPeriod();
-        var agents = await _db.AgentProfiles.AsNoTracking()
-            .Where(profile => profile.IsActive)
-            .Select(profile => new AccountDirectoryRow(
-                profile.AgentUserId,
-                MessagingParticipantTypes.Agent,
-                profile.FullName ?? profile.AgentUpn ?? profile.AgentUserId,
-                profile.Id))
-            .ToListAsync(cancellationToken);
-        var clients = await _db.ClientProfiles.AsNoTracking()
+        var normalizedSearch = NormalizeSearch(search);
+        var limit = Math.Clamp(take, 1, 8);
+        var profiles = ActiveCurrentPayingClients();
+        if (normalizedSearch is not null)
+        {
+            profiles = profiles.Where(profile =>
+                (profile.FirstName ?? string.Empty).ToLower().Contains(normalizedSearch) ||
+                (profile.LastName ?? string.Empty).ToLower().Contains(normalizedSearch) ||
+                (profile.Email ?? string.Empty).ToLower().Contains(normalizedSearch) ||
+                (profile.ClientUserId ?? string.Empty).ToLower().Contains(normalizedSearch));
+        }
+
+        var candidates = await profiles
+            .OrderBy(profile => profile.FirstName)
+            .ThenBy(profile => profile.LastName)
+            .ThenBy(profile => profile.Id)
             .Select(profile => new AccountDirectoryRow(
                 profile.ClientUserId,
                 MessagingParticipantTypes.Client,
                 (profile.FirstName + " " + profile.LastName).Trim(),
                 profile.Id))
+            .Take(limit + 1)
             .ToListAsync(cancellationToken);
-        var activeGrants = await _db.ControlledResourceGrants.AsNoTracking()
-            .Where(grant => grant.ResourceType == ControlledResourceTypes.LanguageTranslation)
-            .Select(grant => new AccountIdentityRow(grant.UserId, grant.ParticipantType))
-            .ToListAsync(cancellationToken);
-        var entitlements = await _db.Set<LegendTranslationEntitlement>().AsNoTracking().ToListAsync(cancellationToken);
-        var usage = await _db.Set<LegendTranslationUsagePeriod>().AsNoTracking()
-            .Where(item => item.PeriodStart == currentPeriod)
-            .ToListAsync(cancellationToken);
+        var hasMore = candidates.Count > limit;
+        var accounts = candidates
+            .Take(limit)
+            .Select(item => item with
+            {
+                UserId = Normalize(item.UserId),
+                ParticipantType = MessagingParticipantTypes.Client,
+                DisplayName = string.IsNullOrWhiteSpace(item.DisplayName) ? item.UserId : item.DisplayName.Trim()
+            })
+            .Where(item => item.UserId.Length > 0)
+            .ToArray();
+        if (accounts.Length == 0)
+        {
+            return new TranslationFounderAccountSearchSnapshot(
+                Array.Empty<TranslationFounderAccountUsageSnapshot>(),
+                normalizedSearch,
+                false);
+        }
 
-        var accounts = agents
-            .Concat(clients)
-            .Concat(activeGrants.Select(item => new AccountDirectoryRow(item.UserId, item.ParticipantType, item.UserId, null)))
-            .Concat(entitlements.Select(item => new AccountDirectoryRow(item.UserId, item.ParticipantType, item.UserId, null)))
-            .Concat(usage.Select(item => new AccountDirectoryRow(item.UserId, item.ParticipantType, item.UserId, null)))
-            .Select(item => item with { UserId = item.UserId.Trim().ToLowerInvariant(), ParticipantType = item.ParticipantType.Trim() })
-            .Where(item => !string.IsNullOrWhiteSpace(item.UserId) && !string.IsNullOrWhiteSpace(item.ParticipantType))
-            .GroupBy(item => (item.UserId, item.ParticipantType))
-            .Select(group => group.OrderByDescending(item => item.ProfileId.HasValue).First())
-            .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
-            .Take(500)
-            .ToList();
+        var userIds = accounts.Select(item => item.UserId).Distinct(StringComparer.Ordinal).ToArray();
+        var entitlements = await _db.Set<LegendTranslationEntitlement>().AsNoTracking()
+            .Where(item => item.ParticipantType == MessagingParticipantTypes.Client && userIds.Contains(item.UserId))
+            .ToListAsync(cancellationToken);
+        var usage = await _db.Set<LegendTranslationUsagePeriod>().AsNoTracking()
+            .Where(item => item.ParticipantType == MessagingParticipantTypes.Client &&
+                           item.PeriodStart == currentPeriod &&
+                           userIds.Contains(item.UserId))
+            .ToListAsync(cancellationToken);
         var entitlementByAccount = entitlements.ToDictionary(
-            item => (item.UserId.Trim().ToLowerInvariant(), item.ParticipantType),
+            item => (Normalize(item.UserId), item.ParticipantType),
             item => item);
         var usageByAccount = usage.ToDictionary(
-            item => (item.UserId.Trim().ToLowerInvariant(), item.ParticipantType),
+            item => (Normalize(item.UserId), item.ParticipantType),
             item => item);
-        var settingsByProfile = accounts.Where(item => item.ProfileId.HasValue).Select(item => item.ProfileId!.Value).ToArray();
-        var languagesByProfile = settingsByProfile.Length == 0
-            ? new Dictionary<Guid, string?>()
-            : await _db.MobileProfileSettings.AsNoTracking()
-                .Where(item => settingsByProfile.Contains(item.ProfileId))
-                .ToDictionaryAsync(item => item.ProfileId, item => item.PreferredCommunicationLanguage, cancellationToken);
+        var profileIds = accounts.Select(item => item.ProfileId!.Value).ToArray();
+        var languagesByProfile = await _db.MobileProfileSettings.AsNoTracking()
+            .Where(item => profileIds.Contains(item.ProfileId))
+            .ToDictionaryAsync(item => item.ProfileId, item => item.PreferredCommunicationLanguage, cancellationToken);
 
-        var result = new List<TranslationFounderAccountUsageSnapshot>(accounts.Count);
+        var result = new List<TranslationFounderAccountUsageSnapshot>(accounts.Length);
         foreach (var account in accounts)
         {
             var actor = new MessagingActor(account.UserId, account.ParticipantType);
@@ -137,7 +153,18 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
                 ToUsageMetrics(currentUsage)));
         }
 
-        return result;
+        return new TranslationFounderAccountSearchSnapshot(result, normalizedSearch, hasMore);
+    }
+
+    public async Task<bool> IsFounderEntitlementEligibleAsync(
+        MessagingActor account,
+        CancellationToken cancellationToken = default)
+    {
+        account = Normalize(account);
+        return account.ParticipantType == MessagingParticipantTypes.Client &&
+               await ActiveCurrentPayingClients().AnyAsync(
+                   profile => profile.ClientUserId.ToLower() == account.UserId,
+                   cancellationToken);
     }
 
     public IReadOnlyList<TranslationEntitlementPreset> GetFounderEntitlementPresets()
@@ -206,6 +233,12 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         var target = Normalize(mutation.Target);
         if (target.UserId.Length == 0 || target.ParticipantType.Length == 0 || mutation.CharacterAllowance < 0)
             throw new ArgumentException("The requested translation entitlement is invalid.", nameof(mutation));
+        if (!await IsFounderEntitlementEligibleAsync(target, cancellationToken))
+        {
+            throw new ArgumentException(
+                "Translation entitlement management is limited to active, current-paying Client CRM accounts.",
+                nameof(mutation));
+        }
 
         var source = Bound(mutation.EntitlementSource, 80) ?? "FounderManaged";
         var entitlement = await _db.Set<LegendTranslationEntitlement>()
@@ -771,6 +804,22 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
     private static bool IsRequestReference(string? reference) =>
         reference is { Length: 64 } && reference.All(character => char.IsAsciiHexDigit(character));
 
+    private IQueryable<ClientProfile> ActiveCurrentPayingClients() =>
+        _db.ClientProfiles
+            .AsNoTracking()
+            .Where(profile =>
+                !string.IsNullOrWhiteSpace(profile.ClientUserId) &&
+                profile.CrmStatus != null &&
+                profile.CrmStatus.ToLower() == "active" &&
+                !_db.AccountLifecycleRecords.Any(record =>
+                    record.ProfileId == profile.Id &&
+                    record.ParticipantType == MessagingParticipantTypes.Client &&
+                    record.State == Domain.Accounts.AccountLifecycleStates.Closed) &&
+                _db.ClientSubscriptions.Any(subscription =>
+                    subscription.ClientProfileId == profile.Id &&
+                    subscription.Status == ClientSubscriptionStatus.Active &&
+                    subscription.PaymentStanding == ClientSubscriptionPaymentStanding.Current));
+
     private static DateOnly CurrentPeriod()
     {
         var now = DateTime.UtcNow;
@@ -780,6 +829,10 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
     private static MessagingActor Normalize(MessagingActor actor) => new(
         actor.UserId?.Trim().ToLowerInvariant() ?? string.Empty,
         actor.ParticipantType?.Trim() ?? string.Empty);
+
+    private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;
+
+    private static string? NormalizeSearch(string? value) => Bound(value, 120)?.ToLowerInvariant();
 
     private static string? Bound(string? value, int maximumLength)
     {
@@ -793,8 +846,6 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         IDbContextTransaction? transaction,
         CancellationToken cancellationToken) =>
         transaction?.CommitAsync(cancellationToken) ?? Task.CompletedTask;
-
-    private sealed record AccountIdentityRow(string UserId, string ParticipantType);
 
     private sealed record AccountDirectoryRow(
         string UserId,

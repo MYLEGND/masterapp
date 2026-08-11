@@ -126,9 +126,9 @@
 
     <section class="dashboard-analytics-panel" aria-labelledby="account-usage-title">
         <div class="dashboard-section-head dashboard-section-head-tight">
-            <div><span class="dashboard-section-kicker">Account authority</span><h2 class="dashboard-section-title" id="account-usage-title">Translation accounts and usage</h2></div>
+            <div><span class="dashboard-section-kicker">Client CRM authority</span><h2 class="dashboard-section-title" id="account-usage-title">Active subscription translation accounts</h2></div>
         </div>
-        <p class="dashboard-section-copy">Permission, entitlement, and consumption are separate server authorities. Provider work starts only after a permitted account has an atomically reserved allowance; unlimited accounts remain fully metered.</p>
+        <p class="dashboard-section-copy">Only active Client CRM records with a current paid subscription are searchable here. Historic access, usage, and removed accounts are not an account directory. Permission, entitlement, and consumption remain separate server authorities.</p>
         <div class="dashboard-hero-stats" aria-label="Current account translation usage">
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider operations</span><span class="dashboard-stat-value">@dashboard.ProviderOperationCount.ToString("N0")</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider-billable characters</span><span class="dashboard-stat-value">@dashboard.ProviderBillableCharacters.ToString("N0")</span></div>
@@ -141,15 +141,37 @@
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">High consumption accounts</span><span class="dashboard-stat-value">@accountScale.HighConsumptionAccountCount</span></div>
         </div>
 
+        <form method="get" asp-action="Index" class="dashboard-search-panel" role="search" aria-label="Search active paying Client CRM accounts">
+            @if (Model.SelectedLanguage is { } selectedLanguage)
+            {
+                <input type="hidden" name="language" value="@selectedLanguage.LanguageCode" />
+            }
+            @if (Model.SelectedPair is { } selectedPair)
+            {
+                <input type="hidden" name="pair" value="@selectedPair.PairKey" />
+            }
+            <div class="dashboard-form-grid">
+                <label class="dashboard-form-field dashboard-form-field--wide"><span>Find a Client CRM account</span><input type="search" name="account" value="@Model.AccountSearchQuery" maxlength="120" autocomplete="off" placeholder="Name, email, or LEGEND client ID" /></label>
+            </div>
+            <div class="search-actions">
+                <button type="submit" class="dashboard-command-action btn-carrier-settings">Search clients</button>
+                @if (!string.IsNullOrWhiteSpace(Model.AccountSearchQuery))
+                {
+                    <a asp-action="Index" asp-route-language="@(Model.SelectedLanguage?.LanguageCode)" asp-route-pair="@(Model.SelectedPair?.PairKey)" class="dashboard-command-action btn-carrier-settings">Clear search</a>
+                }
+            </div>
+        </form>
+
         @if (accountUsage.Count == 0)
         {
-            <p class="dashboard-section-copy">No eligible LEGEND accounts are currently available for translation access management.</p>
+            <p class="dashboard-section-copy">No active, current-paying Client CRM account matched this search.</p>
         }
         else
         {
+            <p class="dashboard-section-copy">Showing @accountUsage.Count preview@(accountUsage.Count == 1 ? string.Empty : "s")@(Model.HasAdditionalAccountResults ? ". Refine the search to locate another active subscriber." : ".")</p>
             <div class="dashboard-data-surface">
                 <table class="table dashboard-data-table">
-                    <thead><tr><th>Account</th><th>Access</th><th>Preferred language</th><th>Allowance</th><th>Consumed</th><th>Remaining</th><th>Usage</th><th>Period / reset</th><th>Source</th><th>Last activity</th><th>Founder action</th></tr></thead>
+                    <thead><tr><th>Client</th><th>Translation state</th><th>Current period</th><th>Founder parameters</th></tr></thead>
                     <tbody>
                     @foreach (var account in accountUsage)
                     {
@@ -158,27 +180,24 @@
                             ? entitlement.EntitlementSource["Preset:".Length..]
                             : string.Empty;
                         <tr>
-                            <td>@account.DisplayName<br /><small>@account.Account.ParticipantType · @account.Account.UserId</small></td>
-                            <td>@account.AccessState</td>
-                            <td>@(account.PreferredLanguage ?? "Not set")</td>
-                            <td>@(entitlement.IsUnlimited ? "Unlimited" : entitlement.CharacterAllowance.ToString("N0"))</td>
-                            <td>@entitlement.ConsumedCharacters.ToString("N0")</td>
-                            <td>@(entitlement.IsUnlimited ? "Unlimited" : entitlement.RemainingCharacters?.ToString("N0") ?? "0")</td>
-                            <td>@entitlement.PercentUsed.ToString("N2")%</td>
-                            <td>@entitlement.PeriodStartUtc.ToString("yyyy-MM-dd")<br /><small>Resets @entitlement.NextResetUtc.ToString("u")</small></td>
-                            <td>@entitlement.EntitlementSource@(entitlement.IsFounderOverride ? " · Founder override" : string.Empty)</td>
-                            <td>@(entitlement.LastTranslationActivityUtc?.ToString("u") ?? "No translation activity")</td>
+                            <td>@account.DisplayName<br /><small>Client CRM · @account.Account.UserId</small></td>
+                            <td>@account.AccessState<br /><small>Language: @(account.PreferredLanguage ?? "Not set")</small></td>
+                            <td>@(entitlement.IsUnlimited ? "Unlimited" : $"{entitlement.ConsumedCharacters:N0} / {entitlement.CharacterAllowance:N0}")<br /><small>@(entitlement.IsUnlimited ? "Fully metered" : $"{entitlement.RemainingCharacters?.ToString("N0") ?? "0"} remaining") · resets @entitlement.NextResetUtc.ToString("yyyy-MM-dd")</small></td>
                             <td>
-                                <form method="post" asp-action="UpdateEntitlement" class="dashboard-inline-command-form">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="TargetUserId" value="@account.Account.UserId" />
-                                    <input type="hidden" name="TargetParticipantType" value="@account.Account.ParticipantType" />
-                                    <label><span class="visually-hidden">Access</span><select name="AccessGranted"><option value="true" selected="@(account.AccessState == "Granted")">Grant</option><option value="false" selected="@(account.AccessState != "Granted")">Revoke</option></select></label>
-                                    <label><span class="visually-hidden">Allowance mode</span><select name="EntitlementMode"><option value="Custom" selected="@(!entitlement.IsUnlimited && string.IsNullOrWhiteSpace(presetSource))">Custom</option><option value="Unlimited" selected="@entitlement.IsUnlimited">Unlimited</option>@foreach (var preset in Model.EntitlementPresets) { <option value="Preset" data-preset="@preset.Key" selected="@(string.Equals(presetSource, preset.Key, StringComparison.OrdinalIgnoreCase))">Preset: @preset.DisplayName (@preset.CharacterAllowance.ToString("N0"))</option> }</select></label>
-                                    <label><span class="visually-hidden">Preset key</span><select name="PresetKey"><option value="">Select preset</option>@foreach (var preset in Model.EntitlementPresets) { <option value="@preset.Key" selected="@(string.Equals(presetSource, preset.Key, StringComparison.OrdinalIgnoreCase))">@preset.DisplayName</option> }</select></label>
-                                    <label><span class="visually-hidden">Custom monthly character allowance</span><input type="number" name="CustomCharacterAllowance" min="0" value="@entitlement.CharacterAllowance" /></label>
-                                    <button type="submit" class="dashboard-command-action btn-carrier-settings">Save</button>
-                                </form>
+                                <details>
+                                    <summary>Set access and allowance</summary>
+                                    <form method="post" asp-action="UpdateEntitlement" class="dashboard-inline-command-form">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="TargetUserId" value="@account.Account.UserId" />
+                                        <input type="hidden" name="TargetParticipantType" value="@account.Account.ParticipantType" />
+                                        <input type="hidden" name="ReturnAccountSearch" value="@Model.AccountSearchQuery" />
+                                        <label><span class="visually-hidden">Access</span><select name="AccessGranted"><option value="true" selected="@(account.AccessState == "Granted")">Grant</option><option value="false" selected="@(account.AccessState != "Granted")">Revoke</option></select></label>
+                                        <label><span class="visually-hidden">Allowance mode</span><select name="EntitlementMode"><option value="Custom" selected="@(!entitlement.IsUnlimited && string.IsNullOrWhiteSpace(presetSource))">Custom</option><option value="Unlimited" selected="@entitlement.IsUnlimited">Unlimited</option><option value="Preset" selected="@(!string.IsNullOrWhiteSpace(presetSource))">Configured preset</option></select></label>
+                                        <label><span class="visually-hidden">Preset key</span><select name="PresetKey"><option value="">Select preset</option>@foreach (var preset in Model.EntitlementPresets) { <option value="@preset.Key" selected="@(string.Equals(presetSource, preset.Key, StringComparison.OrdinalIgnoreCase))">@preset.DisplayName (@preset.CharacterAllowance.ToString("N0"))</option> }</select></label>
+                                        <label><span class="visually-hidden">Custom monthly character allowance</span><input type="number" name="CustomCharacterAllowance" min="0" value="@entitlement.CharacterAllowance" /></label>
+                                        <button type="submit" class="dashboard-command-action btn-carrier-settings">Save parameters</button>
+                                    </form>
+                                </details>
                             </td>
                         </tr>
                     }

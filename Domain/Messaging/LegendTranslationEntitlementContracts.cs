@@ -38,6 +38,17 @@ public sealed record TranslationFounderAccountUsageSnapshot(
     TranslationAccountEntitlementSnapshot Entitlement,
     TranslationAccountUsageMetrics Usage);
 
+/// <summary>
+/// Bounded, CRM-backed Founder account selection for translation management.
+/// The account directory is intentionally not reconstructed from historic
+/// grants, entitlements, or usage: only active, current-paying Client CRM
+/// records are eligible for the operational surface.
+/// </summary>
+public sealed record TranslationFounderAccountSearchSnapshot(
+    IReadOnlyList<TranslationFounderAccountUsageSnapshot> Accounts,
+    string? Query,
+    bool HasMore);
+
 public sealed record TranslationAccountUsageMetrics(
     long ProviderOperationCount,
     long ProviderBillableCharacters,
@@ -109,7 +120,13 @@ public interface ITranslationEntitlementAuthority
         MessagingActor account,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<TranslationFounderAccountUsageSnapshot>> ListFounderAccountsAsync(
+    Task<TranslationFounderAccountSearchSnapshot> SearchFounderAccountsAsync(
+        string? search,
+        int take,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> IsFounderEntitlementEligibleAsync(
+        MessagingActor account,
         CancellationToken cancellationToken = default);
 
     Task<TranslationFounderScaleSnapshot> GetFounderScaleAsync(

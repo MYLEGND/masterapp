@@ -22,17 +22,25 @@ public sealed class LegendConnectController : Controller
         _logger = logger;
     }
 
+    [NonAction]
+    public Task<IActionResult> Index(
+        string? language,
+        string? pair,
+        CancellationToken cancellationToken) =>
+        Index(language, pair, null, cancellationToken);
+
     [HttpGet]
     [Route("founder/legend-connect")]
     public async Task<IActionResult> Index(
         [FromQuery] string? language,
         [FromQuery] string? pair,
+        [FromQuery(Name = "account")] string? accountSearch,
         CancellationToken cancellationToken)
     {
         try
         {
             ViewData["Title"] = "Legend Connect";
-            return View(await _service.GetDashboardAsync(User, language, pair, cancellationToken));
+            return View(await _service.GetDashboardAsync(User, language, pair, cancellationToken, accountSearch));
         }
         catch (ForbidResultException)
         {
@@ -106,7 +114,7 @@ public sealed class LegendConnectController : Controller
         {
             var result = await _service.UpdateEntitlementAsync(User, input, cancellationToken);
             TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
-            return RedirectToAction(nameof(Index));
+            return RedirectToAction(nameof(Index), new { account = input.ReturnAccountSearch });
         }
         catch (ForbidResultException)
         {

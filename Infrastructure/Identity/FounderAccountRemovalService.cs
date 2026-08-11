@@ -772,6 +772,15 @@ public sealed class FounderAccountRemovalService : IFounderAccountRemovalService
         _db.ControlledResourceGrants.RemoveRange(await _db.ControlledResourceGrants
             .Where(item => userIds.Contains(item.UserId.ToLower()) && item.ParticipantType == participantType)
             .ToArrayAsync(cancellationToken));
+        _db.LegendTranslationUsageLedgers.RemoveRange(await _db.LegendTranslationUsageLedgers
+            .Where(item => userIds.Contains(item.UserId.ToLower()) && item.ParticipantType == participantType)
+            .ToArrayAsync(cancellationToken));
+        _db.LegendTranslationUsagePeriods.RemoveRange(await _db.LegendTranslationUsagePeriods
+            .Where(item => userIds.Contains(item.UserId.ToLower()) && item.ParticipantType == participantType)
+            .ToArrayAsync(cancellationToken));
+        _db.LegendTranslationEntitlements.RemoveRange(await _db.LegendTranslationEntitlements
+            .Where(item => userIds.Contains(item.UserId.ToLower()) && item.ParticipantType == participantType)
+            .ToArrayAsync(cancellationToken));
         _db.VerificationReviewRequests.RemoveRange(await _db.VerificationReviewRequests
             .Where(item => userIds.Contains(item.RequesterUserId.ToLower()) && item.RequesterParticipantType == participantType)
             .ToArrayAsync(cancellationToken));

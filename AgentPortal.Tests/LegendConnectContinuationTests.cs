@@ -293,9 +293,20 @@ public sealed class LegendConnectContinuationTests
             await using var db = ControllerTestHelpers.BuildDb();
             var configuration = Configuration();
             var registry = new LegendLanguageRegistry(db, configuration);
-            var service = new FounderLegendConnectService(Operations(db, registry, configuration));
             var founder = ControllerTestHelpers.BuildUser(founderOid);
             var stranger = ControllerTestHelpers.BuildUser(Guid.NewGuid().ToString());
+            db.AgentProfiles.Add(new AgentProfile
+            {
+                Id = Guid.NewGuid(),
+                AgentUserId = founderOid,
+                AgentUpn = "founder@example.test",
+                NormalizedEmail = "founder@example.test",
+                IsActive = true
+            });
+            await db.SaveChangesAsync();
+            var service = new FounderLegendConnectService(
+                Operations(db, registry, configuration),
+                new AgentProfileAccessResolver(db));
             var controller = new LegendConnectController(service, NullLogger<LegendConnectController>.Instance)
             {
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = founder } }

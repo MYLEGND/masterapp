@@ -13,17 +13,20 @@ namespace AgentPortal.Services;
 public sealed class FounderLegendConnectService
 {
     private readonly ILegendConnectOperations _operations;
+    private readonly AgentProfileAccessResolver _agentProfiles;
     private readonly ITranslationEntitlementAuthority? _entitlements;
     private readonly IMessagingService? _messaging;
     private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
 
     public FounderLegendConnectService(
         ILegendConnectOperations operations,
+        AgentProfileAccessResolver agentProfiles,
         ITranslationEntitlementAuthority? entitlements = null,
         IMessagingService? messaging = null,
         ILegendConnectRuntimePolicyAuthority? runtimePolicy = null)
     {
         _operations = operations;
+        _agentProfiles = agentProfiles;
         _entitlements = entitlements;
         _messaging = messaging;
         _runtimePolicy = runtimePolicy;
@@ -33,9 +36,10 @@ public sealed class FounderLegendConnectService
         ClaimsPrincipal user,
         string? language,
         string? pair,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? accountSearch = null)
     {
-        FounderGuard.EnsureFounderOrThrow(user);
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
         var dashboard = await _operations.GetDashboardAsync(cancellationToken);
         var selectedLanguageKnowledge = string.IsNullOrWhiteSpace(language)
             ? null
@@ -43,9 +47,12 @@ public sealed class FounderLegendConnectService
         var selectedPair = string.IsNullOrWhiteSpace(pair)
             ? null
             : await _operations.GetPairHealthAsync(pair, cancellationToken);
-        var accountUsage = _entitlements is null
-            ? Array.Empty<TranslationFounderAccountUsageSnapshot>()
-            : await _entitlements.ListFounderAccountsAsync(cancellationToken);
+        var accountDirectory = _entitlements is null
+            ? new TranslationFounderAccountSearchSnapshot(
+                Array.Empty<TranslationFounderAccountUsageSnapshot>(),
+                null,
+                false)
+            : await _entitlements.SearchFounderAccountsAsync(accountSearch, 8, cancellationToken);
         var accountScale = _entitlements is null
             ? new TranslationFounderScaleSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0)
             : await _entitlements.GetFounderScaleAsync(cancellationToken);
@@ -67,7 +74,9 @@ public sealed class FounderLegendConnectService
             SelectedLanguage = selectedLanguageKnowledge?.Health,
             SelectedLanguageKnowledge = selectedLanguageKnowledge,
             SelectedPair = selectedPair,
-            AccountUsage = accountUsage,
+            AccountUsage = accountDirectory.Accounts,
+            AccountSearchQuery = accountDirectory.Query,
+            HasAdditionalAccountResults = accountDirectory.HasMore,
             AccountScale = accountScale,
             EntitlementPresets = _entitlements?.GetFounderEntitlementPresets() ?? Array.Empty<TranslationEntitlementPreset>(),
             RuntimePolicy = runtimePolicy,
@@ -82,12 +91,12 @@ public sealed class FounderLegendConnectService
         FounderLegendConnectRuntimePolicyInput input,
         CancellationToken cancellationToken = default)
     {
-        FounderGuard.EnsureFounderOrThrow(user);
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
         if (_runtimePolicy is null)
             return new FounderLegendConnectOperationResult(false, "Legend Connect runtime policy authority is unavailable.");
         try
         {
-            await _runtimePolicy.UpdateAsync(FounderId(user), new LegendConnectRuntimePolicyMutation(
+            await _runtimePolicy.UpdateAsync(founder, new LegendConnectRuntimePolicyMutation(
                 input.MonthlyProviderCapacityCharacters,
                 input.LiveTranslationReserveCharacters,
                 input.MaximumSafeCorpusConsumptionCharacters,
@@ -106,10 +115,10 @@ public sealed class FounderLegendConnectService
         ClaimsPrincipal user,
         CancellationToken cancellationToken = default)
     {
-        FounderGuard.EnsureFounderOrThrow(user);
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
         if (_runtimePolicy is null)
             return new FounderLegendConnectOperationResult(false, "Legend Connect runtime policy authority is unavailable.");
-        var readiness = await _runtimePolicy.ActivateAsync(FounderId(user), cancellationToken);
+        var readiness = await _runtimePolicy.ActivateAsync(founder, cancellationToken);
         return new FounderLegendConnectOperationResult(
             readiness.State is "ACTIVE" or "ACTIVE — NO ELIGIBLE WORK",
             readiness.Summary);
@@ -119,10 +128,10 @@ public sealed class FounderLegendConnectService
         ClaimsPrincipal user,
         CancellationToken cancellationToken = default)
     {
-        FounderGuard.EnsureFounderOrThrow(user);
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
         if (_runtimePolicy is null)
             return new FounderLegendConnectOperationResult(false, "Legend Connect runtime policy authority is unavailable.");
-        await _runtimePolicy.PauseAsync(FounderId(user), cancellationToken);
+        await _runtimePolicy.PauseAsync(founder, cancellationToken);
         return new FounderLegendConnectOperationResult(true, "Autonomous acquisition is paused. Live communication and Azure fallback remain available.");
     }
 
@@ -131,12 +140,12 @@ public sealed class FounderLegendConnectService
         FounderLegendConnectPriorityOverrideInput input,
         CancellationToken cancellationToken = default)
     {
-        FounderGuard.EnsureFounderOrThrow(user);
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
         if (_runtimePolicy is null)
             return new FounderLegendConnectOperationResult(false, "Legend Connect runtime policy authority is unavailable.");
         try
         {
-            await _runtimePolicy.ConfigurePriorityOverrideAsync(FounderId(user),
+            await _runtimePolicy.ConfigurePriorityOverrideAsync(founder,
                 new LegendConnectPriorityOverrideMutation(input.LanguageCode, input.PairKey, null), cancellationToken);
             return new FounderLegendConnectOperationResult(true, "Founder priority override is active. The existing planner now orders only eligible matching work first.");
         }
@@ -150,10 +159,10 @@ public sealed class FounderLegendConnectService
         ClaimsPrincipal user,
         CancellationToken cancellationToken = default)
     {
-        FounderGuard.EnsureFounderOrThrow(user);
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
         if (_runtimePolicy is null)
             return new FounderLegendConnectOperationResult(false, "Legend Connect runtime policy authority is unavailable.");
-        await _runtimePolicy.DisablePriorityOverrideAsync(FounderId(user), cancellationToken);
+        await _runtimePolicy.DisablePriorityOverrideAsync(founder, cancellationToken);
         return new FounderLegendConnectOperationResult(true, "Founder priority override is disabled. The existing demand-driven planner is active immediately.");
     }
 
@@ -162,7 +171,7 @@ public sealed class FounderLegendConnectService
         FounderLegendConnectEntitlementInput input,
         CancellationToken cancellationToken = default)
     {
-        FounderGuard.EnsureFounderOrThrow(user);
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
         if (_entitlements is null || _messaging is null)
             return new FounderLegendConnectEntitlementResult(false, "Legend Connect entitlement authority is unavailable.");
 
@@ -171,9 +180,17 @@ public sealed class FounderLegendConnectService
         if (string.IsNullOrWhiteSpace(targetUserId) || string.IsNullOrWhiteSpace(participantType))
             return new FounderLegendConnectEntitlementResult(false, "Choose a valid LEGEND account.");
 
+        var target = new MessagingActor(targetUserId, participantType);
+        if (!await _entitlements.IsFounderEntitlementEligibleAsync(target, cancellationToken))
+        {
+            return new FounderLegendConnectEntitlementResult(
+                false,
+                "Translation access can be managed only for active, current-paying Client CRM accounts.");
+        }
+
         var grant = await _messaging.SetControlledResourceGrantAsync(
             new SetControlledResourceGrantCommand(
-                new MessagingActor(FounderId(user), MessagingParticipantTypes.Agent),
+                new MessagingActor(founder, MessagingParticipantTypes.Agent),
                 ControlledResourceTypes.LanguageTranslation,
                 targetUserId,
                 participantType,
@@ -215,15 +232,22 @@ public sealed class FounderLegendConnectService
         if (allowance < 0)
             return new FounderLegendConnectEntitlementResult(false, "Enter a non-negative monthly character allowance.");
 
-        await _entitlements.SetEntitlementAsync(
-            FounderId(user),
-            new TranslationEntitlementMutation(
-                new MessagingActor(targetUserId, participantType),
-                allowance,
-                unlimited,
-                source,
-                IsFounderOverride: true),
-            cancellationToken);
+        try
+        {
+            await _entitlements.SetEntitlementAsync(
+                founder,
+                new TranslationEntitlementMutation(
+                    target,
+                    allowance,
+                    unlimited,
+                    source,
+                    IsFounderOverride: true),
+                cancellationToken);
+        }
+        catch (ArgumentException exception)
+        {
+            return new FounderLegendConnectEntitlementResult(false, exception.Message);
+        }
         return new FounderLegendConnectEntitlementResult(
             true,
             unlimited
@@ -231,26 +255,26 @@ public sealed class FounderLegendConnectService
                 : "Translation access and the server-owned monthly allowance were saved.");
     }
 
-    public Task<LegendConnectKnowledgeSubmissionResult> SubmitAsync(
+    public async Task<LegendConnectKnowledgeSubmissionResult> SubmitAsync(
         ClaimsPrincipal user,
         FounderLegendConnectKnowledgeInput input,
         CancellationToken cancellationToken = default)
     {
-        FounderGuard.EnsureFounderOrThrow(user);
-        return _operations.SubmitFounderKnowledgeAsync(
-            FounderId(user),
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.SubmitFounderKnowledgeAsync(
+            founder,
             ToSubmission(input),
             cancellationToken);
     }
 
-    public Task<LegendConnectKnowledgeSubmissionResult> CorrectAsync(
+    public async Task<LegendConnectKnowledgeSubmissionResult> CorrectAsync(
         ClaimsPrincipal user,
         FounderLegendConnectCorrectionInput input,
         CancellationToken cancellationToken = default)
     {
-        FounderGuard.EnsureFounderOrThrow(user);
-        return _operations.CorrectFounderKnowledgeAsync(
-            FounderId(user),
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.CorrectFounderKnowledgeAsync(
+            founder,
             input.SupersededAlignmentId,
             ToSubmission(input),
             cancellationToken);
@@ -266,6 +290,28 @@ public sealed class FounderLegendConnectService
         input.RegionalVariant,
         "FounderApproved");
 
-    private static string FounderId(ClaimsPrincipal user) =>
-        user.FindFirst("oid")?.Value?.Trim() ?? string.Empty;
+    /// <summary>
+    /// Connects the same authenticated principal that passed <see cref="FounderGuard"/>
+    /// to its existing, active AgentPortal account. This is deliberately not a
+    /// Legend Connect lookup: <see cref="AgentProfileAccessResolver"/> is the
+    /// portal's canonical Agent reconciliation authority, including its
+    /// server-side object-ID-first resolution and historical directory-email
+    /// reconciliation for an already-provisioned profile.
+    /// </summary>
+    private async Task<string> ResolveFounderActorAsync(
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken)
+    {
+        FounderGuard.EnsureFounderOrThrow(user);
+
+        var profile = await _agentProfiles.ResolveCurrentAsync(
+            user,
+            requireActive: true,
+            cancellationToken);
+        var agentUserId = profile?.AgentUserId?.Trim();
+        if (string.IsNullOrWhiteSpace(agentUserId))
+            throw new ForbidResultException();
+
+        return agentUserId.ToLowerInvariant();
+    }
 }

@@ -14,6 +14,8 @@ public sealed class FounderLegendConnectDashboardVm
     public LegendConnectPairHealthSnapshot? SelectedPair { get; init; }
     public IReadOnlyList<TranslationFounderAccountUsageSnapshot> AccountUsage { get; init; } =
         Array.Empty<TranslationFounderAccountUsageSnapshot>();
+    public string? AccountSearchQuery { get; init; }
+    public bool HasAdditionalAccountResults { get; init; }
     public IReadOnlyList<TranslationEntitlementPreset> EntitlementPresets { get; init; } =
         Array.Empty<TranslationEntitlementPreset>();
     public TranslationFounderScaleSnapshot AccountScale { get; init; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -47,6 +49,7 @@ public sealed class FounderLegendConnectEntitlementInput
 {
     public string TargetUserId { get; set; } = string.Empty;
     public string TargetParticipantType { get; set; } = string.Empty;
+    public string? ReturnAccountSearch { get; set; }
     public bool AccessGranted { get; set; }
     public string EntitlementMode { get; set; } = "Custom";
     public string? PresetKey { get; set; }

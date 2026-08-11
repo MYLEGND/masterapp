@@ -98,16 +98,13 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
         MessagingActor actor,
         CancellationToken cancellationToken = default)
     {
-        actor = Normalize(actor);
-        if (actor.ParticipantType != MessagingParticipantTypes.Agent)
-            return Task.FromResult(false);
-
-        return _db.AgentProfiles.AsNoTracking().AnyAsync(profile =>
-            profile.IsActive &&
-            profile.AgentUserId.ToLower() == actor.UserId &&
-            (profile.NormalizedEmail == LegendVerifiedIdentity.FounderEmail ||
-             (profile.AgentUpn != null && profile.AgentUpn.ToLower() == LegendVerifiedIdentity.FounderEmail)),
-            cancellationToken);
+        // Founder-manager authority used to be reconstructed here from a
+        // profile email while the Portal's FounderOnly guard used the
+        // configured Entra object ID. That allowed the route and the mutation
+        // boundary to disagree about the same signed-in Founder. Reuse the
+        // established fail-closed object-ID authority for every Founder-managed
+        // resource instead of maintaining a second email-based authority.
+        return IsCanonicalFounderManagerAsync(actor, cancellationToken);
     }
 
     public Task<bool> IsCanonicalFounderManagerAsync(

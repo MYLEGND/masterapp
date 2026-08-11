@@ -263,6 +263,32 @@ public sealed class FounderAccountRemovalServiceTests
                 ProfileId = profile.Id,
                 ParticipantType = MessagingParticipantTypes.Client,
                 Username = "erased-client"
+            },
+            new LegendTranslationEntitlement
+            {
+                UserId = profile.ClientUserId,
+                ParticipantType = MessagingParticipantTypes.Client,
+                MonthlyCharacterAllowance = 100,
+                EntitlementSource = "FounderManaged"
+            },
+            new LegendTranslationUsagePeriod
+            {
+                UserId = profile.ClientUserId,
+                ParticipantType = MessagingParticipantTypes.Client,
+                PeriodStart = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1),
+                ConsumedCharacters = 10
+            },
+            new LegendTranslationUsageLedger
+            {
+                RequestReference = new string('a', 64),
+                UserId = profile.ClientUserId,
+                ParticipantType = MessagingParticipantTypes.Client,
+                PeriodStart = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1),
+                SourceLanguageCode = "en",
+                TargetLanguageCode = "ht",
+                Provider = "AzureTranslator",
+                State = "Succeeded",
+                Succeeded = true
             });
         await db.SaveChangesAsync();
 
@@ -281,6 +307,9 @@ public sealed class FounderAccountRemovalServiceTests
         Assert.False(await db.ClientProfiles.AnyAsync(item => item.Id == profile.Id));
         Assert.False(await db.MobileProfileSettings.AnyAsync(item => item.ProfileId == profile.Id));
         Assert.False(await db.AccountLifecycleRecords.AnyAsync(item => item.ProfileId == profile.Id));
+        Assert.False(await db.LegendTranslationEntitlements.AnyAsync(item => item.UserId == profile.ClientUserId));
+        Assert.False(await db.LegendTranslationUsagePeriods.AnyAsync(item => item.UserId == profile.ClientUserId));
+        Assert.False(await db.LegendTranslationUsageLedgers.AnyAsync(item => item.UserId == profile.ClientUserId));
     }
 
     [Fact]

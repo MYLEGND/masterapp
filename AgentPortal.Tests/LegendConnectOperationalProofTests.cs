@@ -10,11 +10,16 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
 using AgentPortal.Models;
+using AgentPortal.Security;
 using AgentPortal.Services;
+using Domain.Billing;
 using Domain.Entities;
 using Domain.Messaging;
+using Domain.Moderation;
 using Infrastructure.Data;
 using Infrastructure.Messaging;
+using Infrastructure.Moderation;
+using Infrastructure.Notifications;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Antiforgery;
@@ -56,7 +61,7 @@ public sealed class LegendConnectOperationalProofTests
         Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
         try
         {
-            using var host = await BuildFounderHttpHostAsync();
+            using var host = await BuildFounderHttpHostAsync(founderId);
             var client = host.GetTestClient();
             var tokenRequest = new HttpRequestMessage(HttpMethod.Get, "/__legend-connect-proof/token");
             tokenRequest.Headers.Add(FounderHeader, founderId);
@@ -100,6 +105,206 @@ public sealed class LegendConnectOperationalProofTests
     }
 
     [Fact]
+    public async Task FounderMutationPosts_ResolveTheCanonicalAgentThenPersistEveryFounderOperation()
+    {
+        var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var founderId = Guid.NewGuid().ToString();
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        try
+        {
+            using var host = await BuildFounderHttpHostAsync(founderId);
+            var client = host.GetTestClient();
+            var tokenRequest = new HttpRequestMessage(HttpMethod.Get, "/__legend-connect-proof/token");
+            tokenRequest.Headers.Add(FounderHeader, founderId);
+            var tokenResponse = await client.SendAsync(tokenRequest);
+            tokenResponse.EnsureSuccessStatusCode();
+            var token = await tokenResponse.Content.ReadFromJsonAsync<AntiforgeryTokenDto>();
+            Assert.NotNull(token);
+            var cookie = ExtractAntiforgeryCookie(tokenResponse);
+
+            await AssertFounderRedirectAsync(client, founderId, token!.RequestToken, cookie,
+                "/founder/legend-connect/runtime-policy", new Dictionary<string, string>
+                {
+                    ["MonthlyProviderCapacityCharacters"] = "1000",
+                    ["LiveTranslationReserveCharacters"] = "200",
+                    ["MaximumSafeCorpusConsumptionCharacters"] = "800",
+                    ["LearningEnabled"] = "true",
+                    ["ContextualCompositionMode"] = "Shadow",
+                    ["ContextualMinimumConfidence"] = "0.98"
+                });
+            await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
+                "/founder/legend-connect/knowledge", new Dictionary<string, string>
+                {
+                    ["SourceLanguageCode"] = "en",
+                    ["SourceText"] = "Are you coming over for dinner tonight?",
+                    ["ContextCategory"] = "Everyday conversation",
+                    ["UsageRegister"] = "Plans"
+                });
+            await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
+                "/founder/legend-connect/knowledge", new Dictionary<string, string>
+                {
+                    ["SourceLanguageCode"] = "en",
+                    ["SourceText"] = "Good evening",
+                    ["TargetLanguageCode"] = "ht",
+                    ["TargetText"] = "Bonswa",
+                    ["ContextCategory"] = "Greeting"
+                });
+            await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
+                "/founder/legend-connect/priority", new Dictionary<string, string>
+                {
+                    ["LanguageCode"] = "ht"
+                });
+
+            await using (var scope = host.Services.CreateAsyncScope())
+            {
+                var policy = scope.ServiceProvider.GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
+                await policy.RecordWorkerHeartbeatAsync("Learning");
+                await policy.RecordWorkerHeartbeatAsync("Acquisition");
+            }
+
+            await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
+                "/founder/legend-connect/activate", new Dictionary<string, string>());
+            await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
+                "/founder/legend-connect/pause", new Dictionary<string, string>());
+            await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
+                "/founder/legend-connect/entitlement", new Dictionary<string, string>
+                {
+                    ["TargetUserId"] = "active-paid-client",
+                    ["TargetParticipantType"] = MessagingParticipantTypes.Client,
+                    ["AccessGranted"] = "true",
+                    ["EntitlementMode"] = "Custom",
+                    ["CustomCharacterAllowance"] = "500"
+                });
+
+            await using var verificationScope = host.Services.CreateAsyncScope();
+            var db = verificationScope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            var runtime = await db.LegendConnectRuntimePolicies.AsNoTracking().SingleAsync();
+            Assert.Equal(1_000, runtime.MonthlyProviderCapacityCharacters);
+            Assert.False(runtime.CorpusAcquisitionEnabled);
+            Assert.Equal("FounderOverride", runtime.PriorityMode);
+            Assert.Equal("ht", runtime.PriorityLanguageCode);
+            Assert.Contains(await db.LegendCorpusCandidates.AsNoTracking().ToListAsync(), candidate =>
+                candidate.SourceText == "Are you coming over for dinner tonight?" && candidate.IsApproved);
+            Assert.Contains(await db.LegendTranslationAlignments.AsNoTracking().ToListAsync(), alignment =>
+                alignment.PairKey == "en:ht" && alignment.SupersededUtc == null);
+            Assert.Contains(await db.LegendTranslationEntitlements.AsNoTracking().ToListAsync(), entitlement =>
+                entitlement.UserId == "active-paid-client" && entitlement.MonthlyCharacterAllowance == 500);
+            Assert.Contains(await db.ControlledResourceGrants.AsNoTracking().ToListAsync(), grant =>
+                grant.UserId == "active-paid-client" && grant.ResourceType == ControlledResourceTypes.LanguageTranslation && grant.IsActive);
+
+            var audits = await db.LegendConnectKnowledgeAuditEntries.AsNoTracking().ToListAsync();
+            Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "RuntimePolicyChanged");
+            Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "FounderKnowledgeSubmitted");
+            Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "FounderPriorityOverrideEnabled");
+            Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "AutonomousAcquisitionActivated");
+            Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "AutonomousAcquisitionPaused");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounder);
+        }
+    }
+
+    [Fact]
+    public async Task FounderActorResolution_UsesTheSharedCanonicalClaimAndFailsClosedWithoutAnAgentAccount()
+    {
+        var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var founderId = Guid.NewGuid().ToString();
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        try
+        {
+            await using var db = ControllerTestHelpers.BuildDb();
+            await SeedFounderAgentAsync(db, founderId);
+            var configuration = Configuration();
+            var registry = new LegendLanguageRegistry(db, configuration);
+            var service = Service(db, Operations(db, registry, configuration));
+            var canonicalClaimPrincipal = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim("http://schemas.microsoft.com/identity/claims/objectidentifier", founderId)
+            }, "TestAuth"));
+
+            var result = await service.SubmitAsync(canonicalClaimPrincipal,
+                new FounderLegendConnectKnowledgeInput
+                {
+                    SourceLanguageCode = "en",
+                    SourceText = "Canonical Founder proof"
+                });
+
+            Assert.True(result.Succeeded);
+            Assert.Contains(await db.LegendConnectKnowledgeAuditEntries.ToListAsync(), entry =>
+                entry.FounderUserId == founderId && entry.Action == "FounderKnowledgeSubmitted");
+
+            var unmappedFounder = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim("oid", founderId),
+                new Claim("founder", "true")
+            }, "TestAuth"));
+            await using var unmappedDb = ControllerTestHelpers.BuildDb();
+            var unmappedService = Service(unmappedDb, Operations(
+                unmappedDb,
+                new LegendLanguageRegistry(unmappedDb, configuration),
+                configuration));
+            await Assert.ThrowsAsync<ForbidResultException>(() => unmappedService.SubmitAsync(
+                unmappedFounder,
+                new FounderLegendConnectKnowledgeInput { SourceLanguageCode = "en", SourceText = "Must not persist" }));
+
+            var spoofed = ControllerTestHelpers.BuildUser(Guid.NewGuid().ToString());
+            await Assert.ThrowsAsync<ForbidResultException>(() => service.SubmitAsync(
+                spoofed,
+                new FounderLegendConnectKnowledgeInput { SourceLanguageCode = "en", SourceText = "Spoofed claim" }));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounder);
+        }
+    }
+
+    [Fact]
+    public async Task FounderPostRoutes_ChallengeUnauthenticatedAndForbidNonFounderPrincipals()
+    {
+        var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var founderId = Guid.NewGuid().ToString();
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        try
+        {
+            using var host = await BuildFounderHttpHostAsync(founderId);
+            var client = host.GetTestClient();
+            var tokenRequest = new HttpRequestMessage(HttpMethod.Get, "/__legend-connect-proof/token");
+            tokenRequest.Headers.Add(FounderHeader, founderId);
+            var tokenResponse = await client.SendAsync(tokenRequest);
+            tokenResponse.EnsureSuccessStatusCode();
+            var token = await tokenResponse.Content.ReadFromJsonAsync<AntiforgeryTokenDto>();
+            Assert.NotNull(token);
+            var cookie = ExtractAntiforgeryCookie(tokenResponse);
+
+            using var nonFounder = new HttpRequestMessage(HttpMethod.Post, "/founder/legend-connect/activate")
+            {
+                Content = new FormUrlEncodedContent(new Dictionary<string, string>())
+            };
+            nonFounder.Headers.Add(FounderHeader, Guid.NewGuid().ToString());
+            nonFounder.Headers.Add("RequestVerificationToken", token!.RequestToken);
+            if (!string.IsNullOrWhiteSpace(cookie))
+                nonFounder.Headers.Add("Cookie", cookie);
+            using var nonFounderResponse = await client.SendAsync(nonFounder);
+            Assert.Equal(HttpStatusCode.Forbidden, nonFounderResponse.StatusCode);
+
+            using var unauthenticated = new HttpRequestMessage(HttpMethod.Post, "/founder/legend-connect/activate")
+            {
+                Content = new FormUrlEncodedContent(new Dictionary<string, string>())
+            };
+            unauthenticated.Headers.Add("RequestVerificationToken", token.RequestToken);
+            if (!string.IsNullOrWhiteSpace(cookie))
+                unauthenticated.Headers.Add("Cookie", cookie);
+            using var unauthenticatedResponse = await client.SendAsync(unauthenticated);
+            Assert.Equal(HttpStatusCode.Unauthorized, unauthenticatedResponse.StatusCode);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounder);
+        }
+    }
+
+    [Fact]
     public async Task FounderManualTraining_PostsPrgPersistsAuditsAndRefreshesTheAuthoritativeProjection()
     {
         var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
@@ -112,7 +317,8 @@ public sealed class LegendConnectOperationalProofTests
             var registry = new LegendLanguageRegistry(db, configuration);
             var operations = Operations(db, registry, configuration);
             var founder = ControllerTestHelpers.BuildUser(founderId);
-            var service = new FounderLegendConnectService(operations);
+            await SeedFounderAgentAsync(db, founderId);
+            var service = Service(db, operations);
             var controller = Controller(service, founder);
 
             var route = Assert.IsType<RedirectToActionResult>(await controller.SubmitKnowledge(
@@ -262,7 +468,8 @@ public sealed class LegendConnectOperationalProofTests
             await using var db = ControllerTestHelpers.BuildDb();
             var configuration = Configuration();
             var registry = new LegendLanguageRegistry(db, configuration);
-            var controller = Controller(new FounderLegendConnectService(Operations(db, registry, configuration)),
+            await SeedFounderAgentAsync(db, founderId);
+            var controller = Controller(Service(db, Operations(db, registry, configuration)),
                 ControllerTestHelpers.BuildUser(founderId));
 
             var route = Assert.IsType<RedirectToActionResult>(await controller.SubmitKnowledge(
@@ -289,6 +496,46 @@ public sealed class LegendConnectOperationalProofTests
         IConfiguration configuration) =>
         new(db, registry, new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance), configuration);
 
+    private static FounderLegendConnectService Service(
+        MasterAppDbContext db,
+        ILegendConnectOperations operations) =>
+        new(operations, new AgentProfileAccessResolver(db));
+
+    private static async Task SeedFounderAgentAsync(MasterAppDbContext db, string founderId)
+    {
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = founderId,
+            AgentUpn = "founder@example.test",
+            NormalizedEmail = "founder@example.test",
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task AssertFounderRedirectAsync(
+        HttpClient client,
+        string founderId,
+        string requestToken,
+        string antiforgeryCookie,
+        string route,
+        IReadOnlyDictionary<string, string> fields)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, route)
+        {
+            Content = new FormUrlEncodedContent(fields)
+        };
+        request.Headers.Add(FounderHeader, founderId);
+        request.Headers.Add("RequestVerificationToken", requestToken);
+        if (!string.IsNullOrWhiteSpace(antiforgeryCookie))
+            request.Headers.Add("Cookie", antiforgeryCookie);
+
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.StartsWith("/founder/legend-connect", response.Headers.Location?.ToString());
+    }
+
     private static LegendConnectController Controller(FounderLegendConnectService service, ClaimsPrincipal founder)
     {
         var http = new DefaultHttpContext { User = founder };
@@ -314,10 +561,12 @@ public sealed class LegendConnectOperationalProofTests
             ["AzureTranslator:Key"] = "test-key"
         }).Build();
 
-    private static Task<IHost> BuildFounderHttpHostAsync()
+    private static async Task<IHost> BuildFounderHttpHostAsync(string founderId)
     {
         var databaseName = "legend-connect-founder-http-" + Guid.NewGuid().ToString("N");
-        return new HostBuilder()
+        var connection = new SqliteConnection($"Data Source=file:{databaseName}?mode=memory&cache=shared");
+        await connection.OpenAsync();
+        var host = await new HostBuilder()
             .ConfigureWebHost(webBuilder => webBuilder
                 .UseTestServer()
                 .ConfigureServices(services =>
@@ -332,11 +581,28 @@ public sealed class LegendConnectOperationalProofTests
                     services.AddAuthorization(options => options.DefaultPolicy = new AuthorizationPolicyBuilder("LegendConnectTest")
                         .RequireAuthenticatedUser()
                         .Build());
-                    services.AddDbContext<MasterAppDbContext>(options => options.UseInMemoryDatabase(databaseName));
+                    services.AddSingleton(connection);
+                    services.AddDbContext<MasterAppDbContext>(options => options.UseSqlite(connection));
                     services.AddSingleton<IConfiguration>(Configuration());
                     services.AddScoped<ILegendLanguageRegistry, LegendLanguageRegistry>();
                     services.AddScoped<LegendConnectCorpusService>();
                     services.AddScoped<ILegendConnectOperations, LegendConnectOperations>();
+                    services.AddScoped<AgentProfileAccessResolver>();
+                    services.AddScoped<IControlledResourceAccessService, ControlledResourceAccessService>();
+                    services.AddScoped<ITranslationEntitlementAuthority, TranslationEntitlementAuthority>();
+                    services.AddScoped<ILegendConnectRuntimePolicyAuthority, LegendConnectRuntimePolicyAuthority>();
+                    services.AddScoped<ICommunityTextModerationService, CommunityTextModerationService>();
+                    services.AddScoped<IMessagingProfileImageResolver, MessagingProfileImageResolver>();
+                    services.AddSingleton<INotificationRealtimePublisher, NoopNotificationRealtimePublisher>();
+                    services.AddSingleton<IApplePushDeliverySignal, ApplePushDeliverySignal>();
+                    services.AddScoped<INotificationEngine>(serviceProvider => new NotificationEngine(
+                        serviceProvider.GetRequiredService<MasterAppDbContext>(),
+                        serviceProvider.GetRequiredService<IMessagingProfileImageResolver>(),
+                        serviceProvider.GetRequiredService<INotificationRealtimePublisher>(),
+                        serviceProvider.GetRequiredService<IApplePushDeliverySignal>(),
+                        NullLogger<NotificationEngine>.Instance));
+                    services.AddScoped<ITranslationService, TestTranslationService>();
+                    services.AddScoped<IMessagingService, MessagingService>();
                     services.AddScoped<FounderLegendConnectService>();
                 })
                 .Configure(app =>
@@ -347,6 +613,61 @@ public sealed class LegendConnectOperationalProofTests
                     app.UseEndpoints(endpoints => endpoints.MapControllers());
                 }))
             .StartAsync();
+
+        host.Services.GetRequiredService<IHostApplicationLifetime>()
+            .ApplicationStopping.Register(connection.Dispose);
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+        await db.Database.EnsureCreatedAsync();
+        await SeedFounderAgentAsync(db, founderId);
+        var activeClient = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "active-paid-client",
+            ExternalIdentityObjectId = "active-paid-client",
+            FirstName = "Active",
+            LastName = "Client",
+            Email = "active-paid-client@example.test",
+            NormalizedEmail = "active-paid-client@example.test",
+            CrmStatus = "Active",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        };
+        db.ClientProfiles.Add(activeClient);
+        var acceptedOffer = new ClientSubscriptionOffer
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = activeClient.Id,
+            OwnerAgentUserId = founderId,
+            MonthlyAmountCents = 1,
+            Currency = "USD",
+            Status = ClientSubscriptionOfferStatus.Accepted
+        };
+        db.ClientSubscriptionOffers.Add(acceptedOffer);
+        db.ClientSubscriptions.Add(new ClientSubscription
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = activeClient.Id,
+            AcceptedOfferId = acceptedOffer.Id,
+            OwnerAgentUserId = founderId,
+            Status = ClientSubscriptionStatus.Active,
+            PaymentStanding = ClientSubscriptionPaymentStanding.Current,
+            MonthlyAmountCents = 1,
+            Currency = "USD"
+        });
+        db.ClientEntitlements.Add(new ClientEntitlement
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = activeClient.Id,
+            EntitlementKey = BillingEntitlementKeys.ClientAppFullAccess,
+            Status = ClientEntitlementStatus.Active,
+            SourceType = ClientEntitlementSourceType.Subscription,
+            SourceId = "legend-connect-founder-proof",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+        return host;
     }
 
     private static string ExtractAntiforgeryCookie(HttpResponseMessage response) =>
@@ -374,6 +695,29 @@ public sealed class LegendConnectOperationalProofTests
             TranslateCalls++;
             return Task.FromResult(new TranslationProviderResult(true, "Unexpected provider result", sourceLanguage, ProviderName));
         }
+    }
+
+    private sealed class TestTranslationService : ITranslationService
+    {
+        public Task<TranslationDetectionResult> DetectLanguageAsync(
+            string text,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new TranslationDetectionResult(true, "en"));
+
+        public Task<TranslationProviderResult> TranslateAsync(
+            string text,
+            string targetLanguage,
+            string? sourceLanguage = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new TranslationProviderResult(true, text, sourceLanguage, "TestTranslator"));
+    }
+
+    private sealed class NoopNotificationRealtimePublisher : INotificationRealtimePublisher
+    {
+        public Task PublishAsync(
+            MessagingActor recipient,
+            NotificationRealtimeEvent notification,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }
 
