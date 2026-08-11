@@ -238,7 +238,8 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             _azure.ProviderName,
             text?.Length ?? 0,
             TranslationCapacityPurpose.Live,
-            cancellationToken);
+            reservationReference: requestReference,
+            cancellationToken: cancellationToken);
         if (reservation is null)
         {
             await CompleteQuotaSafelyAsync(

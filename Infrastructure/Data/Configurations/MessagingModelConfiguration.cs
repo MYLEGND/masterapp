@@ -432,6 +432,19 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => new { item.Provider, item.BillingPeriodStart }).IsUnique();
         });
 
+        modelBuilder.Entity<LegendTranslationProviderReservation>(entity =>
+        {
+            entity.ToTable("LegendTranslationProviderReservations");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Provider).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.ReservationReference).IsRequired().HasMaxLength(180);
+            entity.Property(item => item.Purpose).IsRequired().HasMaxLength(20);
+            entity.Property(item => item.State).IsRequired().HasMaxLength(20);
+            ConfigureRowVersion(entity.Property(item => item.RowVersion), providerName);
+            entity.HasIndex(item => new { item.Provider, item.ReservationReference }).IsUnique();
+            entity.HasIndex(item => new { item.Provider, item.BillingPeriodStart, item.State, item.ReservationExpiresUtc });
+        });
+
         modelBuilder.Entity<LegendTranslationPairDemand>(entity =>
         {
             entity.ToTable("LegendTranslationPairDemands");

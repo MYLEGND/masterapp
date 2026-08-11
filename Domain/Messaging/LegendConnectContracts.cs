@@ -122,6 +122,9 @@ public sealed record LegendConnectPairHealthSnapshot(
     long DemandCount,
     long TranslationCount,
     long TranslationMemoryReuseCount,
+    // Provider-backed work required after internal routing. The established
+    // property name remains for wire compatibility; provider calls and billed
+    // characters are represented separately by the dashboard metrics.
     long AzureFallbackCount,
     decimal AzureFallbackRate,
     int Coverage,
@@ -254,6 +257,8 @@ public sealed record LegendConnectDashboardSnapshot(
     IReadOnlyList<LegendConnectPairHealthSnapshot> Pairs,
     long SameLanguageBypassCount,
     long TranslationMemoryHitCount,
+    // Provider-backed work required after internal routing, not completed
+    // Azure calls. See ProviderOperationCount for actual provider attempts.
     long AzureFallbackCount,
     long AzureCharactersUsed,
     long ConfiguredMonthlyCapacity,

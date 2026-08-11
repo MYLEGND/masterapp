@@ -84,7 +84,7 @@
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Eligible missing coverage</span><span class="dashboard-stat-value">@priority.EligibleMissingCandidateCount.ToString("N0")</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Pending candidates</span><span class="dashboard-stat-value">@priority.PendingCandidateCount.ToString("N0")</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Internal coverage</span><span class="dashboard-stat-value">@priority.CurrentInternalCoverage.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Azure dependency</span><span class="dashboard-stat-value">@priority.AzureDependencyRate.ToString("P0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider dependency</span><span class="dashboard-stat-value">@priority.AzureDependencyRate.ToString("P0")</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Priority characters consumed</span><span class="dashboard-stat-value">@priority.CharactersConsumed.ToString("N0")</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Last successful expansion</span><span class="dashboard-stat-value">@(priority.LastSuccessfulExpansionUtc?.ToString("u") ?? "None")</span></div>
         </div>
@@ -107,10 +107,10 @@
         <div class="dashboard-hero-stats">
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Same-language bypasses</span><span class="dashboard-stat-value">@dashboard.SameLanguageBypassCount</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Translation Memory hits</span><span class="dashboard-stat-value">@dashboard.TranslationMemoryHitCount</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Azure fallbacks</span><span class="dashboard-stat-value">@dashboard.AzureFallbackCount</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider fallback required</span><span class="dashboard-stat-value">@dashboard.AzureFallbackCount</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Trusted contextual served</span><span class="dashboard-stat-value">@dashboard.ContextualInternalServeCount</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider avoidance</span><span class="dashboard-stat-value">@dashboard.ProviderAvoidanceRate.ToString("P0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Azure dependency</span><span class="dashboard-stat-value">@dashboard.AzureDependencyRate.ToString("P0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider dependency</span><span class="dashboard-stat-value">@dashboard.AzureDependencyRate.ToString("P0")</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Azure characters used</span><span class="dashboard-stat-value">@dashboard.AzureCharactersUsed.ToString("N0")</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Consumed live characters</span><span class="dashboard-stat-value">@dashboard.ConsumedLiveCharacters.ToString("N0")</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Consumed corpus characters</span><span class="dashboard-stat-value">@dashboard.ConsumedCorpusCharacters.ToString("N0")</span></div>
@@ -211,7 +211,7 @@
         <div class="category-head"><div><span class="dashboard-section-kicker">Registry health</span><h2 class="dashboard-section-title" id="active-languages-title">Active languages</h2></div></div>
         <div class="dashboard-data-surface">
             <table class="table dashboard-data-table">
-                <thead><tr><th>Language</th><th>Dataset</th><th>Entries</th><th>Pairs</th><th>Approved / pending candidates</th><th>Azure dependency</th><th>Last provider / Founder expansion</th><th>Health</th></tr></thead>
+                <thead><tr><th>Language</th><th>Dataset</th><th>Entries</th><th>Pairs</th><th>Approved / pending candidates</th><th>Provider dependency</th><th>Last provider / Founder expansion</th><th>Health</th></tr></thead>
                 <tbody>
                 @foreach (var language in dashboard.Languages)
                 {
@@ -229,7 +229,7 @@
         <div class="category-head"><div><span class="dashboard-section-kicker">Directional health</span><h2 class="dashboard-section-title" id="active-pairs-title">Active directional pairs</h2></div></div>
         <div class="dashboard-data-surface">
             <table class="table dashboard-data-table">
-                <thead><tr><th>Pair</th><th>Demand</th><th>Memory / context served</th><th>Azure dependency</th><th>Internal coverage</th><th>Quality confidence</th><th>Approved backlog</th><th>30-day additions</th><th>Health</th></tr></thead>
+                <thead><tr><th>Pair</th><th>Demand</th><th>Memory / context served</th><th>Provider fallback required</th><th>Internal coverage</th><th>Quality confidence</th><th>Approved backlog</th><th>30-day additions</th><th>Health</th></tr></thead>
                 <tbody>
                 @foreach (var pair in dashboard.Pairs)
                 {
@@ -419,7 +419,7 @@
                         }
                         else
                         {
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Demand</th><th>Memory reuse</th><th>Azure fallback</th><th>Coverage</th><th>Quality</th><th>Health</th></tr></thead><tbody>
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Demand</th><th>Memory reuse</th><th>Provider fallback required</th><th>Coverage</th><th>Quality</th><th>Health</th></tr></thead><tbody>
                             @foreach (var pair in languageKnowledge.DirectionalPairs)
                             {
                                 <tr><td>@pair.PairKey</td><td>@pair.DemandCount</td><td>@pair.TranslationMemoryReuseCount</td><td>@pair.AzureFallbackCount (@pair.AzureFallbackRate.ToString("P0"))</td><td>@pair.Coverage</td><td>@pair.QualityState</td><td>@pair.HealthState</td></tr>

@@ -209,6 +209,62 @@ public sealed class LegendConnectEntitlementTests
     }
 
     [Fact]
+    public async Task TrustedMemory_PrecedesQuotaAndCapacity_AndSeparatesFallbackRequiredFromProviderCalls()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration(allowance: 0);
+        var access = new TranslationAccessStub(granted: true);
+        var authority = new TranslationEntitlementAuthority(
+            db,
+            access,
+            configuration,
+            NullLogger<TranslationEntitlementAuthority>.Instance);
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var retained = await corpus.SubmitApprovedKnowledgeAsync(new LegendConnectKnowledgeSubmission(
+            "en", "Hi, how are you doing today?", "ht", "Bonjour, koman ou ye jodi a?",
+            "Everyday conversation", "Plans", null, "FounderApproved"));
+        Assert.True(retained.Succeeded);
+
+        var provider = new RecordingProvider();
+        var router = new LegendConnectTranslationRouter(
+            provider,
+            registry,
+            new TranslationCapacityAuthority(db, configuration, NullLogger<TranslationCapacityAuthority>.Instance),
+            NullLogger<LegendConnectTranslationRouter>.Instance,
+            demand: new TranslationDemandRecorder(db, NullLogger<TranslationDemandRecorder>.Instance),
+            systemUsage: new TranslationSystemUsageRecorder(db, NullLogger<TranslationSystemUsageRecorder>.Instance),
+            intelligence: new LegendConnectTranslationIntelligence(db, configuration),
+            entitlements: authority);
+
+        var memory = await router.TranslateForAccountAsync(
+            "  Hi, how are you doing today?  ", "ht", "en-US", Account, Reference("known-memory"));
+        var quotaDenied = await router.TranslateForAccountAsync(
+            "This phrase has no retained translation.", "ht", "en", Account, Reference("missing-memory"));
+
+        Assert.True(memory.Succeeded);
+        Assert.Equal("Bonjour, koman ou ye jodi a?", memory.TranslatedText);
+        Assert.Equal("LegendConnectTranslationMemory", memory.Provider);
+        Assert.False(quotaDenied.Succeeded);
+        Assert.Equal("translation_quota_exhausted", quotaDenied.ErrorCode);
+        Assert.Equal(0, provider.TranslateCalls);
+        var deniedLedger = Assert.Single(await db.LegendTranslationUsageLedgers.ToListAsync());
+        Assert.False(deniedLedger.ProviderExecuted);
+        Assert.False(deniedLedger.Succeeded);
+        Assert.Equal("QuotaDenied", deniedLedger.State);
+
+        var pair = await db.LegendTranslationPairDemands.SingleAsync(item => item.PairKey == "en:ht");
+        Assert.Equal(2, pair.TranslationRequestCount);
+        Assert.Equal(1, pair.TranslationMemoryHitCount);
+        Assert.Equal(1, pair.AzureFallbackCount);
+        var usage = await db.LegendTranslationSystemUsages.SingleAsync();
+        Assert.Equal(0, usage.ProviderOperationCount);
+        Assert.Equal(0, usage.ProviderBillableCharacters);
+        Assert.Equal(1, usage.QuotaDeniedRequestCount);
+        Assert.True(usage.TranslationMemoryCharactersAvoided > 0);
+    }
+
+    [Fact]
     public async Task EntitlementMutation_RequiresFounderAuthorityAndDoesNotContainMessageBodies()
     {
         await using var db = ControllerTestHelpers.BuildDb();

@@ -100,6 +100,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<LegendTranslationLearningEvent> LegendTranslationLearningEvents => Set<LegendTranslationLearningEvent>();
     public DbSet<LegendCorpusCandidate> LegendCorpusCandidates => Set<LegendCorpusCandidate>();
     public DbSet<LegendTranslationProviderCapacity> LegendTranslationProviderCapacities => Set<LegendTranslationProviderCapacity>();
+    public DbSet<LegendTranslationProviderReservation> LegendTranslationProviderReservations => Set<LegendTranslationProviderReservation>();
     public DbSet<LegendTranslationPairDemand> LegendTranslationPairDemands => Set<LegendTranslationPairDemand>();
     public DbSet<LegendTranslationSystemUsage> LegendTranslationSystemUsages => Set<LegendTranslationSystemUsage>();
     public DbSet<LegendTranslationEntitlement> LegendTranslationEntitlements => Set<LegendTranslationEntitlement>();

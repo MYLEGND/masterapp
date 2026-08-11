@@ -957,9 +957,11 @@ internal sealed class LegendConnectAutonomousLearningService
             _provider.ProviderName,
             candidate.SourceText.Length,
             TranslationCapacityPurpose.Bootstrap,
-            cancellationToken);
+            reservationReference: candidate.IdempotencyKey,
+            cancellationToken: cancellationToken);
         if (reservation is null)
         {
+            await DeferCandidateAsync(candidate, "translation_capacity_unavailable", cancellationToken);
             await RecordAsync("CapacityReservation", "Warning", "Unavailable", pair.SourceLanguageCode, pair.PairKey, "translation_capacity_unavailable", "Autonomous acquisition deferred because live-reserved provider capacity was unavailable.", cancellationToken);
             return;
         }
@@ -985,11 +987,7 @@ internal sealed class LegendConnectAutonomousLearningService
             providerSucceeded = translation.Succeeded && !string.IsNullOrWhiteSpace(translation.TranslatedText);
             if (!providerSucceeded)
             {
-                candidate.AttemptCount++;
-                candidate.FailureCode = translation.ErrorCode ?? "translation_provider_failed";
-                candidate.ProcessingState = "Pending";
-                candidate.LeaseExpiresUtc = null;
-                await _db.SaveChangesAsync(cancellationToken);
+                await DeferCandidateAsync(candidate, translation.ErrorCode ?? "translation_provider_failed", cancellationToken);
                 await RecordAsync("AzureProvider", "Error", "Failed", pair.SourceLanguageCode, pair.PairKey, candidate.FailureCode, "Azure did not return a usable autonomous acquisition result.", cancellationToken);
                 return;
             }
@@ -1039,10 +1037,44 @@ internal sealed class LegendConnectAutonomousLearningService
                 "The existing corpus pipeline validated and processed the autonomous result.",
                 cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            await DeferCandidateAsync(candidate, "translation_provider_failed", CancellationToken.None);
+            await RecordAsync(
+                "AzureProvider",
+                "Error",
+                "Failed",
+                pair.SourceLanguageCode,
+                pair.PairKey,
+                candidate.FailureCode,
+                "The provider path interrupted before the autonomous candidate could be committed; retry is lease-delayed.",
+                CancellationToken.None);
+        }
         finally
         {
             await _capacity.CompleteAsync(reservation, providerSucceeded, cancellationToken);
         }
+    }
+
+    private async Task DeferCandidateAsync(
+        LegendCorpusCandidate candidate,
+        string failureCode,
+        CancellationToken cancellationToken)
+    {
+        candidate.AttemptCount++;
+        candidate.FailureCode = failureCode;
+        // Processing plus a future lease is the existing durable worker-claim
+        // state. Reusing it prevents busy retries while allowing any instance
+        // to reclaim work after the bounded lease; no secondary retry queue or
+        // process-local timer becomes authoritative.
+        candidate.ProcessingState = "Processing";
+        candidate.LeaseExpiresUtc = DateTime.UtcNow.AddMinutes(Math.Min(30, Math.Max(5, candidate.AttemptCount * 5)));
+        candidate.ProcessedUtc = null;
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<LegendCorpusCandidate?> TryClaimCandidateAsync(

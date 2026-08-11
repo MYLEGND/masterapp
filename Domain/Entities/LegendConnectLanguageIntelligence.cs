@@ -204,6 +204,27 @@ public sealed class LegendTranslationProviderCapacity
 }
 
 /// <summary>
+/// A durable, bounded lease backing one provider-capacity reservation. This is
+/// owned by the existing provider-capacity ledger: it is not a second queue or
+/// billing authority. Its sole purpose is to let a later instance release an
+/// interrupted reservation exactly once before retrying the canonical work.
+/// </summary>
+public sealed class LegendTranslationProviderReservation
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Provider { get; set; } = string.Empty;
+    public DateOnly BillingPeriodStart { get; set; }
+    public string ReservationReference { get; set; } = string.Empty;
+    public string Purpose { get; set; } = string.Empty;
+    public long Characters { get; set; }
+    public string State { get; set; } = "Reserved";
+    public DateTime ReservationExpiresUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? CompletedUtc { get; set; }
+    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+}
+
+/// <summary>
 /// Privacy-safe aggregate demand for one directional pair. It carries no
 /// source/target text or member identity and supplies corpus prioritization
 /// with real community demand rather than named-language code paths.
@@ -215,6 +236,13 @@ public sealed class LegendTranslationPairDemand
     public long TranslationRequestCount { get; set; }
     public long ProviderCharacterCount { get; set; }
     public long TranslationMemoryHitCount { get; set; }
+    /// <summary>
+    /// Requests for which trusted internal knowledge did not satisfy the
+    /// route, so provider-backed work was required next. This legacy column
+    /// name is retained for deployed-schema compatibility; it is not a count
+    /// of completed Azure calls. Completed provider operations live in the
+    /// usage ledgers/system usage aggregate.
+    /// </summary>
     public long AzureFallbackCount { get; set; }
     public long ContextualCompositionObservationCount { get; set; }
     public long ContextualInternalServeCount { get; set; }
