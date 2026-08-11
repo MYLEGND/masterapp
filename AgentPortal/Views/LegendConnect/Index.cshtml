@@ -1,0 +1,171 @@
+@model AgentPortal.Models.FounderLegendConnectDashboardVm
+@{
+    ViewData["Title"] = "Legend Connect";
+    var dashboard = Model.Dashboard;
+    var configuredCapacity = dashboard.ConfiguredMonthlyCapacity > 0
+        ? dashboard.ConfiguredMonthlyCapacity.ToString("N0")
+        : "Not configured";
+    var remainingCapacity = dashboard.RemainingSafeCapacity?.ToString("N0") ?? "Not limited";
+}
+
+<main class="dashboard-page-shell">
+    <section class="dashboard-command-center-panel" aria-labelledby="legend-connect-title">
+        <div class="dashboard-command-center-top">
+            <div class="dashboard-hero-copy">
+                <span class="dashboard-eyebrow">Founder · Language intelligence</span>
+                <h1 class="dashboard-hero-title" id="legend-connect-title">Legend® Connect</h1>
+                <p>Server-owned language, learning, quality, and capacity operations.</p>
+            </div>
+            <div class="dashboard-hero-stats" aria-label="Legend Connect operational snapshot">
+                <div class="dashboard-stat-card is-primary"><span class="dashboard-stat-label">Active languages</span><span class="dashboard-stat-value">@dashboard.Languages.Count</span></div>
+                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Directional pairs</span><span class="dashboard-stat-value">@dashboard.Pairs.Count</span></div>
+                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Learning failures</span><span class="dashboard-stat-value">@dashboard.FailedLearningJobCount</span></div>
+                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value">@dashboard.DuplicatePreventionCount</span></div>
+            </div>
+        </div>
+    </section>
+
+    @if (TempData["LegendConnectSuccess"] is string success)
+    {
+        <section class="dashboard-analytics-panel" role="status"><p>@success</p></section>
+    }
+    @if (TempData["LegendConnectError"] is string error)
+    {
+        <section class="dashboard-analytics-panel" role="alert"><p>@error</p></section>
+    }
+
+    <section class="dashboard-analytics-panel" aria-labelledby="translation-operations-title">
+        <div class="dashboard-section-head dashboard-section-head-tight">
+            <div><span class="dashboard-section-kicker">Live translation</span><h2 class="dashboard-section-title" id="translation-operations-title">Translation operations</h2></div>
+        </div>
+        <div class="dashboard-hero-stats">
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Same-language bypasses</span><span class="dashboard-stat-value">@dashboard.SameLanguageBypassCount</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Translation Memory hits</span><span class="dashboard-stat-value">@dashboard.TranslationMemoryHitCount</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Azure fallbacks</span><span class="dashboard-stat-value">@dashboard.AzureFallbackCount</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Azure characters used</span><span class="dashboard-stat-value">@dashboard.AzureCharactersUsed.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Monthly capacity</span><span class="dashboard-stat-value">@configuredCapacity</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Live reserve</span><span class="dashboard-stat-value">@dashboard.LiveReserveCharacters.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Remaining safe capacity</span><span class="dashboard-stat-value">@remainingCapacity</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Pending learning jobs</span><span class="dashboard-stat-value">@dashboard.LearningJobCount</span></div>
+        </div>
+    </section>
+
+    <section class="category-container" aria-labelledby="active-languages-title">
+        <div class="category-head"><div><span class="dashboard-section-kicker">Registry health</span><h2 class="dashboard-section-title" id="active-languages-title">Active languages</h2></div></div>
+        <div class="table-responsive">
+            <table class="table">
+                <thead><tr><th>Language</th><th>Dataset</th><th>Entries</th><th>Pairs</th><th>Demand</th><th>Coverage</th><th>Quality</th><th>Health</th></tr></thead>
+                <tbody>
+                @foreach (var language in dashboard.Languages)
+                {
+                    <tr>
+                        <td><a asp-action="Index" asp-route-language="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</a></td>
+                        <td>@language.StoragePartition</td><td>@language.CanonicalEntryCount</td><td>@language.DirectionalPairs.Count</td><td>@language.DemandCount</td><td>@language.Coverage</td><td>@language.QualityState</td><td>@language.HealthState</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="category-container" aria-labelledby="active-pairs-title">
+        <div class="category-head"><div><span class="dashboard-section-kicker">Directional health</span><h2 class="dashboard-section-title" id="active-pairs-title">Active directional pairs</h2></div></div>
+        <div class="table-responsive">
+            <table class="table">
+                <thead><tr><th>Pair</th><th>Demand</th><th>Memory reuse</th><th>Azure fallback</th><th>Coverage</th><th>Quality</th><th>Health</th></tr></thead>
+                <tbody>
+                @foreach (var pair in dashboard.Pairs)
+                {
+                    <tr>
+                        <td><a asp-action="Index" asp-route-pair="@pair.PairKey">@pair.PairKey</a></td><td>@pair.DemandCount</td><td>@pair.TranslationMemoryReuseCount</td><td>@pair.AzureFallbackCount (@pair.AzureFallbackRate.ToString("P0"))</td><td>@pair.Coverage</td><td>@pair.QualityState</td><td>@pair.HealthState</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    @if (Model.SelectedLanguage is { } selectedLanguage)
+    {
+        <section class="dashboard-analytics-panel" aria-labelledby="language-health-title">
+            <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Language health</span><h2 class="dashboard-section-title" id="language-health-title">@selectedLanguage.DisplayName (@selectedLanguage.LanguageCode)</h2></div></div>
+            <p>Partition @selectedLanguage.StoragePartition · @selectedLanguage.HealthState · @selectedLanguage.QualityState</p>
+            <div class="dashboard-hero-stats">
+                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Canonical entries</span><span class="dashboard-stat-value">@selectedLanguage.CanonicalEntryCount</span></div>
+                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Memory relationships</span><span class="dashboard-stat-value">@selectedLanguage.TranslationMemoryRelationshipCount</span></div>
+                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Context relationships</span><span class="dashboard-stat-value">@selectedLanguage.ContextRelationshipCount</span></div>
+                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value">@selectedLanguage.DuplicatePreventionCount</span></div>
+            </div>
+            <p>Last learning: @(selectedLanguage.LastSuccessfulLearningUtc?.ToString("u") ?? "No successful learning activity") · Last write: @(selectedLanguage.LastSuccessfulWriteUtc?.ToString("u") ?? "No dataset write")</p>
+        </section>
+    }
+
+    @if (Model.SelectedPair is { } selectedPair)
+    {
+        <section class="dashboard-analytics-panel" aria-labelledby="pair-health-title">
+            <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Pair health</span><h2 class="dashboard-section-title" id="pair-health-title">@selectedPair.PairKey</h2></div></div>
+            <p>@selectedPair.HealthState · @selectedPair.QualityState · @selectedPair.FailureCount failure@(selectedPair.FailureCount == 1 ? string.Empty : "s")</p>
+            @if (selectedPair.RecentAlignments.Count > 0)
+            {
+                <div class="table-responsive"><table class="table"><thead><tr><th>Approved source</th><th>Approved target</th><th>Quality</th><th>Updated</th></tr></thead><tbody>
+                @foreach (var alignment in selectedPair.RecentAlignments)
+                {
+                    <tr><td>@alignment.SourceText</td><td>@alignment.TargetText</td><td>@alignment.QualityState</td><td>@alignment.UpdatedUtc.ToString("u")</td></tr>
+                }
+                </tbody></table></div>
+            }
+        </section>
+    }
+
+    <section class="dashboard-analytics-panel" aria-labelledby="manual-training-title">
+        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Approved knowledge</span><h2 class="dashboard-section-title" id="manual-training-title">Founder manual training</h2></div></div>
+        <form method="post" asp-action="SubmitKnowledge" class="dashboard-search-panel">
+            @Html.AntiForgeryToken()
+            <div class="founder-subscriber-filter-grid">
+                <label class="founder-subscriber-field"><span>Source language</span><select name="SourceLanguageCode" required><option value="">Select language</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
+                <label class="founder-subscriber-field"><span>Target language (optional for monolingual knowledge)</span><select name="TargetLanguageCode"><option value="">Monolingual entry</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
+                <label class="founder-subscriber-field"><span>Context / category</span><input name="ContextCategory" maxlength="120" placeholder="Vocabulary, phrase, idiom, sentence pattern" /></label>
+                <label class="founder-subscriber-field"><span>Usage</span><input name="UsageRegister" maxlength="80" placeholder="Formal, informal, regional" /></label>
+                <label class="founder-subscriber-field founder-subscriber-search-field"><span>Source text</span><textarea name="SourceText" required maxlength="10000"></textarea></label>
+                <label class="founder-subscriber-field founder-subscriber-search-field"><span>Target text</span><textarea name="TargetText" maxlength="10000"></textarea></label>
+            </div>
+            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save approved knowledge</button></div>
+        </form>
+    </section>
+
+    @if (Model.SelectedPair is { } correctionPair && correctionPair.RecentAlignments.Count > 0)
+    {
+        <section class="dashboard-analytics-panel" aria-labelledby="correction-title">
+            <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Audit-preserving correction</span><h2 class="dashboard-section-title" id="correction-title">Supersede a pair alignment</h2></div></div>
+            <form method="post" asp-action="CorrectKnowledge" class="dashboard-search-panel">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="SourceLanguageCode" value="@correctionPair.SourceLanguageCode" />
+                <input type="hidden" name="TargetLanguageCode" value="@correctionPair.TargetLanguageCode" />
+                <div class="founder-subscriber-filter-grid">
+                    <label class="founder-subscriber-field"><span>Alignment to supersede</span><select name="SupersededAlignmentId" required>@foreach (var alignment in correctionPair.RecentAlignments) { <option value="@alignment.Id">@alignment.SourceText → @alignment.TargetText</option> }</select></label>
+                    <label class="founder-subscriber-field"><span>Context / category</span><input name="ContextCategory" maxlength="120" /></label>
+                    <label class="founder-subscriber-field founder-subscriber-search-field"><span>Replacement source text</span><textarea name="SourceText" required maxlength="10000"></textarea></label>
+                    <label class="founder-subscriber-field founder-subscriber-search-field"><span>Replacement target text</span><textarea name="TargetText" required maxlength="10000"></textarea></label>
+                </div>
+                <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save correction and supersede</button></div>
+            </form>
+        </section>
+    }
+
+    <section class="dashboard-analytics-panel" aria-labelledby="operational-events-title">
+        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Bounded diagnostics</span><h2 class="dashboard-section-title" id="operational-events-title">Recent backend events</h2></div></div>
+        @if (dashboard.RecentOperationalEvents.Count == 0)
+        {
+            <p>No recorded Legend Connect operational events.</p>
+        }
+        else
+        {
+            <div class="table-responsive"><table class="table"><thead><tr><th>When</th><th>Category</th><th>Severity</th><th>Language / pair</th><th>Status</th><th>Code</th></tr></thead><tbody>
+            @foreach (var item in dashboard.RecentOperationalEvents)
+            {
+                <tr><td>@item.OccurredUtc.ToString("u")</td><td>@item.Category</td><td>@item.Severity</td><td>@(item.PairKey ?? item.LanguageCode ?? "Global")</td><td>@item.Status</td><td>@item.ErrorCode</td></tr>
+            }
+            </tbody></table></div>
+        }
+    </section>
+</main>

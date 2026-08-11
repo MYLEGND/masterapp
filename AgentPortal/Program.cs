@@ -123,6 +123,7 @@ builder.Services.AddScoped<AgentRegistryService>();
 builder.Services.AddScoped<AgentProfileAccessResolver>();
 builder.Services.AddScoped<AgencyCommandService>();
 builder.Services.AddScoped<FounderSubscribersService>();
+builder.Services.AddScoped<FounderLegendConnectService>();
 builder.Services.AddScoped<FounderImpersonationService>();
 builder.Services.AddScoped<ProductionService>();
 builder.Services.AddScoped<MetaSignalCrmOutcomeService>();

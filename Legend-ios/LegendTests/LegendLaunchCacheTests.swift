@@ -64,7 +64,9 @@ final class LegendLaunchCacheTests: XCTestCase {
         guard case .authenticated(let visibleSession) = coordinator.state else {
             return XCTFail("Expected the cached shell to remain authenticated")
         }
-        XCTAssertEqual(visibleSession.actor.displayName, "Client One")
+        // The root is keyed by logical identity, so a refreshed projection for
+        // the same account updates in place instead of remounting the shell.
+        XCTAssertEqual(visibleSession.actor.displayName, "Client One Updated")
         XCTAssertEqual(cache.readSession()?.actor.displayName, "Client One Updated")
     }
 

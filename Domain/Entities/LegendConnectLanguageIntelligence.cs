@@ -1,0 +1,267 @@
+namespace Domain.Entities;
+
+/// <summary>
+/// Server-owned language control-plane record. LanguageCode is the canonical
+/// BCP-47 identifier used by mobile contracts and every Legend Connect
+/// partition; display metadata is data rather than client or service branches.
+/// </summary>
+public sealed class LegendLanguageDefinition
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string LanguageCode { get; set; } = string.Empty;
+    public string BaseLanguageCode { get; set; } = string.Empty;
+    public string CanonicalName { get; set; } = string.Empty;
+    public string NativeName { get; set; } = string.Empty;
+    public bool IsEnabled { get; set; }
+    public bool IsTranslationEnabled { get; set; }
+    public bool IsLearningEnabled { get; set; }
+    public string DatasetNamespace { get; set; } = string.Empty;
+    public string StoragePartition { get; set; } = string.Empty;
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A directional relationship between two language datasets. PairKey is always
+/// SourceLanguageCode:TargetLanguageCode and never substitutes for either
+/// language's monolingual dataset identity.
+/// </summary>
+public sealed class LegendLanguagePair
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string PairKey { get; set; } = string.Empty;
+    public string SourceLanguageCode { get; set; } = string.Empty;
+    public string TargetLanguageCode { get; set; } = string.Empty;
+    public bool IsEnabled { get; set; }
+    public string TranslationMemoryPartition { get; set; } = string.Empty;
+    public int CorpusCoverage { get; set; }
+    public string QualityState { get; set; } = "Observation";
+    public string? ActiveModelVersion { get; set; }
+    public string ProviderFallbackPolicy { get; set; } = "AzureTranslator";
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// One normalized, deduplicated text asset within exactly one language
+/// dataset. Raw message bodies are never inserted here unless a centralized
+/// policy has established training eligibility.
+/// </summary>
+public sealed class LegendLanguageTextUnit
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string LanguageCode { get; set; } = string.Empty;
+    public string StoragePartition { get; set; } = string.Empty;
+    public string NormalizedHash { get; set; } = string.Empty;
+    public string Text { get; set; } = string.Empty;
+    public Guid? GlobalConceptId { get; set; }
+    public string Provenance { get; set; } = string.Empty;
+    public bool IsTrainingEligible { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Optional language-neutral relationship holder. It references language text
+/// units rather than carrying multilingual text itself.
+/// </summary>
+public sealed class LegendGlobalConcept
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string ConceptKey { get; set; } = string.Empty;
+    public string? Category { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Reusable directional translation-memory relationship. This is deliberately
+/// separate from MessageTranslations, which remains an operational message
+/// presentation cache.
+/// </summary>
+public sealed class LegendTranslationAlignment
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string PairKey { get; set; } = string.Empty;
+    public Guid SourceTextUnitId { get; set; }
+    public Guid TargetTextUnitId { get; set; }
+    public string Provider { get; set; } = string.Empty;
+    public string? ProviderModel { get; set; }
+    public decimal? Confidence { get; set; }
+    public string QualityState { get; set; } = "Observation";
+    public bool HumanVerified { get; set; }
+    public int ObservationCount { get; set; }
+    public DateTime? SupersededUtc { get; set; }
+    public Guid? SupersededByAlignmentId { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A generic, reusable contextual relationship derived only from approved
+/// language knowledge. It captures structural and usage metadata without
+/// encoding grammar rules for any individual language.
+/// </summary>
+public sealed class LegendLanguageContextRelationship
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string? PairKey { get; set; }
+    public Guid SourceTextUnitId { get; set; }
+    public Guid RelatedTextUnitId { get; set; }
+    public string RelationshipKind { get; set; } = "ContextualExample";
+    public string ContextSignature { get; set; } = string.Empty;
+    public string SourcePatternSignature { get; set; } = string.Empty;
+    public string? ContextCategory { get; set; }
+    public string? UsageRegister { get; set; }
+    public string? RegionalVariant { get; set; }
+    public decimal Confidence { get; set; }
+    public string QualityState { get; set; } = "Observation";
+    public string Provenance { get; set; } = string.Empty;
+    public int ObservationCount { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Durable, idempotent hand-off from production translation to the optional
+/// Legend Connect learning pipeline. Source and target text are populated only
+/// when the central eligibility policy has approved their retention.
+/// </summary>
+public sealed class LegendTranslationLearningEvent
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string IdempotencyKey { get; set; } = string.Empty;
+    public Guid? SourceMessageId { get; set; }
+    public string SourceLanguageCode { get; set; } = string.Empty;
+    public string TargetLanguageCode { get; set; } = string.Empty;
+    public string PairKey { get; set; } = string.Empty;
+    public string SourceTextHash { get; set; } = string.Empty;
+    public string TargetTextHash { get; set; } = string.Empty;
+    public string? SourceText { get; set; }
+    public string? TargetText { get; set; }
+    public string Provider { get; set; } = string.Empty;
+    public string Provenance { get; set; } = string.Empty;
+    public string? ContextCategory { get; set; }
+    public string EligibilityState { get; set; } = string.Empty;
+    public string ProcessingState { get; set; } = "Pending";
+    public int AttemptCount { get; set; }
+    public DateTime? LeaseExpiresUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? ProcessedUtc { get; set; }
+    public string? FailureCode { get; set; }
+}
+
+/// <summary>
+/// An administrator-approved, provenance-carrying acquisition candidate.
+/// There is intentionally no mobile route to author these records.
+/// </summary>
+public sealed class LegendCorpusCandidate
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string IdempotencyKey { get; set; } = string.Empty;
+    public string SourceLanguageCode { get; set; } = string.Empty;
+    public string TargetLanguageCode { get; set; } = string.Empty;
+    public string SourceText { get; set; } = string.Empty;
+    public string SourceTextHash { get; set; } = string.Empty;
+    public string Category { get; set; } = "EverydayConversation";
+    public string Provenance { get; set; } = string.Empty;
+    public bool IsApproved { get; set; }
+    public int Priority { get; set; }
+    public string ProcessingState { get; set; } = "Pending";
+    public int AttemptCount { get; set; }
+    public DateTime? LeaseExpiresUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? ProcessedUtc { get; set; }
+    public string? FailureCode { get; set; }
+}
+
+/// <summary>
+/// Reconciled, per-billing-period provider consumption and reservations.
+/// Reservations make live and background capacity decisions safe across server
+/// instances without turning an in-memory counter into authority.
+/// </summary>
+public sealed class LegendTranslationProviderCapacity
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Provider { get; set; } = string.Empty;
+    public DateOnly BillingPeriodStart { get; set; }
+    public long ConfiguredCapacityCharacters { get; set; }
+    public long ReservedLiveCharacters { get; set; }
+    public long LiveCharactersConsumed { get; set; }
+    public long BootstrapCharactersConsumed { get; set; }
+    public long TrainingCharactersConsumed { get; set; }
+    public long ReservedLiveCapacityCharacters { get; set; }
+    public long ProjectedLiveCharacters { get; set; }
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+}
+
+/// <summary>
+/// Privacy-safe aggregate demand for one directional pair. It carries no
+/// source/target text or member identity and supplies corpus prioritization
+/// with real community demand rather than named-language code paths.
+/// </summary>
+public sealed class LegendTranslationPairDemand
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string PairKey { get; set; } = string.Empty;
+    public long TranslationRequestCount { get; set; }
+    public long ProviderCharacterCount { get; set; }
+    public long TranslationMemoryHitCount { get; set; }
+    public long AzureFallbackCount { get; set; }
+    public long ContextualCompositionObservationCount { get; set; }
+    public DateTime LastRequestedUtc { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+}
+
+/// <summary>
+/// Daily server-owned aggregate for translation paths that are not directional
+/// pairs, notably same-language bypasses. It deliberately contains no text,
+/// identity, or provider credential data.
+/// </summary>
+public sealed class LegendTranslationSystemUsage
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public DateOnly UsageDate { get; set; }
+    public long SameLanguageBypassCount { get; set; }
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+}
+
+/// <summary>
+/// Bounded, sanitized operational evidence for the Founder health surface.
+/// It is intentionally separate from private message/audit content.
+/// </summary>
+public sealed class LegendConnectOperationalEvent
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Category { get; set; } = string.Empty;
+    public string Severity { get; set; } = "Info";
+    public string Status { get; set; } = string.Empty;
+    public string? LanguageCode { get; set; }
+    public string? PairKey { get; set; }
+    public string? CorrelationId { get; set; }
+    public string? ErrorCode { get; set; }
+    public string? Summary { get; set; }
+    public bool IsResolved { get; set; }
+    public DateTime OccurredUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Append-only Founder operation evidence. Corrections supersede prior
+/// knowledge rather than erasing its audit history.
+/// </summary>
+public sealed class LegendConnectKnowledgeAuditEntry
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string FounderUserId { get; set; } = string.Empty;
+    public string Action { get; set; } = string.Empty;
+    public string Result { get; set; } = string.Empty;
+    public string LanguageCode { get; set; } = string.Empty;
+    public string? PairKey { get; set; }
+    public Guid? TextUnitId { get; set; }
+    public Guid? AlignmentId { get; set; }
+    public Guid? SupersededAlignmentId { get; set; }
+    public string? Detail { get; set; }
+    public DateTime OccurredUtc { get; set; } = DateTime.UtcNow;
+}

@@ -101,13 +101,16 @@ public sealed class MobileAccountService : IMobileAccountService
 
     private readonly MasterAppDbContext _db;
     private readonly IControlledResourceAccessService _controlledResources;
+    private readonly ILegendLanguageRegistry _languages;
 
     public MobileAccountService(
         MasterAppDbContext db,
-        IControlledResourceAccessService controlledResources)
+        IControlledResourceAccessService controlledResources,
+        ILegendLanguageRegistry? languages = null)
     {
         _db = db;
         _controlledResources = controlledResources;
+        _languages = languages ?? new LegendLanguageRegistry(_db, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
     }
 
     public async Task<MobileAccountResult> GetAsync(
@@ -238,12 +241,15 @@ public sealed class MobileAccountService : IMobileAccountService
                 "Language Translation Access must be granted before choosing a communication language.");
         }
         if (update.PreferredCommunicationLanguage is not null &&
-            preferredLanguage is not null &&
-            !CommunicationLanguages.TryNormalize(preferredLanguage, out preferredLanguage))
+            preferredLanguage is not null)
         {
-            return MobileAccountResult.Failure(
-                "MOBILE_ACCOUNT_INPUT_INVALID",
-                "Choose a supported communication language.");
+            preferredLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(preferredLanguage, cancellationToken);
+            if (preferredLanguage is null)
+            {
+                return MobileAccountResult.Failure(
+                    "MOBILE_ACCOUNT_INPUT_INVALID",
+                    "Choose a supported communication language.");
+            }
         }
 
         var now = DateTime.UtcNow;
@@ -396,7 +402,7 @@ public sealed class MobileAccountService : IMobileAccountService
             UsernameChangesRemaining = UsernameChangesRemaining(settings),
             TranslationAccess = translationAccess,
             PreferredCommunicationLanguage = translationAccess.State == ControlledResourceAccessStates.Granted
-                ? CommunicationLanguages.NormalizeOrNull(settings.PreferredCommunicationLanguage)
+                ? await _languages.NormalizeEnabledTranslationLanguageAsync(settings.PreferredCommunicationLanguage, cancellationToken)
                 : null
         });
     }

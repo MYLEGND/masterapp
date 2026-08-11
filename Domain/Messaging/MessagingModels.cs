@@ -22,43 +22,15 @@ public static class MessagingConversationPurposes
 }
 
 /// <summary>
-/// Server-owned language choices for automatic message translation. Haitian
-/// Creole is intentionally first: it is a priority Legend language and uses
-/// Azure Translator's supported <c>ht</c> identifier.
+/// Compatibility normalization façade. The supported-language authority lives
+/// in the persisted Legend Connect registry; this type has no language list or
+/// policy branches and is used only where a syntactic BCP-47 normalization is
+/// needed before that registry is consulted.
 /// </summary>
 public static class CommunicationLanguages
 {
-    public static readonly IReadOnlyList<CommunicationLanguage> Supported =
-    [
-        new("en", "English"),
-        // English remains the default experience. Haitian Creole is placed
-        // directly beside it as a priority language, never as a replacement.
-        new("ht", "Haitian Creole"),
-        new("es", "Spanish"),
-        new("fr", "French"),
-        new("pt", "Portuguese"),
-        new("de", "German"),
-        new("ja", "Japanese"),
-        new("ko", "Korean"),
-        new("zh-Hans", "Chinese (Simplified)"),
-        new("ar", "Arabic")
-    ];
-
-    public static bool TryNormalize(string? value, out string language)
-    {
-        language = string.Empty;
-        var candidate = value?.Trim();
-        if (string.IsNullOrWhiteSpace(candidate))
-            return false;
-
-        var supported = Supported.FirstOrDefault(item =>
-            string.Equals(item.Code, candidate, StringComparison.OrdinalIgnoreCase));
-        if (supported is null)
-            return false;
-
-        language = supported.Code;
-        return true;
-    }
+    public static bool TryNormalize(string? value, out string language) =>
+        LegendLanguageIdentity.TryNormalize(value, out language);
 
     public static string? NormalizeOrNull(string? value) =>
         TryNormalize(value, out var language) ? language : null;

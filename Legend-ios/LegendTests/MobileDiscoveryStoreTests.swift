@@ -41,13 +41,18 @@ final class MobileDiscoveryStoreTests: XCTestCase {
         let store = makeStore(api: api)
 
         await store.refresh()
-        XCTAssertEqual(store.results.count, 20)
+        // Discover intentionally paints a compact, server-authorized first page
+        // before its wider directory page warms in the background.
+        XCTAssertEqual(store.results.count, 3)
         XCTAssertTrue(store.hasMore)
+
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(store.results.count, 23)
 
         guard let tail = store.results.last else { return XCTFail("Expected a first page") }
         store.loadMoreIfNeeded(currentItem: tail)
         try await Task.sleep(for: .milliseconds(300))
-        XCTAssertEqual(store.results.count, 40)
+        XCTAssertEqual(store.results.count, 43)
 
         guard let secondTail = store.results.last else { return XCTFail("Expected a second page") }
         store.loadMoreIfNeeded(currentItem: secondTail)
@@ -65,20 +70,20 @@ final class MobileDiscoveryStoreTests: XCTestCase {
         let store = makeStore(api: api)
 
         await store.refresh()
-        XCTAssertEqual(store.results.count, 20)
+        XCTAssertEqual(store.results.count, 3)
 
-        // A new search starts while a "load more" for the old query is still in flight.
+        // A new search starts while the old query's background warm-up is in flight.
         await api.setResponseDelay(.milliseconds(250))
-        guard let tail = store.results.last else { return XCTFail("Expected a first page") }
-        store.loadMoreIfNeeded(currentItem: tail)
-
+        try await Task.sleep(for: .milliseconds(120))
         store.searchText = "different"
         try await Task.sleep(for: .milliseconds(900))
 
-        // The stale page must not have been appended to the new result set.
+        // The stale page must not have been appended to the new result set. The
+        // new query may legitimately show its three-row first paint plus its
+        // twenty-row background warm-up.
         let queries = await api.recordedQueries()
         XCTAssertEqual(queries.last, "different")
-        XCTAssertLessThanOrEqual(store.results.count, 20)
+        XCTAssertLessThanOrEqual(store.results.count, 23)
     }
 
     func testClientRefreshLoadsRecommendationsAndTheActiveDirectory() async throws {

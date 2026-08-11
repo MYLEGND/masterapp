@@ -23,7 +23,19 @@ public static class MessagingServiceCollectionExtensions
         services.TryAddSingleton<IConfiguration>(configuration);
         services.AddScoped<IMessagingService, MessagingService>();
         services.AddScoped<IControlledResourceAccessService, ControlledResourceAccessService>();
-        services.AddScoped<ITranslationService, AzureTranslatorService>();
+        services.AddScoped<ILegendLanguageRegistry, LegendLanguageRegistry>();
+        services.AddScoped<ITranslationCapacityAuthority, TranslationCapacityAuthority>();
+        services.AddScoped<ITranslationDemandRecorder, TranslationDemandRecorder>();
+        services.AddScoped<ITranslationSystemUsageRecorder, TranslationSystemUsageRecorder>();
+        services.AddScoped<ILegendConnectOperationalEventWriter, LegendConnectOperationalEventWriter>();
+        services.AddScoped<ILegendConnectTranslationIntelligence, LegendConnectTranslationIntelligence>();
+        services.AddScoped<ITranslationProvider, AzureTranslatorService>();
+        services.AddScoped<ITranslationService, LegendConnectTranslationRouter>();
+        services.AddScoped<ITranslationLearningPublisher, LegendTranslationLearningPublisher>();
+        services.AddScoped<LegendConnectCorpusService>();
+        services.AddScoped<LegendConnectAutonomousGapPlanner>();
+        services.AddScoped<LegendConnectAutonomousLearningService>();
+        services.AddScoped<ILegendConnectOperations, LegendConnectOperations>();
         services.AddHttpClient("AzureTranslator", client =>
         {
             // Provider failures must never hold up message delivery.
@@ -70,6 +82,8 @@ public static class MessagingServiceCollectionExtensions
         services.AddSingleton<IMessageAttachmentStorage, MessagingAttachmentStorage>();
         services.AddSingleton<IMessagingRealtimePublisher, MessagingRealtimePublisher>();
         services.AddHostedService<MessagingRealtimeNotificationHostedService>();
+        services.AddHostedService<LegendConnectLearningHostedService>();
+        services.AddHostedService<LegendConnectCorpusAcquisitionHostedService>();
 
         return services;
     }

@@ -36,6 +36,9 @@ internal sealed class MessagingService : IMessagingService
     private readonly IMessagingProfileImageResolver _participantIdentities;
     private readonly IControlledResourceAccessService _controlledResources;
     private readonly ITranslationService _translation;
+    private readonly ITranslationLearningPublisher _translationLearning;
+    private readonly ILegendLanguageRegistry _languages;
+    private readonly Dictionary<string, TranslationLearningCandidate> _pendingTranslationLearning = new(StringComparer.Ordinal);
     private readonly INotificationEngine _notifications;
     private readonly string? _configuredFounderOid;
     private readonly ICommunitySafetyService? _communitySafety;
@@ -49,7 +52,9 @@ internal sealed class MessagingService : IMessagingService
         ITranslationService translation,
         INotificationEngine notifications,
         string? configuredFounderOid = null,
-        ICommunitySafetyService? communitySafety = null)
+        ICommunitySafetyService? communitySafety = null,
+        ITranslationLearningPublisher? translationLearning = null,
+        ILegendLanguageRegistry? languages = null)
     {
         _db = db;
         _logger = logger;
@@ -57,6 +62,10 @@ internal sealed class MessagingService : IMessagingService
         _participantIdentities = participantIdentities;
         _controlledResources = controlledResources;
         _translation = translation;
+        _translationLearning = translationLearning ?? NullTranslationLearningPublisher.Instance;
+        _languages = languages ?? new LegendLanguageRegistry(
+            _db,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
         _notifications = notifications ?? throw new ArgumentNullException(nameof(notifications));
         _configuredFounderOid = configuredFounderOid ??
             Environment.GetEnvironmentVariable("FOUNDER_OID") ??
@@ -935,6 +944,7 @@ internal sealed class MessagingService : IMessagingService
                 $"We could not open this conversation. Please try again. If the issue continues, provide Diagnostic ID: {diagnosticId}.");
         }
 
+        await FlushPendingTranslationLearningAsync();
         if (notificationRecipients.Count > 0)
             await _notifications.ReconcileAndPublishAsync(notificationRecipients, cancellationToken);
 
@@ -1148,11 +1158,12 @@ internal sealed class MessagingService : IMessagingService
                 "Language Translation Access must be granted before choosing a language.");
         }
 
+        var languages = await _languages.ListEnabledTranslationLanguagesAsync(cancellationToken);
         return new MessagingCommunicationLanguageListResult(
             true,
             null,
             null,
-            CommunicationLanguages.Supported);
+            languages.Select(language => new CommunicationLanguage(language.Code, language.DisplayName)).ToArray());
     }
 
     public async Task<MessagingActivityNotificationListResult> ListActivityNotificationsAsync(
@@ -2092,6 +2103,7 @@ internal sealed class MessagingService : IMessagingService
             return MessagingMessageResult.Failure("MESSAGING_MESSAGE_SAVE_FAILED", "The message could not be saved.");
         }
 
+        await FlushPendingTranslationLearningAsync();
         if (notificationRecipients.Count > 0)
         {
             await _notifications.ReconcileAndPublishAsync(
@@ -3427,6 +3439,7 @@ internal sealed class MessagingService : IMessagingService
                 "We could not create this group. Please try again.");
         }
 
+        await FlushPendingTranslationLearningAsync();
         if (notificationRecipients.Count > 0)
             await _notifications.ReconcileAndPublishAsync(notificationRecipients, cancellationToken);
 
@@ -4556,7 +4569,16 @@ internal sealed class MessagingService : IMessagingService
         };
         _db.MessageTranslations.Add(created);
         if (!persistChanges)
+        {
+            QueueTranslationLearning(new TranslationLearningCandidate(
+                message.Id,
+                sourceLanguage,
+                targetLanguage,
+                message.Body,
+                created.TranslatedText,
+                created.Provider));
             return new CachedMessageTranslation(created.TranslatedText, sourceLanguage, created.Provider);
+        }
 
         try
         {
@@ -4580,18 +4602,65 @@ internal sealed class MessagingService : IMessagingService
             return concurrent;
         }
 
+        try
+        {
+            await _translationLearning.TryPublishAsync(
+                new TranslationLearningCandidate(
+                    message.Id,
+                    sourceLanguage,
+                    targetLanguage,
+                    message.Body,
+                    created.TranslatedText,
+                    created.Provider),
+                CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            // Operational translation has already been persisted. Learning is
+            // optional and must never change recipient presentation or message
+            // delivery if its downstream hand-off is unavailable.
+            _logger.LogError(exception, "Legend Connect learning hand-off failed. MessageId={MessageId}", message.Id);
+        }
         return new CachedMessageTranslation(created.TranslatedText, sourceLanguage, created.Provider);
+    }
+
+    private void QueueTranslationLearning(TranslationLearningCandidate candidate) =>
+        _pendingTranslationLearning[$"{candidate.SourceMessageId:D}:{candidate.TargetLanguageCode}"] = candidate;
+
+    private async Task FlushPendingTranslationLearningAsync()
+    {
+        if (_pendingTranslationLearning.Count == 0)
+            return;
+
+        var pending = _pendingTranslationLearning.Values.ToArray();
+        _pendingTranslationLearning.Clear();
+        foreach (var candidate in pending)
+        {
+            try
+            {
+                await _translationLearning.TryPublishAsync(candidate, CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception, "Legend Connect learning hand-off failed. MessageId={MessageId}", candidate.SourceMessageId);
+            }
+        }
     }
 
     private async Task<string?> ResolveOriginalLanguageAsync(
         MessageTranslationSource message,
         CancellationToken cancellationToken)
     {
-        var trackedLanguage = _db.InternalMessages.Local
+        var trackedLanguageCandidate = _db.InternalMessages.Local
             .Where(candidate => candidate.Id == message.Id)
-            .Select(candidate => CommunicationLanguages.NormalizeOrNull(candidate.OriginalLanguage))
-            .FirstOrDefault(language => language is not null);
-        var sourceLanguage = CommunicationLanguages.NormalizeOrNull(message.OriginalLanguage) ?? trackedLanguage;
+            .Select(candidate => candidate.OriginalLanguage)
+            .FirstOrDefault();
+        var trackedLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            trackedLanguageCandidate,
+            cancellationToken);
+        var sourceLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            message.OriginalLanguage,
+            cancellationToken) ?? trackedLanguage;
         if (sourceLanguage is not null)
             return sourceLanguage;
 
@@ -4614,7 +4683,7 @@ internal sealed class MessagingService : IMessagingService
         }
 
         sourceLanguage = detection.Succeeded
-            ? CommunicationLanguages.NormalizeOrNull(detection.Language)
+            ? await _languages.NormalizeEnabledTranslationLanguageAsync(detection.Language, cancellationToken)
             : null;
         if (sourceLanguage is null)
         {
@@ -4654,7 +4723,7 @@ internal sealed class MessagingService : IMessagingService
                 await _db.SaveChangesAsync(cancellationToken);
             }
 
-            return CommunicationLanguages.NormalizeOrNull(inMemoryMessage.OriginalLanguage) ?? sourceLanguage;
+            return await _languages.NormalizeEnabledTranslationLanguageAsync(inMemoryMessage.OriginalLanguage, cancellationToken) ?? sourceLanguage;
         }
 
         // Projection requests frequently arrive concurrently (home, inbox,
@@ -4679,7 +4748,7 @@ internal sealed class MessagingService : IMessagingService
             .Where(candidate => candidate.Id == message.Id)
             .Select(candidate => candidate.OriginalLanguage)
             .SingleOrDefaultAsync(cancellationToken);
-        return CommunicationLanguages.NormalizeOrNull(persistedLanguage) ?? sourceLanguage;
+        return await _languages.NormalizeEnabledTranslationLanguageAsync(persistedLanguage, cancellationToken) ?? sourceLanguage;
     }
 
     private static MessageTranslationSource ToTranslationSource(MessageDetailRow message) => new(

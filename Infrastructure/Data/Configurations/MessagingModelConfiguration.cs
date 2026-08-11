@@ -17,6 +17,7 @@ internal static class MessagingModelConfiguration
         ConfigureVerificationReviewRequest(modelBuilder.Entity<VerificationReviewRequest>(), providerName);
         ConfigureControlledResourceGrant(modelBuilder.Entity<ControlledResourceGrant>(), providerName);
         ConfigureMessageTranslation(modelBuilder.Entity<MessageTranslation>());
+        ConfigureLegendConnect(modelBuilder, providerName);
         ConfigureMobileActivityNotification(modelBuilder.Entity<MobileActivityNotification>(), providerName);
         ConfigureUserGlobalBadge(modelBuilder.Entity<UserGlobalBadge>(), providerName);
         ConfigureMobilePushDevice(modelBuilder.Entity<MobilePushDevice>());
@@ -264,6 +265,221 @@ internal static class MessagingModelConfiguration
             .WithMany(x => x.Translations)
             .HasForeignKey(x => x.InternalMessageId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+
+    private static void ConfigureLegendConnect(ModelBuilder modelBuilder, string? providerName)
+    {
+        modelBuilder.Entity<LegendLanguageDefinition>(entity =>
+        {
+            entity.ToTable("LegendLanguageDefinitions");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.BaseLanguageCode).IsRequired().HasMaxLength(16);
+            entity.Property(item => item.CanonicalName).IsRequired().HasMaxLength(120);
+            entity.Property(item => item.NativeName).IsRequired().HasMaxLength(120);
+            entity.Property(item => item.DatasetNamespace).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.StoragePartition).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => item.LanguageCode).IsUnique();
+            entity.HasIndex(item => new { item.IsEnabled, item.IsTranslationEnabled });
+            entity.HasIndex(item => item.StoragePartition).IsUnique();
+        });
+
+        modelBuilder.Entity<LegendLanguagePair>(entity =>
+        {
+            entity.ToTable("LegendLanguagePairs");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.PairKey).IsRequired().HasMaxLength(72);
+            entity.Property(item => item.SourceLanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.TargetLanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.TranslationMemoryPartition).IsRequired().HasMaxLength(96);
+            entity.Property(item => item.QualityState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.ActiveModelVersion).HasMaxLength(80);
+            entity.Property(item => item.ProviderFallbackPolicy).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => item.PairKey).IsUnique();
+            entity.HasIndex(item => new { item.SourceLanguageCode, item.TargetLanguageCode }).IsUnique();
+            entity.HasIndex(item => item.TranslationMemoryPartition).IsUnique();
+        });
+
+        modelBuilder.Entity<LegendLanguageTextUnit>(entity =>
+        {
+            entity.ToTable("LegendLanguageTextUnits");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.StoragePartition).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.NormalizedHash).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.Text).IsRequired().HasMaxLength(10_000);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => new { item.LanguageCode, item.NormalizedHash }).IsUnique();
+            entity.HasIndex(item => new { item.StoragePartition, item.CreatedUtc });
+            entity.HasOne<LegendGlobalConcept>()
+                .WithMany()
+                .HasForeignKey(item => item.GlobalConceptId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<LegendGlobalConcept>(entity =>
+        {
+            entity.ToTable("LegendGlobalConcepts");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.ConceptKey).IsRequired().HasMaxLength(160);
+            entity.Property(item => item.Category).HasMaxLength(80);
+            entity.HasIndex(item => item.ConceptKey).IsUnique();
+        });
+
+        modelBuilder.Entity<LegendTranslationAlignment>(entity =>
+        {
+            entity.ToTable("LegendTranslationAlignments");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.PairKey).IsRequired().HasMaxLength(72);
+            entity.Property(item => item.Provider).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.ProviderModel).HasMaxLength(120);
+            entity.Property(item => item.QualityState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.Confidence).HasPrecision(5, 4);
+            entity.HasIndex(item => item.SupersededByAlignmentId);
+            entity.HasIndex(item => new { item.PairKey, item.SourceTextUnitId, item.TargetTextUnitId }).IsUnique();
+            entity.HasIndex(item => new { item.PairKey, item.QualityState });
+            entity.HasOne<LegendLanguageTextUnit>()
+                .WithMany()
+                .HasForeignKey(item => item.SourceTextUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageTextUnit>()
+                .WithMany()
+                .HasForeignKey(item => item.TargetTextUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendLanguageContextRelationship>(entity =>
+        {
+            entity.ToTable("LegendLanguageContextRelationships");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.PairKey).HasMaxLength(72);
+            entity.Property(item => item.RelationshipKind).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.ContextSignature).IsRequired().HasMaxLength(320);
+            entity.Property(item => item.SourcePatternSignature).IsRequired().HasMaxLength(1_000);
+            entity.Property(item => item.ContextCategory).HasMaxLength(120);
+            entity.Property(item => item.UsageRegister).HasMaxLength(80);
+            entity.Property(item => item.RegionalVariant).HasMaxLength(80);
+            entity.Property(item => item.Confidence).HasPrecision(5, 4);
+            entity.Property(item => item.QualityState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => new
+            {
+                item.PairKey,
+                item.SourceTextUnitId,
+                item.RelatedTextUnitId,
+                item.RelationshipKind,
+                item.ContextSignature
+            }).IsUnique();
+            entity.HasIndex(item => new { item.PairKey, item.SourcePatternSignature, item.QualityState });
+            entity.HasOne<LegendLanguageTextUnit>()
+                .WithMany()
+                .HasForeignKey(item => item.SourceTextUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageTextUnit>()
+                .WithMany()
+                .HasForeignKey(item => item.RelatedTextUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendTranslationLearningEvent>(entity =>
+        {
+            entity.ToTable("LegendTranslationLearningEvents");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.IdempotencyKey).IsRequired().HasMaxLength(180);
+            entity.Property(item => item.SourceLanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.TargetLanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.PairKey).IsRequired().HasMaxLength(72);
+            entity.Property(item => item.SourceTextHash).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.TargetTextHash).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.SourceText).HasMaxLength(10_000);
+            entity.Property(item => item.TargetText).HasMaxLength(10_000);
+            entity.Property(item => item.Provider).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.ContextCategory).HasMaxLength(120);
+            entity.Property(item => item.EligibilityState).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.ProcessingState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.FailureCode).HasMaxLength(80);
+            entity.HasIndex(item => item.IdempotencyKey).IsUnique();
+            entity.HasIndex(item => new { item.ProcessingState, item.EligibilityState, item.CreatedUtc });
+            entity.HasIndex(item => item.PairKey);
+        });
+
+        modelBuilder.Entity<LegendCorpusCandidate>(entity =>
+        {
+            entity.ToTable("LegendCorpusCandidates");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.IdempotencyKey).IsRequired().HasMaxLength(180);
+            entity.Property(item => item.SourceLanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.TargetLanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.SourceText).IsRequired().HasMaxLength(10_000);
+            entity.Property(item => item.SourceTextHash).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.Category).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.ProcessingState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.FailureCode).HasMaxLength(80);
+            entity.HasIndex(item => item.IdempotencyKey).IsUnique();
+            entity.HasIndex(item => new { item.IsApproved, item.ProcessingState, item.Priority, item.CreatedUtc });
+            entity.HasIndex(item => new { item.SourceLanguageCode, item.TargetLanguageCode });
+        });
+
+        modelBuilder.Entity<LegendTranslationProviderCapacity>(entity =>
+        {
+            entity.ToTable("LegendTranslationProviderCapacities");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Provider).IsRequired().HasMaxLength(80);
+            ConfigureRowVersion(entity.Property(item => item.RowVersion), providerName);
+            entity.HasIndex(item => new { item.Provider, item.BillingPeriodStart }).IsUnique();
+        });
+
+        modelBuilder.Entity<LegendTranslationPairDemand>(entity =>
+        {
+            entity.ToTable("LegendTranslationPairDemands");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.PairKey).IsRequired().HasMaxLength(72);
+            ConfigureRowVersion(entity.Property(item => item.RowVersion), providerName);
+            entity.HasIndex(item => item.PairKey).IsUnique();
+            entity.HasIndex(item => item.LastRequestedUtc);
+        });
+
+        modelBuilder.Entity<LegendTranslationSystemUsage>(entity =>
+        {
+            entity.ToTable("LegendTranslationSystemUsages");
+            entity.HasKey(item => item.Id);
+            ConfigureRowVersion(entity.Property(item => item.RowVersion), providerName);
+            entity.HasIndex(item => item.UsageDate).IsUnique();
+        });
+
+        modelBuilder.Entity<LegendConnectOperationalEvent>(entity =>
+        {
+            entity.ToTable("LegendConnectOperationalEvents");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Category).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.Severity).IsRequired().HasMaxLength(20);
+            entity.Property(item => item.Status).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.LanguageCode).HasMaxLength(32);
+            entity.Property(item => item.PairKey).HasMaxLength(72);
+            entity.Property(item => item.CorrelationId).HasMaxLength(128);
+            entity.Property(item => item.ErrorCode).HasMaxLength(80);
+            entity.Property(item => item.Summary).HasMaxLength(500);
+            entity.HasIndex(item => new { item.PairKey, item.OccurredUtc });
+            entity.HasIndex(item => new { item.LanguageCode, item.OccurredUtc });
+            entity.HasIndex(item => new { item.Severity, item.IsResolved, item.OccurredUtc });
+        });
+
+        modelBuilder.Entity<LegendConnectKnowledgeAuditEntry>(entity =>
+        {
+            entity.ToTable("LegendConnectKnowledgeAuditEntries");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.FounderUserId).IsRequired().HasMaxLength(450);
+            entity.Property(item => item.Action).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.Result).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.PairKey).HasMaxLength(72);
+            entity.Property(item => item.Detail).HasMaxLength(500);
+            entity.HasIndex(item => new { item.LanguageCode, item.OccurredUtc });
+            entity.HasIndex(item => new { item.PairKey, item.OccurredUtc });
+            entity.HasIndex(item => new { item.FounderUserId, item.OccurredUtc });
+        });
     }
 
     private static void ConfigureMobileActivityNotification(

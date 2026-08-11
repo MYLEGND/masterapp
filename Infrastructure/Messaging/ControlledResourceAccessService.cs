@@ -36,13 +36,16 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
 {
     private readonly MasterAppDbContext _db;
     private readonly IConfiguration _configuration;
+    private readonly ILegendLanguageRegistry _languages;
 
     public ControlledResourceAccessService(
         MasterAppDbContext db,
-        IConfiguration? configuration = null)
+        IConfiguration? configuration = null,
+        ILegendLanguageRegistry? languages = null)
     {
         _db = db;
         _configuration = configuration ?? new ConfigurationBuilder().Build();
+        _languages = languages ?? new LegendLanguageRegistry(_db, _configuration);
     }
 
     public async Task<ControlledResourceAccess> GetAccessAsync(
@@ -150,7 +153,7 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
             .Where(setting => setting.ProfileId == profileId.Value && setting.ParticipantType == actor.ParticipantType)
             .Select(setting => setting.PreferredCommunicationLanguage)
             .SingleOrDefaultAsync(cancellationToken);
-        return CommunicationLanguages.NormalizeOrNull(language);
+        return await _languages.NormalizeEnabledTranslationLanguageAsync(language, cancellationToken);
     }
 
     private async Task<bool> IsVerificationGrantedAsync(

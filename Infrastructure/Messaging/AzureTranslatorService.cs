@@ -11,9 +11,9 @@ namespace Infrastructure.Messaging;
 /// missing key, timeout, or provider error returns an unavailable result and
 /// never blocks the authoritative messaging write.
 /// </summary>
-internal sealed class AzureTranslatorService : ITranslationService
+internal sealed class AzureTranslatorService : ITranslationProvider
 {
-    private const string ProviderName = "AzureTranslator";
+    private const string ProviderIdentifier = "AzureTranslator";
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AzureTranslatorService> _logger;
@@ -27,6 +27,8 @@ internal sealed class AzureTranslatorService : ITranslationService
         _configuration = configuration;
         _logger = logger;
     }
+
+    public string ProviderName => ProviderIdentifier;
 
     public async Task<TranslationDetectionResult> DetectLanguageAsync(
         string text,
@@ -78,9 +80,9 @@ internal sealed class AzureTranslatorService : ITranslationService
         CancellationToken cancellationToken = default)
     {
         if (!CommunicationLanguages.TryNormalize(targetLanguage, out var normalizedTarget))
-            return new TranslationProviderResult(false, null, null, ProviderName, "translation_language_unsupported");
+            return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_language_unsupported");
         if (!TryGetConfiguration(out var endpoint, out var key, out var region))
-            return new TranslationProviderResult(false, null, null, ProviderName, "translation_provider_unavailable");
+            return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_unavailable");
 
         var source = CommunicationLanguages.NormalizeOrNull(sourceLanguage);
         var path = $"/translate?api-version=3.0&to={Uri.EscapeDataString(normalizedTarget)}" +
@@ -93,7 +95,7 @@ internal sealed class AzureTranslatorService : ITranslationService
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Azure Translator translation failed. StatusCode={StatusCode} TargetLanguage={TargetLanguage}", (int)response.StatusCode, normalizedTarget);
-                return new TranslationProviderResult(false, null, null, ProviderName, "translation_provider_failed");
+                return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_failed");
             }
 
             using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
@@ -102,7 +104,7 @@ internal sealed class AzureTranslatorService : ITranslationService
                 translations.ValueKind != JsonValueKind.Array || translations.GetArrayLength() == 0 ||
                 !translations[0].TryGetProperty("text", out var translatedText))
             {
-                return new TranslationProviderResult(false, null, null, ProviderName, "translation_provider_failed");
+                return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_failed");
             }
 
             var detected = source;
@@ -114,22 +116,22 @@ internal sealed class AzureTranslatorService : ITranslationService
 
             var translated = translatedText.GetString()?.Trim();
             return string.IsNullOrWhiteSpace(translated)
-                ? new TranslationProviderResult(false, null, detected, ProviderName, "translation_provider_failed")
-                : new TranslationProviderResult(true, translated, detected, ProviderName);
+                ? new TranslationProviderResult(false, null, detected, ProviderIdentifier, "translation_provider_failed")
+                : new TranslationProviderResult(true, translated, detected, ProviderIdentifier);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new TranslationProviderResult(false, null, null, ProviderName, "translation_provider_timeout");
+            return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_timeout");
         }
         catch (HttpRequestException exception)
         {
             _logger.LogWarning(exception, "Azure Translator translation request failed. TargetLanguage={TargetLanguage}", normalizedTarget);
-            return new TranslationProviderResult(false, null, null, ProviderName, "translation_provider_failed");
+            return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_failed");
         }
         catch (JsonException exception)
         {
             _logger.LogWarning(exception, "Azure Translator translation response was invalid. TargetLanguage={TargetLanguage}", normalizedTarget);
-            return new TranslationProviderResult(false, null, null, ProviderName, "translation_provider_failed");
+            return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_failed");
         }
     }
 
