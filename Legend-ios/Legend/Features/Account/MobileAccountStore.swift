@@ -4,6 +4,18 @@ struct MobileTranslationAccess: Codable, Equatable, Sendable {
     let state: String
     let canManage: Bool
     let preferredCommunicationLanguage: String?
+    let characterAllowance: Int64
+    let isUnlimited: Bool
+    let consumedCharacters: Int64
+    let reservedCharacters: Int64
+    let remainingCharacters: Int64?
+    let percentUsed: Double
+    let periodStartUtc: Date?
+    let periodEndUtc: Date?
+    let nextResetUtc: Date?
+    let entitlementSource: String
+    let isFounderOverride: Bool
+    let lastTranslationActivityUtc: Date?
 
     var isGranted: Bool { state == "Granted" }
     var isPending: Bool { state == "Pending" }
@@ -12,16 +24,43 @@ struct MobileTranslationAccess: Codable, Equatable, Sendable {
         case state
         case canManage
         case preferredCommunicationLanguage
+        case characterAllowance, isUnlimited, consumedCharacters, reservedCharacters, remainingCharacters, percentUsed
+        case periodStartUtc, periodEndUtc, nextResetUtc
+        case entitlementSource, isFounderOverride, lastTranslationActivityUtc
     }
 
     init(
         state: String = "NotGranted",
         canManage: Bool = false,
-        preferredCommunicationLanguage: String? = nil
+        preferredCommunicationLanguage: String? = nil,
+        characterAllowance: Int64 = 0,
+        isUnlimited: Bool = false,
+        consumedCharacters: Int64 = 0,
+        reservedCharacters: Int64 = 0,
+        remainingCharacters: Int64? = nil,
+        percentUsed: Double = 0,
+        periodStartUtc: Date? = nil,
+        periodEndUtc: Date? = nil,
+        nextResetUtc: Date? = nil,
+        entitlementSource: String = "DefaultPolicy",
+        isFounderOverride: Bool = false,
+        lastTranslationActivityUtc: Date? = nil
     ) {
         self.state = state
         self.canManage = canManage
         self.preferredCommunicationLanguage = preferredCommunicationLanguage
+        self.characterAllowance = characterAllowance
+        self.isUnlimited = isUnlimited
+        self.consumedCharacters = consumedCharacters
+        self.reservedCharacters = reservedCharacters
+        self.remainingCharacters = remainingCharacters
+        self.percentUsed = percentUsed
+        self.periodStartUtc = periodStartUtc
+        self.periodEndUtc = periodEndUtc
+        self.nextResetUtc = nextResetUtc
+        self.entitlementSource = entitlementSource
+        self.isFounderOverride = isFounderOverride
+        self.lastTranslationActivityUtc = lastTranslationActivityUtc
     }
 
     init(from decoder: Decoder) throws {
@@ -29,7 +68,19 @@ struct MobileTranslationAccess: Codable, Equatable, Sendable {
         self.init(
             state: try container.decodeIfPresent(String.self, forKey: .state) ?? "NotGranted",
             canManage: try container.decodeIfPresent(Bool.self, forKey: .canManage) ?? false,
-            preferredCommunicationLanguage: try container.decodeIfPresent(String.self, forKey: .preferredCommunicationLanguage))
+            preferredCommunicationLanguage: try container.decodeIfPresent(String.self, forKey: .preferredCommunicationLanguage),
+            characterAllowance: try container.decodeIfPresent(Int64.self, forKey: .characterAllowance) ?? 0,
+            isUnlimited: try container.decodeIfPresent(Bool.self, forKey: .isUnlimited) ?? false,
+            consumedCharacters: try container.decodeIfPresent(Int64.self, forKey: .consumedCharacters) ?? 0,
+            reservedCharacters: try container.decodeIfPresent(Int64.self, forKey: .reservedCharacters) ?? 0,
+            remainingCharacters: try container.decodeIfPresent(Int64.self, forKey: .remainingCharacters),
+            percentUsed: try container.decodeIfPresent(Double.self, forKey: .percentUsed) ?? 0,
+            periodStartUtc: try container.decodeIfPresent(Date.self, forKey: .periodStartUtc),
+            periodEndUtc: try container.decodeIfPresent(Date.self, forKey: .periodEndUtc),
+            nextResetUtc: try container.decodeIfPresent(Date.self, forKey: .nextResetUtc),
+            entitlementSource: try container.decodeIfPresent(String.self, forKey: .entitlementSource) ?? "DefaultPolicy",
+            isFounderOverride: try container.decodeIfPresent(Bool.self, forKey: .isFounderOverride) ?? false,
+            lastTranslationActivityUtc: try container.decodeIfPresent(Date.self, forKey: .lastTranslationActivityUtc))
     }
 }
 

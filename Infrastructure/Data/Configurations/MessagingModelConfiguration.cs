@@ -18,6 +18,7 @@ internal static class MessagingModelConfiguration
         ConfigureControlledResourceGrant(modelBuilder.Entity<ControlledResourceGrant>(), providerName);
         ConfigureMessageTranslation(modelBuilder.Entity<MessageTranslation>());
         ConfigureLegendConnect(modelBuilder, providerName);
+        ConfigureTranslationAccountUsage(modelBuilder, providerName);
         ConfigureMobileActivityNotification(modelBuilder.Entity<MobileActivityNotification>(), providerName);
         ConfigureUserGlobalBadge(modelBuilder.Entity<UserGlobalBadge>(), providerName);
         ConfigureMobilePushDevice(modelBuilder.Entity<MobilePushDevice>());
@@ -479,6 +480,68 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => new { item.LanguageCode, item.OccurredUtc });
             entity.HasIndex(item => new { item.PairKey, item.OccurredUtc });
             entity.HasIndex(item => new { item.FounderUserId, item.OccurredUtc });
+        });
+
+        modelBuilder.Entity<LegendConnectRuntimePolicy>(entity =>
+        {
+            entity.ToTable("LegendConnectRuntimePolicies");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.ScopeKey).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.ContextualCompositionMode).IsRequired().HasMaxLength(20);
+            entity.Property(item => item.ContextualMinimumConfidence).HasPrecision(5, 4);
+            entity.Property(item => item.PriorityMode).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.PriorityLanguageCode).HasMaxLength(32);
+            entity.Property(item => item.PriorityPairKey).HasMaxLength(72);
+            entity.Property(item => item.PriorityLevel).HasMaxLength(40);
+            entity.Property(item => item.UpdatedByUserId).HasMaxLength(450);
+            ConfigureRowVersion(entity.Property(item => item.RowVersion), providerName);
+            entity.HasIndex(item => item.ScopeKey).IsUnique();
+        });
+    }
+
+    private static void ConfigureTranslationAccountUsage(
+        ModelBuilder modelBuilder,
+        string? providerName)
+    {
+        modelBuilder.Entity<LegendTranslationEntitlement>(entity =>
+        {
+            entity.ToTable("LegendTranslationEntitlements");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.UserId).IsRequired().HasMaxLength(450);
+            entity.Property(item => item.ParticipantType).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.EntitlementSource).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.UpdatedByUserId).HasMaxLength(450);
+            ConfigureRowVersion(entity.Property(item => item.RowVersion), providerName);
+            entity.HasIndex(item => new { item.UserId, item.ParticipantType }).IsUnique();
+        });
+
+        modelBuilder.Entity<LegendTranslationUsagePeriod>(entity =>
+        {
+            entity.ToTable("LegendTranslationUsagePeriods");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.UserId).IsRequired().HasMaxLength(450);
+            entity.Property(item => item.ParticipantType).IsRequired().HasMaxLength(40);
+            ConfigureRowVersion(entity.Property(item => item.RowVersion), providerName);
+            entity.HasIndex(item => new { item.UserId, item.ParticipantType, item.PeriodStart }).IsUnique();
+            entity.HasIndex(item => new { item.PeriodStart, item.ConsumedCharacters });
+            entity.HasIndex(item => item.LastTranslationActivityUtc);
+        });
+
+        modelBuilder.Entity<LegendTranslationUsageLedger>(entity =>
+        {
+            entity.ToTable("LegendTranslationUsageLedgers");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.RequestReference).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.UserId).IsRequired().HasMaxLength(450);
+            entity.Property(item => item.ParticipantType).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.SourceLanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.TargetLanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.Provider).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.State).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.FailureCode).HasMaxLength(80);
+            entity.HasIndex(item => item.RequestReference).IsUnique();
+            entity.HasIndex(item => new { item.UserId, item.ParticipantType, item.PeriodStart, item.CreatedUtc });
+            entity.HasIndex(item => new { item.PeriodStart, item.State });
         });
     }
 

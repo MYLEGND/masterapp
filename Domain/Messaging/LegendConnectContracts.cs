@@ -108,7 +108,12 @@ public sealed record LegendConnectLanguageHealthSnapshot(
     DateTime? LastSuccessfulLearningUtc,
     DateTime? LastSuccessfulWriteUtc,
     long DuplicatePreventionCount,
-    IReadOnlyList<LegendConnectOperationalEventSnapshot> RecentErrors);
+    IReadOnlyList<LegendConnectOperationalEventSnapshot> RecentErrors,
+    long ApprovedCandidateCount = 0,
+    long PendingCandidateCount = 0,
+    decimal AzureDependencyRate = 0m,
+    DateTime? LastProviderAcquisitionUtc = null,
+    DateTime? LastFounderTrainingUtc = null);
 
 public sealed record LegendConnectPairHealthSnapshot(
     string PairKey,
@@ -126,7 +131,15 @@ public sealed record LegendConnectPairHealthSnapshot(
     DateTime? LastLearningActivityUtc,
     long FailureCount,
     IReadOnlyList<LegendConnectAlignmentSnapshot> RecentAlignments,
-    IReadOnlyList<LegendConnectOperationalEventSnapshot> RecentErrors);
+    IReadOnlyList<LegendConnectOperationalEventSnapshot> RecentErrors,
+    long ContextualInternalServeCount = 0,
+    decimal ProviderAvoidanceRate = 0m,
+    decimal AzureDependencyRate = 0m,
+    decimal InternalCoverageRate = 0m,
+    decimal InternalQualityConfidence = 0m,
+    int CoverageAdditionsLast30Days = 0,
+    long ApprovedBacklog = 0,
+    DateTime? LastProviderAcquisitionUtc = null);
 
 public sealed record LegendConnectAlignmentSnapshot(
     Guid Id,
@@ -250,7 +263,25 @@ public sealed record LegendConnectDashboardSnapshot(
     long FailedLearningJobCount,
     long DuplicatePreventionCount,
     DateTime? LastSuccessfulLearningUtc,
-    IReadOnlyList<LegendConnectOperationalEventSnapshot> RecentOperationalEvents);
+    IReadOnlyList<LegendConnectOperationalEventSnapshot> RecentOperationalEvents,
+    long ProviderOperationCount = 0,
+    long ProviderBillableCharacters = 0,
+    long SameLanguageCharactersAvoided = 0,
+    long TranslationMemoryCharactersAvoided = 0,
+    long ContextualCharactersAvoided = 0,
+    long QuotaDeniedRequestCount = 0,
+    long ProviderFailureCount = 0,
+    long GroupUniqueTargetReuseCount = 0,
+    long ContextualInternalServeCount = 0,
+    decimal ProviderAvoidanceRate = 0m,
+    decimal AzureDependencyRate = 0m,
+    decimal InternalCoverageRate = 0m,
+    long ConsumedLiveCharacters = 0,
+    long ConsumedCorpusCharacters = 0,
+    long ReservedProviderCharacters = 0,
+    long? SafeAcquisitionCapacity = null,
+    DateOnly? BillingPeriodStart = null,
+    DateOnly? BillingPeriodEnd = null);
 
 /// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation
@@ -277,7 +308,8 @@ public interface ILegendConnectOperations
     Task<LegendConnectKnowledgeSubmissionResult> SubmitFounderKnowledgeAsync(
         string founderUserId,
         LegendConnectKnowledgeSubmission submission,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        Guid? reusableSourceTextUnitId = null);
 
     Task<LegendConnectKnowledgeSubmissionResult> CorrectFounderKnowledgeAsync(
         string founderUserId,

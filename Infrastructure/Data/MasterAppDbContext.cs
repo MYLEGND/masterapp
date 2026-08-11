@@ -102,8 +102,12 @@ public class MasterAppDbContext : DbContext
     public DbSet<LegendTranslationProviderCapacity> LegendTranslationProviderCapacities => Set<LegendTranslationProviderCapacity>();
     public DbSet<LegendTranslationPairDemand> LegendTranslationPairDemands => Set<LegendTranslationPairDemand>();
     public DbSet<LegendTranslationSystemUsage> LegendTranslationSystemUsages => Set<LegendTranslationSystemUsage>();
+    public DbSet<LegendTranslationEntitlement> LegendTranslationEntitlements => Set<LegendTranslationEntitlement>();
+    public DbSet<LegendTranslationUsagePeriod> LegendTranslationUsagePeriods => Set<LegendTranslationUsagePeriod>();
+    public DbSet<LegendTranslationUsageLedger> LegendTranslationUsageLedgers => Set<LegendTranslationUsageLedger>();
     public DbSet<LegendConnectOperationalEvent> LegendConnectOperationalEvents => Set<LegendConnectOperationalEvent>();
     public DbSet<LegendConnectKnowledgeAuditEntry> LegendConnectKnowledgeAuditEntries => Set<LegendConnectKnowledgeAuditEntry>();
+    public DbSet<LegendConnectRuntimePolicy> LegendConnectRuntimePolicies => Set<LegendConnectRuntimePolicy>();
     public DbSet<MobileActivityNotification> MobileActivityNotifications => Set<MobileActivityNotification>();
     public DbSet<UserGlobalBadge> UserGlobalBadges => Set<UserGlobalBadge>();
     public DbSet<MobilePushDevice> MobilePushDevices => Set<MobilePushDevice>();

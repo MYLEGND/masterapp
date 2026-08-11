@@ -169,6 +169,13 @@ public sealed class LegendCorpusCandidate
     public int Priority { get; set; }
     public string ProcessingState { get; set; } = "Pending";
     public int AttemptCount { get; set; }
+    /// <summary>
+    /// Characters actually sent to the provider for this approved candidate.
+    /// It is written only after a successful provider result and contains no
+    /// corpus text, allowing Founder operations to report priority progress
+    /// without creating a second billing ledger.
+    /// </summary>
+    public long ProviderCharactersConsumed { get; set; }
     public DateTime? LeaseExpiresUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? ProcessedUtc { get; set; }
@@ -210,6 +217,7 @@ public sealed class LegendTranslationPairDemand
     public long TranslationMemoryHitCount { get; set; }
     public long AzureFallbackCount { get; set; }
     public long ContextualCompositionObservationCount { get; set; }
+    public long ContextualInternalServeCount { get; set; }
     public DateTime LastRequestedUtc { get; set; } = DateTime.UtcNow;
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 }
@@ -224,6 +232,14 @@ public sealed class LegendTranslationSystemUsage
     public Guid Id { get; set; } = Guid.NewGuid();
     public DateOnly UsageDate { get; set; }
     public long SameLanguageBypassCount { get; set; }
+    public long ProviderOperationCount { get; set; }
+    public long ProviderBillableCharacters { get; set; }
+    public long SameLanguageCharactersAvoided { get; set; }
+    public long TranslationMemoryCharactersAvoided { get; set; }
+    public long ContextualCharactersAvoided { get; set; }
+    public long QuotaDeniedRequestCount { get; set; }
+    public long ProviderFailureCount { get; set; }
+    public long GroupUniqueTargetReuseCount { get; set; }
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 }
@@ -264,4 +280,32 @@ public sealed class LegendConnectKnowledgeAuditEntry
     public Guid? SupersededAlignmentId { get; set; }
     public string? Detail { get; set; }
     public DateTime OccurredUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// The one durable, deployment-wide runtime policy for autonomous Legend
+/// Connect learning. Source configuration is used only until this singleton
+/// record is first changed by a Founder; thereafter this is the authority
+/// observed by every web and worker instance.
+/// </summary>
+public sealed class LegendConnectRuntimePolicy
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string ScopeKey { get; set; } = "Global";
+    public long MonthlyProviderCapacityCharacters { get; set; }
+    public long LiveTranslationReserveCharacters { get; set; }
+    public long MaximumSafeCorpusConsumptionCharacters { get; set; }
+    public bool CorpusAcquisitionEnabled { get; set; }
+    public bool LearningEnabled { get; set; } = true;
+    public string ContextualCompositionMode { get; set; } = "Shadow";
+    public decimal ContextualMinimumConfidence { get; set; } = 0.98m;
+    public string PriorityMode { get; set; } = "Automatic";
+    public string? PriorityLanguageCode { get; set; }
+    public string? PriorityPairKey { get; set; }
+    public string? PriorityLevel { get; set; }
+    public DateTime? LastLearningWorkerHeartbeatUtc { get; set; }
+    public DateTime? LastAcquisitionWorkerHeartbeatUtc { get; set; }
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+    public string? UpdatedByUserId { get; set; }
+    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 }

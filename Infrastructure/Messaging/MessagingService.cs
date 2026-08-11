@@ -42,6 +42,8 @@ internal sealed class MessagingService : IMessagingService
     private readonly INotificationEngine _notifications;
     private readonly string? _configuredFounderOid;
     private readonly ICommunitySafetyService? _communitySafety;
+    private readonly ITranslationEntitlementAuthority? _translationEntitlements;
+    private readonly ITranslationSystemUsageRecorder? _translationSystemUsage;
 
     public MessagingService(
         MasterAppDbContext db,
@@ -54,7 +56,9 @@ internal sealed class MessagingService : IMessagingService
         string? configuredFounderOid = null,
         ICommunitySafetyService? communitySafety = null,
         ITranslationLearningPublisher? translationLearning = null,
-        ILegendLanguageRegistry? languages = null)
+        ILegendLanguageRegistry? languages = null,
+        ITranslationEntitlementAuthority? translationEntitlements = null,
+        ITranslationSystemUsageRecorder? translationSystemUsage = null)
     {
         _db = db;
         _logger = logger;
@@ -71,6 +75,8 @@ internal sealed class MessagingService : IMessagingService
             Environment.GetEnvironmentVariable("FOUNDER_OID") ??
             Environment.GetEnvironmentVariable("FounderOid");
         _communitySafety = communitySafety;
+        _translationEntitlements = translationEntitlements;
+        _translationSystemUsage = translationSystemUsage;
     }
 
     public async Task<MessagingGroupImage?> GetConversationImageAsync(
@@ -4366,6 +4372,7 @@ internal sealed class MessagingService : IMessagingService
                 var translation = await GetOrCreateMessageTranslationAsync(
                     ToTranslationSource(source),
                     targetLanguage,
+                    actor,
                     cancellationToken);
                 if (translation is not null)
                 {
@@ -4414,6 +4421,7 @@ internal sealed class MessagingService : IMessagingService
         var translation = await GetOrCreateMessageTranslationAsync(
             ToTranslationSource(source.Reply),
             targetLanguage,
+            actor,
             cancellationToken);
         return translation is null
             ? summary
@@ -4462,24 +4470,38 @@ internal sealed class MessagingService : IMessagingService
                 .ToArray();
         }
 
+        var recipientsByTargetLanguage = recipientLanguages
+            .Where(item => item.Value is not null)
+            .GroupBy(item => item.Value!, StringComparer.OrdinalIgnoreCase)
+            .ToList();
         var detailsByTargetLanguage = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var targetLanguage in recipientLanguages.Values
-                     .Where(language => language is not null)
-                     .Cast<string>()
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (var languageRecipients in recipientsByTargetLanguage)
         {
+            var targetLanguage = languageRecipients.Key;
             if (string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
             {
                 detailsByTargetLanguage[targetLanguage] = message.Body;
                 continue;
             }
 
+            var billingAccount = languageRecipients.First().Key;
+
             var translation = await GetOrCreateMessageTranslationAsync(
                 source with { OriginalLanguage = sourceLanguage },
                 targetLanguage,
+                billingAccount,
                 cancellationToken,
                 persistChanges: false);
             detailsByTargetLanguage[targetLanguage] = translation?.TranslatedText ?? message.Body;
+
+            var reusedForRecipients = languageRecipients.Count() - 1;
+            if (reusedForRecipients > 0)
+            {
+                await RecordGroupTargetReuseSafelyAsync(
+                    billingAccount,
+                    reusedForRecipients,
+                    cancellationToken);
+            }
         }
 
         return distinctRecipients
@@ -4498,6 +4520,7 @@ internal sealed class MessagingService : IMessagingService
     private async Task<CachedMessageTranslation?> GetOrCreateMessageTranslationAsync(
         MessageTranslationSource message,
         string targetLanguage,
+        MessagingActor billingAccount,
         CancellationToken cancellationToken,
         bool persistChanges = true)
     {
@@ -4531,11 +4554,19 @@ internal sealed class MessagingService : IMessagingService
         TranslationProviderResult providerResult;
         try
         {
-            providerResult = await _translation.TranslateAsync(
-                message.Body,
-                targetLanguage,
-                sourceLanguage,
-                cancellationToken);
+            providerResult = _translation is IAccountScopedTranslationService accountScopedTranslation
+                ? await accountScopedTranslation.TranslateForAccountAsync(
+                    message.Body,
+                    targetLanguage,
+                    sourceLanguage,
+                    billingAccount,
+                    TranslationUsageReference.ForMessage(message.Id, targetLanguage),
+                    cancellationToken)
+                : await _translation.TranslateAsync(
+                    message.Body,
+                    targetLanguage,
+                    sourceLanguage,
+                    cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -4622,6 +4653,34 @@ internal sealed class MessagingService : IMessagingService
             _logger.LogError(exception, "Legend Connect learning hand-off failed. MessageId={MessageId}", message.Id);
         }
         return new CachedMessageTranslation(created.TranslatedText, sourceLanguage, created.Provider);
+    }
+
+    private async Task RecordGroupTargetReuseSafelyAsync(
+        MessagingActor account,
+        int reuseCount,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_translationEntitlements is not null)
+            {
+                await _translationEntitlements.RecordAvoidedAsync(
+                    account,
+                    TranslationAvoidedPath.GroupUniqueTargetReuse,
+                    reuseCount,
+                    cancellationToken);
+            }
+            if (_translationSystemUsage is not null)
+            {
+                await _translationSystemUsage.TryRecordAsync(
+                    new TranslationSystemUsageDelta(GroupUniqueTargetReuses: reuseCount),
+                    cancellationToken);
+            }
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(exception, "Legend Connect group target reuse accounting failed.");
+        }
     }
 
     private void QueueTranslationLearning(TranslationLearningCandidate candidate) =>

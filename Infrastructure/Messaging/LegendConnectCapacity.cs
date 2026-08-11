@@ -1,4 +1,5 @@
 using Domain.Entities;
+using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -41,16 +42,19 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
 {
     private readonly MasterAppDbContext _db;
     private readonly IConfiguration _configuration;
+    private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
     private readonly ILogger<TranslationCapacityAuthority> _logger;
 
     public TranslationCapacityAuthority(
         MasterAppDbContext db,
         IConfiguration configuration,
-        ILogger<TranslationCapacityAuthority> logger)
+        ILogger<TranslationCapacityAuthority> logger,
+        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null)
     {
         _db = db;
         _configuration = configuration;
         _logger = logger;
+        _runtimePolicy = runtimePolicy;
     }
 
     public async Task<TranslationCapacityReservation?> TryReserveAsync(
@@ -63,14 +67,14 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
             return new TranslationCapacityReservation(provider, CurrentPeriod(), 0, purpose);
 
         var period = CurrentPeriod();
-        var settings = SettingsFor(provider);
+        var settings = await SettingsForAsync(provider, cancellationToken);
         await EnsureLedgerAsync(provider, period, settings, cancellationToken);
 
         if (!_db.Database.IsRelational())
         {
             var ledger = await _db.Set<LegendTranslationProviderCapacity>()
                 .SingleAsync(item => item.Provider == provider && item.BillingPeriodStart == period, cancellationToken);
-            if (!CanReserve(ledger, characters, purpose))
+            if (!CanReserve(ledger, characters, purpose, settings))
                 return null;
             ledger.ReservedLiveCharacters += characters;
             ledger.UpdatedUtc = DateTime.UtcNow;
@@ -81,11 +85,16 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
 
         var capacity = settings.CapacityCharacters;
         var reserve = settings.LiveReserveCharacters;
+        if (purpose == TranslationCapacityPurpose.Bootstrap &&
+            (capacity <= 0 || settings.MaximumSafeCorpusCharacters <= 0))
+            return null;
         var permitted = await _db.Set<LegendTranslationProviderCapacity>()
             .Where(item => item.Provider == provider && item.BillingPeriodStart == period)
             .Where(item => capacity <= 0 ||
                 item.LiveCharactersConsumed + item.BootstrapCharactersConsumed + item.TrainingCharactersConsumed + item.ReservedLiveCharacters + characters <=
                 capacity - (purpose == TranslationCapacityPurpose.Bootstrap ? Math.Max(0, reserve) : 0))
+            .Where(item => purpose != TranslationCapacityPurpose.Bootstrap ||
+                item.BootstrapCharactersConsumed + item.ReservedLiveCharacters + characters <= settings.MaximumSafeCorpusCharacters)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(item => item.ReservedLiveCharacters, item => item.ReservedLiveCharacters + characters)
                 .SetProperty(item => item.UpdatedUtc, DateTime.UtcNow), cancellationToken);
@@ -146,9 +155,20 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         CapacitySettings settings,
         CancellationToken cancellationToken)
     {
-        if (await _db.Set<LegendTranslationProviderCapacity>()
-                .AnyAsync(item => item.Provider == provider && item.BillingPeriodStart == period, cancellationToken))
+        var existing = await _db.Set<LegendTranslationProviderCapacity>()
+            .SingleOrDefaultAsync(item => item.Provider == provider && item.BillingPeriodStart == period, cancellationToken);
+        if (existing is not null)
+        {
+            if (existing.ConfiguredCapacityCharacters != settings.CapacityCharacters ||
+                existing.ReservedLiveCapacityCharacters != settings.LiveReserveCharacters)
+            {
+                existing.ConfiguredCapacityCharacters = settings.CapacityCharacters;
+                existing.ReservedLiveCapacityCharacters = settings.LiveReserveCharacters;
+                existing.UpdatedUtc = DateTime.UtcNow;
+                await _db.SaveChangesAsync(cancellationToken);
+            }
             return;
+        }
 
         var ledger = new LegendTranslationProviderCapacity
         {
@@ -171,8 +191,16 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         }
     }
 
-    private bool CanReserve(LegendTranslationProviderCapacity ledger, int characters, TranslationCapacityPurpose purpose)
+    private static bool CanReserve(
+        LegendTranslationProviderCapacity ledger,
+        int characters,
+        TranslationCapacityPurpose purpose,
+        CapacitySettings settings)
     {
+        if (purpose == TranslationCapacityPurpose.Bootstrap &&
+            (ledger.ConfiguredCapacityCharacters <= 0 || settings.MaximumSafeCorpusCharacters <= 0 ||
+             ledger.BootstrapCharactersConsumed + ledger.ReservedLiveCharacters + characters > settings.MaximumSafeCorpusCharacters))
+            return false;
         if (ledger.ConfiguredCapacityCharacters <= 0)
             return true;
         var limit = ledger.ConfiguredCapacityCharacters -
@@ -180,12 +208,20 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         return ledger.LiveCharactersConsumed + ledger.BootstrapCharactersConsumed + ledger.TrainingCharactersConsumed + ledger.ReservedLiveCharacters + characters <= limit;
     }
 
-    private CapacitySettings SettingsFor(string provider)
+    private async Task<CapacitySettings> SettingsForAsync(string provider, CancellationToken cancellationToken)
     {
+        if (string.Equals(provider, "AzureTranslator", StringComparison.OrdinalIgnoreCase) && _runtimePolicy is not null)
+        {
+            var policy = await _runtimePolicy.GetEffectiveAsync(cancellationToken);
+            return new CapacitySettings(
+                policy.MonthlyProviderCapacityCharacters,
+                policy.LiveTranslationReserveCharacters,
+                policy.MaximumSafeCorpusConsumptionCharacters);
+        }
         var prefix = $"LegendConnect:Providers:{provider}";
-        return new CapacitySettings(
-            Math.Max(0, _configuration.GetValue<long?>($"{prefix}:MonthlyCapacityCharacters") ?? 0),
-            Math.Max(0, _configuration.GetValue<long?>($"{prefix}:LiveReserveCharacters") ?? 0));
+        var capacity = Math.Max(0, _configuration.GetValue<long?>($"{prefix}:MonthlyCapacityCharacters") ?? 0);
+        var reserve = Math.Max(0, _configuration.GetValue<long?>($"{prefix}:LiveReserveCharacters") ?? 0);
+        return new CapacitySettings(capacity, reserve, Math.Max(0, capacity - reserve));
     }
 
     private static DateOnly CurrentPeriod()
@@ -194,5 +230,8 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         return new DateOnly(now.Year, now.Month, 1);
     }
 
-    private sealed record CapacitySettings(long CapacityCharacters, long LiveReserveCharacters);
+    private sealed record CapacitySettings(
+        long CapacityCharacters,
+        long LiveReserveCharacters,
+        long MaximumSafeCorpusCharacters);
 }

@@ -13,13 +13,31 @@ internal interface ITranslationDemandRecorder
         bool translationMemoryHit = false,
         bool azureFallback = false,
         bool contextualCompositionObserved = false,
+        bool contextualInternalServed = false,
         CancellationToken cancellationToken = default);
 }
 
 internal interface ITranslationSystemUsageRecorder
 {
-    Task TryRecordSameLanguageBypassAsync(CancellationToken cancellationToken = default);
+    Task TryRecordSameLanguageBypassAsync(
+        int characters = 0,
+        CancellationToken cancellationToken = default);
+
+    Task TryRecordAsync(
+        TranslationSystemUsageDelta delta,
+        CancellationToken cancellationToken = default);
 }
+
+internal sealed record TranslationSystemUsageDelta(
+    long ProviderOperations = 0,
+    long ProviderBillableCharacters = 0,
+    long SameLanguageCharactersAvoided = 0,
+    long TranslationMemoryCharactersAvoided = 0,
+    long ContextualCharactersAvoided = 0,
+    long QuotaDeniedRequests = 0,
+    long ProviderFailures = 0,
+    long GroupUniqueTargetReuses = 0,
+    long SameLanguageBypasses = 0);
 
 /// <summary>
 /// A retry-safe aggregate signal. It deliberately records pair metadata only;
@@ -42,6 +60,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
         bool translationMemoryHit = false,
         bool azureFallback = false,
         bool contextualCompositionObserved = false,
+        bool contextualInternalServed = false,
         CancellationToken cancellationToken = default)
     {
         try
@@ -59,6 +78,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                     TranslationMemoryHitCount = translationMemoryHit ? 1 : 0,
                     AzureFallbackCount = azureFallback ? 1 : 0,
                     ContextualCompositionObservationCount = contextualCompositionObserved ? 1 : 0,
+                    ContextualInternalServeCount = contextualInternalServed ? 1 : 0,
                     LastRequestedUtc = DateTime.UtcNow
                 };
                 _db.Set<LegendTranslationPairDemand>().Add(demand);
@@ -70,6 +90,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                 demand.TranslationMemoryHitCount += translationMemoryHit ? 1 : 0;
                 demand.AzureFallbackCount += azureFallback ? 1 : 0;
                 demand.ContextualCompositionObservationCount += contextualCompositionObserved ? 1 : 0;
+                demand.ContextualInternalServeCount += contextualInternalServed ? 1 : 0;
                 demand.LastRequestedUtc = DateTime.UtcNow;
             }
             await _db.SaveChangesAsync(cancellationToken);
@@ -105,7 +126,18 @@ internal sealed class TranslationSystemUsageRecorder : ITranslationSystemUsageRe
         _logger = logger;
     }
 
-    public async Task TryRecordSameLanguageBypassAsync(CancellationToken cancellationToken = default)
+    public Task TryRecordSameLanguageBypassAsync(
+        int characters = 0,
+        CancellationToken cancellationToken = default) =>
+        TryRecordAsync(
+            new TranslationSystemUsageDelta(
+                SameLanguageCharactersAvoided: Math.Max(0, characters),
+                SameLanguageBypasses: 1),
+            cancellationToken);
+
+    public async Task TryRecordAsync(
+        TranslationSystemUsageDelta delta,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -118,14 +150,14 @@ internal sealed class TranslationSystemUsageRecorder : ITranslationSystemUsageRe
                 {
                     Id = Guid.NewGuid(),
                     UsageDate = today,
-                    SameLanguageBypassCount = 1,
                     UpdatedUtc = DateTime.UtcNow
                 };
+                Apply(usage, delta);
                 _db.Set<LegendTranslationSystemUsage>().Add(usage);
             }
             else
             {
-                usage.SameLanguageBypassCount++;
+                Apply(usage, delta);
                 usage.UpdatedUtc = DateTime.UtcNow;
             }
             await _db.SaveChangesAsync(cancellationToken);
@@ -136,8 +168,21 @@ internal sealed class TranslationSystemUsageRecorder : ITranslationSystemUsageRe
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning(exception, "Legend Connect same-language usage write failed.");
+            _logger.LogWarning(exception, "Legend Connect system usage write failed.");
         }
+    }
+
+    private static void Apply(LegendTranslationSystemUsage usage, TranslationSystemUsageDelta delta)
+    {
+        usage.SameLanguageBypassCount += Math.Max(0, delta.SameLanguageBypasses);
+        usage.ProviderOperationCount += Math.Max(0, delta.ProviderOperations);
+        usage.ProviderBillableCharacters += Math.Max(0, delta.ProviderBillableCharacters);
+        usage.SameLanguageCharactersAvoided += Math.Max(0, delta.SameLanguageCharactersAvoided);
+        usage.TranslationMemoryCharactersAvoided += Math.Max(0, delta.TranslationMemoryCharactersAvoided);
+        usage.ContextualCharactersAvoided += Math.Max(0, delta.ContextualCharactersAvoided);
+        usage.QuotaDeniedRequestCount += Math.Max(0, delta.QuotaDeniedRequests);
+        usage.ProviderFailureCount += Math.Max(0, delta.ProviderFailures);
+        usage.GroupUniqueTargetReuseCount += Math.Max(0, delta.GroupUniqueTargetReuses);
     }
 }
 

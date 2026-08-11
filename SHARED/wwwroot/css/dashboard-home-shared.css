@@ -414,6 +414,45 @@
     outline-offset: 2px;
 }
 
+/* Compact, reusable command controls inside operational data tables. */
+.dashboard-inline-command-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(112px, 1fr));
+    gap: 0.42rem;
+    min-width: 258px;
+}
+
+.dashboard-inline-command-form select,
+.dashboard-inline-command-form input {
+    width: 100%;
+    min-height: 34px;
+    padding: 0 0.52rem;
+    border: 1px solid rgba(150, 182, 255, 0.28);
+    border-radius: 9px;
+    background: rgba(8, 18, 38, 0.74);
+    color: var(--dash-text);
+    font: inherit;
+    font-size: 0.73rem;
+}
+
+.dashboard-inline-command-form select option {
+    background: var(--dash-royal-925);
+    color: var(--dash-text);
+}
+
+.dashboard-inline-command-form select:focus,
+.dashboard-inline-command-form input:focus {
+    border-color: rgba(244, 220, 147, 0.82);
+    outline: 2px solid rgba(212, 170, 71, 0.18);
+    outline-offset: 2px;
+}
+
+.dashboard-inline-command-form .dashboard-command-action {
+    min-height: 34px;
+    padding: 0.38rem 0.58rem;
+    font-size: 0.72rem;
+}
+
 .search-container {
     display: block;
     width: 100%;

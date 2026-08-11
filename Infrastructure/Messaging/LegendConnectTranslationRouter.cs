@@ -8,7 +8,7 @@ namespace Infrastructure.Messaging;
 /// this milestone; the router is the stable insertion point for an evaluated
 /// future Legend model without any mobile contract change.
 /// </summary>
-internal sealed class LegendConnectTranslationRouter : ITranslationService
+internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslationService
 {
     private readonly ITranslationProvider _azure;
     private readonly ILegendLanguageRegistry _languages;
@@ -17,6 +17,8 @@ internal sealed class LegendConnectTranslationRouter : ITranslationService
     private readonly ITranslationSystemUsageRecorder? _systemUsage;
     private readonly ILegendConnectTranslationIntelligence? _intelligence;
     private readonly ILegendConnectOperationalEventWriter? _operations;
+    private readonly ITranslationEntitlementAuthority? _entitlements;
+    private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
     private readonly ILogger<LegendConnectTranslationRouter> _logger;
 
     public LegendConnectTranslationRouter(
@@ -27,7 +29,9 @@ internal sealed class LegendConnectTranslationRouter : ITranslationService
         ITranslationDemandRecorder? demand = null,
         ITranslationSystemUsageRecorder? systemUsage = null,
         ILegendConnectTranslationIntelligence? intelligence = null,
-        ILegendConnectOperationalEventWriter? operations = null)
+        ILegendConnectOperationalEventWriter? operations = null,
+        ITranslationEntitlementAuthority? entitlements = null,
+        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null)
     {
         _azure = azure;
         _languages = languages;
@@ -37,6 +41,8 @@ internal sealed class LegendConnectTranslationRouter : ITranslationService
         _systemUsage = systemUsage;
         _intelligence = intelligence;
         _operations = operations;
+        _entitlements = entitlements;
+        _runtimePolicy = runtimePolicy;
     }
 
     public async Task<TranslationDetectionResult> DetectLanguageAsync(
@@ -58,6 +64,36 @@ internal sealed class LegendConnectTranslationRouter : ITranslationService
         string targetLanguage,
         string? sourceLanguage = null,
         CancellationToken cancellationToken = default)
+        => await TranslateCoreAsync(
+            text,
+            targetLanguage,
+            sourceLanguage,
+            account: null,
+            requestReference: null,
+            cancellationToken);
+
+    public async Task<TranslationProviderResult> TranslateForAccountAsync(
+        string text,
+        string targetLanguage,
+        string? sourceLanguage,
+        MessagingActor account,
+        string requestReference,
+        CancellationToken cancellationToken = default)
+        => await TranslateCoreAsync(
+            text,
+            targetLanguage,
+            sourceLanguage,
+            account,
+            requestReference,
+            cancellationToken);
+
+    private async Task<TranslationProviderResult> TranslateCoreAsync(
+        string text,
+        string targetLanguage,
+        string? sourceLanguage,
+        MessagingActor? account,
+        string? requestReference,
+        CancellationToken cancellationToken)
     {
         var target = await _languages.NormalizeEnabledTranslationLanguageAsync(targetLanguage, cancellationToken);
         if (target is null)
@@ -75,7 +111,8 @@ internal sealed class LegendConnectTranslationRouter : ITranslationService
         {
             LegendConnectTelemetry.SameLanguageBypass(source);
             if (_systemUsage is not null)
-                await _systemUsage.TryRecordSameLanguageBypassAsync(cancellationToken);
+                await _systemUsage.TryRecordSameLanguageBypassAsync(text?.Length ?? 0, cancellationToken);
+            await RecordAvoidedSafelyAsync(account, TranslationAvoidedPath.SameLanguage, text?.Length ?? 0, cancellationToken);
             return new TranslationProviderResult(true, text, source, "LegendConnectSameLanguage");
         }
 
@@ -91,11 +128,25 @@ internal sealed class LegendConnectTranslationRouter : ITranslationService
                     if (_demand is not null)
                         await _demand.TryRecordAsync(pairKey!, 0, translationMemoryHit: true, cancellationToken: cancellationToken);
                     LegendConnectTelemetry.TranslationMemoryHit(pairKey!);
+                    if (_systemUsage is not null)
+                    {
+                        await _systemUsage.TryRecordAsync(new TranslationSystemUsageDelta(
+                            TranslationMemoryCharactersAvoided: text?.Length ?? 0), cancellationToken);
+                    }
+                    await RecordAvoidedSafelyAsync(account, TranslationAvoidedPath.TranslationMemory, text?.Length ?? 0, cancellationToken);
                     return new TranslationProviderResult(true, memory.Text, source, "LegendConnectTranslationMemory");
                 }
 
                 contextualSuggestion = await _intelligence.EvaluateContextAsync(source, target, text ?? string.Empty, cancellationToken);
-                if (contextualSuggestion is not null && _intelligence.IsContextualCompositionActive)
+                var contextualCompositionActive = _intelligence.IsContextualCompositionActive;
+                if (_runtimePolicy is not null)
+                {
+                    contextualCompositionActive = string.Equals(
+                        (await _runtimePolicy.GetEffectiveAsync(cancellationToken)).ContextualCompositionMode,
+                        "Active",
+                        StringComparison.OrdinalIgnoreCase);
+                }
+                if (contextualSuggestion is not null && contextualCompositionActive)
                 {
                     if (_demand is not null)
                     {
@@ -103,8 +154,15 @@ internal sealed class LegendConnectTranslationRouter : ITranslationService
                             pairKey!,
                             0,
                             contextualCompositionObserved: true,
+                            contextualInternalServed: true,
                             cancellationToken: cancellationToken);
                     }
+                    if (_systemUsage is not null)
+                    {
+                        await _systemUsage.TryRecordAsync(new TranslationSystemUsageDelta(
+                            ContextualCharactersAvoided: text?.Length ?? 0), cancellationToken);
+                    }
+                    await RecordAvoidedSafelyAsync(account, TranslationAvoidedPath.ContextualComposition, text?.Length ?? 0, cancellationToken);
                     return new TranslationProviderResult(
                         true,
                         contextualSuggestion.Text,
@@ -140,6 +198,42 @@ internal sealed class LegendConnectTranslationRouter : ITranslationService
                 cancellationToken: cancellationToken);
         }
 
+        TranslationQuotaReservation? quotaReservation = null;
+        if (account is not null && _entitlements is not null)
+        {
+            TranslationQuotaReservationResult quota;
+            try
+            {
+                quota = await _entitlements.TryReserveAsync(
+                    new TranslationQuotaReservationRequest(
+                        account,
+                        requestReference ?? string.Empty,
+                        source ?? string.Empty,
+                        target,
+                        _azure.ProviderName,
+                        text?.Length ?? 0),
+                    cancellationToken);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogError(exception, "Legend Connect account quota reservation failed. Target={TargetLanguage}", target);
+                return new TranslationProviderResult(false, null, source, _azure.ProviderName, "translation_accounting_unavailable");
+            }
+
+            if (!quota.Succeeded)
+            {
+                if (_systemUsage is not null &&
+                    (quota.ErrorCode is "translation_quota_exhausted" or "translation_access_revoked"))
+                {
+                    await _systemUsage.TryRecordAsync(
+                        new TranslationSystemUsageDelta(QuotaDeniedRequests: 1),
+                        cancellationToken);
+                }
+                return new TranslationProviderResult(false, null, source, _azure.ProviderName, quota.ErrorCode ?? "translation_accounting_unavailable");
+            }
+            quotaReservation = quota.Reservation;
+        }
+
         var reservation = await _capacity.TryReserveAsync(
             _azure.ProviderName,
             text?.Length ?? 0,
@@ -147,6 +241,12 @@ internal sealed class LegendConnectTranslationRouter : ITranslationService
             cancellationToken);
         if (reservation is null)
         {
+            await CompleteQuotaSafelyAsync(
+                quotaReservation,
+                providerExecuted: false,
+                providerSucceeded: false,
+                failureCode: "translation_capacity_unavailable",
+                cancellationToken);
             if (_operations is not null)
             {
                 await _operations.TryRecordAsync(
@@ -163,10 +263,14 @@ internal sealed class LegendConnectTranslationRouter : ITranslationService
         }
 
         var providerSucceeded = false;
+        var providerExecuted = false;
+        string? providerFailureCode = null;
         try
         {
+            providerExecuted = true;
             var result = await _azure.TranslateAsync(text ?? string.Empty, target, source, cancellationToken);
             providerSucceeded = result.Succeeded && !string.IsNullOrWhiteSpace(result.TranslatedText);
+            providerFailureCode = providerSucceeded ? null : result.ErrorCode ?? "translation_provider_failed";
             if (providerSucceeded && source is not null)
                 LegendConnectTelemetry.ProviderCharactersServed(_azure.ProviderName, reservation.Characters, source, target);
             else if (!providerSucceeded && _operations is not null)
@@ -182,6 +286,11 @@ internal sealed class LegendConnectTranslationRouter : ITranslationService
                     cancellationToken: cancellationToken);
             }
             return result;
+        }
+        catch
+        {
+            providerFailureCode = "translation_provider_failed";
+            throw;
         }
         finally
         {
@@ -207,6 +316,65 @@ internal sealed class LegendConnectTranslationRouter : ITranslationService
                         cancellationToken: CancellationToken.None);
                 }
             }
+
+            await CompleteQuotaSafelyAsync(
+                quotaReservation,
+                providerExecuted,
+                providerSucceeded,
+                providerFailureCode,
+                cancellationToken);
+            if (_systemUsage is not null && providerExecuted)
+            {
+                await _systemUsage.TryRecordAsync(new TranslationSystemUsageDelta(
+                    ProviderOperations: 1,
+                    ProviderBillableCharacters: providerSucceeded ? reservation.Characters : 0,
+                    ProviderFailures: providerSucceeded ? 0 : 1), cancellationToken);
+            }
+        }
+    }
+
+    private async Task RecordAvoidedSafelyAsync(
+        MessagingActor? account,
+        TranslationAvoidedPath path,
+        int characters,
+        CancellationToken cancellationToken)
+    {
+        if (account is null || _entitlements is null)
+            return;
+        try
+        {
+            await _entitlements.RecordAvoidedAsync(account, path, characters, cancellationToken);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(exception, "Legend Connect avoided-translation usage write failed. Path={Path}", path);
+        }
+    }
+
+    private async Task CompleteQuotaSafelyAsync(
+        TranslationQuotaReservation? reservation,
+        bool providerExecuted,
+        bool providerSucceeded,
+        string? failureCode,
+        CancellationToken cancellationToken)
+    {
+        if (reservation is null || _entitlements is null)
+            return;
+        try
+        {
+            await _entitlements.CompleteAsync(
+                reservation,
+                providerExecuted,
+                providerSucceeded,
+                failureCode,
+                cancellationToken);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The translation result must remain non-blocking for messaging.
+            // The reservation ledger is durable and therefore auditable if a
+            // finalization outage needs reconciliation.
+            _logger.LogError(exception, "Legend Connect account quota finalization failed.");
         }
     }
 }

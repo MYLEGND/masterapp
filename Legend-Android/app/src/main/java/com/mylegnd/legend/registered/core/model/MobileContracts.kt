@@ -262,7 +262,23 @@ val SocialPost.legendContentType: LegendSocialContentType?
 @Serializable data class FollowRequestDecision(val approve: Boolean)
 
 @Serializable data class MobileAccountProfile(val participantType: String, @SerialName("profileId") val profileId: String, @SerialName("displayName") val displayName: String, val email: String? = null, val phone: String? = null, val title: String? = null, @SerialName("roleLabel") val roleLabel: String? = null, @SerialName("shortBio") val shortBio: String? = null, val username: String? = null, val bio: String? = null, val website: String? = null, val location: String? = null, @SerialName("profileEmail") val profileEmail: String? = null, @SerialName("isEmailVisible") val isEmailVisible: Boolean = false, @SerialName("isPrivate") val isPrivate: Boolean, val avatar: MobileAvatar? = null, @SerialName("isVerified") val isVerified: Boolean, @SerialName("usernameChangesRemaining") val usernameChangesRemaining: Int = 0, @SerialName("isPhoneVisible") val isPhoneVisible: Boolean = false, @SerialName("translationAccess") val translationAccess: TranslationAccess? = null)
-@Serializable data class TranslationAccess(val state: String, @SerialName("canManage") val canManage: Boolean, @SerialName("preferredCommunicationLanguage") val preferredCommunicationLanguage: String? = null)
+@Serializable data class TranslationAccess(
+    val state: String,
+    @SerialName("canManage") val canManage: Boolean,
+    @SerialName("preferredCommunicationLanguage") val preferredCommunicationLanguage: String? = null,
+    @SerialName("characterAllowance") val characterAllowance: Long = 0,
+    @SerialName("isUnlimited") val isUnlimited: Boolean = false,
+    @SerialName("consumedCharacters") val consumedCharacters: Long = 0,
+    @SerialName("reservedCharacters") val reservedCharacters: Long = 0,
+    @SerialName("remainingCharacters") val remainingCharacters: Long? = null,
+    @SerialName("percentUsed") val percentUsed: Double = 0.0,
+    @SerialName("periodStartUtc") val periodStartUtc: String? = null,
+    @SerialName("periodEndUtc") val periodEndUtc: String? = null,
+    @SerialName("nextResetUtc") val nextResetUtc: String? = null,
+    @SerialName("entitlementSource") val entitlementSource: String = "DefaultPolicy",
+    @SerialName("isFounderOverride") val isFounderOverride: Boolean = false,
+    @SerialName("lastTranslationActivityUtc") val lastTranslationActivityUtc: String? = null,
+)
 @Serializable data class AccountUpdateRequest(@SerialName("displayName") val displayName: String, val phone: String? = null, val title: String? = null, @SerialName("shortBio") val shortBio: String? = null, val username: String? = null, val bio: String? = null, val website: String? = null, val location: String? = null, @SerialName("publicEmail") val publicEmail: String? = null, @SerialName("isEmailVisible") val isEmailVisible: Boolean = false, @SerialName("isPhoneVisible") val isPhoneVisible: Boolean = false, @SerialName("isPrivate") val isPrivate: Boolean? = null, @SerialName("preferredCommunicationLanguage") val preferredCommunicationLanguage: String? = null)
 @Serializable data class AccountPrivacyUpdateRequest(@SerialName("isPrivate") val isPrivate: Boolean)
 @Serializable data class AccountAvatarUpdateRequest(@SerialName("base64Content") val base64Content: String)

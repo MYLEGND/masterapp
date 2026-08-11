@@ -294,6 +294,23 @@ final class MobileNativeContractTests: XCTestCase {
           "bio": "Building a legacy.",
           "website": "https://legend.example.test",
           "location": "Phoenix, Arizona",
+          "translationAccess": {
+            "state": "Granted",
+            "canManage": false,
+            "preferredCommunicationLanguage": "ht",
+            "characterAllowance": 50000,
+            "isUnlimited": false,
+            "consumedCharacters": 1200,
+            "reservedCharacters": 34,
+            "remainingCharacters": 48766,
+            "percentUsed": 2.468,
+            "periodStartUtc": "2026-08-01T00:00:00Z",
+            "periodEndUtc": "2026-09-01T00:00:00Z",
+            "nextResetUtc": "2026-09-01T00:00:00Z",
+            "entitlementSource": "FounderCustom",
+            "isFounderOverride": true,
+            "lastTranslationActivityUtc": "2026-08-10T01:02:03Z"
+          },
           "avatar": { "kind": "inline", "contentType": "image/png", "base64Content": "Y2xpZW50" }
         }
         """.utf8)
@@ -304,6 +321,12 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertTrue(account.isPhoneVisible)
         XCTAssertEqual(account.username, "client.legend")
         XCTAssertEqual(account.avatar?.imageData, Data("client".utf8))
+        XCTAssertTrue(account.translationAccess.isGranted)
+        XCTAssertEqual(account.translationAccess.characterAllowance, 50_000)
+        XCTAssertEqual(account.translationAccess.consumedCharacters, 1_200)
+        XCTAssertEqual(account.translationAccess.remainingCharacters, 48_766)
+        XCTAssertEqual(account.translationAccess.entitlementSource, "FounderCustom")
+        XCTAssertTrue(account.translationAccess.isFounderOverride)
 
         let accountUpdate = MobileAccountUpdate(
             displayName: "Client Identity",

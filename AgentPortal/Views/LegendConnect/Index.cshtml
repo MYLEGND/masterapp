@@ -6,6 +6,11 @@
         ? dashboard.ConfiguredMonthlyCapacity.ToString("N0")
         : "Not configured";
     var remainingCapacity = dashboard.RemainingSafeCapacity?.ToString("N0") ?? "Not limited";
+    var accountUsage = Model.AccountUsage;
+    var accountScale = Model.AccountScale;
+    var policy = Model.RuntimePolicy;
+    var readiness = Model.ProductionReadiness;
+    var priority = Model.PriorityProgress;
 }
 
 <main class="dashboard-page-shell">
@@ -34,6 +39,67 @@
         <section class="dashboard-analytics-panel" role="alert"><p>@error</p></section>
     }
 
+    <section class="dashboard-analytics-panel" aria-labelledby="production-readiness-title">
+        <div class="dashboard-section-head dashboard-section-head-tight">
+            <div><span class="dashboard-section-kicker">Founder operations / activation</span><h2 class="dashboard-section-title" id="production-readiness-title">Legend® Connect production readiness</h2></div>
+            <span class="dashboard-status-chip">@readiness.State</span>
+        </div>
+        <p class="dashboard-section-copy">@readiness.Summary</p>
+        <div class="dashboard-data-surface">
+            <table class="table dashboard-data-table">
+                <thead><tr><th>Gate</th><th>Status</th><th>Safe operational detail</th></tr></thead>
+                <tbody>@foreach (var check in readiness.Checks) { <tr><td>@check.Name</td><td>@check.State</td><td>@check.Detail</td></tr> }</tbody>
+            </table>
+        </div>
+        <div class="dashboard-hero-stats" aria-label="Approved corpus readiness">
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Approved candidates</span><span class="dashboard-stat-value">@readiness.ApprovedCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Eligible pending</span><span class="dashboard-stat-value">@readiness.PendingCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Rejected / ineligible</span><span class="dashboard-stat-value">@readiness.RejectedOrIneligibleCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value">@readiness.DuplicateCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Pairs awaiting knowledge</span><span class="dashboard-stat-value">@readiness.AwaitingKnowledgePairCount.ToString("N0")</span></div>
+        </div>
+        <form method="post" asp-action="UpdateRuntimePolicy" class="dashboard-search-panel">
+            @Html.AntiForgeryToken()
+            <div class="dashboard-form-grid">
+                <label class="dashboard-form-field"><span>Monthly provider capacity</span><input name="MonthlyProviderCapacityCharacters" type="number" min="0" value="@policy.MonthlyProviderCapacityCharacters" required /></label>
+                <label class="dashboard-form-field"><span>Protected live translation reserve</span><input name="LiveTranslationReserveCharacters" type="number" min="0" value="@policy.LiveTranslationReserveCharacters" required /></label>
+                <label class="dashboard-form-field"><span>Maximum safe corpus consumption</span><input name="MaximumSafeCorpusConsumptionCharacters" type="number" min="0" value="@policy.MaximumSafeCorpusConsumptionCharacters" required /></label>
+                <label class="dashboard-form-field"><span>Contextual composition mode</span><select name="ContextualCompositionMode"><option value="Disabled" selected="@(policy.ContextualCompositionMode == "Disabled")">Disabled</option><option value="Shadow" selected="@(policy.ContextualCompositionMode == "Shadow")">Shadow</option><option value="Active" selected="@(policy.ContextualCompositionMode == "Active")">Active</option></select></label>
+                <label class="dashboard-form-field"><span>Contextual minimum confidence</span><input name="ContextualMinimumConfidence" type="number" min="0.90" max="1" step="0.01" value="@policy.ContextualMinimumConfidence.ToString(System.Globalization.CultureInfo.InvariantCulture)" required /></label>
+                <label class="dashboard-form-field"><span>Learning pipeline</span><span><input name="LearningEnabled" type="checkbox" value="true" @(policy.LearningEnabled ? "checked" : null) /> Enable autonomous learning processing</span></label>
+            </div>
+            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save runtime policy</button></div>
+        </form>
+        <div class="search-actions">
+            <form method="post" asp-action="ActivateAutonomousAcquisition" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<button type="submit" class="dashboard-command-action btn-carrier-settings">Activate autonomous acquisition</button></form>
+            <form method="post" asp-action="PauseAutonomousAcquisition" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<button type="submit" class="dashboard-command-action btn-carrier-settings">Pause autonomous acquisition</button></form>
+        </div>
+    </section>
+
+    <section class="dashboard-analytics-panel" aria-labelledby="priority-override-title">
+        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Existing autonomous planner</span><h2 class="dashboard-section-title" id="priority-override-title">Language / pair priority</h2></div><span class="dashboard-status-chip">@policy.PriorityMode</span></div>
+        <p class="dashboard-section-copy">Automatic mode uses the existing demand, coverage, quality, and dependency score. A Founder override changes only the existing planner’s work order; corpus eligibility, deduplication, capacity protection, and worker claiming remain mandatory.</p>
+        <div class="dashboard-hero-stats" aria-label="Founder priority progress">
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Priority status</span><span class="dashboard-stat-value">@priority.Status</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Eligible missing coverage</span><span class="dashboard-stat-value">@priority.EligibleMissingCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Pending candidates</span><span class="dashboard-stat-value">@priority.PendingCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Internal coverage</span><span class="dashboard-stat-value">@priority.CurrentInternalCoverage.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Azure dependency</span><span class="dashboard-stat-value">@priority.AzureDependencyRate.ToString("P0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Priority characters consumed</span><span class="dashboard-stat-value">@priority.CharactersConsumed.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Last successful expansion</span><span class="dashboard-stat-value">@(priority.LastSuccessfulExpansionUtc?.ToString("u") ?? "None")</span></div>
+        </div>
+        <p class="dashboard-section-copy">@(priority.Detail ?? "No Founder priority override is active.")</p>
+        <form method="post" asp-action="ConfigurePriorityOverride" class="dashboard-search-panel">
+            @Html.AntiForgeryToken()
+            <div class="dashboard-form-grid">
+                <label class="dashboard-form-field"><span>Target language (optional when selecting a pair)</span><select name="LanguageCode"><option value="">No language-wide override</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode" selected="@(policy.PriorityLanguageCode == language.LanguageCode)">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
+                <label class="dashboard-form-field"><span>Directional pair (optional)</span><select name="PairKey"><option value="">No pair-specific override</option>@foreach (var pair in dashboard.Pairs) { <option value="@pair.PairKey" selected="@(policy.PriorityPairKey == pair.PairKey)">@pair.PairKey</option> }</select></label>
+            </div>
+            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Enable / change Founder override</button></div>
+        </form>
+        <form method="post" asp-action="DisablePriorityOverride" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<button type="submit" class="dashboard-command-action btn-carrier-settings">Return to automatic — demand driven</button></form>
+    </section>
+
     <section class="dashboard-analytics-panel" aria-labelledby="translation-operations-title">
         <div class="dashboard-section-head dashboard-section-head-tight">
             <div><span class="dashboard-section-kicker">Live translation</span><h2 class="dashboard-section-title" id="translation-operations-title">Translation operations</h2></div>
@@ -42,25 +108,97 @@
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Same-language bypasses</span><span class="dashboard-stat-value">@dashboard.SameLanguageBypassCount</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Translation Memory hits</span><span class="dashboard-stat-value">@dashboard.TranslationMemoryHitCount</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Azure fallbacks</span><span class="dashboard-stat-value">@dashboard.AzureFallbackCount</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Trusted contextual served</span><span class="dashboard-stat-value">@dashboard.ContextualInternalServeCount</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider avoidance</span><span class="dashboard-stat-value">@dashboard.ProviderAvoidanceRate.ToString("P0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Azure dependency</span><span class="dashboard-stat-value">@dashboard.AzureDependencyRate.ToString("P0")</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Azure characters used</span><span class="dashboard-stat-value">@dashboard.AzureCharactersUsed.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Consumed live characters</span><span class="dashboard-stat-value">@dashboard.ConsumedLiveCharacters.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Consumed corpus characters</span><span class="dashboard-stat-value">@dashboard.ConsumedCorpusCharacters.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider characters reserved</span><span class="dashboard-stat-value">@dashboard.ReservedProviderCharacters.ToString("N0")</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Monthly capacity</span><span class="dashboard-stat-value">@configuredCapacity</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Live reserve</span><span class="dashboard-stat-value">@dashboard.LiveReserveCharacters.ToString("N0")</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Remaining safe capacity</span><span class="dashboard-stat-value">@remainingCapacity</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Safe acquisition capacity</span><span class="dashboard-stat-value">@(dashboard.SafeAcquisitionCapacity?.ToString("N0") ?? "Not configured")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Billing period</span><span class="dashboard-stat-value">@(dashboard.BillingPeriodStart?.ToString("yyyy-MM-dd") ?? "Not started")</span></div>
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Pending learning jobs</span><span class="dashboard-stat-value">@dashboard.LearningJobCount</span></div>
         </div>
+    </section>
+
+    <section class="dashboard-analytics-panel" aria-labelledby="account-usage-title">
+        <div class="dashboard-section-head dashboard-section-head-tight">
+            <div><span class="dashboard-section-kicker">Account authority</span><h2 class="dashboard-section-title" id="account-usage-title">Translation accounts and usage</h2></div>
+        </div>
+        <p class="dashboard-section-copy">Permission, entitlement, and consumption are separate server authorities. Provider work starts only after a permitted account has an atomically reserved allowance; unlimited accounts remain fully metered.</p>
+        <div class="dashboard-hero-stats" aria-label="Current account translation usage">
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider operations</span><span class="dashboard-stat-value">@dashboard.ProviderOperationCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider-billable characters</span><span class="dashboard-stat-value">@dashboard.ProviderBillableCharacters.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Same-language avoided</span><span class="dashboard-stat-value">@dashboard.SameLanguageCharactersAvoided.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Memory avoided</span><span class="dashboard-stat-value">@dashboard.TranslationMemoryCharactersAvoided.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Context avoided</span><span class="dashboard-stat-value">@dashboard.ContextualCharactersAvoided.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Quota denied</span><span class="dashboard-stat-value">@dashboard.QuotaDeniedRequestCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider failures</span><span class="dashboard-stat-value">@dashboard.ProviderFailureCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Group target reuse</span><span class="dashboard-stat-value">@dashboard.GroupUniqueTargetReuseCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card"><span class="dashboard-stat-label">High consumption accounts</span><span class="dashboard-stat-value">@accountScale.HighConsumptionAccountCount</span></div>
+        </div>
+
+        @if (accountUsage.Count == 0)
+        {
+            <p class="dashboard-section-copy">No eligible LEGEND accounts are currently available for translation access management.</p>
+        }
+        else
+        {
+            <div class="dashboard-data-surface">
+                <table class="table dashboard-data-table">
+                    <thead><tr><th>Account</th><th>Access</th><th>Preferred language</th><th>Allowance</th><th>Consumed</th><th>Remaining</th><th>Usage</th><th>Period / reset</th><th>Source</th><th>Last activity</th><th>Founder action</th></tr></thead>
+                    <tbody>
+                    @foreach (var account in accountUsage)
+                    {
+                        var entitlement = account.Entitlement;
+                        var presetSource = entitlement.EntitlementSource.StartsWith("Preset:", StringComparison.OrdinalIgnoreCase)
+                            ? entitlement.EntitlementSource["Preset:".Length..]
+                            : string.Empty;
+                        <tr>
+                            <td>@account.DisplayName<br /><small>@account.Account.ParticipantType · @account.Account.UserId</small></td>
+                            <td>@account.AccessState</td>
+                            <td>@(account.PreferredLanguage ?? "Not set")</td>
+                            <td>@(entitlement.IsUnlimited ? "Unlimited" : entitlement.CharacterAllowance.ToString("N0"))</td>
+                            <td>@entitlement.ConsumedCharacters.ToString("N0")</td>
+                            <td>@(entitlement.IsUnlimited ? "Unlimited" : entitlement.RemainingCharacters?.ToString("N0") ?? "0")</td>
+                            <td>@entitlement.PercentUsed.ToString("N2")%</td>
+                            <td>@entitlement.PeriodStartUtc.ToString("yyyy-MM-dd")<br /><small>Resets @entitlement.NextResetUtc.ToString("u")</small></td>
+                            <td>@entitlement.EntitlementSource@(entitlement.IsFounderOverride ? " · Founder override" : string.Empty)</td>
+                            <td>@(entitlement.LastTranslationActivityUtc?.ToString("u") ?? "No translation activity")</td>
+                            <td>
+                                <form method="post" asp-action="UpdateEntitlement" class="dashboard-inline-command-form">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="TargetUserId" value="@account.Account.UserId" />
+                                    <input type="hidden" name="TargetParticipantType" value="@account.Account.ParticipantType" />
+                                    <label><span class="visually-hidden">Access</span><select name="AccessGranted"><option value="true" selected="@(account.AccessState == "Granted")">Grant</option><option value="false" selected="@(account.AccessState != "Granted")">Revoke</option></select></label>
+                                    <label><span class="visually-hidden">Allowance mode</span><select name="EntitlementMode"><option value="Custom" selected="@(!entitlement.IsUnlimited && string.IsNullOrWhiteSpace(presetSource))">Custom</option><option value="Unlimited" selected="@entitlement.IsUnlimited">Unlimited</option>@foreach (var preset in Model.EntitlementPresets) { <option value="Preset" data-preset="@preset.Key" selected="@(string.Equals(presetSource, preset.Key, StringComparison.OrdinalIgnoreCase))">Preset: @preset.DisplayName (@preset.CharacterAllowance.ToString("N0"))</option> }</select></label>
+                                    <label><span class="visually-hidden">Preset key</span><select name="PresetKey"><option value="">Select preset</option>@foreach (var preset in Model.EntitlementPresets) { <option value="@preset.Key" selected="@(string.Equals(presetSource, preset.Key, StringComparison.OrdinalIgnoreCase))">@preset.DisplayName</option> }</select></label>
+                                    <label><span class="visually-hidden">Custom monthly character allowance</span><input type="number" name="CustomCharacterAllowance" min="0" value="@entitlement.CharacterAllowance" /></label>
+                                    <button type="submit" class="dashboard-command-action btn-carrier-settings">Save</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
     </section>
 
     <section class="category-container" aria-labelledby="active-languages-title">
         <div class="category-head"><div><span class="dashboard-section-kicker">Registry health</span><h2 class="dashboard-section-title" id="active-languages-title">Active languages</h2></div></div>
         <div class="dashboard-data-surface">
             <table class="table dashboard-data-table">
-                <thead><tr><th>Language</th><th>Dataset</th><th>Entries</th><th>Pairs</th><th>Demand</th><th>Coverage</th><th>Quality</th><th>Health</th></tr></thead>
+                <thead><tr><th>Language</th><th>Dataset</th><th>Entries</th><th>Pairs</th><th>Approved / pending candidates</th><th>Azure dependency</th><th>Last provider / Founder expansion</th><th>Health</th></tr></thead>
                 <tbody>
                 @foreach (var language in dashboard.Languages)
                 {
                     <tr>
                         <td><a asp-action="Index" asp-route-language="@language.LanguageCode" aria-haspopup="dialog">@language.DisplayName (@language.LanguageCode)</a></td>
-                        <td>@language.StoragePartition</td><td>@language.CanonicalEntryCount</td><td>@language.DirectionalPairs.Count</td><td>@language.DemandCount</td><td>@language.Coverage</td><td>@language.QualityState</td><td>@language.HealthState</td>
+                        <td>@language.StoragePartition</td><td>@language.CanonicalEntryCount</td><td>@language.DirectionalPairs.Count</td><td>@language.ApprovedCandidateCount / @language.PendingCandidateCount</td><td>@language.AzureDependencyRate.ToString("P0")</td><td>@(language.LastProviderAcquisitionUtc?.ToString("u") ?? "None")<br /><small>Founder: @(language.LastFounderTrainingUtc?.ToString("u") ?? "None")</small></td><td>@language.HealthState · @language.QualityState</td>
                     </tr>
                 }
                 </tbody>
@@ -72,12 +210,12 @@
         <div class="category-head"><div><span class="dashboard-section-kicker">Directional health</span><h2 class="dashboard-section-title" id="active-pairs-title">Active directional pairs</h2></div></div>
         <div class="dashboard-data-surface">
             <table class="table dashboard-data-table">
-                <thead><tr><th>Pair</th><th>Demand</th><th>Memory reuse</th><th>Azure fallback</th><th>Coverage</th><th>Quality</th><th>Health</th></tr></thead>
+                <thead><tr><th>Pair</th><th>Demand</th><th>Memory / context served</th><th>Azure dependency</th><th>Internal coverage</th><th>Quality confidence</th><th>Approved backlog</th><th>30-day additions</th><th>Health</th></tr></thead>
                 <tbody>
                 @foreach (var pair in dashboard.Pairs)
                 {
                     <tr>
-                        <td><a asp-action="Index" asp-route-pair="@pair.PairKey">@pair.PairKey</a></td><td>@pair.DemandCount</td><td>@pair.TranslationMemoryReuseCount</td><td>@pair.AzureFallbackCount (@pair.AzureFallbackRate.ToString("P0"))</td><td>@pair.Coverage</td><td>@pair.QualityState</td><td>@pair.HealthState</td>
+                        <td><a asp-action="Index" asp-route-pair="@pair.PairKey">@pair.PairKey</a></td><td>@pair.DemandCount</td><td>@pair.TranslationMemoryReuseCount / @pair.ContextualInternalServeCount</td><td>@pair.AzureFallbackCount (@pair.AzureDependencyRate.ToString("P0"))</td><td>@pair.InternalCoverageRate.ToString("P0")</td><td>@pair.InternalQualityConfidence.ToString("P0") · @pair.QualityState</td><td>@pair.ApprovedBacklog</td><td>@pair.CoverageAdditionsLast30Days</td><td>@pair.HealthState</td>
                     </tr>
                 }
                 </tbody>
@@ -136,6 +274,23 @@
             </form>
         </section>
     }
+
+    <section class="dashboard-analytics-panel" aria-labelledby="runtime-audit-title">
+        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Founder audit</span><h2 class="dashboard-section-title" id="runtime-audit-title">Recent operational changes</h2></div></div>
+        @if (Model.RuntimeAudit.Count == 0)
+        {
+            <p class="dashboard-section-copy">No Founder runtime-policy or priority changes have been recorded.</p>
+        }
+        else
+        {
+            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>When</th><th>Founder</th><th>Action</th><th>Language / pair</th><th>Result</th><th>Change</th></tr></thead><tbody>
+            @foreach (var item in Model.RuntimeAudit)
+            {
+                <tr><td>@item.OccurredUtc.ToString("u")</td><td>@item.FounderUserId</td><td>@item.Action</td><td>@(item.PairKey ?? (string.IsNullOrWhiteSpace(item.LanguageCode) ? "Global" : item.LanguageCode))</td><td>@item.Result</td><td>@item.Detail</td></tr>
+            }
+            </tbody></table></div>
+        }
+    </section>
 
     <section class="dashboard-analytics-panel" aria-labelledby="operational-events-title">
         <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Bounded diagnostics</span><h2 class="dashboard-section-title" id="operational-events-title">Recent backend events</h2></div></div>

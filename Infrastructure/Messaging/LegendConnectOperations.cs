@@ -20,19 +20,22 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private readonly LegendConnectCorpusService _corpus;
     private readonly IConfiguration _configuration;
     private readonly ILegendConnectOperationalEventWriter? _operationalEvents;
+    private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
 
     public LegendConnectOperations(
         MasterAppDbContext db,
         ILegendLanguageRegistry registry,
         LegendConnectCorpusService corpus,
         IConfiguration configuration,
-        ILegendConnectOperationalEventWriter? operationalEvents = null)
+        ILegendConnectOperationalEventWriter? operationalEvents = null,
+        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null)
     {
         _db = db;
         _registry = registry;
         _corpus = corpus;
         _configuration = configuration;
         _operationalEvents = operationalEvents;
+        _runtimePolicy = runtimePolicy;
     }
 
     public async Task<LegendConnectDashboardSnapshot> GetDashboardAsync(
@@ -54,20 +57,29 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .ToList();
 
         var currentPeriod = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+        var runtime = _runtimePolicy is null ? null : await _runtimePolicy.GetEffectiveAsync(cancellationToken);
         var capacity = state.Capacities
             .Where(item => item.Provider == "AzureTranslator" && item.BillingPeriodStart == currentPeriod)
             .OrderByDescending(item => item.UpdatedUtc)
             .FirstOrDefault();
-        var configuredCapacity = capacity?.ConfiguredCapacityCharacters ?? Math.Max(0,
+        var configuredCapacity = runtime?.MonthlyProviderCapacityCharacters ?? capacity?.ConfiguredCapacityCharacters ?? Math.Max(0,
             _configuration.GetValue<long?>("LegendConnect:Providers:AzureTranslator:MonthlyCapacityCharacters") ?? 0);
-        var liveReserve = capacity?.ReservedLiveCapacityCharacters ?? Math.Max(0,
+        var liveReserve = runtime?.LiveTranslationReserveCharacters ?? capacity?.ReservedLiveCapacityCharacters ?? Math.Max(0,
             _configuration.GetValue<long?>("LegendConnect:Providers:AzureTranslator:LiveReserveCharacters") ?? 0);
         var used = capacity is null
             ? 0
             : capacity.LiveCharactersConsumed + capacity.BootstrapCharactersConsumed + capacity.TrainingCharactersConsumed;
         var inFlight = capacity?.ReservedLiveCharacters ?? 0;
+        var consumedLive = capacity?.LiveCharactersConsumed ?? 0;
+        var consumedCorpus = capacity is null ? 0 : capacity.BootstrapCharactersConsumed + capacity.TrainingCharactersConsumed;
+        var corpusLimit = runtime?.MaximumSafeCorpusConsumptionCharacters ?? Math.Max(0, configuredCapacity - liveReserve);
         long? remainingSafe = configuredCapacity > 0
             ? Math.Max(0, configuredCapacity - used - inFlight - liveReserve)
+            : null;
+        long? safeAcquisition = configuredCapacity > 0
+            ? Math.Max(0, Math.Min(
+                configuredCapacity - used - inFlight - liveReserve,
+                corpusLimit - consumedCorpus - inFlight))
             : null;
 
         var recentEvents = state.OperationalEvents
@@ -83,13 +95,17 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .Max();
         var duplicateCount = state.OperationalEvents.LongCount(item => item.Category == "DuplicatePrevention" && item.Status == "Prevented") +
             state.AuditEntries.LongCount(item => item.Result == "DuplicatePrevented");
+        var translationOpportunities = state.Demand.Sum(item => item.TranslationRequestCount);
+        var contextualInternalServed = state.Demand.Sum(item => item.ContextualInternalServeCount);
+        var internalServed = state.Demand.Sum(item => item.TranslationMemoryHitCount) + contextualInternalServed;
+        var azureFallbacks = state.Demand.Sum(item => item.AzureFallbackCount);
 
         return new LegendConnectDashboardSnapshot(
             languages,
             pairs,
             state.SystemUsage.Sum(item => item.SameLanguageBypassCount),
             state.Demand.Sum(item => item.TranslationMemoryHitCount),
-            state.Demand.Sum(item => item.AzureFallbackCount),
+            azureFallbacks,
             used,
             configuredCapacity,
             liveReserve,
@@ -99,7 +115,25 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 state.Candidates.LongCount(item => !string.IsNullOrWhiteSpace(item.FailureCode)),
             duplicateCount,
             lastLearning,
-            recentEvents);
+            recentEvents,
+            state.SystemUsage.Sum(item => item.ProviderOperationCount),
+            state.SystemUsage.Sum(item => item.ProviderBillableCharacters),
+            state.SystemUsage.Sum(item => item.SameLanguageCharactersAvoided),
+            state.SystemUsage.Sum(item => item.TranslationMemoryCharactersAvoided),
+            state.SystemUsage.Sum(item => item.ContextualCharactersAvoided),
+            state.SystemUsage.Sum(item => item.QuotaDeniedRequestCount),
+            state.SystemUsage.Sum(item => item.ProviderFailureCount),
+            state.SystemUsage.Sum(item => item.GroupUniqueTargetReuseCount),
+            contextualInternalServed,
+            translationOpportunities == 0 ? 0m : Math.Round((decimal)internalServed / translationOpportunities, 4),
+            translationOpportunities == 0 ? 0m : Math.Round((decimal)azureFallbacks / translationOpportunities, 4),
+            translationOpportunities == 0 ? 0m : Math.Round((decimal)internalServed / translationOpportunities, 4),
+            consumedLive,
+            consumedCorpus,
+            inFlight,
+            safeAcquisition,
+            currentPeriod,
+            currentPeriod.AddMonths(1).AddDays(-1));
     }
 
     public async Task<LegendConnectLanguageHealthSnapshot?> GetLanguageHealthAsync(
@@ -262,7 +296,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     public async Task<LegendConnectKnowledgeSubmissionResult> SubmitFounderKnowledgeAsync(
         string founderUserId,
         LegendConnectKnowledgeSubmission submission,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid? reusableSourceTextUnitId = null)
     {
         var founder = NormalizeFounder(founderUserId);
         if (founder is null)
@@ -272,22 +307,40 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 string.Empty, null, null, null, null, null);
         }
 
-        var approved = submission with { Provenance = "FounderApproved" };
-        var result = await _corpus.SubmitApprovedKnowledgeAsync(approved, cancellationToken);
-        await WriteAuditAsync(founder, "FounderKnowledgeSubmitted", result, null, cancellationToken);
-        if (result.DuplicatePrevented && _operationalEvents is not null)
+        var transaction = await BeginTransactionIfNeededAsync(cancellationToken);
+        try
         {
-            await _operationalEvents.TryRecordAsync(
-                "DuplicatePrevention",
-                "Info",
-                "Prevented",
-                result.SourceLanguageCode,
-                result.PairKey,
-                result.ErrorCode,
-                summary: "Founder knowledge submission matched an existing canonical language entry.",
-                cancellationToken: cancellationToken);
+            var approved = submission with { Provenance = "FounderApproved" };
+            var result = await _corpus.SubmitApprovedKnowledgeAsync(approved, cancellationToken, reusableSourceTextUnitId);
+            await WriteAuditAsync(founder, "FounderKnowledgeSubmitted", result, null, cancellationToken);
+            if (result.DuplicatePrevented && _operationalEvents is not null)
+            {
+                await _operationalEvents.TryRecordAsync(
+                    "DuplicatePrevention",
+                    "Info",
+                    "Prevented",
+                    result.SourceLanguageCode,
+                    result.PairKey,
+                    result.ErrorCode,
+                    summary: "Founder knowledge submission matched an existing canonical language entry.",
+                    cancellationToken: cancellationToken);
+            }
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            return result;
         }
-        return result;
+        catch
+        {
+            if (transaction is not null)
+                await transaction.RollbackAsync(CancellationToken.None);
+            _db.ChangeTracker.Clear();
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+        }
     }
 
     public async Task<LegendConnectKnowledgeSubmissionResult> CorrectFounderKnowledgeAsync(
@@ -323,17 +376,51 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 source ?? string.Empty, target, expectedPair, null, null, null);
         }
 
-        var result = await SubmitFounderKnowledgeAsync(founder, replacement, cancellationToken);
-        if (!result.Succeeded || result.AlignmentId is null)
-            return result;
+        var transaction = await BeginTransactionIfNeededAsync(cancellationToken);
+        try
+        {
+            var priorSource = await _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                .SingleAsync(item => item.Id == prior.SourceTextUnitId, cancellationToken);
+            var reusableSourceTextUnitId = string.Equals(
+                LegendLanguageIdentity.TextHash(LegendLanguageIdentity.NormalizeText(replacement.SourceText)),
+                priorSource.NormalizedHash,
+                StringComparison.Ordinal)
+                ? prior.SourceTextUnitId
+                : (Guid?)null;
+            var result = await SubmitFounderKnowledgeAsync(
+                founder,
+                replacement,
+                cancellationToken,
+                reusableSourceTextUnitId: reusableSourceTextUnitId);
+            if (!result.Succeeded || result.AlignmentId is null)
+            {
+                if (transaction is not null)
+                    await transaction.CommitAsync(cancellationToken);
+                return result;
+            }
 
-        prior.SupersededUtc = DateTime.UtcNow;
-        prior.SupersededByAlignmentId = result.AlignmentId;
-        prior.QualityState = "Superseded";
-        prior.UpdatedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
-        await WriteAuditAsync(founder, "FounderKnowledgeCorrected", result, supersededAlignmentId, cancellationToken);
-        return result;
+            prior.SupersededUtc = DateTime.UtcNow;
+            prior.SupersededByAlignmentId = result.AlignmentId;
+            prior.QualityState = "Superseded";
+            prior.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            await WriteAuditAsync(founder, "FounderKnowledgeCorrected", result, supersededAlignmentId, cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.RollbackAsync(CancellationToken.None);
+            _db.ChangeTracker.Clear();
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+        }
     }
 
     private async Task WriteAuditAsync(
@@ -358,6 +445,14 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             OccurredUtc = DateTime.UtcNow
         });
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?> BeginTransactionIfNeededAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!_db.Database.IsRelational() || _db.Database.CurrentTransaction is not null)
+            return null;
+        return await _db.Database.BeginTransactionAsync(cancellationToken);
     }
 
     private static LegendConnectLanguageHealthSnapshot BuildLanguageHealth(
@@ -403,6 +498,22 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             state.AuditEntries.LongCount(item => item.Result == "DuplicatePrevented" && item.LanguageCode == language.LanguageCode);
         var coverage = pairs.Count == 0 ? 0 : (int)Math.Round(pairs.Average(item => item.CorpusCoverage));
         var demand = state.Demand.Where(item => pairKeys.Contains(item.PairKey)).Sum(item => item.TranslationRequestCount);
+        var azureFallbacks = state.Demand.Where(item => pairKeys.Contains(item.PairKey)).Sum(item => item.AzureFallbackCount);
+        var approvedCandidates = state.Candidates.LongCount(item => item.IsApproved &&
+            (string.Equals(item.SourceLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(item.TargetLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase)));
+        var pendingCandidates = state.Candidates.LongCount(item => item.IsApproved && item.ProcessingState is "Pending" or "Processing" &&
+            (string.Equals(item.SourceLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(item.TargetLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase)));
+        var lastProviderAcquisition = state.Candidates
+            .Where(item => item.ProcessingState == "Queued" &&
+                (string.Equals(item.SourceLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(item.TargetLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase)))
+            .Select(item => (DateTime?)item.ProcessedUtc).Max();
+        var lastFounderTraining = state.TextUnits
+            .Where(item => item.IsTrainingEligible && item.Provenance == "FounderApproved" &&
+                string.Equals(item.LanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase))
+            .Select(item => (DateTime?)item.UpdatedUtc).Max();
         var quality = pairs.Any(item => item.QualityState == "Validated") ? "Validated" :
             pairs.Select(item => item.QualityState).FirstOrDefault() ?? "Observation";
 
@@ -423,7 +534,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             state.TextUnits.Where(item => item.IsTrainingEligible && item.LanguageCode == language.LanguageCode)
                 .Select(item => (DateTime?)item.UpdatedUtc).Max(),
             duplicateCount,
-            errors);
+            errors,
+            approvedCandidates,
+            pendingCandidates,
+            demand == 0 ? 0m : Math.Round((decimal)azureFallbacks / demand, 4),
+            lastProviderAcquisition,
+            lastFounderTraining);
     }
 
     private static LegendConnectPairHealthSnapshot BuildPairHealth(
@@ -447,6 +563,21 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .Max();
         var total = demand?.TranslationRequestCount ?? 0;
         var fallback = demand?.AzureFallbackCount ?? 0;
+        var memoryHits = demand?.TranslationMemoryHitCount ?? 0;
+        var contextualInternal = demand?.ContextualInternalServeCount ?? 0;
+        var internalServed = memoryHits + contextualInternal;
+        var approvedBacklog = state.Candidates.LongCount(item => item.IsApproved &&
+            item.ProcessingState is "Pending" or "Processing" &&
+            string.Equals(LegendLanguageIdentity.PairKey(item.SourceLanguageCode, item.TargetLanguageCode), pair.PairKey, StringComparison.OrdinalIgnoreCase));
+        var lastProviderAcquisition = state.Candidates
+            .Where(item => item.ProcessingState == "Queued" &&
+                string.Equals(LegendLanguageIdentity.PairKey(item.SourceLanguageCode, item.TargetLanguageCode), pair.PairKey, StringComparison.OrdinalIgnoreCase))
+            .Select(item => (DateTime?)item.ProcessedUtc)
+            .Max();
+        var coverageAdditions = alignments.Count(item => item.CreatedUtc >= DateTime.UtcNow.AddDays(-30));
+        var internalQuality = alignments.Count == 0
+            ? 0m
+            : Math.Round(alignments.Average(item => item.HumanVerified ? 1m : item.Confidence ?? 0m), 4);
         var recentAlignments = alignments
             .OrderByDescending(item => item.UpdatedUtc)
             .Take(25)
@@ -464,7 +595,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             pair.TargetLanguageCode,
             demand?.TranslationRequestCount ?? 0,
             total,
-            demand?.TranslationMemoryHitCount ?? 0,
+            memoryHits,
             fallback,
             total == 0 ? 0m : Math.Round((decimal)fallback / total, 4),
             pair.CorpusCoverage,
@@ -474,7 +605,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             lastLearning,
             errors.Count,
             recentAlignments,
-            errors);
+            errors,
+            contextualInternal,
+            total == 0 ? 0m : Math.Round((decimal)internalServed / total, 4),
+            total == 0 ? 0m : Math.Round((decimal)fallback / total, 4),
+            total == 0 ? 0m : Math.Round((decimal)internalServed / total, 4),
+            internalQuality,
+            coverageAdditions,
+            approvedBacklog,
+            lastProviderAcquisition);
     }
 
     private static List<LegendConnectOperationalEventSnapshot> ErrorsFor(

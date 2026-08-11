@@ -232,10 +232,28 @@ public sealed class MobileAccountController : MobileApiControllerBase
             account.IsVerified,
             account.UsernameChangesRemaining,
             account.IsPhoneVisible,
-            new MobileTranslationAccessDto(
-                account.TranslationAccess?.State ?? ControlledResourceAccessStates.NotGranted,
-                account.TranslationAccess?.CanManage ?? false,
-                account.PreferredCommunicationLanguage));
+            ToTranslationAccess(account));
+    }
+
+    private static MobileTranslationAccessDto ToTranslationAccess(MobileAccountSnapshot account)
+    {
+        var entitlement = account.TranslationEntitlement;
+        return new MobileTranslationAccessDto(
+            entitlement?.AccessState ?? account.TranslationAccess?.State ?? ControlledResourceAccessStates.NotGranted,
+            entitlement?.CanManage ?? account.TranslationAccess?.CanManage ?? false,
+            account.PreferredCommunicationLanguage,
+            entitlement?.CharacterAllowance ?? 0,
+            entitlement?.IsUnlimited ?? false,
+            entitlement?.ConsumedCharacters ?? 0,
+            entitlement?.ReservedCharacters ?? 0,
+            entitlement?.RemainingCharacters,
+            (double)(entitlement?.PercentUsed ?? 0m),
+            entitlement?.PeriodStartUtc,
+            entitlement?.PeriodEndUtc,
+            entitlement?.NextResetUtc,
+            entitlement?.EntitlementSource ?? "DefaultPolicy",
+            entitlement?.IsFounderOverride ?? false,
+            entitlement?.LastTranslationActivityUtc);
     }
 
     private IActionResult AccountFailure(MobileAccountResult result)
@@ -305,4 +323,16 @@ public sealed record MobileAccountProfile(
 public sealed record MobileTranslationAccessDto(
     string State,
     bool CanManage,
-    string? PreferredCommunicationLanguage);
+    string? PreferredCommunicationLanguage,
+    long CharacterAllowance = 0,
+    bool IsUnlimited = false,
+    long ConsumedCharacters = 0,
+    long ReservedCharacters = 0,
+    long? RemainingCharacters = null,
+    double PercentUsed = 0,
+    DateTime? PeriodStartUtc = null,
+    DateTime? PeriodEndUtc = null,
+    DateTime? NextResetUtc = null,
+    string EntitlementSource = "DefaultPolicy",
+    bool IsFounderOverride = false,
+    DateTime? LastTranslationActivityUtc = null);

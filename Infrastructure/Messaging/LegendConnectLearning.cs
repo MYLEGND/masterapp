@@ -289,7 +289,8 @@ internal sealed class LegendConnectCorpusService
     /// </summary>
     internal async Task<LegendConnectKnowledgeSubmissionResult> SubmitApprovedKnowledgeAsync(
         LegendConnectKnowledgeSubmission submission,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid? reusableSourceTextUnitId = null)
     {
         var sourceLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
             submission.SourceLanguageCode,
@@ -330,7 +331,23 @@ internal sealed class LegendConnectCorpusService
 
         var sourceHash = LegendLanguageIdentity.TextHash(sourceText);
         var targetHash = targetText is null ? null : LegendLanguageIdentity.TextHash(targetText);
-        if (await _db.Set<LegendLanguageTextUnit>().AnyAsync(item =>
+        LegendLanguageTextUnit? reusableSource = null;
+        if (reusableSourceTextUnitId is not null)
+        {
+            reusableSource = await _db.Set<LegendLanguageTextUnit>().SingleOrDefaultAsync(item =>
+                item.Id == reusableSourceTextUnitId &&
+                item.IsTrainingEligible &&
+                item.LanguageCode == sourceLanguage &&
+                item.NormalizedHash == sourceHash, cancellationToken);
+            if (reusableSource is null)
+            {
+                return new LegendConnectKnowledgeSubmissionResult(
+                    false, false, "correction_source_mismatch",
+                    "The correction source must match the active approved source entry.",
+                    sourceLanguage, targetLanguage, null, null, null, null);
+            }
+        }
+        if (reusableSource is null && await _db.Set<LegendLanguageTextUnit>().AnyAsync(item =>
                 item.LanguageCode == sourceLanguage && item.NormalizedHash == sourceHash, cancellationToken))
         {
             return Duplicate(sourceLanguage, targetLanguage, "This exact entry already exists in this language.");
@@ -342,14 +359,20 @@ internal sealed class LegendConnectCorpusService
             return Duplicate(sourceLanguage, targetLanguage, "This exact entry already exists in this language.");
         }
 
+        // Founder corrections own a single transaction spanning the replacement
+        // write, supersession, and audit. Reuse it when present so the corpus
+        // pipeline remains the one canonical write path without committing a
+        // replacement alignment before its predecessor is superseded.
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
-        if (_db.Database.IsRelational())
+        var ownsTransaction = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null;
+        if (ownsTransaction)
             transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
 
         try
         {
-            var source = NewTextUnit(sourceLanguage, sourceText, sourceHash, submission.Provenance);
-            _db.Set<LegendLanguageTextUnit>().Add(source);
+            var source = reusableSource ?? NewTextUnit(sourceLanguage, sourceText, sourceHash, submission.Provenance);
+            if (reusableSource is null)
+                _db.Set<LegendLanguageTextUnit>().Add(source);
 
             LegendLanguageTextUnit? target = null;
             LegendTranslationAlignment? alignment = null;
@@ -638,8 +661,13 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
             try
             {
                 using var scope = _scopes.CreateScope();
-                await scope.ServiceProvider.GetRequiredService<LegendConnectCorpusService>()
-                    .ProcessPendingAsync(25, stoppingToken);
+                var runtime = scope.ServiceProvider.GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
+                await runtime.RecordWorkerHeartbeatAsync("Learning", stoppingToken);
+                if ((await runtime.GetEffectiveAsync(stoppingToken)).LearningEnabled)
+                {
+                    await scope.ServiceProvider.GetRequiredService<LegendConnectCorpusService>()
+                        .ProcessPendingAsync(25, stoppingToken);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -670,7 +698,9 @@ internal sealed class LegendConnectAutonomousGapPlanner
         _languages = languages;
     }
 
-    public async Task<Guid?> SelectApprovedGapAsync(CancellationToken cancellationToken = default)
+    public async Task<Guid?> SelectApprovedGapAsync(
+        LegendConnectRuntimePolicySnapshot? priorityOverride = null,
+        CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
         var candidates = await _db.Set<LegendCorpusCandidate>()
@@ -693,6 +723,10 @@ internal sealed class LegendConnectAutonomousGapPlanner
                 candidate.TargetLanguageCode,
                 cancellationToken);
             if (pair is null || string.Equals(pair.SourceLanguageCode, pair.TargetLanguageCode, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (priorityOverride is not null &&
+                string.Equals(priorityOverride.PriorityMode, "FounderOverride", StringComparison.OrdinalIgnoreCase) &&
+                !MatchesPriorityOverride(pair, priorityOverride))
                 continue;
 
             var source = await _db.Set<LegendLanguageTextUnit>()
@@ -726,14 +760,37 @@ internal sealed class LegendConnectAutonomousGapPlanner
             .Where(item => pairKeys.Contains(item.PairKey))
             .ToDictionaryAsync(item => item.PairKey, item => item.TranslationRequestCount, StringComparer.OrdinalIgnoreCase, cancellationToken);
 
+        if (priorityOverride is not null &&
+            string.Equals(priorityOverride.PriorityMode, "FounderOverride", StringComparison.OrdinalIgnoreCase))
+        {
+            // An active Founder target is intentionally a scoped work-order
+            // policy: completed targets wait for new eligible material rather
+            // than consuming provider capacity on unrelated acquisition.
+            planned = planned.Where(item => MatchesPriorityOverride(item.Pair, priorityOverride)).ToList();
+        }
+
         return planned
-            .OrderByDescending(item => LegendCorpusCandidateScoring.Score(
+            .OrderByDescending(item => MatchesPriorityOverride(item.Pair, priorityOverride))
+            .ThenByDescending(item => LegendCorpusCandidateScoring.Score(
                 item.Candidate,
                 demandByPair.GetValueOrDefault(item.Pair.PairKey),
                 item.Pair.CorpusCoverage))
             .ThenBy(item => item.Candidate.CreatedUtc)
             .Select(item => (Guid?)item.Candidate.Id)
             .FirstOrDefault();
+    }
+
+    private static bool MatchesPriorityOverride(
+        LegendLanguagePairSnapshot pair,
+        LegendConnectRuntimePolicySnapshot? policy)
+    {
+        if (policy is null || !string.Equals(policy.PriorityMode, "FounderOverride", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (!string.IsNullOrWhiteSpace(policy.PriorityPairKey))
+            return string.Equals(pair.PairKey, policy.PriorityPairKey, StringComparison.OrdinalIgnoreCase);
+        return !string.IsNullOrWhiteSpace(policy.PriorityLanguageCode) &&
+               (string.Equals(pair.SourceLanguageCode, policy.PriorityLanguageCode, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(pair.TargetLanguageCode, policy.PriorityLanguageCode, StringComparison.OrdinalIgnoreCase));
     }
 }
 
@@ -753,6 +810,7 @@ internal sealed class LegendConnectAutonomousLearningService
     private readonly LegendConnectAutonomousGapPlanner _planner;
     private readonly ILegendConnectOperationalEventWriter? _operations;
     private readonly IConfiguration _configuration;
+    private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
 
     public LegendConnectAutonomousLearningService(
         MasterAppDbContext db,
@@ -762,7 +820,8 @@ internal sealed class LegendConnectAutonomousLearningService
         LegendConnectCorpusService corpus,
         LegendConnectAutonomousGapPlanner planner,
         IConfiguration configuration,
-        ILegendConnectOperationalEventWriter? operations = null)
+        ILegendConnectOperationalEventWriter? operations = null,
+        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null)
     {
         _db = db;
         _registry = registry;
@@ -772,18 +831,29 @@ internal sealed class LegendConnectAutonomousLearningService
         _planner = planner;
         _configuration = configuration;
         _operations = operations;
+        _runtimePolicy = runtimePolicy;
     }
 
-    internal bool IsEnabled =>
+    internal bool IsBootstrapEnabled =>
         _configuration.GetValue<bool>("LegendConnect:CorpusAcquisition:Enabled") &&
         (_configuration.GetValue<long?>("LegendConnect:Providers:AzureTranslator:MonthlyCapacityCharacters") ?? 0) > 0;
 
     public async Task ProcessOneAsync(CancellationToken cancellationToken = default)
     {
-        if (!IsEnabled)
+        LegendConnectRuntimePolicySnapshot? runtime = null;
+        if (_runtimePolicy is not null)
+        {
+            runtime = await _runtimePolicy.GetEffectiveAsync(cancellationToken);
+            if (!runtime.CorpusAcquisitionEnabled || !runtime.LearningEnabled)
+                return;
+            var readiness = await _runtimePolicy.GetReadinessAsync(cancellationToken);
+            if (readiness.State is "BLOCKED" or "DEGRADED")
+                return;
+        }
+        else if (!IsBootstrapEnabled)
             return;
 
-        var candidateId = await _planner.SelectApprovedGapAsync(cancellationToken);
+        var candidateId = await _planner.SelectApprovedGapAsync(runtime, cancellationToken);
         if (candidateId is null)
             return;
         var candidate = await TryClaimCandidateAsync(candidateId.Value, cancellationToken);
@@ -804,6 +874,16 @@ internal sealed class LegendConnectAutonomousLearningService
             await RecordAsync("PairProvisioning", "Error", "Rejected", candidate.SourceLanguageCode, candidate.PairKey(), "language_pair_unavailable", "The approved autonomous candidate could not resolve an enabled pair.", cancellationToken);
             return;
         }
+
+        await RecordAsync(
+            "CorpusCandidate",
+            "Info",
+            "Selected",
+            pair.SourceLanguageCode,
+            pair.PairKey,
+            null,
+            "An approved, provenance-tagged autonomous candidate was selected by the existing planner.",
+            cancellationToken);
 
         var source = await _db.Set<LegendLanguageTextUnit>()
             .SingleOrDefaultAsync(item => item.LanguageCode == pair.SourceLanguageCode &&
@@ -831,6 +911,16 @@ internal sealed class LegendConnectAutonomousLearningService
             return;
         }
 
+        await RecordAsync(
+            "CapacityReservation",
+            "Info",
+            "Reserved",
+            pair.SourceLanguageCode,
+            pair.PairKey,
+            null,
+            $"{reservation.Characters:N0} provider character(s) were reserved outside the protected live reserve.",
+            cancellationToken);
+
         var providerSucceeded = false;
         try
         {
@@ -850,6 +940,16 @@ internal sealed class LegendConnectAutonomousLearningService
                 await RecordAsync("AzureProvider", "Error", "Failed", pair.SourceLanguageCode, pair.PairKey, candidate.FailureCode, "Azure did not return a usable autonomous acquisition result.", cancellationToken);
                 return;
             }
+
+            await RecordAsync(
+                "AzureProvider",
+                "Info",
+                "Succeeded",
+                pair.SourceLanguageCode,
+                pair.PairKey,
+                null,
+                "Azure returned a candidate result for existing validation and corpus processing.",
+                cancellationToken);
 
             var item = new LegendTranslationLearningEvent
             {
@@ -873,8 +973,18 @@ internal sealed class LegendConnectAutonomousLearningService
             candidate.ProcessingState = "Queued";
             candidate.ProcessedUtc = DateTime.UtcNow;
             candidate.LeaseExpiresUtc = null;
+            candidate.ProviderCharactersConsumed = reservation.Characters;
             await _db.SaveChangesAsync(cancellationToken);
             await _corpus.ProcessAsync(item, cancellationToken);
+            await RecordAsync(
+                "CorpusExpansion",
+                "Info",
+                "Processed",
+                pair.SourceLanguageCode,
+                pair.PairKey,
+                null,
+                "The existing corpus pipeline validated and processed the autonomous result.",
+                cancellationToken);
         }
         finally
         {
@@ -951,6 +1061,8 @@ internal sealed class LegendConnectCorpusAcquisitionHostedService : BackgroundSe
             try
             {
                 using var scope = _scopes.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<ILegendConnectRuntimePolicyAuthority>()
+                    .RecordWorkerHeartbeatAsync("Acquisition", stoppingToken);
                 await scope.ServiceProvider.GetRequiredService<LegendConnectAutonomousLearningService>()
                     .ProcessOneAsync(stoppingToken);
             }
@@ -962,7 +1074,9 @@ internal sealed class LegendConnectCorpusAcquisitionHostedService : BackgroundSe
             {
                 _logger.LogError(exception, "Legend Connect corpus acquisition worker failed.");
             }
-            await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+            // A durable Founder activation/pause must be observed promptly by
+            // every instance without a restart or a second worker.
+            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
         }
     }
 }

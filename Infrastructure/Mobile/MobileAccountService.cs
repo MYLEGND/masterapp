@@ -63,7 +63,8 @@ public sealed record MobileAccountSnapshot(
     bool IsPrivate = false,
     int UsernameChangesRemaining = 2,
     ControlledResourceAccess? TranslationAccess = null,
-    string? PreferredCommunicationLanguage = null);
+    string? PreferredCommunicationLanguage = null,
+    TranslationAccountEntitlementSnapshot? TranslationEntitlement = null);
 
 public sealed record MobileAccountResult(
     bool Succeeded,
@@ -102,15 +103,18 @@ public sealed class MobileAccountService : IMobileAccountService
     private readonly MasterAppDbContext _db;
     private readonly IControlledResourceAccessService _controlledResources;
     private readonly ILegendLanguageRegistry _languages;
+    private readonly ITranslationEntitlementAuthority? _translationEntitlements;
 
     public MobileAccountService(
         MasterAppDbContext db,
         IControlledResourceAccessService controlledResources,
-        ILegendLanguageRegistry? languages = null)
+        ILegendLanguageRegistry? languages = null,
+        ITranslationEntitlementAuthority? translationEntitlements = null)
     {
         _db = db;
         _controlledResources = controlledResources;
         _languages = languages ?? new LegendLanguageRegistry(_db, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        _translationEntitlements = translationEntitlements;
     }
 
     public async Task<MobileAccountResult> GetAsync(
@@ -383,9 +387,16 @@ public sealed class MobileAccountService : IMobileAccountService
             actor.Actor,
             ControlledResourceTypes.LanguageTranslation,
             cancellationToken);
+        var translationEntitlement = _translationEntitlements is null
+            ? null
+            : await _translationEntitlements.GetSnapshotAsync(actor.Actor, cancellationToken);
 
         if (settings is null)
-            return MobileAccountResult.Success(account with { TranslationAccess = translationAccess });
+            return MobileAccountResult.Success(account with
+            {
+                TranslationAccess = translationAccess,
+                TranslationEntitlement = translationEntitlement
+            });
 
         var profileEmail = TrimOptional(settings.PublicEmail);
         return MobileAccountResult.Success(account with
@@ -401,6 +412,7 @@ public sealed class MobileAccountService : IMobileAccountService
             IsPrivate = settings.IsPrivate,
             UsernameChangesRemaining = UsernameChangesRemaining(settings),
             TranslationAccess = translationAccess,
+            TranslationEntitlement = translationEntitlement,
             PreferredCommunicationLanguage = translationAccess.State == ControlledResourceAccessStates.Granted
                 ? await _languages.NormalizeEnabledTranslationLanguageAsync(settings.PreferredCommunicationLanguage, cancellationToken)
                 : null

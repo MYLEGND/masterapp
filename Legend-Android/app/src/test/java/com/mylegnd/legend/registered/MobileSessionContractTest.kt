@@ -1,6 +1,7 @@
 package com.mylegnd.legend.registered
 
 import com.mylegnd.legend.registered.core.model.MobileSessionResponse
+import com.mylegnd.legend.registered.core.model.MobileAccountProfile
 import com.mylegnd.legend.registered.core.model.ConversationMessage
 import com.mylegnd.legend.registered.core.model.ConversationDetail
 import com.mylegnd.legend.registered.core.model.SocialPost
@@ -29,6 +30,18 @@ class MobileSessionContractTest {
         val message = json.decodeFromString(ConversationMessage.serializer(), fixture)
         assertEquals("Bonjour", message.body)
         assertEquals("Hello", message.originalBody)
+    }
+
+    @Test fun `account fixture preserves the server-owned translation entitlement period`() {
+        val fixture = """{"participantType":"Client","profileId":"00000000-0000-0000-0000-000000000001","displayName":"Sanitized Member","isPrivate":false,"isVerified":false,"translationAccess":{"state":"Granted","canManage":false,"preferredCommunicationLanguage":"ht","characterAllowance":50000,"isUnlimited":false,"consumedCharacters":1200,"reservedCharacters":34,"remainingCharacters":48766,"percentUsed":2.468,"periodStartUtc":"2026-08-01T00:00:00Z","periodEndUtc":"2026-09-01T00:00:00Z","nextResetUtc":"2026-09-01T00:00:00Z","entitlementSource":"FounderCustom","isFounderOverride":true,"lastTranslationActivityUtc":"2026-08-10T01:02:03Z"}}"""
+        val account = json.decodeFromString(MobileAccountProfile.serializer(), fixture)
+
+        assertEquals("Granted", account.translationAccess?.state)
+        assertEquals(50_000L, account.translationAccess?.characterAllowance)
+        assertEquals(1_200L, account.translationAccess?.consumedCharacters)
+        assertEquals(48_766L, account.translationAccess?.remainingCharacters)
+        assertEquals("FounderCustom", account.translationAccess?.entitlementSource)
+        assertTrue(account.translationAccess?.isFounderOverride == true)
     }
 
     @Test fun `conversation fixture preserves the full server messaging projection`() {

@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260811054401_AddLegendConnectTranslationEntitlements")]
+    partial class AddLegendConnectTranslationEntitlements
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -4817,85 +4820,6 @@ namespace Infrastructure.Migrations
                     b.ToTable("LegendConnectOperationalEvents", (string)null);
                 });
 
-            modelBuilder.Entity("Domain.Entities.LegendConnectRuntimePolicy", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ContextualCompositionMode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<decimal>("ContextualMinimumConfidence")
-                        .HasPrecision(5, 4)
-                        .HasColumnType("decimal(5,4)");
-
-                    b.Property<bool>("CorpusAcquisitionEnabled")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("LastAcquisitionWorkerHeartbeatUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("LastLearningWorkerHeartbeatUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("LearningEnabled")
-                        .HasColumnType("bit");
-
-                    b.Property<long>("LiveTranslationReserveCharacters")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("MaximumSafeCorpusConsumptionCharacters")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("MonthlyProviderCapacityCharacters")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("PriorityLanguageCode")
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<string>("PriorityLevel")
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("PriorityMode")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("PriorityPairKey")
-                        .HasMaxLength(72)
-                        .HasColumnType("nvarchar(72)");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
-                    b.Property<string>("ScopeKey")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("UpdatedByUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ScopeKey")
-                        .IsUnique();
-
-                    b.ToTable("LegendConnectRuntimePolicies", (string)null);
-                });
-
             modelBuilder.Entity("Domain.Entities.LegendCorpusCandidate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4943,9 +4867,6 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
-
-                    b.Property<long>("ProviderCharactersConsumed")
-                        .HasColumnType("bigint");
 
                     b.Property<string>("SourceLanguageCode")
                         .IsRequired()
@@ -5503,9 +5424,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<long>("ContextualCompositionObservationCount")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("ContextualInternalServeCount")
                         .HasColumnType("bigint");
 
                     b.Property<DateTime>("LastRequestedUtc")

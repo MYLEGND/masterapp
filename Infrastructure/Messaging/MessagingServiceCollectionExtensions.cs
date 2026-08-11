@@ -25,6 +25,8 @@ public static class MessagingServiceCollectionExtensions
         services.AddScoped<IControlledResourceAccessService, ControlledResourceAccessService>();
         services.AddScoped<ILegendLanguageRegistry, LegendLanguageRegistry>();
         services.AddScoped<ITranslationCapacityAuthority, TranslationCapacityAuthority>();
+        services.AddScoped<ILegendConnectRuntimePolicyAuthority, LegendConnectRuntimePolicyAuthority>();
+        services.AddScoped<ITranslationEntitlementAuthority, TranslationEntitlementAuthority>();
         services.AddScoped<ITranslationDemandRecorder, TranslationDemandRecorder>();
         services.AddScoped<ITranslationSystemUsageRecorder, TranslationSystemUsageRecorder>();
         services.AddScoped<ILegendConnectOperationalEventWriter, LegendConnectOperationalEventWriter>();

@@ -66,7 +66,7 @@ public sealed class LegendConnectController : Controller
         catch (Exception exception)
         {
             _logger.LogError(exception, "Legend Connect Founder knowledge submission failed.");
-            return StatusCode(StatusCodes.Status500InternalServerError);
+            return FounderFailureRedirect();
         }
     }
 
@@ -91,7 +91,154 @@ public sealed class LegendConnectController : Controller
         catch (Exception exception)
         {
             _logger.LogError(exception, "Legend Connect Founder correction failed.");
-            return StatusCode(StatusCodes.Status500InternalServerError);
+            return FounderFailureRedirect();
         }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/entitlement")]
+    public async Task<IActionResult> UpdateEntitlement(
+        [FromForm] FounderLegendConnectEntitlementInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.UpdateEntitlementAsync(User, input, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect Founder entitlement update failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/runtime-policy")]
+    public async Task<IActionResult> UpdateRuntimePolicy(
+        [FromForm] FounderLegendConnectRuntimePolicyInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.UpdateRuntimePolicyAsync(User, input, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect runtime policy update failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/activate")]
+    public async Task<IActionResult> ActivateAutonomousAcquisition(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.ActivateAutonomousAcquisitionAsync(User, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect autonomous activation failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/pause")]
+    public async Task<IActionResult> PauseAutonomousAcquisition(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.PauseAutonomousAcquisitionAsync(User, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect autonomous pause failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/priority")]
+    public async Task<IActionResult> ConfigurePriorityOverride(
+        [FromForm] FounderLegendConnectPriorityOverrideInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.ConfigurePriorityOverrideAsync(User, input, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect priority override update failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/priority/disable")]
+    public async Task<IActionResult> DisablePriorityOverride(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.DisablePriorityOverrideAsync(User, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect priority override disable failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    private RedirectToActionResult FounderFailureRedirect()
+    {
+        var reference = HttpContext.TraceIdentifier;
+        TempData["LegendConnectError"] = string.IsNullOrWhiteSpace(reference)
+            ? "Legend Connect could not complete that command. No success was recorded; please try again."
+            : $"Legend Connect could not complete that command. No success was recorded. Reference: {reference}";
+        return RedirectToAction(nameof(Index));
     }
 }

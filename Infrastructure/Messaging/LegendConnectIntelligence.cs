@@ -37,8 +37,12 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
 {
     private readonly MasterAppDbContext _db;
     private readonly decimal _minimumConfidence;
+    private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
 
-    public LegendConnectTranslationIntelligence(MasterAppDbContext db, IConfiguration configuration)
+    public LegendConnectTranslationIntelligence(
+        MasterAppDbContext db,
+        IConfiguration configuration,
+        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null)
     {
         _db = db;
         _minimumConfidence = Math.Clamp(
@@ -49,6 +53,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             configuration["LegendConnect:ContextualComposition:Mode"],
             "Active",
             StringComparison.OrdinalIgnoreCase);
+        _runtimePolicy = runtimePolicy;
     }
 
     public bool IsContextualCompositionActive { get; }
@@ -61,6 +66,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
     {
         var hash = LegendLanguageIdentity.TextHash(text);
         var pairKey = LegendLanguageIdentity.PairKey(sourceLanguageCode, targetLanguageCode);
+        var minimumConfidence = await MinimumConfidenceAsync(cancellationToken);
         var match = await (
             from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
             join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
@@ -72,7 +78,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                   source.LanguageCode == sourceLanguageCode &&
                   source.NormalizedHash == hash &&
                   (alignment.HumanVerified ||
-                   (alignment.Confidence != null && alignment.Confidence >= _minimumConfidence &&
+                   (alignment.Confidence != null && alignment.Confidence >= minimumConfidence &&
                     alignment.QualityState == "Verified"))
             orderby alignment.HumanVerified descending, alignment.Confidence descending, alignment.UpdatedUtc descending
             select new { target.Text, alignment.Confidence }
@@ -90,6 +96,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
         CancellationToken cancellationToken = default)
     {
         var pairKey = LegendLanguageIdentity.PairKey(sourceLanguageCode, targetLanguageCode);
+        var minimumConfidence = await MinimumConfidenceAsync(cancellationToken);
         var pattern = LegendLanguageIdentity.ContextPatternSignature(text);
         if (string.IsNullOrWhiteSpace(pattern))
             return null;
@@ -101,7 +108,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             where relationship.PairKey == pairKey &&
                   relationship.SourcePatternSignature == pattern &&
                   relationship.QualityState == "Verified" &&
-                  relationship.Confidence >= _minimumConfidence &&
+                  relationship.Confidence >= minimumConfidence &&
                   target.LanguageCode == targetLanguageCode
             select new { target.Text, relationship.Confidence }
         ).Distinct().Take(2).ToListAsync(cancellationToken);
@@ -111,6 +118,11 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             ? new LegendContextualTranslationSuggestion(candidates[0].Text, candidates[0].Confidence)
             : null;
     }
+
+    private async Task<decimal> MinimumConfidenceAsync(CancellationToken cancellationToken) =>
+        _runtimePolicy is null
+            ? _minimumConfidence
+            : (await _runtimePolicy.GetEffectiveAsync(cancellationToken)).ContextualMinimumConfidence;
 }
 
 internal interface ILegendConnectOperationalEventWriter
