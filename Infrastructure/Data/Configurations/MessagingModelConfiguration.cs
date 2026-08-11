@@ -399,6 +399,7 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.ContextCategory).HasMaxLength(120);
             entity.Property(item => item.EligibilityState).IsRequired().HasMaxLength(80);
             entity.Property(item => item.ProcessingState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.PromotionOutcome).HasMaxLength(40);
             entity.Property(item => item.FailureCode).HasMaxLength(80);
             entity.HasIndex(item => item.IdempotencyKey).IsUnique();
             entity.HasIndex(item => new { item.ProcessingState, item.EligibilityState, item.CreatedUtc });

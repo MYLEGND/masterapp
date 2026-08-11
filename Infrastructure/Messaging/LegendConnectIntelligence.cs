@@ -79,7 +79,8 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                   source.NormalizedHash == hash &&
                   (alignment.HumanVerified ||
                    (alignment.Confidence != null && alignment.Confidence >= minimumConfidence &&
-                    alignment.QualityState == "Verified"))
+                    (alignment.QualityState == "Verified" ||
+                     alignment.QualityState == "ConsentedLive")))
             orderby alignment.HumanVerified descending, alignment.Confidence descending, alignment.UpdatedUtc descending
             select new { target.Text, alignment.Confidence }
         ).FirstOrDefaultAsync(cancellationToken);

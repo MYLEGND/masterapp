@@ -223,7 +223,8 @@ public sealed record LegendConnectLanguageLearningActivitySnapshot(
     int AttemptCount,
     DateTime CreatedUtc,
     DateTime? ProcessedUtc,
-    string? FailureCode);
+    string? FailureCode,
+    string? PromotionOutcome = null);
 
 /// <summary>
 /// Founder-only inspection projection for one language's real server-owned
@@ -286,7 +287,12 @@ public sealed record LegendConnectDashboardSnapshot(
     long ReservedProviderCharacters = 0,
     long? SafeAcquisitionCapacity = null,
     DateOnly? BillingPeriodStart = null,
-    DateOnly? BillingPeriodEnd = null);
+    DateOnly? BillingPeriodEnd = null,
+    long ConsentedLiveLearningAccountCount = 0,
+    long EligibleConsentedLiveTranslationCount = 0,
+    long PromotedConsentedLiveTranslationCount = 0,
+    long ReusedConsentedLiveTranslationCount = 0,
+    long PendingConsentedLiveTranslationCount = 0);
 
 /// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation

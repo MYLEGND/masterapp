@@ -87,15 +87,28 @@
         <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.GroupUniqueTargetReuseCount)"><span class="dashboard-stat-label">Group target reuse</span><span class="dashboard-stat-value">@dashboard.GroupUniqueTargetReuseCount.ToString("N0")</span></div>
         <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(accountScale.HighConsumptionAccountCount)"><span class="dashboard-stat-label">High consumption accounts</span><span class="dashboard-stat-value">@accountScale.HighConsumptionAccountCount</span></div>
     </div>
+
+    <div class="dashboard-section-head dashboard-section-head-tight legend-connect-subsection-heading">
+        <div><span class="dashboard-section-kicker">Privacy-safe learning telemetry</span><h3 class="dashboard-section-title">Consented live translation learning</h3></div>
+    </div>
+    <p class="dashboard-section-copy">Aggregate operational counts only. Founder operations never expose private conversation bodies or account identities through this telemetry.</p>
+    <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--three" aria-label="Consented live translation learning">
+        <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ConsentedLiveLearningAccountCount)"><span class="dashboard-stat-label">Consented accounts</span><span class="dashboard-stat-value">@dashboard.ConsentedLiveLearningAccountCount.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.EligibleConsentedLiveTranslationCount)"><span class="dashboard-stat-label">Eligible live translations</span><span class="dashboard-stat-value">@dashboard.EligibleConsentedLiveTranslationCount.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.PromotedConsentedLiveTranslationCount)"><span class="dashboard-stat-label">Promoted to learning</span><span class="dashboard-stat-value">@dashboard.PromotedConsentedLiveTranslationCount.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.ReusedConsentedLiveTranslationCount)"><span class="dashboard-stat-label">Canonical reuse prevented duplicates</span><span class="dashboard-stat-value">@dashboard.ReusedConsentedLiveTranslationCount.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.PendingConsentedLiveTranslationCount)"><span class="dashboard-stat-label">Awaiting corpus processing</span><span class="dashboard-stat-value">@dashboard.PendingConsentedLiveTranslationCount.ToString("N0")</span></div>
+    </div>
 </section>
 
 <section class="dashboard-analytics-panel legend-connect-manual-training" aria-labelledby="manual-training-title">
     <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Approved knowledge</span><h2 class="dashboard-section-title" id="manual-training-title">Founder manual training</h2></div></div>
+    <p class="dashboard-section-copy">Leave the target language empty to save an approved source seed. The existing autonomous planner will then queue only missing, enabled directional coverage through the normal capacity and validation gates. Providing both texts creates a verified alignment directly.</p>
     <form method="post" asp-action="SubmitKnowledge" class="dashboard-search-panel">
         @Html.AntiForgeryToken()
         <div class="dashboard-form-grid">
             <label class="dashboard-form-field"><span>Source language</span><select name="SourceLanguageCode" required><option value="">Select language</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
-            <label class="dashboard-form-field"><span>Target language (optional for monolingual knowledge)</span><select name="TargetLanguageCode"><option value="">Monolingual entry</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
+            <label class="dashboard-form-field"><span>Target language (optional — leave empty to queue autonomous expansion)</span><select name="TargetLanguageCode"><option value="">Approved source seed</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
             <label class="dashboard-form-field"><span>Context / category</span><input name="ContextCategory" maxlength="120" placeholder="Vocabulary, phrase, idiom, sentence pattern" /></label>
             <label class="dashboard-form-field"><span>Usage</span><input name="UsageRegister" maxlength="80" placeholder="Formal, informal, regional" /></label>
             <label class="dashboard-form-field dashboard-form-field--wide"><span>Source text</span><textarea name="SourceText" required maxlength="10000"></textarea></label>

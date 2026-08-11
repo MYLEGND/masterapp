@@ -64,7 +64,11 @@ public sealed class LegendConnectController : Controller
         {
             var result = await _service.SubmitAsync(User, input, cancellationToken);
             TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] =
-                result.Message ?? (result.Succeeded ? "Approved knowledge was saved." : "The approved knowledge could not be saved.");
+                result.Message ?? (result.Succeeded
+                    ? result.TargetLanguageCode is null
+                        ? "Approved source seed was saved. The existing autonomous planner will queue eligible missing coverage."
+                        : "Approved knowledge was saved."
+                    : "The approved knowledge could not be saved.");
             return RedirectToAction(nameof(Index), new { language = result.SourceLanguageCode, pair = result.PairKey });
         }
         catch (ForbidResultException)

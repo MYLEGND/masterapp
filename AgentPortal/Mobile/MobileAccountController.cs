@@ -120,6 +120,32 @@ public sealed class MobileAccountController : MobileApiControllerBase
             : AccountFailure(result);
     }
 
+    [HttpPut("translation-learning-consent")]
+    public async Task<IActionResult> UpdateTranslationLearningConsent(
+        [FromBody] MobileTranslationLearningConsentUpdateRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        if (request is null)
+        {
+            return Error(
+                StatusCodes.Status400BadRequest,
+                "mobile_account_translation_learning_consent_required",
+                "Choose whether eligible translated conversations may improve Legend Connect.");
+        }
+
+        var result = await _accounts.UpdateTranslationLearningConsentAsync(
+            resolved.Actor!,
+            request.AllowsConsentedTranslationLearning,
+            cancellationToken);
+        return result.Succeeded && result.Account is not null
+            ? Ok(await ProjectAsync(resolved.Actor!, result.Account, cancellationToken))
+            : AccountFailure(result);
+    }
+
     [HttpPut("avatar")]
     public async Task<IActionResult> UpdateAvatar(
         [FromBody] MobileAccountAvatarUpdateRequest? request,
@@ -232,7 +258,8 @@ public sealed class MobileAccountController : MobileApiControllerBase
             account.IsVerified,
             account.UsernameChangesRemaining,
             account.IsPhoneVisible,
-            ToTranslationAccess(account));
+            ToTranslationAccess(account),
+            account.AllowsConsentedTranslationLearning);
     }
 
     private static MobileTranslationAccessDto ToTranslationAccess(MobileAccountSnapshot account)
@@ -296,6 +323,8 @@ public sealed record MobileAccountUpdateRequest(
 
 public sealed record MobileAccountPrivacyUpdateRequest(bool IsPrivate);
 
+public sealed record MobileTranslationLearningConsentUpdateRequest(bool AllowsConsentedTranslationLearning);
+
 public sealed record MobileAccountAvatarUpdateRequest(string? Base64Content);
 
 public sealed record MobileAccountProfile(
@@ -318,7 +347,8 @@ public sealed record MobileAccountProfile(
     bool IsVerified,
     int UsernameChangesRemaining,
     bool IsPhoneVisible = false,
-    MobileTranslationAccessDto? TranslationAccess = null);
+    MobileTranslationAccessDto? TranslationAccess = null,
+    bool AllowsConsentedTranslationLearning = false);
 
 public sealed record MobileTranslationAccessDto(
     string State,

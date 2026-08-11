@@ -20,13 +20,193 @@ internal sealed class NullTranslationLearningPublisher : ITranslationLearningPub
 
 /// <summary>
 /// Central privacy gate for the learning pipeline. Messaging is private by
-/// default, so it produces a governed, non-retained rejection record rather
-/// than quietly transferring user message text into a corpus.
+/// default. A successful translation becomes retainable only when every
+/// participant present when the message was sent has explicitly opted in via
+/// the one MobileProfileSettings authority. Ambiguity fails closed.
 /// </summary>
 internal sealed class LegendTranslationTrainingEligibilityPolicy
 {
-    public TranslationLearningEligibility Evaluate(TranslationLearningCandidate candidate) =>
-        new(false, "IneligiblePrivateMessage", "PrivateMessageOperationalTranslation");
+    private readonly MasterAppDbContext _db;
+
+    public LegendTranslationTrainingEligibilityPolicy(MasterAppDbContext db) => _db = db;
+
+    public async Task<TranslationLearningEligibility> EvaluateAsync(
+        TranslationLearningCandidate candidate,
+        string normalizedTargetLanguage,
+        CancellationToken cancellationToken)
+    {
+        if (candidate.SourceMessageId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(candidate.SourceText) ||
+            string.IsNullOrWhiteSpace(candidate.TargetText))
+        {
+            return Ineligible("IneligibleInvalidTranslation");
+        }
+
+        var message = await _db.InternalMessages
+            .AsNoTracking()
+            .Where(item => item.Id == candidate.SourceMessageId)
+            .Select(item => new MessageEligibilityRow(
+                item.ConversationId,
+                item.SentUtc,
+                item.IsDeleted,
+                item.VerificationReviewRequestId.HasValue))
+            .SingleOrDefaultAsync(cancellationToken);
+        // Preserve the existing privacy-safe classification for an absent or
+        // deleted source. An operational caller should always have persisted
+        // the message first; either way, no body is eligible for retention.
+        if (message is null || message.IsDeleted)
+            return Ineligible("IneligiblePrivateMessage");
+
+        // A learning candidate is only a post-persistence derivative of a
+        // completed operational translation. Keep that boundary in the
+        // server-owned policy rather than trusting every caller to uphold it.
+        // The existing unique message/target cache is the canonical proof that
+        // this exact delivered result succeeded; failed/empty provider output
+        // never creates this row in MessagingService.
+        var persistedTranslation = await _db.MessageTranslations
+            .AsNoTracking()
+            .Where(item => item.InternalMessageId == candidate.SourceMessageId &&
+                item.TargetLanguage == normalizedTargetLanguage)
+            .Select(item => new PersistedTranslationRow(item.TranslatedText, item.Provider))
+            .SingleOrDefaultAsync(cancellationToken);
+        if (persistedTranslation is null ||
+            string.IsNullOrWhiteSpace(persistedTranslation.Provider) ||
+            !string.Equals(
+                persistedTranslation.TranslatedText.Trim(),
+                candidate.TargetText.Trim(),
+                StringComparison.Ordinal))
+        {
+            return Ineligible("IneligibleUnpersistedTranslation");
+        }
+
+        // Verification-review conversations are system-protected rather than
+        // ordinary member conversation material and can never enter learning.
+        if (message.IsProtected)
+            return Ineligible("IneligibleRestrictedMessage");
+
+        var participants = await _db.MessageConversationParticipants
+            .AsNoTracking()
+            .Where(item => item.ConversationId == message.ConversationId &&
+                item.JoinedUtc <= message.SentUtc &&
+                (item.LeftUtc == null || item.LeftUtc > message.SentUtc))
+            .Select(item => new ConversationParticipantEligibilityRow(
+                item.UserId,
+                item.ParticipantType))
+            .ToListAsync(cancellationToken);
+        if (participants.Count == 0 || participants.Any(item =>
+                string.IsNullOrWhiteSpace(item.UserId) ||
+                item.ParticipantType is not (MessagingParticipantTypes.Agent or MessagingParticipantTypes.Client)))
+        {
+            return Ineligible("IneligibleConsentAmbiguous");
+        }
+
+        var normalizedParticipants = participants
+            .Select(item => item with { UserId = item.UserId.Trim().ToLowerInvariant() })
+            .Distinct()
+            .ToArray();
+        var profileKeys = await ResolveParticipantProfilesAsync(normalizedParticipants, cancellationToken);
+        if (profileKeys is null)
+            return Ineligible("IneligibleConsentAmbiguous");
+
+        var profileIds = profileKeys.Select(item => item.ProfileId).ToArray();
+        var settings = await _db.MobileProfileSettings
+            .AsNoTracking()
+            .Where(item => profileIds.Contains(item.ProfileId))
+            .Select(item => new MobileLearningConsentRow(
+                item.ProfileId,
+                item.ParticipantType,
+                item.AllowsConsentedTranslationLearning))
+            .ToListAsync(cancellationToken);
+        var consentByProfile = settings.ToDictionary(
+            item => (item.ProfileId, item.ParticipantType),
+            item => item.AllowsConsentedTranslationLearning);
+        if (profileKeys.Any(profile =>
+                !consentByProfile.TryGetValue((profile.ProfileId, profile.ParticipantType), out var allowed) ||
+                !allowed))
+        {
+            return Ineligible("IneligibleConsent");
+        }
+
+        return new TranslationLearningEligibility(
+            true,
+            "Eligible",
+            "ConsentedLiveTranslation");
+    }
+
+    private async Task<IReadOnlyList<ParticipantProfileKey>?> ResolveParticipantProfilesAsync(
+        IReadOnlyCollection<ConversationParticipantEligibilityRow> participants,
+        CancellationToken cancellationToken)
+    {
+        var agentUserIds = participants
+            .Where(item => item.ParticipantType == MessagingParticipantTypes.Agent)
+            .Select(item => item.UserId)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var clientUserIds = participants
+            .Where(item => item.ParticipantType == MessagingParticipantTypes.Client)
+            .Select(item => item.UserId)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var agents = await _db.AgentProfiles
+            .AsNoTracking()
+            .Where(item => item.IsActive && agentUserIds.Contains(item.AgentUserId.ToLower()))
+            .Select(item => new ParticipantProfileIdentity(item.Id, item.AgentUserId.ToLower()))
+            .ToListAsync(cancellationToken);
+        var clients = await _db.ClientProfiles
+            .AsNoTracking()
+            .Where(item => clientUserIds.Contains(item.ClientUserId.ToLower()) ||
+                (item.ExternalIdentityObjectId != null && clientUserIds.Contains(item.ExternalIdentityObjectId.ToLower())))
+            .Select(item => new ClientParticipantProfileIdentity(
+                item.Id,
+                item.ClientUserId.ToLower(),
+                item.ExternalIdentityObjectId == null ? null : item.ExternalIdentityObjectId.ToLower()))
+            .ToListAsync(cancellationToken);
+
+        var resolved = new List<ParticipantProfileKey>(participants.Count);
+        foreach (var participant in participants)
+        {
+            var profileIds = participant.ParticipantType == MessagingParticipantTypes.Agent
+                ? agents.Where(item => item.UserId == participant.UserId).Select(item => item.ProfileId).Distinct().ToArray()
+                : clients.Where(item => item.ClientUserId == participant.UserId || item.ExternalIdentityObjectId == participant.UserId)
+                    .Select(item => item.ProfileId).Distinct().ToArray();
+            if (profileIds.Length != 1)
+                return null;
+
+            resolved.Add(new ParticipantProfileKey(profileIds[0], participant.ParticipantType));
+        }
+
+        return resolved.Distinct().Count() == participants.Count ? resolved : null;
+    }
+
+    private static TranslationLearningEligibility Ineligible(string state) =>
+        new(false, state, "PrivateMessageOperationalTranslation");
+
+    private sealed record MessageEligibilityRow(
+        Guid ConversationId,
+        DateTime SentUtc,
+        bool IsDeleted,
+        bool IsProtected);
+
+    private sealed record PersistedTranslationRow(string TranslatedText, string Provider);
+
+    private sealed record ConversationParticipantEligibilityRow(
+        string UserId,
+        string ParticipantType);
+
+    private sealed record ParticipantProfileIdentity(Guid ProfileId, string UserId);
+
+    private sealed record ClientParticipantProfileIdentity(
+        Guid ProfileId,
+        string ClientUserId,
+        string? ExternalIdentityObjectId);
+
+    private sealed record ParticipantProfileKey(Guid ProfileId, string ParticipantType);
+
+    private sealed record MobileLearningConsentRow(
+        Guid ProfileId,
+        string ParticipantType,
+        bool AllowsConsentedTranslationLearning);
 }
 
 internal sealed record TranslationLearningEligibility(
@@ -52,7 +232,7 @@ internal sealed class LegendTranslationLearningPublisher : ITranslationLearningP
     {
         _db = db;
         _languages = languages;
-        _eligibility = new LegendTranslationTrainingEligibilityPolicy();
+        _eligibility = new LegendTranslationTrainingEligibilityPolicy(_db);
         _logger = logger;
     }
 
@@ -69,7 +249,10 @@ internal sealed class LegendTranslationLearningPublisher : ITranslationLearningP
             if (pair is null)
                 return;
 
-            var eligibility = _eligibility.Evaluate(candidate);
+            var eligibility = await _eligibility.EvaluateAsync(
+                candidate,
+                pair.TargetLanguageCode,
+                cancellationToken);
             var key = $"message:{candidate.SourceMessageId:D}:{pair.PairKey}";
             if (await _db.Set<LegendTranslationLearningEvent>()
                     .AnyAsync(item => item.IdempotencyKey == key, cancellationToken))
@@ -91,6 +274,7 @@ internal sealed class LegendTranslationLearningPublisher : ITranslationLearningP
                 Provenance = eligibility.Provenance,
                 EligibilityState = eligibility.State,
                 ProcessingState = eligibility.IsEligible ? "Pending" : "Skipped",
+                PromotionOutcome = eligibility.IsEligible ? null : "NotEligible",
                 CreatedUtc = DateTime.UtcNow,
                 ProcessedUtc = eligibility.IsEligible ? null : DateTime.UtcNow
             };
@@ -168,6 +352,7 @@ internal sealed class LegendConnectCorpusService
             if (pair is null)
             {
                 item.ProcessingState = "Rejected";
+                item.PromotionOutcome = "Rejected";
                 item.FailureCode = "language_pair_unavailable";
                 item.ProcessedUtc = DateTime.UtcNow;
                 item.LeaseExpiresUtc = null;
@@ -204,8 +389,13 @@ internal sealed class LegendConnectCorpusService
                 .SingleOrDefaultAsync(candidate => candidate.PairKey == pair.PairKey &&
                     candidate.SourceTextUnitId == source.Id && candidate.TargetTextUnitId == target.Id,
                     cancellationToken);
-            if (alignment is null)
+            var alignmentCreated = alignment is null;
+            if (alignmentCreated)
             {
+                var consentedLiveTranslation = string.Equals(
+                    item.Provenance,
+                    "ConsentedLiveTranslation",
+                    StringComparison.Ordinal);
                 alignment = new LegendTranslationAlignment
                 {
                     Id = Guid.NewGuid(),
@@ -213,7 +403,12 @@ internal sealed class LegendConnectCorpusService
                     SourceTextUnitId = source.Id,
                     TargetTextUnitId = target.Id,
                     Provider = item.Provider,
-                    QualityState = "Observation",
+                    // A consented successful provider translation is eligible
+                    // for exact-match reuse only. It is deliberately not
+                    // HumanVerified and does not make contextual composition
+                    // production-eligible by itself.
+                    Confidence = consentedLiveTranslation ? 0.98m : null,
+                    QualityState = consentedLiveTranslation ? "ConsentedLive" : "Observation",
                     ObservationCount = 1,
                     CreatedUtc = DateTime.UtcNow,
                     UpdatedUtc = DateTime.UtcNow
@@ -222,8 +417,15 @@ internal sealed class LegendConnectCorpusService
             }
             else
             {
-                alignment.ObservationCount++;
+                alignment!.ObservationCount++;
                 alignment.UpdatedUtc = DateTime.UtcNow;
+                if (!alignment.HumanVerified &&
+                    string.Equals(item.Provenance, "ConsentedLiveTranslation", StringComparison.Ordinal))
+                {
+                    alignment.Confidence = Math.Max(alignment.Confidence ?? 0m, 0.98m);
+                    if (!string.Equals(alignment.QualityState, "Verified", StringComparison.Ordinal))
+                        alignment.QualityState = "ConsentedLive";
+                }
             }
 
             await GetOrCreateContextRelationshipAsync(
@@ -250,6 +452,7 @@ internal sealed class LegendConnectCorpusService
             item.ProcessedUtc = DateTime.UtcNow;
             item.LeaseExpiresUtc = null;
             item.FailureCode = null;
+            item.PromotionOutcome = alignmentCreated ? "Promoted" : "Reused";
             await _db.SaveChangesAsync(cancellationToken);
             LegendConnectTelemetry.CorpusEvent(item.ProcessingState, item.PairKey);
         }

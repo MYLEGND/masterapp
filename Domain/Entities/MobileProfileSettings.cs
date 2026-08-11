@@ -45,6 +45,14 @@ public sealed class MobileProfileSettings
     // discoverable, but its social content is limited to approved followers.
     public bool IsPrivate { get; set; }
 
+    /// <summary>
+    /// Explicit, member-controlled consent for future successful translated
+    /// conversations to enter the governed Legend Connect learning pipeline.
+    /// This is false by default: translation itself never implies consent to
+    /// retain private conversation text as learning knowledge.
+    /// </summary>
+    public bool AllowsConsentedTranslationLearning { get; set; }
+
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

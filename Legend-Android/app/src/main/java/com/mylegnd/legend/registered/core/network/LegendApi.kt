@@ -30,6 +30,7 @@ interface LegendApi {
     @GET("api/v1/mobile/account") suspend fun account(@Header("X-Legend-Participant-Type") participantType: String): Response<MobileAccountProfile>
     @PUT("api/v1/mobile/account") suspend fun updateAccount(@Header("X-Legend-Participant-Type") participantType: String, @Body request: AccountUpdateRequest): Response<MobileAccountProfile>
     @PUT("api/v1/mobile/account/privacy") suspend fun updatePrivacy(@Header("X-Legend-Participant-Type") participantType: String, @Body request: AccountPrivacyUpdateRequest): Response<MobileAccountProfile>
+    @PUT("api/v1/mobile/account/translation-learning-consent") suspend fun updateTranslationLearningConsent(@Header("X-Legend-Participant-Type") participantType: String, @Body request: TranslationLearningConsentUpdateRequest): Response<MobileAccountProfile>
     @PUT("api/v1/mobile/account/avatar") suspend fun updateAvatar(@Header("X-Legend-Participant-Type") participantType: String, @Body request: AccountAvatarUpdateRequest): Response<MobileAccountProfile>
     @GET("api/v1/mobile/account/username-availability") suspend fun usernameAvailability(@Header("X-Legend-Participant-Type") participantType: String, @Query("username") username: String?): Response<MobileUsernameAvailability>
     @GET("api/v1/mobile/account/lifecycle") suspend fun lifecycle(@Header("X-Legend-Participant-Type") participantType: String): Response<AccountLifecycle>

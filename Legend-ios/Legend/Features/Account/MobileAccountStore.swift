@@ -107,9 +107,10 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
     let isVerified: Bool
     let usernameChangesRemaining: Int
     let translationAccess: MobileTranslationAccess
+    let allowsConsentedTranslationLearning: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case participantType, displayName, email, phone, title, roleLabel, shortBio, profileEmail, isEmailVisible, isPhoneVisible, username, bio, website, location, isPrivate, avatar, isVerified, usernameChangesRemaining, translationAccess
+        case participantType, displayName, email, phone, title, roleLabel, shortBio, profileEmail, isEmailVisible, isPhoneVisible, username, bio, website, location, isPrivate, avatar, isVerified, usernameChangesRemaining, translationAccess, allowsConsentedTranslationLearning
         case profileID = "profileId"
     }
 
@@ -133,7 +134,8 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         avatar: ProfileAvatar?,
         isVerified: Bool = false,
         usernameChangesRemaining: Int = 2,
-        translationAccess: MobileTranslationAccess = .init()
+        translationAccess: MobileTranslationAccess = .init(),
+        allowsConsentedTranslationLearning: Bool = false
     ) {
         self.participantType = participantType
         self.profileID = profileID
@@ -155,6 +157,7 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
         self.isVerified = isVerified
         self.usernameChangesRemaining = usernameChangesRemaining
         self.translationAccess = translationAccess
+        self.allowsConsentedTranslationLearning = allowsConsentedTranslationLearning
     }
 
     init(from decoder: Decoder) throws {
@@ -179,7 +182,8 @@ struct MobileAccountProfile: Codable, Equatable, Sendable {
             avatar: try container.decodeIfPresent(ProfileAvatar.self, forKey: .avatar),
             isVerified: try container.decodeIfPresent(Bool.self, forKey: .isVerified) ?? false,
             usernameChangesRemaining: try container.decodeIfPresent(Int.self, forKey: .usernameChangesRemaining) ?? 2,
-            translationAccess: try container.decodeIfPresent(MobileTranslationAccess.self, forKey: .translationAccess) ?? .init())
+            translationAccess: try container.decodeIfPresent(MobileTranslationAccess.self, forKey: .translationAccess) ?? .init(),
+            allowsConsentedTranslationLearning: try container.decodeIfPresent(Bool.self, forKey: .allowsConsentedTranslationLearning) ?? false)
     }
 }
 
@@ -242,6 +246,10 @@ private struct MobileAccountPrivacyUpdate: Encodable, Sendable {
     let isPrivate: Bool
 }
 
+private struct MobileTranslationLearningConsentUpdate: Encodable, Sendable {
+    let allowsConsentedTranslationLearning: Bool
+}
+
 struct MobileAccountLifecycle: Decodable, Equatable, Sendable {
     let state: String
     let allowsFullAccess: Bool
@@ -264,6 +272,7 @@ protocol MobileAccountAPI: Sendable {
     func update(_ update: MobileAccountUpdate, accessToken: String) async throws
     func updateAvatar(_ update: MobileAccountAvatarUpdate, accessToken: String) async throws -> MobileAccountProfile
     func updatePrivacy(isPrivate: Bool, accessToken: String) async throws -> MobileAccountProfile
+    func updateTranslationLearningConsent(allowsConsentedTranslationLearning: Bool, accessToken: String) async throws -> MobileAccountProfile
     func usernameAvailability(username: String, accessToken: String) async throws -> MobileUsernameAvailability
     func lifecycle(accessToken: String) async throws -> MobileAccountLifecycle
     func pauseAccount(accessToken: String) async throws -> MobileAccountLifecycle
@@ -273,6 +282,10 @@ protocol MobileAccountAPI: Sendable {
 
 extension MobileAccountAPI {
     func updatePrivacy(isPrivate: Bool, accessToken: String) async throws -> MobileAccountProfile {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func updateTranslationLearningConsent(allowsConsentedTranslationLearning: Bool, accessToken: String) async throws -> MobileAccountProfile {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
 
@@ -307,6 +320,10 @@ struct MobileUnavailableAccountAPI: MobileAccountAPI {
     }
 
     func updatePrivacy(isPrivate: Bool, accessToken: String) async throws -> MobileAccountProfile {
+        throw MobileAPIError.unauthorized(correlationID: nil)
+    }
+
+    func updateTranslationLearningConsent(allowsConsentedTranslationLearning: Bool, accessToken: String) async throws -> MobileAccountProfile {
         throw MobileAPIError.unauthorized(correlationID: nil)
     }
 
@@ -364,6 +381,16 @@ struct URLSessionMobileAccountAPI: MobileAccountAPI {
         try await client.put(
             "/api/v1/mobile/account/privacy",
             body: MobileAccountPrivacyUpdate(isPrivate: isPrivate),
+            accessToken: accessToken,
+            headers: participantHeader,
+            response: MobileAccountProfile.self)
+    }
+
+    func updateTranslationLearningConsent(allowsConsentedTranslationLearning: Bool, accessToken: String) async throws -> MobileAccountProfile {
+        try await client.put(
+            "/api/v1/mobile/account/translation-learning-consent",
+            body: MobileTranslationLearningConsentUpdate(
+                allowsConsentedTranslationLearning: allowsConsentedTranslationLearning),
             accessToken: accessToken,
             headers: participantHeader,
             response: MobileAccountProfile.self)
@@ -570,6 +597,24 @@ final class MobileAccountStore: ObservableObject {
                 refreshFailure = nil
             } catch {
                 actionFailure = failure(for: error, title: "Account privacy unavailable")
+            }
+        }
+    }
+
+    func setConsentedTranslationLearning(_ allowsConsentedTranslationLearning: Bool) {
+        guard !isSaving else { return }
+        isSaving = true
+        actionFailure = nil
+        Task {
+            defer { isSaving = false }
+            do {
+                let accessToken = try await accessTokenProvider()
+                state = .loaded(try await api.updateTranslationLearningConsent(
+                    allowsConsentedTranslationLearning: allowsConsentedTranslationLearning,
+                    accessToken: accessToken))
+                refreshFailure = nil
+            } catch {
+                actionFailure = failure(for: error, title: "Translation learning preference unavailable")
             }
         }
     }

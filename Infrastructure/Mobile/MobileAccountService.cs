@@ -26,6 +26,11 @@ public interface IMobileAccountService
         MobileResolvedActor actor,
         bool isPrivate,
         CancellationToken cancellationToken = default);
+
+    Task<MobileAccountResult> UpdateTranslationLearningConsentAsync(
+        MobileResolvedActor actor,
+        bool allowsConsentedTranslationLearning,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record MobileAccountUpdate(
@@ -64,7 +69,8 @@ public sealed record MobileAccountSnapshot(
     int UsernameChangesRemaining = 2,
     ControlledResourceAccess? TranslationAccess = null,
     string? PreferredCommunicationLanguage = null,
-    TranslationAccountEntitlementSnapshot? TranslationEntitlement = null);
+    TranslationAccountEntitlementSnapshot? TranslationEntitlement = null,
+    bool AllowsConsentedTranslationLearning = false);
 
 public sealed record MobileAccountResult(
     bool Succeeded,
@@ -371,6 +377,24 @@ public sealed class MobileAccountService : IMobileAccountService
         return await GetAsync(actor, cancellationToken);
     }
 
+    public async Task<MobileAccountResult> UpdateTranslationLearningConsentAsync(
+        MobileResolvedActor actor,
+        bool allowsConsentedTranslationLearning,
+        CancellationToken cancellationToken = default)
+    {
+        var account = await GetAsync(actor, cancellationToken);
+        if (!account.Succeeded || account.Account is null)
+            return account;
+
+        var now = DateTime.UtcNow;
+        var settings = await GetOrCreateMobileSettingsAsync(actor, now, cancellationToken);
+        settings.AllowsConsentedTranslationLearning = allowsConsentedTranslationLearning;
+        settings.UpdatedUtc = now;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return await GetAsync(actor, cancellationToken);
+    }
+
     private async Task<MobileAccountResult> ApplyMobileSettingsAsync(
         MobileAccountSnapshot account,
         MobileResolvedActor actor,
@@ -410,6 +434,7 @@ public sealed class MobileAccountService : IMobileAccountService
             IsEmailVisible = settings.IsEmailVisible,
             IsPhoneVisible = settings.IsPhoneVisible,
             IsPrivate = settings.IsPrivate,
+            AllowsConsentedTranslationLearning = settings.AllowsConsentedTranslationLearning,
             UsernameChangesRemaining = UsernameChangesRemaining(settings),
             TranslationAccess = translationAccess,
             TranslationEntitlement = translationEntitlement,

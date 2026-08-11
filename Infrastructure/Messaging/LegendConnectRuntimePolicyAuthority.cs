@@ -104,21 +104,29 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
 
         var candidates = await CandidateReadinessAsync(cancellationToken);
         var candidateReady = candidates.PendingEligible > 0;
-        checks.Add(Check("Approved Corpus", candidateReady, candidateReady
-            ? $"{candidates.PendingEligible:N0} eligible approved candidate(s) await acquisition."
-            : "No eligible approved corpus candidate is waiting."));
+        checks.Add(new LegendConnectReadinessCheck(
+            "Approved Corpus",
+            candidateReady ? "READY" : "IDLE",
+            candidateReady
+                ? $"{candidates.PendingEligible:N0} eligible approved candidate(s) await acquisition."
+                : "No eligible approved corpus candidate is waiting. Submit source-language-only Founder-approved knowledge to queue missing enabled coverage."));
 
         var baseReady = databaseReady && providerReady && registryReady && learningWorkerReady &&
                         acquisitionWorkerReady && capacityReady && reserveReady && policy.LearningEnabled;
-        var canActivate = baseReady && candidateReady;
+        // An empty corpus queue is an expected idle condition, not a safety
+        // failure. Enabling now means the single existing worker is ready to
+        // claim future Founder-approved monolingual seeds without a second
+        // activation step or a parallel scheduler.
+        var canActivate = baseReady;
         var state = policy.CorpusAcquisitionEnabled
             ? baseReady ? candidateReady ? "ACTIVE" : "ACTIVE — NO ELIGIBLE WORK" : "DEGRADED"
-            : canActivate ? "READY" : "BLOCKED";
+            : baseReady ? candidateReady ? "READY" : "READY — NO ELIGIBLE WORK" : "BLOCKED";
         var summary = state switch
         {
             "ACTIVE" => "Autonomous acquisition is active and constrained by the protected live reserve.",
             "ACTIVE — NO ELIGIBLE WORK" => "Autonomous acquisition is active; no eligible approved work is waiting.",
             "READY" => "All activation gates pass. Founder may activate autonomous acquisition.",
+            "READY — NO ELIGIBLE WORK" => "All safety gates pass. Founder may activate autonomous acquisition now; it will remain idle until approved source-language knowledge creates eligible missing coverage.",
             "DEGRADED" => "Autonomous acquisition is enabled but one or more safety gates no longer pass; no new work will start.",
             _ => FirstBlockedDetail(checks, policy.LearningEnabled)
         };

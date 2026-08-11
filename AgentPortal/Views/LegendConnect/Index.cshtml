@@ -336,10 +336,10 @@
                         else
                         {
                             <p class="dashboard-section-copy">Showing the newest @activityDisplayed of @languageKnowledge.LearningActivityCount activity record@(languageKnowledge.LearningActivityCount == 1 ? string.Empty : "s"). Text is intentionally excluded here.</p>
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Provenance</th><th>Eligibility</th><th>State</th><th>Attempts</th><th>Created</th><th>Processed</th><th>Failure</th></tr></thead><tbody>
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Provenance</th><th>Eligibility</th><th>State</th><th>Outcome</th><th>Attempts</th><th>Created</th><th>Processed</th><th>Failure</th></tr></thead><tbody>
                             @foreach (var activity in languageKnowledge.RecentLearningActivity)
                             {
-                                <tr><td>@activity.PairKey</td><td>@activity.Provenance</td><td>@activity.EligibilityState</td><td>@activity.ProcessingState</td><td>@activity.AttemptCount</td><td>@activity.CreatedUtc.ToString("u")</td><td>@(activity.ProcessedUtc?.ToString("u") ?? "Not processed")</td><td>@(activity.FailureCode ?? "None")</td></tr>
+                                <tr><td>@activity.PairKey</td><td>@activity.Provenance</td><td>@activity.EligibilityState</td><td>@activity.ProcessingState</td><td>@(activity.PromotionOutcome ?? "Awaiting")</td><td>@activity.AttemptCount</td><td>@activity.CreatedUtc.ToString("u")</td><td>@(activity.ProcessedUtc?.ToString("u") ?? "Not processed")</td><td>@(activity.FailureCode ?? "None")</td></tr>
                             }
                             </tbody></table></div>
                         }

@@ -144,6 +144,12 @@ public sealed class LegendTranslationLearningEvent
     public string? ContextCategory { get; set; }
     public string EligibilityState { get; set; } = string.Empty;
     public string ProcessingState { get; set; } = "Pending";
+    /// <summary>
+    /// Privacy-safe result of canonical corpus processing. This distinguishes
+    /// newly promoted knowledge from an observation that reused an existing
+    /// directional alignment without adding another corpus record.
+    /// </summary>
+    public string? PromotionOutcome { get; set; }
     public int AttemptCount { get; set; }
     public DateTime? LeaseExpiresUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;

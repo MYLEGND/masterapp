@@ -6635,6 +6635,14 @@ private struct LegendAccountView: View {
                                 .buttonStyle(.plain)
                                 .disabled(profile.translationAccess.isPending || messages.isSubmittingControlledResourceRequest)
                             }
+
+                            LegendProfileSettingsDivider()
+
+                            LegendProfileSettingsToggleRow(
+                                title: "Improve LEGEND Connect",
+                                detail: "When every conversation participant opts in, eligible translated conversations can improve LEGEND Connect.",
+                                systemImage: "text.book.closed.fill",
+                                isOn: translationLearningBinding)
                         }
                     }
 
@@ -6803,6 +6811,15 @@ private struct LegendAccountView: View {
                 return profile.isPrivate
             },
             set: { account.setPrivateAccount($0) })
+    }
+
+    private var translationLearningBinding: Binding<Bool> {
+        Binding(
+            get: {
+                guard case .loaded(let profile) = account.state else { return false }
+                return profile.allowsConsentedTranslationLearning
+            },
+            set: { account.setConsentedTranslationLearning($0) })
     }
 
     private var selectedProfileItems: [MobileSocialPost] {

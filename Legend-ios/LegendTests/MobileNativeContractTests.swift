@@ -294,6 +294,7 @@ final class MobileNativeContractTests: XCTestCase {
           "bio": "Building a legacy.",
           "website": "https://legend.example.test",
           "location": "Phoenix, Arizona",
+          "allowsConsentedTranslationLearning": true,
           "translationAccess": {
             "state": "Granted",
             "canManage": false,
@@ -327,6 +328,7 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(account.translationAccess.remainingCharacters, 48_766)
         XCTAssertEqual(account.translationAccess.entitlementSource, "FounderCustom")
         XCTAssertTrue(account.translationAccess.isFounderOverride)
+        XCTAssertTrue(account.allowsConsentedTranslationLearning)
 
         let accountUpdate = MobileAccountUpdate(
             displayName: "Client Identity",

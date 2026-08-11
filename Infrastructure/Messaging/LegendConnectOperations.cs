@@ -99,6 +99,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var contextualInternalServed = state.Demand.Sum(item => item.ContextualInternalServeCount);
         var internalServed = state.Demand.Sum(item => item.TranslationMemoryHitCount) + contextualInternalServed;
         var azureFallbacks = state.Demand.Sum(item => item.AzureFallbackCount);
+        var consentedLiveEvents = state.LearningEvents
+            .Where(item => item.Provenance == "ConsentedLiveTranslation")
+            .ToArray();
+        var consentedLiveAccountCount = await _db.MobileProfileSettings
+            .AsNoTracking()
+            .LongCountAsync(item => item.AllowsConsentedTranslationLearning, cancellationToken);
 
         return new LegendConnectDashboardSnapshot(
             languages,
@@ -133,7 +139,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             inFlight,
             safeAcquisition,
             currentPeriod,
-            currentPeriod.AddMonths(1).AddDays(-1));
+            currentPeriod.AddMonths(1).AddDays(-1),
+            consentedLiveAccountCount,
+            consentedLiveEvents.LongCount(item => item.EligibilityState == "Eligible"),
+            consentedLiveEvents.LongCount(item => item.PromotionOutcome == "Promoted"),
+            consentedLiveEvents.LongCount(item => item.PromotionOutcome == "Reused"),
+            consentedLiveEvents.LongCount(item => item.ProcessingState is "Pending" or "Processing"));
     }
 
     public async Task<LegendConnectLanguageHealthSnapshot?> GetLanguageHealthAsync(
@@ -158,13 +169,16 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (language is null)
             return null;
 
-        // This projection exposes only canonical units the existing central
-        // policy has approved for retention and learning. Learning events can
-        // include private-message metadata, so their text is never projected.
-        var approvedTextById = state.TextUnits
-            .Where(item => item.IsTrainingEligible)
+        // Founder knowledge inspection intentionally excludes text retained
+        // from consented private conversations. Those assets remain usable by
+        // the one server-side router, while aggregate event metadata proves
+        // their governance without turning Founder operations into a private
+        // conversation viewer.
+        var displayableTextById = state.TextUnits
+            .Where(item => item.IsTrainingEligible &&
+                !string.Equals(item.Provenance, "ConsentedLiveTranslation", StringComparison.Ordinal))
             .ToDictionary(item => item.Id);
-        var canonicalEntries = approvedTextById.Values
+        var canonicalEntries = displayableTextById.Values
             .Where(item => string.Equals(item.LanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(item => item.UpdatedUtc)
             .Take(LanguageKnowledgeDetailRecordLimit)
@@ -178,12 +192,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 
         var activeAlignments = state.Alignments
             .Where(item => item.SupersededUtc is null)
-            .Where(item => approvedTextById.ContainsKey(item.SourceTextUnitId) && approvedTextById.ContainsKey(item.TargetTextUnitId))
+            .Where(item => displayableTextById.ContainsKey(item.SourceTextUnitId) && displayableTextById.ContainsKey(item.TargetTextUnitId))
             .Select(item => new
             {
                 Alignment = item,
-                Source = approvedTextById[item.SourceTextUnitId],
-                Target = approvedTextById[item.TargetTextUnitId]
+                Source = displayableTextById[item.SourceTextUnitId],
+                Target = displayableTextById[item.TargetTextUnitId]
             })
             .Where(item =>
                 string.Equals(item.Source.LanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
@@ -208,12 +222,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .ToList();
 
         var contextRelationships = state.ContextRelationships
-            .Where(item => approvedTextById.ContainsKey(item.SourceTextUnitId) && approvedTextById.ContainsKey(item.RelatedTextUnitId))
+            .Where(item => displayableTextById.ContainsKey(item.SourceTextUnitId) && displayableTextById.ContainsKey(item.RelatedTextUnitId))
             .Select(item => new
             {
                 Relationship = item,
-                Source = approvedTextById[item.SourceTextUnitId],
-                Related = approvedTextById[item.RelatedTextUnitId]
+                Source = displayableTextById[item.SourceTextUnitId],
+                Related = displayableTextById[item.RelatedTextUnitId]
             })
             .Where(item =>
                 string.Equals(item.Source.LanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
@@ -268,7 +282,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 item.AttemptCount,
                 item.CreatedUtc,
                 item.ProcessedUtc,
-                item.FailureCode))
+                item.FailureCode,
+                item.PromotionOutcome))
             .ToList();
 
         return new LegendConnectLanguageKnowledgeSnapshot(

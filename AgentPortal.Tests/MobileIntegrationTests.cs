@@ -894,6 +894,46 @@ public sealed class MobileIntegrationTests
     }
 
     [Fact]
+    public async Task MobileAccount_TranslationLearningConsentUsesTheSingleServerBackedProfileSetting()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        const string userId = "translation-learning-preference-oid";
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = userId,
+            AgentUpn = "translation-learning@example.test",
+            FullName = "Translation Preference",
+            IsActive = true
+        };
+        db.AgentProfiles.Add(agent);
+        await db.SaveChangesAsync();
+
+        var controller = CreateAccountController(db, Principal(userId));
+        controller.HttpContext.Request.Headers[MobileApiAuthorization.ParticipantTypeHeader] = MessagingParticipantTypes.Agent;
+
+        var initial = Assert.IsType<OkObjectResult>(await controller.Get(CancellationToken.None)).Value as MobileAccountProfile;
+        Assert.NotNull(initial);
+        Assert.False(initial!.AllowsConsentedTranslationLearning);
+
+        var enabled = Assert.IsType<OkObjectResult>(await controller.UpdateTranslationLearningConsent(
+            new MobileTranslationLearningConsentUpdateRequest(true),
+            CancellationToken.None)).Value as MobileAccountProfile;
+        Assert.NotNull(enabled);
+        Assert.True(enabled!.AllowsConsentedTranslationLearning);
+
+        var settings = await db.MobileProfileSettings.SingleAsync();
+        Assert.True(settings.AllowsConsentedTranslationLearning);
+
+        var disabled = Assert.IsType<OkObjectResult>(await controller.UpdateTranslationLearningConsent(
+            new MobileTranslationLearningConsentUpdateRequest(false),
+            CancellationToken.None)).Value as MobileAccountProfile;
+        Assert.NotNull(disabled);
+        Assert.False(disabled!.AllowsConsentedTranslationLearning);
+        Assert.False((await db.MobileProfileSettings.SingleAsync()).AllowsConsentedTranslationLearning);
+    }
+
+    [Fact]
     public async Task MobileAccount_AvatarUpdateUsesTheSameTypedProfileImageAsWebAndMessaging()
     {
         await using var db = ControllerTestHelpers.BuildDb();

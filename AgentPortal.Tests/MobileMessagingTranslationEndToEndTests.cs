@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Mobile;
@@ -296,6 +297,158 @@ public sealed class MobileMessagingTranslationEndToEndTests
         Assert.Equal(0, usage.ProviderOperationCount);
     }
 
+    [Fact]
+    public async Task ConsentedLiveTranslation_IsRetainedByTheExistingCorpus_AndLaterServedFromMemoryBeforeAzure()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var agent = new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "consented-live-agent",
+            AgentUpn = "consented-live-agent@example.test",
+            FullName = "English Agent",
+            IsActive = true
+        };
+        var client = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "consented-live-client",
+            ExternalIdentityObjectId = "consented-live-client",
+            FirstName = "Creole",
+            LastName = "Client",
+            Email = "consented-live-client@example.test",
+            CrmNotes = "{\"recordType\":\"Client\",\"pipelineStage\":\"Client\"}"
+        };
+        db.AddRange(agent, client);
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = agent.AgentUserId,
+            AgentUpn = agent.AgentUpn,
+            ClientUserId = client.ClientUserId
+        });
+        db.ClientEntitlements.Add(new ClientEntitlement
+        {
+            Id = Guid.NewGuid(),
+            ClientProfileId = client.Id,
+            EntitlementKey = BillingEntitlementKeys.ClientAppFullAccess,
+            Status = ClientEntitlementStatus.Active,
+            SourceType = ClientEntitlementSourceType.Subscription,
+            SourceId = "consented-live-translation-test",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.ControlledResourceGrants.Add(new ControlledResourceGrant
+        {
+            UserId = client.ClientUserId,
+            ParticipantType = MessagingParticipantTypes.Client,
+            ResourceType = ControlledResourceTypes.LanguageTranslation,
+            IsActive = true,
+            GrantedUtc = DateTime.UtcNow,
+            GrantedByUserId = "founder"
+        });
+        db.MobileProfileSettings.AddRange(
+            new MobileProfileSettings
+            {
+                ProfileId = agent.Id,
+                ParticipantType = MessagingParticipantTypes.Agent,
+                AllowsConsentedTranslationLearning = true
+            },
+            new MobileProfileSettings
+            {
+                ProfileId = client.Id,
+                ParticipantType = MessagingParticipantTypes.Client,
+                PreferredCommunicationLanguage = "ht",
+                AllowsConsentedTranslationLearning = true
+            });
+        await db.SaveChangesAsync();
+
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["LegendConnect:Entitlements:DefaultMonthlyCharacterAllowance"] = "10000",
+            ["LegendConnect:Providers:AzureTranslator:MonthlyCapacityCharacters"] = "100000",
+            ["LegendConnect:Providers:AzureTranslator:LiveReserveCharacters"] = "1000"
+        }).Build();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var access = new ControlledResourceAccessService(db, configuration, registry);
+        var entitlements = new TranslationEntitlementAuthority(
+            db,
+            access,
+            configuration,
+            NullLogger<TranslationEntitlementAuthority>.Instance);
+        var provider = new ConsentedLiveRecordingProvider();
+        var router = new LegendConnectTranslationRouter(
+            provider,
+            registry,
+            new TranslationCapacityAuthority(db, configuration, NullLogger<TranslationCapacityAuthority>.Instance),
+            NullLogger<LegendConnectTranslationRouter>.Instance,
+            demand: new TranslationDemandRecorder(db, NullLogger<TranslationDemandRecorder>.Instance),
+            systemUsage: new TranslationSystemUsageRecorder(db, NullLogger<TranslationSystemUsageRecorder>.Instance),
+            intelligence: new LegendConnectTranslationIntelligence(db, configuration),
+            entitlements: entitlements);
+        var images = new MessagingProfileImageResolver(db, NullLogger<MessagingProfileImageResolver>.Instance);
+        var publisher = new LegendTranslationLearningPublisher(
+            db,
+            registry,
+            NullLogger<LegendTranslationLearningPublisher>.Instance);
+        var service = new MessagingService(
+            db,
+            NullLogger<MessagingService>.Instance,
+            new CommunityTextModerationService(configuration),
+            images,
+            access,
+            router,
+            new NotificationEngine(
+                db,
+                images,
+                new NoopNotificationRealtimePublisher(),
+                new ApplePushDeliverySignal(),
+                NullLogger<NotificationEngine>.Instance),
+            translationLearning: publisher,
+            languages: registry,
+            translationEntitlements: entitlements,
+            translationSystemUsage: new TranslationSystemUsageRecorder(
+                db,
+                NullLogger<TranslationSystemUsageRecorder>.Instance));
+
+        const string source = "Are you coming over tonight?";
+        const string target = "Èske w ap vini aswè a?";
+        var conversation = await service.StartConversationAsync(
+            new StartMessagingConversationCommand(
+                new MessagingActor(agent.AgentUserId, MessagingParticipantTypes.Agent),
+                client.ClientUserId,
+                MessagingParticipantTypes.Client,
+                InitialMessageBody: source));
+        Assert.True(conversation.Succeeded, $"{conversation.ErrorCode}: {conversation.ErrorMessage}");
+        Assert.Equal(1, provider.TranslateCalls);
+
+        var retainedEvent = await db.LegendTranslationLearningEvents.SingleAsync();
+        Assert.Equal("Eligible", retainedEvent.EligibilityState);
+        Assert.Equal("ConsentedLiveTranslation", retainedEvent.Provenance);
+        Assert.Equal(source, retainedEvent.SourceText);
+        Assert.Equal(target, retainedEvent.TargetText);
+
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        await corpus.ProcessPendingAsync(10);
+        Assert.Equal("Processed", (await db.LegendTranslationLearningEvents.SingleAsync()).ProcessingState);
+        Assert.Single(await db.LegendTranslationAlignments.ToListAsync());
+        Assert.Single(await db.LegendLanguageContextRelationships.ToListAsync());
+
+        var later = await service.SendMessageAsync(new SendMessagingMessageCommand(
+            new MessagingActor(agent.AgentUserId, MessagingParticipantTypes.Agent),
+            conversation.Conversation!.Id,
+            source));
+        Assert.True(later.Succeeded, $"{later.ErrorCode}: {later.ErrorMessage}");
+        Assert.Equal(1, provider.TranslateCalls);
+        var laterTranslation = await db.MessageTranslations
+            .OrderByDescending(item => item.CreatedUtc)
+            .FirstAsync();
+        Assert.Equal("LegendConnectTranslationMemory", laterTranslation.Provider);
+        Assert.Equal(target, laterTranslation.TranslatedText);
+    }
+
     private sealed class RecordingProvider : ITranslationProvider
     {
         public string ProviderName => "AzureTranslator";
@@ -320,6 +473,31 @@ public sealed class MobileMessagingTranslationEndToEndTests
             return Task.FromResult(new TranslationProviderResult(
                 true,
                 "Unexpected provider result",
+                sourceLanguage,
+                ProviderName));
+        }
+    }
+
+    private sealed class ConsentedLiveRecordingProvider : ITranslationProvider
+    {
+        public string ProviderName => "AzureTranslator";
+        public int TranslateCalls { get; private set; }
+
+        public Task<TranslationDetectionResult> DetectLanguageAsync(
+            string text,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new TranslationDetectionResult(true, "en-US"));
+
+        public Task<TranslationProviderResult> TranslateAsync(
+            string text,
+            string targetLanguage,
+            string? sourceLanguage = null,
+            CancellationToken cancellationToken = default)
+        {
+            TranslateCalls++;
+            return Task.FromResult(new TranslationProviderResult(
+                true,
+                "Èske w ap vini aswè a?",
                 sourceLanguage,
                 ProviderName));
         }

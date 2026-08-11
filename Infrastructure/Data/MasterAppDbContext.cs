@@ -793,6 +793,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Location).HasMaxLength(120);
             e.Property(x => x.PublicEmail).HasMaxLength(320);
             e.Property(x => x.PreferredCommunicationLanguage).HasMaxLength(32);
+            e.Property(x => x.AllowsConsentedTranslationLearning).HasDefaultValue(false);
             e.HasIndex(x => new { x.ProfileId, x.ParticipantType }).IsUnique();
 
             if (isSqlServer)

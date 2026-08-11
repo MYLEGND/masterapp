@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
@@ -73,6 +74,12 @@ public sealed class LegendConnectRuntimePolicyTests
             100, 20, 80, true, "Shadow", 0.98m));
         await policy.RecordWorkerHeartbeatAsync("Learning");
         await policy.RecordWorkerHeartbeatAsync("Acquisition");
+
+        var idle = await policy.ActivateAsync("founder");
+        Assert.Equal("ACTIVE — NO ELIGIBLE WORK", idle.State);
+        Assert.Equal("IDLE", Assert.Single(idle.Checks, item => item.Name == "Approved Corpus").State);
+        Assert.True((await policy.GetEffectiveAsync()).CorpusAcquisitionEnabled);
+
         db.LegendCorpusCandidates.Add(Candidate("activation", "en", "ht", "Approved activation candidate"));
         await db.SaveChangesAsync();
 
@@ -89,6 +96,39 @@ public sealed class LegendConnectRuntimePolicyTests
             .TranslateAsync("Live translation remains available", "ht", "en");
         Assert.True(live.Succeeded);
         Assert.Equal(1, provider.TranslateCalls);
+    }
+
+    [Fact]
+    public async Task IdleActivation_FounderMonolingualSeed_UsesTheExistingPlannerAndWorker()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var policy = Policy(db, registry, configuration);
+        await policy.UpdateAsync("founder", new LegendConnectRuntimePolicyMutation(
+            1_000, 250, 750, true, "Shadow", 0.98m));
+        await policy.RecordWorkerHeartbeatAsync("Learning");
+        await policy.RecordWorkerHeartbeatAsync("Acquisition");
+
+        Assert.Equal("ACTIVE — NO ELIGIBLE WORK", (await policy.ActivateAsync("founder")).State);
+
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration);
+        var seed = await operations.SubmitFounderKnowledgeAsync("founder", new LegendConnectKnowledgeSubmission(
+            "en", "Please bring the approved meeting agenda.", null, null,
+            "Founder operations", "Formal", null, "FounderApproved"));
+
+        Assert.True(seed.Succeeded);
+        Assert.NotEmpty(await db.LegendCorpusCandidates
+            .Where(item => item.IsApproved && item.ProcessingState == "Pending")
+            .ToListAsync());
+
+        var provider = new RecordingProvider();
+        await Autonomous(db, configuration, provider).ProcessOneAsync();
+
+        Assert.Equal(1, provider.TranslateCalls);
+        Assert.Contains(await db.LegendCorpusCandidates.ToListAsync(), item => item.ProcessingState == "Queued");
+        Assert.NotEmpty(await db.LegendTranslationAlignments.ToListAsync());
     }
 
     [Fact]

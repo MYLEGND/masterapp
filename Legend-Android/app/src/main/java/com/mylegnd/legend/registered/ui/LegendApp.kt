@@ -3943,6 +3943,7 @@ private fun AccountScreen(
             scriptureManagement = { scriptureManagementOpen = true; settingsOpen = false },
             communitySafety = { communitySafetyOpen = true; settingsOpen = false },
             updatePrivacy = viewModel::updatePrivacy,
+            updateTranslationLearningConsent = viewModel::updateTranslationLearningConsent,
             followRequests = { socialViewModel.loadFollowRequests(); followRequestsOpen = true; settingsOpen = false },
             resume = viewModel::resumeAccount,
             pause = viewModel::pauseAccount,
@@ -4252,6 +4253,7 @@ private fun LegendAccountSettingsSheet(
     scriptureManagement: () -> Unit,
     communitySafety: () -> Unit,
     updatePrivacy: (Boolean) -> Unit,
+    updateTranslationLearningConsent: (Boolean) -> Unit,
     followRequests: () -> Unit,
     resume: () -> Unit,
     pause: () -> Unit,
@@ -4290,6 +4292,14 @@ private fun LegendAccountSettingsSheet(
                                 Text(if (account.isPrivate) "Only approved followers can view your profile." else "Your public profile is visible to your LEGEND network.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                             }
                             Switch(checked = account.isPrivate, onCheckedChange = updatePrivacy)
+                        }
+                        HorizontalDivider(color = LegendColors.Divider)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Improve LEGEND Connect", style = LegendTypography.Body, color = LegendColors.TextPrimary)
+                                Text("When every participant opts in, eligible translated conversations can improve LEGEND Connect.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                            }
+                            Switch(checked = account.allowsConsentedTranslationLearning, onCheckedChange = updateTranslationLearningConsent)
                         }
                     }
                 }
