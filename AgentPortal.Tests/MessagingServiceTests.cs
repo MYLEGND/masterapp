@@ -25,6 +25,8 @@ namespace AgentPortal.Tests;
 
 public sealed class MessagingServiceTests
 {
+    private const string FounderTestObjectId = "b13065c4-2e0b-4dc7-8546-76f664ce1edf";
+
     [Fact]
     public async Task ParticipantModel_UsesTheFullLogicalIdentityInItsUniqueIndex()
     {
@@ -566,7 +568,7 @@ public sealed class MessagingServiceTests
         db.AgentProfiles.AddRange(
             new AgentProfile
             {
-                AgentUserId = "zac-founder-oid",
+                AgentUserId = FounderTestObjectId,
                 AgentUpn = LegendVerifiedIdentity.FounderEmail,
                 NormalizedEmail = LegendVerifiedIdentity.FounderEmail,
                 FullName = "Zac Owen",
@@ -582,7 +584,11 @@ public sealed class MessagingServiceTests
             });
         await db.SaveChangesAsync();
 
-        var service = CreateService(db);
+        var founderConfiguration = FounderConfiguration(FounderTestObjectId);
+        var service = CreateService(
+            db,
+            configuredFounderOid: FounderTestObjectId,
+            configuration: founderConfiguration);
         var requester = new MessagingActor("client-1", MessagingParticipantTypes.Client);
         var opened = await service.StartVerificationRequestAsync(requester);
         var request = Assert.IsType<MessagingVerificationReview>(opened.Request);
@@ -593,7 +599,7 @@ public sealed class MessagingServiceTests
         var persisted = await db.MessageConversations.SingleAsync();
         Assert.Equal(MessagingConversationTypes.Group, persisted.ConversationType);
         Assert.Equal(MessagingConversationPurposes.VerificationReview, persisted.Purpose);
-        Assert.Equal("zac-founder-oid", persisted.OwnerUserId);
+        Assert.Equal(FounderTestObjectId, persisted.OwnerUserId);
         Assert.Equal(MessagingParticipantTypes.Agent, persisted.OwnerParticipantType);
         Assert.Equal(2, await db.MessageConversationParticipants.CountAsync());
         Assert.Equal(1, await db.VerificationReviewRequests.CountAsync());
@@ -605,7 +611,7 @@ public sealed class MessagingServiceTests
         Assert.False(requesterDetail.Succeeded);
 
         var founderDetail = await service.GetConversationAsync(
-            new MessagingActor("zac-founder-oid", MessagingParticipantTypes.Agent),
+            new MessagingActor(FounderTestObjectId, MessagingParticipantTypes.Agent),
             persisted.Id);
         var reviewQueue = Assert.IsType<MessagingConversationDetail>(founderDetail.Conversation);
         Assert.True(reviewQueue.CanManageMembers);
@@ -616,7 +622,7 @@ public sealed class MessagingServiceTests
 
         var resolved = await service.ResolveVerificationReviewRequestAsync(
             new ResolveVerificationReviewRequestCommand(
-                new MessagingActor("zac-founder-oid", MessagingParticipantTypes.Agent),
+                new MessagingActor(FounderTestObjectId, MessagingParticipantTypes.Agent),
                 request.Id,
                 Approve: true,
                 ResolutionNote: "Your profile is confirmed. Welcome to verified Legend."));
@@ -645,7 +651,7 @@ public sealed class MessagingServiceTests
         db.AgentProfiles.AddRange(
             new AgentProfile
             {
-                AgentUserId = "zac-founder-oid",
+                AgentUserId = FounderTestObjectId,
                 AgentUpn = LegendVerifiedIdentity.FounderEmail,
                 NormalizedEmail = LegendVerifiedIdentity.FounderEmail,
                 FullName = "Zac Owen",
@@ -661,7 +667,11 @@ public sealed class MessagingServiceTests
             });
         await db.SaveChangesAsync();
 
-        var service = CreateService(db);
+        var founderConfiguration = FounderConfiguration(FounderTestObjectId);
+        var service = CreateService(
+            db,
+            configuredFounderOid: FounderTestObjectId,
+            configuration: founderConfiguration);
         var requester = new MessagingActor("client-1", MessagingParticipantTypes.Client);
         var request = await service.StartControlledResourceRequestAsync(
             new StartControlledResourceRequestCommand(requester, ControlledResourceTypes.LanguageTranslation));
@@ -673,7 +683,7 @@ public sealed class MessagingServiceTests
 
         var grant = await service.SetControlledResourceGrantAsync(
             new SetControlledResourceGrantCommand(
-                new MessagingActor("zac-founder-oid", MessagingParticipantTypes.Agent),
+                new MessagingActor(FounderTestObjectId, MessagingParticipantTypes.Agent),
                 ControlledResourceTypes.LanguageTranslation,
                 requester.UserId,
                 requester.ParticipantType,
@@ -713,7 +723,7 @@ public sealed class MessagingServiceTests
         db.AgentProfiles.AddRange(
             new AgentProfile
             {
-                AgentUserId = "zac-founder-oid",
+                AgentUserId = FounderTestObjectId,
                 AgentUpn = LegendVerifiedIdentity.FounderEmail,
                 NormalizedEmail = LegendVerifiedIdentity.FounderEmail,
                 FullName = "Zac Owen",
@@ -730,10 +740,14 @@ public sealed class MessagingServiceTests
 
         await db.SaveChangesAsync();
 
-        var service = CreateService(db);
+        var founderConfiguration = FounderConfiguration(FounderTestObjectId);
+        var service = CreateService(
+            db,
+            configuredFounderOid: FounderTestObjectId,
+            configuration: founderConfiguration);
 
         var founder = new MessagingActor(
-            "zac-founder-oid",
+            FounderTestObjectId,
             MessagingParticipantTypes.Agent);
 
         var agent = new MessagingActor(
@@ -3666,6 +3680,14 @@ public sealed class MessagingServiceTests
                 NullLogger<NotificationEngine>.Instance),
             configuredFounderOid);
     }
+
+    private static IConfiguration FounderConfiguration(string founderOid) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Founder:Oid"] = founderOid
+            })
+            .Build();
 
     private sealed class NoopNotificationRealtimePublisher : INotificationRealtimePublisher
     {
