@@ -92,7 +92,6 @@ class SocialRepository(private val client: LegendApiClient) {
     suspend fun creatorInsights(role: String) = request { client.api.creatorInsights(role).legendBody() }
     suspend fun postInsights(role: String, id: String) = request { client.api.postInsights(role, id).legendBody() }
     suspend fun recordProfileVisit(role: String, author: SocialAuthor, sourcePostId: String? = null) = request { client.api.recordProfileVisit(role, SocialProfileVisitRequest(author.identity.userId, author.identity.participantType, sourcePostId)).legendBody() }
-    suspend fun searchMusic(role: String, query: String) = request { client.api.searchMusic(role, query).legendBody() }
     suspend fun joinPromotedGroup(role: String, id: String) = request { client.api.joinPromotedGroup(role, id).legendBody() }
 }
 class NotificationRepository(private val client: LegendApiClient) { suspend fun snapshot(role: String) = request { client.api.notifications(role).legendBody() }; suspend fun markRead(role: String, id: String) = request { client.api.markNotificationRead(role, id).legendBody() }; suspend fun clearBadges(role: String) = request { client.api.clearNotificationBadges(role).legendBody() } }

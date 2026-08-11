@@ -440,8 +440,8 @@ private struct LegendAppBrandBar: View {
             Spacer(minLength: LegendNextSpacing.sm)
 
             Text("LEGEND®")
-                .font(.system(size: 23, weight: .bold, design: .default))
-                .tracking(4.6)
+                .font(LegendNextTypography.wordmark)
+                .tracking(LegendSharedDesign.tracking("wordmark"))
                 .foregroundStyle(wordmarkColor)
                 .accessibilityAddTraits(.isHeader)
 
@@ -5774,14 +5774,16 @@ private struct LegendAccountView: View {
                                 LegendProfileAvatar(
                                     avatar: profile.avatar,
                                     displayName: profile.displayName,
-                                    size: 64)
+                                    size: LegendNextSize.profileAvatar)
 
                                 Image(systemName: isUploadingAvatar
                                       ? "arrow.triangle.2.circlepath"
                                       : "camera.fill")
                                     .font(.caption2.weight(.bold))
                                     .foregroundStyle(LegendNextColor.midnight)
-                                    .frame(width: 24, height: 24)
+                                    .frame(
+                                        width: LegendNextSize.profileAvatarCamera,
+                                        height: LegendNextSize.profileAvatarCamera)
                                     .background(LegendNextGradient.gold, in: Circle())
                                     .overlay {
                                         Circle().stroke(.white, lineWidth: 1.5)
@@ -5814,7 +5816,9 @@ private struct LegendAccountView: View {
                     } label: {
                         Image(systemName: "gearshape.fill")
                     }
-                    .buttonStyle(LegendNextIconButtonStyle(tone: .navy, size: 38))
+                    .buttonStyle(LegendNextIconButtonStyle(
+                        tone: .navy,
+                        size: LegendNextSize.profileSettingsIcon))
                     .accessibilityLabel("Open profile settings")
                 }
 
@@ -5917,7 +5921,7 @@ private struct LegendAccountView: View {
         }
         .buttonStyle(LegendNextButtonStyle(
             kind: .secondary,
-            controlHeight: 40
+            controlHeight: LegendNextSize.profileControlHeight
         ))
     }
 
@@ -5951,7 +5955,9 @@ private struct LegendAccountView: View {
             Label(filter.accessibilityTitle, systemImage: filter.symbolName)
                 .font(LegendNextTypography.caption.weight(.bold))
                 .foregroundStyle(isSelected ? Color.white : LegendNextColor.navy)
-                .frame(maxWidth: .infinity, minHeight: 40)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: LegendNextSize.profileControlHeight)
                 .background {
                     RoundedRectangle(
                         cornerRadius: LegendNextRadius.compact,

@@ -71,7 +71,7 @@ android {
     defaultConfig {
         applicationId = "com.mylegnd.legend.registered"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0.0"
 
@@ -153,7 +153,6 @@ dependencies {
     implementation(libs.msal)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
-    implementation(libs.firebase.installations)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

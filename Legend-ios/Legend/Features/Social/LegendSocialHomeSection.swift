@@ -3590,7 +3590,9 @@ private struct LegendHacViewportPage: View {
         VStack(spacing: 3) {
             Image(systemName: symbol)
                 .font(.system(size: 20, weight: .semibold))
-                .frame(width: 42, height: 42)
+                .frame(
+                    width: LegendNextSize.hacActionSize,
+                    height: LegendNextSize.hacActionSize)
                 .background(LegendNextColor.navy.opacity(0.72), in: Circle())
             if let count, count > 0 {
                 Text(count.formatted())

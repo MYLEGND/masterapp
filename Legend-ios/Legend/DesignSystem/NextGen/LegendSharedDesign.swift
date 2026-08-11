@@ -44,6 +44,10 @@ enum LegendSharedDesign {
         return .system(size: CGFloat(token.size), weight: fontWeight(token.weight), design: .default)
     }
 
+    static func tracking(_ name: String) -> CGFloat {
+        CGFloat(required(specification.typography[name], named: "typography \(name)").tracking ?? 0)
+    }
+
     static func motion(_ name: String) -> Double {
         switch name {
         case "quickSeconds": return specification.motion.quickSeconds
@@ -86,6 +90,10 @@ enum LegendSharedDesign {
 
     static func copy(_ key: String) -> String {
         required(specification.copy[key], named: "copy \(key)")
+    }
+
+    static func socialFormat(_ name: String) -> SocialFormatToken {
+        required(specification.socialFormats[name], named: "social format \(name)")
     }
 
     private static func fontWeight(_ value: String) -> Font.Weight {
@@ -136,6 +144,7 @@ enum LegendSharedDesign {
         fileprivate let radii: [String: Double]
         fileprivate let sizes: [String: Double]
         fileprivate let typography: [String: TypographyToken]
+        fileprivate let socialFormats: [String: SocialFormatToken]
         fileprivate let motion: MotionToken
         fileprivate let elevation: [String: ElevationToken]
         fileprivate let copy: [String: String]
@@ -151,6 +160,21 @@ enum LegendSharedDesign {
     fileprivate struct TypographyToken: Decodable {
         let size: Double
         let weight: String
+        let tracking: Double?
+    }
+
+    struct SocialFormatToken: Decodable {
+        let maximumMediaItems: Int
+        let allowsTextOnlyPublication: Bool
+        let acceptsImages: Bool
+        let acceptsVideos: Bool
+        let maximumVideoDurationSeconds: Double?
+        let mediaAspectRatio: Double
+        let selectionThumbnailSide: Double
+        let emptyPreviewHeight: Double
+        let editorMaximumWidth: Double
+        let usesFixedCanvasAspectRatio: Bool
+        let supportedCanvasAspectRatios: [Double]
     }
 
     fileprivate struct SemanticColorToken: Decodable {

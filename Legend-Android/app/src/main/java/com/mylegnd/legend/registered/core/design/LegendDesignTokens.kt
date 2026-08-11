@@ -35,9 +35,14 @@ object LegendDesignAuthority {
     internal fun spacing(name: String) = required().spacing.required(name).dp
     internal fun radius(name: String) = required().radii.required(name).dp
     internal fun size(name: String) = required().sizes.required(name).dp
+    internal fun socialFormat(name: String) = required().socialFormats.required(name)
     internal fun typography(name: String): TextStyle {
         val token = required().typography.required(name)
-        return TextStyle(fontSize = token.size.sp, fontWeight = token.weight.asFontWeight())
+        return TextStyle(
+            fontSize = token.size.sp,
+            fontWeight = token.weight.asFontWeight(),
+            letterSpacing = (token.tracking ?: 0f).sp,
+        )
     }
     internal fun copy(key: String): String = required().copy.required(key)
 
@@ -61,6 +66,10 @@ object LegendColors {
     val Surface get() = LegendDesignAuthority.color("surface")
     val SurfaceElevated get() = LegendDesignAuthority.color("surfaceElevated")
     val SurfaceInset get() = LegendDesignAuthority.color("surfaceInset")
+    val BrandBlueSurface get() = LegendDesignAuthority.color("brandBlueSurface")
+    val BrandBlueInset get() = LegendDesignAuthority.color("brandBlueInset")
+    val ContactNavy get() = LegendDesignAuthority.color("contactNavy")
+    val Verified get() = LegendDesignAuthority.color("verified")
     val TextPrimary get() = LegendDesignAuthority.color("textPrimary")
     val TextSecondary get() = LegendDesignAuthority.color("textSecondary")
     val TextTertiary get() = LegendDesignAuthority.color("textTertiary")
@@ -105,10 +114,16 @@ object LegendSize {
     val AvatarMedium get() = LegendDesignAuthority.size("avatarMedium")
     val AvatarLarge get() = LegendDesignAuthority.size("avatarLarge")
     val AvatarHero get() = LegendDesignAuthority.size("avatarHero")
+    val ProfileAvatar get() = LegendDesignAuthority.size("profileAvatar")
+    val ProfileAvatarCamera get() = LegendDesignAuthority.size("profileAvatarCamera")
+    val ProfileSettingsIcon get() = LegendDesignAuthority.size("profileSettingsIcon")
+    val ProfileControlHeight get() = LegendDesignAuthority.size("profileControlHeight")
+    val HacAction get() = LegendDesignAuthority.size("hacActionSize")
 }
 
 internal object LegendTypography {
     val Display get() = LegendDesignAuthority.typography("display")
+    val Wordmark get() = LegendDesignAuthority.typography("wordmark")
     val Hero get() = LegendDesignAuthority.typography("hero")
     val Title get() = LegendDesignAuthority.typography("title")
     val Section get() = LegendDesignAuthority.typography("section")
@@ -116,6 +131,7 @@ internal object LegendTypography {
     val Body get() = LegendDesignAuthority.typography("body")
     val BodyEmphasis get() = LegendDesignAuthority.typography("bodyEmphasis")
     val Supporting get() = LegendDesignAuthority.typography("supporting")
+    val Caption get() = LegendDesignAuthority.typography("caption")
     val Label get() = LegendDesignAuthority.typography("label")
     val Eyebrow get() = LegendDesignAuthority.typography("eyebrow")
 }
@@ -128,11 +144,17 @@ private data class LegendDesignSpecification(
     val radii: Map<String, Float>,
     val sizes: Map<String, Float>,
     val typography: Map<String, LegendTypographyToken>,
+    val socialFormats: Map<String, LegendSocialFormatToken>,
     val copy: Map<String, String>,
 )
 
 object LegendCopy {
     fun value(key: String): String = LegendDesignAuthority.copy(key)
+}
+
+/** Platform-neutral social canvas and picker rules extracted from iOS. */
+internal object LegendSocialFormats {
+    fun named(name: String): LegendSocialFormatToken = LegendDesignAuthority.socialFormat(name)
 }
 
 @Serializable
@@ -149,7 +171,26 @@ private data class LegendColorToken(
 private data class LegendPlatformSemanticColor(val android: String)
 
 @Serializable
-private data class LegendTypographyToken(val size: Float, val weight: String)
+private data class LegendTypographyToken(
+    val size: Float,
+    val weight: String,
+    val tracking: Float? = null,
+)
+
+@Serializable
+internal data class LegendSocialFormatToken(
+    val maximumMediaItems: Int,
+    val allowsTextOnlyPublication: Boolean,
+    val acceptsImages: Boolean,
+    val acceptsVideos: Boolean,
+    val maximumVideoDurationSeconds: Double? = null,
+    val mediaAspectRatio: Double,
+    val selectionThumbnailSide: Double,
+    val emptyPreviewHeight: Double,
+    val editorMaximumWidth: Double,
+    val usesFixedCanvasAspectRatio: Boolean,
+    val supportedCanvasAspectRatios: List<Double>,
+)
 
 private fun String.asColor(alpha: Float = 1f): Color {
     val rgb = removePrefix("#").toLongOrNull(16) ?: error("Invalid LEGEND color token.")

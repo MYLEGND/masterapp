@@ -988,53 +988,29 @@ enum MobileSocialContentType: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// The only iOS format authority. Do not recreate any of these values in
-    /// individual views: doing so is how pickers, canvases, and playback cards
-    /// drift into incompatible layouts.
+    /// Native iOS mapping of the shared LEGEND social-format authority. Do not
+    /// recreate these values in individual views: that is how pickers, canvases,
+    /// and playback cards drift across platforms.
     var format: LegendSocialContentFormat {
+        let shared: LegendSharedDesign.SocialFormatToken
         switch self {
-        case .post:
-            LegendSocialContentFormat(
-                maximumMediaItems: 10,
-                allowsTextOnlyPublication: true,
-                acceptsImages: true,
-                acceptsVideos: true,
-                maximumVideoDurationSeconds: LegendSocialVideoUploadPolicy.maximumDurationSeconds,
-                mediaAspectRatio: LegendSocialPostCanvas.portrait.rawValue,
-                selectionThumbnailSide: 112,
-                emptyPreviewHeight: 132,
-                editorMaximumWidth: 390,
-                usesFixedCanvasAspectRatio: false,
-                supportedCanvasAspectRatios: LegendSocialPostCanvas.allCases.map(\.rawValue))
-
-        case .story:
-            LegendSocialContentFormat(
-                maximumMediaItems: 1,
-                allowsTextOnlyPublication: false,
-                acceptsImages: true,
-                acceptsVideos: true,
-                maximumVideoDurationSeconds: LegendSocialVideoUploadPolicy.maximumDurationSeconds,
-                mediaAspectRatio: 9.0 / 16.0,
-                selectionThumbnailSide: 112,
-                emptyPreviewHeight: 132,
-                editorMaximumWidth: 350,
-                usesFixedCanvasAspectRatio: true,
-                supportedCanvasAspectRatios: [9.0 / 16.0])
-
-        case .hac:
-            LegendSocialContentFormat(
-                maximumMediaItems: 1,
-                allowsTextOnlyPublication: false,
-                acceptsImages: false,
-                acceptsVideos: true,
-                maximumVideoDurationSeconds: LegendSocialVideoUploadPolicy.maximumDurationSeconds,
-                mediaAspectRatio: 9.0 / 16.0,
-                selectionThumbnailSide: 112,
-                emptyPreviewHeight: 132,
-                editorMaximumWidth: 350,
-                usesFixedCanvasAspectRatio: true,
-                supportedCanvasAspectRatios: [9.0 / 16.0])
+        case .post: shared = LegendSharedDesign.socialFormat("post")
+        case .story: shared = LegendSharedDesign.socialFormat("story")
+        case .hac: shared = LegendSharedDesign.socialFormat("hac")
         }
+
+        return LegendSocialContentFormat(
+            maximumMediaItems: shared.maximumMediaItems,
+            allowsTextOnlyPublication: shared.allowsTextOnlyPublication,
+            acceptsImages: shared.acceptsImages,
+            acceptsVideos: shared.acceptsVideos,
+            maximumVideoDurationSeconds: shared.maximumVideoDurationSeconds,
+            mediaAspectRatio: shared.mediaAspectRatio,
+            selectionThumbnailSide: shared.selectionThumbnailSide,
+            emptyPreviewHeight: shared.emptyPreviewHeight,
+            editorMaximumWidth: shared.editorMaximumWidth,
+            usesFixedCanvasAspectRatio: shared.usesFixedCanvasAspectRatio,
+            supportedCanvasAspectRatios: shared.supportedCanvasAspectRatios)
     }
 
     var maximumMediaItems: Int {

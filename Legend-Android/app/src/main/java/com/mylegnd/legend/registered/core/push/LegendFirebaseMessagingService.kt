@@ -15,11 +15,11 @@ import com.mylegnd.legend.registered.core.realtime.LegendRealtimeEvents
 
 /** FCM is transport only. Notification text, recipient selection, and badges remain server-owned. */
 class LegendFirebaseMessagingService : FirebaseMessagingService() {
-    override fun onRegistered(installationId: String) {
-        // The opaque FCM v1 registration identifier is forwarded directly to
+    override fun onNewToken(token: String) {
+        // The opaque FCM transport token is forwarded directly to
         // the authenticated platform-aware endpoint; it is never logged or
         // persisted by Legend Android.
-        (application as? LegendApplication)?.container?.fcmPushRegistration?.registerFreshToken(installationId)
+        (application as? LegendApplication)?.container?.fcmPushRegistration?.registerFreshToken(token)
     }
     override fun onMessageReceived(message: RemoteMessage) {
         LegendRealtimeEvents.conversationUpdated(message.data["conversationId"])

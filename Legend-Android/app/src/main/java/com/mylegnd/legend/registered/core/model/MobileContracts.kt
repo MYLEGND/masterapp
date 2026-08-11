@@ -219,6 +219,28 @@ import kotlinx.serialization.Serializable
 @Serializable data class SocialMusic(@SerialName("providerId") val providerId: String, @SerialName("providerTrackId") val providerTrackId: String, @SerialName("trackTitle") val trackTitle: String, @SerialName("artistName") val artistName: String, @SerialName("trackDurationSeconds") val trackDurationSeconds: Double, @SerialName("audioUrl") val audioUrl: String? = null, @SerialName("trimStartSeconds") val trimStartSeconds: Double? = null, @SerialName("trimEndSeconds") val trimEndSeconds: Double? = null, @SerialName("musicVolume") val musicVolume: Double? = null, @SerialName("originalAudioVolume") val originalAudioVolume: Double? = null)
 @Serializable data class SocialProfileMetrics(val profile: SocialAuthor, @SerialName("postCount") val postCount: Int, @SerialName("videoCount") val videoCount: Int, @SerialName("storyCount") val storyCount: Int, @SerialName("followerCount") val followerCount: Int, @SerialName("followingCount") val followingCount: Int, @SerialName("totalReactionCount") val totalReactionCount: Int = 0, @SerialName("totalContentViewCount") val totalContentViewCount: Int = 0, @SerialName("totalReachCount") val totalReachCount: Int = 0, @SerialName("privateProfileVisitCount") val privateProfileVisitCount: Int? = null)
 @Serializable data class SocialPostInsight(@SerialName("postId") val postId: String, @SerialName("contentType") val contentType: String, @SerialName("postedUtc") val postedUtc: String, val metrics: SocialPostMetrics, @SerialName("engagementRatePercentage") val engagementRatePercentage: Double)
+
+/**
+ * The one Android mapping for the social API discriminator. The persisted
+ * backend value for a member-facing Hac remains `Reel`; presentation code must
+ * never send or compare the member label "Hac" as though it were an API value.
+ */
+enum class LegendSocialContentType(val apiValue: String) {
+    POST("Post"),
+    STORY("Story"),
+    HAC("Reel"),
+    ;
+
+    companion object {
+        fun fromApiValue(value: String?): LegendSocialContentType? = entries.firstOrNull {
+            it.apiValue.equals(value?.trim(), ignoreCase = true)
+        }
+    }
+}
+
+val SocialPost.legendContentType: LegendSocialContentType?
+    get() = LegendSocialContentType.fromApiValue(contentType)
+
 @Serializable data class CreatorInsights(@SerialName("generatedUtc") val generatedUtc: String? = null, @SerialName("totalViews") val totalViews: Int, @SerialName("totalReach") val totalReach: Int, @SerialName("followerCount") val followerCount: Int, @SerialName("followingCount") val followingCount: Int = 0, @SerialName("followersGained") val followersGained: Int = 0, @SerialName("profileVisits") val profileVisits: Int = 0, @SerialName("totalReactions") val totalReactions: Int = 0, @SerialName("totalComments") val totalComments: Int = 0, @SerialName("totalReplies") val totalReplies: Int = 0, @SerialName("totalShares") val totalShares: Int = 0, @SerialName("totalReposts") val totalReposts: Int = 0, @SerialName("totalSaves") val totalSaves: Int = 0, @SerialName("engagementRatePercentage") val engagementRatePercentage: Double, @SerialName("topPosts") val topPosts: List<SocialPostInsight> = emptyList(), @SerialName("topVideos") val topVideos: List<SocialPostInsight> = emptyList(), @SerialName("topStories") val topStories: List<SocialPostInsight> = emptyList())
 @Serializable data class CreateSocialPostRequest(@SerialName("contentType") val contentType: String, val body: String, val audience: String? = null, val location: String? = null, @SerialName("commentsEnabled") val commentsEnabled: Boolean? = null)
 @Serializable data class SocialMediaPublishOptions(

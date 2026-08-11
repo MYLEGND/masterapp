@@ -13,7 +13,14 @@ struct MobileSocialMediaStream: Sendable {
 /// deliberately non-UI isolated because the picker reads it before any video
 /// export begins.
 enum LegendSocialVideoUploadPolicy {
-    static let maximumDurationSeconds: TimeInterval = 600
+    static var maximumDurationSeconds: TimeInterval {
+        guard let duration = LegendSharedDesign
+            .socialFormat("post")
+            .maximumVideoDurationSeconds else {
+            preconditionFailure("Missing LEGEND social video duration policy.")
+        }
+        return duration
+    }
 }
 
 /// The one mobile-video preparation path for Legend social media. It produces

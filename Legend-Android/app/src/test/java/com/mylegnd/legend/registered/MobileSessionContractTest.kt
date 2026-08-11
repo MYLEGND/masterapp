@@ -5,10 +5,13 @@ import com.mylegnd.legend.registered.core.model.ConversationMessage
 import com.mylegnd.legend.registered.core.model.ConversationDetail
 import com.mylegnd.legend.registered.core.model.SocialPost
 import com.mylegnd.legend.registered.core.model.SocialSnapshot
+import com.mylegnd.legend.registered.core.model.LegendSocialContentType
 import com.mylegnd.legend.registered.core.network.JourneyDashboard
 import com.mylegnd.legend.registered.core.model.FounderManagedAccount
 import com.mylegnd.legend.registered.core.model.DailyScriptureManagementSnapshot
 import com.mylegnd.legend.registered.core.model.CommunitySafetyReport
+import com.mylegnd.legend.registered.core.realtime.toHubUrl
+import okhttp3.Request
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
@@ -44,6 +47,12 @@ class MobileSessionContractTest {
         val post = json.decodeFromString(SocialPost.serializer(), fixture)
         assertEquals("Ready", post.media.single().processingState)
         assertEquals("Public", post.audience)
+    }
+
+    @Test fun `Hac uses the server Reel discriminator while retaining member vocabulary`() {
+        assertEquals(LegendSocialContentType.HAC, LegendSocialContentType.fromApiValue("Reel"))
+        assertNull(LegendSocialContentType.fromApiValue("Hac"))
+        assertEquals("Reel", LegendSocialContentType.HAC.apiValue)
     }
 
     @Test fun `social feed fixture keeps the server promoted group projection separate from posts`() {
@@ -83,5 +92,15 @@ class MobileSessionContractTest {
         assertEquals("SocialPost", report.targetKind)
         assertEquals("Open", report.status)
         assertEquals("Sanitized report detail", report.detail)
+    }
+
+    @Test fun `realtime hub keeps a valid OkHttp HTTP URL for WebSocket upgrade`() {
+        val hubUrl = "https://api.legend.example/api/v1/mobile?ignored=true#ignored".toHubUrl()
+
+        assertEquals("https://api.legend.example/api/v1/mobile/messaginghub", hubUrl)
+        assertEquals(
+            "https://api.legend.example/api/v1/mobile/messaginghub",
+            Request.Builder().url(requireNotNull(hubUrl)).build().url.toString(),
+        )
     }
 }

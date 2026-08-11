@@ -82,12 +82,13 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
 
     fun startConversation(recipient: MessagingRecipient, opened: (String) -> Unit) = viewModelScope.launch {
         _isSending.value = true
+        var openedConversationId: String? = null
         try {
             when (val result = repository.startConversation(role, recipient)) {
                 is LoadState.Data -> {
                     _detail.value = result
                     refreshInboxSilently()
-                    opened(result.value.id)
+                    openedConversationId = result.value.id
                 }
                 is LoadState.Error -> _recipients.value = LoadState.Error(result.message)
                 else -> Unit
@@ -95,6 +96,9 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         } finally {
             _isSending.value = false
         }
+        // A caller may immediately invoke the canonical send path. Invoke its
+        // continuation only after the in-flight start state is released.
+        openedConversationId?.let(opened)
     }
 
     fun createGroup(
@@ -209,9 +213,25 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         body: String,
         replyToMessageId: String? = null,
         attachmentUris: List<Uri> = emptyList(),
+    ) = send(context, id, body, replyToMessageId, attachmentUris) { }
+
+    /**
+     * Presentation feedback only. The canonical MessagingRepository still owns
+     * conversation creation, send, attachment upload, and inbox reconciliation.
+     */
+    fun send(
+        context: Context,
+        id: String,
+        body: String,
+        replyToMessageId: String? = null,
+        attachmentUris: List<Uri> = emptyList(),
+        completed: (Boolean) -> Unit,
     ) = viewModelScope.launch {
         val normalized = body.trim()
-        if (normalized.isBlank() || _isSending.value) return@launch
+        if (normalized.isBlank() || _isSending.value) {
+            completed(false)
+            return@launch
+        }
         _isSending.value = true
         try {
             when (val result = repository.send(role, id, normalized, replyToMessageId)) {
@@ -220,9 +240,13 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
                         repository.uploadAttachment(context, role, id, result.value.id, uri)
                     }
                     open(id)
+                    completed(true)
                 }
-                is LoadState.Error -> _detail.value = LoadState.Error(result.message)
-                else -> Unit
+                is LoadState.Error -> {
+                    _detail.value = LoadState.Error(result.message)
+                    completed(false)
+                }
+                else -> completed(false)
             }
         } finally {
             _isSending.value = false
@@ -276,7 +300,6 @@ class SocialViewModel(private val repository: SocialRepository, private val role
     private val _profileMetrics = MutableStateFlow<LoadState<SocialProfileMetrics>>(LoadState.Idle); val profileMetrics: StateFlow<LoadState<SocialProfileMetrics>> = _profileMetrics.asStateFlow()
     private val _followRequests = MutableStateFlow<LoadState<List<SocialFollowRequestItem>>>(LoadState.Idle); val followRequests: StateFlow<LoadState<List<SocialFollowRequestItem>>> = _followRequests.asStateFlow()
     private val _creatorInsights = MutableStateFlow<LoadState<CreatorInsights>>(LoadState.Idle); val creatorInsights: StateFlow<LoadState<CreatorInsights>> = _creatorInsights.asStateFlow()
-    private val _music = MutableStateFlow<LoadState<List<SocialMusic>>>(LoadState.Idle); val music: StateFlow<LoadState<List<SocialMusic>>> = _music.asStateFlow()
     private val _publicProfilePosts = MutableStateFlow<LoadState<List<SocialPost>>>(LoadState.Idle); val publicProfilePosts: StateFlow<LoadState<List<SocialPost>>> = _publicProfilePosts.asStateFlow()
     private val _publicProfileMetrics = MutableStateFlow<LoadState<SocialProfileMetrics>>(LoadState.Idle); val publicProfileMetrics: StateFlow<LoadState<SocialProfileMetrics>> = _publicProfileMetrics.asStateFlow()
     fun load() = viewModelScope.launch { _state.value = LoadState.Loading; _state.value = repository.feed(role) }
@@ -297,7 +320,6 @@ class SocialViewModel(private val repository: SocialRepository, private val role
     fun loadFollowRequests() = viewModelScope.launch { _followRequests.value = LoadState.Loading; _followRequests.value = repository.followRequests(role) }
     fun decideFollowRequest(id: String, approve: Boolean) = viewModelScope.launch { repository.decideFollowRequest(role, id, approve); loadFollowRequests(); load() }
     fun loadCreatorInsights() = viewModelScope.launch { _creatorInsights.value = LoadState.Loading; _creatorInsights.value = repository.creatorInsights(role) }
-    fun searchMusic(query: String) = viewModelScope.launch { _music.value = LoadState.Loading; _music.value = repository.searchMusic(role, query) }
     fun joinPromotedGroup(id: String, onJoined: () -> Unit) = viewModelScope.launch {
         if (repository.joinPromotedGroup(role, id) is LoadState.Data) {
             load()

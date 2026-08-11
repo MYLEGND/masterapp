@@ -147,13 +147,19 @@ class MobileMessagingRealtimeClient(
     }
 }
 
-private fun String.toHubUrl(): String? {
+/**
+ * OkHttp upgrades an HTTP(S) request to WebSocket transport in
+ * [OkHttpClient.newWebSocket]. Its [okhttp3.HttpUrl] type intentionally only
+ * accepts HTTP and HTTPS schemes, so converting this value to ws/wss here
+ * crashes during application composition. Keep the canonical HTTP(S) URL and
+ * let the WebSocket client perform the protocol upgrade.
+ */
+internal fun String.toHubUrl(): String? {
     val base = toHttpUrlOrNull() ?: return null
-    val scheme = when (base.scheme) {
-        "https" -> "wss"
-        "http" -> "ws"
+    when (base.scheme) {
+        "https", "http" -> Unit
         else -> return null
     }
     val path = base.encodedPath.trim('/').let { if (it.isEmpty()) "/messaginghub" else "/$it/messaginghub" }
-    return base.newBuilder().scheme(scheme).encodedPath(path).query(null).fragment(null).build().toString()
+    return base.newBuilder().encodedPath(path).query(null).fragment(null).build().toString()
 }

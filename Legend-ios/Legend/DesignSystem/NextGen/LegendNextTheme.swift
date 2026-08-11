@@ -205,6 +205,11 @@ enum LegendNextSize {
     static let avatarMedium = LegendSharedDesign.scalar(.sizes, "avatarMedium")
     static let avatarLarge = LegendSharedDesign.scalar(.sizes, "avatarLarge")
     static let avatarHero = LegendSharedDesign.scalar(.sizes, "avatarHero")
+    static let profileAvatar = LegendSharedDesign.scalar(.sizes, "profileAvatar")
+    static let profileAvatarCamera = LegendSharedDesign.scalar(.sizes, "profileAvatarCamera")
+    static let profileSettingsIcon = LegendSharedDesign.scalar(.sizes, "profileSettingsIcon")
+    static let profileControlHeight = LegendSharedDesign.scalar(.sizes, "profileControlHeight")
+    static let hacActionSize = LegendSharedDesign.scalar(.sizes, "hacActionSize")
     static let iconSmall = LegendSharedDesign.scalar(.sizes, "iconSmall")
     static let iconMedium = LegendSharedDesign.scalar(.sizes, "iconMedium")
     static let iconLarge = LegendSharedDesign.scalar(.sizes, "iconLarge")
@@ -212,6 +217,7 @@ enum LegendNextSize {
 
 enum LegendNextTypography {
     static let display = LegendSharedDesign.font("display")
+    static let wordmark = LegendSharedDesign.font("wordmark")
     static let hero = LegendSharedDesign.font("hero")
     static let title = LegendSharedDesign.font("title")
     static let section = LegendSharedDesign.font("section")

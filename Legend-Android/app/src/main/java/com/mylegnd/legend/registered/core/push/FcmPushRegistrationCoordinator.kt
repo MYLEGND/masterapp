@@ -3,7 +3,6 @@ package com.mylegnd.legend.registered.core.push
 import android.content.Context
 import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseApp
-import com.google.firebase.installations.FirebaseInstallations
 import com.google.firebase.messaging.FirebaseMessaging
 import com.mylegnd.legend.registered.core.auth.SecureSessionStore
 import com.mylegnd.legend.registered.data.NotificationDeviceRepository
@@ -28,13 +27,8 @@ class FcmPushRegistrationCoordinator(
 
     fun registerForAuthenticatedActor(participantType: String) {
         if (!isFirebaseConfigured()) return
-        // Current FCM v1 registration emits its opaque Firebase Installation ID
-        // through the service callback. That identifier is the direct-send
-        // registration value the server stores and targets.
-        FirebaseMessaging.getInstance().register().addOnSuccessListener {
-            scope.launch {
-                registrationIdOrNull()?.let { id -> deviceRepository.registerFcm(participantType, id) }
-            }
+        scope.launch {
+            fcmTokenOrNull()?.let { token -> deviceRepository.registerFcm(participantType, token) }
         }
     }
 
@@ -54,10 +48,10 @@ class FcmPushRegistrationCoordinator(
             ?.trim()
             ?.takeIf(String::isNotBlank)
             ?: return
-        registrationIdOrNull()?.let { id ->
-            deviceRepository.deactivateFcm(participantType, id)
-            if (isFirebaseConfigured()) FirebaseMessaging.getInstance().unregister().awaitCompletion()
+        fcmTokenOrNull()?.let { token ->
+            deviceRepository.deactivateFcm(participantType, token)
         }
+        if (isFirebaseConfigured()) FirebaseMessaging.getInstance().deleteToken().awaitCompletion()
     }
 
     private fun isFirebaseConfigured(): Boolean {
@@ -66,9 +60,9 @@ class FcmPushRegistrationCoordinator(
         return FirebaseApp.initializeApp(context.applicationContext) != null
     }
 
-    private suspend fun registrationIdOrNull(): String? {
+    private suspend fun fcmTokenOrNull(): String? {
         if (!isFirebaseConfigured()) return null
-        return FirebaseInstallations.getInstance().id.awaitResult()
+        return FirebaseMessaging.getInstance().token.awaitResult()
     }
 }
 

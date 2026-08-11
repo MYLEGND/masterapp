@@ -111,8 +111,6 @@ interface LegendApi {
     @GET("api/v1/mobile/social/posts/{id}/insights") suspend fun postInsights(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String): Response<SocialPostInsight>
     @GET("api/v1/mobile/social/profiles/metrics") suspend fun profileMetrics(@Header("X-Legend-Participant-Type") participantType: String, @Query("userId") userId: String? = null, @Query("participantType") profileParticipantType: String? = null, @Query("profileId") profileId: String? = null): Response<SocialProfileMetrics>
     @POST("api/v1/mobile/social/profiles/visit") suspend fun recordProfileVisit(@Header("X-Legend-Participant-Type") participantType: String, @Body request: SocialProfileVisitRequest): Response<SocialStateResult>
-    @GET("api/v1/mobile/social/music/search") suspend fun searchMusic(@Header("X-Legend-Participant-Type") participantType: String, @Query("query") query: String): Response<List<SocialMusic>>
-
     @GET("api/v1/mobile/notifications") suspend fun notifications(@Header("X-Legend-Participant-Type") participantType: String): Response<NotificationSnapshot>
     @POST("api/v1/mobile/notifications/{id}/read") suspend fun markNotificationRead(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String): Response<NotificationBadge>
     @POST("api/v1/mobile/notifications/clear-badges") suspend fun clearNotificationBadges(@Header("X-Legend-Participant-Type") participantType: String): Response<NotificationBadge>

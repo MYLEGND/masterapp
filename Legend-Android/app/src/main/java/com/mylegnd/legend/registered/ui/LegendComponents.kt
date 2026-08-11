@@ -3,6 +3,7 @@
 package com.mylegnd.legend.registered.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
@@ -19,4 +20,15 @@ import com.mylegnd.legend.registered.core.design.*
 @Composable fun LegendEmptyState(title: String, detail: String) = Column(Modifier.fillMaxSize().padding(LegendSpacing.Xxl), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { Text(title, style = LegendTypography.Section, color = LegendColors.TextPrimary, textAlign = TextAlign.Center); Spacer(Modifier.height(LegendSpacing.Sm)); Text(detail, style = LegendTypography.Supporting, color = LegendColors.TextSecondary, textAlign = TextAlign.Center) }
 @Composable fun LegendLoadingState() = Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = LegendColors.Navy) }
 @Composable fun LegendErrorState(message: String, retry: () -> Unit) = Column(Modifier.fillMaxSize().padding(LegendSpacing.Xxl), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { Text(message, textAlign = TextAlign.Center, color = LegendColors.TextSecondary); Spacer(Modifier.height(LegendSpacing.Md)); OutlinedButton(onClick = retry, shape = LegendShapes.Control) { Text("Try again") } }
-@Composable fun LegendAvatar(name: String, modifier: Modifier = Modifier, size: Dp = LegendSize.AvatarMedium) = Box(modifier.size(size).background(LegendColors.Navy, CircleShape), contentAlignment = Alignment.Center) { Text(name.take(1).uppercase(), color = LegendColors.GoldBright, style = LegendTypography.CardTitle) }
+/**
+ * The one fallback avatar renderer. Protected image avatars use the identical
+ * gold ring in [LegendProtectedAvatar], so loading state never changes the
+ * LEGEND profile-circle language.
+ */
+@Composable fun LegendAvatar(name: String, modifier: Modifier = Modifier, size: Dp = LegendSize.AvatarMedium) = Box(
+    modifier
+        .size(size)
+        .background(LegendColors.Navy, CircleShape)
+        .border(1.dp, LegendColors.Gold.copy(alpha = 0.7f), CircleShape),
+    contentAlignment = Alignment.Center,
+) { Text(name.take(1).uppercase(), color = LegendColors.GoldBright, style = LegendTypography.CardTitle) }
