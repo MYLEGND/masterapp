@@ -10,6 +10,7 @@ public sealed class FounderLegendConnectDashboardVm
         0, 0, 0, 0, 0, 0, null, 0, 0, 0, null,
         Array.Empty<LegendConnectOperationalEventSnapshot>());
     public LegendConnectLanguageHealthSnapshot? SelectedLanguage { get; init; }
+    public LegendConnectLanguageKnowledgeSnapshot? SelectedLanguageKnowledge { get; init; }
     public LegendConnectPairHealthSnapshot? SelectedPair { get; init; }
 }
 

@@ -120,6 +120,56 @@ public sealed class LegendConnectContinuationTests
     }
 
     [Fact]
+    public async Task LanguageKnowledgeDetail_ProjectsApprovedLearningData_WithoutProjectingPrivateMessageText()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var operations = Operations(db, registry, configuration);
+        var saved = await operations.SubmitFounderKnowledgeAsync("founder", new LegendConnectKnowledgeSubmission(
+            "en", "Approved source", "ht", "Apwouve sib", "Greeting", "Formal", "US", "FounderApproved"));
+        Assert.True(saved.Succeeded);
+
+        db.LegendTranslationLearningEvents.Add(new LegendTranslationLearningEvent
+        {
+            Id = Guid.NewGuid(),
+            IdempotencyKey = "private-detail-event",
+            SourceLanguageCode = "en",
+            TargetLanguageCode = "ht",
+            PairKey = "en:ht",
+            SourceTextHash = LegendLanguageIdentity.TextHash("Private source message"),
+            TargetTextHash = LegendLanguageIdentity.TextHash("Private translated message"),
+            SourceText = "Private source message",
+            TargetText = "Private translated message",
+            Provider = "AzureTranslator",
+            Provenance = "ProductionMessage",
+            EligibilityState = "IneligiblePrivateMessage",
+            ProcessingState = "Skipped",
+            CreatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var detail = Assert.IsType<LegendConnectLanguageKnowledgeSnapshot>(
+            await operations.GetLanguageKnowledgeAsync("English"));
+
+        Assert.Equal("en", detail.Health.LanguageCode);
+        Assert.Contains(detail.CanonicalEntries, item => item.Text == "Approved source" && item.Provenance == "FounderApproved");
+        Assert.Contains(detail.ActiveAlignments, item =>
+            item.SourceText == "Approved source" && item.TargetText == "Apwouve sib" && item.PairKey == "en:ht");
+        Assert.Contains(detail.ContextRelationships, item =>
+            item.SourceText == "Approved source" && item.RelatedText == "Apwouve sib" && item.ContextCategory == "Greeting");
+        Assert.Contains(detail.RecentLearningActivity, item =>
+            item.PairKey == "en:ht" && item.EligibilityState == "IneligiblePrivateMessage" && item.ProcessingState == "Skipped");
+
+        var activityPropertyNames = typeof(LegendConnectLanguageLearningActivitySnapshot)
+            .GetProperties()
+            .Select(item => item.Name)
+            .ToList();
+        Assert.DoesNotContain("SourceText", activityPropertyNames);
+        Assert.DoesNotContain("TargetText", activityPropertyNames);
+    }
+
+    [Fact]
     public async Task TrustedExactTranslationMemory_PrecedesAzureWithoutCreatingAnotherProvider()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -251,7 +301,9 @@ public sealed class LegendConnectContinuationTests
                 ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = founder } }
             };
 
-            Assert.IsType<ViewResult>(await controller.Index(null, null, CancellationToken.None));
+            var languagePage = Assert.IsType<ViewResult>(await controller.Index("en", null, CancellationToken.None));
+            var languageModel = Assert.IsType<FounderLegendConnectDashboardVm>(languagePage.Model);
+            Assert.NotNull(languageModel.SelectedLanguageKnowledge);
             var submitted = await service.SubmitAsync(founder, new FounderLegendConnectKnowledgeInput
             {
                 SourceLanguageCode = "en", SourceText = "Correction source", TargetLanguageCode = "ht", TargetText = "Correction target", ContextCategory = "Phrase"

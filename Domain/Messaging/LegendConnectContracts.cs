@@ -136,6 +136,94 @@ public sealed record LegendConnectAlignmentSnapshot(
     bool HumanVerified,
     DateTime UpdatedUtc);
 
+/// <summary>
+/// A retained canonical text asset that the central eligibility policy has
+/// approved for Legend Connect learning. This is deliberately distinct from
+/// message history: private message text is never projected through this type.
+/// </summary>
+public sealed record LegendConnectLanguageTextUnitSnapshot(
+    Guid Id,
+    string Text,
+    string Provenance,
+    DateTime CreatedUtc,
+    DateTime UpdatedUtc);
+
+/// <summary>
+/// A safe, active directional alignment between two approved canonical text
+/// assets. Both texts have passed the existing retention/eligibility policy.
+/// </summary>
+public sealed record LegendConnectLanguageAlignmentDetailSnapshot(
+    Guid Id,
+    string PairKey,
+    string SourceLanguageCode,
+    string SourceText,
+    string TargetLanguageCode,
+    string TargetText,
+    string Provider,
+    string? ProviderModel,
+    decimal? Confidence,
+    string QualityState,
+    bool HumanVerified,
+    int ObservationCount,
+    DateTime CreatedUtc,
+    DateTime UpdatedUtc);
+
+/// <summary>
+/// A generic contextual relationship between approved language assets. It
+/// carries stored context metadata without inventing language-specific rules.
+/// </summary>
+public sealed record LegendConnectLanguageContextRelationshipSnapshot(
+    Guid Id,
+    string? PairKey,
+    string SourceLanguageCode,
+    string SourceText,
+    string RelatedLanguageCode,
+    string RelatedText,
+    string RelationshipKind,
+    string? ContextCategory,
+    string? UsageRegister,
+    string? RegionalVariant,
+    decimal Confidence,
+    string QualityState,
+    string Provenance,
+    int ObservationCount,
+    DateTime CreatedUtc,
+    DateTime UpdatedUtc);
+
+/// <summary>
+/// Metadata for learning pipeline activity. Text is intentionally omitted so
+/// private message payloads cannot become visible in Founder operations.
+/// Approved text is available only through the canonical asset/alignment types.
+/// </summary>
+public sealed record LegendConnectLanguageLearningActivitySnapshot(
+    Guid Id,
+    string PairKey,
+    string SourceLanguageCode,
+    string TargetLanguageCode,
+    string Provider,
+    string Provenance,
+    string EligibilityState,
+    string ProcessingState,
+    int AttemptCount,
+    DateTime CreatedUtc,
+    DateTime? ProcessedUtc,
+    string? FailureCode);
+
+/// <summary>
+/// Founder-only inspection projection for one language's real server-owned
+/// learning dataset. Collections are deliberately bounded by DetailRecordLimit
+/// for a responsive modal; their health counters remain the exact totals.
+/// </summary>
+public sealed record LegendConnectLanguageKnowledgeSnapshot(
+    LegendConnectLanguageHealthSnapshot Health,
+    int DetailRecordLimit,
+    long LearningActivityCount,
+    IReadOnlyList<LegendConnectLanguageTextUnitSnapshot> CanonicalEntries,
+    IReadOnlyList<LegendConnectLanguageAlignmentDetailSnapshot> ActiveAlignments,
+    IReadOnlyList<LegendConnectLanguageContextRelationshipSnapshot> ContextRelationships,
+    IReadOnlyList<LegendConnectPairHealthSnapshot> DirectionalPairs,
+    IReadOnlyList<LegendConnectLanguageLearningActivitySnapshot> RecentLearningActivity);
+
 public sealed record LegendConnectOperationalEventSnapshot(
     DateTime OccurredUtc,
     string Category,
@@ -175,6 +263,10 @@ public interface ILegendConnectOperations
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectLanguageHealthSnapshot?> GetLanguageHealthAsync(
+        string languageCode,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectLanguageKnowledgeSnapshot?> GetLanguageKnowledgeAsync(
         string languageCode,
         CancellationToken cancellationToken = default);
 

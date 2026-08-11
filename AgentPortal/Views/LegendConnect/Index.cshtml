@@ -52,14 +52,14 @@
 
     <section class="category-container" aria-labelledby="active-languages-title">
         <div class="category-head"><div><span class="dashboard-section-kicker">Registry health</span><h2 class="dashboard-section-title" id="active-languages-title">Active languages</h2></div></div>
-        <div class="table-responsive">
-            <table class="table">
+        <div class="dashboard-data-surface">
+            <table class="table dashboard-data-table">
                 <thead><tr><th>Language</th><th>Dataset</th><th>Entries</th><th>Pairs</th><th>Demand</th><th>Coverage</th><th>Quality</th><th>Health</th></tr></thead>
                 <tbody>
                 @foreach (var language in dashboard.Languages)
                 {
                     <tr>
-                        <td><a asp-action="Index" asp-route-language="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</a></td>
+                        <td><a asp-action="Index" asp-route-language="@language.LanguageCode" aria-haspopup="dialog">@language.DisplayName (@language.LanguageCode)</a></td>
                         <td>@language.StoragePartition</td><td>@language.CanonicalEntryCount</td><td>@language.DirectionalPairs.Count</td><td>@language.DemandCount</td><td>@language.Coverage</td><td>@language.QualityState</td><td>@language.HealthState</td>
                     </tr>
                 }
@@ -70,8 +70,8 @@
 
     <section class="category-container" aria-labelledby="active-pairs-title">
         <div class="category-head"><div><span class="dashboard-section-kicker">Directional health</span><h2 class="dashboard-section-title" id="active-pairs-title">Active directional pairs</h2></div></div>
-        <div class="table-responsive">
-            <table class="table">
+        <div class="dashboard-data-surface">
+            <table class="table dashboard-data-table">
                 <thead><tr><th>Pair</th><th>Demand</th><th>Memory reuse</th><th>Azure fallback</th><th>Coverage</th><th>Quality</th><th>Health</th></tr></thead>
                 <tbody>
                 @foreach (var pair in dashboard.Pairs)
@@ -85,29 +85,14 @@
         </div>
     </section>
 
-    @if (Model.SelectedLanguage is { } selectedLanguage)
-    {
-        <section class="dashboard-analytics-panel" aria-labelledby="language-health-title">
-            <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Language health</span><h2 class="dashboard-section-title" id="language-health-title">@selectedLanguage.DisplayName (@selectedLanguage.LanguageCode)</h2></div></div>
-            <p>Partition @selectedLanguage.StoragePartition · @selectedLanguage.HealthState · @selectedLanguage.QualityState</p>
-            <div class="dashboard-hero-stats">
-                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Canonical entries</span><span class="dashboard-stat-value">@selectedLanguage.CanonicalEntryCount</span></div>
-                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Memory relationships</span><span class="dashboard-stat-value">@selectedLanguage.TranslationMemoryRelationshipCount</span></div>
-                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Context relationships</span><span class="dashboard-stat-value">@selectedLanguage.ContextRelationshipCount</span></div>
-                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value">@selectedLanguage.DuplicatePreventionCount</span></div>
-            </div>
-            <p>Last learning: @(selectedLanguage.LastSuccessfulLearningUtc?.ToString("u") ?? "No successful learning activity") · Last write: @(selectedLanguage.LastSuccessfulWriteUtc?.ToString("u") ?? "No dataset write")</p>
-        </section>
-    }
-
     @if (Model.SelectedPair is { } selectedPair)
     {
         <section class="dashboard-analytics-panel" aria-labelledby="pair-health-title">
             <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Pair health</span><h2 class="dashboard-section-title" id="pair-health-title">@selectedPair.PairKey</h2></div></div>
-            <p>@selectedPair.HealthState · @selectedPair.QualityState · @selectedPair.FailureCount failure@(selectedPair.FailureCount == 1 ? string.Empty : "s")</p>
+            <p class="dashboard-section-copy">@selectedPair.HealthState · @selectedPair.QualityState · @selectedPair.FailureCount failure@(selectedPair.FailureCount == 1 ? string.Empty : "s")</p>
             @if (selectedPair.RecentAlignments.Count > 0)
             {
-                <div class="table-responsive"><table class="table"><thead><tr><th>Approved source</th><th>Approved target</th><th>Quality</th><th>Updated</th></tr></thead><tbody>
+                <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Approved source</th><th>Approved target</th><th>Quality</th><th>Updated</th></tr></thead><tbody>
                 @foreach (var alignment in selectedPair.RecentAlignments)
                 {
                     <tr><td>@alignment.SourceText</td><td>@alignment.TargetText</td><td>@alignment.QualityState</td><td>@alignment.UpdatedUtc.ToString("u")</td></tr>
@@ -121,13 +106,13 @@
         <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Approved knowledge</span><h2 class="dashboard-section-title" id="manual-training-title">Founder manual training</h2></div></div>
         <form method="post" asp-action="SubmitKnowledge" class="dashboard-search-panel">
             @Html.AntiForgeryToken()
-            <div class="founder-subscriber-filter-grid">
-                <label class="founder-subscriber-field"><span>Source language</span><select name="SourceLanguageCode" required><option value="">Select language</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
-                <label class="founder-subscriber-field"><span>Target language (optional for monolingual knowledge)</span><select name="TargetLanguageCode"><option value="">Monolingual entry</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
-                <label class="founder-subscriber-field"><span>Context / category</span><input name="ContextCategory" maxlength="120" placeholder="Vocabulary, phrase, idiom, sentence pattern" /></label>
-                <label class="founder-subscriber-field"><span>Usage</span><input name="UsageRegister" maxlength="80" placeholder="Formal, informal, regional" /></label>
-                <label class="founder-subscriber-field founder-subscriber-search-field"><span>Source text</span><textarea name="SourceText" required maxlength="10000"></textarea></label>
-                <label class="founder-subscriber-field founder-subscriber-search-field"><span>Target text</span><textarea name="TargetText" maxlength="10000"></textarea></label>
+            <div class="dashboard-form-grid">
+                <label class="dashboard-form-field"><span>Source language</span><select name="SourceLanguageCode" required><option value="">Select language</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
+                <label class="dashboard-form-field"><span>Target language (optional for monolingual knowledge)</span><select name="TargetLanguageCode"><option value="">Monolingual entry</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
+                <label class="dashboard-form-field"><span>Context / category</span><input name="ContextCategory" maxlength="120" placeholder="Vocabulary, phrase, idiom, sentence pattern" /></label>
+                <label class="dashboard-form-field"><span>Usage</span><input name="UsageRegister" maxlength="80" placeholder="Formal, informal, regional" /></label>
+                <label class="dashboard-form-field dashboard-form-field--wide"><span>Source text</span><textarea name="SourceText" required maxlength="10000"></textarea></label>
+                <label class="dashboard-form-field dashboard-form-field--wide"><span>Target text</span><textarea name="TargetText" maxlength="10000"></textarea></label>
             </div>
             <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save approved knowledge</button></div>
         </form>
@@ -141,11 +126,11 @@
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="SourceLanguageCode" value="@correctionPair.SourceLanguageCode" />
                 <input type="hidden" name="TargetLanguageCode" value="@correctionPair.TargetLanguageCode" />
-                <div class="founder-subscriber-filter-grid">
-                    <label class="founder-subscriber-field"><span>Alignment to supersede</span><select name="SupersededAlignmentId" required>@foreach (var alignment in correctionPair.RecentAlignments) { <option value="@alignment.Id">@alignment.SourceText → @alignment.TargetText</option> }</select></label>
-                    <label class="founder-subscriber-field"><span>Context / category</span><input name="ContextCategory" maxlength="120" /></label>
-                    <label class="founder-subscriber-field founder-subscriber-search-field"><span>Replacement source text</span><textarea name="SourceText" required maxlength="10000"></textarea></label>
-                    <label class="founder-subscriber-field founder-subscriber-search-field"><span>Replacement target text</span><textarea name="TargetText" required maxlength="10000"></textarea></label>
+                <div class="dashboard-form-grid">
+                    <label class="dashboard-form-field dashboard-form-field--wide"><span>Alignment to supersede</span><select name="SupersededAlignmentId" required>@foreach (var alignment in correctionPair.RecentAlignments) { <option value="@alignment.Id">@alignment.SourceText → @alignment.TargetText</option> }</select></label>
+                    <label class="dashboard-form-field dashboard-form-field--wide"><span>Context / category</span><input name="ContextCategory" maxlength="120" /></label>
+                    <label class="dashboard-form-field dashboard-form-field--wide"><span>Replacement source text</span><textarea name="SourceText" required maxlength="10000"></textarea></label>
+                    <label class="dashboard-form-field dashboard-form-field--wide"><span>Replacement target text</span><textarea name="TargetText" required maxlength="10000"></textarea></label>
                 </div>
                 <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save correction and supersede</button></div>
             </form>
@@ -160,7 +145,7 @@
         }
         else
         {
-            <div class="table-responsive"><table class="table"><thead><tr><th>When</th><th>Category</th><th>Severity</th><th>Language / pair</th><th>Status</th><th>Code</th></tr></thead><tbody>
+            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>When</th><th>Category</th><th>Severity</th><th>Language / pair</th><th>Status</th><th>Code</th></tr></thead><tbody>
             @foreach (var item in dashboard.RecentOperationalEvents)
             {
                 <tr><td>@item.OccurredUtc.ToString("u")</td><td>@item.Category</td><td>@item.Severity</td><td>@(item.PairKey ?? item.LanguageCode ?? "Global")</td><td>@item.Status</td><td>@item.ErrorCode</td></tr>
@@ -169,3 +154,161 @@
         }
     </section>
 </main>
+
+@if (Model.SelectedLanguageKnowledge is { } languageKnowledge)
+{
+    var health = languageKnowledge.Health;
+    var canonicalDisplayed = Math.Min(health.CanonicalEntryCount, (long)languageKnowledge.DetailRecordLimit);
+    var alignmentDisplayed = Math.Min(health.TranslationMemoryRelationshipCount, (long)languageKnowledge.DetailRecordLimit);
+    var contextDisplayed = Math.Min(health.ContextRelationshipCount, (long)languageKnowledge.DetailRecordLimit);
+    var activityDisplayed = Math.Min(languageKnowledge.LearningActivityCount, (long)languageKnowledge.DetailRecordLimit);
+
+    <div class="modal fade legend-modal dashboard-detail-modal" id="languageKnowledgeModal" tabindex="-1" aria-labelledby="languageKnowledgeModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <span class="dashboard-section-kicker">Stored learning dataset</span>
+                        <h2 class="modal-title" id="languageKnowledgeModalTitle">@health.DisplayName (@health.LanguageCode)</h2>
+                        <p class="dashboard-section-copy">@health.StoragePartition · @health.HealthState · @health.QualityState</p>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close language dataset"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="dashboard-hero-stats dashboard-detail-modal-metrics" aria-label="Language dataset totals">
+                        <div class="dashboard-stat-card"><span class="dashboard-stat-label">Canonical entries</span><span class="dashboard-stat-value">@health.CanonicalEntryCount</span></div>
+                        <div class="dashboard-stat-card"><span class="dashboard-stat-label">Active alignments</span><span class="dashboard-stat-value">@health.TranslationMemoryRelationshipCount</span></div>
+                        <div class="dashboard-stat-card"><span class="dashboard-stat-label">Context links</span><span class="dashboard-stat-value">@health.ContextRelationshipCount</span></div>
+                        <div class="dashboard-stat-card"><span class="dashboard-stat-label">Learning events</span><span class="dashboard-stat-value">@languageKnowledge.LearningActivityCount</span></div>
+                    </div>
+                    <p class="dashboard-section-copy">This is a live server projection. Approved entries, active alignments, and context links expose the actual retained learning data. Learning-event rows intentionally show only metadata so private message bodies never enter Founder operations.</p>
+
+                    <section class="dashboard-detail-modal-section" aria-labelledby="canonical-entries-title">
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Approved canonical assets</span><h3 class="dashboard-section-title" id="canonical-entries-title">Entries used for learning</h3></div></div>
+                        @if (languageKnowledge.CanonicalEntries.Count == 0)
+                        {
+                            <p class="dashboard-section-copy">No approved canonical entries are stored in @health.StoragePartition yet. This is the real empty dataset state.</p>
+                        }
+                        else
+                        {
+                            <p class="dashboard-section-copy">Showing the newest @canonicalDisplayed of @health.CanonicalEntryCount retained @(health.CanonicalEntryCount == 1 ? "entry" : "entries").</p>
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Approved text</th><th>Provenance</th><th>Created</th><th>Updated</th></tr></thead><tbody>
+                            @foreach (var entry in languageKnowledge.CanonicalEntries)
+                            {
+                                <tr><td>@entry.Text</td><td>@entry.Provenance</td><td>@entry.CreatedUtc.ToString("u")</td><td>@entry.UpdatedUtc.ToString("u")</td></tr>
+                            }
+                            </tbody></table></div>
+                        }
+                    </section>
+
+                    <section class="dashboard-detail-modal-section" aria-labelledby="active-alignments-title">
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Directional translation memory</span><h3 class="dashboard-section-title" id="active-alignments-title">Active approved alignments</h3></div></div>
+                        @if (languageKnowledge.ActiveAlignments.Count == 0)
+                        {
+                            <p class="dashboard-section-copy">No active approved directional alignments are stored for this language yet.</p>
+                        }
+                        else
+                        {
+                            <p class="dashboard-section-copy">Showing the newest @alignmentDisplayed of @health.TranslationMemoryRelationshipCount active alignment@(health.TranslationMemoryRelationshipCount == 1 ? string.Empty : "s").</p>
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Approved source</th><th>Approved target</th><th>Provider</th><th>Quality</th><th>Observations</th><th>Updated</th></tr></thead><tbody>
+                            @foreach (var alignment in languageKnowledge.ActiveAlignments)
+                            {
+                                <tr><td>@alignment.PairKey</td><td>@alignment.SourceText</td><td>@alignment.TargetText</td><td>@alignment.Provider</td><td>@alignment.QualityState</td><td>@alignment.ObservationCount</td><td>@alignment.UpdatedUtc.ToString("u")</td></tr>
+                            }
+                            </tbody></table></div>
+                        }
+                    </section>
+
+                    <section class="dashboard-detail-modal-section" aria-labelledby="context-relationships-title">
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Reusable context</span><h3 class="dashboard-section-title" id="context-relationships-title">Stored context relationships</h3></div></div>
+                        @if (languageKnowledge.ContextRelationships.Count == 0)
+                        {
+                            <p class="dashboard-section-copy">No approved context relationships are stored for this language yet.</p>
+                        }
+                        else
+                        {
+                            <p class="dashboard-section-copy">Showing the newest @contextDisplayed of @health.ContextRelationshipCount relationship@(health.ContextRelationshipCount == 1 ? string.Empty : "s").</p>
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Source asset</th><th>Related asset</th><th>Kind</th><th>Context</th><th>Usage</th><th>Quality</th><th>Updated</th></tr></thead><tbody>
+                            @foreach (var relationship in languageKnowledge.ContextRelationships)
+                            {
+                                <tr><td>@(relationship.PairKey ?? "Monolingual")</td><td>@relationship.SourceText</td><td>@relationship.RelatedText</td><td>@relationship.RelationshipKind</td><td>@(relationship.ContextCategory ?? "Not classified")</td><td>@(relationship.UsageRegister ?? "Not specified")</td><td>@relationship.QualityState</td><td>@relationship.UpdatedUtc.ToString("u")</td></tr>
+                            }
+                            </tbody></table></div>
+                        }
+                    </section>
+
+                    <section class="dashboard-detail-modal-section" aria-labelledby="language-pairs-title">
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Directional health</span><h3 class="dashboard-section-title" id="language-pairs-title">Connected language pairs</h3></div></div>
+                        @if (languageKnowledge.DirectionalPairs.Count == 0)
+                        {
+                            <p class="dashboard-section-copy">No enabled directional pair is configured for this language yet.</p>
+                        }
+                        else
+                        {
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Demand</th><th>Memory reuse</th><th>Azure fallback</th><th>Coverage</th><th>Quality</th><th>Health</th></tr></thead><tbody>
+                            @foreach (var pair in languageKnowledge.DirectionalPairs)
+                            {
+                                <tr><td>@pair.PairKey</td><td>@pair.DemandCount</td><td>@pair.TranslationMemoryReuseCount</td><td>@pair.AzureFallbackCount (@pair.AzureFallbackRate.ToString("P0"))</td><td>@pair.Coverage</td><td>@pair.QualityState</td><td>@pair.HealthState</td></tr>
+                            }
+                            </tbody></table></div>
+                        }
+                    </section>
+
+                    <section class="dashboard-detail-modal-section" aria-labelledby="learning-activity-title">
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Privacy-safe pipeline audit</span><h3 class="dashboard-section-title" id="learning-activity-title">Learning activity</h3></div></div>
+                        @if (languageKnowledge.RecentLearningActivity.Count == 0)
+                        {
+                            <p class="dashboard-section-copy">No learning-pipeline activity has been recorded for this language yet.</p>
+                        }
+                        else
+                        {
+                            <p class="dashboard-section-copy">Showing the newest @activityDisplayed of @languageKnowledge.LearningActivityCount activity record@(languageKnowledge.LearningActivityCount == 1 ? string.Empty : "s"). Text is intentionally excluded here.</p>
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Provenance</th><th>Eligibility</th><th>State</th><th>Attempts</th><th>Created</th><th>Processed</th><th>Failure</th></tr></thead><tbody>
+                            @foreach (var activity in languageKnowledge.RecentLearningActivity)
+                            {
+                                <tr><td>@activity.PairKey</td><td>@activity.Provenance</td><td>@activity.EligibilityState</td><td>@activity.ProcessingState</td><td>@activity.AttemptCount</td><td>@activity.CreatedUtc.ToString("u")</td><td>@(activity.ProcessedUtc?.ToString("u") ?? "Not processed")</td><td>@(activity.FailureCode ?? "None")</td></tr>
+                            }
+                            </tbody></table></div>
+                        }
+                    </section>
+
+                    <section class="dashboard-detail-modal-section" aria-labelledby="language-errors-title">
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Bounded diagnostics</span><h3 class="dashboard-section-title" id="language-errors-title">Recent errors</h3></div></div>
+                        @if (health.RecentErrors.Count == 0)
+                        {
+                            <p class="dashboard-section-copy">No current language or directional-pair errors are recorded.</p>
+                        }
+                        else
+                        {
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>When</th><th>Category</th><th>Pair</th><th>State</th><th>Code</th><th>Summary</th></tr></thead><tbody>
+                            @foreach (var diagnostic in health.RecentErrors)
+                            {
+                                <tr><td>@diagnostic.OccurredUtc.ToString("u")</td><td>@diagnostic.Category</td><td>@(diagnostic.PairKey ?? "Language")</td><td>@diagnostic.Status</td><td>@diagnostic.ErrorCode</td><td>@diagnostic.Summary</td></tr>
+                            }
+                            </tbody></table></div>
+                        }
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    @if (Model.SelectedLanguageKnowledge is not null)
+    {
+        <script>
+            (() => {
+                const element = document.getElementById("languageKnowledgeModal");
+                if (!element || !window.bootstrap?.Modal) return;
+                const modal = bootstrap.Modal.getOrCreateInstance(element);
+                element.addEventListener("hidden.bs.modal", () => {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete("language");
+                    window.history.replaceState({}, "", url);
+                }, { once: true });
+                modal.show();
+            })();
+        </script>
+    }
+}

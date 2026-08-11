@@ -545,7 +545,9 @@ body:not(.finance-page) .search-results li:hover {
     color: var(--legend-gold-deep);
 }
 
-body:not(.finance-page) .table:not(.action-table) {
+/* The light table baseline applies only to light portal surfaces. Dashboard
+   tables have their own shared Legend data-surface authority. */
+body:not(.finance-page) .table:not(.action-table):not(.dashboard-data-table) {
     border: 1.5px solid var(--legend-line);
     border-radius: 18px;
     overflow: hidden;
@@ -553,18 +555,18 @@ body:not(.finance-page) .table:not(.action-table) {
     box-shadow: var(--legend-shadow);
 }
 
-body:not(.finance-page) .table:not(.action-table) > :not(caption) > * > * {
+body:not(.finance-page) .table:not(.action-table):not(.dashboard-data-table) > :not(caption) > * > * {
     border-color: rgba(166,128,35,.14);
 }
 
-body:not(.finance-page) .table:not(.action-table) thead th {
+body:not(.finance-page) .table:not(.action-table):not(.dashboard-data-table) thead th {
     background: #ffffff;
     color: var(--legend-gold-deep);
     font-weight: 900;
     border-bottom: 1.5px solid var(--legend-line);
 }
 
-body:not(.finance-page) .table:not(.action-table) tbody tr:hover {
+body:not(.finance-page) .table:not(.action-table):not(.dashboard-data-table) tbody tr:hover {
     background: rgba(166,128,35,.06);
 }
 

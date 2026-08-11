@@ -13,6 +13,8 @@ namespace Infrastructure.Messaging;
 /// </summary>
 internal sealed class LegendConnectOperations : ILegendConnectOperations
 {
+    private const int LanguageKnowledgeDetailRecordLimit = 250;
+
     private readonly MasterAppDbContext _db;
     private readonly ILegendLanguageRegistry _registry;
     private readonly LegendConnectCorpusService _corpus;
@@ -108,6 +110,142 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var state = await LoadStateAsync(cancellationToken);
         var language = ResolveLanguage(state.Languages, languageCode);
         return language is null ? null : BuildLanguageHealth(language, state);
+    }
+
+    public async Task<LegendConnectLanguageKnowledgeSnapshot?> GetLanguageKnowledgeAsync(
+        string languageCode,
+        CancellationToken cancellationToken = default)
+    {
+        // The registry remains responsible for ensuring its data-backed
+        // baseline before this Founder-only operational projection is read.
+        await _registry.ListEnabledTranslationLanguagesAsync(cancellationToken);
+        var state = await LoadStateAsync(cancellationToken);
+        var language = ResolveLanguage(state.Languages, languageCode);
+        if (language is null)
+            return null;
+
+        // This projection exposes only canonical units the existing central
+        // policy has approved for retention and learning. Learning events can
+        // include private-message metadata, so their text is never projected.
+        var approvedTextById = state.TextUnits
+            .Where(item => item.IsTrainingEligible)
+            .ToDictionary(item => item.Id);
+        var canonicalEntries = approvedTextById.Values
+            .Where(item => string.Equals(item.LanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => item.UpdatedUtc)
+            .Take(LanguageKnowledgeDetailRecordLimit)
+            .Select(item => new LegendConnectLanguageTextUnitSnapshot(
+                item.Id,
+                item.Text,
+                item.Provenance,
+                item.CreatedUtc,
+                item.UpdatedUtc))
+            .ToList();
+
+        var activeAlignments = state.Alignments
+            .Where(item => item.SupersededUtc is null)
+            .Where(item => approvedTextById.ContainsKey(item.SourceTextUnitId) && approvedTextById.ContainsKey(item.TargetTextUnitId))
+            .Select(item => new
+            {
+                Alignment = item,
+                Source = approvedTextById[item.SourceTextUnitId],
+                Target = approvedTextById[item.TargetTextUnitId]
+            })
+            .Where(item =>
+                string.Equals(item.Source.LanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(item.Target.LanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => item.Alignment.UpdatedUtc)
+            .Take(LanguageKnowledgeDetailRecordLimit)
+            .Select(item => new LegendConnectLanguageAlignmentDetailSnapshot(
+                item.Alignment.Id,
+                item.Alignment.PairKey,
+                item.Source.LanguageCode,
+                item.Source.Text,
+                item.Target.LanguageCode,
+                item.Target.Text,
+                item.Alignment.Provider,
+                item.Alignment.ProviderModel,
+                item.Alignment.Confidence,
+                item.Alignment.QualityState,
+                item.Alignment.HumanVerified,
+                item.Alignment.ObservationCount,
+                item.Alignment.CreatedUtc,
+                item.Alignment.UpdatedUtc))
+            .ToList();
+
+        var contextRelationships = state.ContextRelationships
+            .Where(item => approvedTextById.ContainsKey(item.SourceTextUnitId) && approvedTextById.ContainsKey(item.RelatedTextUnitId))
+            .Select(item => new
+            {
+                Relationship = item,
+                Source = approvedTextById[item.SourceTextUnitId],
+                Related = approvedTextById[item.RelatedTextUnitId]
+            })
+            .Where(item =>
+                string.Equals(item.Source.LanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(item.Related.LanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => item.Relationship.UpdatedUtc)
+            .Take(LanguageKnowledgeDetailRecordLimit)
+            .Select(item => new LegendConnectLanguageContextRelationshipSnapshot(
+                item.Relationship.Id,
+                item.Relationship.PairKey,
+                item.Source.LanguageCode,
+                item.Source.Text,
+                item.Related.LanguageCode,
+                item.Related.Text,
+                item.Relationship.RelationshipKind,
+                item.Relationship.ContextCategory,
+                item.Relationship.UsageRegister,
+                item.Relationship.RegionalVariant,
+                item.Relationship.Confidence,
+                item.Relationship.QualityState,
+                item.Relationship.Provenance,
+                item.Relationship.ObservationCount,
+                item.Relationship.CreatedUtc,
+                item.Relationship.UpdatedUtc))
+            .ToList();
+
+        var languagePairs = state.Pairs
+            .Where(item => item.IsEnabled)
+            .Where(item =>
+                string.Equals(item.SourceLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(item.TargetLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(item => item.PairKey, StringComparer.OrdinalIgnoreCase)
+            .Select(item => BuildPairHealth(item, state))
+            .ToList();
+
+        var learningEvents = state.LearningEvents
+            .Where(item =>
+                string.Equals(item.SourceLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(item.TargetLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase));
+        var learningActivityCount = learningEvents.LongCount();
+        var recentLearningActivity = learningEvents
+            .OrderByDescending(item => item.CreatedUtc)
+            .Take(LanguageKnowledgeDetailRecordLimit)
+            .Select(item => new LegendConnectLanguageLearningActivitySnapshot(
+                item.Id,
+                item.PairKey,
+                item.SourceLanguageCode,
+                item.TargetLanguageCode,
+                item.Provider,
+                item.Provenance,
+                item.EligibilityState,
+                item.ProcessingState,
+                item.AttemptCount,
+                item.CreatedUtc,
+                item.ProcessedUtc,
+                item.FailureCode))
+            .ToList();
+
+        return new LegendConnectLanguageKnowledgeSnapshot(
+            BuildLanguageHealth(language, state),
+            LanguageKnowledgeDetailRecordLimit,
+            learningActivityCount,
+            canonicalEntries,
+            activeAlignments,
+            contextRelationships,
+            languagePairs,
+            recentLearningActivity);
     }
 
     public async Task<LegendConnectPairHealthSnapshot?> GetPairHealthAsync(
@@ -226,8 +364,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         LegendLanguageDefinition language,
         LegendConnectOperationalState state)
     {
+        var approvedTextUnitIds = state.TextUnits
+            .Where(item => item.IsTrainingEligible)
+            .Select(item => item.Id)
+            .ToHashSet();
         var unitIds = state.TextUnits
-            .Where(item => item.LanguageCode == language.LanguageCode)
+            .Where(item => item.IsTrainingEligible && item.LanguageCode == language.LanguageCode)
             .Select(item => item.Id)
             .ToHashSet();
         var pairs = state.Pairs
@@ -235,14 +377,23 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .ToList();
         var pairKeys = pairs.Select(item => item.PairKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var relationships = state.ContextRelationships.LongCount(item =>
-            unitIds.Contains(item.SourceTextUnitId) || unitIds.Contains(item.RelatedTextUnitId));
+            approvedTextUnitIds.Contains(item.SourceTextUnitId) &&
+            approvedTextUnitIds.Contains(item.RelatedTextUnitId) &&
+            (unitIds.Contains(item.SourceTextUnitId) || unitIds.Contains(item.RelatedTextUnitId)));
         var memoryRelationships = state.Alignments.LongCount(item =>
-            item.SupersededUtc == null && (unitIds.Contains(item.SourceTextUnitId) || unitIds.Contains(item.TargetTextUnitId)));
+            item.SupersededUtc == null &&
+            approvedTextUnitIds.Contains(item.SourceTextUnitId) &&
+            approvedTextUnitIds.Contains(item.TargetTextUnitId) &&
+            (unitIds.Contains(item.SourceTextUnitId) || unitIds.Contains(item.TargetTextUnitId)));
         var lastLearning = state.LearningEvents
             .Where(item => item.SourceLanguageCode == language.LanguageCode || item.TargetLanguageCode == language.LanguageCode)
             .Where(item => item.ProcessingState == "Processed")
             .Select(item => item.ProcessedUtc)
-            .Concat(state.Alignments.Where(item => unitIds.Contains(item.SourceTextUnitId) || unitIds.Contains(item.TargetTextUnitId))
+            .Concat(state.Alignments.Where(item =>
+                    item.SupersededUtc is null &&
+                    approvedTextUnitIds.Contains(item.SourceTextUnitId) &&
+                    approvedTextUnitIds.Contains(item.TargetTextUnitId) &&
+                    (unitIds.Contains(item.SourceTextUnitId) || unitIds.Contains(item.TargetTextUnitId)))
                 .Select(item => (DateTime?)item.UpdatedUtc))
             .Where(item => item != null)
             .Max();
@@ -269,7 +420,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             quality,
             HealthState(errors.Count, unitIds.Count, demand),
             lastLearning,
-            state.TextUnits.Where(item => item.LanguageCode == language.LanguageCode).Select(item => (DateTime?)item.UpdatedUtc).Max(),
+            state.TextUnits.Where(item => item.IsTrainingEligible && item.LanguageCode == language.LanguageCode)
+                .Select(item => (DateTime?)item.UpdatedUtc).Max(),
             duplicateCount,
             errors);
     }
@@ -280,7 +432,13 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     {
         var demand = state.Demand.SingleOrDefault(item => item.PairKey == pair.PairKey);
         var errors = ErrorsFor(state, null, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { pair.PairKey });
-        var alignments = state.Alignments.Where(item => item.PairKey == pair.PairKey && item.SupersededUtc == null).ToList();
+        var textById = state.TextUnits
+            .Where(item => item.IsTrainingEligible)
+            .ToDictionary(item => item.Id, item => item.Text);
+        var alignments = state.Alignments
+            .Where(item => item.PairKey == pair.PairKey && item.SupersededUtc == null)
+            .Where(item => textById.ContainsKey(item.SourceTextUnitId) && textById.ContainsKey(item.TargetTextUnitId))
+            .ToList();
         var lastLearning = state.LearningEvents
             .Where(item => item.PairKey == pair.PairKey && item.ProcessingState == "Processed")
             .Select(item => item.ProcessedUtc)
@@ -289,7 +447,6 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .Max();
         var total = demand?.TranslationRequestCount ?? 0;
         var fallback = demand?.AzureFallbackCount ?? 0;
-        var textById = state.TextUnits.ToDictionary(item => item.Id, item => item.Text);
         var recentAlignments = alignments
             .OrderByDescending(item => item.UpdatedUtc)
             .Take(25)

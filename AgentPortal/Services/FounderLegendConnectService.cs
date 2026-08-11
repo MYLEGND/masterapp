@@ -24,16 +24,17 @@ public sealed class FounderLegendConnectService
     {
         FounderGuard.EnsureFounderOrThrow(user);
         var dashboard = await _operations.GetDashboardAsync(cancellationToken);
-        var selectedLanguage = string.IsNullOrWhiteSpace(language)
+        var selectedLanguageKnowledge = string.IsNullOrWhiteSpace(language)
             ? null
-            : await _operations.GetLanguageHealthAsync(language, cancellationToken);
+            : await _operations.GetLanguageKnowledgeAsync(language, cancellationToken);
         var selectedPair = string.IsNullOrWhiteSpace(pair)
             ? null
             : await _operations.GetPairHealthAsync(pair, cancellationToken);
         return new FounderLegendConnectDashboardVm
         {
             Dashboard = dashboard,
-            SelectedLanguage = selectedLanguage,
+            SelectedLanguage = selectedLanguageKnowledge?.Health,
+            SelectedLanguageKnowledge = selectedLanguageKnowledge,
             SelectedPair = selectedPair
         };
     }
