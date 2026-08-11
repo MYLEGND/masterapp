@@ -141,20 +141,23 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
     {
         var founder = await RequireFounderAsync(founderUserId, cancellationToken);
         Validate(mutation);
-        var policy = await GetTrackedPolicyAsync(cancellationToken);
-        var before = ToSnapshot(policy, true);
-        policy.MonthlyProviderCapacityCharacters = mutation.MonthlyProviderCapacityCharacters;
-        policy.LiveTranslationReserveCharacters = mutation.LiveTranslationReserveCharacters;
-        policy.MaximumSafeCorpusConsumptionCharacters = mutation.MaximumSafeCorpusConsumptionCharacters;
-        policy.LearningEnabled = mutation.LearningEnabled;
-        policy.ContextualCompositionMode = NormalizeContextualMode(mutation.ContextualCompositionMode);
-        policy.ContextualMinimumConfidence = mutation.ContextualMinimumConfidence;
-        policy.UpdatedByUserId = founder;
-        policy.UpdatedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
-        var after = ToSnapshot(policy, true);
-        await WritePolicyAuditAsync(founder, "RuntimePolicyChanged", before, after, null, null, cancellationToken);
-        return after;
+        return await PersistFounderMutationAsync(async () =>
+        {
+            var policy = await GetTrackedPolicyAsync(cancellationToken);
+            var before = ToSnapshot(policy, true);
+            policy.MonthlyProviderCapacityCharacters = mutation.MonthlyProviderCapacityCharacters;
+            policy.LiveTranslationReserveCharacters = mutation.LiveTranslationReserveCharacters;
+            policy.MaximumSafeCorpusConsumptionCharacters = mutation.MaximumSafeCorpusConsumptionCharacters;
+            policy.LearningEnabled = mutation.LearningEnabled;
+            policy.ContextualCompositionMode = NormalizeContextualMode(mutation.ContextualCompositionMode);
+            policy.ContextualMinimumConfidence = mutation.ContextualMinimumConfidence;
+            policy.UpdatedByUserId = founder;
+            policy.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            var after = ToSnapshot(policy, true);
+            await WritePolicyAuditAsync(founder, "RuntimePolicyChanged", before, after, null, null, cancellationToken);
+            return after;
+        }, cancellationToken);
     }
 
     public async Task<LegendConnectProductionReadinessSnapshot> ActivateAsync(
@@ -170,13 +173,17 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             return readiness;
         }
 
-        var policy = await GetTrackedPolicyAsync(cancellationToken);
-        var before = ToSnapshot(policy, true);
-        policy.CorpusAcquisitionEnabled = true;
-        policy.UpdatedByUserId = founder;
-        policy.UpdatedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
-        await WritePolicyAuditAsync(founder, "AutonomousAcquisitionActivated", before, ToSnapshot(policy, true), null, null, cancellationToken);
+        await PersistFounderMutationAsync(async () =>
+        {
+            var policy = await GetTrackedPolicyAsync(cancellationToken);
+            var before = ToSnapshot(policy, true);
+            policy.CorpusAcquisitionEnabled = true;
+            policy.UpdatedByUserId = founder;
+            policy.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            await WritePolicyAuditAsync(founder, "AutonomousAcquisitionActivated", before, ToSnapshot(policy, true), null, null, cancellationToken);
+            return true;
+        }, cancellationToken);
         return await GetReadinessAsync(cancellationToken);
     }
 
@@ -185,15 +192,18 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         CancellationToken cancellationToken = default)
     {
         var founder = await RequireFounderAsync(founderUserId, cancellationToken);
-        var policy = await GetTrackedPolicyAsync(cancellationToken);
-        var before = ToSnapshot(policy, true);
-        policy.CorpusAcquisitionEnabled = false;
-        policy.UpdatedByUserId = founder;
-        policy.UpdatedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
-        var after = ToSnapshot(policy, true);
-        await WritePolicyAuditAsync(founder, "AutonomousAcquisitionPaused", before, after, null, null, cancellationToken);
-        return after;
+        return await PersistFounderMutationAsync(async () =>
+        {
+            var policy = await GetTrackedPolicyAsync(cancellationToken);
+            var before = ToSnapshot(policy, true);
+            policy.CorpusAcquisitionEnabled = false;
+            policy.UpdatedByUserId = founder;
+            policy.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            var after = ToSnapshot(policy, true);
+            await WritePolicyAuditAsync(founder, "AutonomousAcquisitionPaused", before, after, null, null, cancellationToken);
+            return after;
+        }, cancellationToken);
     }
 
     public async Task<LegendConnectRuntimePolicySnapshot> ConfigurePriorityOverrideAsync(
@@ -214,18 +224,21 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             throw new ArgumentException("The selected directional pair must include the selected language.", nameof(mutation));
         }
 
-        var policy = await GetTrackedPolicyAsync(cancellationToken);
-        var before = ToSnapshot(policy, true);
-        policy.PriorityMode = "FounderOverride";
-        policy.PriorityLanguageCode = language;
-        policy.PriorityPairKey = pair;
-        policy.PriorityLevel = null;
-        policy.UpdatedByUserId = founder;
-        policy.UpdatedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
-        var after = ToSnapshot(policy, true);
-        await WritePolicyAuditAsync(founder, "FounderPriorityOverrideEnabled", before, after, language, pair, cancellationToken);
-        return after;
+        return await PersistFounderMutationAsync(async () =>
+        {
+            var policy = await GetTrackedPolicyAsync(cancellationToken);
+            var before = ToSnapshot(policy, true);
+            policy.PriorityMode = "FounderOverride";
+            policy.PriorityLanguageCode = language;
+            policy.PriorityPairKey = pair;
+            policy.PriorityLevel = null;
+            policy.UpdatedByUserId = founder;
+            policy.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            var after = ToSnapshot(policy, true);
+            await WritePolicyAuditAsync(founder, "FounderPriorityOverrideEnabled", before, after, language, pair, cancellationToken);
+            return after;
+        }, cancellationToken);
     }
 
     public async Task<LegendConnectRuntimePolicySnapshot> DisablePriorityOverrideAsync(
@@ -233,18 +246,21 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         CancellationToken cancellationToken = default)
     {
         var founder = await RequireFounderAsync(founderUserId, cancellationToken);
-        var policy = await GetTrackedPolicyAsync(cancellationToken);
-        var before = ToSnapshot(policy, true);
-        policy.PriorityMode = "Automatic";
-        policy.PriorityLanguageCode = null;
-        policy.PriorityPairKey = null;
-        policy.PriorityLevel = null;
-        policy.UpdatedByUserId = founder;
-        policy.UpdatedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
-        var after = ToSnapshot(policy, true);
-        await WritePolicyAuditAsync(founder, "FounderPriorityOverrideDisabled", before, after, null, null, cancellationToken);
-        return after;
+        return await PersistFounderMutationAsync(async () =>
+        {
+            var policy = await GetTrackedPolicyAsync(cancellationToken);
+            var before = ToSnapshot(policy, true);
+            policy.PriorityMode = "Automatic";
+            policy.PriorityLanguageCode = null;
+            policy.PriorityPairKey = null;
+            policy.PriorityLevel = null;
+            policy.UpdatedByUserId = founder;
+            policy.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            var after = ToSnapshot(policy, true);
+            await WritePolicyAuditAsync(founder, "FounderPriorityOverrideDisabled", before, after, null, null, cancellationToken);
+            return after;
+        }, cancellationToken);
     }
 
     public async Task<LegendConnectPriorityProgressSnapshot> GetPriorityProgressAsync(
@@ -578,6 +594,34 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             OccurredUtc = DateTime.UtcNow
         });
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<T> PersistFounderMutationAsync<T>(
+        Func<Task<T>> mutation,
+        CancellationToken cancellationToken)
+    {
+        var transaction = _db.Database.IsRelational() && _db.Database.CurrentTransaction is null
+            ? await _db.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        try
+        {
+            var result = await mutation();
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.RollbackAsync(CancellationToken.None);
+            _db.ChangeTracker.Clear();
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+        }
     }
 
     private static LegendConnectReadinessCheck Check(string name, bool ready, string detail) =>

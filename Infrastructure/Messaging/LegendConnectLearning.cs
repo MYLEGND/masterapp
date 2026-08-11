@@ -435,6 +435,15 @@ internal sealed class LegendConnectCorpusService
             }
 
             await _db.SaveChangesAsync(cancellationToken);
+            if (targetLanguage is null)
+            {
+                // A monolingual Founder-approved entry is an approved seed,
+                // not a terminal dead end. Project it into the existing
+                // candidate authority for valid enabled targets so the
+                // existing planner/worker can expand only missing knowledge
+                // under its normal capacity, quality, and deduplication gates.
+                await QueueFounderSeedCandidatesAsync(source, cancellationToken);
+            }
             if (pairKey is not null)
             {
                 var pairEntity = await _db.Set<LegendLanguagePair>()
@@ -496,6 +505,50 @@ internal sealed class LegendConnectCorpusService
         return claimed == 1
             ? await _db.Set<LegendTranslationLearningEvent>().SingleAsync(candidate => candidate.Id == eventId, cancellationToken)
             : null;
+    }
+
+    private async Task QueueFounderSeedCandidatesAsync(
+        LegendLanguageTextUnit source,
+        CancellationToken cancellationToken)
+    {
+        var enabledTargets = await _languages.ListEnabledTranslationLanguagesAsync(cancellationToken);
+        var pending = false;
+        foreach (var target in enabledTargets.Where(item => item.IsLearningEnabled && item.IsTranslationEnabled))
+        {
+            if (string.Equals(source.LanguageCode, target.Code, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var pair = await _languages.GetOrCreateEnabledPairAsync(source.LanguageCode, target.Code, cancellationToken);
+            if (pair is null || string.Equals(pair.SourceLanguageCode, pair.TargetLanguageCode, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var idempotencyKey = $"founder-seed:{source.Id:D}:{pair.PairKey}";
+            var aligned = await _db.Set<LegendTranslationAlignment>().AnyAsync(item =>
+                item.PairKey == pair.PairKey && item.SourceTextUnitId == source.Id && item.SupersededUtc == null,
+                cancellationToken);
+            if (aligned || await _db.Set<LegendCorpusCandidate>().AnyAsync(item =>
+                    item.IdempotencyKey == idempotencyKey, cancellationToken))
+                continue;
+
+            _db.Set<LegendCorpusCandidate>().Add(new LegendCorpusCandidate
+            {
+                Id = Guid.NewGuid(),
+                IdempotencyKey = idempotencyKey,
+                SourceLanguageCode = pair.SourceLanguageCode,
+                TargetLanguageCode = pair.TargetLanguageCode,
+                SourceText = source.Text,
+                SourceTextHash = source.NormalizedHash,
+                Category = "FounderApprovedSeed",
+                Provenance = "FounderApproved",
+                IsApproved = true,
+                ProcessingState = "Pending",
+                CreatedUtc = DateTime.UtcNow
+            });
+            pending = true;
+        }
+
+        if (!pending)
+            return;
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<LegendLanguageTextUnit> GetOrCreateTextUnitAsync(
