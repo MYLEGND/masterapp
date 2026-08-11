@@ -1,3 +1,4 @@
+@using AgentPortal.Models
 @model AgentPortal.Models.FounderLegendConnectDashboardVm
 @{
     ViewData["Title"] = "Legend Connect";
@@ -6,14 +7,13 @@
         ? dashboard.ConfiguredMonthlyCapacity.ToString("N0")
         : "Not configured";
     var remainingCapacity = dashboard.RemainingSafeCapacity?.ToString("N0") ?? "Not limited";
-    var accountUsage = Model.AccountUsage;
-    var accountScale = Model.AccountScale;
     var policy = Model.RuntimePolicy;
     var readiness = Model.ProductionReadiness;
     var priority = Model.PriorityProgress;
+    var routedRequestCount = dashboard.TranslationMemoryHitCount + dashboard.ContextualInternalServeCount + dashboard.AzureFallbackCount;
 }
 
-<main class="dashboard-page-shell">
+<main class="dashboard-page-shell legend-connect-page">
     <section class="dashboard-command-center-panel" aria-labelledby="legend-connect-title">
         <div class="dashboard-command-center-top">
             <div class="dashboard-hero-copy">
@@ -22,10 +22,10 @@
                 <p>Server-owned language, learning, quality, and capacity operations.</p>
             </div>
             <div class="dashboard-hero-stats" aria-label="Legend Connect operational snapshot">
-                <div class="dashboard-stat-card is-primary"><span class="dashboard-stat-label">Active languages</span><span class="dashboard-stat-value">@dashboard.Languages.Count</span></div>
-                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Directional pairs</span><span class="dashboard-stat-value">@dashboard.Pairs.Count</span></div>
-                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Learning failures</span><span class="dashboard-stat-value">@dashboard.FailedLearningJobCount</span></div>
-                <div class="dashboard-stat-card"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value">@dashboard.DuplicatePreventionCount</span></div>
+                <div class="dashboard-stat-card is-primary @LegendConnectMetricTone.InformationalActivity(dashboard.Languages.Count)"><span class="dashboard-stat-label">Active languages</span><span class="dashboard-stat-value">@dashboard.Languages.Count</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.Pairs.Count)"><span class="dashboard-stat-label">Directional pairs</span><span class="dashboard-stat-value">@dashboard.Pairs.Count</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(dashboard.FailedLearningJobCount)"><span class="dashboard-stat-label">Learning failures</span><span class="dashboard-stat-value">@dashboard.FailedLearningJobCount</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.DuplicatePreventionCount)"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value">@dashboard.DuplicatePreventionCount</span></div>
             </div>
         </div>
     </section>
@@ -39,11 +39,14 @@
         <section class="dashboard-analytics-panel" role="alert"><p>@error</p></section>
     }
 
-    <section class="dashboard-analytics-panel" aria-labelledby="production-readiness-title">
-        <div class="dashboard-section-head dashboard-section-head-tight">
-            <div><span class="dashboard-section-kicker">Founder operations / activation</span><h2 class="dashboard-section-title" id="production-readiness-title">Legend® Connect production readiness</h2></div>
+    <partial name="_CoreManagement" model="Model" />
+
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="production-readiness-title">
+        <summary class="legend-connect-disclosure-summary">
+            <span><span class="dashboard-section-kicker">Founder operations / activation</span><span class="dashboard-section-title" id="production-readiness-title">Legend® Connect production readiness</span></span>
             <span class="dashboard-status-chip">@readiness.State</span>
-        </div>
+        </summary>
+        <div class="legend-connect-disclosure-body">
         <p class="dashboard-section-copy">@readiness.Summary</p>
         <div class="dashboard-data-surface">
             <table class="table dashboard-data-table">
@@ -51,12 +54,12 @@
                 <tbody>@foreach (var check in readiness.Checks) { <tr><td>@check.Name</td><td>@check.State</td><td>@check.Detail</td></tr> }</tbody>
             </table>
         </div>
-        <div class="dashboard-hero-stats" aria-label="Approved corpus readiness">
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Approved candidates</span><span class="dashboard-stat-value">@readiness.ApprovedCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Eligible pending</span><span class="dashboard-stat-value">@readiness.PendingCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Rejected / ineligible</span><span class="dashboard-stat-value">@readiness.RejectedOrIneligibleCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value">@readiness.DuplicateCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Pairs awaiting knowledge</span><span class="dashboard-stat-value">@readiness.AwaitingKnowledgePairCount.ToString("N0")</span></div>
+        <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--five" aria-label="Approved corpus readiness">
+            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(readiness.ApprovedCandidateCount)"><span class="dashboard-stat-label">Approved candidates</span><span class="dashboard-stat-value">@readiness.ApprovedCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.PendingCandidateCount)"><span class="dashboard-stat-label">Eligible pending</span><span class="dashboard-stat-value">@readiness.PendingCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.RejectedOrIneligibleCandidateCount)"><span class="dashboard-stat-label">Rejected / ineligible</span><span class="dashboard-stat-value">@readiness.RejectedOrIneligibleCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(readiness.DuplicateCandidateCount)"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value">@readiness.DuplicateCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.AwaitingKnowledgePairCount)"><span class="dashboard-stat-label">Pairs awaiting knowledge</span><span class="dashboard-stat-value">@readiness.AwaitingKnowledgePairCount.ToString("N0")</span></div>
         </div>
         <form method="post" asp-action="UpdateRuntimePolicy" class="dashboard-search-panel">
             @Html.AntiForgeryToken()
@@ -74,19 +77,21 @@
             <form method="post" asp-action="ActivateAutonomousAcquisition" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<button type="submit" class="dashboard-command-action btn-carrier-settings">Activate autonomous acquisition</button></form>
             <form method="post" asp-action="PauseAutonomousAcquisition" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<button type="submit" class="dashboard-command-action btn-carrier-settings">Pause autonomous acquisition</button></form>
         </div>
-    </section>
+        </div>
+    </details>
 
-    <section class="dashboard-analytics-panel" aria-labelledby="priority-override-title">
-        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Existing autonomous planner</span><h2 class="dashboard-section-title" id="priority-override-title">Language / pair priority</h2></div><span class="dashboard-status-chip">@policy.PriorityMode</span></div>
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="priority-override-title">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Existing autonomous planner</span><span class="dashboard-section-title" id="priority-override-title">Language / pair priority</span></span><span class="dashboard-status-chip">@policy.PriorityMode</span></summary>
+        <div class="legend-connect-disclosure-body">
         <p class="dashboard-section-copy">Automatic mode uses the existing demand, coverage, quality, and dependency score. A Founder override changes only the existing planner’s work order; corpus eligibility, deduplication, capacity protection, and worker claiming remain mandatory.</p>
-        <div class="dashboard-hero-stats" aria-label="Founder priority progress">
+        <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--seven" aria-label="Founder priority progress">
             <div class="dashboard-stat-card"><span class="dashboard-stat-label">Priority status</span><span class="dashboard-stat-value">@priority.Status</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Eligible missing coverage</span><span class="dashboard-stat-value">@priority.EligibleMissingCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Pending candidates</span><span class="dashboard-stat-value">@priority.PendingCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Internal coverage</span><span class="dashboard-stat-value">@priority.CurrentInternalCoverage.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider dependency</span><span class="dashboard-stat-value">@priority.AzureDependencyRate.ToString("P0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Priority characters consumed</span><span class="dashboard-stat-value">@priority.CharactersConsumed.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Last successful expansion</span><span class="dashboard-stat-value">@(priority.LastSuccessfulExpansionUtc?.ToString("u") ?? "None")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(priority.EligibleMissingCandidateCount)"><span class="dashboard-stat-label">Eligible missing coverage</span><span class="dashboard-stat-value">@priority.EligibleMissingCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(priority.PendingCandidateCount)"><span class="dashboard-stat-label">Pending candidates</span><span class="dashboard-stat-value">@priority.PendingCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(priority.CurrentInternalCoverage)"><span class="dashboard-stat-label">Internal coverage</span><span class="dashboard-stat-value">@priority.CurrentInternalCoverage.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.Dependency(priority.AzureDependencyRate, priority.EligibleMissingCandidateCount + priority.PendingCandidateCount)"><span class="dashboard-stat-label">Provider dependency</span><span class="dashboard-stat-value">@priority.AzureDependencyRate.ToString("P0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(priority.CharactersConsumed)"><span class="dashboard-stat-label">Priority characters consumed</span><span class="dashboard-stat-value">@priority.CharactersConsumed.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.Expansion(priority.LastSuccessfulExpansionUtc)"><span class="dashboard-stat-label">Last successful expansion</span><span class="dashboard-stat-value">@(priority.LastSuccessfulExpansionUtc?.ToString("u") ?? "None")</span></div>
         </div>
         <p class="dashboard-section-copy">@(priority.Detail ?? "No Founder priority override is active.")</p>
         <form method="post" asp-action="ConfigurePriorityOverride" class="dashboard-search-panel">
@@ -98,135 +103,36 @@
             <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Enable / change Founder override</button></div>
         </form>
         <form method="post" asp-action="DisablePriorityOverride" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<button type="submit" class="dashboard-command-action btn-carrier-settings">Return to automatic — demand driven</button></form>
-    </section>
-
-    <section class="dashboard-analytics-panel" aria-labelledby="translation-operations-title">
-        <div class="dashboard-section-head dashboard-section-head-tight">
-            <div><span class="dashboard-section-kicker">Live translation</span><h2 class="dashboard-section-title" id="translation-operations-title">Translation operations</h2></div>
         </div>
-        <div class="dashboard-hero-stats">
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Same-language bypasses</span><span class="dashboard-stat-value">@dashboard.SameLanguageBypassCount</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Translation Memory hits</span><span class="dashboard-stat-value">@dashboard.TranslationMemoryHitCount</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider fallback required</span><span class="dashboard-stat-value">@dashboard.AzureFallbackCount</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Trusted contextual served</span><span class="dashboard-stat-value">@dashboard.ContextualInternalServeCount</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider avoidance</span><span class="dashboard-stat-value">@dashboard.ProviderAvoidanceRate.ToString("P0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider dependency</span><span class="dashboard-stat-value">@dashboard.AzureDependencyRate.ToString("P0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Azure characters used</span><span class="dashboard-stat-value">@dashboard.AzureCharactersUsed.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Consumed live characters</span><span class="dashboard-stat-value">@dashboard.ConsumedLiveCharacters.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Consumed corpus characters</span><span class="dashboard-stat-value">@dashboard.ConsumedCorpusCharacters.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider characters reserved</span><span class="dashboard-stat-value">@dashboard.ReservedProviderCharacters.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Monthly capacity</span><span class="dashboard-stat-value">@configuredCapacity</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Live reserve</span><span class="dashboard-stat-value">@dashboard.LiveReserveCharacters.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Remaining safe capacity</span><span class="dashboard-stat-value">@remainingCapacity</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Safe acquisition capacity</span><span class="dashboard-stat-value">@(dashboard.SafeAcquisitionCapacity?.ToString("N0") ?? "Not configured")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Billing period</span><span class="dashboard-stat-value">@(dashboard.BillingPeriodStart?.ToString("yyyy-MM-dd") ?? "Not started")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Pending learning jobs</span><span class="dashboard-stat-value">@dashboard.LearningJobCount</span></div>
+    </details>
+
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="translation-operations-title">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Live translation</span><span class="dashboard-section-title" id="translation-operations-title">Translation operations</span></span><span class="legend-connect-disclosure-status">Metrics</span></summary>
+        <div class="legend-connect-disclosure-body">
+        <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--four">
+            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.SameLanguageBypassCount)"><span class="dashboard-stat-label">Same-language bypasses</span><span class="dashboard-stat-value">@dashboard.SameLanguageBypassCount</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryHitCount)"><span class="dashboard-stat-label">Translation Memory hits</span><span class="dashboard-stat-value">@dashboard.TranslationMemoryHitCount</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.AzureFallbackCount)"><span class="dashboard-stat-label">Provider fallback required</span><span class="dashboard-stat-value">@dashboard.AzureFallbackCount</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.ContextualInternalServeCount)"><span class="dashboard-stat-label">Trusted contextual served</span><span class="dashboard-stat-value">@dashboard.ContextualInternalServeCount</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.Avoidance(dashboard.ProviderAvoidanceRate, routedRequestCount)"><span class="dashboard-stat-label">Provider avoidance</span><span class="dashboard-stat-value">@dashboard.ProviderAvoidanceRate.ToString("P0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.Dependency(dashboard.AzureDependencyRate, routedRequestCount)"><span class="dashboard-stat-label">Provider dependency</span><span class="dashboard-stat-value">@dashboard.AzureDependencyRate.ToString("P0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.AzureCharactersUsed)"><span class="dashboard-stat-label">Azure characters used</span><span class="dashboard-stat-value">@dashboard.AzureCharactersUsed.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedLiveCharacters)"><span class="dashboard-stat-label">Consumed live characters</span><span class="dashboard-stat-value">@dashboard.ConsumedLiveCharacters.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedCorpusCharacters)"><span class="dashboard-stat-label">Consumed corpus characters</span><span class="dashboard-stat-value">@dashboard.ConsumedCorpusCharacters.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.ReservedProviderCharacters)"><span class="dashboard-stat-label">Provider characters reserved</span><span class="dashboard-stat-value">@dashboard.ReservedProviderCharacters.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.CapacityLimit(dashboard.ConfiguredMonthlyCapacity)"><span class="dashboard-stat-label">Monthly capacity</span><span class="dashboard-stat-value">@configuredCapacity</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(dashboard.LiveReserveCharacters)"><span class="dashboard-stat-label">Live reserve</span><span class="dashboard-stat-value">@dashboard.LiveReserveCharacters.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(dashboard.RemainingSafeCapacity)"><span class="dashboard-stat-label">Remaining safe capacity</span><span class="dashboard-stat-value">@remainingCapacity</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(dashboard.SafeAcquisitionCapacity)"><span class="dashboard-stat-label">Safe acquisition capacity</span><span class="dashboard-stat-value">@(dashboard.SafeAcquisitionCapacity?.ToString("N0") ?? "Not configured")</span></div>
+            <div class="dashboard-stat-card @(dashboard.BillingPeriodStart.HasValue ? LegendConnectMetricTone.Info : LegendConnectMetricTone.Neutral)"><span class="dashboard-stat-label">Billing period</span><span class="dashboard-stat-value">@(dashboard.BillingPeriodStart?.ToString("yyyy-MM-dd") ?? "Not started")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.LearningJobCount)"><span class="dashboard-stat-label">Pending learning jobs</span><span class="dashboard-stat-value">@dashboard.LearningJobCount</span></div>
         </div>
-    </section>
-
-    <section class="dashboard-analytics-panel" aria-labelledby="account-usage-title">
-        <div class="dashboard-section-head dashboard-section-head-tight">
-            <div><span class="dashboard-section-kicker">Client CRM authority</span><h2 class="dashboard-section-title" id="account-usage-title">Active subscription translation accounts</h2></div>
         </div>
-        <p class="dashboard-section-copy">Only active Client CRM records with a current paid subscription are searchable here. Historic access, usage, and removed accounts are not an account directory. Permission, entitlement, and consumption remain separate server authorities.</p>
-        <div class="dashboard-hero-stats" aria-label="Current account translation usage">
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider operations</span><span class="dashboard-stat-value">@dashboard.ProviderOperationCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider-billable characters</span><span class="dashboard-stat-value">@dashboard.ProviderBillableCharacters.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Same-language avoided</span><span class="dashboard-stat-value">@dashboard.SameLanguageCharactersAvoided.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Memory avoided</span><span class="dashboard-stat-value">@dashboard.TranslationMemoryCharactersAvoided.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Context avoided</span><span class="dashboard-stat-value">@dashboard.ContextualCharactersAvoided.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Quota denied</span><span class="dashboard-stat-value">@dashboard.QuotaDeniedRequestCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Provider failures</span><span class="dashboard-stat-value">@dashboard.ProviderFailureCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Group target reuse</span><span class="dashboard-stat-value">@dashboard.GroupUniqueTargetReuseCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">High consumption accounts</span><span class="dashboard-stat-value">@accountScale.HighConsumptionAccountCount</span></div>
-        </div>
+    </details>
 
-        <form method="get" asp-action="Index" class="dashboard-search-panel" role="search" aria-label="Search active paying Client CRM accounts">
-            @if (Model.SelectedLanguage is { } selectedLanguage)
-            {
-                <input type="hidden" name="language" value="@selectedLanguage.LanguageCode" />
-            }
-            @if (Model.SelectedPair is { } selectedPair)
-            {
-                <input type="hidden" name="pair" value="@selectedPair.PairKey" />
-            }
-            <div class="dashboard-form-grid">
-                <label class="dashboard-form-field dashboard-form-field--wide"><span>Find a Client CRM account</span><input type="search" name="account" value="@Model.AccountSearchQuery" maxlength="120" autocomplete="off" placeholder="Name, email, or LEGEND client ID" /></label>
-            </div>
-            <div class="search-actions">
-                <button type="submit" class="dashboard-command-action btn-carrier-settings">Search clients</button>
-                @if (!string.IsNullOrWhiteSpace(Model.AccountSearchQuery))
-                {
-                    <a asp-action="Index" asp-route-language="@(Model.SelectedLanguage?.LanguageCode)" asp-route-pair="@(Model.SelectedPair?.PairKey)" class="dashboard-command-action btn-carrier-settings">Clear search</a>
-                }
-            </div>
-        </form>
-
-        @if (accountUsage.Count == 0)
-        {
-            <p class="dashboard-section-copy">No active, current-paying Client CRM account matched this search.</p>
-        }
-        else
-        {
-            <p class="dashboard-section-copy">Showing @accountUsage.Count preview@(accountUsage.Count == 1 ? string.Empty : "s")@(Model.HasAdditionalAccountResults ? ". Refine the search to locate another active subscriber." : ".")</p>
-            <div class="dashboard-data-surface">
-                <table class="table dashboard-data-table">
-                    <thead><tr><th>Client</th><th>Translation state</th><th>Current period</th><th>Founder parameters</th></tr></thead>
-                    <tbody>
-                    @foreach (var account in accountUsage)
-                    {
-                        var entitlement = account.Entitlement;
-                        var presetSource = entitlement.EntitlementSource.StartsWith("Preset:", StringComparison.OrdinalIgnoreCase)
-                            ? entitlement.EntitlementSource["Preset:".Length..]
-                            : string.Empty;
-                        <tr>
-                            <td>@account.DisplayName<br /><small>Client CRM · @account.Account.UserId</small></td>
-                            <td>@account.AccessState<br /><small>Language: @(account.PreferredLanguage ?? "Not set")</small></td>
-                            <td>@(entitlement.IsUnlimited ? "Unlimited" : $"{entitlement.ConsumedCharacters:N0} / {entitlement.CharacterAllowance:N0}")<br /><small>@(entitlement.IsUnlimited ? "Fully metered" : $"{entitlement.RemainingCharacters?.ToString("N0") ?? "0"} remaining") · resets @entitlement.NextResetUtc.ToString("yyyy-MM-dd")</small></td>
-                            <td>
-                                <details>
-                                    <summary>Set access and allowance</summary>
-                                    <form method="post" asp-action="UpdateEntitlement" class="dashboard-inline-command-form">
-                                        @Html.AntiForgeryToken()
-                                        <input type="hidden" name="TargetUserId" value="@account.Account.UserId" />
-                                        <input type="hidden" name="TargetParticipantType" value="@account.Account.ParticipantType" />
-                                        <input type="hidden" name="ReturnAccountSearch" value="@Model.AccountSearchQuery" />
-                                        <label><span class="visually-hidden">Access</span><select name="AccessGranted"><option value="true" selected="@(account.AccessState == "Granted")">Grant</option><option value="false" selected="@(account.AccessState != "Granted")">Revoke</option></select></label>
-                                        <label><span class="visually-hidden">Allowance mode</span><select name="EntitlementMode"><option value="Custom" selected="@(!entitlement.IsUnlimited && string.IsNullOrWhiteSpace(presetSource))">Custom</option><option value="Unlimited" selected="@entitlement.IsUnlimited">Unlimited</option><option value="Preset" selected="@(!string.IsNullOrWhiteSpace(presetSource))">Configured preset</option></select></label>
-                                        <label><span class="visually-hidden">Preset key</span><select name="PresetKey"><option value="">Select preset</option>@foreach (var preset in Model.EntitlementPresets) { <option value="@preset.Key" selected="@(string.Equals(presetSource, preset.Key, StringComparison.OrdinalIgnoreCase))">@preset.DisplayName (@preset.CharacterAllowance.ToString("N0"))</option> }</select></label>
-                                        <label><span class="visually-hidden">Custom monthly character allowance</span><input type="number" name="CustomCharacterAllowance" min="0" value="@entitlement.CharacterAllowance" /></label>
-                                        <button type="submit" class="dashboard-command-action btn-carrier-settings">Save parameters</button>
-                                    </form>
-                                </details>
-                            </td>
-                        </tr>
-                    }
-                    </tbody>
-                </table>
-            </div>
-        }
-    </section>
-
-    <section class="category-container" aria-labelledby="active-languages-title">
-        <div class="category-head"><div><span class="dashboard-section-kicker">Registry health</span><h2 class="dashboard-section-title" id="active-languages-title">Active languages</h2></div></div>
-        <div class="dashboard-data-surface">
-            <table class="table dashboard-data-table">
-                <thead><tr><th>Language</th><th>Dataset</th><th>Entries</th><th>Pairs</th><th>Approved / pending candidates</th><th>Provider dependency</th><th>Last provider / Founder expansion</th><th>Health</th></tr></thead>
-                <tbody>
-                @foreach (var language in dashboard.Languages)
-                {
-                    <tr>
-                        <td><a asp-action="Index" asp-route-language="@language.LanguageCode" aria-haspopup="dialog">@language.DisplayName (@language.LanguageCode)</a></td>
-                        <td>@language.StoragePartition</td><td>@language.CanonicalEntryCount</td><td>@language.DirectionalPairs.Count</td><td>@language.ApprovedCandidateCount / @language.PendingCandidateCount</td><td>@language.AzureDependencyRate.ToString("P0")</td><td>@(language.LastProviderAcquisitionUtc?.ToString("u") ?? "None")<br /><small>Founder: @(language.LastFounderTrainingUtc?.ToString("u") ?? "None")</small></td><td>@language.HealthState · @language.QualityState</td>
-                    </tr>
-                }
-                </tbody>
-            </table>
-        </div>
-    </section>
-
-    <section class="category-container" aria-labelledby="active-pairs-title">
-        <div class="category-head"><div><span class="dashboard-section-kicker">Directional health</span><h2 class="dashboard-section-title" id="active-pairs-title">Active directional pairs</h2></div></div>
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="active-pairs-title">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Directional health</span><span class="dashboard-section-title" id="active-pairs-title">Active directional pairs</span></span><span class="legend-connect-disclosure-status">@dashboard.Pairs.Count pairs</span></summary>
+        <div class="legend-connect-disclosure-body">
         <div class="dashboard-data-surface">
             <table class="table dashboard-data-table">
                 <thead><tr><th>Pair</th><th>Demand</th><th>Memory / context served</th><th>Provider fallback required</th><th>Internal coverage</th><th>Quality confidence</th><th>Approved backlog</th><th>30-day additions</th><th>Health</th></tr></thead>
@@ -240,12 +146,14 @@
                 </tbody>
             </table>
         </div>
-    </section>
+        </div>
+    </details>
 
     @if (Model.SelectedPair is { } selectedPair)
     {
-        <section class="dashboard-analytics-panel" aria-labelledby="pair-health-title">
-            <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Pair health</span><h2 class="dashboard-section-title" id="pair-health-title">@selectedPair.PairKey</h2></div></div>
+        <details class="dashboard-analytics-panel legend-connect-disclosure" open aria-labelledby="pair-health-title">
+            <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Pair health</span><span class="dashboard-section-title" id="pair-health-title">@selectedPair.PairKey</span></span><span class="legend-connect-disclosure-status">Selected</span></summary>
+            <div class="legend-connect-disclosure-body">
             <p class="dashboard-section-copy">@selectedPair.HealthState · @selectedPair.QualityState · @selectedPair.FailureCount failure@(selectedPair.FailureCount == 1 ? string.Empty : "s")</p>
             @if (selectedPair.RecentAlignments.Count > 0)
             {
@@ -256,29 +164,15 @@
                 }
                 </tbody></table></div>
             }
-        </section>
-    }
-
-    <section class="dashboard-analytics-panel" aria-labelledby="manual-training-title">
-        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Approved knowledge</span><h2 class="dashboard-section-title" id="manual-training-title">Founder manual training</h2></div></div>
-        <form method="post" asp-action="SubmitKnowledge" class="dashboard-search-panel">
-            @Html.AntiForgeryToken()
-            <div class="dashboard-form-grid">
-                <label class="dashboard-form-field"><span>Source language</span><select name="SourceLanguageCode" required><option value="">Select language</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
-                <label class="dashboard-form-field"><span>Target language (optional for monolingual knowledge)</span><select name="TargetLanguageCode"><option value="">Monolingual entry</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
-                <label class="dashboard-form-field"><span>Context / category</span><input name="ContextCategory" maxlength="120" placeholder="Vocabulary, phrase, idiom, sentence pattern" /></label>
-                <label class="dashboard-form-field"><span>Usage</span><input name="UsageRegister" maxlength="80" placeholder="Formal, informal, regional" /></label>
-                <label class="dashboard-form-field dashboard-form-field--wide"><span>Source text</span><textarea name="SourceText" required maxlength="10000"></textarea></label>
-                <label class="dashboard-form-field dashboard-form-field--wide"><span>Target text</span><textarea name="TargetText" maxlength="10000"></textarea></label>
             </div>
-            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save approved knowledge</button></div>
-        </form>
-    </section>
+        </details>
+    }
 
     @if (Model.SelectedPair is { } correctionPair && correctionPair.RecentAlignments.Count > 0)
     {
-        <section class="dashboard-analytics-panel" aria-labelledby="correction-title">
-            <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Audit-preserving correction</span><h2 class="dashboard-section-title" id="correction-title">Supersede a pair alignment</h2></div></div>
+        <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="correction-title">
+            <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Audit-preserving correction</span><span class="dashboard-section-title" id="correction-title">Supersede a pair alignment</span></span><span class="legend-connect-disclosure-status">Correction</span></summary>
+            <div class="legend-connect-disclosure-body">
             <form method="post" asp-action="CorrectKnowledge" class="dashboard-search-panel">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="SourceLanguageCode" value="@correctionPair.SourceLanguageCode" />
@@ -291,11 +185,13 @@
                 </div>
                 <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save correction and supersede</button></div>
             </form>
-        </section>
+            </div>
+        </details>
     }
 
-    <section class="dashboard-analytics-panel" aria-labelledby="runtime-audit-title">
-        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Founder audit</span><h2 class="dashboard-section-title" id="runtime-audit-title">Recent operational changes</h2></div></div>
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="runtime-audit-title">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Founder audit</span><span class="dashboard-section-title" id="runtime-audit-title">Recent operational changes</span></span><span class="legend-connect-disclosure-status">@Model.RuntimeAudit.Count entries</span></summary>
+        <div class="legend-connect-disclosure-body">
         @if (Model.RuntimeAudit.Count == 0)
         {
             <p class="dashboard-section-copy">No Founder runtime-policy or priority changes have been recorded.</p>
@@ -309,10 +205,12 @@
             }
             </tbody></table></div>
         }
-    </section>
+        </div>
+    </details>
 
-    <section class="dashboard-analytics-panel" aria-labelledby="operational-events-title">
-        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Bounded diagnostics</span><h2 class="dashboard-section-title" id="operational-events-title">Recent backend events</h2></div></div>
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="operational-events-title">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Bounded diagnostics</span><span class="dashboard-section-title" id="operational-events-title">Recent backend events</span></span><span class="legend-connect-disclosure-status">@dashboard.RecentOperationalEvents.Count events</span></summary>
+        <div class="legend-connect-disclosure-body">
         @if (dashboard.RecentOperationalEvents.Count == 0)
         {
             <p>No recorded Legend Connect operational events.</p>
@@ -326,7 +224,8 @@
             }
             </tbody></table></div>
         }
-    </section>
+        </div>
+    </details>
 </main>
 
 @if (Model.SelectedLanguageKnowledge is { } languageKnowledge)
@@ -350,10 +249,10 @@
                 </div>
                 <div class="modal-body">
                     <div class="dashboard-hero-stats dashboard-detail-modal-metrics" aria-label="Language dataset totals">
-                        <div class="dashboard-stat-card"><span class="dashboard-stat-label">Canonical entries</span><span class="dashboard-stat-value">@health.CanonicalEntryCount</span></div>
-                        <div class="dashboard-stat-card"><span class="dashboard-stat-label">Active alignments</span><span class="dashboard-stat-value">@health.TranslationMemoryRelationshipCount</span></div>
-                        <div class="dashboard-stat-card"><span class="dashboard-stat-label">Context links</span><span class="dashboard-stat-value">@health.ContextRelationshipCount</span></div>
-                        <div class="dashboard-stat-card"><span class="dashboard-stat-label">Learning events</span><span class="dashboard-stat-value">@languageKnowledge.LearningActivityCount</span></div>
+                        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(health.CanonicalEntryCount)"><span class="dashboard-stat-label">Canonical entries</span><span class="dashboard-stat-value">@health.CanonicalEntryCount</span></div>
+                        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(health.TranslationMemoryRelationshipCount)"><span class="dashboard-stat-label">Active alignments</span><span class="dashboard-stat-value">@health.TranslationMemoryRelationshipCount</span></div>
+                        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(health.ContextRelationshipCount)"><span class="dashboard-stat-label">Context links</span><span class="dashboard-stat-value">@health.ContextRelationshipCount</span></div>
+                        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(languageKnowledge.LearningActivityCount)"><span class="dashboard-stat-label">Learning events</span><span class="dashboard-stat-value">@languageKnowledge.LearningActivityCount</span></div>
                     </div>
                     <p class="dashboard-section-copy">This is a live server projection. Approved entries, active alignments, and context links expose the actual retained learning data. Learning-event rows intentionally show only metadata so private message bodies never enter Founder operations.</p>
 

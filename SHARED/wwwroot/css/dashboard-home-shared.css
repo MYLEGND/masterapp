@@ -440,6 +440,173 @@
     color: var(--dash-text);
 }
 
+/* Legend Connect is a Founder operating surface. These page-scoped rules keep
+   its management hierarchy and disclosures inside the established dashboard
+   design system rather than introducing a parallel page theme. */
+.legend-connect-page .legend-connect-client-management,
+.legend-connect-page .legend-connect-manual-training,
+.legend-connect-page .legend-connect-active-languages {
+    display: grid;
+    gap: 0.78rem;
+}
+
+.legend-connect-page .legend-connect-active-languages {
+    padding: 1.22rem 1.3rem 1.28rem;
+}
+
+.legend-connect-page .legend-connect-client-management > .dashboard-section-copy,
+.legend-connect-page .legend-connect-manual-training > .dashboard-section-head,
+.legend-connect-page .legend-connect-client-management > .dashboard-section-head {
+    margin: 0;
+}
+
+.legend-connect-page .legend-connect-metrics--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.legend-connect-page .legend-connect-metrics--four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.legend-connect-page .legend-connect-metrics--five {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.legend-connect-page .legend-connect-metrics--seven {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+/* Semantic Founder telemetry tones. The values remain server-authoritative;
+   these classes only make healthy, neutral, active, pending, and blocked
+   states scannable in the established Legend dashboard language. */
+.legend-connect-page {
+    --legend-connect-metric-neutral: #aebfd8;
+    --legend-connect-metric-info: #8cc7ff;
+    --legend-connect-metric-success: #65e0a4;
+    --legend-connect-metric-warning: #ffd071;
+    --legend-connect-metric-danger: #ff969d;
+}
+
+.legend-connect-page .legend-connect-metric--neutral { color: var(--legend-connect-metric-neutral); }
+.legend-connect-page .legend-connect-metric--info { color: var(--legend-connect-metric-info); }
+.legend-connect-page .legend-connect-metric--success { color: var(--legend-connect-metric-success); }
+.legend-connect-page .legend-connect-metric--warning { color: var(--legend-connect-metric-warning); }
+.legend-connect-page .legend-connect-metric--danger { color: var(--legend-connect-metric-danger); }
+
+.legend-connect-page .dashboard-stat-card.legend-connect-metric--neutral { border-color: rgba(174, 191, 216, 0.28); }
+.legend-connect-page .dashboard-stat-card.legend-connect-metric--info { border-color: rgba(140, 199, 255, 0.42); background: linear-gradient(145deg, rgba(20, 66, 118, 0.9), rgba(8, 26, 57, 0.98)); }
+.legend-connect-page .dashboard-stat-card.legend-connect-metric--success { border-color: rgba(101, 224, 164, 0.42); background: linear-gradient(145deg, rgba(14, 78, 68, 0.92), rgba(7, 37, 47, 0.98)); }
+.legend-connect-page .dashboard-stat-card.legend-connect-metric--warning { border-color: rgba(255, 208, 113, 0.48); background: linear-gradient(145deg, rgba(89, 59, 16, 0.93), rgba(46, 31, 16, 0.98)); }
+.legend-connect-page .dashboard-stat-card.legend-connect-metric--danger { border-color: rgba(255, 150, 157, 0.5); background: linear-gradient(145deg, rgba(104, 33, 50, 0.93), rgba(54, 20, 35, 0.98)); }
+
+.legend-connect-page .dashboard-stat-card.legend-connect-metric--neutral .dashboard-stat-value { color: var(--legend-connect-metric-neutral); }
+.legend-connect-page .dashboard-stat-card.legend-connect-metric--info .dashboard-stat-value { color: var(--legend-connect-metric-info); }
+.legend-connect-page .dashboard-stat-card.legend-connect-metric--success .dashboard-stat-value { color: var(--legend-connect-metric-success); }
+.legend-connect-page .dashboard-stat-card.legend-connect-metric--warning .dashboard-stat-value { color: var(--legend-connect-metric-warning); }
+.legend-connect-page .dashboard-stat-card.legend-connect-metric--danger .dashboard-stat-value { color: var(--legend-connect-metric-danger); }
+
+.legend-connect-page .dashboard-data-table .legend-connect-metric--neutral,
+.legend-connect-page .dashboard-data-table .legend-connect-metric--info,
+.legend-connect-page .dashboard-data-table .legend-connect-metric--success,
+.legend-connect-page .dashboard-data-table .legend-connect-metric--warning,
+.legend-connect-page .dashboard-data-table .legend-connect-metric--danger {
+    font-weight: 850;
+}
+
+.legend-connect-page .legend-connect-metric-separator { color: var(--dash-text-soft); }
+
+.legend-connect-page .legend-connect-disclosure {
+    padding: 0;
+}
+
+.legend-connect-disclosure-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 78px;
+    padding: 1rem 1.3rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.legend-connect-disclosure-summary::-webkit-details-marker {
+    display: none;
+}
+
+.legend-connect-disclosure-summary > span:first-child {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.legend-connect-disclosure-summary .dashboard-section-title {
+    display: block;
+    margin: 0;
+}
+
+.legend-connect-disclosure-summary::after {
+    content: "+";
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    border: 1px solid rgba(212, 170, 71, 0.38);
+    border-radius: 50%;
+    color: #f0d991;
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.legend-connect-disclosure[open] .legend-connect-disclosure-summary {
+    border-bottom: 1px solid rgba(150, 182, 255, 0.18);
+}
+
+.legend-connect-disclosure[open] .legend-connect-disclosure-summary::after {
+    content: "−";
+}
+
+.legend-connect-disclosure-status {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0.22rem 0.58rem;
+    border: 1px solid rgba(150, 182, 255, 0.24);
+    border-radius: 999px;
+    color: var(--dash-text-soft);
+    font-size: 0.7rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.legend-connect-disclosure-body {
+    display: grid;
+    gap: 0.78rem;
+    padding: 1rem 1.3rem 1.28rem;
+}
+
+.legend-connect-disclosure-body > .dashboard-section-copy {
+    margin: 0;
+}
+
+.legend-connect-account-parameters > summary {
+    width: fit-content;
+    cursor: pointer;
+    color: #f0d991;
+    font-size: 0.73rem;
+    font-weight: 850;
+}
+
+.legend-connect-account-parameters > .dashboard-inline-command-form {
+    margin-top: 0.58rem;
+}
+
+.legend-connect-account-parameters > .dashboard-inline-command-form button {
+    grid-column: 1 / -1;
+}
+
 .dashboard-inline-command-form select:focus,
 .dashboard-inline-command-form input:focus {
     border-color: rgba(244, 220, 147, 0.82);
@@ -2635,6 +2802,11 @@ textarea.client-create-notes {
     .dashboard-command-center-middle {
         grid-template-columns: 1fr;
     }
+
+    .legend-connect-page .legend-connect-metrics--five,
+    .legend-connect-page .legend-connect-metrics--seven {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 920px) {
@@ -2661,6 +2833,22 @@ textarea.client-create-notes {
 
     .dashboard-page-shell .category-head {
         flex-wrap: wrap;
+    }
+
+    .legend-connect-page .legend-connect-metrics--three,
+    .legend-connect-page .legend-connect-metrics--four,
+    .legend-connect-page .legend-connect-metrics--five,
+    .legend-connect-page .legend-connect-metrics--seven {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .legend-connect-disclosure-summary {
+        min-height: 70px;
+        padding: 0.9rem 1rem;
+    }
+
+    .legend-connect-disclosure-body {
+        padding: 0.9rem 1rem 1rem;
     }
 }
 
@@ -2776,6 +2964,28 @@ textarea.client-create-notes {
     .dashboard-page-shell .dashboard-tool {
         min-height: 122px;
         height: 122px;
+    }
+
+    .legend-connect-page .legend-connect-metrics--three,
+    .legend-connect-page .legend-connect-metrics--four,
+    .legend-connect-page .legend-connect-metrics--five,
+    .legend-connect-page .legend-connect-metrics--seven {
+        grid-template-columns: 1fr;
+    }
+
+    .legend-connect-disclosure-summary {
+        align-items: flex-start;
+        min-height: 0;
+        padding: 0.84rem 0.9rem;
+    }
+
+    .legend-connect-disclosure-status {
+        display: none;
+    }
+
+    .legend-connect-disclosure-body,
+    .legend-connect-page .legend-connect-active-languages {
+        padding: 0.84rem 0.9rem 0.96rem;
     }
 }
 

@@ -1,0 +1,131 @@
+@using AgentPortal.Models
+@model AgentPortal.Models.FounderLegendConnectDashboardVm
+@{
+    var dashboard = Model.Dashboard;
+    var accountUsage = Model.AccountUsage;
+    var accountScale = Model.AccountScale;
+}
+
+<section class="dashboard-analytics-panel legend-connect-client-management" aria-labelledby="account-usage-title">
+    <div class="dashboard-section-head dashboard-section-head-tight">
+        <div><span class="dashboard-section-kicker">Client CRM authority</span><h2 class="dashboard-section-title" id="account-usage-title">Active subscription translation accounts</h2></div>
+    </div>
+    <p class="dashboard-section-copy">Only active Client CRM records with a current paid subscription are searchable here. Historic access, usage, and removed accounts are not an account directory. Permission, entitlement, and consumption remain separate server authorities.</p>
+    <form method="get" asp-action="Index" class="dashboard-search-panel" role="search" aria-label="Search active paying Client CRM accounts">
+        @if (Model.SelectedLanguage is { } selectedLanguage)
+        {
+            <input type="hidden" name="language" value="@selectedLanguage.LanguageCode" />
+        }
+        @if (Model.SelectedPair is { } selectedPair)
+        {
+            <input type="hidden" name="pair" value="@selectedPair.PairKey" />
+        }
+        <div class="dashboard-form-grid">
+            <label class="dashboard-form-field dashboard-form-field--wide"><span>Find a Client CRM account</span><input type="search" name="account" value="@Model.AccountSearchQuery" maxlength="120" autocomplete="off" placeholder="Name, email, or LEGEND client ID" /></label>
+        </div>
+        <div class="search-actions">
+            <button type="submit" class="dashboard-command-action btn-carrier-settings">Search clients</button>
+            @if (!string.IsNullOrWhiteSpace(Model.AccountSearchQuery))
+            {
+                <a asp-action="Index" asp-route-language="@(Model.SelectedLanguage?.LanguageCode)" asp-route-pair="@(Model.SelectedPair?.PairKey)" class="dashboard-command-action btn-carrier-settings">Clear search</a>
+            }
+        </div>
+    </form>
+
+    @if (accountUsage.Count == 0)
+    {
+        <p class="dashboard-section-copy">No active, current-paying Client CRM account matched this search.</p>
+    }
+    else
+    {
+        <p class="dashboard-section-copy">Showing @accountUsage.Count preview@(accountUsage.Count == 1 ? string.Empty : "s")@(Model.HasAdditionalAccountResults ? ". Refine the search to locate another active subscriber." : ".")</p>
+        <div class="dashboard-data-surface">
+            <table class="table dashboard-data-table">
+                <thead><tr><th>Client</th><th>Translation state</th><th>Current period</th><th>Founder parameters</th></tr></thead>
+                <tbody>
+                @foreach (var account in accountUsage)
+                {
+                    var entitlement = account.Entitlement;
+                    var presetSource = entitlement.EntitlementSource.StartsWith("Preset:", StringComparison.OrdinalIgnoreCase)
+                        ? entitlement.EntitlementSource["Preset:".Length..]
+                        : string.Empty;
+                    <tr>
+                        <td>@account.DisplayName<br /><small>Client CRM · @account.Account.UserId</small></td>
+                        <td>@account.AccessState<br /><small>Language: @(account.PreferredLanguage ?? "Not set")</small></td>
+                        <td>@(entitlement.IsUnlimited ? "Unlimited" : $"{entitlement.ConsumedCharacters:N0} / {entitlement.CharacterAllowance:N0}")<br /><small>@(entitlement.IsUnlimited ? "Fully metered" : $"{entitlement.RemainingCharacters?.ToString("N0") ?? "0"} remaining") · resets @entitlement.NextResetUtc.ToString("yyyy-MM-dd")</small></td>
+                        <td>
+                            <details class="legend-connect-account-parameters">
+                                <summary>Set access and allowance</summary>
+                                <form method="post" asp-action="UpdateEntitlement" class="dashboard-inline-command-form">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="TargetUserId" value="@account.Account.UserId" />
+                                    <input type="hidden" name="TargetParticipantType" value="@account.Account.ParticipantType" />
+                                    <input type="hidden" name="ReturnAccountSearch" value="@Model.AccountSearchQuery" />
+                                    <label><span class="visually-hidden">Access</span><select name="AccessGranted"><option value="true" selected="@(account.AccessState == "Granted")">Grant</option><option value="false" selected="@(account.AccessState != "Granted")">Revoke</option></select></label>
+                                    <label><span class="visually-hidden">Allowance mode</span><select name="EntitlementMode"><option value="Custom" selected="@(!entitlement.IsUnlimited && string.IsNullOrWhiteSpace(presetSource))">Custom</option><option value="Unlimited" selected="@entitlement.IsUnlimited">Unlimited</option><option value="Preset" selected="@(!string.IsNullOrWhiteSpace(presetSource))">Configured preset</option></select></label>
+                                    <label><span class="visually-hidden">Preset key</span><select name="PresetKey"><option value="">Select preset</option>@foreach (var preset in Model.EntitlementPresets) { <option value="@preset.Key" selected="@(string.Equals(presetSource, preset.Key, StringComparison.OrdinalIgnoreCase))">@preset.DisplayName (@preset.CharacterAllowance.ToString("N0"))</option> }</select></label>
+                                    <label><span class="visually-hidden">Custom monthly character allowance</span><input type="number" name="CustomCharacterAllowance" min="0" value="@entitlement.CharacterAllowance" /></label>
+                                    <button type="submit" class="dashboard-command-action btn-carrier-settings">Save parameters</button>
+                                </form>
+                            </details>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--three" aria-label="Current account translation usage">
+        <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ProviderOperationCount)"><span class="dashboard-stat-label">Provider operations</span><span class="dashboard-stat-value">@dashboard.ProviderOperationCount.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ProviderBillableCharacters)"><span class="dashboard-stat-label">Provider-billable characters</span><span class="dashboard-stat-value">@dashboard.ProviderBillableCharacters.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.SameLanguageCharactersAvoided)"><span class="dashboard-stat-label">Same-language avoided</span><span class="dashboard-stat-value">@dashboard.SameLanguageCharactersAvoided.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryCharactersAvoided)"><span class="dashboard-stat-label">Memory avoided</span><span class="dashboard-stat-value">@dashboard.TranslationMemoryCharactersAvoided.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.ContextualCharactersAvoided)"><span class="dashboard-stat-label">Context avoided</span><span class="dashboard-stat-value">@dashboard.ContextualCharactersAvoided.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(dashboard.QuotaDeniedRequestCount)"><span class="dashboard-stat-label">Quota denied</span><span class="dashboard-stat-value">@dashboard.QuotaDeniedRequestCount.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(dashboard.ProviderFailureCount)"><span class="dashboard-stat-label">Provider failures</span><span class="dashboard-stat-value">@dashboard.ProviderFailureCount.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.GroupUniqueTargetReuseCount)"><span class="dashboard-stat-label">Group target reuse</span><span class="dashboard-stat-value">@dashboard.GroupUniqueTargetReuseCount.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(accountScale.HighConsumptionAccountCount)"><span class="dashboard-stat-label">High consumption accounts</span><span class="dashboard-stat-value">@accountScale.HighConsumptionAccountCount</span></div>
+    </div>
+</section>
+
+<section class="dashboard-analytics-panel legend-connect-manual-training" aria-labelledby="manual-training-title">
+    <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Approved knowledge</span><h2 class="dashboard-section-title" id="manual-training-title">Founder manual training</h2></div></div>
+    <form method="post" asp-action="SubmitKnowledge" class="dashboard-search-panel">
+        @Html.AntiForgeryToken()
+        <div class="dashboard-form-grid">
+            <label class="dashboard-form-field"><span>Source language</span><select name="SourceLanguageCode" required><option value="">Select language</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
+            <label class="dashboard-form-field"><span>Target language (optional for monolingual knowledge)</span><select name="TargetLanguageCode"><option value="">Monolingual entry</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
+            <label class="dashboard-form-field"><span>Context / category</span><input name="ContextCategory" maxlength="120" placeholder="Vocabulary, phrase, idiom, sentence pattern" /></label>
+            <label class="dashboard-form-field"><span>Usage</span><input name="UsageRegister" maxlength="80" placeholder="Formal, informal, regional" /></label>
+            <label class="dashboard-form-field dashboard-form-field--wide"><span>Source text</span><textarea name="SourceText" required maxlength="10000"></textarea></label>
+            <label class="dashboard-form-field dashboard-form-field--wide"><span>Target text</span><textarea name="TargetText" maxlength="10000"></textarea></label>
+        </div>
+        <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save approved knowledge</button></div>
+    </form>
+</section>
+
+<section class="category-container legend-connect-active-languages" aria-labelledby="active-languages-title">
+    <div class="category-head"><div><span class="dashboard-section-kicker">Registry health</span><h2 class="dashboard-section-title" id="active-languages-title">Active languages</h2></div></div>
+    <div class="dashboard-data-surface">
+        <table class="table dashboard-data-table">
+            <thead><tr><th>Language</th><th>Dataset</th><th>Entries</th><th>Pairs</th><th>Approved / pending candidates</th><th>Provider dependency</th><th>Last provider / Founder expansion</th><th>Health</th></tr></thead>
+            <tbody>
+            @foreach (var language in dashboard.Languages)
+            {
+                var providerDependencyTone = LegendConnectMetricTone.Dependency(language.AzureDependencyRate, language.DemandCount);
+                <tr>
+                    <td><a asp-action="Index" asp-route-language="@language.LanguageCode" aria-haspopup="dialog">@language.DisplayName (@language.LanguageCode)</a></td>
+                    <td><span class="@LegendConnectMetricTone.Info">@language.StoragePartition</span></td>
+                    <td><span class="@LegendConnectMetricTone.BeneficialActivity(language.CanonicalEntryCount)">@language.CanonicalEntryCount</span></td>
+                    <td><span class="@LegendConnectMetricTone.BeneficialActivity(language.DirectionalPairs.Count)">@language.DirectionalPairs.Count</span></td>
+                    <td><span class="@LegendConnectMetricTone.BeneficialActivity(language.ApprovedCandidateCount)">@language.ApprovedCandidateCount</span> <span class="legend-connect-metric-separator">/</span> <span class="@LegendConnectMetricTone.PendingWork(language.PendingCandidateCount)">@language.PendingCandidateCount</span></td>
+                    <td><span class="@providerDependencyTone">@language.AzureDependencyRate.ToString("P0")</span></td>
+                    <td><span class="@LegendConnectMetricTone.Expansion(language.LastProviderAcquisitionUtc)">@(language.LastProviderAcquisitionUtc?.ToString("u") ?? "None")</span><br /><small>Founder: <span class="@LegendConnectMetricTone.Expansion(language.LastFounderTrainingUtc)">@(language.LastFounderTrainingUtc?.ToString("u") ?? "None")</span></small></td>
+                    <td><span class="@LegendConnectMetricTone.Health(language.HealthState)">@language.HealthState</span><span class="legend-connect-metric-separator"> · </span><span class="@LegendConnectMetricTone.Quality(language.QualityState)">@language.QualityState</span></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
