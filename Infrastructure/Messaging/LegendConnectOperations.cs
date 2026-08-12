@@ -52,6 +52,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // environment without treating the baseline list as a runtime authority.
         await _registry.ListEnabledTranslationLanguagesAsync(cancellationToken);
         var state = await LoadStateAsync(cancellationToken);
+        var activeLearningEvents = ActiveLearningEvents(state).ToList();
+        var activeCandidates = ActiveCandidates(state).ToList();
         var languages = state.Languages
             .Where(item => item.IsEnabled)
             .OrderBy(item => item.CanonicalName, StringComparer.OrdinalIgnoreCase)
@@ -94,10 +96,14 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .Take(50)
             .Select(ToSnapshot)
             .ToList();
-        var lastLearning = state.LearningEvents
+        var lastLearning = activeLearningEvents
             .Where(item => item.ProcessingState == "Processed")
             .Select(item => item.ProcessedUtc)
-            .Concat(state.Alignments.Select(item => (DateTime?)item.UpdatedUtc))
+            .Concat(state.Alignments
+                .Where(item => item.SupersededUtc is null &&
+                    state.TextUnits.Any(unit => unit.Id == item.SourceTextUnitId && unit.IsTrainingEligible) &&
+                    state.TextUnits.Any(unit => unit.Id == item.TargetTextUnitId && unit.IsTrainingEligible))
+                .Select(item => (DateTime?)item.UpdatedUtc))
             .Where(item => item != null)
             .Max();
         var duplicateCount = state.OperationalEvents.LongCount(item => item.Category == "DuplicatePrevention" && item.Status == "Prevented") +
@@ -123,9 +129,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             configuredCapacity,
             liveReserve,
             remainingSafe,
-            state.LearningEvents.LongCount(item => item.EligibilityState == "Eligible" && item.ProcessingState is "Pending" or "Processing"),
-            state.LearningEvents.LongCount(item => !string.IsNullOrWhiteSpace(item.FailureCode)) +
-                state.Candidates.LongCount(item => !string.IsNullOrWhiteSpace(item.FailureCode)),
+            activeLearningEvents.LongCount(item => item.EligibilityState == "Eligible" && item.ProcessingState is "Pending" or "Processing"),
+            activeLearningEvents.LongCount(item => !string.IsNullOrWhiteSpace(item.FailureCode)) +
+                activeCandidates.LongCount(item => !string.IsNullOrWhiteSpace(item.FailureCode)),
             duplicateCount,
             lastLearning,
             recentEvents,
@@ -277,7 +283,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .Select(item => BuildPairHealth(item, state))
             .ToList();
 
-        var learningEvents = state.LearningEvents
+        var learningEvents = ActiveLearningEvents(state)
             .Where(item =>
                 string.Equals(item.SourceLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(item.TargetLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase));
@@ -301,22 +307,40 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 item.PromotionOutcome))
             .ToList();
 
-        var structuralPatterns = await (
-            from pattern in _db.Set<LegendLanguageStructuralPattern>().AsNoTracking()
-            join family in _db.Set<LegendCurriculumFamily>().AsNoTracking()
-                on pattern.CurriculumFamilyId equals family.Id
-            where pattern.LanguageCode == language.LanguageCode && pattern.SupersededUtc == null
-            orderby pattern.UpdatedUtc descending
-            select new LegendConnectStructuralPatternSnapshot(
-                family.FamilyKey,
-                pattern.LanguageCode,
-                pattern.VariationDimension,
-                pattern.MaturityState,
-                pattern.SupportCount,
-                pattern.ContradictionCount,
-                pattern.IsProductionEligible,
-                pattern.UpdatedUtc)
-        ).Take(LanguageKnowledgeDetailRecordLimit).ToListAsync(cancellationToken);
+        var activeCurriculumExampleIds = displayableTextById.Count == 0
+            ? Array.Empty<Guid>()
+            : await _db.Set<LegendCurriculumExample>().AsNoTracking()
+                .Where(item => item.SupersededUtc == null && displayableTextById.Keys.Contains(item.TextUnitId))
+                .Select(item => item.Id)
+                .ToArrayAsync(cancellationToken);
+        var activeStructuralPatternIds = activeCurriculumExampleIds.Length == 0
+            ? Array.Empty<Guid>()
+            : await _db.Set<LegendLanguageStructuralEvidence>().AsNoTracking()
+                .Where(item => item.SupersededUtc == null &&
+                    activeCurriculumExampleIds.Contains(item.BaselineCurriculumExampleId) &&
+                    activeCurriculumExampleIds.Contains(item.ComparedCurriculumExampleId))
+                .Select(item => item.StructuralPatternId)
+                .Distinct()
+                .ToArrayAsync(cancellationToken);
+        var structuralPatterns = activeStructuralPatternIds.Length == 0
+            ? new List<LegendConnectStructuralPatternSnapshot>()
+            : await (
+                from pattern in _db.Set<LegendLanguageStructuralPattern>().AsNoTracking()
+                join family in _db.Set<LegendCurriculumFamily>().AsNoTracking()
+                    on pattern.CurriculumFamilyId equals family.Id
+                where activeStructuralPatternIds.Contains(pattern.Id) &&
+                    pattern.LanguageCode == language.LanguageCode && pattern.SupersededUtc == null
+                orderby pattern.UpdatedUtc descending
+                select new LegendConnectStructuralPatternSnapshot(
+                    family.FamilyKey,
+                    pattern.LanguageCode,
+                    pattern.VariationDimension,
+                    pattern.MaturityState,
+                    pattern.SupportCount,
+                    pattern.ContradictionCount,
+                    pattern.IsProductionEligible,
+                    pattern.UpdatedUtc)
+            ).Take(LanguageKnowledgeDetailRecordLimit).ToListAsync(cancellationToken);
 
         return new LegendConnectLanguageKnowledgeSnapshot(
             BuildLanguageHealth(language, state),
@@ -538,6 +562,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         LegendLanguageDefinition language,
         LegendConnectOperationalState state)
     {
+        var activeLearningEvents = ActiveLearningEvents(state).ToList();
+        var activeCandidates = ActiveCandidates(state).ToList();
         var approvedTextUnitIds = state.TextUnits
             .Where(item => item.IsTrainingEligible)
             .Select(item => item.Id)
@@ -559,7 +585,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             approvedTextUnitIds.Contains(item.SourceTextUnitId) &&
             approvedTextUnitIds.Contains(item.TargetTextUnitId) &&
             (unitIds.Contains(item.SourceTextUnitId) || unitIds.Contains(item.TargetTextUnitId)));
-        var lastLearning = state.LearningEvents
+        var lastLearning = activeLearningEvents
             .Where(item => item.SourceLanguageCode == language.LanguageCode || item.TargetLanguageCode == language.LanguageCode)
             .Where(item => item.ProcessingState == "Processed")
             .Select(item => item.ProcessedUtc)
@@ -578,13 +604,13 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var coverage = pairs.Count == 0 ? 0 : (int)Math.Round(pairs.Average(item => item.CorpusCoverage));
         var demand = state.Demand.Where(item => pairKeys.Contains(item.PairKey)).Sum(item => item.TranslationRequestCount);
         var azureFallbacks = state.Demand.Where(item => pairKeys.Contains(item.PairKey)).Sum(item => item.AzureFallbackCount);
-        var approvedCandidates = state.Candidates.LongCount(item => item.IsApproved &&
+        var approvedCandidates = activeCandidates.LongCount(item => item.IsApproved &&
             (string.Equals(item.SourceLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(item.TargetLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase)));
-        var pendingCandidates = state.Candidates.LongCount(item => item.IsApproved && item.ProcessingState is "Pending" or "Processing" &&
+        var pendingCandidates = activeCandidates.LongCount(item => item.IsApproved && item.ProcessingState is "Pending" or "Processing" &&
             (string.Equals(item.SourceLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(item.TargetLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase)));
-        var lastProviderAcquisition = state.Candidates
+        var lastProviderAcquisition = activeCandidates
             .Where(item => item.ProcessingState == "Queued" &&
                 (string.Equals(item.SourceLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(item.TargetLanguageCode, language.LanguageCode, StringComparison.OrdinalIgnoreCase)))
@@ -625,6 +651,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         LegendLanguagePair pair,
         LegendConnectOperationalState state)
     {
+        var activeCandidates = ActiveCandidates(state).ToList();
         var demand = state.Demand.SingleOrDefault(item => item.PairKey == pair.PairKey);
         var errors = ErrorsFor(state, null, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { pair.PairKey });
         var textById = state.TextUnits
@@ -634,7 +661,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .Where(item => item.PairKey == pair.PairKey && item.SupersededUtc == null)
             .Where(item => textById.ContainsKey(item.SourceTextUnitId) && textById.ContainsKey(item.TargetTextUnitId))
             .ToList();
-        var lastLearning = state.LearningEvents
+        var lastLearning = ActiveLearningEvents(state)
             .Where(item => item.PairKey == pair.PairKey && item.ProcessingState == "Processed")
             .Select(item => item.ProcessedUtc)
             .Concat(alignments.Select(item => (DateTime?)item.UpdatedUtc))
@@ -645,10 +672,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var memoryHits = demand?.TranslationMemoryHitCount ?? 0;
         var contextualInternal = demand?.ContextualInternalServeCount ?? 0;
         var internalServed = memoryHits + contextualInternal;
-        var approvedBacklog = state.Candidates.LongCount(item => item.IsApproved &&
+        var approvedBacklog = activeCandidates.LongCount(item => item.IsApproved &&
             item.ProcessingState is "Pending" or "Processing" &&
             string.Equals(LegendLanguageIdentity.PairKey(item.SourceLanguageCode, item.TargetLanguageCode), pair.PairKey, StringComparison.OrdinalIgnoreCase));
-        var lastProviderAcquisition = state.Candidates
+        var lastProviderAcquisition = activeCandidates
             .Where(item => item.ProcessingState == "Queued" &&
                 string.Equals(LegendLanguageIdentity.PairKey(item.SourceLanguageCode, item.TargetLanguageCode), pair.PairKey, StringComparison.OrdinalIgnoreCase))
             .Select(item => (DateTime?)item.ProcessedUtc)
@@ -710,7 +737,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .Select(ToSnapshot)
             .ToList();
 
-        var inferred = state.LearningEvents
+        var inferred = ActiveLearningEvents(state)
             .Where(item => !string.IsNullOrWhiteSpace(item.FailureCode))
             .Where(item =>
                 (!string.IsNullOrWhiteSpace(languageCode) &&
@@ -725,6 +752,49 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         events.AddRange(inferred);
         return events;
     }
+
+    private static IEnumerable<LegendTranslationLearningEvent> ActiveLearningEvents(
+        LegendConnectOperationalState state)
+    {
+        var activeTextIdentities = state.TextUnits
+            .Where(item => item.IsTrainingEligible)
+            .Select(item => TextIdentity(item.LanguageCode, item.NormalizedHash))
+            .ToHashSet(StringComparer.Ordinal);
+        return state.LearningEvents.Where(item =>
+        {
+            if (string.Equals(item.ProcessingState, "Superseded", StringComparison.Ordinal))
+                return false;
+
+            // Privacy-governance metadata deliberately has no reusable text
+            // asset. Keep the aggregate-only audit entry visible without
+            // making it an active linguistic authority.
+            if (!string.Equals(item.EligibilityState, "Eligible", StringComparison.Ordinal))
+                return true;
+
+            if (!activeTextIdentities.Contains(TextIdentity(item.SourceLanguageCode, item.SourceTextHash)))
+                return false;
+
+            return item.ProcessingState is "Pending" or "Processing" ||
+                activeTextIdentities.Contains(TextIdentity(item.TargetLanguageCode, item.TargetTextHash));
+        });
+    }
+
+    private static IEnumerable<LegendCorpusCandidate> ActiveCandidates(
+        LegendConnectOperationalState state)
+    {
+        var activeSources = state.TextUnits
+            .Where(item => item.IsTrainingEligible)
+            .ToDictionary(
+                item => TextIdentity(item.LanguageCode, item.NormalizedHash),
+                item => item.Text,
+                StringComparer.Ordinal);
+        return state.Candidates.Where(candidate =>
+            activeSources.TryGetValue(TextIdentity(candidate.SourceLanguageCode, candidate.SourceTextHash), out var sourceText) &&
+            string.Equals(sourceText, LegendLanguageIdentity.NormalizeText(candidate.SourceText), StringComparison.Ordinal));
+    }
+
+    private static string TextIdentity(string languageCode, string normalizedHash) =>
+        $"{languageCode.Trim().ToUpperInvariant()}:{normalizedHash.Trim().ToUpperInvariant()}";
 
     private async Task<LegendConnectOperationalState> LoadStateAsync(CancellationToken cancellationToken) => new(
         await _db.Set<LegendLanguageDefinition>().AsNoTracking().ToListAsync(cancellationToken),

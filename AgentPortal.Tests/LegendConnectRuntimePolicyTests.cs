@@ -201,6 +201,122 @@ public sealed class LegendConnectRuntimePolicyTests
     }
 
     [Fact]
+    public async Task FocusedFounderIngestion_EntersTheSamePlannerBeforeTheBoundedWindow_AndPreservesAtomicWork()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var policy = Policy(db, registry, configuration);
+        await policy.UpdateAsync("founder", new LegendConnectRuntimePolicyMutation(
+            10_000, 100, 9_900, true, "Shadow", 0.98m));
+        await policy.RecordWorkerHeartbeatAsync("Learning");
+        await policy.RecordWorkerHeartbeatAsync("Acquisition");
+
+        // This is the production failure shape: a large older backlog for
+        // other targets preceded the new focused English batch. The focus
+        // predicate must be part of the canonical query before Take(100).
+        for (var index = 0; index < 100; index++)
+        {
+            var text = $"Older non-focused English source {index}.";
+            db.AddRange(
+                CanonicalSource("en", text),
+                Candidate($"older-non-focused-{index}", "en", "ar", text));
+        }
+        await db.SaveChangesAsync();
+
+        await policy.ConfigureAutonomousLanguageFocusAsync(
+            "founder",
+            new LegendConnectAutonomousLanguageFocusMutation(true, ["ht"]));
+
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var ingestion = new LegendConnectFounderTrainingIngestionAuthority(db, registry, corpus, curriculum);
+        var submitted = await ingestion.SubmitAsync("founder", new LegendConnectKnowledgeSubmission(
+            "en", "teacher\nstudent\nI read the book.", null, null, "Training", null, null, "FounderApproved"));
+
+        Assert.True(submitted.Succeeded, submitted.Message);
+        Assert.Equal(3, submitted.AtomicUnitCount);
+        var focused = await policy.GetEffectiveAsync();
+        var planner = new LegendConnectAutonomousGapPlanner(db, registry);
+        var firstSelected = await planner.SelectApprovedGapAsync(focused);
+        Assert.NotNull(firstSelected);
+        var firstCandidate = await db.LegendCorpusCandidates.SingleAsync(item => item.Id == firstSelected);
+        Assert.Equal("ht", firstCandidate.TargetLanguageCode);
+
+        Assert.Equal("ACTIVE", (await policy.ActivateAsync("founder")).State);
+        var provider = new RecordingProvider();
+        var worker = new LegendConnectAutonomousLearningService(
+            db, registry, provider,
+            new TranslationCapacityAuthority(db, configuration, NullLogger<TranslationCapacityAuthority>.Instance, policy),
+            corpus, planner, configuration, runtimePolicy: policy, curriculum: curriculum);
+        for (var index = 0; index < 3; index++)
+            await worker.ProcessOneAsync();
+
+        var sourceTexts = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "teacher", "student", "I read the book."
+        };
+        var completed = await db.LegendCorpusCandidates
+            .Where(item => sourceTexts.Contains(item.SourceText) && item.TargetLanguageCode == "ht")
+            .ToListAsync();
+        Assert.Equal(3, completed.Count);
+        Assert.All(completed, item => Assert.Equal("Queued", item.ProcessingState));
+        Assert.Equal(3, provider.TranslateCalls);
+        Assert.Equal(3, provider.SourceTexts.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(provider.TargetLanguages, target => Assert.Equal("ht", target));
+        Assert.DoesNotContain(await db.LegendTranslationAlignments.ToListAsync(), alignment =>
+        {
+            var target = db.LegendLanguageTextUnits.Single(unit => unit.Id == alignment.TargetTextUnitId);
+            return target.LanguageCode != "ht" &&
+                sourceTexts.Contains(db.LegendLanguageTextUnits.Single(unit => unit.Id == alignment.SourceTextUnitId).Text);
+        });
+    }
+
+    [Fact]
+    public async Task MultiFocus_UsesTheSameAtomicFounderBatchForEachSelectedRegisteredTarget()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var policy = Policy(db, registry, configuration);
+        await policy.UpdateAsync("founder", new LegendConnectRuntimePolicyMutation(
+            10_000, 100, 9_900, true, "Shadow", 0.98m));
+        await policy.RecordWorkerHeartbeatAsync("Learning");
+        await policy.RecordWorkerHeartbeatAsync("Acquisition");
+        await policy.ConfigureAutonomousLanguageFocusAsync(
+            "founder",
+            new LegendConnectAutonomousLanguageFocusMutation(true, ["ht", "es"]));
+
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var ingestion = new LegendConnectFounderTrainingIngestionAuthority(db, registry, corpus, curriculum);
+        var submitted = await ingestion.SubmitAsync("founder", new LegendConnectKnowledgeSubmission(
+            "en", "teacher\nstudent\nI read the book.", null, null, "Training", null, null, "FounderApproved"));
+
+        Assert.True(submitted.Succeeded, submitted.Message);
+        Assert.Equal("ACTIVE", (await policy.ActivateAsync("founder")).State);
+        var provider = new RecordingProvider();
+        var worker = new LegendConnectAutonomousLearningService(
+            db, registry, provider,
+            new TranslationCapacityAuthority(db, configuration, NullLogger<TranslationCapacityAuthority>.Instance, policy),
+            corpus, new LegendConnectAutonomousGapPlanner(db, registry), configuration,
+            runtimePolicy: policy, curriculum: curriculum);
+        for (var index = 0; index < 6; index++)
+            await worker.ProcessOneAsync();
+
+        var sourceTexts = new[] { "teacher", "student", "I read the book." };
+        Assert.Equal(6, provider.TranslateCalls);
+        Assert.Equal(3, provider.TargetLanguages.Count(target => target == "ht"));
+        Assert.Equal(3, provider.TargetLanguages.Count(target => target == "es"));
+        Assert.Equal(6, await db.LegendCorpusCandidates.CountAsync(item =>
+            sourceTexts.Contains(item.SourceText) &&
+            (item.TargetLanguageCode == "ht" || item.TargetLanguageCode == "es") &&
+            item.ProcessingState == "Queued"));
+        Assert.Equal(6, await db.LegendTranslationAlignments.CountAsync(item =>
+            item.SupersededUtc == null && (item.PairKey == "en:ht" || item.PairKey == "en:es")));
+    }
+
+    [Fact]
     public async Task RuntimePolicy_ReportsActualReadinessAndSelfRelianceExcludesShadowObservations()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -328,11 +444,18 @@ public sealed class LegendConnectRuntimePolicyTests
         public string ProviderName => "AzureTranslator";
         private int _translateCalls;
         public int TranslateCalls => _translateCalls;
+        public List<string> SourceTexts { get; } = [];
+        public List<string> TargetLanguages { get; } = [];
         public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default) =>
             Task.FromResult(new TranslationDetectionResult(true, "en"));
         public Task<TranslationProviderResult> TranslateAsync(string text, string targetLanguage, string? sourceLanguage = null, CancellationToken cancellationToken = default)
         {
             System.Threading.Interlocked.Increment(ref _translateCalls);
+            lock (SourceTexts)
+            {
+                SourceTexts.Add(text);
+                TargetLanguages.Add(targetLanguage);
+            }
             return Task.FromResult(new TranslationProviderResult(true, "Translated", sourceLanguage, ProviderName));
         }
     }

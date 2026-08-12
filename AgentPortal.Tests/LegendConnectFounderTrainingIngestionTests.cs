@@ -369,6 +369,42 @@ public sealed class LegendConnectFounderTrainingIngestionTests
     }
 
     [Fact]
+    public async Task TerminalCandidate_ReopensOnlyWhenItsPriorAlignmentNoLongerHasAnActiveTarget()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var registry = new LegendLanguageRegistry(db, Configuration());
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var pair = Assert.IsType<LegendLanguagePairSnapshot>(await registry.GetOrCreateEnabledPairAsync("en", "ht"));
+        var source = TextUnit("en", "A source whose prior target was retired.", "FounderApproved");
+        var retiredTarget = TextUnit("ht", "Yon sib ki pran retrèt.", "ProviderDerived");
+        retiredTarget.IsTrainingEligible = false;
+        var candidate = new LegendCorpusCandidate
+        {
+            Id = Guid.NewGuid(), IdempotencyKey = $"founder-seed:{source.Id:D}:{pair.PairKey}",
+            SourceLanguageCode = "en", TargetLanguageCode = "ht", SourceText = source.Text,
+            SourceTextHash = source.NormalizedHash, Category = "FounderApprovedSeed", Provenance = "FounderApproved",
+            IsApproved = true, ProcessingState = "Deduplicated", ProcessedUtc = DateTime.UtcNow,
+            FailureCode = "canonical_alignment_exists"
+        };
+        db.AddRange(source, retiredTarget, candidate, new LegendTranslationAlignment
+        {
+            Id = Guid.NewGuid(), PairKey = pair.PairKey, SourceTextUnitId = source.Id,
+            TargetTextUnitId = retiredTarget.Id, Provider = "AzureTranslator", QualityState = "Observation",
+            ObservationCount = 1
+        });
+        await db.SaveChangesAsync();
+
+        await corpus.EnsureFounderSeedCandidatesAsync(source, null, null);
+
+        var reopened = await db.LegendCorpusCandidates.SingleAsync(item => item.Id == candidate.Id);
+        Assert.True(reopened.IsApproved);
+        Assert.Equal("Pending", reopened.ProcessingState);
+        Assert.Null(reopened.ProcessedUtc);
+        Assert.Null(reopened.LeaseExpiresUtc);
+        Assert.Null(reopened.FailureCode);
+    }
+
+    [Fact]
     public async Task ExplicitEnglishVariations_AnchorLexemesAndAccumulateThenContradictStructuralEvidenceAcrossBatches()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -442,6 +478,78 @@ public sealed class LegendConnectFounderTrainingIngestionTests
             item.SupersededUtc == null));
     }
 
+    [Fact]
+    public async Task FutureRegisteredLanguage_UsesTheSharedAtomicPlannerProviderAndRetirementPath()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = FutureLanguageConfiguration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var languages = await registry.ListEnabledTranslationLanguagesAsync();
+        Assert.Contains(languages, item => item.Code == "x-test");
+        Assert.True(LegendLanguageIdentity.TryNormalize("x-test", out var normalizedFutureCode));
+        Assert.Equal("x-test", normalizedFutureCode);
+
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var ingestion = new LegendConnectFounderTrainingIngestionAuthority(db, registry, corpus, curriculum);
+        var submitted = await ingestion.SubmitAsync("founder", new LegendConnectKnowledgeSubmission(
+            "en", "teacher\nstudent\nI read the book.", null, null, "Training", null, null, "FounderApproved"));
+        Assert.True(submitted.Succeeded, submitted.Message);
+        Assert.Equal(3, submitted.AtomicUnitCount);
+
+        var focused = new LegendConnectRuntimePolicySnapshot(
+            false, 100_000, 0, 100_000, true, true, "Shadow", .98m, null, null, DateTime.UtcNow)
+        {
+            FocusedTargetLanguageCodes = ["x-test"]
+        };
+        var planner = new LegendConnectAutonomousGapPlanner(db, registry);
+        var selected = await planner.SelectApprovedGapAsync(focused);
+        Assert.NotNull(selected);
+        Assert.Equal("x-test", (await db.LegendCorpusCandidates.SingleAsync(item => item.Id == selected)).TargetLanguageCode);
+
+        var provider = new FutureLanguageProvider();
+        var worker = new LegendConnectAutonomousLearningService(
+            db, registry, provider,
+            new TranslationCapacityAuthority(db, configuration, NullLogger<TranslationCapacityAuthority>.Instance),
+            corpus, planner, configuration, curriculum: curriculum);
+        for (var index = 0; index < 3; index++)
+            await worker.ProcessOneAsync();
+
+        var sourceTexts = new[] { "teacher", "student", "I read the book." };
+        Assert.Equal(3, provider.TranslateCalls);
+        Assert.All(provider.TargetLanguages, item => Assert.Equal("x-test", item));
+        Assert.Equal(3, await db.LegendCorpusCandidates.CountAsync(item =>
+            sourceTexts.Contains(item.SourceText) && item.TargetLanguageCode == "x-test" && item.ProcessingState == "Queued"));
+        Assert.Equal(3, await db.LegendLanguageTextUnits.CountAsync(item =>
+            item.LanguageCode == "x-test" && item.IsTrainingEligible && item.Provenance == "ProviderDerived"));
+        Assert.Equal(3, await db.LegendTranslationAlignments.CountAsync(item =>
+            item.PairKey == "en:x-test" && item.SupersededUtc == null && !item.HumanVerified && item.QualityState == "Observation"));
+        Assert.Equal(3, await db.LegendLanguageContextRelationships.CountAsync(item =>
+            item.PairKey == "en:x-test" && item.SupersededUtc == null && item.Provenance == "ProviderDerived"));
+
+        var candidateCount = await db.LegendCorpusCandidates.CountAsync();
+        for (var index = 0; index < 3; index++)
+            await worker.ProcessOneAsync();
+        Assert.Equal(3, provider.TranslateCalls);
+        Assert.Equal(candidateCount, await db.LegendCorpusCandidates.CountAsync());
+
+        var legacy = await corpus.SubmitApprovedKnowledgeAsync(new LegendConnectKnowledgeSubmission(
+            "en", "First future-language source. Second future-language source.", null, null,
+            "Training", null, null, "FounderApproved"));
+        Assert.True(legacy.Succeeded, legacy.Message);
+        await worker.ProcessOneAsync();
+        var legacySource = await db.LegendLanguageTextUnits.SingleAsync(item => item.Id == legacy.SourceTextUnitId);
+        var legacyAlignment = await db.LegendTranslationAlignments.SingleAsync(item =>
+            item.SourceTextUnitId == legacySource.Id && item.PairKey == "en:x-test");
+        var legacyTargetId = legacyAlignment.TargetTextUnitId;
+
+        await ingestion.ReconcileLegacyAsync(25);
+
+        Assert.False((await db.LegendLanguageTextUnits.SingleAsync(item => item.Id == legacySource.Id)).IsTrainingEligible);
+        Assert.False((await db.LegendLanguageTextUnits.SingleAsync(item => item.Id == legacyTargetId)).IsTrainingEligible);
+        Assert.NotNull((await db.LegendTranslationAlignments.SingleAsync(item => item.Id == legacyAlignment.Id)).SupersededUtc);
+    }
+
     private static LegendConnectKnowledgeSubmission SourceSeed(string raw) => new(
         "en", raw, null, null, "Everyday conversation", null, null, "FounderApproved");
 
@@ -475,4 +583,40 @@ public sealed class LegendConnectFounderTrainingIngestionTests
             ["LegendConnect:Providers:AzureTranslator:MonthlyCapacityCharacters"] = "100000",
             ["LegendConnect:Providers:AzureTranslator:LiveReserveCharacters"] = "0"
         }).Build();
+
+    private static IConfiguration FutureLanguageConfiguration() => new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["LegendConnect:CorpusAcquisition:Enabled"] = "true",
+            ["LegendConnect:Providers:AzureTranslator:MonthlyCapacityCharacters"] = "100000",
+            ["LegendConnect:Providers:AzureTranslator:LiveReserveCharacters"] = "0",
+            ["LegendConnect:LanguageRegistry:Baseline:0:Code"] = "en",
+            ["LegendConnect:LanguageRegistry:Baseline:0:Name"] = "English",
+            ["LegendConnect:LanguageRegistry:Baseline:0:NativeName"] = "English",
+            ["LegendConnect:LanguageRegistry:Baseline:1:Code"] = "x-test",
+            ["LegendConnect:LanguageRegistry:Baseline:1:Name"] = "Future test language",
+            ["LegendConnect:LanguageRegistry:Baseline:1:NativeName"] = "Future test language"
+        }).Build();
+
+    private sealed class FutureLanguageProvider : ITranslationProvider
+    {
+        public string ProviderName => "AzureTranslator";
+        public int TranslateCalls { get; private set; }
+        public List<string> TargetLanguages { get; } = [];
+
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, System.Threading.CancellationToken cancellationToken = default) =>
+            Task.FromResult(new TranslationDetectionResult(true, "en"));
+
+        public Task<TranslationProviderResult> TranslateAsync(
+            string text,
+            string targetLanguage,
+            string? sourceLanguage = null,
+            System.Threading.CancellationToken cancellationToken = default)
+        {
+            TranslateCalls++;
+            TargetLanguages.Add(targetLanguage);
+            return Task.FromResult(new TranslationProviderResult(
+                true, $"{targetLanguage}::{text}", sourceLanguage, ProviderName));
+        }
+    }
 }

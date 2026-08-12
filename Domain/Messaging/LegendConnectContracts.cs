@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -390,23 +389,31 @@ public static class LegendLanguageIdentity
         if (string.IsNullOrWhiteSpace(candidate) || candidate.Length > 32)
             return false;
 
-        var culture = ResolveCulture(candidate);
-        if (culture is null || string.IsNullOrWhiteSpace(culture.Name))
+        var segments = candidate.Split('-', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0 || segments.Any(segment =>
+                segment.Length is < 1 or > 8 || !segment.All(char.IsLetterOrDigit)))
             return false;
 
-        var name = culture.Name.Replace('_', '-');
-        var segments = name.Split('-', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length == 0 || segments.Any(segment => !segment.All(char.IsLetterOrDigit)))
-            return false;
-
-        languageCode = string.Join('-', segments.Select((segment, index) => index switch
+        var isPrivateUse = string.Equals(segments[0], "x", StringComparison.OrdinalIgnoreCase);
+        if (isPrivateUse)
         {
-            0 => segment.ToLowerInvariant(),
-            _ when segment.Length == 4 && segment.All(char.IsLetter) =>
-                char.ToUpperInvariant(segment[0]) + segment[1..].ToLowerInvariant(),
-            _ when segment.Length is 2 or 3 && segment.All(char.IsLetterOrDigit) => segment.ToUpperInvariant(),
-            _ => segment
-        }));
+            if (segments.Length < 2)
+                return false;
+        }
+        else if (segments[0].Length is < 2 or > 8 || !segments[0].All(char.IsLetter))
+            return false;
+
+        languageCode = string.Join('-', segments.Select((segment, index) =>
+            isPrivateUse
+                ? segment.ToLowerInvariant()
+                : index switch
+                {
+                    0 => segment.ToLowerInvariant(),
+                    _ when segment.Length == 4 && segment.All(char.IsLetter) =>
+                        char.ToUpperInvariant(segment[0]) + segment[1..].ToLowerInvariant(),
+                    _ when segment.Length is 2 or 3 && segment.All(char.IsLetterOrDigit) => segment.ToUpperInvariant(),
+                    _ => segment
+                }));
         return true;
     }
 
@@ -453,18 +460,4 @@ public static class LegendLanguageIdentity
         string.Join('|', new[] { category, usageRegister, regionalVariant }
             .Select(value => NormalizeText(value ?? string.Empty).ToLowerInvariant()));
 
-    private static CultureInfo? ResolveCulture(string candidate)
-    {
-        try
-        {
-            return CultureInfo.GetCultureInfo(candidate);
-        }
-        catch (CultureNotFoundException)
-        {
-            return CultureInfo.GetCultures(CultureTypes.NeutralCultures | CultureTypes.SpecificCultures)
-                .FirstOrDefault(culture =>
-                    string.Equals(culture.EnglishName, candidate, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(culture.NativeName, candidate, StringComparison.OrdinalIgnoreCase));
-        }
-    }
 }

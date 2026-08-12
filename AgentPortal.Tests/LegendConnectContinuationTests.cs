@@ -173,6 +173,111 @@ public sealed class LegendConnectContinuationTests
     }
 
     [Fact]
+    public async Task ActiveFounderProjection_ExcludesRetiredLineageWhilePreservingItsAuditAndHumanVerifiedKnowledge()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = Corpus(db, registry);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var human = await operations.SubmitFounderKnowledgeAsync("founder", new LegendConnectKnowledgeSubmission(
+            "en", "A current approved source.", "ht", "Yon sous apwouve aktyèl.",
+            "Greeting", null, null, "FounderApproved"));
+        Assert.True(human.Succeeded, human.Message);
+
+        var retiredSource = CanonicalSource("en", "A retired malformed source. Another malformed source.");
+        var retiredTarget = CanonicalSource("ht", "Yon sib ki pran retrèt.");
+        retiredSource.IsTrainingEligible = false;
+        retiredTarget.IsTrainingEligible = false;
+        var retiredAlignment = new LegendTranslationAlignment
+        {
+            Id = Guid.NewGuid(), PairKey = "en:ht", SourceTextUnitId = retiredSource.Id,
+            TargetTextUnitId = retiredTarget.Id, Provider = "AzureTranslator", QualityState = "Observation",
+            ObservationCount = 1, SupersededUtc = DateTime.UtcNow
+        };
+        var retiredContext = new LegendLanguageContextRelationship
+        {
+            Id = Guid.NewGuid(), PairKey = "en:ht", SourceTextUnitId = retiredSource.Id,
+            RelatedTextUnitId = retiredTarget.Id, RelationshipKind = "ContextualExample", ContextSignature = "retired",
+            SourcePatternSignature = "retired", Confidence = .5m, QualityState = "Observation",
+            Provenance = "ProviderDerived", ObservationCount = 1, SupersededUtc = DateTime.UtcNow
+        };
+        var retiredCandidate = Candidate("retired-projection", "en", "ht", retiredSource.Text);
+        retiredCandidate.IsApproved = false;
+        retiredCandidate.ProcessingState = "Superseded";
+        var retiredEvent = new LegendTranslationLearningEvent
+        {
+            Id = Guid.NewGuid(), IdempotencyKey = "retired-projection-event", SourceLanguageCode = "en",
+            TargetLanguageCode = "ht", PairKey = "en:ht", SourceTextHash = retiredSource.NormalizedHash,
+            TargetTextHash = retiredTarget.NormalizedHash, SourceText = retiredSource.Text, TargetText = retiredTarget.Text,
+            Provider = "AzureTranslator", Provenance = "ProviderDerived", EligibilityState = "Eligible",
+            ProcessingState = "Superseded", PromotionOutcome = "Superseded", CreatedUtc = DateTime.UtcNow
+        };
+        var family = new LegendCurriculumFamily { Id = Guid.NewGuid(), FamilyKey = "retired.projection", Provenance = "FounderApproved" };
+        var baseline = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(), CurriculumFamilyId = family.Id, TextUnitId = retiredSource.Id,
+            LanguageCode = "en", Provenance = "FounderApproved"
+        };
+        var compared = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(), CurriculumFamilyId = family.Id, TextUnitId = retiredSource.Id,
+            LanguageCode = "en", Provenance = "FounderApproved"
+        };
+        var pattern = new LegendLanguageStructuralPattern
+        {
+            Id = Guid.NewGuid(), CurriculumFamilyId = family.Id, LanguageCode = "en", VariationDimension = "person",
+            RealizationSignature = "retired>retired", SupportCount = 1, MaturityState = "Candidate",
+            Provenance = "FounderApproved"
+        };
+        var evidence = new LegendLanguageStructuralEvidence
+        {
+            Id = Guid.NewGuid(), StructuralPatternId = pattern.Id, CurriculumFamilyId = family.Id, LanguageCode = "en",
+            VariationDimension = "person", BaselineCurriculumExampleId = baseline.Id, ComparedCurriculumExampleId = compared.Id,
+            BaselineVariationValue = "first", ComparedVariationValue = "third", EvidenceSignature = "retired>retired",
+            BaselineComponentSignature = "retired", ComparedComponentSignature = "retired", Provenance = "FounderApproved"
+        };
+        db.AddRange(retiredSource, retiredTarget, retiredAlignment, retiredContext, retiredCandidate, retiredEvent,
+            family, baseline, compared, pattern, evidence);
+        await db.SaveChangesAsync();
+
+        await curriculum.ReconcileSupersededExamplesAsync([retiredSource.Id, retiredTarget.Id]);
+        var rowsBeforeRead = new
+        {
+            TextUnits = await db.LegendLanguageTextUnits.CountAsync(),
+            Alignments = await db.LegendTranslationAlignments.CountAsync(),
+            Context = await db.LegendLanguageContextRelationships.CountAsync(),
+            Evidence = await db.LegendLanguageStructuralEvidence.CountAsync()
+        };
+        var first = Assert.IsType<LegendConnectLanguageKnowledgeSnapshot>(await operations.GetLanguageKnowledgeAsync("en"));
+        _ = await operations.GetDashboardAsync();
+        var second = Assert.IsType<LegendConnectLanguageKnowledgeSnapshot>(await operations.GetLanguageKnowledgeAsync("en"));
+        var rowsAfterRead = new
+        {
+            TextUnits = await db.LegendLanguageTextUnits.CountAsync(),
+            Alignments = await db.LegendTranslationAlignments.CountAsync(),
+            Context = await db.LegendLanguageContextRelationships.CountAsync(),
+            Evidence = await db.LegendLanguageStructuralEvidence.CountAsync()
+        };
+
+        Assert.Contains(first.ActiveAlignments, item => item.Id == human.AlignmentId);
+        Assert.DoesNotContain(first.CanonicalEntries, item => item.Id == retiredSource.Id);
+        Assert.DoesNotContain(first.ActiveAlignments, item => item.Id == retiredAlignment.Id);
+        Assert.DoesNotContain(first.ContextRelationships, item => item.Id == retiredContext.Id);
+        Assert.DoesNotContain(first.RecentLearningActivity, item => item.Id == retiredEvent.Id);
+        Assert.DoesNotContain(first.StructuralPatterns ?? Array.Empty<LegendConnectStructuralPatternSnapshot>(),
+            item => item.FamilyKey == family.FamilyKey);
+        Assert.Equal(rowsBeforeRead, rowsAfterRead);
+        Assert.Equal(first.CanonicalEntries.Select(item => item.Id), second.CanonicalEntries.Select(item => item.Id));
+        Assert.NotNull((await db.LegendTranslationAlignments.SingleAsync(item => item.Id == retiredAlignment.Id)).SupersededUtc);
+        Assert.NotNull((await db.LegendLanguageContextRelationships.SingleAsync(item => item.Id == retiredContext.Id)).SupersededUtc);
+        Assert.NotNull((await db.LegendLanguageStructuralEvidence.SingleAsync(item => item.Id == evidence.Id)).SupersededUtc);
+        Assert.Equal("Superseded", (await db.LegendLanguageStructuralPatterns.SingleAsync(item => item.Id == pattern.Id)).MaturityState);
+        Assert.True((await db.LegendLanguageTextUnits.SingleAsync(item => item.Id == retiredSource.Id)).IsTrainingEligible == false);
+    }
+
+    [Fact]
     public async Task TrustedExactTranslationMemory_PrecedesAzureWithoutCreatingAnotherProvider()
     {
         await using var db = ControllerTestHelpers.BuildDb();

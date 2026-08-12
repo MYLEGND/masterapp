@@ -828,22 +828,23 @@ internal sealed class LegendConnectCorpusService
         var pairKeys = pairs.Select(item => item.PairKey).ToArray();
         var activeAlignments = pairKeys.Length == 0
             ? new HashSet<(string PairKey, Guid SourceId)>()
-            : (await _db.Set<LegendTranslationAlignment>()
-                .Where(item => pairKeys.Contains(item.PairKey) && textUnitIds.Contains(item.SourceTextUnitId) && item.SupersededUtc == null)
-                .Select(item => new { item.PairKey, item.SourceTextUnitId })
+            : (await (
+                from alignment in _db.Set<LegendTranslationAlignment>()
+                join target in _db.Set<LegendLanguageTextUnit>() on alignment.TargetTextUnitId equals target.Id
+                where pairKeys.Contains(alignment.PairKey) && textUnitIds.Contains(alignment.SourceTextUnitId) &&
+                    alignment.SupersededUtc == null && target.IsTrainingEligible
+                select new { alignment.PairKey, alignment.SourceTextUnitId })
                 .ToListAsync(cancellationToken))
                 .Select(item => (item.PairKey, item.SourceTextUnitId))
                 .ToHashSet();
-        var sourceHashes = textUnits.Keys.ToArray();
         var targetCodes = pairs.Select(item => item.TargetLanguageCode).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var existingCandidateKeys = targetCodes.Length == 0
-            ? new HashSet<string>(StringComparer.Ordinal)
+        var existingCandidates = targetCodes.Length == 0
+            ? new Dictionary<string, LegendCorpusCandidate>(StringComparer.Ordinal)
             : (await _db.Set<LegendCorpusCandidate>()
                 .Where(item => item.SourceLanguageCode == sourceLanguage &&
-                    targetCodes.Contains(item.TargetLanguageCode) && sourceHashes.Contains(item.SourceTextHash))
-                .Select(item => item.IdempotencyKey)
+                    targetCodes.Contains(item.TargetLanguageCode))
                 .ToListAsync(cancellationToken))
-                .ToHashSet(StringComparer.Ordinal);
+                .ToDictionary(item => item.IdempotencyKey, StringComparer.Ordinal);
         var queued = 0;
         foreach (var source in textUnits.Values)
         {
@@ -852,8 +853,12 @@ internal sealed class LegendConnectCorpusService
                 if (activeAlignments.Contains((pair.PairKey, source.Id)))
                     continue;
                 var idempotencyKey = $"founder-seed:{source.Id:D}:{pair.PairKey}";
-                if (!existingCandidateKeys.Add(idempotencyKey))
+                if (existingCandidates.TryGetValue(idempotencyKey, out var existingCandidate))
+                {
+                    if (RestoreCandidateForMissingCoverage(existingCandidate, source, pair))
+                        queued++;
                     continue;
+                }
                 _db.Set<LegendCorpusCandidate>().Add(new LegendCorpusCandidate
                 {
                     Id = Guid.NewGuid(),
@@ -944,9 +949,13 @@ internal sealed class LegendConnectCorpusService
                 continue;
 
             var idempotencyKey = $"founder-seed:{source.Id:D}:{pair.PairKey}";
-            var aligned = await _db.Set<LegendTranslationAlignment>().AnyAsync(item =>
-                item.PairKey == pair.PairKey && item.SourceTextUnitId == source.Id && item.SupersededUtc == null,
-                cancellationToken);
+            var aligned = await (
+                from alignment in _db.Set<LegendTranslationAlignment>()
+                join targetUnit in _db.Set<LegendLanguageTextUnit>() on alignment.TargetTextUnitId equals targetUnit.Id
+                where alignment.PairKey == pair.PairKey && alignment.SourceTextUnitId == source.Id &&
+                    alignment.SupersededUtc == null && targetUnit.IsTrainingEligible
+                select alignment.Id)
+                .AnyAsync(cancellationToken);
             if (aligned)
                 continue;
 
@@ -954,6 +963,8 @@ internal sealed class LegendConnectCorpusService
                 .SingleOrDefaultAsync(item => item.IdempotencyKey == idempotencyKey, cancellationToken);
             if (existingCandidate is not null)
             {
+                if (RestoreCandidateForMissingCoverage(existingCandidate, source, pair))
+                    pending = true;
                 // A single-entry Founder seed may have already created this
                 // canonical candidate. Tag the same candidate when it later
                 // becomes a curriculum example rather than duplicating an
@@ -991,6 +1002,29 @@ internal sealed class LegendConnectCorpusService
         if (!pending)
             return;
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool RestoreCandidateForMissingCoverage(
+        LegendCorpusCandidate candidate,
+        LegendLanguageTextUnit source,
+        LegendLanguagePairSnapshot pair)
+    {
+        // Pending, leased, and provider-queued candidates remain owned by the
+        // existing worker. Only terminal records that no longer have an active
+        // alignment may resume their same durable candidate identity.
+        if (candidate.ProcessingState is "Pending" or "Processing" or "Queued")
+            return false;
+
+        candidate.SourceLanguageCode = pair.SourceLanguageCode;
+        candidate.TargetLanguageCode = pair.TargetLanguageCode;
+        candidate.SourceText = source.Text;
+        candidate.SourceTextHash = source.NormalizedHash;
+        candidate.IsApproved = true;
+        candidate.ProcessingState = "Pending";
+        candidate.ProcessedUtc = null;
+        candidate.LeaseExpiresUtc = null;
+        candidate.FailureCode = null;
+        return true;
     }
 
     private async Task<LegendLanguageTextUnit> GetOrCreateTextUnitAsync(
@@ -1201,10 +1235,24 @@ internal sealed class LegendConnectAutonomousGapPlanner
         CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
-        var candidates = await _db.Set<LegendCorpusCandidate>()
+        var candidatesQuery = _db.Set<LegendCorpusCandidate>()
             .Where(item => item.IsApproved &&
                 (item.ProcessingState == "Pending" ||
-                 (item.ProcessingState == "Processing" && item.LeaseExpiresUtc != null && item.LeaseExpiresUtc < now)))
+                 (item.ProcessingState == "Processing" && item.LeaseExpiresUtc != null && item.LeaseExpiresUtc < now)));
+
+        // Scope before applying the bounded planner window. Applying this
+        // predicate after Take(100) lets an older non-focused backlog hide
+        // valid focused work indefinitely, even though both sets use the
+        // same canonical candidates and capacity authority.
+        if (runtimePolicy?.FocusedTargetLanguageCodes.Count > 0)
+        {
+            var focusedTargets = runtimePolicy.FocusedTargetLanguageCodes.ToArray();
+            candidatesQuery = candidatesQuery.Where(item =>
+                item.SourceLanguageCode == "en" &&
+                focusedTargets.Contains(item.TargetLanguageCode));
+        }
+
+        var candidates = await candidatesQuery
             .OrderByDescending(item => item.Priority)
             .ThenBy(item => item.CreatedUtc)
             .Take(100)
