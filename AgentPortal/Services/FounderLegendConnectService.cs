@@ -84,6 +84,14 @@ public sealed class FounderLegendConnectService
         };
     }
 
+    public async Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.GetProviderCapacityAsync(cancellationToken);
+    }
+
     public async Task<FounderLegendConnectOperationResult> UpdateRuntimePolicyAsync(
         ClaimsPrincipal user,
         FounderLegendConnectRuntimePolicyInput input,
@@ -94,14 +102,13 @@ public sealed class FounderLegendConnectService
             return new FounderLegendConnectOperationResult(false, "Legend Connect runtime policy authority is unavailable.");
         try
         {
-            await _runtimePolicy.UpdateAsync(founder, new LegendConnectRuntimePolicyMutation(
-                input.MonthlyProviderCapacityCharacters,
-                input.LiveTranslationReserveCharacters,
-                input.MaximumSafeCorpusConsumptionCharacters,
+            await _runtimePolicy.UpdateCompositionAsync(
+                founder,
                 input.LearningEnabled,
                 input.ContextualCompositionMode,
-                input.ContextualMinimumConfidence), cancellationToken);
-            return new FounderLegendConnectOperationResult(true, "Legend Connect runtime policy was saved across the deployment.");
+                input.ContextualMinimumConfidence,
+                cancellationToken);
+            return new FounderLegendConnectOperationResult(true, "Legend Connect composition policy was saved across the deployment. Azure capacity remains synchronized from the Translator resource.");
         }
         catch (ArgumentException exception)
         {

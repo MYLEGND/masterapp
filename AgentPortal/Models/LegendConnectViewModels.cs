@@ -79,9 +79,6 @@ public sealed record FounderLegendConnectEntitlementResult(
 
 public sealed class FounderLegendConnectRuntimePolicyInput
 {
-    public long MonthlyProviderCapacityCharacters { get; set; }
-    public long LiveTranslationReserveCharacters { get; set; }
-    public long MaximumSafeCorpusConsumptionCharacters { get; set; }
     public bool LearningEnabled { get; set; }
     public string ContextualCompositionMode { get; set; } = "Shadow";
     public decimal ContextualMinimumConfidence { get; set; } = 0.98m;

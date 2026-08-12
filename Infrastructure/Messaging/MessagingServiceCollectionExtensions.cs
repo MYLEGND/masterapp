@@ -24,6 +24,7 @@ public static class MessagingServiceCollectionExtensions
         services.AddScoped<IMessagingService, MessagingService>();
         services.AddScoped<IControlledResourceAccessService, ControlledResourceAccessService>();
         services.AddScoped<ILegendLanguageRegistry, LegendLanguageRegistry>();
+        services.AddSingleton<IAzureTranslatorSubscriptionCapacitySource, AzureTranslatorSubscriptionCapacitySource>();
         services.AddScoped<ITranslationCapacityAuthority, TranslationCapacityAuthority>();
         services.AddScoped<ILegendConnectRuntimePolicyAuthority, LegendConnectRuntimePolicyAuthority>();
         services.AddScoped<ITranslationEntitlementAuthority, TranslationEntitlementAuthority>();
@@ -45,6 +46,13 @@ public static class MessagingServiceCollectionExtensions
         services.AddHttpClient("AzureTranslator", client =>
         {
             // Provider failures must never hold up message delivery.
+            client.Timeout = TimeSpan.FromSeconds(6);
+        });
+        services.AddHttpClient("AzureResourceManager", client =>
+        {
+            // Capacity sync is operational metadata only. It must fail closed
+            // for Azure work without delaying an authoritative message write.
+            client.BaseAddress = new Uri("https://management.azure.com/");
             client.Timeout = TimeSpan.FromSeconds(6);
         });
         services.AddSingleton<ICommunityTextModerationService>(_ => new CommunityTextModerationService(configuration));

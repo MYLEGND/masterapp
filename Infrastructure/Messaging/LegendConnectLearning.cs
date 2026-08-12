@@ -1528,8 +1528,10 @@ internal sealed class LegendConnectAutonomousLearningService
             cancellationToken);
 
         var providerSucceeded = false;
+        var providerExecuted = false;
         try
         {
+            providerExecuted = true;
             var translation = await _provider.TranslateAsync(
                 candidate.SourceText,
                 pair.TargetLanguageCode,
@@ -1632,7 +1634,10 @@ internal sealed class LegendConnectAutonomousLearningService
         }
         finally
         {
-            await _capacity.CompleteAsync(reservation, providerSucceeded, cancellationToken);
+            // Preserve the reservation after an attempted Azure call even
+            // when its result is unavailable; Azure can have accepted the
+            // input before a timeout or transport failure reaches us.
+            await _capacity.CompleteAsync(reservation, providerExecuted, cancellationToken);
         }
     }
 

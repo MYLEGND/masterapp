@@ -22,19 +22,22 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
     private readonly ILegendLanguageRegistry _languages;
     private readonly IConfiguration _configuration;
     private readonly ILogger<LegendConnectRuntimePolicyAuthority> _logger;
+    private readonly IAzureTranslatorSubscriptionCapacitySource? _azureSubscriptionCapacity;
 
     public LegendConnectRuntimePolicyAuthority(
         MasterAppDbContext db,
         IControlledResourceAccessService access,
         ILegendLanguageRegistry languages,
         IConfiguration configuration,
-        ILogger<LegendConnectRuntimePolicyAuthority> logger)
+        ILogger<LegendConnectRuntimePolicyAuthority> logger,
+        IAzureTranslatorSubscriptionCapacitySource? azureSubscriptionCapacity = null)
     {
         _db = db;
         _access = access;
         _languages = languages;
         _configuration = configuration;
         _logger = logger;
+        _azureSubscriptionCapacity = azureSubscriptionCapacity;
     }
 
     public async Task<LegendConnectRuntimePolicySnapshot> GetEffectiveAsync(
@@ -51,16 +54,34 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         CancellationToken cancellationToken = default)
     {
         var policy = await GetEffectiveAsync(cancellationToken);
+        var azureCapacity = _azureSubscriptionCapacity is null
+            ? null
+            : await _azureSubscriptionCapacity.GetCurrentAsync(cancellationToken);
+        // When the Azure source is registered (as it is in production), a
+        // failed read must never revive historical runtime-policy numbers.
+        // Capacity is either Azure-synchronized or safely unavailable.
+        var providerCapacity = _azureSubscriptionCapacity is null
+            ? policy.MonthlyProviderCapacityCharacters
+            : azureCapacity?.HourlyCharacterLimit ?? 0;
+        var liveReserve = _azureSubscriptionCapacity is null
+            ? policy.LiveTranslationReserveCharacters
+            : azureCapacity?.HourlyLiveReserveCharacters ?? 0;
+        var safeCorpusCapacity = _azureSubscriptionCapacity is null
+            ? policy.MaximumSafeCorpusConsumptionCharacters
+            : azureCapacity?.MaximumSafeHourlyCorpusCharacters ?? 0;
         var checks = new List<LegendConnectReadinessCheck>();
         var databaseReady = await DatabaseReadyAsync(cancellationToken);
         checks.Add(Check("Database", databaseReady, databaseReady
             ? "The durable Legend Connect control-plane schema is reachable."
             : "The durable Legend Connect schema is unavailable."));
 
-        var providerReady = IsAzureProviderConfigured();
+        var providerReady = IsAzureProviderConfigured() &&
+                            (_azureSubscriptionCapacity is null || azureCapacity?.IsAvailable == true);
         checks.Add(Check("Azure Provider", providerReady, providerReady
-            ? "A server-configured Azure Translator endpoint and credential are available."
-            : "Azure Translator is not configured on this server."));
+            ? azureCapacity is null
+                ? "A server-configured Azure Translator endpoint and credential are available."
+                : $"Azure Translator tier {azureCapacity.Tier} is synchronized from the configured Azure resource."
+            : azureCapacity?.Detail ?? "Azure Translator is not configured on this server."));
 
         IReadOnlyList<LegendLanguageDefinitionSnapshot> languages;
         try
@@ -89,19 +110,25 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             ? "The existing acquisition worker reported within the safe health window."
             : "The acquisition worker has not reported within the safe health window."));
 
-        var capacityReady = policy.MonthlyProviderCapacityCharacters > 0 &&
-                            policy.MaximumSafeCorpusConsumptionCharacters > 0;
+        var capacityReady = providerCapacity > 0 && safeCorpusCapacity > 0;
         checks.Add(Check("Capacity Policy", capacityReady, capacityReady
-            ? "Monthly provider and corpus-consumption limits are configured."
-            : "Set a positive monthly provider capacity and safe corpus limit."));
+            ? azureCapacity is null
+                ? "Provider and corpus-consumption limits are configured."
+                : azureCapacity.MonthlyIncludedCharacterAllowance is { } monthlyAllowance
+                    ? $"Azure tier {azureCapacity.Tier} provides {monthlyAllowance:N0} included characters per month and {providerCapacity:N0} characters per rolling hour; corpus capacity is derived from both limits."
+                    : $"Azure tier {azureCapacity.Tier} provides {providerCapacity:N0} characters per rolling hour; this metered tier has no fixed monthly included-character allowance."
+            : azureCapacity is null
+                ? "Set a positive provider capacity and safe corpus limit."
+                : azureCapacity.Detail ?? "Azure Translator capacity cannot be synchronized."));
 
-        var reserveReady = policy.MonthlyProviderCapacityCharacters > 0 &&
-                           policy.LiveTranslationReserveCharacters >= 0 &&
-                           policy.LiveTranslationReserveCharacters < policy.MonthlyProviderCapacityCharacters &&
-                           policy.MaximumSafeCorpusConsumptionCharacters <=
-                           policy.MonthlyProviderCapacityCharacters - policy.LiveTranslationReserveCharacters;
+        var reserveReady = providerCapacity > 0 &&
+                           liveReserve >= 0 &&
+                           liveReserve < providerCapacity &&
+                           safeCorpusCapacity <= providerCapacity - liveReserve;
         checks.Add(Check("Live Reserve", reserveReady, reserveReady
-            ? "The protected live-translation reserve is valid."
+            ? azureCapacity is null
+                ? "The protected live-translation reserve is valid."
+                : $"A {AzureTranslatorSubscriptionCapacity.LiveReservePercent}% live reserve is derived from the current Azure tier."
             : "Live reserve must be below capacity and corpus consumption must remain outside it."));
 
         var candidates = await CandidateReadinessAsync(cancellationToken);
@@ -166,6 +193,33 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             await _db.SaveChangesAsync(cancellationToken);
             var after = ToSnapshot(policy, true);
             await WritePolicyAuditAsync(founder, "RuntimePolicyChanged", before, after, null, null, cancellationToken);
+            return after;
+        }, cancellationToken);
+    }
+
+    public async Task<LegendConnectRuntimePolicySnapshot> UpdateCompositionAsync(
+        string founderUserId,
+        bool learningEnabled,
+        string contextualCompositionMode,
+        decimal contextualMinimumConfidence,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await RequireFounderAsync(founderUserId, cancellationToken);
+        if (contextualMinimumConfidence is < 0.90m or > 1m)
+            throw new ArgumentException("Contextual confidence must remain between 0.90 and 1.00.", nameof(contextualMinimumConfidence));
+        var normalizedMode = NormalizeContextualMode(contextualCompositionMode);
+        return await PersistFounderMutationAsync(async () =>
+        {
+            var policy = await GetTrackedPolicyAsync(cancellationToken);
+            var before = ToSnapshot(policy, true);
+            policy.LearningEnabled = learningEnabled;
+            policy.ContextualCompositionMode = normalizedMode;
+            policy.ContextualMinimumConfidence = contextualMinimumConfidence;
+            policy.UpdatedByUserId = founder;
+            policy.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            var after = ToSnapshot(policy, true);
+            await WritePolicyAuditAsync(founder, "RuntimeCompositionPolicyChanged", before, after, null, null, cancellationToken);
             return after;
         }, cancellationToken);
     }

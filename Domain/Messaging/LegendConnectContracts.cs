@@ -331,6 +331,39 @@ public sealed record LegendConnectOperationalEventSnapshot(
     string? Summary,
     bool IsResolved);
 
+/// <summary>
+/// Server-owned capacity projection for the one Azure Translator resource.
+/// F0's free monthly allowance and the provider's rolling hourly velocity
+/// ceiling are distinct contracts. Consumption is derived from the one durable
+/// reservation ledger used before each Azure request.
+/// </summary>
+public sealed record LegendConnectProviderCapacitySnapshot(
+    string Provider,
+    bool IsSynchronized,
+    string Status,
+    string? ResourceName,
+    string? ResourceId,
+    string? Tier,
+    DateOnly BillingPeriodStart,
+    DateOnly BillingPeriodEnd,
+    long? MonthlyIncludedCharacterAllowance,
+    long MonthlyCharactersConsumed,
+    long MonthlyReservedCharacters,
+    long? MonthlyRemainingCharacters,
+    long? MonthlyLiveReserveCharacters,
+    long? MaximumSafeCorpusConsumptionCharacters,
+    int HourlyCapacityWindowMinutes,
+    DateTime HourlyWindowStartUtc,
+    DateTime HourlyWindowEndUtc,
+    long? HourlyCharacterLimit,
+    long HourlyCharactersConsumed,
+    long HourlyReservedCharacters,
+    long? HourlyRemainingCharacters,
+    long? HourlyLiveReserveCharacters,
+    long? SafeAcquisitionCharacters,
+    DateTime RefreshedUtc,
+    string? Detail);
+
 public sealed record LegendConnectDashboardSnapshot(
     IReadOnlyList<LegendConnectLanguageHealthSnapshot> Languages,
     IReadOnlyList<LegendConnectPairHealthSnapshot> Pairs,
@@ -374,7 +407,8 @@ public sealed record LegendConnectDashboardSnapshot(
     long FounderRawSubmissionCount = 0,
     long FounderAtomicLearningUnitCount = 0,
     long SupersededLegacyMultiUnitAssetCount = 0,
-    long ActiveDirectionalAtomicAlignmentCount = 0);
+    long ActiveDirectionalAtomicAlignmentCount = 0,
+    LegendConnectProviderCapacitySnapshot? ProviderCapacity = null);
 
 /// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation
@@ -384,6 +418,9 @@ public sealed record LegendConnectDashboardSnapshot(
 public interface ILegendConnectOperations
 {
     Task<LegendConnectDashboardSnapshot> GetDashboardAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectLanguageHealthSnapshot?> GetLanguageHealthAsync(

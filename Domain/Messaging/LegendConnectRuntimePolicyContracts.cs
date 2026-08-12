@@ -80,6 +80,13 @@ public interface ILegendConnectRuntimePolicyAuthority
         LegendConnectRuntimePolicyMutation mutation,
         CancellationToken cancellationToken = default);
 
+    Task<LegendConnectRuntimePolicySnapshot> UpdateCompositionAsync(
+        string founderUserId,
+        bool learningEnabled,
+        string contextualCompositionMode,
+        decimal contextualMinimumConfidence,
+        CancellationToken cancellationToken = default);
+
     Task<LegendConnectProductionReadinessSnapshot> ActivateAsync(
         string founderUserId,
         CancellationToken cancellationToken = default);

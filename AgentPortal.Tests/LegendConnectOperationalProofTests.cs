@@ -125,9 +125,6 @@ public sealed class LegendConnectOperationalProofTests
             await AssertFounderRedirectAsync(client, founderId, token!.RequestToken, cookie,
                 "/founder/legend-connect/runtime-policy", new Dictionary<string, string>
                 {
-                    ["MonthlyProviderCapacityCharacters"] = "1000",
-                    ["LiveTranslationReserveCharacters"] = "200",
-                    ["MaximumSafeCorpusConsumptionCharacters"] = "800",
                     ["LearningEnabled"] = "true",
                     ["ContextualCompositionMode"] = "Shadow",
                     ["ContextualMinimumConfidence"] = "0.98"
@@ -177,7 +174,11 @@ public sealed class LegendConnectOperationalProofTests
             await using var verificationScope = host.Services.CreateAsyncScope();
             var db = verificationScope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
             var runtime = await db.LegendConnectRuntimePolicies.AsNoTracking().SingleAsync();
-            Assert.Equal(1_000, runtime.MonthlyProviderCapacityCharacters);
+            // Capacity values are deliberately absent from the Founder form.
+            // This test host has no Azure capacity source, so the existing
+            // test-only bootstrap default remains inert legacy data rather
+            // than a user-editable authority.
+            Assert.Equal(10_000, runtime.MonthlyProviderCapacityCharacters);
             Assert.False(runtime.CorpusAcquisitionEnabled);
             Assert.Contains(await db.LegendConnectAutonomousLanguageFocuses.AsNoTracking().ToListAsync(), focus =>
                 focus.RuntimePolicyId == runtime.Id && focus.TargetLanguageCode == "ht");
@@ -191,7 +192,7 @@ public sealed class LegendConnectOperationalProofTests
                 grant.UserId == "active-paid-client" && grant.ResourceType == ControlledResourceTypes.LanguageTranslation && grant.IsActive);
 
             var audits = await db.LegendConnectKnowledgeAuditEntries.AsNoTracking().ToListAsync();
-            Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "RuntimePolicyChanged");
+            Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "RuntimeCompositionPolicyChanged");
             Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "FounderKnowledgeSubmitted");
             Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "FounderAutonomousLanguageFocusEnabled");
             Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "AutonomousAcquisitionActivated");

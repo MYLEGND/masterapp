@@ -53,6 +53,25 @@ public sealed class LegendConnectController : Controller
         }
     }
 
+    [HttpGet]
+    [Route("founder/legend-connect/capacity")]
+    public async Task<IActionResult> GetProviderCapacity(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _service.GetProviderCapacityAsync(User, cancellationToken));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect Azure capacity projection failed to load.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route("founder/legend-connect/knowledge")]

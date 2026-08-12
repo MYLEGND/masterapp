@@ -117,7 +117,7 @@ public sealed class LegendConnectFoundationTests
         var live = Assert.IsType<TranslationCapacityReservation>(
             await capacity.TryReserveAsync("AzureTranslator", 15, TranslationCapacityPurpose.Live));
         Assert.Null(await capacity.TryReserveAsync("AzureTranslator", 1, TranslationCapacityPurpose.Bootstrap));
-        await capacity.CompleteAsync(live, providerSucceeded: true);
+        await capacity.CompleteAsync(live, providerMayHaveConsumed: true);
 
         var ledger = await db.LegendTranslationProviderCapacities.SingleAsync();
         Assert.Equal(15, ledger.LiveCharactersConsumed);

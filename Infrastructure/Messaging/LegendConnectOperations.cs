@@ -24,6 +24,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private readonly LegendConnectCurriculumService _curriculum;
     private readonly LegendConnectFounderTrainingIngestionAuthority _founderTrainingIngestion;
     private readonly ILegendConnectTranslationIntelligence _intelligence;
+    private readonly ITranslationCapacityAuthority? _capacityAuthority;
 
     public LegendConnectOperations(
         MasterAppDbContext db,
@@ -34,7 +35,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         ILegendConnectRuntimePolicyAuthority? runtimePolicy = null,
         LegendConnectCurriculumService? curriculum = null,
         LegendConnectFounderTrainingIngestionAuthority? founderTrainingIngestion = null,
-        ILegendConnectTranslationIntelligence? intelligence = null)
+        ILegendConnectTranslationIntelligence? intelligence = null,
+        ITranslationCapacityAuthority? capacityAuthority = null)
     {
         _db = db;
         _registry = registry;
@@ -46,6 +48,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         _founderTrainingIngestion = founderTrainingIngestion ?? new LegendConnectFounderTrainingIngestionAuthority(
             _db, _registry, _corpus, _curriculum, _operationalEvents);
         _intelligence = intelligence ?? new LegendConnectTranslationIntelligence(_db, _configuration, _runtimePolicy);
+        _capacityAuthority = capacityAuthority;
     }
 
     public async Task<LegendConnectDashboardSnapshot> GetDashboardAsync(
@@ -69,30 +72,44 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .ToList();
 
         var currentPeriod = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+        var providerCapacity = _capacityAuthority is null
+            ? null
+            : await _capacityAuthority.GetSnapshotAsync("AzureTranslator", cancellationToken);
         var runtime = _runtimePolicy is null ? null : await _runtimePolicy.GetEffectiveAsync(cancellationToken);
         var capacity = state.Capacities
             .Where(item => item.Provider == "AzureTranslator" && item.BillingPeriodStart == currentPeriod)
             .OrderByDescending(item => item.UpdatedUtc)
             .FirstOrDefault();
-        var configuredCapacity = runtime?.MonthlyProviderCapacityCharacters ?? capacity?.ConfiguredCapacityCharacters ?? Math.Max(0,
-            _configuration.GetValue<long?>("LegendConnect:Providers:AzureTranslator:MonthlyCapacityCharacters") ?? 0);
-        var liveReserve = runtime?.LiveTranslationReserveCharacters ?? capacity?.ReservedLiveCapacityCharacters ?? Math.Max(0,
-            _configuration.GetValue<long?>("LegendConnect:Providers:AzureTranslator:LiveReserveCharacters") ?? 0);
-        var used = capacity is null
+        var configuredCapacity = providerCapacity is not null
+            ? providerCapacity.MonthlyIncludedCharacterAllowance ?? 0
+            : runtime?.MonthlyProviderCapacityCharacters ?? capacity?.ConfiguredCapacityCharacters ?? Math.Max(0,
+                _configuration.GetValue<long?>("LegendConnect:Providers:AzureTranslator:MonthlyCapacityCharacters") ?? 0);
+        var liveReserve = providerCapacity is not null
+            ? providerCapacity.MonthlyLiveReserveCharacters ?? 0
+            : runtime?.LiveTranslationReserveCharacters ?? capacity?.ReservedLiveCapacityCharacters ?? Math.Max(0,
+                _configuration.GetValue<long?>("LegendConnect:Providers:AzureTranslator:LiveReserveCharacters") ?? 0);
+        var used = providerCapacity is not null ? providerCapacity.MonthlyCharactersConsumed : (capacity is null
             ? 0
-            : capacity.LiveCharactersConsumed + capacity.BootstrapCharactersConsumed + capacity.TrainingCharactersConsumed;
-        var inFlight = capacity?.ReservedLiveCharacters ?? 0;
+            : capacity.LiveCharactersConsumed + capacity.BootstrapCharactersConsumed + capacity.TrainingCharactersConsumed);
+        var inFlight = providerCapacity is not null ? providerCapacity.MonthlyReservedCharacters : capacity?.ReservedLiveCharacters ?? 0;
+        // The synchronized projection owns the aggregate billing total. The
+        // existing period ledger remains the one place that distinguishes
+        // live traffic from corpus work for the operational breakdown.
         var consumedLive = capacity?.LiveCharactersConsumed ?? 0;
-        var consumedCorpus = capacity is null ? 0 : capacity.BootstrapCharactersConsumed + capacity.TrainingCharactersConsumed;
-        var corpusLimit = runtime?.MaximumSafeCorpusConsumptionCharacters ?? Math.Max(0, configuredCapacity - liveReserve);
-        long? remainingSafe = configuredCapacity > 0
+        var consumedCorpus = capacity is null
+            ? 0
+            : capacity.BootstrapCharactersConsumed + capacity.TrainingCharactersConsumed;
+        var corpusLimit = providerCapacity is not null
+            ? providerCapacity.MaximumSafeCorpusConsumptionCharacters ?? 0
+            : runtime?.MaximumSafeCorpusConsumptionCharacters ?? Math.Max(0, configuredCapacity - liveReserve);
+        long? remainingSafe = providerCapacity is not null ? providerCapacity.MonthlyRemainingCharacters : (configuredCapacity > 0
             ? Math.Max(0, configuredCapacity - used - inFlight - liveReserve)
-            : null;
-        long? safeAcquisition = configuredCapacity > 0
+            : null);
+        long? safeAcquisition = providerCapacity is not null ? providerCapacity.SafeAcquisitionCharacters : (configuredCapacity > 0
             ? Math.Max(0, Math.Min(
                 configuredCapacity - used - inFlight - liveReserve,
                 corpusLimit - consumedCorpus - inFlight))
-            : null;
+            : null);
 
         var recentEvents = state.OperationalEvents
             .OrderByDescending(item => item.OccurredUtc)
@@ -167,8 +184,23 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 state.TextUnits.Any(unit => unit.Id == item.LegacySourceTextUnitId && !unit.IsTrainingEligible)),
             state.Alignments.LongCount(item => item.SupersededUtc is null &&
                 state.TextUnits.Any(unit => unit.Id == item.SourceTextUnitId && unit.IsTrainingEligible) &&
-                state.TextUnits.Any(unit => unit.Id == item.TargetTextUnitId && unit.IsTrainingEligible)));
+                state.TextUnits.Any(unit => unit.Id == item.TargetTextUnitId && unit.IsTrainingEligible)),
+            providerCapacity);
     }
+
+    public Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(
+        CancellationToken cancellationToken = default) =>
+        _capacityAuthority is not null
+            ? _capacityAuthority.GetSnapshotAsync("AzureTranslator", cancellationToken)
+            : Task.FromResult(new LegendConnectProviderCapacitySnapshot(
+                "AzureTranslator", false, "Unavailable", null, null, null,
+                new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1),
+                new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1).AddMonths(1).AddDays(-1),
+                null, 0, 0, null, null, null,
+                AzureTranslatorSubscriptionCapacity.CapacityWindowMinutes,
+                DateTime.UtcNow.AddMinutes(-AzureTranslatorSubscriptionCapacity.CapacityWindowMinutes),
+                DateTime.UtcNow, null, 0, 0, null, null, null, DateTime.UtcNow,
+                "Azure Translator capacity synchronization is unavailable."));
 
     public async Task<LegendConnectLanguageHealthSnapshot?> GetLanguageHealthAsync(
         string languageCode,

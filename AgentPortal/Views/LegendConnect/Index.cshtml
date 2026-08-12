@@ -3,10 +3,7 @@
 @{
     ViewData["Title"] = "Legend Connect";
     var dashboard = Model.Dashboard;
-    var configuredCapacity = dashboard.ConfiguredMonthlyCapacity > 0
-        ? dashboard.ConfiguredMonthlyCapacity.ToString("N0")
-        : "Not configured";
-    var remainingCapacity = dashboard.RemainingSafeCapacity?.ToString("N0") ?? "Not limited";
+    var providerCapacity = dashboard.ProviderCapacity;
     var policy = Model.RuntimePolicy;
     var readiness = Model.ProductionReadiness;
     var routedRequestCount = dashboard.TranslationMemoryHitCount + dashboard.ContextualInternalServeCount + dashboard.AzureFallbackCount;
@@ -14,6 +11,10 @@
     var focusedLanguageNames = string.Join(", ", dashboard.Languages
         .Where(language => policy.FocusedTargetLanguageCodes.Contains(language.LanguageCode, StringComparer.OrdinalIgnoreCase))
         .Select(language => language.DisplayName));
+    string AzureCapacityDisplay(long? value, bool isMeteredWhenNull = false) =>
+        providerCapacity?.IsSynchronized == true
+            ? value?.ToString("N0") ?? (isMeteredWhenNull ? "Metered" : "Unavailable")
+            : "Unavailable";
 }
 
 <main class="dashboard-page-shell legend-connect-page">
@@ -64,17 +65,34 @@
             <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(readiness.DuplicateCandidateCount)"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value">@readiness.DuplicateCandidateCount.ToString("N0")</span></div>
             <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.AwaitingKnowledgePairCount)"><span class="dashboard-stat-label">Pairs awaiting knowledge</span><span class="dashboard-stat-value">@readiness.AwaitingKnowledgePairCount.ToString("N0")</span></div>
         </div>
+        <section class="dashboard-search-panel" aria-label="Azure Translator subscription capacity">
+            <div class="legend-connect-focus-heading">
+                <span><span class="dashboard-section-kicker">Azure resource synchronization</span><span class="dashboard-section-title">Azure Translator capacity</span></span>
+                <span class="dashboard-status-chip" data-azure-capacity-status>@(providerCapacity?.Status ?? "Unavailable")</span>
+            </div>
+            <p class="dashboard-section-copy" data-azure-capacity-resource>@(providerCapacity?.ResourceName ?? "Azure Translator") · tier @(providerCapacity?.Tier ?? "unavailable"). Monthly billing allowance and rolling hourly velocity are enforced independently.</p>
+            <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--five">
+                <div class="dashboard-stat-card @LegendConnectMetricTone.CapacityLimit(providerCapacity?.MonthlyIncludedCharacterAllowance ?? 0)"><span class="dashboard-stat-label">Monthly included allowance</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-limit">@AzureCapacityDisplay(providerCapacity?.MonthlyIncludedCharacterAllowance, true)</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(providerCapacity?.MonthlyCharactersConsumed ?? 0)"><span class="dashboard-stat-label">Used this billing month</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-consumed">@AzureCapacityDisplay(providerCapacity?.MonthlyCharactersConsumed)</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(providerCapacity?.MonthlyReservedCharacters ?? 0)"><span class="dashboard-stat-label">Monthly in-flight reserved</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-reserved">@AzureCapacityDisplay(providerCapacity?.MonthlyReservedCharacters)</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.MonthlyRemainingCharacters)"><span class="dashboard-stat-label">Monthly allowance left</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-remaining">@AzureCapacityDisplay(providerCapacity?.MonthlyRemainingCharacters, true)</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.MonthlyLiveReserveCharacters)"><span class="dashboard-stat-label">Monthly protected live reserve</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-reserve">@AzureCapacityDisplay(providerCapacity?.MonthlyLiveReserveCharacters, true)</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.MaximumSafeCorpusConsumptionCharacters)"><span class="dashboard-stat-label">Maximum monthly corpus consumption</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-corpus">@AzureCapacityDisplay(providerCapacity?.MaximumSafeCorpusConsumptionCharacters, true)</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.CapacityLimit(providerCapacity?.HourlyCharacterLimit ?? 0)"><span class="dashboard-stat-label">Hourly velocity capacity</span><span class="dashboard-stat-value" data-azure-capacity-value="hourly-limit">@AzureCapacityDisplay(providerCapacity?.HourlyCharacterLimit)</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(providerCapacity?.HourlyCharactersConsumed ?? 0)"><span class="dashboard-stat-label">Used this rolling hour</span><span class="dashboard-stat-value" data-azure-capacity-value="hourly-consumed">@AzureCapacityDisplay(providerCapacity?.HourlyCharactersConsumed)</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.HourlyRemainingCharacters)"><span class="dashboard-stat-label">Hourly capacity left</span><span class="dashboard-stat-value" data-azure-capacity-value="hourly-remaining">@AzureCapacityDisplay(providerCapacity?.HourlyRemainingCharacters)</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.SafeAcquisitionCharacters)"><span class="dashboard-stat-label">Safe acquisition available now</span><span class="dashboard-stat-value" data-azure-capacity-value="safe">@AzureCapacityDisplay(providerCapacity?.SafeAcquisitionCharacters)</span></div>
+            </div>
+            <p class="dashboard-section-copy" data-azure-capacity-detail>@(providerCapacity?.Detail ?? "Azure Translator capacity has not synchronized. Azure-backed corpus work remains safely held until the resource can be read.")</p>
+        </section>
         <form method="post" asp-action="UpdateRuntimePolicy" class="dashboard-search-panel">
             @Html.AntiForgeryToken()
             <div class="dashboard-form-grid">
-                <label class="dashboard-form-field"><span>Monthly provider capacity</span><input name="MonthlyProviderCapacityCharacters" type="number" min="0" value="@policy.MonthlyProviderCapacityCharacters" required /></label>
-                <label class="dashboard-form-field"><span>Protected live translation reserve</span><input name="LiveTranslationReserveCharacters" type="number" min="0" value="@policy.LiveTranslationReserveCharacters" required /></label>
-                <label class="dashboard-form-field"><span>Maximum safe corpus consumption</span><input name="MaximumSafeCorpusConsumptionCharacters" type="number" min="0" value="@policy.MaximumSafeCorpusConsumptionCharacters" required /></label>
                 <label class="dashboard-form-field"><span>Contextual composition mode</span><select name="ContextualCompositionMode"><option value="Disabled" selected="@(policy.ContextualCompositionMode == "Disabled")">Disabled</option><option value="Shadow" selected="@(policy.ContextualCompositionMode == "Shadow")">Shadow</option><option value="Active" selected="@(policy.ContextualCompositionMode == "Active")">Active</option></select></label>
                 <label class="dashboard-form-field"><span>Contextual minimum confidence</span><input name="ContextualMinimumConfidence" type="number" min="0.90" max="1" step="0.01" value="@policy.ContextualMinimumConfidence.ToString(System.Globalization.CultureInfo.InvariantCulture)" required /></label>
                 <label class="dashboard-form-field"><span>Learning pipeline</span><span><input name="LearningEnabled" type="checkbox" value="true" @(policy.LearningEnabled ? "checked" : null) /> Enable autonomous learning processing</span></label>
             </div>
-            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save runtime policy</button></div>
+            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save composition policy</button></div>
         </form>
         <form method="post" asp-action="ActivateAutonomousAcquisition" class="legend-connect-acquisition-focus" data-language-focus-form>
             @Html.AntiForgeryToken()
@@ -133,11 +151,12 @@
             <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedLiveCharacters)"><span class="dashboard-stat-label">Consumed live characters</span><span class="dashboard-stat-value">@dashboard.ConsumedLiveCharacters.ToString("N0")</span></div>
             <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedCorpusCharacters)"><span class="dashboard-stat-label">Consumed corpus characters</span><span class="dashboard-stat-value">@dashboard.ConsumedCorpusCharacters.ToString("N0")</span></div>
             <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.ReservedProviderCharacters)"><span class="dashboard-stat-label">Provider characters reserved</span><span class="dashboard-stat-value">@dashboard.ReservedProviderCharacters.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.CapacityLimit(dashboard.ConfiguredMonthlyCapacity)"><span class="dashboard-stat-label">Monthly capacity</span><span class="dashboard-stat-value">@configuredCapacity</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(dashboard.LiveReserveCharacters)"><span class="dashboard-stat-label">Live reserve</span><span class="dashboard-stat-value">@dashboard.LiveReserveCharacters.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(dashboard.RemainingSafeCapacity)"><span class="dashboard-stat-label">Remaining safe capacity</span><span class="dashboard-stat-value">@remainingCapacity</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(dashboard.SafeAcquisitionCapacity)"><span class="dashboard-stat-label">Safe acquisition capacity</span><span class="dashboard-stat-value">@(dashboard.SafeAcquisitionCapacity?.ToString("N0") ?? "Not configured")</span></div>
-            <div class="dashboard-stat-card @(dashboard.BillingPeriodStart.HasValue ? LegendConnectMetricTone.Info : LegendConnectMetricTone.Neutral)"><span class="dashboard-stat-label">Billing period</span><span class="dashboard-stat-value">@(dashboard.BillingPeriodStart?.ToString("yyyy-MM-dd") ?? "Not started")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.CapacityLimit(providerCapacity?.MonthlyIncludedCharacterAllowance ?? 0)"><span class="dashboard-stat-label">Monthly included allowance</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-limit">@AzureCapacityDisplay(providerCapacity?.MonthlyIncludedCharacterAllowance, true)</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.MonthlyRemainingCharacters)"><span class="dashboard-stat-label">Monthly allowance left</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-remaining">@AzureCapacityDisplay(providerCapacity?.MonthlyRemainingCharacters, true)</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.CapacityLimit(providerCapacity?.HourlyCharacterLimit ?? 0)"><span class="dashboard-stat-label">Hourly velocity capacity</span><span class="dashboard-stat-value" data-azure-capacity-value="hourly-limit">@AzureCapacityDisplay(providerCapacity?.HourlyCharacterLimit)</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.HourlyRemainingCharacters)"><span class="dashboard-stat-label">Hourly capacity left</span><span class="dashboard-stat-value" data-azure-capacity-value="hourly-remaining">@AzureCapacityDisplay(providerCapacity?.HourlyRemainingCharacters)</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.SafeAcquisitionCharacters)"><span class="dashboard-stat-label">Safe acquisition available</span><span class="dashboard-stat-value" data-azure-capacity-value="safe">@AzureCapacityDisplay(providerCapacity?.SafeAcquisitionCharacters)</span></div>
+            <div class="dashboard-stat-card @(providerCapacity?.IsSynchronized == true ? LegendConnectMetricTone.Info : LegendConnectMetricTone.Neutral)"><span class="dashboard-stat-label">Azure capacity status</span><span class="dashboard-stat-value" data-azure-capacity-status>@(providerCapacity?.Status ?? "Unavailable")</span></div>
             <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.LearningJobCount)"><span class="dashboard-stat-label">Pending learning jobs</span><span class="dashboard-stat-value">@dashboard.LearningJobCount</span></div>
         </div>
         </div>

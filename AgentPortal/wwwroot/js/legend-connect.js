@@ -100,3 +100,69 @@
     updatePickerSummary();
     updateFocusState();
 })();
+
+(() => {
+    const statusNodes = Array.from(document.querySelectorAll("[data-azure-capacity-status]"));
+    if (statusNodes.length === 0) return;
+
+    const valueNodes = Array.from(document.querySelectorAll("[data-azure-capacity-value]"));
+    const detailNodes = Array.from(document.querySelectorAll("[data-azure-capacity-detail]"));
+    const resourceNodes = Array.from(document.querySelectorAll("[data-azure-capacity-resource]"));
+    const formatter = new Intl.NumberFormat();
+    const valueFor = {
+        "monthly-limit": snapshot => snapshot.monthlyIncludedCharacterAllowance,
+        "monthly-consumed": snapshot => snapshot.monthlyCharactersConsumed,
+        "monthly-reserved": snapshot => snapshot.monthlyReservedCharacters,
+        "monthly-remaining": snapshot => snapshot.monthlyRemainingCharacters,
+        "monthly-reserve": snapshot => snapshot.monthlyLiveReserveCharacters,
+        "monthly-corpus": snapshot => snapshot.maximumSafeCorpusConsumptionCharacters,
+        "hourly-limit": snapshot => snapshot.hourlyCharacterLimit,
+        "hourly-consumed": snapshot => snapshot.hourlyCharactersConsumed,
+        "hourly-reserved": snapshot => snapshot.hourlyReservedCharacters,
+        "hourly-remaining": snapshot => snapshot.hourlyRemainingCharacters,
+        "hourly-reserve": snapshot => snapshot.hourlyLiveReserveCharacters,
+        safe: snapshot => snapshot.safeAcquisitionCharacters
+    };
+    const monthlyAllowanceFields = new Set([
+        "monthly-limit", "monthly-consumed", "monthly-reserved",
+        "monthly-remaining", "monthly-reserve", "monthly-corpus"
+    ]);
+
+    function update(snapshot) {
+        statusNodes.forEach(node => node.textContent = snapshot.status || "Unavailable");
+        valueNodes.forEach(node => {
+            const value = valueFor[node.dataset.azureCapacityValue]?.(snapshot);
+            node.textContent = Number.isFinite(value)
+                ? formatter.format(value)
+                : snapshot.isSynchronized && monthlyAllowanceFields.has(node.dataset.azureCapacityValue)
+                    ? "Metered"
+                    : "Unavailable";
+        });
+        detailNodes.forEach(node => node.textContent = snapshot.detail || "Azure Translator capacity has not synchronized.");
+        resourceNodes.forEach(node => {
+            const resource = snapshot.resourceName || "Azure Translator";
+            const tier = snapshot.tier || "unavailable";
+            const window = Number.isFinite(snapshot.hourlyCapacityWindowMinutes)
+                ? snapshot.hourlyCapacityWindowMinutes
+                : 60;
+            node.textContent = `${resource} · tier ${tier}. Monthly billing allowance and rolling ${window}-minute velocity are enforced independently.`;
+        });
+    }
+
+    async function refresh() {
+        try {
+            const response = await fetch("/founder/legend-connect/capacity", {
+                credentials: "same-origin",
+                headers: { Accept: "application/json" }
+            });
+            if (!response.ok) return;
+            update(await response.json());
+        } catch {
+            // The server keeps the last verified projection visible. A failed
+            // refresh never invents capacity or changes translation behavior.
+        }
+    }
+
+    void refresh();
+    window.setInterval(refresh, 30_000);
+})();

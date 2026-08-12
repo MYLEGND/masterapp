@@ -321,7 +321,11 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         {
             try
             {
-                await _capacity.CompleteAsync(reservation, providerSucceeded, cancellationToken);
+                // Once the HTTP request starts, Azure may have accepted and
+                // billed its input even if a response is lost. Retain that
+                // character cost in the rolling ledger rather than releasing
+                // it and risking a tier overrun on a retry.
+                await _capacity.CompleteAsync(reservation, providerExecuted, cancellationToken);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {

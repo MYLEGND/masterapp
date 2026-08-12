@@ -169,7 +169,7 @@ public sealed class LegendConnectSystemHardeningTests
                 reservationReference: "message:capacity-recovery"));
 
         Assert.Equal(abandoned.ReservationId, recovered.ReservationId);
-        await retryAuthority.CompleteAsync(recovered, providerSucceeded: false);
+        await retryAuthority.CompleteAsync(recovered, providerMayHaveConsumed: false);
 
         await using var verification = new MasterAppDbContext(options);
         var ledger = await verification.LegendTranslationProviderCapacities.SingleAsync();
