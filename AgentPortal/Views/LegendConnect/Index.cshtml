@@ -143,6 +143,44 @@
         </div>
     </details>
 
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="translation-quality-title">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Shared evidence authority</span><span class="dashboard-section-title" id="translation-quality-title">Translation quality review</span></span><span class="legend-connect-disclosure-status">@Model.TranslationQuality.NeedsReviewCount needs review</span></summary>
+        <div class="legend-connect-disclosure-body">
+            <p class="dashboard-section-copy">Provider output remains an observation. This queue contains only Founder-owned training material with a recorded contradiction; private-message bodies are never shown here.</p>
+            <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--five" aria-label="Translation quality evidence summary">
+                <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(Model.TranslationQuality.NeedsReviewCount)"><span class="dashboard-stat-label">Needs review</span><span class="dashboard-stat-value">@Model.TranslationQuality.NeedsReviewCount</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(Model.TranslationQuality.ProviderObservationCount)"><span class="dashboard-stat-label">Provider observations</span><span class="dashboard-stat-value">@Model.TranslationQuality.ProviderObservationCount</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(Model.TranslationQuality.SupportedObservationCount)"><span class="dashboard-stat-label">Supported observations</span><span class="dashboard-stat-value">@Model.TranslationQuality.SupportedObservationCount</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(Model.TranslationQuality.ContradictionCount)"><span class="dashboard-stat-label">Contradictions</span><span class="dashboard-stat-value">@Model.TranslationQuality.ContradictionCount</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(Model.TranslationQuality.HumanVerifiedAlignmentCount)"><span class="dashboard-stat-label">Human verified</span><span class="dashboard-stat-value">@Model.TranslationQuality.HumanVerifiedAlignmentCount</span></div>
+            </div>
+            @if (Model.TranslationQuality.ReviewItems.Count == 0)
+            {
+                <p class="dashboard-section-copy">No active provider observation currently conflicts with established canonical evidence.</p>
+            }
+            else
+            {
+                <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Founder source</th><th>Provider observation</th><th>Evidence</th><th>Review action</th></tr></thead><tbody>
+                @foreach (var item in Model.TranslationQuality.ReviewItems)
+                {
+                    <tr>
+                        <td>@item.PairKey<br /><small>@item.ObservedUtc.ToString("u")</small></td>
+                        <td>@item.SourceText</td>
+                        <td><strong>@item.ProviderTargetText</strong><br /><small>@item.Provider · @item.Provenance · @item.QualityState</small></td>
+                        <td>@item.SupportingEvidenceCount supporting · @item.ContradictionCount contradictory<br /><small>@item.ReasonForReview · @string.Join(", ", item.EvidenceReasons)</small></td>
+                        <td>
+                            <form method="post" asp-action="ApproveProviderObservation" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<input type="hidden" name="AlignmentId" value="@item.AlignmentId" /><button type="submit" class="dashboard-command-action btn-carrier-settings">Approve</button></form>
+                            <form method="post" asp-action="LeaveProviderObservationUnresolved" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<input type="hidden" name="AlignmentId" value="@item.AlignmentId" /><button type="submit" class="dashboard-command-action btn-carrier-settings">Leave unresolved</button></form>
+                            <form method="post" asp-action="RejectProviderObservation" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<input type="hidden" name="AlignmentId" value="@item.AlignmentId" /><button type="submit" class="dashboard-command-action btn-carrier-settings">Reject / retire</button></form>
+                            <details class="legend-connect-account-parameters"><summary>Submit corrected target</summary><form method="post" asp-action="CorrectKnowledge" class="dashboard-search-panel">@Html.AntiForgeryToken()<input type="hidden" name="SupersededAlignmentId" value="@item.AlignmentId" /><input type="hidden" name="SourceLanguageCode" value="@item.SourceLanguageCode" /><input type="hidden" name="SourceText" value="@item.SourceText" /><input type="hidden" name="TargetLanguageCode" value="@item.TargetLanguageCode" /><label class="dashboard-form-field"><span>Human-corrected target</span><textarea name="TargetText" required maxlength="10000"></textarea></label><div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save correction</button></div></form></details>
+                        </td>
+                    </tr>
+                }
+                </tbody></table></div>
+            }
+        </div>
+    </details>
+
     <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="active-pairs-title">
         <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Directional health</span><span class="dashboard-section-title" id="active-pairs-title">Active directional pairs</span></span><span class="legend-connect-disclosure-status">@dashboard.Pairs.Count pairs</span></summary>
         <div class="legend-connect-disclosure-body">

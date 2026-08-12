@@ -86,6 +86,12 @@ public sealed class LegendTranslationAlignment
     public Guid SourceTextUnitId { get; set; }
     public Guid TargetTextUnitId { get; set; }
     public string Provider { get; set; } = string.Empty;
+    /// <summary>
+    /// Origin of this directional observation. Provider output keeps
+    /// ProviderDerived provenance even when a later human action validates or
+    /// supersedes the alignment.
+    /// </summary>
+    public string Provenance { get; set; } = string.Empty;
     public string? ProviderModel { get; set; }
     public decimal? Confidence { get; set; }
     public string QualityState { get; set; } = "Observation";
@@ -93,6 +99,47 @@ public sealed class LegendTranslationAlignment
     public int ObservationCount { get; set; }
     public DateTime? SupersededUtc { get; set; }
     public Guid? SupersededByAlignmentId { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// One durable, idempotent quality signal about a provider-derived directional
+/// observation. It links the observation to canonical supporting or
+/// conflicting evidence without turning a provider result into verified
+/// knowledge. Historical evidence is retained after an alignment is corrected,
+/// rejected, or otherwise superseded.
+/// </summary>
+public sealed class LegendTranslationQualityEvidence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ObservedAlignmentId { get; set; }
+    public string PairKey { get; set; } = string.Empty;
+    public Guid SourceTextUnitId { get; set; }
+    public Guid TargetTextUnitId { get; set; }
+    public Guid? RelatedAlignmentId { get; set; }
+    public Guid? StructuralPatternId { get; set; }
+    public Guid? ContextRelationshipId { get; set; }
+    /// <summary>
+    /// Supported, Contradictory, or Insufficient. This is an evidence signal,
+    /// not a promotion or replacement decision.
+    /// </summary>
+    public string Signal { get; set; } = "Insufficient";
+    public string ReasonCode { get; set; } = string.Empty;
+    /// <summary>
+    /// Open, Approved, Corrected, or Rejected. The transition is made only by
+    /// the canonical Founder validation path.
+    /// </summary>
+    public string ResolutionState { get; set; } = "Open";
+    /// <summary>
+    /// Stable identity derived from the observation and canonical evidence.
+    /// It prevents retries or repeated provider calls from manufacturing
+    /// artificial support.
+    /// </summary>
+    public string EvidenceIdentity { get; set; } = string.Empty;
+    public DateTime? ResolvedUtc { get; set; }
+    public Guid? ResolvedByAlignmentId { get; set; }
+    public DateTime? SupersededUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

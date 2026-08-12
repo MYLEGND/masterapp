@@ -109,6 +109,78 @@ public sealed class LegendConnectController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/quality/approve")]
+    public async Task<IActionResult> ApproveProviderObservation(
+        [FromForm] FounderLegendConnectQualityReviewInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.ApproveProviderObservationAsync(User, input, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect Founder provider-observation approval failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/quality/reject")]
+    public async Task<IActionResult> RejectProviderObservation(
+        [FromForm] FounderLegendConnectQualityReviewInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.RejectProviderObservationAsync(User, input, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect Founder provider-observation rejection failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/quality/unresolved")]
+    public async Task<IActionResult> LeaveProviderObservationUnresolved(
+        [FromForm] FounderLegendConnectQualityReviewInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.LeaveProviderObservationUnresolvedAsync(User, input, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect Founder provider-observation review deferral failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route("founder/legend-connect/curriculum")]
     public async Task<IActionResult> SubmitCurriculum(
         [FromForm] FounderLegendConnectCurriculumInput input,

@@ -324,17 +324,20 @@ internal sealed class LegendConnectCorpusService
     private readonly ILegendLanguageRegistry _languages;
     private readonly ILogger<LegendConnectCorpusService> _logger;
     private readonly ILegendConnectOperationalEventWriter? _operations;
+    private readonly ILegendConnectTranslationIntelligence? _intelligence;
 
     public LegendConnectCorpusService(
         MasterAppDbContext db,
         ILegendLanguageRegistry languages,
         ILogger<LegendConnectCorpusService> logger,
-        ILegendConnectOperationalEventWriter? operations = null)
+        ILegendConnectOperationalEventWriter? operations = null,
+        ILegendConnectTranslationIntelligence? intelligence = null)
     {
         _db = db;
         _languages = languages;
         _logger = logger;
         _operations = operations;
+        _intelligence = intelligence;
     }
 
     public async Task ProcessPendingAsync(int take, CancellationToken cancellationToken = default)
@@ -461,6 +464,7 @@ internal sealed class LegendConnectCorpusService
                     SourceTextUnitId = source.Id,
                     TargetTextUnitId = target.Id,
                     Provider = item.Provider,
+                    Provenance = item.Provenance,
                     // A consented successful provider translation is eligible
                     // for exact-match reuse only. It is deliberately not
                     // HumanVerified and does not make contextual composition
@@ -512,6 +516,36 @@ internal sealed class LegendConnectCorpusService
             item.FailureCode = null;
             item.PromotionOutcome = alignmentCreated ? "Promoted" : "Reused";
             await _db.SaveChangesAsync(cancellationToken);
+            if (_intelligence is not null &&
+                string.Equals(item.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal))
+            {
+                try
+                {
+                    // Corpus processing is asynchronous to messaging. Quality
+                    // analysis stays on this governed learning path and must
+                    // never turn a provider observation into a retry-triggering
+                    // or latency-sensitive delivery dependency.
+                    await _intelligence.EvaluateProviderObservationAsync(alignment.Id, cancellationToken);
+                }
+                catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogWarning(exception,
+                        "Legend Connect provider-quality evaluation was deferred after corpus persistence. AlignmentId={AlignmentId}",
+                        alignment.Id);
+                    if (_operations is not null)
+                    {
+                        await _operations.TryRecordAsync(
+                            "TranslationQuality",
+                            "Warning",
+                            "Deferred",
+                            pair.SourceLanguageCode,
+                            pair.PairKey,
+                            "quality_evaluation_deferred",
+                            summary: "Provider observation quality evaluation was deferred after canonical corpus persistence.",
+                            cancellationToken: CancellationToken.None);
+                    }
+                }
+            }
             LegendConnectTelemetry.CorpusEvent(item.ProcessingState, item.PairKey);
         }
         catch (DbUpdateException exception)
@@ -660,6 +694,7 @@ internal sealed class LegendConnectCorpusService
                     SourceTextUnitId = source.Id,
                     TargetTextUnitId = target.Id,
                     Provider = "FounderApproved",
+                    Provenance = submission.Provenance,
                     Confidence = 1m,
                     QualityState = "Verified",
                     HumanVerified = true,

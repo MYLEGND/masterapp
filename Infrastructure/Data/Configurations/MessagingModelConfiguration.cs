@@ -336,6 +336,7 @@ internal static class MessagingModelConfiguration
             entity.HasKey(item => item.Id);
             entity.Property(item => item.PairKey).IsRequired().HasMaxLength(72);
             entity.Property(item => item.Provider).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
             entity.Property(item => item.ProviderModel).HasMaxLength(120);
             entity.Property(item => item.QualityState).IsRequired().HasMaxLength(40);
             entity.Property(item => item.Confidence).HasPrecision(5, 4);
@@ -343,6 +344,44 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => item.SupersededUtc);
             entity.HasIndex(item => new { item.PairKey, item.SourceTextUnitId, item.TargetTextUnitId }).IsUnique();
             entity.HasIndex(item => new { item.PairKey, item.QualityState });
+            entity.HasOne<LegendLanguageTextUnit>()
+                .WithMany()
+                .HasForeignKey(item => item.SourceTextUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageTextUnit>()
+                .WithMany()
+                .HasForeignKey(item => item.TargetTextUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendTranslationQualityEvidence>(entity =>
+        {
+            entity.ToTable("LegendTranslationQualityEvidence");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.PairKey).IsRequired().HasMaxLength(72);
+            entity.Property(item => item.Signal).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.ReasonCode).IsRequired().HasMaxLength(120);
+            entity.Property(item => item.ResolutionState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.EvidenceIdentity).IsRequired().HasMaxLength(160);
+            entity.HasIndex(item => item.EvidenceIdentity).IsUnique();
+            entity.HasIndex(item => new { item.ObservedAlignmentId, item.ResolutionState, item.SupersededUtc });
+            entity.HasIndex(item => new { item.PairKey, item.Signal, item.ResolutionState });
+            entity.HasOne<LegendTranslationAlignment>()
+                .WithMany()
+                .HasForeignKey(item => item.ObservedAlignmentId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendTranslationAlignment>()
+                .WithMany()
+                .HasForeignKey(item => item.RelatedAlignmentId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageStructuralPattern>()
+                .WithMany()
+                .HasForeignKey(item => item.StructuralPatternId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageContextRelationship>()
+                .WithMany()
+                .HasForeignKey(item => item.ContextRelationshipId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<LegendLanguageTextUnit>()
                 .WithMany()
                 .HasForeignKey(item => item.SourceTextUnitId)

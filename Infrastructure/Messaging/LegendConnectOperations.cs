@@ -23,6 +23,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
     private readonly LegendConnectCurriculumService _curriculum;
     private readonly LegendConnectFounderTrainingIngestionAuthority _founderTrainingIngestion;
+    private readonly ILegendConnectTranslationIntelligence _intelligence;
 
     public LegendConnectOperations(
         MasterAppDbContext db,
@@ -32,7 +33,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         ILegendConnectOperationalEventWriter? operationalEvents = null,
         ILegendConnectRuntimePolicyAuthority? runtimePolicy = null,
         LegendConnectCurriculumService? curriculum = null,
-        LegendConnectFounderTrainingIngestionAuthority? founderTrainingIngestion = null)
+        LegendConnectFounderTrainingIngestionAuthority? founderTrainingIngestion = null,
+        ILegendConnectTranslationIntelligence? intelligence = null)
     {
         _db = db;
         _registry = registry;
@@ -43,6 +45,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         _curriculum = curriculum ?? new LegendConnectCurriculumService(_db, _registry, _corpus);
         _founderTrainingIngestion = founderTrainingIngestion ?? new LegendConnectFounderTrainingIngestionAuthority(
             _db, _registry, _corpus, _curriculum, _operationalEvents);
+        _intelligence = intelligence ?? new LegendConnectTranslationIntelligence(_db, _configuration, _runtimePolicy);
     }
 
     public async Task<LegendConnectDashboardSnapshot> GetDashboardAsync(
@@ -365,6 +368,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         return pair is null ? null : BuildPairHealth(pair, state);
     }
 
+    public Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
+        CancellationToken cancellationToken = default) =>
+        _intelligence.GetTranslationQualityAsync(cancellationToken);
+
     public async Task<LegendConnectKnowledgeSubmissionResult> SubmitFounderKnowledgeAsync(
         string founderUserId,
         LegendConnectKnowledgeSubmission submission,
@@ -480,6 +487,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             prior.QualityState = "Superseded";
             prior.UpdatedUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
+            if (string.Equals(prior.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal))
+            {
+                var retiredTargetTextUnitId = await _intelligence.RecordHumanCorrectionAsync(
+                    prior.Id,
+                    result.AlignmentId.Value,
+                    cancellationToken);
+                if (retiredTargetTextUnitId is not null)
+                    await _curriculum.ReconcileSupersededExamplesAsync([retiredTargetTextUnitId.Value], cancellationToken);
+            }
             await WriteAuditAsync(founder, "FounderKnowledgeCorrected", result, supersededAlignmentId, cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -497,6 +513,55 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             if (transaction is not null)
                 await transaction.DisposeAsync();
         }
+    }
+
+    public async Task<LegendConnectQualityReviewActionResult> ApproveProviderObservationAsync(
+        string founderUserId,
+        Guid alignmentId,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = NormalizeFounder(founderUserId);
+        if (founder is null || alignmentId == Guid.Empty)
+            return InvalidQualityReviewAction();
+
+        var result = await _intelligence.ApproveProviderObservationAsync(alignmentId, cancellationToken);
+        if (result.Succeeded)
+            await WriteQualityReviewAuditAsync(founder, "FounderProviderObservationApproved", result, alignmentId, cancellationToken);
+        return ToQualityReviewActionResult(result);
+    }
+
+    public async Task<LegendConnectQualityReviewActionResult> RejectProviderObservationAsync(
+        string founderUserId,
+        Guid alignmentId,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = NormalizeFounder(founderUserId);
+        if (founder is null || alignmentId == Guid.Empty)
+            return InvalidQualityReviewAction();
+
+        var result = await _intelligence.RejectProviderObservationAsync(alignmentId, cancellationToken);
+        if (result.Succeeded)
+        {
+            if (result.RetiredTargetTextUnitId is not null)
+                await _curriculum.ReconcileSupersededExamplesAsync([result.RetiredTargetTextUnitId.Value], cancellationToken);
+            await WriteQualityReviewAuditAsync(founder, "FounderProviderObservationRejected", result, alignmentId, cancellationToken);
+        }
+        return ToQualityReviewActionResult(result);
+    }
+
+    public async Task<LegendConnectQualityReviewActionResult> LeaveProviderObservationUnresolvedAsync(
+        string founderUserId,
+        Guid alignmentId,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = NormalizeFounder(founderUserId);
+        if (founder is null || alignmentId == Guid.Empty)
+            return InvalidQualityReviewAction();
+
+        var result = await _intelligence.LeaveProviderObservationUnresolvedAsync(alignmentId, cancellationToken);
+        if (result.Succeeded)
+            await WriteQualityReviewAuditAsync(founder, "FounderProviderObservationLeftUnresolved", result, alignmentId, cancellationToken);
+        return ToQualityReviewActionResult(result);
     }
 
     public async Task<LegendConnectCurriculumSubmissionResult> SubmitFounderCurriculumAsync(
@@ -549,6 +614,41 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         });
         await _db.SaveChangesAsync(cancellationToken);
     }
+
+    private async Task WriteQualityReviewAuditAsync(
+        string founderUserId,
+        string action,
+        LegendProviderObservationResolution result,
+        Guid alignmentId,
+        CancellationToken cancellationToken)
+    {
+        _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
+        {
+            Id = Guid.NewGuid(),
+            FounderUserId = founderUserId,
+            Action = action,
+            Result = result.Succeeded ? "Succeeded" : result.ErrorCode ?? "Rejected",
+            LanguageCode = result.SourceLanguageCode ?? string.Empty,
+            PairKey = result.PairKey,
+            AlignmentId = alignmentId,
+            Detail = Bound(result.Message, 500),
+            OccurredUtc = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static LegendConnectQualityReviewActionResult ToQualityReviewActionResult(
+        LegendProviderObservationResolution result) => new(
+        result.Succeeded,
+        result.ErrorCode,
+        result.Message,
+        result.SourceLanguageCode,
+        result.PairKey);
+
+    private static LegendConnectQualityReviewActionResult InvalidQualityReviewAction() => new(
+        false,
+        "invalid_quality_review_action",
+        "A verified Founder identity and active provider observation are required.");
 
     private async Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?> BeginTransactionIfNeededAsync(
         CancellationToken cancellationToken)

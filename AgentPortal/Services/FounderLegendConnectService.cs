@@ -41,6 +41,7 @@ public sealed class FounderLegendConnectService
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         var dashboard = await _operations.GetDashboardAsync(cancellationToken);
+        var translationQuality = await _operations.GetTranslationQualityAsync(cancellationToken);
         var selectedLanguageKnowledge = string.IsNullOrWhiteSpace(language)
             ? null
             : await _operations.GetLanguageKnowledgeAsync(language, cancellationToken);
@@ -71,6 +72,7 @@ public sealed class FounderLegendConnectService
             SelectedLanguage = selectedLanguageKnowledge?.Health,
             SelectedLanguageKnowledge = selectedLanguageKnowledge,
             SelectedPair = selectedPair,
+            TranslationQuality = translationQuality,
             AccountUsage = accountDirectory.Accounts,
             AccountSearchQuery = accountDirectory.Query,
             HasAdditionalAccountResults = accountDirectory.HasMore,
@@ -261,6 +263,36 @@ public sealed class FounderLegendConnectService
             input.SupersededAlignmentId,
             ToSubmission(input),
             cancellationToken);
+    }
+
+    public async Task<FounderLegendConnectOperationResult> ApproveProviderObservationAsync(
+        ClaimsPrincipal user,
+        FounderLegendConnectQualityReviewInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        var result = await _operations.ApproveProviderObservationAsync(founder, input.AlignmentId, cancellationToken);
+        return new FounderLegendConnectOperationResult(result.Succeeded, result.Message);
+    }
+
+    public async Task<FounderLegendConnectOperationResult> RejectProviderObservationAsync(
+        ClaimsPrincipal user,
+        FounderLegendConnectQualityReviewInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        var result = await _operations.RejectProviderObservationAsync(founder, input.AlignmentId, cancellationToken);
+        return new FounderLegendConnectOperationResult(result.Succeeded, result.Message);
+    }
+
+    public async Task<FounderLegendConnectOperationResult> LeaveProviderObservationUnresolvedAsync(
+        ClaimsPrincipal user,
+        FounderLegendConnectQualityReviewInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        var result = await _operations.LeaveProviderObservationUnresolvedAsync(founder, input.AlignmentId, cancellationToken);
+        return new FounderLegendConnectOperationResult(result.Succeeded, result.Message);
     }
 
     public async Task<LegendConnectCurriculumSubmissionResult> SubmitCurriculumAsync(

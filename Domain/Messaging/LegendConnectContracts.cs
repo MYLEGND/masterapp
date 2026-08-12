@@ -283,6 +283,42 @@ public sealed record LegendConnectStructuralPatternSnapshot(
     bool IsProductionEligible,
     DateTime UpdatedUtc);
 
+/// <summary>
+/// Privacy-safe Founder projection of the shared provider-quality evidence
+/// authority. Source text is included only for Founder-approved training
+/// material; operational private-message text is intentionally excluded.
+/// </summary>
+public sealed record LegendConnectTranslationQualityReviewSnapshot(
+    Guid AlignmentId,
+    string PairKey,
+    string SourceLanguageCode,
+    string SourceText,
+    string TargetLanguageCode,
+    string ProviderTargetText,
+    string Provider,
+    string Provenance,
+    string QualityState,
+    int SupportingEvidenceCount,
+    int ContradictionCount,
+    string ReasonForReview,
+    IReadOnlyList<string> EvidenceReasons,
+    DateTime ObservedUtc);
+
+public sealed record LegendConnectTranslationQualitySnapshot(
+    long NeedsReviewCount,
+    long ProviderObservationCount,
+    long SupportedObservationCount,
+    long ContradictionCount,
+    long HumanVerifiedAlignmentCount,
+    IReadOnlyList<LegendConnectTranslationQualityReviewSnapshot> ReviewItems);
+
+public sealed record LegendConnectQualityReviewActionResult(
+    bool Succeeded,
+    string? ErrorCode,
+    string Message,
+    string? SourceLanguageCode = null,
+    string? PairKey = null);
+
 public sealed record LegendConnectOperationalEventSnapshot(
     DateTime OccurredUtc,
     string Category,
@@ -362,6 +398,9 @@ public interface ILegendConnectOperations
         string pairKey,
         CancellationToken cancellationToken = default);
 
+    Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
+        CancellationToken cancellationToken = default);
+
     Task<LegendConnectKnowledgeSubmissionResult> SubmitFounderKnowledgeAsync(
         string founderUserId,
         LegendConnectKnowledgeSubmission submission,
@@ -372,6 +411,21 @@ public interface ILegendConnectOperations
         string founderUserId,
         Guid supersededAlignmentId,
         LegendConnectKnowledgeSubmission replacement,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectQualityReviewActionResult> ApproveProviderObservationAsync(
+        string founderUserId,
+        Guid alignmentId,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectQualityReviewActionResult> RejectProviderObservationAsync(
+        string founderUserId,
+        Guid alignmentId,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectQualityReviewActionResult> LeaveProviderObservationUnresolvedAsync(
+        string founderUserId,
+        Guid alignmentId,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectCurriculumSubmissionResult> SubmitFounderCurriculumAsync(
