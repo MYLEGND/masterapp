@@ -9,8 +9,11 @@
     var remainingCapacity = dashboard.RemainingSafeCapacity?.ToString("N0") ?? "Not limited";
     var policy = Model.RuntimePolicy;
     var readiness = Model.ProductionReadiness;
-    var priority = Model.PriorityProgress;
     var routedRequestCount = dashboard.TranslationMemoryHitCount + dashboard.ContextualInternalServeCount + dashboard.AzureFallbackCount;
+    var focusOverrideEnabled = policy.FocusedTargetLanguageCodes.Count > 0;
+    var focusedLanguageNames = string.Join(", ", dashboard.Languages
+        .Where(language => policy.FocusedTargetLanguageCodes.Contains(language.LanguageCode, StringComparer.OrdinalIgnoreCase))
+        .Select(language => language.DisplayName));
 }
 
 <main class="dashboard-page-shell legend-connect-page">
@@ -73,36 +76,21 @@
             </div>
             <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save runtime policy</button></div>
         </form>
-        <div class="search-actions">
-            <form method="post" asp-action="ActivateAutonomousAcquisition" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<button type="submit" class="dashboard-command-action btn-carrier-settings">Activate autonomous acquisition</button></form>
-            <form method="post" asp-action="PauseAutonomousAcquisition" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<button type="submit" class="dashboard-command-action btn-carrier-settings">Pause autonomous acquisition</button></form>
-        </div>
-        </div>
-    </details>
-
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="priority-override-title">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Existing autonomous planner</span><span class="dashboard-section-title" id="priority-override-title">Language / pair priority</span></span><span class="dashboard-status-chip">@policy.PriorityMode</span></summary>
-        <div class="legend-connect-disclosure-body">
-        <p class="dashboard-section-copy">Automatic mode uses the existing demand, coverage, quality, and dependency score. A Founder override changes only the existing planner’s work order; corpus eligibility, deduplication, capacity protection, and worker claiming remain mandatory.</p>
-        <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--seven" aria-label="Founder priority progress">
-            <div class="dashboard-stat-card"><span class="dashboard-stat-label">Priority status</span><span class="dashboard-stat-value">@priority.Status</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(priority.EligibleMissingCandidateCount)"><span class="dashboard-stat-label">Eligible missing coverage</span><span class="dashboard-stat-value">@priority.EligibleMissingCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(priority.PendingCandidateCount)"><span class="dashboard-stat-label">Pending candidates</span><span class="dashboard-stat-value">@priority.PendingCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(priority.CurrentInternalCoverage)"><span class="dashboard-stat-label">Internal coverage</span><span class="dashboard-stat-value">@priority.CurrentInternalCoverage.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.Dependency(priority.AzureDependencyRate, priority.EligibleMissingCandidateCount + priority.PendingCandidateCount)"><span class="dashboard-stat-label">Provider dependency</span><span class="dashboard-stat-value">@priority.AzureDependencyRate.ToString("P0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(priority.CharactersConsumed)"><span class="dashboard-stat-label">Priority characters consumed</span><span class="dashboard-stat-value">@priority.CharactersConsumed.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.Expansion(priority.LastSuccessfulExpansionUtc)"><span class="dashboard-stat-label">Last successful expansion</span><span class="dashboard-stat-value">@(priority.LastSuccessfulExpansionUtc?.ToString("u") ?? "None")</span></div>
-        </div>
-        <p class="dashboard-section-copy">@(priority.Detail ?? "No Founder priority override is active.")</p>
-        <form method="post" asp-action="ConfigurePriorityOverride" class="dashboard-search-panel">
+        <form method="post" asp-action="ActivateAutonomousAcquisition" class="legend-connect-acquisition-focus">
             @Html.AntiForgeryToken()
-            <div class="dashboard-form-grid">
-                <label class="dashboard-form-field"><span>Target language (optional when selecting a pair)</span><select name="LanguageCode"><option value="">No language-wide override</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode" selected="@(policy.PriorityLanguageCode == language.LanguageCode)">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
-                <label class="dashboard-form-field"><span>Directional pair (optional)</span><select name="PairKey"><option value="">No pair-specific override</option>@foreach (var pair in dashboard.Pairs) { <option value="@pair.PairKey" selected="@(policy.PriorityPairKey == pair.PairKey)">@pair.PairKey</option> }</select></label>
+            <div class="legend-connect-focus-heading">
+                <span><span class="dashboard-section-kicker">Step 1 · Optional</span><span class="dashboard-section-title">Focus this English learning run</span></span>
+                <span class="legend-connect-focus-status @(focusOverrideEnabled ? "legend-connect-focus-status--on" : "legend-connect-focus-status--off")">FOCUS @(focusOverrideEnabled ? "ON" : "OFF")</span>
             </div>
-            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Enable / change Founder override</button></div>
+            <p class="dashboard-section-copy">Turn focus on to expand the same approved English learning sets only into the target languages you select through the existing Azure pipeline. Turn it off to return immediately to normal demand-driven work across all enabled languages.</p>
+            <div class="dashboard-form-grid">
+                <label class="dashboard-form-field"><span>Founder focus</span><span class="legend-connect-focus-toggle"><input name="FocusOverrideEnabled" type="checkbox" value="true" role="switch" @(focusOverrideEnabled ? "checked" : null) /> Limit this run to selected targets</span></label>
+                <label class="dashboard-form-field dashboard-form-field--wide"><span>Target languages · select one or more</span><select name="FocusLanguageCodes" multiple size="4" aria-describedby="language-focus-help">@foreach (var language in dashboard.Languages.Where(language => !string.Equals(language.LanguageCode, "en", StringComparison.OrdinalIgnoreCase))) { <option value="@language.LanguageCode" selected="@(policy.FocusedTargetLanguageCodes.Contains(language.LanguageCode, StringComparer.OrdinalIgnoreCase))">@language.DisplayName</option> }</select></label>
+            </div>
+            <p class="legend-connect-focus-note" id="language-focus-help">@(focusOverrideEnabled ? $"Focused now: {focusedLanguageNames}." : "No focus is active; all enabled language pairs are prioritized by demand, coverage, and quality.")</p>
+            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Activate corpus autonomous</button></div>
         </form>
-        <form method="post" asp-action="DisablePriorityOverride" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<button type="submit" class="dashboard-command-action btn-carrier-settings">Return to automatic — demand driven</button></form>
+        <div class="search-actions"><form method="post" asp-action="PauseAutonomousAcquisition" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<button type="submit" class="dashboard-command-action btn-carrier-settings">Pause autonomous acquisition</button></form></div>
         </div>
     </details>
 

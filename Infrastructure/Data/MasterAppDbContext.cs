@@ -114,6 +114,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<LegendConnectOperationalEvent> LegendConnectOperationalEvents => Set<LegendConnectOperationalEvent>();
     public DbSet<LegendConnectKnowledgeAuditEntry> LegendConnectKnowledgeAuditEntries => Set<LegendConnectKnowledgeAuditEntry>();
     public DbSet<LegendConnectRuntimePolicy> LegendConnectRuntimePolicies => Set<LegendConnectRuntimePolicy>();
+    public DbSet<LegendConnectAutonomousLanguageFocus> LegendConnectAutonomousLanguageFocuses => Set<LegendConnectAutonomousLanguageFocus>();
     public DbSet<MobileActivityNotification> MobileActivityNotifications => Set<MobileActivityNotification>();
     public DbSet<UserGlobalBadge> UserGlobalBadges => Set<UserGlobalBadge>();
     public DbSet<MobilePushDevice> MobilePushDevices => Set<MobilePushDevice>();

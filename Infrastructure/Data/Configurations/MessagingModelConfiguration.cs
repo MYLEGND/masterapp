@@ -629,6 +629,18 @@ internal static class MessagingModelConfiguration
             ConfigureRowVersion(entity.Property(item => item.RowVersion), providerName);
             entity.HasIndex(item => item.ScopeKey).IsUnique();
         });
+
+        modelBuilder.Entity<LegendConnectAutonomousLanguageFocus>(entity =>
+        {
+            entity.ToTable("LegendConnectAutonomousLanguageFocuses");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.TargetLanguageCode).IsRequired().HasMaxLength(32);
+            entity.HasIndex(item => new { item.RuntimePolicyId, item.TargetLanguageCode }).IsUnique();
+            entity.HasOne<LegendConnectRuntimePolicy>()
+                .WithMany()
+                .HasForeignKey(item => item.RuntimePolicyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     private static void ConfigureTranslationAccountUsage(

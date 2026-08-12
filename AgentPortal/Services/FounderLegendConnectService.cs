@@ -113,15 +113,33 @@ public sealed class FounderLegendConnectService
 
     public async Task<FounderLegendConnectOperationResult> ActivateAutonomousAcquisitionAsync(
         ClaimsPrincipal user,
+        FounderLegendConnectActivationInput input,
         CancellationToken cancellationToken = default)
     {
         var founder = await ResolveFounderActorAsync(user, cancellationToken);
         if (_runtimePolicy is null)
             return new FounderLegendConnectOperationResult(false, "Legend Connect runtime policy authority is unavailable.");
-        var readiness = await _runtimePolicy.ActivateAsync(founder, cancellationToken);
-        return new FounderLegendConnectOperationResult(
-            readiness.State is "ACTIVE" or "ACTIVE — NO ELIGIBLE WORK",
-            readiness.Summary);
+        try
+        {
+            var focus = await _runtimePolicy.ConfigureAutonomousLanguageFocusAsync(
+                founder,
+                new LegendConnectAutonomousLanguageFocusMutation(
+                    input.FocusOverrideEnabled,
+                    input.FocusLanguageCodes),
+                cancellationToken);
+            var readiness = await _runtimePolicy.ActivateAsync(founder, cancellationToken);
+            var activated = readiness.State is "ACTIVE" or "ACTIVE — NO ELIGIBLE WORK";
+            var focusMessage = focus.FocusedTargetLanguageCodes.Count == 0
+                ? "Automatic demand-driven acquisition is restored across enabled language pairs."
+                : $"Founder language focus is on for {focus.FocusedTargetLanguageCodes.Count} selected target language(s).";
+            return new FounderLegendConnectOperationResult(
+                activated,
+                activated ? $"{focusMessage} {readiness.Summary}" : readiness.Summary);
+        }
+        catch (ArgumentException exception)
+        {
+            return new FounderLegendConnectOperationResult(false, exception.Message);
+        }
     }
 
     public async Task<FounderLegendConnectOperationResult> PauseAutonomousAcquisitionAsync(

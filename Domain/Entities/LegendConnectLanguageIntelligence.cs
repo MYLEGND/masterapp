@@ -436,3 +436,18 @@ public sealed class LegendConnectRuntimePolicy
     public string? UpdatedByUserId { get; set; }
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 }
+
+/// <summary>
+/// A Founder-selected target dataset for the one autonomous acquisition
+/// policy. It is relational rather than a serialized list so each selected
+/// language remains independently auditable and the planner can apply one
+/// clear English-source focus without introducing another queue.
+/// </summary>
+public sealed class LegendConnectAutonomousLanguageFocus
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid RuntimePolicyId { get; set; }
+    public string TargetLanguageCode { get; set; } = string.Empty;
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}

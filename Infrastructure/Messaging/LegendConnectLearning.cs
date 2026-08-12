@@ -1080,6 +1080,14 @@ internal sealed class LegendConnectAutonomousGapPlanner
     {
         if (policy is null || !string.Equals(policy.PriorityMode, "FounderOverride", StringComparison.OrdinalIgnoreCase))
             return false;
+        if (policy.FocusedTargetLanguageCodes.Count > 0)
+        {
+            // Founder focus deliberately expands the common English learning
+            // sets only into the selected target datasets. It never creates a
+            // language-specific queue or changes the Azure-backed pipeline.
+            return string.Equals(pair.SourceLanguageCode, "en", StringComparison.OrdinalIgnoreCase) &&
+                   policy.FocusedTargetLanguageCodes.Contains(pair.TargetLanguageCode, StringComparer.OrdinalIgnoreCase);
+        }
         if (!string.IsNullOrWhiteSpace(policy.PriorityPairKey))
             return string.Equals(pair.PairKey, policy.PriorityPairKey, StringComparison.OrdinalIgnoreCase);
         return !string.IsNullOrWhiteSpace(policy.PriorityLanguageCode) &&

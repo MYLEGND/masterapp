@@ -185,11 +185,13 @@ public sealed class LegendConnectController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route("founder/legend-connect/activate")]
-    public async Task<IActionResult> ActivateAutonomousAcquisition(CancellationToken cancellationToken)
+    public async Task<IActionResult> ActivateAutonomousAcquisition(
+        [FromForm] FounderLegendConnectActivationInput input,
+        CancellationToken cancellationToken)
     {
         try
         {
-            var result = await _service.ActivateAutonomousAcquisitionAsync(User, cancellationToken);
+            var result = await _service.ActivateAutonomousAcquisitionAsync(User, input, cancellationToken);
             TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
             return RedirectToAction(nameof(Index));
         }

@@ -591,6 +591,87 @@
     margin: 0;
 }
 
+.legend-connect-acquisition-focus {
+    display: grid;
+    gap: 0.72rem;
+    margin-top: 0.9rem;
+    padding: 0.86rem;
+    border: 1px solid rgba(150, 182, 255, 0.24);
+    border-radius: 16px;
+    background: rgba(7, 18, 39, 0.5);
+}
+
+.legend-connect-focus-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+}
+
+.legend-connect-focus-heading .dashboard-section-kicker {
+    min-height: 23px;
+    padding: 0.18rem 0.56rem;
+    font-size: 0.61rem;
+}
+
+.legend-connect-focus-heading .dashboard-section-title {
+    display: block;
+    margin-top: 0.22rem;
+}
+
+.legend-connect-focus-status {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    min-height: 30px;
+    padding: 0.32rem 0.68rem;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    animation: legend-connect-focus-pulse 2.2s ease-in-out infinite;
+}
+
+.legend-connect-focus-status--on {
+    color: #70f0af;
+    background: rgba(34, 197, 94, 0.16);
+    box-shadow: 0 0 17px rgba(68, 238, 142, 0.48), inset 0 0 12px rgba(68, 238, 142, 0.12);
+}
+
+.legend-connect-focus-status--off {
+    color: #ff929b;
+    background: rgba(244, 63, 94, 0.13);
+    box-shadow: 0 0 17px rgba(248, 113, 113, 0.42), inset 0 0 12px rgba(248, 113, 113, 0.1);
+}
+
+.legend-connect-focus-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.48rem;
+    min-height: 40px;
+    color: var(--dash-text-soft);
+    font-size: 0.82rem;
+    font-weight: 720;
+}
+
+.legend-connect-focus-toggle input {
+    width: 1.05rem;
+    height: 1.05rem;
+    accent-color: #55db9a;
+}
+
+.legend-connect-focus-note {
+    margin: -0.12rem 0 0;
+    color: var(--dash-text-soft);
+    font-size: 0.76rem;
+    line-height: 1.4;
+}
+
+@keyframes legend-connect-focus-pulse {
+    50% { filter: brightness(1.16); }
+}
+
 .legend-connect-account-parameters > summary {
     width: fit-content;
     cursor: pointer;

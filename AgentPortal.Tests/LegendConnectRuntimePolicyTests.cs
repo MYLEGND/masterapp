@@ -178,6 +178,57 @@ public sealed class LegendConnectRuntimePolicyTests
     }
 
     [Fact]
+    public async Task FounderAutonomousLanguageFocus_UsesEnglishLearningSetsForMultipleSelectedTargets_ThenRestoresAutomaticPlanning()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var policy = Policy(db, registry, configuration);
+        _ = await registry.GetOrCreateEnabledPairAsync("en", "ht");
+        _ = await registry.GetOrCreateEnabledPairAsync("en", "es");
+        _ = await registry.GetOrCreateEnabledPairAsync("en", "fr");
+        _ = await registry.GetOrCreateEnabledPairAsync("ht", "en");
+        db.LegendTranslationPairDemands.Add(new LegendTranslationPairDemand
+        {
+            Id = Guid.NewGuid(), PairKey = "en:fr", TranslationRequestCount = 500, LastRequestedUtc = DateTime.UtcNow
+        });
+        var haitian = Candidate("focus-haitian", "en", "ht", "Approved English learning set for Haitian Creole");
+        var spanish = Candidate("focus-spanish", "en", "es", "Approved English learning set for Spanish");
+        var french = Candidate("automatic-french", "en", "fr", "Higher demand French learning set");
+        var reverseHaitian = Candidate("not-english-source", "ht", "en", "Konesans ki pa soti nan seri Angle a");
+        reverseHaitian.Priority = 999;
+        db.AddRange(haitian, spanish, french, reverseHaitian);
+        await db.SaveChangesAsync();
+
+        await policy.ConfigureAutonomousLanguageFocusAsync(
+            "founder",
+            new LegendConnectAutonomousLanguageFocusMutation(true, ["Haitian Creole", "Spanish"]));
+
+        var focused = await policy.GetEffectiveAsync();
+        Assert.Equal("FounderOverride", focused.PriorityMode);
+        Assert.Equal(["es", "ht"], focused.FocusedTargetLanguageCodes);
+        Assert.Equal(2, await db.LegendConnectAutonomousLanguageFocuses.CountAsync());
+
+        var planner = new LegendConnectAutonomousGapPlanner(db, registry);
+        var selected = await planner.SelectApprovedGapAsync(focused);
+        Assert.NotNull(selected);
+        Assert.Contains(selected.Value, new[] { haitian.Id, spanish.Id });
+        Assert.NotEqual(french.Id, selected.Value);
+        reverseHaitian.ProcessingState = "Queued";
+        await db.SaveChangesAsync();
+
+        var automatic = await policy.ConfigureAutonomousLanguageFocusAsync(
+            "founder",
+            new LegendConnectAutonomousLanguageFocusMutation(false, null));
+        Assert.Equal("Automatic", automatic.PriorityMode);
+        Assert.Empty(automatic.FocusedTargetLanguageCodes);
+        Assert.Equal(0, await db.LegendConnectAutonomousLanguageFocuses.CountAsync());
+        Assert.Equal(french.Id, await planner.SelectApprovedGapAsync(automatic));
+        Assert.Contains(await policy.GetRecentAuditAsync(), item =>
+            item.Action == "FounderAutonomousLanguageFocusEnabled" && item.Detail!.Contains("es, ht"));
+    }
+
+    [Fact]
     public async Task PairSpecificOverride_AffectsOnlyTheSelectedDirection_AndCompletionDoesNotCallAzure()
     {
         await using var db = ControllerTestHelpers.BuildDb();

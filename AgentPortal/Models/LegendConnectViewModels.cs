@@ -88,4 +88,10 @@ public sealed class FounderLegendConnectPriorityOverrideInput
     public string? PairKey { get; set; }
 }
 
+public sealed class FounderLegendConnectActivationInput
+{
+    public bool FocusOverrideEnabled { get; set; }
+    public List<string> FocusLanguageCodes { get; set; } = [];
+}
+
 public sealed record FounderLegendConnectOperationResult(bool Succeeded, string Message);

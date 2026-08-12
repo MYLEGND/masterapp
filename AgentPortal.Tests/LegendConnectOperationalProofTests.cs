@@ -149,12 +149,6 @@ public sealed class LegendConnectOperationalProofTests
                     ["TargetText"] = "Bonswa",
                     ["ContextCategory"] = "Greeting"
                 });
-            await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
-                "/founder/legend-connect/priority", new Dictionary<string, string>
-                {
-                    ["LanguageCode"] = "ht"
-                });
-
             await using (var scope = host.Services.CreateAsyncScope())
             {
                 var policy = scope.ServiceProvider.GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
@@ -163,7 +157,11 @@ public sealed class LegendConnectOperationalProofTests
             }
 
             await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
-                "/founder/legend-connect/activate", new Dictionary<string, string>());
+                "/founder/legend-connect/activate", new Dictionary<string, string>
+                {
+                    ["FocusOverrideEnabled"] = "true",
+                    ["FocusLanguageCodes"] = "ht"
+                });
             await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
                 "/founder/legend-connect/pause", new Dictionary<string, string>());
             await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
@@ -182,7 +180,9 @@ public sealed class LegendConnectOperationalProofTests
             Assert.Equal(1_000, runtime.MonthlyProviderCapacityCharacters);
             Assert.False(runtime.CorpusAcquisitionEnabled);
             Assert.Equal("FounderOverride", runtime.PriorityMode);
-            Assert.Equal("ht", runtime.PriorityLanguageCode);
+            Assert.Null(runtime.PriorityLanguageCode);
+            Assert.Contains(await db.LegendConnectAutonomousLanguageFocuses.AsNoTracking().ToListAsync(), focus =>
+                focus.RuntimePolicyId == runtime.Id && focus.TargetLanguageCode == "ht");
             Assert.Contains(await db.LegendCorpusCandidates.AsNoTracking().ToListAsync(), candidate =>
                 candidate.SourceText == "Are you coming over for dinner tonight?" && candidate.IsApproved);
             Assert.Contains(await db.LegendTranslationAlignments.AsNoTracking().ToListAsync(), alignment =>
@@ -195,7 +195,7 @@ public sealed class LegendConnectOperationalProofTests
             var audits = await db.LegendConnectKnowledgeAuditEntries.AsNoTracking().ToListAsync();
             Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "RuntimePolicyChanged");
             Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "FounderKnowledgeSubmitted");
-            Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "FounderPriorityOverrideEnabled");
+            Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "FounderAutonomousLanguageFocusEnabled");
             Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "AutonomousAcquisitionActivated");
             Assert.Contains(audits, entry => entry.FounderUserId == founderId && entry.Action == "AutonomousAcquisitionPaused");
         }
