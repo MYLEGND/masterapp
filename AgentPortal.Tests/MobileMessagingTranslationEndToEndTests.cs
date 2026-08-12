@@ -419,6 +419,12 @@ public sealed class MobileMessagingTranslationEndToEndTests
                 MessagingParticipantTypes.Client,
                 InitialMessageBody: source));
         Assert.True(conversation.Succeeded, $"{conversation.ErrorCode}: {conversation.ErrorMessage}");
+        Assert.Equal(0, provider.TranslateCalls);
+
+        var initialRead = await service.GetConversationAsync(
+            new MessagingActor(client.ClientUserId, MessagingParticipantTypes.Client),
+            conversation.Conversation!.Id);
+        Assert.True(initialRead.Succeeded, initialRead.ErrorMessage);
         Assert.Equal(1, provider.TranslateCalls);
 
         var retainedEvent = await db.LegendTranslationLearningEvents.SingleAsync();
@@ -441,6 +447,12 @@ public sealed class MobileMessagingTranslationEndToEndTests
             conversation.Conversation!.Id,
             source));
         Assert.True(later.Succeeded, $"{later.ErrorCode}: {later.ErrorMessage}");
+        Assert.Equal(1, provider.TranslateCalls);
+
+        var laterRead = await service.GetConversationAsync(
+            new MessagingActor(client.ClientUserId, MessagingParticipantTypes.Client),
+            conversation.Conversation!.Id);
+        Assert.True(laterRead.Succeeded, laterRead.ErrorMessage);
         Assert.Equal(1, provider.TranslateCalls);
         var laterTranslation = await db.MessageTranslations
             .OrderByDescending(item => item.CreatedUtc)

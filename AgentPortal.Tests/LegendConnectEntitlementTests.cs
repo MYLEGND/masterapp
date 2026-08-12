@@ -363,7 +363,7 @@ public sealed class LegendConnectEntitlementTests
     }
 
     [Fact]
-    public async Task GroupMessage_DetectsActualSourceAndTranslatesOncePerUniqueTargetLanguage()
+    public async Task GroupMessage_DetectsActualSourceAndTranslatesOncePerUniqueTargetLanguage_WhenRecipientsRead()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var agent = new AgentProfile
@@ -436,6 +436,17 @@ public sealed class LegendConnectEntitlementTests
             "actual English content"));
 
         Assert.True(created.Succeeded, created.ErrorMessage);
+        Assert.Equal(0, translator.DetectionCalls);
+        Assert.Equal(0, translator.AccountTranslationCalls);
+
+        foreach (var client in clients)
+        {
+            var recipient = await service.GetConversationAsync(
+                new MessagingActor(client.ClientUserId, MessagingParticipantTypes.Client),
+                created.Conversation!.Id);
+            Assert.True(recipient.Succeeded, recipient.ErrorMessage);
+        }
+
         Assert.Equal(1, translator.DetectionCalls);
         Assert.Equal("en", translator.LastDetectedLanguage);
         Assert.Equal(2, translator.AccountTranslationCalls);

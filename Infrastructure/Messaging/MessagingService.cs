@@ -865,11 +865,6 @@ internal sealed class MessagingService : IMessagingService
                     participant.UserId,
                     participant.ParticipantType))
                 .ToArray();
-            var recipientPresentations = await BuildNotificationRecipientPresentationsAsync(
-                actor,
-                message,
-                messageRecipients,
-                cancellationToken);
             notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
                 actor,
                 conversation.Id,
@@ -877,7 +872,6 @@ internal sealed class MessagingService : IMessagingService
                 message.Body,
                 nowUtc,
                 messageRecipients,
-                recipientPresentations,
                 cancellationToken);
         }
 
@@ -2081,11 +2075,6 @@ internal sealed class MessagingService : IMessagingService
             .Where(participant => participant.ConversationId == conversation.Id && participant.IsActive)
             .Select(participant => new MessagingActor(participant.UserId, participant.ParticipantType))
             .ToListAsync(cancellationToken);
-        var recipientPresentations = await BuildNotificationRecipientPresentationsAsync(
-            actor,
-            message,
-            messageRecipients,
-            cancellationToken);
         var hiddenParticipants = await _db.MessageConversationParticipants
             .Where(participant => participant.ConversationId == conversation.Id &&
                                   participant.IsActive &&
@@ -2096,6 +2085,9 @@ internal sealed class MessagingService : IMessagingService
         conversation.LastMessageUtc = nowUtc;
         conversation.UpdatedUtc = nowUtc;
         AddAudit(actor.UserId, "MessageSent", conversation.Id, message.Id, null, null, nowUtc);
+        // Keep this transaction independent of recipient-specific
+        // translation. Notification delivery is durable and asynchronous;
+        // Azure preview translation is not a prerequisite to this send.
         var notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
             actor,
             conversation.Id,
@@ -2103,7 +2095,6 @@ internal sealed class MessagingService : IMessagingService
             message.Body,
             nowUtc,
             messageRecipients,
-            recipientPresentations,
             cancellationToken);
 
         try
@@ -3420,11 +3411,6 @@ internal sealed class MessagingService : IMessagingService
                     participant.UserId,
                     participant.ParticipantType))
                 .ToArray();
-            var recipientPresentations = await BuildNotificationRecipientPresentationsAsync(
-                actor,
-                message,
-                messageRecipients,
-                cancellationToken);
             notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
                 actor,
                 conversation.Id,
@@ -3432,7 +3418,6 @@ internal sealed class MessagingService : IMessagingService
                 message.Body,
                 nowUtc,
                 messageRecipients,
-                recipientPresentations,
                 cancellationToken);
         }
 
@@ -4435,95 +4420,6 @@ internal sealed class MessagingService : IMessagingService
         return translation is null
             ? summary
             : summary with { Reply = summary.Reply with { Body = translation.TranslatedText } };
-    }
-
-    private async Task<IReadOnlyList<MessagingNotificationRecipient>> BuildNotificationRecipientPresentationsAsync(
-        MessagingActor sender,
-        InternalMessage message,
-        IEnumerable<MessagingActor> recipients,
-        CancellationToken cancellationToken)
-    {
-        var normalizedSender = NormalizeActor(sender);
-        var distinctRecipients = recipients
-            .Select(NormalizeActor)
-            .Where(recipient => !IsSameParticipant(
-                recipient.UserId,
-                recipient.ParticipantType,
-                normalizedSender.UserId,
-                normalizedSender.ParticipantType))
-            .Distinct()
-            .ToArray();
-        if (distinctRecipients.Length == 0)
-            return Array.Empty<MessagingNotificationRecipient>();
-
-        var recipientLanguages = new Dictionary<MessagingActor, string?>();
-        foreach (var recipient in distinctRecipients)
-        {
-            recipientLanguages[recipient] = await _controlledResources
-                .GetPreferredLanguageAsync(recipient, cancellationToken);
-        }
-
-        if (recipientLanguages.Values.All(language => language is null))
-        {
-            return distinctRecipients
-                .Select(recipient => new MessagingNotificationRecipient(recipient, message.Body))
-                .ToArray();
-        }
-
-        var source = ToTranslationSource(message);
-        var sourceLanguage = await ResolveRoutingSourceLanguageAsync(source, cancellationToken);
-        if (sourceLanguage is null)
-        {
-            return distinctRecipients
-                .Select(recipient => new MessagingNotificationRecipient(recipient, message.Body))
-                .ToArray();
-        }
-
-        var recipientsByTargetLanguage = recipientLanguages
-            .Where(item => item.Value is not null)
-            .GroupBy(item => item.Value!, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var detailsByTargetLanguage = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var languageRecipients in recipientsByTargetLanguage)
-        {
-            var targetLanguage = languageRecipients.Key;
-            if (string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
-            {
-                detailsByTargetLanguage[targetLanguage] = message.Body;
-                continue;
-            }
-
-            var billingAccount = languageRecipients.First().Key;
-
-            var translation = await GetOrCreateMessageTranslationAsync(
-                source,
-                targetLanguage,
-                billingAccount,
-                cancellationToken,
-                persistChanges: false);
-            detailsByTargetLanguage[targetLanguage] = translation?.TranslatedText ?? message.Body;
-
-            var reusedForRecipients = languageRecipients.Count() - 1;
-            if (reusedForRecipients > 0)
-            {
-                await RecordGroupTargetReuseSafelyAsync(
-                    billingAccount,
-                    reusedForRecipients,
-                    cancellationToken);
-            }
-        }
-
-        return distinctRecipients
-            .Select(recipient =>
-            {
-                var targetLanguage = recipientLanguages[recipient];
-                var detail = targetLanguage is not null &&
-                             detailsByTargetLanguage.TryGetValue(targetLanguage, out var translated)
-                    ? translated
-                    : message.Body;
-                return new MessagingNotificationRecipient(recipient, detail);
-            })
-            .ToArray();
     }
 
     private async Task<CachedMessageTranslation?> GetOrCreateMessageTranslationAsync(
