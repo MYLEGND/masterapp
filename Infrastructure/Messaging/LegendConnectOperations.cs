@@ -21,6 +21,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private readonly IConfiguration _configuration;
     private readonly ILegendConnectOperationalEventWriter? _operationalEvents;
     private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
+    private readonly LegendConnectCurriculumService? _curriculum;
 
     public LegendConnectOperations(
         MasterAppDbContext db,
@@ -28,7 +29,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         LegendConnectCorpusService corpus,
         IConfiguration configuration,
         ILegendConnectOperationalEventWriter? operationalEvents = null,
-        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null)
+        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null,
+        LegendConnectCurriculumService? curriculum = null)
     {
         _db = db;
         _registry = registry;
@@ -36,6 +38,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         _configuration = configuration;
         _operationalEvents = operationalEvents;
         _runtimePolicy = runtimePolicy;
+        _curriculum = curriculum;
     }
 
     public async Task<LegendConnectDashboardSnapshot> GetDashboardAsync(
@@ -286,6 +289,23 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 item.PromotionOutcome))
             .ToList();
 
+        var structuralPatterns = await (
+            from pattern in _db.Set<LegendLanguageStructuralPattern>().AsNoTracking()
+            join family in _db.Set<LegendCurriculumFamily>().AsNoTracking()
+                on pattern.CurriculumFamilyId equals family.Id
+            where pattern.LanguageCode == language.LanguageCode
+            orderby pattern.UpdatedUtc descending
+            select new LegendConnectStructuralPatternSnapshot(
+                family.FamilyKey,
+                pattern.LanguageCode,
+                pattern.VariationDimension,
+                pattern.MaturityState,
+                pattern.SupportCount,
+                pattern.ContradictionCount,
+                pattern.IsProductionEligible,
+                pattern.UpdatedUtc)
+        ).Take(LanguageKnowledgeDetailRecordLimit).ToListAsync(cancellationToken);
+
         return new LegendConnectLanguageKnowledgeSnapshot(
             BuildLanguageHealth(language, state),
             LanguageKnowledgeDetailRecordLimit,
@@ -294,7 +314,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             activeAlignments,
             contextRelationships,
             languagePairs,
-            recentLearningActivity);
+            recentLearningActivity,
+            structuralPatterns);
     }
 
     public async Task<LegendConnectPairHealthSnapshot?> GetPairHealthAsync(
@@ -436,6 +457,34 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             if (transaction is not null)
                 await transaction.DisposeAsync();
         }
+    }
+
+    public async Task<LegendConnectCurriculumSubmissionResult> SubmitFounderCurriculumAsync(
+        string founderUserId,
+        LegendConnectCurriculumBatchSubmission submission,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = NormalizeFounder(founderUserId);
+        if (founder is null)
+        {
+            return new LegendConnectCurriculumSubmissionResult(
+                false, false, "founder_identity_required", "A verified Founder identity is required.", null, null, 0, 0);
+        }
+
+        var curriculum = _curriculum ?? new LegendConnectCurriculumService(_db, _registry, _corpus);
+        var result = await curriculum.SubmitFounderEnglishBatchAsync(submission, cancellationToken);
+        _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
+        {
+            Id = Guid.NewGuid(),
+            FounderUserId = founder,
+            Action = "FounderCurriculumSubmitted",
+            Result = result.DuplicatePrevented ? "DuplicatePrevented" : result.Succeeded ? "Succeeded" : result.ErrorCode ?? "Rejected",
+            LanguageCode = "en",
+            Detail = Bound(result.Message ?? result.ErrorCode, 500),
+            OccurredUtc = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+        return result;
     }
 
     private async Task WriteAuditAsync(

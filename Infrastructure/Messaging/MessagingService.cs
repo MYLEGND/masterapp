@@ -265,6 +265,7 @@ internal sealed class MessagingService : IMessagingService
                     message.SenderType,
                     message.Body,
                     message.OriginalLanguage,
+                    message.SenderPreferredLanguage,
                     message.SentUtc,
                     message.IsDeleted,
                     message.VerificationReviewRequestId))
@@ -506,6 +507,7 @@ internal sealed class MessagingService : IMessagingService
                 x.SenderType,
                 x.Body,
                 x.OriginalLanguage,
+                x.SenderPreferredLanguage,
                 x.SentUtc,
                 x.EditedUtc,
                 x.IsDeleted,
@@ -519,6 +521,7 @@ internal sealed class MessagingService : IMessagingService
                         x.ReplyToMessage.SenderType,
                         x.ReplyToMessage.Body,
                         x.ReplyToMessage.OriginalLanguage,
+                        x.ReplyToMessage.SenderPreferredLanguage,
                         x.ReplyToMessage.IsDeleted)))
             .ToListAsync(cancellationToken);
         var messages = newestMessages
@@ -849,6 +852,8 @@ internal sealed class MessagingService : IMessagingService
                 SenderUserId = actor.UserId,
                 SenderType = actor.ParticipantType,
                 Body = initialMessage,
+                SenderPreferredLanguage = await _controlledResources
+                    .GetCanonicalPreferredLanguageAsync(actor, cancellationToken),
                 SentUtc = nowUtc,
                 ClientMessageId = clientMessageId
             };
@@ -2064,6 +2069,8 @@ internal sealed class MessagingService : IMessagingService
             SenderUserId = actor.UserId,
             SenderType = actor.ParticipantType,
             Body = body,
+            SenderPreferredLanguage = await _controlledResources
+                .GetCanonicalPreferredLanguageAsync(actor, cancellationToken),
             SentUtc = nowUtc,
             ClientMessageId = clientMessageId,
             ReplyToMessageId = command.ReplyToMessageId
@@ -3400,6 +3407,8 @@ internal sealed class MessagingService : IMessagingService
                 SenderUserId = actor.UserId,
                 SenderType = actor.ParticipantType,
                 Body = initialMessage,
+                SenderPreferredLanguage = await _controlledResources
+                    .GetCanonicalPreferredLanguageAsync(actor, cancellationToken),
                 SentUtc = nowUtc,
                 ClientMessageId = clientMessageId
             };
@@ -4462,7 +4471,7 @@ internal sealed class MessagingService : IMessagingService
         }
 
         var source = ToTranslationSource(message);
-        var sourceLanguage = await ResolveOriginalLanguageAsync(source, cancellationToken);
+        var sourceLanguage = await ResolveRoutingSourceLanguageAsync(source, cancellationToken);
         if (sourceLanguage is null)
         {
             return distinctRecipients
@@ -4487,7 +4496,7 @@ internal sealed class MessagingService : IMessagingService
             var billingAccount = languageRecipients.First().Key;
 
             var translation = await GetOrCreateMessageTranslationAsync(
-                source with { OriginalLanguage = sourceLanguage },
+                source,
                 targetLanguage,
                 billingAccount,
                 cancellationToken,
@@ -4524,7 +4533,7 @@ internal sealed class MessagingService : IMessagingService
         CancellationToken cancellationToken,
         bool persistChanges = true)
     {
-        var sourceLanguage = await ResolveOriginalLanguageAsync(message, cancellationToken);
+        var sourceLanguage = await ResolveRoutingSourceLanguageAsync(message, cancellationToken);
         if (sourceLanguage is null)
             return null;
 
@@ -4706,10 +4715,35 @@ internal sealed class MessagingService : IMessagingService
         }
     }
 
-    private async Task<string?> ResolveOriginalLanguageAsync(
+    private async Task<string?> ResolveRoutingSourceLanguageAsync(
         MessageTranslationSource message,
         CancellationToken cancellationToken)
     {
+        // The route uses the canonical server preference captured from the
+        // actual sender. Provider detection remains distinct body metadata and
+        // can only be a legacy/no-preference fallback; it cannot silently
+        // overwrite an available sender preference.
+        var senderPreferredLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            message.SenderPreferredLanguage,
+            cancellationToken);
+        if (senderPreferredLanguage is not null)
+        {
+            // Preserve provider-detected body metadata for its established
+            // diagnostics/quality role, but never let it alter the route.
+            await ResolveDetectedMessageLanguageAsync(message, cancellationToken);
+            return senderPreferredLanguage;
+        }
+
+        if (!string.IsNullOrWhiteSpace(message.SenderUserId) &&
+            !string.IsNullOrWhiteSpace(message.SenderType))
+        {
+            var currentCanonicalPreference = await _controlledResources.GetCanonicalPreferredLanguageAsync(
+                new MessagingActor(message.SenderUserId, message.SenderType),
+                cancellationToken);
+            if (currentCanonicalPreference is not null)
+                return currentCanonicalPreference;
+        }
+
         var trackedLanguageCandidate = _db.InternalMessages.Local
             .Where(candidate => candidate.Id == message.Id)
             .Select(candidate => candidate.OriginalLanguage)
@@ -4718,10 +4752,33 @@ internal sealed class MessagingService : IMessagingService
             trackedLanguageCandidate,
             cancellationToken);
         var sourceLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
-            message.OriginalLanguage,
+            message.DetectedMessageLanguage,
             cancellationToken) ?? trackedLanguage;
         if (sourceLanguage is not null)
             return sourceLanguage;
+
+        return await ResolveDetectedMessageLanguageAsync(message, cancellationToken);
+    }
+
+    private async Task<string?> ResolveDetectedMessageLanguageAsync(
+        MessageTranslationSource message,
+        CancellationToken cancellationToken)
+    {
+        var detectedMetadata = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            message.DetectedMessageLanguage,
+            cancellationToken);
+        if (detectedMetadata is not null)
+            return detectedMetadata;
+
+        var trackedLanguageCandidate = _db.InternalMessages.Local
+            .Where(candidate => candidate.Id == message.Id)
+            .Select(candidate => candidate.OriginalLanguage)
+            .FirstOrDefault();
+        var trackedLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            trackedLanguageCandidate,
+            cancellationToken);
+        if (trackedLanguage is not null)
+            return trackedLanguage;
 
         TranslationDetectionResult detection;
         try
@@ -4741,7 +4798,7 @@ internal sealed class MessagingService : IMessagingService
             return null;
         }
 
-        sourceLanguage = detection.Succeeded
+        var sourceLanguage = detection.Succeeded
             ? await _languages.NormalizeEnabledTranslationLanguageAsync(detection.Language, cancellationToken)
             : null;
         if (sourceLanguage is null)
@@ -4813,17 +4870,26 @@ internal sealed class MessagingService : IMessagingService
     private static MessageTranslationSource ToTranslationSource(MessageDetailRow message) => new(
         message.Id,
         message.Body,
-        message.OriginalLanguage);
+        message.OriginalLanguage,
+        message.SenderPreferredLanguage,
+        message.SenderUserId,
+        message.SenderType);
 
     private static MessageTranslationSource ToTranslationSource(ReplyDetailRow message) => new(
         message.Id,
         message.Body,
-        message.OriginalLanguage);
+        message.OriginalLanguage,
+        message.SenderPreferredLanguage,
+        message.SenderUserId,
+        message.SenderType);
 
     private static MessageTranslationSource ToTranslationSource(InternalMessage message) => new(
         message.Id,
         message.Body,
-        message.OriginalLanguage);
+        message.OriginalLanguage,
+        message.SenderPreferredLanguage,
+        message.SenderUserId,
+        message.SenderType);
 
     private static MessagingAttachmentSummary ToAttachmentSummary(AttachmentRow attachment) => new(
         attachment.Id,
@@ -4861,6 +4927,7 @@ internal sealed class MessagingService : IMessagingService
         message.SenderType,
         message.Body,
         message.OriginalLanguage,
+        message.SenderPreferredLanguage,
         message.SentUtc,
         null,
         message.IsDeleted,
@@ -5004,6 +5071,7 @@ internal sealed class MessagingService : IMessagingService
         string SenderType,
         string Body,
         string? OriginalLanguage,
+        string? SenderPreferredLanguage,
         DateTime SentUtc,
         bool IsDeleted,
         Guid? VerificationReviewRequestId);
@@ -5015,6 +5083,7 @@ internal sealed class MessagingService : IMessagingService
         string SenderType,
         string Body,
         string? OriginalLanguage,
+        string? SenderPreferredLanguage,
         DateTime SentUtc,
         DateTime? EditedUtc,
         bool IsDeleted,
@@ -5030,7 +5099,10 @@ internal sealed class MessagingService : IMessagingService
     private sealed record MessageTranslationSource(
         Guid Id,
         string Body,
-        string? OriginalLanguage);
+        string? DetectedMessageLanguage,
+        string? SenderPreferredLanguage,
+        string SenderUserId,
+        string SenderType);
 
     private sealed record ReplyDetailRow(
         Guid Id,
@@ -5038,6 +5110,7 @@ internal sealed class MessagingService : IMessagingService
         string SenderType,
         string Body,
         string? OriginalLanguage,
+        string? SenderPreferredLanguage,
         bool IsDeleted);
 
     private sealed record AttachmentRow(

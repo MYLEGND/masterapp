@@ -25,6 +25,18 @@ public interface IControlledResourceAccessService
     Task<string?> GetPreferredLanguageAsync(
         MessagingActor actor,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads the same MobileProfileSettings preference without treating a
+    /// translation entitlement as a language identity decision. Messaging
+    /// uses it to snapshot the actual sender's route at send time; recipient
+    /// presentation still uses <see cref="GetPreferredLanguageAsync"/> and
+    /// its existing access guard.
+    /// </summary>
+    Task<string?> GetCanonicalPreferredLanguageAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default) =>
+        GetPreferredLanguageAsync(actor, cancellationToken);
 }
 
 /// <summary>
@@ -144,6 +156,35 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
 
         var access = await GetAccessAsync(actor, ControlledResourceTypes.LanguageTranslation, cancellationToken);
         if (access.State != ControlledResourceAccessStates.Granted)
+            return null;
+
+        var language = await _db.MobileProfileSettings.AsNoTracking()
+            .Where(setting => setting.ProfileId == profileId.Value && setting.ParticipantType == actor.ParticipantType)
+            .Select(setting => setting.PreferredCommunicationLanguage)
+            .SingleOrDefaultAsync(cancellationToken);
+        return await _languages.NormalizeEnabledTranslationLanguageAsync(language, cancellationToken);
+    }
+
+    public async Task<string?> GetCanonicalPreferredLanguageAsync(
+        MessagingActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        actor = Normalize(actor);
+        var profileId = actor.ParticipantType switch
+        {
+            MessagingParticipantTypes.Agent => await _db.AgentProfiles.AsNoTracking()
+                .Where(profile => profile.IsActive && profile.AgentUserId.ToLower() == actor.UserId)
+                .Select(profile => (Guid?)profile.Id)
+                .SingleOrDefaultAsync(cancellationToken),
+            MessagingParticipantTypes.Client => await _db.ClientProfiles.AsNoTracking()
+                .Where(profile => profile.ClientUserId.ToLower() == actor.UserId ||
+                    (profile.ExternalIdentityObjectId != null && profile.ExternalIdentityObjectId.ToLower() == actor.UserId))
+                .Select(profile => (Guid?)profile.Id)
+                .SingleOrDefaultAsync(cancellationToken),
+            _ => null
+        };
+
+        if (!profileId.HasValue)
             return null;
 
         var language = await _db.MobileProfileSettings.AsNoTracking()

@@ -92,6 +92,29 @@ public sealed record LegendConnectKnowledgeSubmissionResult(
     Guid? TargetTextUnitId,
     Guid? AlignmentId);
 
+/// <summary>
+/// A controlled semantic curriculum example. Variations identify meaning that
+/// changed; their realization is learned independently in every language.
+/// </summary>
+public sealed record LegendConnectCurriculumExampleSubmission(
+    string Text,
+    IReadOnlyDictionary<string, string> Variations);
+
+public sealed record LegendConnectCurriculumBatchSubmission(
+    string FamilyKey,
+    string? SemanticCategory,
+    IReadOnlyList<LegendConnectCurriculumExampleSubmission> Examples);
+
+public sealed record LegendConnectCurriculumSubmissionResult(
+    bool Succeeded,
+    bool DuplicatePrevented,
+    string? ErrorCode,
+    string? Message,
+    string? FamilyKey,
+    Guid? CurriculumFamilyId,
+    int EnglishExampleCount,
+    int TargetExpansionCount);
+
 public sealed record LegendConnectLanguageHealthSnapshot(
     string LanguageCode,
     string DisplayName,
@@ -239,7 +262,22 @@ public sealed record LegendConnectLanguageKnowledgeSnapshot(
     IReadOnlyList<LegendConnectLanguageAlignmentDetailSnapshot> ActiveAlignments,
     IReadOnlyList<LegendConnectLanguageContextRelationshipSnapshot> ContextRelationships,
     IReadOnlyList<LegendConnectPairHealthSnapshot> DirectionalPairs,
-    IReadOnlyList<LegendConnectLanguageLearningActivitySnapshot> RecentLearningActivity);
+    IReadOnlyList<LegendConnectLanguageLearningActivitySnapshot> RecentLearningActivity,
+    IReadOnlyList<LegendConnectStructuralPatternSnapshot>? StructuralPatterns = null);
+
+/// <summary>
+/// Privacy-safe structural-learning projection. It intentionally contains no
+/// message body or candidate translation text.
+/// </summary>
+public sealed record LegendConnectStructuralPatternSnapshot(
+    string FamilyKey,
+    string LanguageCode,
+    string VariationDimension,
+    string MaturityState,
+    int SupportCount,
+    int ContradictionCount,
+    bool IsProductionEligible,
+    DateTime UpdatedUtc);
 
 public sealed record LegendConnectOperationalEventSnapshot(
     DateTime OccurredUtc,
@@ -326,6 +364,11 @@ public interface ILegendConnectOperations
         string founderUserId,
         Guid supersededAlignmentId,
         LegendConnectKnowledgeSubmission replacement,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectCurriculumSubmissionResult> SubmitFounderCurriculumAsync(
+        string founderUserId,
+        LegendConnectCurriculumBatchSubmission submission,
         CancellationToken cancellationToken = default);
 }
 

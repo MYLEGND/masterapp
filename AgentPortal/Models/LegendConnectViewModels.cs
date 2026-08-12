@@ -45,6 +45,18 @@ public sealed class FounderLegendConnectCorrectionInput : FounderLegendConnectKn
     public Guid SupersededAlignmentId { get; set; }
 }
 
+/// <summary>
+/// Founder form transport for a semantic curriculum family. Examples are
+/// entered one per line as: English text | dimension=value; dimension=value.
+/// Parsing happens at the Founder boundary; persistence remains relational.
+/// </summary>
+public sealed class FounderLegendConnectCurriculumInput
+{
+    public string FamilyKey { get; set; } = string.Empty;
+    public string? SemanticCategory { get; set; }
+    public string Examples { get; set; } = string.Empty;
+}
+
 public sealed class FounderLegendConnectEntitlementInput
 {
     public string TargetUserId { get; set; } = string.Empty;

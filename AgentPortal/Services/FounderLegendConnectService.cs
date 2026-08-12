@@ -280,6 +280,20 @@ public sealed class FounderLegendConnectService
             cancellationToken);
     }
 
+    public async Task<LegendConnectCurriculumSubmissionResult> SubmitCurriculumAsync(
+        ClaimsPrincipal user,
+        FounderLegendConnectCurriculumInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        if (!TryToCurriculumSubmission(input, out var submission, out var error))
+        {
+            return new LegendConnectCurriculumSubmissionResult(
+                false, false, "invalid_curriculum_examples", error, input.FamilyKey?.Trim(), null, 0, 0);
+        }
+        return await _operations.SubmitFounderCurriculumAsync(founder, submission!, cancellationToken);
+    }
+
     private static LegendConnectKnowledgeSubmission ToSubmission(FounderLegendConnectKnowledgeInput input) => new(
         input.SourceLanguageCode,
         input.SourceText,
@@ -289,6 +303,50 @@ public sealed class FounderLegendConnectService
         input.UsageRegister,
         input.RegionalVariant,
         "FounderApproved");
+
+    private static bool TryToCurriculumSubmission(
+        FounderLegendConnectCurriculumInput input,
+        out LegendConnectCurriculumBatchSubmission? submission,
+        out string? error)
+    {
+        submission = null;
+        error = null;
+        var examples = new List<LegendConnectCurriculumExampleSubmission>();
+        var lines = input.Examples?
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            ?? [];
+        foreach (var line in lines)
+        {
+            var parts = line.Split('|', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]))
+            {
+                error = "Enter each example as English text | dimension=value; dimension=value.";
+                return false;
+            }
+            var variations = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in parts[1].Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var pair = item.Split('=', 2, StringSplitOptions.TrimEntries);
+                if (pair.Length != 2 || string.IsNullOrWhiteSpace(pair[0]) || string.IsNullOrWhiteSpace(pair[1]) ||
+                    !variations.TryAdd(pair[0], pair[1]))
+                {
+                    error = "Each controlled variation must use dimension=value and dimensions cannot repeat within an example.";
+                    return false;
+                }
+            }
+            if (variations.Count == 0)
+            {
+                error = "Each curriculum example needs at least one controlled variation.";
+                return false;
+            }
+            examples.Add(new LegendConnectCurriculumExampleSubmission(parts[0], variations));
+        }
+        submission = new LegendConnectCurriculumBatchSubmission(
+            input.FamilyKey,
+            input.SemanticCategory,
+            examples);
+        return true;
+    }
 
     /// <summary>
     /// Connects the same authenticated principal that passed <see cref="FounderGuard"/>

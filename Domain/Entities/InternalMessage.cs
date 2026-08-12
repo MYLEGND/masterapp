@@ -18,6 +18,14 @@ public class InternalMessage
     /// </summary>
     public string? OriginalLanguage { get; set; }
 
+    /// <summary>
+    /// Canonical server preference for the actual sender at send time. This is
+    /// the live translation route source and intentionally remains distinct
+    /// from <see cref="OriginalLanguage"/>, which is provider-detected text
+    /// metadata. A later preference change cannot re-route an earlier message.
+    /// </summary>
+    public string? SenderPreferredLanguage { get; set; }
+
     public DateTime SentUtc { get; set; }
 
     public DateTime? EditedUtc { get; set; }

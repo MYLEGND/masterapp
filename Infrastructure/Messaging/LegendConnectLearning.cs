@@ -710,9 +710,27 @@ internal sealed class LegendConnectCorpusService
             : null;
     }
 
+    /// <summary>
+    /// Uses the existing candidate authority to expand a Founder-owned source
+    /// asset. Structured curriculum supplies optional lineage metadata; the
+    /// provider worker, capacity ledger, and corpus processor remain unchanged.
+    /// </summary>
+    internal Task EnsureFounderSeedCandidatesAsync(
+        LegendLanguageTextUnit source,
+        Guid? curriculumFamilyId,
+        Guid? sourceCurriculumExampleId,
+        CancellationToken cancellationToken = default) =>
+        QueueFounderSeedCandidatesAsync(
+            source,
+            cancellationToken,
+            curriculumFamilyId,
+            sourceCurriculumExampleId);
+
     private async Task QueueFounderSeedCandidatesAsync(
         LegendLanguageTextUnit source,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? curriculumFamilyId = null,
+        Guid? sourceCurriculumExampleId = null)
     {
         var enabledTargets = await _languages.ListEnabledTranslationLanguagesAsync(cancellationToken);
         var pending = false;
@@ -728,9 +746,27 @@ internal sealed class LegendConnectCorpusService
             var aligned = await _db.Set<LegendTranslationAlignment>().AnyAsync(item =>
                 item.PairKey == pair.PairKey && item.SourceTextUnitId == source.Id && item.SupersededUtc == null,
                 cancellationToken);
-            if (aligned || await _db.Set<LegendCorpusCandidate>().AnyAsync(item =>
-                    item.IdempotencyKey == idempotencyKey, cancellationToken))
+            if (aligned)
                 continue;
+
+            var existingCandidate = await _db.Set<LegendCorpusCandidate>()
+                .SingleOrDefaultAsync(item => item.IdempotencyKey == idempotencyKey, cancellationToken);
+            if (existingCandidate is not null)
+            {
+                // A single-entry Founder seed may have already created this
+                // canonical candidate. Tag the same candidate when it later
+                // becomes a curriculum example rather than duplicating an
+                // Azure request or a confidence observation.
+                if (curriculumFamilyId is not null &&
+                    existingCandidate.CurriculumFamilyId is null &&
+                    existingCandidate.ProcessingState is "Pending" or "Processing")
+                {
+                    existingCandidate.CurriculumFamilyId = curriculumFamilyId;
+                    existingCandidate.SourceCurriculumExampleId = sourceCurriculumExampleId;
+                    pending = true;
+                }
+                continue;
+            }
 
             _db.Set<LegendCorpusCandidate>().Add(new LegendCorpusCandidate
             {
@@ -742,6 +778,8 @@ internal sealed class LegendConnectCorpusService
                 SourceTextHash = source.NormalizedHash,
                 Category = "FounderApprovedSeed",
                 Provenance = "FounderApproved",
+                CurriculumFamilyId = curriculumFamilyId,
+                SourceCurriculumExampleId = sourceCurriculumExampleId,
                 IsApproved = true,
                 ProcessingState = "Pending",
                 CreatedUtc = DateTime.UtcNow
@@ -1067,6 +1105,7 @@ internal sealed class LegendConnectAutonomousLearningService
     private readonly ILegendConnectOperationalEventWriter? _operations;
     private readonly IConfiguration _configuration;
     private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
+    private readonly LegendConnectCurriculumService? _curriculum;
 
     public LegendConnectAutonomousLearningService(
         MasterAppDbContext db,
@@ -1077,7 +1116,8 @@ internal sealed class LegendConnectAutonomousLearningService
         LegendConnectAutonomousGapPlanner planner,
         IConfiguration configuration,
         ILegendConnectOperationalEventWriter? operations = null,
-        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null)
+        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null,
+        LegendConnectCurriculumService? curriculum = null)
     {
         _db = db;
         _registry = registry;
@@ -1088,6 +1128,7 @@ internal sealed class LegendConnectAutonomousLearningService
         _configuration = configuration;
         _operations = operations;
         _runtimePolicy = runtimePolicy;
+        _curriculum = curriculum;
     }
 
     internal bool IsBootstrapEnabled =>
@@ -1230,6 +1271,28 @@ internal sealed class LegendConnectAutonomousLearningService
             candidate.ProviderCharactersConsumed = reservation.Characters;
             await _db.SaveChangesAsync(cancellationToken);
             await _corpus.ProcessAsync(item, cancellationToken);
+            if (_curriculum is not null)
+            {
+                try
+                {
+                    await _curriculum.AttachProcessedExpansionAsync(candidate, pair, cancellationToken);
+                }
+                catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // Corpus promotion is already durable and must not be
+                    // rolled back by optional structural analysis.
+                    await RecordAsync(
+                        "StructuralLearning",
+                        "Warning",
+                        "Deferred",
+                        pair.TargetLanguageCode,
+                        pair.PairKey,
+                        "structural_analysis_failed",
+                        "Curriculum structural analysis was isolated after canonical corpus processing.",
+                        CancellationToken.None);
+                    _ = exception;
+                }
+            }
             await RecordAsync(
                 "CorpusExpansion",
                 "Info",

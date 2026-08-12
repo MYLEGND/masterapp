@@ -109,6 +109,33 @@ public sealed class LegendConnectController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/curriculum")]
+    public async Task<IActionResult> SubmitCurriculum(
+        [FromForm] FounderLegendConnectCurriculumInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.SubmitCurriculumAsync(User, input, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] =
+                result.Message ?? (result.Succeeded
+                    ? "Founder curriculum was saved. Existing Azure expansion will add enabled target-language evidence."
+                    : "The curriculum family could not be saved.");
+            return RedirectToAction(nameof(Index), new { language = "en" });
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect Founder curriculum submission failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route("founder/legend-connect/entitlement")]
     public async Task<IActionResult> UpdateEntitlement(
         [FromForm] FounderLegendConnectEntitlementInput input,

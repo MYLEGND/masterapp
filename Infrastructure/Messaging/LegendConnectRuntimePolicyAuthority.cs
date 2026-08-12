@@ -282,10 +282,36 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
                 "The existing demand-and-coverage planner is selecting work normally.");
         }
 
-        var candidates = await _db.Set<LegendCorpusCandidate>().AsNoTracking()
-            .Where(item => item.IsApproved)
-            .Where(item => MatchesOverride(item.SourceLanguageCode, item.TargetLanguageCode, policy))
-            .ToListAsync(cancellationToken);
+        var candidatesQuery = _db.Set<LegendCorpusCandidate>().AsNoTracking()
+            .Where(item => item.IsApproved);
+
+        if (!string.IsNullOrWhiteSpace(policy.PriorityPairKey))
+        {
+            var separatorIndex = policy.PriorityPairKey.IndexOf(':');
+            if (separatorIndex <= 0 || separatorIndex >= policy.PriorityPairKey.Length - 1)
+                throw new InvalidOperationException("Founder priority pair is not a valid directional language pair.");
+
+            var sourceLanguageCode = policy.PriorityPairKey[..separatorIndex];
+            var targetLanguageCode = policy.PriorityPairKey[(separatorIndex + 1)..];
+
+            candidatesQuery = candidatesQuery.Where(item =>
+                item.SourceLanguageCode == sourceLanguageCode &&
+                item.TargetLanguageCode == targetLanguageCode);
+        }
+        else if (!string.IsNullOrWhiteSpace(policy.PriorityLanguageCode))
+        {
+            var priorityLanguageCode = policy.PriorityLanguageCode;
+
+            candidatesQuery = candidatesQuery.Where(item =>
+                item.SourceLanguageCode == priorityLanguageCode ||
+                item.TargetLanguageCode == priorityLanguageCode);
+        }
+        else
+        {
+            throw new InvalidOperationException("Founder priority override has no language or directional pair.");
+        }
+
+        var candidates = await candidatesQuery.ToListAsync(cancellationToken);
         var pending = candidates.Where(item => item.ProcessingState is "Pending" or "Processing").ToList();
         var eligible = 0L;
         foreach (var candidate in pending)

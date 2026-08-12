@@ -35,6 +35,9 @@ public static class MessagingServiceCollectionExtensions
         services.AddScoped<ITranslationService, LegendConnectTranslationRouter>();
         services.AddScoped<ITranslationLearningPublisher, LegendTranslationLearningPublisher>();
         services.AddScoped<LegendConnectCorpusService>();
+        services.AddScoped<LegendConnectCurriculumService>();
+        services.AddScoped<ILegendConnectStructuralCompositionGate>(provider =>
+            provider.GetRequiredService<LegendConnectCurriculumService>());
         services.AddScoped<LegendConnectAutonomousGapPlanner>();
         services.AddScoped<LegendConnectAutonomousLearningService>();
         services.AddScoped<ILegendConnectOperations, LegendConnectOperations>();

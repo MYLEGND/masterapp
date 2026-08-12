@@ -19,6 +19,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
     private readonly ILegendConnectOperationalEventWriter? _operations;
     private readonly ITranslationEntitlementAuthority? _entitlements;
     private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
+    private readonly ILegendConnectStructuralCompositionGate? _structuralComposition;
     private readonly ILogger<LegendConnectTranslationRouter> _logger;
 
     public LegendConnectTranslationRouter(
@@ -31,7 +32,8 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         ILegendConnectTranslationIntelligence? intelligence = null,
         ILegendConnectOperationalEventWriter? operations = null,
         ITranslationEntitlementAuthority? entitlements = null,
-        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null)
+        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null,
+        ILegendConnectStructuralCompositionGate? structuralComposition = null)
     {
         _azure = azure;
         _languages = languages;
@@ -43,6 +45,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         _operations = operations;
         _entitlements = entitlements;
         _runtimePolicy = runtimePolicy;
+        _structuralComposition = structuralComposition;
     }
 
     public async Task<TranslationDetectionResult> DetectLanguageAsync(
@@ -135,6 +138,27 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                     }
                     await RecordAvoidedSafelyAsync(account, TranslationAvoidedPath.TranslationMemory, text?.Length ?? 0, cancellationToken);
                     return new TranslationProviderResult(true, memory.Text, source, "LegendConnectTranslationMemory");
+                }
+
+                // Structural curriculum is evaluated after exact memory and
+                // before Azure fallback. Phase 2 exposes only a safe gate: it
+                // returns no formulation until an independently approved
+                // composition engine exists.
+                if (_structuralComposition is not null)
+                {
+                    var structural = await _structuralComposition.TryComposeAsync(
+                        source,
+                        target,
+                        text ?? string.Empty,
+                        cancellationToken);
+                    if (structural is not null)
+                    {
+                        return new TranslationProviderResult(
+                            true,
+                            structural.Text,
+                            source,
+                            "LegendConnectStructuralComposition");
+                    }
                 }
 
                 contextualSuggestion = await _intelligence.EvaluateContextAsync(source, target, text ?? string.Empty, cancellationToken);

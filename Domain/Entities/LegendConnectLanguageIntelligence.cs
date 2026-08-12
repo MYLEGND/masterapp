@@ -171,6 +171,12 @@ public sealed class LegendCorpusCandidate
     public string SourceTextHash { get; set; } = string.Empty;
     public string Category { get; set; } = "EverydayConversation";
     public string Provenance { get; set; } = string.Empty;
+    /// <summary>
+    /// Optional structured-curriculum provenance. This extends the existing
+    /// candidate authority rather than introducing another expansion queue.
+    /// </summary>
+    public Guid? CurriculumFamilyId { get; set; }
+    public Guid? SourceCurriculumExampleId { get; set; }
     public bool IsApproved { get; set; }
     public int Priority { get; set; }
     public string ProcessingState { get; set; } = "Pending";
@@ -186,6 +192,93 @@ public sealed class LegendCorpusCandidate
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? ProcessedUtc { get; set; }
     public string? FailureCode { get; set; }
+}
+
+/// <summary>
+/// A Founder-authored semantic curriculum family. It identifies the shared
+/// meaning being taught; it is deliberately not a cross-language grammar rule.
+/// </summary>
+public sealed class LegendCurriculumFamily
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string FamilyKey { get; set; } = string.Empty;
+    public string? SemanticCategory { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Membership of a canonical language asset in a curriculum family. Target
+/// examples retain their source example lineage while remaining assets in
+/// their own language dataset.
+/// </summary>
+public sealed class LegendCurriculumExample
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CurriculumFamilyId { get; set; }
+    public Guid TextUnitId { get; set; }
+    public string LanguageCode { get; set; } = string.Empty;
+    public Guid? DerivedFromCurriculumExampleId { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// One controlled semantic variation attached to one curriculum example.
+/// Values are relational records so they can be compared independently of
+/// language-specific textual realization.
+/// </summary>
+public sealed class LegendCurriculumExampleVariation
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CurriculumExampleId { get; set; }
+    public string Dimension { get; set; } = string.Empty;
+    public string Value { get; set; } = string.Empty;
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Generic, language-scoped structural pattern maturity. The realization
+/// signature is computed from examples in this language only; the family and
+/// variation describe shared semantics but never copy English grammar.
+/// </summary>
+public sealed class LegendLanguageStructuralPattern
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CurriculumFamilyId { get; set; }
+    public string LanguageCode { get; set; } = string.Empty;
+    public string VariationDimension { get; set; } = string.Empty;
+    public string RealizationSignature { get; set; } = string.Empty;
+    public string MaturityState { get; set; } = "Observation";
+    public int SupportCount { get; set; }
+    public int ContradictionCount { get; set; }
+    public bool IsProductionEligible { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// An auditable same-language comparison supporting one structural pattern.
+/// It records the controlled semantic change and the two canonical examples,
+/// not an invented grammatical rule.
+/// </summary>
+public sealed class LegendLanguageStructuralEvidence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid StructuralPatternId { get; set; }
+    public Guid CurriculumFamilyId { get; set; }
+    public string LanguageCode { get; set; } = string.Empty;
+    public string VariationDimension { get; set; } = string.Empty;
+    public Guid BaselineCurriculumExampleId { get; set; }
+    public Guid ComparedCurriculumExampleId { get; set; }
+    public string BaselineVariationValue { get; set; } = string.Empty;
+    public string ComparedVariationValue { get; set; } = string.Empty;
+    public string EvidenceSignature { get; set; } = string.Empty;
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>

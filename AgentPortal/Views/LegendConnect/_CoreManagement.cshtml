@@ -116,6 +116,22 @@
         </div>
         <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save approved knowledge</button></div>
     </form>
+
+    <details class="legend-connect-disclosure">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Structured learning</span><span class="dashboard-section-title">Teach an English semantic family</span></span><span class="legend-connect-disclosure-status">Curriculum</span></summary>
+        <div class="legend-connect-disclosure-body">
+            <p class="dashboard-section-copy">Legend stores each example in English, preserves the named semantic changes, then uses the existing Azure expansion pipeline so Spanish, Arabic, Japanese, and every enabled target language compare their own examples. Patterns remain evidence-gated and do not compose live translations.</p>
+            <form method="post" asp-action="SubmitCurriculum" class="dashboard-search-panel">
+                @Html.AntiForgeryToken()
+                <div class="dashboard-form-grid">
+                    <label class="dashboard-form-field"><span>Family key</span><input name="FamilyKey" required maxlength="160" placeholder="possession.basic" /></label>
+                    <label class="dashboard-form-field"><span>Semantic category</span><input name="SemanticCategory" maxlength="120" placeholder="Possession" /></label>
+                    <label class="dashboard-form-field dashboard-form-field--wide"><span>English examples and controlled variations</span><textarea name="Examples" required maxlength="30000" placeholder="I have the book. | person=first; tense=present; object=book&#10;She has the book. | person=third; tense=present; object=book"></textarea></label>
+                </div>
+                <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save curriculum family</button></div>
+            </form>
+        </div>
+    </details>
 </section>
 
 <section class="category-container legend-connect-active-languages" aria-labelledby="active-languages-title">
