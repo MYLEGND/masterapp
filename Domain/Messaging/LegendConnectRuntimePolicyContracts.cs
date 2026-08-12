@@ -13,10 +13,6 @@ public sealed record LegendConnectRuntimePolicySnapshot(
     bool LearningEnabled,
     string ContextualCompositionMode,
     decimal ContextualMinimumConfidence,
-    string PriorityMode,
-    string? PriorityLanguageCode,
-    string? PriorityPairKey,
-    string? PriorityLevel,
     DateTime? LastLearningWorkerHeartbeatUtc,
     DateTime? LastAcquisitionWorkerHeartbeatUtc,
     DateTime UpdatedUtc)
@@ -37,11 +33,6 @@ public sealed record LegendConnectRuntimePolicyMutation(
     string ContextualCompositionMode,
     decimal ContextualMinimumConfidence);
 
-public sealed record LegendConnectPriorityOverrideMutation(
-    string? LanguageCode,
-    string? PairKey,
-    string? PriorityLevel);
-
 public sealed record LegendConnectAutonomousLanguageFocusMutation(
     bool Enabled,
     IReadOnlyCollection<string>? TargetLanguageCodes);
@@ -61,16 +52,6 @@ public sealed record LegendConnectProductionReadinessSnapshot(
     long RejectedOrIneligibleCandidateCount,
     long DuplicateCandidateCount,
     long AwaitingKnowledgePairCount);
-
-public sealed record LegendConnectPriorityProgressSnapshot(
-    string Status,
-    long EligibleMissingCandidateCount,
-    long PendingCandidateCount,
-    long CurrentInternalCoverage,
-    decimal AzureDependencyRate,
-    long CharactersConsumed,
-    DateTime? LastSuccessfulExpansionUtc,
-    string? Detail);
 
 public sealed record LegendConnectFounderOperationalAuditSnapshot(
     string FounderUserId,
@@ -107,21 +88,9 @@ public interface ILegendConnectRuntimePolicyAuthority
         string founderUserId,
         CancellationToken cancellationToken = default);
 
-    Task<LegendConnectRuntimePolicySnapshot> ConfigurePriorityOverrideAsync(
-        string founderUserId,
-        LegendConnectPriorityOverrideMutation mutation,
-        CancellationToken cancellationToken = default);
-
-    Task<LegendConnectRuntimePolicySnapshot> DisablePriorityOverrideAsync(
-        string founderUserId,
-        CancellationToken cancellationToken = default);
-
     Task<LegendConnectRuntimePolicySnapshot> ConfigureAutonomousLanguageFocusAsync(
         string founderUserId,
         LegendConnectAutonomousLanguageFocusMutation mutation,
-        CancellationToken cancellationToken = default);
-
-    Task<LegendConnectPriorityProgressSnapshot> GetPriorityProgressAsync(
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<LegendConnectFounderOperationalAuditSnapshot>> GetRecentAuditAsync(

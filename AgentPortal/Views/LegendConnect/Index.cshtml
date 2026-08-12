@@ -10,7 +10,7 @@
     var policy = Model.RuntimePolicy;
     var readiness = Model.ProductionReadiness;
     var routedRequestCount = dashboard.TranslationMemoryHitCount + dashboard.ContextualInternalServeCount + dashboard.AzureFallbackCount;
-    var focusOverrideEnabled = policy.FocusedTargetLanguageCodes.Count > 0;
+    var focusEnabled = policy.FocusedTargetLanguageCodes.Count > 0;
     var focusedLanguageNames = string.Join(", ", dashboard.Languages
         .Where(language => policy.FocusedTargetLanguageCodes.Contains(language.LanguageCode, StringComparer.OrdinalIgnoreCase))
         .Select(language => language.DisplayName));
@@ -80,13 +80,13 @@
             @Html.AntiForgeryToken()
             <div class="legend-connect-focus-heading">
                 <span><span class="dashboard-section-kicker">Step 1 of 2 · Optional</span><span class="dashboard-section-title">Focus this English learning run</span></span>
-                <span class="legend-connect-focus-status @(focusOverrideEnabled ? "legend-connect-focus-status--on" : "legend-connect-focus-status--off")" data-language-focus-status aria-live="polite"><span class="legend-connect-focus-status-dot" aria-hidden="true"></span><span data-language-focus-status-text>Focus @(focusOverrideEnabled ? "on" : "off")</span></span>
+                <span class="legend-connect-focus-status @(focusEnabled ? "legend-connect-focus-status--on" : "legend-connect-focus-status--off")" data-language-focus-status aria-live="polite"><span class="legend-connect-focus-status-dot" aria-hidden="true"></span><span data-language-focus-status-text>Focus @(focusEnabled ? "on" : "off")</span></span>
             </div>
             <p class="dashboard-section-copy">Use the same approved English learning sets for only the languages you choose. Leave focus off to return to automatic demand-driven work across every enabled language.</p>
             <div class="legend-connect-focus-controls">
                 <div class="legend-connect-focus-switch-field">
                     <span class="legend-connect-focus-label">Learning focus</span>
-                    <input id="legendConnectFocusEnabled" class="legend-connect-focus-switch-input" name="FocusOverrideEnabled" type="checkbox" value="true" role="switch" aria-describedby="language-focus-help" @(focusOverrideEnabled ? "checked" : null) />
+                    <input id="legendConnectFocusEnabled" class="legend-connect-focus-switch-input" name="FocusEnabled" type="checkbox" value="true" role="switch" aria-describedby="language-focus-help" @(focusEnabled ? "checked" : null) />
                     <label for="legendConnectFocusEnabled" class="legend-connect-focus-switch"><span class="legend-connect-focus-switch-track" aria-hidden="true"></span><span>Limit this run to selected languages</span></label>
                 </div>
                 <div class="legend-connect-language-field">
@@ -111,7 +111,7 @@
                 </div>
             </div>
             <div class="legend-connect-focus-footer">
-                <p class="legend-connect-focus-note" id="language-focus-help" data-language-focus-help>@(focusOverrideEnabled ? $"Focused now: {focusedLanguageNames}." : "Focus is off. All enabled language pairs are prioritized by demand, coverage, and quality.")</p>
+                <p class="legend-connect-focus-note" id="language-focus-help" data-language-focus-help>@(focusEnabled ? $"Focused now: {focusedLanguageNames}." : "Focus is off. All enabled language pairs are prioritized by demand, coverage, and quality.")</p>
                 <button type="submit" class="dashboard-command-action btn-carrier-settings">Step 2 · Activate corpus autonomous</button>
             </div>
         </form>
@@ -207,7 +207,7 @@
         <div class="legend-connect-disclosure-body">
         @if (Model.RuntimeAudit.Count == 0)
         {
-            <p class="dashboard-section-copy">No Founder runtime-policy or priority changes have been recorded.</p>
+            <p class="dashboard-section-copy">No Founder runtime-policy or language-focus changes have been recorded.</p>
         }
         else
         {

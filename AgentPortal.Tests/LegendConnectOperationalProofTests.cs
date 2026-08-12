@@ -159,7 +159,7 @@ public sealed class LegendConnectOperationalProofTests
             await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
                 "/founder/legend-connect/activate", new Dictionary<string, string>
                 {
-                    ["FocusOverrideEnabled"] = "true",
+                    ["FocusEnabled"] = "true",
                     ["FocusLanguageCodes"] = "ht"
                 });
             await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
@@ -179,8 +179,6 @@ public sealed class LegendConnectOperationalProofTests
             var runtime = await db.LegendConnectRuntimePolicies.AsNoTracking().SingleAsync();
             Assert.Equal(1_000, runtime.MonthlyProviderCapacityCharacters);
             Assert.False(runtime.CorpusAcquisitionEnabled);
-            Assert.Equal("FounderOverride", runtime.PriorityMode);
-            Assert.Null(runtime.PriorityLanguageCode);
             Assert.Contains(await db.LegendConnectAutonomousLanguageFocuses.AsNoTracking().ToListAsync(), focus =>
                 focus.RuntimePolicyId == runtime.Id && focus.TargetLanguageCode == "ht");
             Assert.Contains(await db.LegendCorpusCandidates.AsNoTracking().ToListAsync(), candidate =>

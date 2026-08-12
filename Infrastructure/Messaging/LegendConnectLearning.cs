@@ -1162,7 +1162,7 @@ internal sealed class LegendConnectAutonomousGapPlanner
     }
 
     public async Task<Guid?> SelectApprovedGapAsync(
-        LegendConnectRuntimePolicySnapshot? priorityOverride = null,
+        LegendConnectRuntimePolicySnapshot? runtimePolicy = null,
         CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
@@ -1187,9 +1187,7 @@ internal sealed class LegendConnectAutonomousGapPlanner
                 cancellationToken);
             if (pair is null || string.Equals(pair.SourceLanguageCode, pair.TargetLanguageCode, StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (priorityOverride is not null &&
-                string.Equals(priorityOverride.PriorityMode, "FounderOverride", StringComparison.OrdinalIgnoreCase) &&
-                !MatchesPriorityOverride(pair, priorityOverride))
+            if (!MatchesAutonomousLanguageFocus(pair, runtimePolicy))
                 continue;
 
             var source = await _db.Set<LegendLanguageTextUnit>()
@@ -1237,18 +1235,8 @@ internal sealed class LegendConnectAutonomousGapPlanner
             .Where(item => pairKeys.Contains(item.PairKey))
             .ToDictionaryAsync(item => item.PairKey, item => item.TranslationRequestCount, StringComparer.OrdinalIgnoreCase, cancellationToken);
 
-        if (priorityOverride is not null &&
-            string.Equals(priorityOverride.PriorityMode, "FounderOverride", StringComparison.OrdinalIgnoreCase))
-        {
-            // An active Founder target is intentionally a scoped work-order
-            // policy: completed targets wait for new eligible material rather
-            // than consuming provider capacity on unrelated acquisition.
-            planned = planned.Where(item => MatchesPriorityOverride(item.Pair, priorityOverride)).ToList();
-        }
-
         return planned
-            .OrderByDescending(item => MatchesPriorityOverride(item.Pair, priorityOverride))
-            .ThenByDescending(item => LegendCorpusCandidateScoring.Score(
+            .OrderByDescending(item => LegendCorpusCandidateScoring.Score(
                 item.Candidate,
                 demandByPair.GetValueOrDefault(item.Pair.PairKey),
                 item.Pair.CorpusCoverage))
@@ -1257,25 +1245,16 @@ internal sealed class LegendConnectAutonomousGapPlanner
             .FirstOrDefault();
     }
 
-    private static bool MatchesPriorityOverride(
+    private static bool MatchesAutonomousLanguageFocus(
         LegendLanguagePairSnapshot pair,
         LegendConnectRuntimePolicySnapshot? policy)
     {
-        if (policy is null || !string.Equals(policy.PriorityMode, "FounderOverride", StringComparison.OrdinalIgnoreCase))
-            return false;
-        if (policy.FocusedTargetLanguageCodes.Count > 0)
-        {
-            // Founder focus deliberately expands the common English learning
-            // sets only into the selected target datasets. It never creates a
-            // language-specific queue or changes the Azure-backed pipeline.
-            return string.Equals(pair.SourceLanguageCode, "en", StringComparison.OrdinalIgnoreCase) &&
-                   policy.FocusedTargetLanguageCodes.Contains(pair.TargetLanguageCode, StringComparer.OrdinalIgnoreCase);
-        }
-        if (!string.IsNullOrWhiteSpace(policy.PriorityPairKey))
-            return string.Equals(pair.PairKey, policy.PriorityPairKey, StringComparison.OrdinalIgnoreCase);
-        return !string.IsNullOrWhiteSpace(policy.PriorityLanguageCode) &&
-               (string.Equals(pair.SourceLanguageCode, policy.PriorityLanguageCode, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(pair.TargetLanguageCode, policy.PriorityLanguageCode, StringComparison.OrdinalIgnoreCase));
+        // An empty focus leaves the existing demand-and-coverage planner in
+        // control. A non-empty focus is the only acquisition scope and is
+        // limited to English-source learning material for selected targets.
+        return policy is null || policy.FocusedTargetLanguageCodes.Count == 0 ||
+               (string.Equals(pair.SourceLanguageCode, "en", StringComparison.OrdinalIgnoreCase) &&
+                policy.FocusedTargetLanguageCodes.Contains(pair.TargetLanguageCode, StringComparer.OrdinalIgnoreCase));
     }
 }
 

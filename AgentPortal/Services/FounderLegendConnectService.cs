@@ -57,14 +57,11 @@ public sealed class FounderLegendConnectService
             ? new TranslationFounderScaleSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0)
             : await _entitlements.GetFounderScaleAsync(cancellationToken);
         var runtimePolicy = _runtimePolicy is null
-            ? new LegendConnectRuntimePolicySnapshot(false, 0, 0, 0, false, true, "Shadow", 0.98m, "Automatic", null, null, null, null, null, DateTime.MinValue)
+            ? new LegendConnectRuntimePolicySnapshot(false, 0, 0, 0, false, true, "Shadow", 0.98m, null, null, DateTime.MinValue)
             : await _runtimePolicy.GetEffectiveAsync(cancellationToken);
         var readiness = _runtimePolicy is null
             ? new LegendConnectProductionReadinessSnapshot("BLOCKED", false, "Legend Connect runtime policy authority is unavailable.", Array.Empty<LegendConnectReadinessCheck>(), 0, 0, 0, 0, 0)
             : await _runtimePolicy.GetReadinessAsync(cancellationToken);
-        var priorityProgress = _runtimePolicy is null
-            ? new LegendConnectPriorityProgressSnapshot("AUTOMATIC — DEMAND DRIVEN", 0, 0, 0, 0m, 0, null, null)
-            : await _runtimePolicy.GetPriorityProgressAsync(cancellationToken);
         var runtimeAudit = _runtimePolicy is null
             ? Array.Empty<LegendConnectFounderOperationalAuditSnapshot>()
             : await _runtimePolicy.GetRecentAuditAsync(cancellationToken: cancellationToken);
@@ -81,7 +78,6 @@ public sealed class FounderLegendConnectService
             EntitlementPresets = _entitlements?.GetFounderEntitlementPresets() ?? Array.Empty<TranslationEntitlementPreset>(),
             RuntimePolicy = runtimePolicy,
             ProductionReadiness = readiness,
-            PriorityProgress = priorityProgress,
             RuntimeAudit = runtimeAudit
         };
     }
@@ -124,7 +120,7 @@ public sealed class FounderLegendConnectService
             var focus = await _runtimePolicy.ConfigureAutonomousLanguageFocusAsync(
                 founder,
                 new LegendConnectAutonomousLanguageFocusMutation(
-                    input.FocusOverrideEnabled,
+                    input.FocusEnabled,
                     input.FocusLanguageCodes),
                 cancellationToken);
             var readiness = await _runtimePolicy.ActivateAsync(founder, cancellationToken);
@@ -151,37 +147,6 @@ public sealed class FounderLegendConnectService
             return new FounderLegendConnectOperationResult(false, "Legend Connect runtime policy authority is unavailable.");
         await _runtimePolicy.PauseAsync(founder, cancellationToken);
         return new FounderLegendConnectOperationResult(true, "Autonomous acquisition is paused. Live communication and Azure fallback remain available.");
-    }
-
-    public async Task<FounderLegendConnectOperationResult> ConfigurePriorityOverrideAsync(
-        ClaimsPrincipal user,
-        FounderLegendConnectPriorityOverrideInput input,
-        CancellationToken cancellationToken = default)
-    {
-        var founder = await ResolveFounderActorAsync(user, cancellationToken);
-        if (_runtimePolicy is null)
-            return new FounderLegendConnectOperationResult(false, "Legend Connect runtime policy authority is unavailable.");
-        try
-        {
-            await _runtimePolicy.ConfigurePriorityOverrideAsync(founder,
-                new LegendConnectPriorityOverrideMutation(input.LanguageCode, input.PairKey, null), cancellationToken);
-            return new FounderLegendConnectOperationResult(true, "Founder priority override is active. The existing planner now orders only eligible matching work first.");
-        }
-        catch (ArgumentException exception)
-        {
-            return new FounderLegendConnectOperationResult(false, exception.Message);
-        }
-    }
-
-    public async Task<FounderLegendConnectOperationResult> DisablePriorityOverrideAsync(
-        ClaimsPrincipal user,
-        CancellationToken cancellationToken = default)
-    {
-        var founder = await ResolveFounderActorAsync(user, cancellationToken);
-        if (_runtimePolicy is null)
-            return new FounderLegendConnectOperationResult(false, "Legend Connect runtime policy authority is unavailable.");
-        await _runtimePolicy.DisablePriorityOverrideAsync(founder, cancellationToken);
-        return new FounderLegendConnectOperationResult(true, "Founder priority override is disabled. The existing demand-driven planner is active immediately.");
     }
 
     public async Task<FounderLegendConnectEntitlementResult> UpdateEntitlementAsync(

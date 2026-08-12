@@ -228,52 +228,6 @@ public sealed class LegendConnectController : Controller
         }
     }
 
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    [Route("founder/legend-connect/priority")]
-    public async Task<IActionResult> ConfigurePriorityOverride(
-        [FromForm] FounderLegendConnectPriorityOverrideInput input,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var result = await _service.ConfigurePriorityOverrideAsync(User, input, cancellationToken);
-            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
-            return RedirectToAction(nameof(Index));
-        }
-        catch (ForbidResultException)
-        {
-            return Forbid();
-        }
-        catch (Exception exception)
-        {
-            _logger.LogError(exception, "Legend Connect priority override update failed.");
-            return FounderFailureRedirect();
-        }
-    }
-
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    [Route("founder/legend-connect/priority/disable")]
-    public async Task<IActionResult> DisablePriorityOverride(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var result = await _service.DisablePriorityOverrideAsync(User, cancellationToken);
-            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
-            return RedirectToAction(nameof(Index));
-        }
-        catch (ForbidResultException)
-        {
-            return Forbid();
-        }
-        catch (Exception exception)
-        {
-            _logger.LogError(exception, "Legend Connect priority override disable failed.");
-            return FounderFailureRedirect();
-        }
-    }
-
     private RedirectToActionResult FounderFailureRedirect()
     {
         var reference = HttpContext.TraceIdentifier;

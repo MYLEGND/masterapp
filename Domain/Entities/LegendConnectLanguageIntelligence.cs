@@ -564,15 +564,18 @@ public sealed class LegendConnectRuntimePolicy
     public bool LearningEnabled { get; set; } = true;
     public string ContextualCompositionMode { get; set; } = "Shadow";
     public decimal ContextualMinimumConfidence { get; set; } = 0.98m;
-    public string PriorityMode { get; set; } = "Automatic";
-    public string? PriorityLanguageCode { get; set; }
-    public string? PriorityPairKey { get; set; }
-    public string? PriorityLevel { get; set; }
     public DateTime? LastLearningWorkerHeartbeatUtc { get; set; }
     public DateTime? LastAcquisitionWorkerHeartbeatUtc { get; set; }
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public string? UpdatedByUserId { get; set; }
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
+    // Historical persistence only. These members have no runtime-policy
+    // contract or consumer; autonomous focus rows are the sole scope source.
+    private string PriorityMode { get; set; } = "Automatic";
+    private string? PriorityLanguageCode { get; set; }
+    private string? PriorityPairKey { get; set; }
+    private string? PriorityLevel { get; set; }
 }
 
 /// <summary>

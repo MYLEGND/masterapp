@@ -49,8 +49,8 @@ public sealed class LegendConnectRuntimePolicyTests
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => nonFounder.UpdateAsync("member",
             new LegendConnectRuntimePolicyMutation(100, 10, 90, true, "Shadow", 0.98m)));
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => nonFounder.ConfigurePriorityOverrideAsync("member",
-            new LegendConnectPriorityOverrideMutation("ht", null, null)));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => nonFounder.ConfigureAutonomousLanguageFocusAsync("member",
+            new LegendConnectAutonomousLanguageFocusMutation(true, ["ht"])));
 
         var policy = Policy(db, registry, configuration);
         await Assert.ThrowsAsync<ArgumentException>(() => policy.UpdateAsync("founder",
@@ -147,37 +147,6 @@ public sealed class LegendConnectRuntimePolicyTests
     }
 
     [Fact]
-    public async Task FounderLanguageOverride_PrioritizesHaitianCreoleWithoutChangingDefaultScoringOrCreatingDuplicateWork()
-    {
-        await using var db = ControllerTestHelpers.BuildDb();
-        var configuration = Configuration();
-        var registry = new LegendLanguageRegistry(db, configuration);
-        var policy = Policy(db, registry, configuration);
-        _ = await registry.GetOrCreateEnabledPairAsync("en", "ht");
-        _ = await registry.GetOrCreateEnabledPairAsync("en", "fr");
-        db.LegendTranslationPairDemands.Add(new LegendTranslationPairDemand
-        {
-            Id = Guid.NewGuid(), PairKey = "en:fr", TranslationRequestCount = 500, LastRequestedUtc = DateTime.UtcNow
-        });
-        var haitian = Candidate("haitian", "en", "ht", "Approved Haitian coverage");
-        var ineligibleHaitian = Candidate("ineligible-haitian", "en", "ht", "Unapproved Haitian coverage");
-        ineligibleHaitian.IsApproved = false;
-        var french = Candidate("french", "en", "fr", "Higher demand French coverage");
-        db.AddRange(haitian, ineligibleHaitian, french);
-        await db.SaveChangesAsync();
-
-        var planner = new LegendConnectAutonomousGapPlanner(db, registry);
-        Assert.Equal(french.Id, await planner.SelectApprovedGapAsync());
-
-        await policy.ConfigurePriorityOverrideAsync("founder", new LegendConnectPriorityOverrideMutation("Haitian Creole", null, null));
-        Assert.Equal(haitian.Id, await planner.SelectApprovedGapAsync(await policy.GetEffectiveAsync()));
-        Assert.Contains(await policy.GetRecentAuditAsync(), item => item.Action == "FounderPriorityOverrideEnabled" && item.LanguageCode == "ht");
-
-        await policy.DisablePriorityOverrideAsync("founder");
-        Assert.Equal(french.Id, await planner.SelectApprovedGapAsync(await policy.GetEffectiveAsync()));
-    }
-
-    [Fact]
     public async Task FounderAutonomousLanguageFocus_UsesEnglishLearningSetsForMultipleSelectedTargets_ThenRestoresAutomaticPlanning()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -205,7 +174,6 @@ public sealed class LegendConnectRuntimePolicyTests
             new LegendConnectAutonomousLanguageFocusMutation(true, ["Haitian Creole", "Spanish"]));
 
         var focused = await policy.GetEffectiveAsync();
-        Assert.Equal("FounderOverride", focused.PriorityMode);
         Assert.Equal(["es", "ht"], focused.FocusedTargetLanguageCodes);
         Assert.Equal(2, await db.LegendConnectAutonomousLanguageFocuses.CountAsync());
 
@@ -220,45 +188,11 @@ public sealed class LegendConnectRuntimePolicyTests
         var automatic = await policy.ConfigureAutonomousLanguageFocusAsync(
             "founder",
             new LegendConnectAutonomousLanguageFocusMutation(false, null));
-        Assert.Equal("Automatic", automatic.PriorityMode);
         Assert.Empty(automatic.FocusedTargetLanguageCodes);
         Assert.Equal(0, await db.LegendConnectAutonomousLanguageFocuses.CountAsync());
         Assert.Equal(french.Id, await planner.SelectApprovedGapAsync(automatic));
         Assert.Contains(await policy.GetRecentAuditAsync(), item =>
             item.Action == "FounderAutonomousLanguageFocusEnabled" && item.Detail!.Contains("es, ht"));
-    }
-
-    [Fact]
-    public async Task PairSpecificOverride_AffectsOnlyTheSelectedDirection_AndCompletionDoesNotCallAzure()
-    {
-        await using var db = ControllerTestHelpers.BuildDb();
-        var configuration = Configuration();
-        var registry = new LegendLanguageRegistry(db, configuration);
-        var policy = Policy(db, registry, configuration);
-        var forward = Assert.IsType<LegendLanguagePairSnapshot>(await registry.GetOrCreateEnabledPairAsync("en", "ht"));
-        _ = await registry.GetOrCreateEnabledPairAsync("ht", "en");
-        var completed = Candidate("completed", "en", "ht", "Existing exact source");
-        var reverse = Candidate("reverse", "ht", "en", "Konesans ranvèse");
-        db.AddRange(completed, reverse);
-        var eventItem = new LegendTranslationLearningEvent
-        {
-            Id = Guid.NewGuid(), IdempotencyKey = "existing-forward", SourceLanguageCode = "en", TargetLanguageCode = "ht", PairKey = forward.PairKey,
-            SourceTextHash = completed.SourceTextHash, TargetTextHash = LegendLanguageIdentity.TextHash("Knowledge exists"),
-            SourceText = completed.SourceText, TargetText = "Knowledge exists", Provider = "AzureTranslator",
-            Provenance = "ApprovedTestCorpus", EligibilityState = "Eligible", ProcessingState = "Pending", CreatedUtc = DateTime.UtcNow
-        };
-        db.Add(eventItem);
-        await db.SaveChangesAsync();
-        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
-        await corpus.ProcessAsync(eventItem);
-
-        await policy.ConfigurePriorityOverrideAsync("founder", new LegendConnectPriorityOverrideMutation(null, "en:ht", null));
-        var planner = new LegendConnectAutonomousGapPlanner(db, registry);
-        Assert.Null(await planner.SelectApprovedGapAsync(await policy.GetEffectiveAsync()));
-
-        var progress = await policy.GetPriorityProgressAsync();
-        Assert.Equal("PRIORITY COMPLETE — NO ELIGIBLE MISSING WORK", progress.Status);
-        Assert.Equal("Pending", (await db.LegendCorpusCandidates.SingleAsync(item => item.Id == reverse.Id)).ProcessingState);
     }
 
     [Fact]

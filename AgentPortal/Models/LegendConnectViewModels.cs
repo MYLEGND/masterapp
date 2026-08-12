@@ -20,11 +20,9 @@ public sealed class FounderLegendConnectDashboardVm
         Array.Empty<TranslationEntitlementPreset>();
     public TranslationFounderScaleSnapshot AccountScale { get; init; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0);
     public LegendConnectRuntimePolicySnapshot RuntimePolicy { get; init; } = new(
-        false, 0, 0, 0, false, true, "Shadow", 0.98m, "Automatic", null, null, null, null, null, DateTime.MinValue);
+        false, 0, 0, 0, false, true, "Shadow", 0.98m, null, null, DateTime.MinValue);
     public LegendConnectProductionReadinessSnapshot ProductionReadiness { get; init; } = new(
         "BLOCKED", false, "Runtime policy authority is unavailable.", Array.Empty<LegendConnectReadinessCheck>(), 0, 0, 0, 0, 0);
-    public LegendConnectPriorityProgressSnapshot PriorityProgress { get; init; } = new(
-        "AUTOMATIC — DEMAND DRIVEN", 0, 0, 0, 0m, 0, null, null);
     public IReadOnlyList<LegendConnectFounderOperationalAuditSnapshot> RuntimeAudit { get; init; } =
         Array.Empty<LegendConnectFounderOperationalAuditSnapshot>();
 }
@@ -82,15 +80,9 @@ public sealed class FounderLegendConnectRuntimePolicyInput
     public decimal ContextualMinimumConfidence { get; set; } = 0.98m;
 }
 
-public sealed class FounderLegendConnectPriorityOverrideInput
-{
-    public string? LanguageCode { get; set; }
-    public string? PairKey { get; set; }
-}
-
 public sealed class FounderLegendConnectActivationInput
 {
-    public bool FocusOverrideEnabled { get; set; }
+    public bool FocusEnabled { get; set; }
     public List<string> FocusLanguageCodes { get; set; } = [];
 }
 

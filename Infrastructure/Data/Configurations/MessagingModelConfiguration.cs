@@ -746,10 +746,12 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.ScopeKey).IsRequired().HasMaxLength(40);
             entity.Property(item => item.ContextualCompositionMode).IsRequired().HasMaxLength(20);
             entity.Property(item => item.ContextualMinimumConfidence).HasPrecision(5, 4);
-            entity.Property(item => item.PriorityMode).IsRequired().HasMaxLength(40);
-            entity.Property(item => item.PriorityLanguageCode).HasMaxLength(32);
-            entity.Property(item => item.PriorityPairKey).HasMaxLength(72);
-            entity.Property(item => item.PriorityLevel).HasMaxLength(40);
+            // Superseded single-target columns remain inert historical
+            // storage. Runtime policy exposes no access path to them.
+            entity.Property<string>("PriorityMode").IsRequired().HasMaxLength(40);
+            entity.Property<string?>("PriorityLanguageCode").HasMaxLength(32);
+            entity.Property<string?>("PriorityPairKey").HasMaxLength(72);
+            entity.Property<string?>("PriorityLevel").HasMaxLength(40);
             entity.Property(item => item.UpdatedByUserId).HasMaxLength(450);
             ConfigureRowVersion(entity.Property(item => item.RowVersion), providerName);
             entity.HasIndex(item => item.ScopeKey).IsUnique();

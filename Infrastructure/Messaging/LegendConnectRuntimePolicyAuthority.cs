@@ -216,65 +216,6 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         }, cancellationToken);
     }
 
-    public async Task<LegendConnectRuntimePolicySnapshot> ConfigurePriorityOverrideAsync(
-        string founderUserId,
-        LegendConnectPriorityOverrideMutation mutation,
-        CancellationToken cancellationToken = default)
-    {
-        var founder = await RequireFounderAsync(founderUserId, cancellationToken);
-        var language = string.IsNullOrWhiteSpace(mutation.LanguageCode)
-            ? null
-            : (await _languages.GetLanguageAsync(mutation.LanguageCode, cancellationToken))?.Code;
-        var pair = await NormalizePairAsync(mutation.PairKey, cancellationToken);
-        if (language is null && pair is null)
-            throw new ArgumentException("Choose an enabled target language or directional pair.", nameof(mutation));
-        if (language is not null && pair is not null &&
-            !PairContainsLanguage(pair, language))
-        {
-            throw new ArgumentException("The selected directional pair must include the selected language.", nameof(mutation));
-        }
-
-        return await PersistFounderMutationAsync(async () =>
-        {
-            var policy = await GetTrackedPolicyAsync(cancellationToken);
-            var before = ToSnapshot(policy, true);
-            policy.PriorityMode = "FounderOverride";
-            policy.PriorityLanguageCode = language;
-            policy.PriorityPairKey = pair;
-            policy.PriorityLevel = null;
-            await ClearAutonomousLanguageFocusAsync(policy.Id, cancellationToken);
-            policy.UpdatedByUserId = founder;
-            policy.UpdatedUtc = DateTime.UtcNow;
-            await _db.SaveChangesAsync(cancellationToken);
-            var after = ToSnapshot(policy, true);
-            await WritePolicyAuditAsync(founder, "FounderPriorityOverrideEnabled", before, after, language, pair, cancellationToken);
-            return after;
-        }, cancellationToken);
-    }
-
-    public async Task<LegendConnectRuntimePolicySnapshot> DisablePriorityOverrideAsync(
-        string founderUserId,
-        CancellationToken cancellationToken = default)
-    {
-        var founder = await RequireFounderAsync(founderUserId, cancellationToken);
-        return await PersistFounderMutationAsync(async () =>
-        {
-            var policy = await GetTrackedPolicyAsync(cancellationToken);
-            var before = ToSnapshot(policy, true);
-            policy.PriorityMode = "Automatic";
-            policy.PriorityLanguageCode = null;
-            policy.PriorityPairKey = null;
-            policy.PriorityLevel = null;
-            await ClearAutonomousLanguageFocusAsync(policy.Id, cancellationToken);
-            policy.UpdatedByUserId = founder;
-            policy.UpdatedUtc = DateTime.UtcNow;
-            await _db.SaveChangesAsync(cancellationToken);
-            var after = ToSnapshot(policy, true);
-            await WritePolicyAuditAsync(founder, "FounderPriorityOverrideDisabled", before, after, null, null, cancellationToken);
-            return after;
-        }, cancellationToken);
-    }
-
     public async Task<LegendConnectRuntimePolicySnapshot> ConfigureAutonomousLanguageFocusAsync(
         string founderUserId,
         LegendConnectAutonomousLanguageFocusMutation mutation,
@@ -304,19 +245,7 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
                         UpdatedUtc = DateTime.UtcNow
                     });
                 }
-                policy.PriorityMode = "FounderOverride";
             }
-            else
-            {
-                policy.PriorityMode = "Automatic";
-            }
-
-            // The former single language/pair fields remain only for deployed
-            // schema compatibility. The focused set is now the one current
-            // Founder-controlled work-order authority.
-            policy.PriorityLanguageCode = null;
-            policy.PriorityPairKey = null;
-            policy.PriorityLevel = null;
             policy.UpdatedByUserId = founder;
             policy.UpdatedUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
@@ -340,107 +269,12 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         return await GetEffectiveAsync(cancellationToken);
     }
 
-    public async Task<LegendConnectPriorityProgressSnapshot> GetPriorityProgressAsync(
-        CancellationToken cancellationToken = default)
-    {
-        var policy = await GetEffectiveAsync(cancellationToken);
-        if (!string.Equals(policy.PriorityMode, "FounderOverride", StringComparison.OrdinalIgnoreCase))
-        {
-            return new LegendConnectPriorityProgressSnapshot(
-                "AUTOMATIC — DEMAND DRIVEN", 0, 0, 0, 0m, 0, null,
-                "The existing demand-and-coverage planner is selecting work normally.");
-        }
-
-        var candidatesQuery = _db.Set<LegendCorpusCandidate>().AsNoTracking()
-            .Where(item => item.IsApproved);
-
-        if (policy.FocusedTargetLanguageCodes.Count > 0)
-        {
-            var focusedTargetLanguageCodes = policy.FocusedTargetLanguageCodes.ToArray();
-            candidatesQuery = candidatesQuery.Where(item =>
-                item.SourceLanguageCode == "en" &&
-                focusedTargetLanguageCodes.Contains(item.TargetLanguageCode));
-        }
-        else if (!string.IsNullOrWhiteSpace(policy.PriorityPairKey))
-        {
-            var separatorIndex = policy.PriorityPairKey.IndexOf(':');
-            if (separatorIndex <= 0 || separatorIndex >= policy.PriorityPairKey.Length - 1)
-                throw new InvalidOperationException("Founder priority pair is not a valid directional language pair.");
-
-            var sourceLanguageCode = policy.PriorityPairKey[..separatorIndex];
-            var targetLanguageCode = policy.PriorityPairKey[(separatorIndex + 1)..];
-
-            candidatesQuery = candidatesQuery.Where(item =>
-                item.SourceLanguageCode == sourceLanguageCode &&
-                item.TargetLanguageCode == targetLanguageCode);
-        }
-        else if (!string.IsNullOrWhiteSpace(policy.PriorityLanguageCode))
-        {
-            var priorityLanguageCode = policy.PriorityLanguageCode;
-
-            candidatesQuery = candidatesQuery.Where(item =>
-                item.SourceLanguageCode == priorityLanguageCode ||
-                item.TargetLanguageCode == priorityLanguageCode);
-        }
-        else
-        {
-            throw new InvalidOperationException("Founder priority override has no language or directional pair.");
-        }
-
-        var candidates = await candidatesQuery.ToListAsync(cancellationToken);
-        var pending = candidates.Where(item => item.ProcessingState is "Pending" or "Processing").ToList();
-        var eligible = 0L;
-        foreach (var candidate in pending)
-        {
-            var pairKey = LegendLanguageIdentity.PairKey(candidate.SourceLanguageCode, candidate.TargetLanguageCode);
-            var sourceId = await _db.Set<LegendLanguageTextUnit>().AsNoTracking()
-                .Where(item => item.LanguageCode == candidate.SourceLanguageCode && item.NormalizedHash == candidate.SourceTextHash)
-                .Select(item => (Guid?)item.Id)
-                .SingleOrDefaultAsync(cancellationToken);
-            var alreadyAligned = sourceId.HasValue && await _db.Set<LegendTranslationAlignment>().AsNoTracking()
-                .AnyAsync(item => item.PairKey == pairKey && item.SourceTextUnitId == sourceId.Value && item.SupersededUtc == null, cancellationToken);
-            if (!alreadyAligned)
-                eligible++;
-        }
-
-        var pairKeys = candidates.Select(item => LegendLanguageIdentity.PairKey(item.SourceLanguageCode, item.TargetLanguageCode))
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var coverage = pairKeys.Length == 0 ? 0 : await _db.Set<LegendTranslationAlignment>().AsNoTracking()
-            .LongCountAsync(item => pairKeys.Contains(item.PairKey) && item.SupersededUtc == null, cancellationToken);
-        IReadOnlyList<LegendTranslationPairDemand> demand = pairKeys.Length == 0
-            ? Array.Empty<LegendTranslationPairDemand>()
-            : await _db.Set<LegendTranslationPairDemand>().AsNoTracking()
-                .Where(item => pairKeys.Contains(item.PairKey)).ToListAsync(cancellationToken);
-        var opportunities = demand.Sum(item => item.TranslationRequestCount);
-        var azure = demand.Sum(item => item.AzureFallbackCount);
-        var successful = candidates.Where(item => item.ProcessingState == "Queued").ToList();
-        var focused = policy.FocusedTargetLanguageCodes.Count > 0;
-        return new LegendConnectPriorityProgressSnapshot(
-            eligible == 0
-                ? focused ? "FOCUS COMPLETE — NO ELIGIBLE MISSING WORK" : "PRIORITY COMPLETE — NO ELIGIBLE MISSING WORK"
-                : focused ? "FOUNDER FOCUS ACTIVE" : "FOUNDER PRIORITY ACTIVE",
-            eligible,
-            pending.LongCount(),
-            coverage,
-            opportunities == 0 ? 0m : Math.Round((decimal)azure / opportunities, 4),
-            successful.Sum(item => Math.Max(0, item.ProviderCharactersConsumed)),
-            successful.Select(item => (DateTime?)item.ProcessedUtc).Max(),
-            focused
-                ? eligible == 0
-                    ? "The selected English-to-target focus remains ready for future approved Founder learning sets."
-                    : "Eligible English learning sets are expanding only into the selected target languages."
-                : eligible == 0
-                    ? "The override remains active for future approved eligible material without re-acquiring existing knowledge."
-                    : "Eligible approved work is ordered ahead of ordinary autonomous demand work.");
-    }
-
     public async Task<IReadOnlyList<LegendConnectFounderOperationalAuditSnapshot>> GetRecentAuditAsync(
         int take = 30,
         CancellationToken cancellationToken = default) =>
         await _db.Set<LegendConnectKnowledgeAuditEntry>().AsNoTracking()
             .Where(item => item.Action.StartsWith("RuntimePolicy") ||
                            item.Action.StartsWith("AutonomousAcquisition") ||
-                           item.Action.StartsWith("FounderPriorityOverride") ||
                            item.Action.StartsWith("FounderAutonomousLanguageFocus"))
             .OrderByDescending(item => item.OccurredUtc)
             .Take(Math.Clamp(take, 1, 100))
@@ -519,7 +353,6 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             LearningEnabled = bootstrap.LearningEnabled,
             ContextualCompositionMode = bootstrap.ContextualCompositionMode,
             ContextualMinimumConfidence = bootstrap.ContextualMinimumConfidence,
-            PriorityMode = "Automatic",
             UpdatedUtc = DateTime.UtcNow
         };
         _db.Set<LegendConnectRuntimePolicy>().Add(policy);
@@ -553,7 +386,7 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             _configuration.GetValue<bool?>("LegendConnect:Learning:Enabled") ?? true,
             NormalizeContextualMode(_configuration["LegendConnect:ContextualComposition:Mode"]),
             Math.Clamp(_configuration.GetValue<decimal?>("LegendConnect:ContextualComposition:MinimumConfidence") ?? 0.98m, 0.90m, 1m),
-            "Automatic", null, null, null, null, null, DateTime.MinValue);
+            null, null, DateTime.MinValue);
     }
 
     private static LegendConnectRuntimePolicySnapshot ToSnapshot(LegendConnectRuntimePolicy policy, bool persisted) => new(
@@ -565,10 +398,6 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         policy.LearningEnabled,
         NormalizeContextualMode(policy.ContextualCompositionMode),
         Math.Clamp(policy.ContextualMinimumConfidence, 0.90m, 1m),
-        string.Equals(policy.PriorityMode, "FounderOverride", StringComparison.OrdinalIgnoreCase) ? "FounderOverride" : "Automatic",
-        Optional(policy.PriorityLanguageCode, 32),
-        Optional(policy.PriorityPairKey, 72),
-        Optional(policy.PriorityLevel, 40),
         policy.LastLearningWorkerHeartbeatUtc,
         policy.LastAcquisitionWorkerHeartbeatUtc,
         policy.UpdatedUtc);
@@ -608,20 +437,6 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         if (mutation.ContextualMinimumConfidence is < 0.90m or > 1m)
             throw new ArgumentException("Contextual confidence must remain between 0.90 and 1.00.", nameof(mutation));
         _ = NormalizeContextualMode(mutation.ContextualCompositionMode);
-    }
-
-    private async Task<string?> NormalizePairAsync(string? pairKey, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(pairKey))
-            return null;
-        var segments = pairKey.Trim().Split(':', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length != 2)
-            throw new ArgumentException("Choose a valid directional pair in source:target form.", nameof(pairKey));
-        var source = await _languages.GetLanguageAsync(segments[0], cancellationToken);
-        var target = await _languages.GetLanguageAsync(segments[1], cancellationToken);
-        if (source is null || target is null || string.Equals(source.Code, target.Code, StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("The selected directional pair requires two enabled, distinct languages.", nameof(pairKey));
-        return LegendLanguageIdentity.PairKey(source.Code, target.Code);
     }
 
     private async Task<IReadOnlyList<string>> NormalizeFocusTargetLanguageCodesAsync(
@@ -676,10 +491,6 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         if (existing.Count > 0)
             _db.RemoveRange(existing);
     }
-
-    private static bool PairContainsLanguage(string pair, string language) =>
-        pair.Split(':', StringSplitOptions.TrimEntries).Any(segment =>
-            string.Equals(segment, language, StringComparison.OrdinalIgnoreCase));
 
     private async Task<(long Approved, long PendingEligible, long RejectedOrIneligible, long Deduplicated, long AwaitingKnowledgePairs)> CandidateReadinessAsync(
         CancellationToken cancellationToken)
@@ -736,8 +547,6 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             Change("learning", before.LearningEnabled, after.LearningEnabled),
             Change("context mode", before.ContextualCompositionMode, after.ContextualCompositionMode),
             Change("context confidence", before.ContextualMinimumConfidence, after.ContextualMinimumConfidence),
-            Change("priority mode", before.PriorityMode, after.PriorityMode),
-            Change("priority target", before.PriorityPairKey ?? before.PriorityLanguageCode ?? "Automatic", after.PriorityPairKey ?? after.PriorityLanguageCode ?? "Automatic"),
             Change("acquisition focus", FocusSummary(before), FocusSummary(after))
         }.Where(item => item is not null));
         await WriteSimpleAuditAsync(founder, action, "Succeeded", language, pair, detail, cancellationToken);

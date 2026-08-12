@@ -13,6 +13,7 @@ public sealed class LegendTranslationEntitlement
     public long MonthlyCharacterAllowance { get; set; }
     public bool IsUnlimited { get; set; }
     public string EntitlementSource { get; set; } = "FounderManaged";
+    /// <summary>True when the canonical entitlement was last set by the Founder.</summary>
     public bool IsFounderOverride { get; set; }
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public string? UpdatedByUserId { get; set; }
