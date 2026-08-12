@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260812014728_AddLegendConnectFounderTrainingIngestion")]
+    partial class AddLegendConnectFounderTrainingIngestion
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -5274,77 +5277,6 @@ namespace Infrastructure.Migrations
                     b.ToTable("LegendGlobalConcepts", (string)null);
                 });
 
-            modelBuilder.Entity("Domain.Entities.LegendLanguageCompositionalAnchor", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("AnchorSignature")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<int?>("ComponentLength")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("ComponentStartTokenIndex")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("CurriculumExampleId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("CurriculumFamilyId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Dimension")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("LanguageCode")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<Guid?>("LexemeId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Provenance")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<DateTime?>("SupersededUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("TextUnitId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Value")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("nvarchar(160)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CurriculumFamilyId");
-
-                    b.HasIndex("LexemeId");
-
-                    b.HasIndex("CurriculumExampleId", "AnchorSignature")
-                        .IsUnique();
-
-                    b.HasIndex("TextUnitId", "SupersededUtc");
-
-                    b.HasIndex("LanguageCode", "Dimension", "Value", "SupersededUtc");
-
-                    b.ToTable("LegendLanguageCompositionalAnchors", (string)null);
-                });
-
             modelBuilder.Entity("Domain.Entities.LegendLanguageContextRelationship", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5495,141 +5427,6 @@ namespace Infrastructure.Migrations
                     b.ToTable("LegendLanguageDefinitions", (string)null);
                 });
 
-            modelBuilder.Entity("Domain.Entities.LegendLanguageLexeme", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("LanguageCode")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<string>("NormalizedHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("Provenance")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("SurfaceForm")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LanguageCode", "NormalizedHash")
-                        .IsUnique();
-
-                    b.ToTable("LegendLanguageLexemes", (string)null);
-                });
-
-            modelBuilder.Entity("Domain.Entities.LegendLanguageLexicalOccurrence", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("CharacterLength")
-                        .HasColumnType("int");
-
-                    b.Property<int>("CharacterOffset")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("LexemeId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("SupersededUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("TextUnitId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("TokenIndex")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LexemeId", "SupersededUtc");
-
-                    b.HasIndex("TextUnitId", "TokenIndex")
-                        .IsUnique();
-
-                    b.ToTable("LegendLanguageLexicalOccurrences", (string)null);
-                });
-
-            modelBuilder.Entity("Domain.Entities.LegendLanguageLexicalRelationship", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("ObservationCount")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Provenance")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<Guid>("RelatedLexemeId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("RelatedTokenIndex")
-                        .HasColumnType("int");
-
-                    b.Property<string>("RelationshipKind")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<Guid>("SourceLexemeId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("SourceTokenIndex")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("SupersededUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("TextUnitId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RelatedLexemeId");
-
-                    b.HasIndex("SourceLexemeId", "RelatedLexemeId", "SupersededUtc");
-
-                    b.HasIndex("TextUnitId", "SourceTokenIndex", "RelatedTokenIndex")
-                        .IsUnique();
-
-                    b.ToTable("LegendLanguageLexicalRelationships", (string)null);
-                });
-
             modelBuilder.Entity("Domain.Entities.LegendLanguagePair", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5702,11 +5499,6 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("BaselineComponentSignature")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
                     b.Property<Guid>("BaselineCurriculumExampleId")
                         .HasColumnType("uniqueidentifier");
 
@@ -5714,11 +5506,6 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("nvarchar(160)");
-
-                    b.Property<string>("ComparedComponentSignature")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<Guid>("ComparedCurriculumExampleId")
                         .HasColumnType("uniqueidentifier");
@@ -9902,32 +9689,6 @@ namespace Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Domain.Entities.LegendLanguageCompositionalAnchor", b =>
-                {
-                    b.HasOne("Domain.Entities.LegendCurriculumExample", null)
-                        .WithMany()
-                        .HasForeignKey("CurriculumExampleId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.LegendCurriculumFamily", null)
-                        .WithMany()
-                        .HasForeignKey("CurriculumFamilyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.LegendLanguageLexeme", null)
-                        .WithMany()
-                        .HasForeignKey("LexemeId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Domain.Entities.LegendLanguageTextUnit", null)
-                        .WithMany()
-                        .HasForeignKey("TextUnitId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Domain.Entities.LegendLanguageContextRelationship", b =>
                 {
                     b.HasOne("Domain.Entities.LegendLanguageTextUnit", null)
@@ -9939,42 +9700,6 @@ namespace Infrastructure.Migrations
                     b.HasOne("Domain.Entities.LegendLanguageTextUnit", null)
                         .WithMany()
                         .HasForeignKey("SourceTextUnitId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Domain.Entities.LegendLanguageLexicalOccurrence", b =>
-                {
-                    b.HasOne("Domain.Entities.LegendLanguageLexeme", null)
-                        .WithMany()
-                        .HasForeignKey("LexemeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.LegendLanguageTextUnit", null)
-                        .WithMany()
-                        .HasForeignKey("TextUnitId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Domain.Entities.LegendLanguageLexicalRelationship", b =>
-                {
-                    b.HasOne("Domain.Entities.LegendLanguageLexeme", null)
-                        .WithMany()
-                        .HasForeignKey("RelatedLexemeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.LegendLanguageLexeme", null)
-                        .WithMany()
-                        .HasForeignKey("SourceLexemeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.LegendLanguageTextUnit", null)
-                        .WithMany()
-                        .HasForeignKey("TextUnitId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

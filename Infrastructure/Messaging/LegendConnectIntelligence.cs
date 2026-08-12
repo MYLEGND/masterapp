@@ -75,6 +75,8 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 on alignment.TargetTextUnitId equals target.Id
             where alignment.PairKey == pairKey &&
                   alignment.SupersededUtc == null &&
+                  source.IsTrainingEligible &&
+                  target.IsTrainingEligible &&
                   source.LanguageCode == sourceLanguageCode &&
                   source.NormalizedHash == hash &&
                   (alignment.HumanVerified ||
@@ -104,12 +106,17 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
 
         var candidates = await (
             from relationship in _db.Set<LegendLanguageContextRelationship>().AsNoTracking()
+            join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on relationship.SourceTextUnitId equals source.Id
             join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
                 on relationship.RelatedTextUnitId equals target.Id
             where relationship.PairKey == pairKey &&
+                  relationship.SupersededUtc == null &&
                   relationship.SourcePatternSignature == pattern &&
                   relationship.QualityState == "Verified" &&
                   relationship.Confidence >= minimumConfidence &&
+                  source.IsTrainingEligible &&
+                  target.IsTrainingEligible &&
                   target.LanguageCode == targetLanguageCode
             select new { target.Text, relationship.Confidence }
         ).Distinct().Take(2).ToListAsync(cancellationToken);

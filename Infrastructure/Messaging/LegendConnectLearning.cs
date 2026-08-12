@@ -299,6 +299,12 @@ internal sealed class LegendTranslationLearningPublisher : ITranslationLearningP
 /// alignment. It intentionally cannot read InternalMessages, so it is not an
 /// alternate private-message retrieval path.
 /// </summary>
+internal sealed record LegendConnectFounderSeedBatchResult(
+    IReadOnlyDictionary<string, LegendLanguageTextUnit> TextUnitsByHash,
+    int CreatedUnitCount,
+    int ReusedUnitCount,
+    int QueuedCoverageCount);
+
 internal sealed class LegendConnectCorpusService
 {
     private readonly MasterAppDbContext _db;
@@ -345,6 +351,23 @@ internal sealed class LegendConnectCorpusService
 
         try
         {
+            var retiredSourceExists = await _db.Set<LegendLanguageTextUnit>().AsNoTracking().AnyAsync(unit =>
+                unit.LanguageCode == item.SourceLanguageCode &&
+                unit.NormalizedHash == item.SourceTextHash &&
+                !unit.IsTrainingEligible,
+                cancellationToken);
+            if (retiredSourceExists)
+            {
+                item.ProcessingState = "Superseded";
+                item.PromotionOutcome = "Superseded";
+                item.FailureCode = "source_entry_unavailable";
+                item.ProcessedUtc = DateTime.UtcNow;
+                item.LeaseExpiresUtc = null;
+                await _db.SaveChangesAsync(cancellationToken);
+                LegendConnectTelemetry.CorpusEvent(item.ProcessingState, item.PairKey);
+                return;
+            }
+
             var pair = await _languages.GetOrCreateEnabledPairAsync(
                 item.SourceLanguageCode,
                 item.TargetLanguageCode,
@@ -678,6 +701,147 @@ internal sealed class LegendConnectCorpusService
         }
     }
 
+    /// <summary>
+    /// Batches atomic Founder source seeds through the existing canonical text
+    /// unit, context, candidate, planner, and capacity path. It does not call
+    /// a provider and does not create another acquisition queue.
+    /// </summary>
+    internal async Task<LegendConnectFounderSeedBatchResult> SubmitApprovedSourceSeedsAsync(
+        string sourceLanguageCode,
+        IReadOnlyList<string> sourceTexts,
+        string? contextCategory,
+        string? usageRegister,
+        string? regionalVariant,
+        CancellationToken cancellationToken = default)
+    {
+        var sourceLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(sourceLanguageCode, cancellationToken);
+        if (sourceLanguage is null)
+            throw new ArgumentException("An enabled source language is required.", nameof(sourceLanguageCode));
+
+        var normalizedByHash = sourceTexts
+            .Select(LegendLanguageIdentity.NormalizeText)
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .Select(text => (Text: text, Hash: LegendLanguageIdentity.TextHash(text)))
+            .DistinctBy(item => item.Hash, StringComparer.Ordinal)
+            .ToList();
+        if (normalizedByHash.Count is 0 or > 500 || normalizedByHash.Any(item => item.Text.Length > 2_000))
+            throw new ArgumentException("Founder training must contain 1–500 atomic units of at most 2,000 characters each.", nameof(sourceTexts));
+
+        var hashes = normalizedByHash.Select(item => item.Hash).ToArray();
+        var existing = await _db.Set<LegendLanguageTextUnit>()
+            .Where(item => item.LanguageCode == sourceLanguage && hashes.Contains(item.NormalizedHash))
+            .ToDictionaryAsync(item => item.NormalizedHash, StringComparer.Ordinal, cancellationToken);
+        var createdCount = 0;
+        foreach (var item in normalizedByHash)
+        {
+            if (existing.ContainsKey(item.Hash))
+                continue;
+            var created = NewTextUnit(sourceLanguage, item.Text, item.Hash, "FounderApproved");
+            _db.Set<LegendLanguageTextUnit>().Add(created);
+            existing[item.Hash] = created;
+            createdCount++;
+        }
+        if (createdCount > 0)
+            await _db.SaveChangesAsync(cancellationToken);
+
+        var textUnits = normalizedByHash.ToDictionary(item => item.Hash, item => existing[item.Hash], StringComparer.Ordinal);
+        var textUnitIds = textUnits.Values.Select(item => item.Id).ToArray();
+        var contextSignature = LegendLanguageIdentity.ContextSignature(contextCategory, usageRegister, regionalVariant);
+        var existingContexts = await _db.Set<LegendLanguageContextRelationship>()
+            .Where(item => item.PairKey == null && textUnitIds.Contains(item.SourceTextUnitId) &&
+                item.SourceTextUnitId == item.RelatedTextUnitId &&
+                item.RelationshipKind == "ContextualExample" &&
+                item.ContextSignature == contextSignature && item.SupersededUtc == null)
+            .Select(item => item.SourceTextUnitId)
+            .ToListAsync(cancellationToken);
+        var contextIds = existingContexts.ToHashSet();
+        foreach (var source in textUnits.Values)
+        {
+            if (contextIds.Contains(source.Id))
+                continue;
+            _db.Set<LegendLanguageContextRelationship>().Add(new LegendLanguageContextRelationship
+            {
+                Id = Guid.NewGuid(),
+                PairKey = null,
+                SourceTextUnitId = source.Id,
+                RelatedTextUnitId = source.Id,
+                RelationshipKind = "ContextualExample",
+                ContextSignature = contextSignature,
+                SourcePatternSignature = LegendLanguageIdentity.ContextPatternSignature(source.Text),
+                ContextCategory = NormalizeOptional(contextCategory, 120),
+                UsageRegister = NormalizeOptional(usageRegister, 80),
+                RegionalVariant = NormalizeOptional(regionalVariant, 80),
+                Confidence = 1m,
+                QualityState = "Verified",
+                Provenance = "FounderApproved",
+                ObservationCount = 1,
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            });
+        }
+
+        var enabledTargets = await _languages.ListEnabledTranslationLanguagesAsync(cancellationToken);
+        var pairs = new List<LegendLanguagePairSnapshot>();
+        foreach (var target in enabledTargets.Where(item => item.IsLearningEnabled && item.IsTranslationEnabled &&
+                     !string.Equals(item.Code, sourceLanguage, StringComparison.OrdinalIgnoreCase)))
+        {
+            var pair = await _languages.GetOrCreateEnabledPairAsync(sourceLanguage, target.Code, cancellationToken);
+            if (pair is not null && !string.Equals(pair.SourceLanguageCode, pair.TargetLanguageCode, StringComparison.OrdinalIgnoreCase))
+                pairs.Add(pair);
+        }
+
+        var pairKeys = pairs.Select(item => item.PairKey).ToArray();
+        var activeAlignments = pairKeys.Length == 0
+            ? new HashSet<(string PairKey, Guid SourceId)>()
+            : (await _db.Set<LegendTranslationAlignment>()
+                .Where(item => pairKeys.Contains(item.PairKey) && textUnitIds.Contains(item.SourceTextUnitId) && item.SupersededUtc == null)
+                .Select(item => new { item.PairKey, item.SourceTextUnitId })
+                .ToListAsync(cancellationToken))
+                .Select(item => (item.PairKey, item.SourceTextUnitId))
+                .ToHashSet();
+        var sourceHashes = textUnits.Keys.ToArray();
+        var targetCodes = pairs.Select(item => item.TargetLanguageCode).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var existingCandidateKeys = targetCodes.Length == 0
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : (await _db.Set<LegendCorpusCandidate>()
+                .Where(item => item.SourceLanguageCode == sourceLanguage &&
+                    targetCodes.Contains(item.TargetLanguageCode) && sourceHashes.Contains(item.SourceTextHash))
+                .Select(item => item.IdempotencyKey)
+                .ToListAsync(cancellationToken))
+                .ToHashSet(StringComparer.Ordinal);
+        var queued = 0;
+        foreach (var source in textUnits.Values)
+        {
+            foreach (var pair in pairs)
+            {
+                if (activeAlignments.Contains((pair.PairKey, source.Id)))
+                    continue;
+                var idempotencyKey = $"founder-seed:{source.Id:D}:{pair.PairKey}";
+                if (!existingCandidateKeys.Add(idempotencyKey))
+                    continue;
+                _db.Set<LegendCorpusCandidate>().Add(new LegendCorpusCandidate
+                {
+                    Id = Guid.NewGuid(),
+                    IdempotencyKey = idempotencyKey,
+                    SourceLanguageCode = pair.SourceLanguageCode,
+                    TargetLanguageCode = pair.TargetLanguageCode,
+                    SourceText = source.Text,
+                    SourceTextHash = source.NormalizedHash,
+                    Category = "FounderApprovedSeed",
+                    Provenance = "FounderApproved",
+                    IsApproved = true,
+                    ProcessingState = "Pending",
+                    CreatedUtc = DateTime.UtcNow
+                });
+                queued++;
+            }
+        }
+        if (_db.ChangeTracker.HasChanges())
+            await _db.SaveChangesAsync(cancellationToken);
+
+        return new LegendConnectFounderSeedBatchResult(textUnits, createdCount, textUnits.Count - createdCount, queued);
+    }
+
     private async Task<LegendTranslationLearningEvent?> TryClaimEventAsync(
         Guid eventId,
         CancellationToken cancellationToken)
@@ -732,6 +896,8 @@ internal sealed class LegendConnectCorpusService
         Guid? curriculumFamilyId = null,
         Guid? sourceCurriculumExampleId = null)
     {
+        if (!source.IsTrainingEligible)
+            return;
         var enabledTargets = await _languages.ListEnabledTranslationLanguagesAsync(cancellationToken);
         var pending = false;
         foreach (var target in enabledTargets.Where(item => item.IsLearningEnabled && item.IsTranslationEnabled))
@@ -851,7 +1017,7 @@ internal sealed class LegendConnectCorpusService
                 item.SourceTextUnitId == source.Id &&
                 item.RelatedTextUnitId == related.Id &&
                 item.RelationshipKind == "ContextualExample" &&
-                item.ContextSignature == contextSignature,
+                item.ContextSignature == contextSignature && item.SupersededUtc == null,
                 cancellationToken);
         if (existing is not null)
         {
@@ -957,6 +1123,9 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                 using var scope = _scopes.CreateScope();
                 var runtime = scope.ServiceProvider.GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
                 await runtime.RecordWorkerHeartbeatAsync("Learning", stoppingToken);
+                await scope.ServiceProvider
+                    .GetRequiredService<LegendConnectFounderTrainingIngestionAuthority>()
+                    .ReconcileLegacyAsync(25, stoppingToken);
                 if ((await runtime.GetEffectiveAsync(stoppingToken)).LearningEnabled)
                 {
                     await scope.ServiceProvider.GetRequiredService<LegendConnectCorpusService>()
@@ -1027,10 +1196,24 @@ internal sealed class LegendConnectAutonomousGapPlanner
                 .AsNoTracking()
                 .SingleOrDefaultAsync(item => item.LanguageCode == pair.SourceLanguageCode &&
                     item.NormalizedHash == candidate.SourceTextHash, cancellationToken);
-            var alreadyAligned = source is not null && await _db.Set<LegendTranslationAlignment>()
-                .AsNoTracking()
-                .AnyAsync(item => item.PairKey == pair.PairKey &&
-                    item.SourceTextUnitId == source.Id && item.SupersededUtc == null, cancellationToken);
+            if (source is not null && !source.IsTrainingEligible)
+            {
+                candidate.IsApproved = false;
+                candidate.ProcessingState = "Superseded";
+                candidate.ProcessedUtc = DateTime.UtcNow;
+                candidate.LeaseExpiresUtc = null;
+                candidate.FailureCode = "source_entry_unavailable";
+                deduplicated = true;
+                continue;
+            }
+            var alreadyAligned = source is not null && await (
+                from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
+                join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                    on alignment.TargetTextUnitId equals target.Id
+                where alignment.PairKey == pair.PairKey && alignment.SourceTextUnitId == source.Id &&
+                    alignment.SupersededUtc == null && target.IsTrainingEligible
+                select alignment.Id
+            ).AnyAsync(cancellationToken);
             if (alreadyAligned)
             {
                 candidate.ProcessingState = "Deduplicated";
@@ -1193,8 +1376,25 @@ internal sealed class LegendConnectAutonomousLearningService
         var source = await _db.Set<LegendLanguageTextUnit>()
             .SingleOrDefaultAsync(item => item.LanguageCode == pair.SourceLanguageCode &&
                 item.NormalizedHash == candidate.SourceTextHash, cancellationToken);
-        var alreadyAligned = source is not null && await _db.Set<LegendTranslationAlignment>()
-            .AnyAsync(item => item.PairKey == pair.PairKey && item.SourceTextUnitId == source.Id && item.SupersededUtc == null, cancellationToken);
+        if (source is not null && !source.IsTrainingEligible)
+        {
+            candidate.IsApproved = false;
+            candidate.ProcessingState = "Superseded";
+            candidate.FailureCode = "source_entry_unavailable";
+            candidate.ProcessedUtc = DateTime.UtcNow;
+            candidate.LeaseExpiresUtc = null;
+            await _db.SaveChangesAsync(cancellationToken);
+            await RecordAsync("CorpusCandidate", "Info", "Superseded", pair.SourceLanguageCode, pair.PairKey,
+                "source_entry_unavailable", "A retired source asset was excluded before provider acquisition.", cancellationToken);
+            return;
+        }
+        var alreadyAligned = source is not null && await (
+            from alignment in _db.Set<LegendTranslationAlignment>()
+            join target in _db.Set<LegendLanguageTextUnit>() on alignment.TargetTextUnitId equals target.Id
+            where alignment.PairKey == pair.PairKey && alignment.SourceTextUnitId == source.Id &&
+                alignment.SupersededUtc == null && target.IsTrainingEligible
+            select alignment.Id
+        ).AnyAsync(cancellationToken);
         if (alreadyAligned)
         {
             candidate.ProcessingState = "Deduplicated";

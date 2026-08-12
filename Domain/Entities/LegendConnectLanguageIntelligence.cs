@@ -118,6 +118,11 @@ public sealed class LegendLanguageContextRelationship
     public string QualityState { get; set; } = "Observation";
     public string Provenance { get; set; } = string.Empty;
     public int ObservationCount { get; set; }
+    /// <summary>
+    /// Historical relationships remain auditable after their source identity
+    /// is reconciled, but cannot participate in contextual reuse.
+    /// </summary>
+    public DateTime? SupersededUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
@@ -221,6 +226,7 @@ public sealed class LegendCurriculumExample
     public string LanguageCode { get; set; } = string.Empty;
     public Guid? DerivedFromCurriculumExampleId { get; set; }
     public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
@@ -256,6 +262,7 @@ public sealed class LegendLanguageStructuralPattern
     public int ContradictionCount { get; set; }
     public bool IsProductionEligible { get; set; }
     public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
@@ -277,7 +284,138 @@ public sealed class LegendLanguageStructuralEvidence
     public string BaselineVariationValue { get; set; } = string.Empty;
     public string ComparedVariationValue { get; set; } = string.Empty;
     public string EvidenceSignature { get; set; } = string.Empty;
+    /// <summary>
+    /// Language-local component layouts observed in the two examples. Their
+    /// lexical identities live in the normalized lexeme records; these
+    /// signatures preserve the structural comparison without asserting an
+    /// English rule for another language.
+    /// </summary>
+    public string BaselineComponentSignature { get; set; } = string.Empty;
+    public string ComparedComponentSignature { get; set; } = string.Empty;
     public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A reusable, language-local lexical identity. It is deliberately an exact
+/// observed surface form, not a guessed lemma or a universal grammar concept.
+/// Controlled curriculum anchors may later connect it to an explicit meaning.
+/// </summary>
+public sealed class LegendLanguageLexeme
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string LanguageCode { get; set; } = string.Empty;
+    public string NormalizedHash { get; set; } = string.Empty;
+    public string SurfaceForm { get; set; } = string.Empty;
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// An auditable occurrence of one lexical identity inside one atomic language
+/// unit. Ordered positions and character boundaries preserve compositional
+/// evidence without assigning a part of speech or semantic role by guesswork.
+/// </summary>
+public sealed class LegendLanguageLexicalOccurrence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid TextUnitId { get; set; }
+    public Guid LexemeId { get; set; }
+    public int TokenIndex { get; set; }
+    public int CharacterOffset { get; set; }
+    public int CharacterLength { get; set; }
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A directly observed relationship between adjacent lexical components in
+/// one atomic unit. It preserves phrase/sequence evidence only; it never
+/// promotes adjacency into a grammatical or semantic assertion on its own.
+/// </summary>
+public sealed class LegendLanguageLexicalRelationship
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid TextUnitId { get; set; }
+    public Guid SourceLexemeId { get; set; }
+    public Guid RelatedLexemeId { get; set; }
+    public string RelationshipKind { get; set; } = "AdjacentToken";
+    public int SourceTokenIndex { get; set; }
+    public int RelatedTokenIndex { get; set; }
+    public int ObservationCount { get; set; } = 1;
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// An explicit Founder curriculum meaning anchor. It connects a controlled
+/// dimension/value to the whole example and, when an exact supplied component
+/// is present, its lexical occurrence. It records evidence; it never infers
+/// grammar or semantic roles from English surface form alone.
+/// </summary>
+public sealed class LegendLanguageCompositionalAnchor
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string LanguageCode { get; set; } = string.Empty;
+    public Guid TextUnitId { get; set; }
+    public Guid? LexemeId { get; set; }
+    public int? ComponentStartTokenIndex { get; set; }
+    public int? ComponentLength { get; set; }
+    public Guid CurriculumFamilyId { get; set; }
+    public Guid CurriculumExampleId { get; set; }
+    public string Dimension { get; set; } = string.Empty;
+    public string Value { get; set; } = string.Empty;
+    public string AnchorSignature { get; set; } = string.Empty;
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Immutable Founder raw-training provenance. It records a submitted source
+/// block separately from the canonical atomic language assets derived from it.
+/// The row is never a translation-memory asset or an expansion candidate.
+/// </summary>
+public sealed class LegendFounderTrainingSubmission
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string? FounderUserId { get; set; }
+    public string SourceLanguageCode { get; set; } = string.Empty;
+    public string RawText { get; set; } = string.Empty;
+    public string RawTextHash { get; set; } = string.Empty;
+    public string? ContextCategory { get; set; }
+    public string? UsageRegister { get; set; }
+    public string? RegionalVariant { get; set; }
+    /// <summary>
+    /// Links a pre-decomposition canonical source asset when this record was
+    /// created by the bounded legacy reconciliation path.
+    /// </summary>
+    public Guid? LegacySourceTextUnitId { get; set; }
+    public int RawCharacterCount { get; set; }
+    public int AtomicUnitCount { get; set; }
+    public string ProcessingState { get; set; } = "Ingested";
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? ProcessedUtc { get; set; }
+}
+
+/// <summary>
+/// Ordered provenance from one raw Founder submission to one canonical atomic
+/// language asset. Unit classification and paragraph position describe the
+/// ingestion decision without creating another corpus or curriculum store.
+/// </summary>
+public sealed class LegendFounderTrainingSubmissionUnit
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid SubmissionId { get; set; }
+    public Guid TextUnitId { get; set; }
+    public int SequenceNumber { get; set; }
+    public int ParagraphNumber { get; set; }
+    public string UnitType { get; set; } = string.Empty;
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
 

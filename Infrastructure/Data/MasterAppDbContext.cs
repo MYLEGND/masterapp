@@ -104,6 +104,12 @@ public class MasterAppDbContext : DbContext
     public DbSet<LegendCurriculumExampleVariation> LegendCurriculumExampleVariations => Set<LegendCurriculumExampleVariation>();
     public DbSet<LegendLanguageStructuralPattern> LegendLanguageStructuralPatterns => Set<LegendLanguageStructuralPattern>();
     public DbSet<LegendLanguageStructuralEvidence> LegendLanguageStructuralEvidence => Set<LegendLanguageStructuralEvidence>();
+    public DbSet<LegendLanguageLexeme> LegendLanguageLexemes => Set<LegendLanguageLexeme>();
+    public DbSet<LegendLanguageLexicalOccurrence> LegendLanguageLexicalOccurrences => Set<LegendLanguageLexicalOccurrence>();
+    public DbSet<LegendLanguageLexicalRelationship> LegendLanguageLexicalRelationships => Set<LegendLanguageLexicalRelationship>();
+    public DbSet<LegendLanguageCompositionalAnchor> LegendLanguageCompositionalAnchors => Set<LegendLanguageCompositionalAnchor>();
+    public DbSet<LegendFounderTrainingSubmission> LegendFounderTrainingSubmissions => Set<LegendFounderTrainingSubmission>();
+    public DbSet<LegendFounderTrainingSubmissionUnit> LegendFounderTrainingSubmissionUnits => Set<LegendFounderTrainingSubmissionUnit>();
     public DbSet<LegendTranslationProviderCapacity> LegendTranslationProviderCapacities => Set<LegendTranslationProviderCapacity>();
     public DbSet<LegendTranslationProviderReservation> LegendTranslationProviderReservations => Set<LegendTranslationProviderReservation>();
     public DbSet<LegendTranslationPairDemand> LegendTranslationPairDemands => Set<LegendTranslationPairDemand>();

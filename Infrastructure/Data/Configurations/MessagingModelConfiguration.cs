@@ -340,6 +340,7 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.QualityState).IsRequired().HasMaxLength(40);
             entity.Property(item => item.Confidence).HasPrecision(5, 4);
             entity.HasIndex(item => item.SupersededByAlignmentId);
+            entity.HasIndex(item => item.SupersededUtc);
             entity.HasIndex(item => new { item.PairKey, item.SourceTextUnitId, item.TargetTextUnitId }).IsUnique();
             entity.HasIndex(item => new { item.PairKey, item.QualityState });
             entity.HasOne<LegendLanguageTextUnit>()
@@ -366,6 +367,7 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.Confidence).HasPrecision(5, 4);
             entity.Property(item => item.QualityState).IsRequired().HasMaxLength(40);
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => item.SupersededUtc);
             entity.HasIndex(item => new
             {
                 item.PairKey,
@@ -452,6 +454,7 @@ internal static class MessagingModelConfiguration
             entity.HasKey(item => item.Id);
             entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => item.SupersededUtc);
             entity.HasIndex(item => new { item.CurriculumFamilyId, item.TextUnitId }).IsUnique();
             entity.HasIndex(item => new { item.CurriculumFamilyId, item.LanguageCode, item.UpdatedUtc });
             entity.HasIndex(item => item.DerivedFromCurriculumExampleId);
@@ -491,6 +494,7 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.RealizationSignature).IsRequired().HasMaxLength(1_000);
             entity.Property(item => item.MaturityState).IsRequired().HasMaxLength(40);
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => item.SupersededUtc);
             entity.HasIndex(item => new
             {
                 item.CurriculumFamilyId,
@@ -505,6 +509,45 @@ internal static class MessagingModelConfiguration
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<LegendFounderTrainingSubmission>(entity =>
+        {
+            entity.ToTable("LegendFounderTrainingSubmissions");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.FounderUserId).HasMaxLength(450);
+            entity.Property(item => item.SourceLanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.RawText).IsRequired().HasMaxLength(30_000);
+            entity.Property(item => item.RawTextHash).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.ContextCategory).HasMaxLength(120);
+            entity.Property(item => item.UsageRegister).HasMaxLength(80);
+            entity.Property(item => item.RegionalVariant).HasMaxLength(80);
+            entity.Property(item => item.ProcessingState).IsRequired().HasMaxLength(40);
+            entity.HasIndex(item => new { item.SourceLanguageCode, item.RawTextHash }).IsUnique();
+            entity.HasIndex(item => new { item.ProcessingState, item.CreatedUtc });
+            entity.HasIndex(item => item.LegacySourceTextUnitId).IsUnique();
+            entity.HasOne<LegendLanguageTextUnit>()
+                .WithMany()
+                .HasForeignKey(item => item.LegacySourceTextUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendFounderTrainingSubmissionUnit>(entity =>
+        {
+            entity.ToTable("LegendFounderTrainingSubmissionUnits");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.UnitType).IsRequired().HasMaxLength(40);
+            entity.HasIndex(item => new { item.SubmissionId, item.SequenceNumber }).IsUnique();
+            entity.HasIndex(item => new { item.SubmissionId, item.TextUnitId }).IsUnique();
+            entity.HasIndex(item => item.TextUnitId);
+            entity.HasOne<LegendFounderTrainingSubmission>()
+                .WithMany()
+                .HasForeignKey(item => item.SubmissionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageTextUnit>()
+                .WithMany()
+                .HasForeignKey(item => item.TextUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<LegendLanguageStructuralEvidence>(entity =>
         {
             entity.ToTable("LegendLanguageStructuralEvidence");
@@ -514,7 +557,10 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.BaselineVariationValue).IsRequired().HasMaxLength(160);
             entity.Property(item => item.ComparedVariationValue).IsRequired().HasMaxLength(160);
             entity.Property(item => item.EvidenceSignature).IsRequired().HasMaxLength(1_000);
+            entity.Property(item => item.BaselineComponentSignature).IsRequired().HasMaxLength(1_000);
+            entity.Property(item => item.ComparedComponentSignature).IsRequired().HasMaxLength(1_000);
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => item.SupersededUtc);
             entity.HasIndex(item => new
             {
                 item.CurriculumFamilyId,
@@ -539,6 +585,85 @@ internal static class MessagingModelConfiguration
             entity.HasOne<LegendCurriculumExample>()
                 .WithMany()
                 .HasForeignKey(item => item.ComparedCurriculumExampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendLanguageLexeme>(entity =>
+        {
+            entity.ToTable("LegendLanguageLexemes");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.NormalizedHash).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.SurfaceForm).IsRequired().HasMaxLength(256);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => new { item.LanguageCode, item.NormalizedHash }).IsUnique();
+        });
+
+        modelBuilder.Entity<LegendLanguageLexicalOccurrence>(entity =>
+        {
+            entity.ToTable("LegendLanguageLexicalOccurrences");
+            entity.HasKey(item => item.Id);
+            entity.HasIndex(item => new { item.TextUnitId, item.TokenIndex }).IsUnique();
+            entity.HasIndex(item => new { item.LexemeId, item.SupersededUtc });
+            entity.HasOne<LegendLanguageTextUnit>()
+                .WithMany()
+                .HasForeignKey(item => item.TextUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageLexeme>()
+                .WithMany()
+                .HasForeignKey(item => item.LexemeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendLanguageLexicalRelationship>(entity =>
+        {
+            entity.ToTable("LegendLanguageLexicalRelationships");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.RelationshipKind).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => new { item.TextUnitId, item.SourceTokenIndex, item.RelatedTokenIndex }).IsUnique();
+            entity.HasIndex(item => new { item.SourceLexemeId, item.RelatedLexemeId, item.SupersededUtc });
+            entity.HasOne<LegendLanguageTextUnit>()
+                .WithMany()
+                .HasForeignKey(item => item.TextUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageLexeme>()
+                .WithMany()
+                .HasForeignKey(item => item.SourceLexemeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageLexeme>()
+                .WithMany()
+                .HasForeignKey(item => item.RelatedLexemeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendLanguageCompositionalAnchor>(entity =>
+        {
+            entity.ToTable("LegendLanguageCompositionalAnchors");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.Dimension).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.Value).IsRequired().HasMaxLength(160);
+            entity.Property(item => item.AnchorSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => new { item.CurriculumExampleId, item.AnchorSignature }).IsUnique();
+            entity.HasIndex(item => new { item.LanguageCode, item.Dimension, item.Value, item.SupersededUtc });
+            entity.HasIndex(item => new { item.TextUnitId, item.SupersededUtc });
+            entity.HasOne<LegendLanguageTextUnit>()
+                .WithMany()
+                .HasForeignKey(item => item.TextUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageLexeme>()
+                .WithMany()
+                .HasForeignKey(item => item.LexemeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumFamily>()
+                .WithMany()
+                .HasForeignKey(item => item.CurriculumFamilyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumExample>()
+                .WithMany()
+                .HasForeignKey(item => item.CurriculumExampleId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

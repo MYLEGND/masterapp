@@ -21,7 +21,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private readonly IConfiguration _configuration;
     private readonly ILegendConnectOperationalEventWriter? _operationalEvents;
     private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
-    private readonly LegendConnectCurriculumService? _curriculum;
+    private readonly LegendConnectCurriculumService _curriculum;
+    private readonly LegendConnectFounderTrainingIngestionAuthority _founderTrainingIngestion;
 
     public LegendConnectOperations(
         MasterAppDbContext db,
@@ -30,7 +31,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         IConfiguration configuration,
         ILegendConnectOperationalEventWriter? operationalEvents = null,
         ILegendConnectRuntimePolicyAuthority? runtimePolicy = null,
-        LegendConnectCurriculumService? curriculum = null)
+        LegendConnectCurriculumService? curriculum = null,
+        LegendConnectFounderTrainingIngestionAuthority? founderTrainingIngestion = null)
     {
         _db = db;
         _registry = registry;
@@ -38,7 +40,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         _configuration = configuration;
         _operationalEvents = operationalEvents;
         _runtimePolicy = runtimePolicy;
-        _curriculum = curriculum;
+        _curriculum = curriculum ?? new LegendConnectCurriculumService(_db, _registry, _corpus);
+        _founderTrainingIngestion = founderTrainingIngestion ?? new LegendConnectFounderTrainingIngestionAuthority(
+            _db, _registry, _corpus, _curriculum, _operationalEvents);
     }
 
     public async Task<LegendConnectDashboardSnapshot> GetDashboardAsync(
@@ -147,7 +151,14 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             consentedLiveEvents.LongCount(item => item.EligibilityState == "Eligible"),
             consentedLiveEvents.LongCount(item => item.PromotionOutcome == "Promoted"),
             consentedLiveEvents.LongCount(item => item.PromotionOutcome == "Reused"),
-            consentedLiveEvents.LongCount(item => item.ProcessingState is "Pending" or "Processing"));
+            consentedLiveEvents.LongCount(item => item.ProcessingState is "Pending" or "Processing"),
+            state.FounderTrainingSubmissions.LongCount(),
+            state.FounderTrainingSubmissionUnits.LongCount(),
+            state.FounderTrainingSubmissions.LongCount(item => item.LegacySourceTextUnitId is not null &&
+                state.TextUnits.Any(unit => unit.Id == item.LegacySourceTextUnitId && !unit.IsTrainingEligible)),
+            state.Alignments.LongCount(item => item.SupersededUtc is null &&
+                state.TextUnits.Any(unit => unit.Id == item.SourceTextUnitId && unit.IsTrainingEligible) &&
+                state.TextUnits.Any(unit => unit.Id == item.TargetTextUnitId && unit.IsTrainingEligible)));
     }
 
     public async Task<LegendConnectLanguageHealthSnapshot?> GetLanguageHealthAsync(
@@ -225,6 +236,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .ToList();
 
         var contextRelationships = state.ContextRelationships
+            .Where(item => item.SupersededUtc is null)
             .Where(item => displayableTextById.ContainsKey(item.SourceTextUnitId) && displayableTextById.ContainsKey(item.RelatedTextUnitId))
             .Select(item => new
             {
@@ -293,7 +305,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             from pattern in _db.Set<LegendLanguageStructuralPattern>().AsNoTracking()
             join family in _db.Set<LegendCurriculumFamily>().AsNoTracking()
                 on pattern.CurriculumFamilyId equals family.Id
-            where pattern.LanguageCode == language.LanguageCode
+            where pattern.LanguageCode == language.LanguageCode && pattern.SupersededUtc == null
             orderby pattern.UpdatedUtc descending
             select new LegendConnectStructuralPatternSnapshot(
                 family.FamilyKey,
@@ -347,7 +359,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         try
         {
             var approved = submission with { Provenance = "FounderApproved" };
-            var result = await _corpus.SubmitApprovedKnowledgeAsync(approved, cancellationToken, reusableSourceTextUnitId);
+            var result = string.IsNullOrWhiteSpace(approved.TargetText)
+                && string.IsNullOrWhiteSpace(approved.TargetLanguageCode)
+                && reusableSourceTextUnitId is null
+                ? await _founderTrainingIngestion.SubmitAsync(founder, approved, cancellationToken)
+                : await _corpus.SubmitApprovedKnowledgeAsync(approved, cancellationToken, reusableSourceTextUnitId);
             await WriteAuditAsync(founder, "FounderKnowledgeSubmitted", result, null, cancellationToken);
             if (result.DuplicatePrevented && _operationalEvents is not null)
             {
@@ -471,8 +487,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 false, false, "founder_identity_required", "A verified Founder identity is required.", null, null, 0, 0);
         }
 
-        var curriculum = _curriculum ?? new LegendConnectCurriculumService(_db, _registry, _corpus);
-        var result = await curriculum.SubmitFounderEnglishBatchAsync(submission, cancellationToken);
+        var result = await _curriculum.SubmitFounderEnglishBatchAsync(submission, cancellationToken);
         _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
         {
             Id = Guid.NewGuid(),
@@ -535,7 +550,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .Where(item => item.SourceLanguageCode == language.LanguageCode || item.TargetLanguageCode == language.LanguageCode)
             .ToList();
         var pairKeys = pairs.Select(item => item.PairKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var relationships = state.ContextRelationships.LongCount(item =>
+        var relationships = state.ContextRelationships.LongCount(item => item.SupersededUtc is null &&
             approvedTextUnitIds.Contains(item.SourceTextUnitId) &&
             approvedTextUnitIds.Contains(item.RelatedTextUnitId) &&
             (unitIds.Contains(item.SourceTextUnitId) || unitIds.Contains(item.RelatedTextUnitId)));
@@ -723,7 +738,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         await _db.Set<LegendTranslationSystemUsage>().AsNoTracking().ToListAsync(cancellationToken),
         await _db.Set<LegendTranslationProviderCapacity>().AsNoTracking().ToListAsync(cancellationToken),
         await _db.Set<LegendConnectOperationalEvent>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendConnectKnowledgeAuditEntry>().AsNoTracking().ToListAsync(cancellationToken));
+        await _db.Set<LegendConnectKnowledgeAuditEntry>().AsNoTracking().ToListAsync(cancellationToken),
+        await _db.Set<LegendFounderTrainingSubmission>().AsNoTracking().ToListAsync(cancellationToken),
+        await _db.Set<LegendFounderTrainingSubmissionUnit>().AsNoTracking().ToListAsync(cancellationToken));
 
     private static LegendLanguageDefinition? ResolveLanguage(IEnumerable<LegendLanguageDefinition> languages, string value)
     {
@@ -767,5 +784,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         IReadOnlyList<LegendTranslationSystemUsage> SystemUsage,
         IReadOnlyList<LegendTranslationProviderCapacity> Capacities,
         IReadOnlyList<LegendConnectOperationalEvent> OperationalEvents,
-        IReadOnlyList<LegendConnectKnowledgeAuditEntry> AuditEntries);
+        IReadOnlyList<LegendConnectKnowledgeAuditEntry> AuditEntries,
+        IReadOnlyList<LegendFounderTrainingSubmission> FounderTrainingSubmissions,
+        IReadOnlyList<LegendFounderTrainingSubmissionUnit> FounderTrainingSubmissionUnits);
 }

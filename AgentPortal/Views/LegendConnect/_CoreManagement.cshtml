@@ -103,7 +103,13 @@
 
 <section class="dashboard-analytics-panel legend-connect-manual-training" aria-labelledby="manual-training-title">
     <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Approved knowledge</span><h2 class="dashboard-section-title" id="manual-training-title">Founder manual training</h2></div></div>
-    <p class="dashboard-section-copy">Leave the target language empty to save an approved source seed. The existing autonomous planner will then queue only missing, enabled directional coverage through the normal capacity and validation gates. Providing both texts creates a verified alignment directly.</p>
+    <p class="dashboard-section-copy">Leave the target language empty to submit source training. Lists, phrases, and prose are retained once as your raw submission, decomposed into canonical atomic learning units, and sent only through the existing corpus, curriculum, capacity, and Azure acquisition path. Providing both texts keeps the existing verified alignment workflow unchanged.</p>
+    <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--three" aria-label="Founder training ingestion status">
+        <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.FounderRawSubmissionCount)"><span class="dashboard-stat-label">Raw submissions retained</span><span class="dashboard-stat-value">@dashboard.FounderRawSubmissionCount.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.FounderAtomicLearningUnitCount)"><span class="dashboard-stat-label">Atomic learning units</span><span class="dashboard-stat-value">@dashboard.FounderAtomicLearningUnitCount.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.ActiveDirectionalAtomicAlignmentCount)"><span class="dashboard-stat-label">Active directional alignments</span><span class="dashboard-stat-value">@dashboard.ActiveDirectionalAtomicAlignmentCount.ToString("N0")</span></div>
+        <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.SupersededLegacyMultiUnitAssetCount)"><span class="dashboard-stat-label">Legacy multi-unit assets retired</span><span class="dashboard-stat-value">@dashboard.SupersededLegacyMultiUnitAssetCount.ToString("N0")</span></div>
+    </div>
     <form method="post" asp-action="SubmitKnowledge" class="dashboard-search-panel">
         @Html.AntiForgeryToken()
         <div class="dashboard-form-grid">
@@ -111,7 +117,7 @@
             <label class="dashboard-form-field"><span>Target language (optional — leave empty to queue autonomous expansion)</span><select name="TargetLanguageCode"><option value="">Approved source seed</option>@foreach (var language in dashboard.Languages) { <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
             <label class="dashboard-form-field"><span>Context / category</span><input name="ContextCategory" maxlength="120" placeholder="Vocabulary, phrase, idiom, sentence pattern" /></label>
             <label class="dashboard-form-field"><span>Usage</span><input name="UsageRegister" maxlength="80" placeholder="Formal, informal, regional" /></label>
-            <label class="dashboard-form-field dashboard-form-field--wide"><span>Source text</span><textarea name="SourceText" required maxlength="10000"></textarea></label>
+            <label class="dashboard-form-field dashboard-form-field--wide"><span>Source training text</span><textarea name="SourceText" required maxlength="30000" aria-describedby="source-training-help"></textarea><small id="source-training-help">Up to 30,000 characters and 500 atomic units. Raw text is preserved for provenance; only the atomic units become reusable learning assets.</small></label>
             <label class="dashboard-form-field dashboard-form-field--wide"><span>Target text</span><textarea name="TargetText" maxlength="10000"></textarea></label>
         </div>
         <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save approved knowledge</button></div>
@@ -120,13 +126,13 @@
     <details class="legend-connect-disclosure">
         <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Structured learning</span><span class="dashboard-section-title">Teach an English semantic family</span></span><span class="legend-connect-disclosure-status">Curriculum</span></summary>
         <div class="legend-connect-disclosure-body">
-            <p class="dashboard-section-copy">Legend stores each example in English, preserves the named semantic changes, then uses the existing Azure expansion pipeline so Spanish, Arabic, Japanese, and every enabled target language compare their own examples. Patterns remain evidence-gated and do not compose live translations.</p>
+            <p class="dashboard-section-copy">Legend records reusable English lexical components and their observed boundaries for every approved atomic unit. In this form, name only the semantic distinctions you are deliberately teaching—such as subject, object, action, time, polarity, intent, or register. Those explicit anchors drive evidence-backed English comparisons across batches; every target language still compares only its own Azure-expanded examples. Patterns remain evidence-gated and do not compose live translations.</p>
             <form method="post" asp-action="SubmitCurriculum" class="dashboard-search-panel">
                 @Html.AntiForgeryToken()
                 <div class="dashboard-form-grid">
                     <label class="dashboard-form-field"><span>Family key</span><input name="FamilyKey" required maxlength="160" placeholder="possession.basic" /></label>
                     <label class="dashboard-form-field"><span>Semantic category</span><input name="SemanticCategory" maxlength="120" placeholder="Possession" /></label>
-                    <label class="dashboard-form-field dashboard-form-field--wide"><span>English examples and controlled variations</span><textarea name="Examples" required maxlength="30000" placeholder="I have the book. | person=first; tense=present; object=book&#10;She has the book. | person=third; tense=present; object=book"></textarea></label>
+                    <label class="dashboard-form-field dashboard-form-field--wide"><span>English examples and controlled variations</span><textarea name="Examples" required maxlength="30000" placeholder="The child reads the book. | subject=child; action=reads; object=book; time=present; intent=statement&#10;The child read the book yesterday. | subject=child; action=read; object=book; time=past; intent=statement"></textarea></label>
                 </div>
                 <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save curriculum family</button></div>
             </form>

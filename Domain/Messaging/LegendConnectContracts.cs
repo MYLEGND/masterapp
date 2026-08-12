@@ -90,7 +90,12 @@ public sealed record LegendConnectKnowledgeSubmissionResult(
     string? PairKey,
     Guid? SourceTextUnitId,
     Guid? TargetTextUnitId,
-    Guid? AlignmentId);
+    Guid? AlignmentId,
+    Guid? TrainingSubmissionId = null,
+    int AtomicUnitCount = 0,
+    int NewCanonicalUnitCount = 0,
+    int ReusedCanonicalUnitCount = 0,
+    int QueuedCoverageCount = 0);
 
 /// <summary>
 /// A controlled semantic curriculum example. Variations identify meaning that
@@ -330,7 +335,11 @@ public sealed record LegendConnectDashboardSnapshot(
     long EligibleConsentedLiveTranslationCount = 0,
     long PromotedConsentedLiveTranslationCount = 0,
     long ReusedConsentedLiveTranslationCount = 0,
-    long PendingConsentedLiveTranslationCount = 0);
+    long PendingConsentedLiveTranslationCount = 0,
+    long FounderRawSubmissionCount = 0,
+    long FounderAtomicLearningUnitCount = 0,
+    long SupersededLegacyMultiUnitAssetCount = 0,
+    long ActiveDirectionalAtomicAlignmentCount = 0);
 
 /// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation
