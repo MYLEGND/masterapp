@@ -76,19 +76,44 @@
             </div>
             <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save runtime policy</button></div>
         </form>
-        <form method="post" asp-action="ActivateAutonomousAcquisition" class="legend-connect-acquisition-focus">
+        <form method="post" asp-action="ActivateAutonomousAcquisition" class="legend-connect-acquisition-focus" data-language-focus-form>
             @Html.AntiForgeryToken()
             <div class="legend-connect-focus-heading">
-                <span><span class="dashboard-section-kicker">Step 1 · Optional</span><span class="dashboard-section-title">Focus this English learning run</span></span>
-                <span class="legend-connect-focus-status @(focusOverrideEnabled ? "legend-connect-focus-status--on" : "legend-connect-focus-status--off")">FOCUS @(focusOverrideEnabled ? "ON" : "OFF")</span>
+                <span><span class="dashboard-section-kicker">Step 1 of 2 · Optional</span><span class="dashboard-section-title">Focus this English learning run</span></span>
+                <span class="legend-connect-focus-status @(focusOverrideEnabled ? "legend-connect-focus-status--on" : "legend-connect-focus-status--off")" data-language-focus-status aria-live="polite"><span class="legend-connect-focus-status-dot" aria-hidden="true"></span><span data-language-focus-status-text>Focus @(focusOverrideEnabled ? "on" : "off")</span></span>
             </div>
-            <p class="dashboard-section-copy">Turn focus on to expand the same approved English learning sets only into the target languages you select through the existing Azure pipeline. Turn it off to return immediately to normal demand-driven work across all enabled languages.</p>
-            <div class="dashboard-form-grid">
-                <label class="dashboard-form-field"><span>Founder focus</span><span class="legend-connect-focus-toggle"><input name="FocusOverrideEnabled" type="checkbox" value="true" role="switch" @(focusOverrideEnabled ? "checked" : null) /> Limit this run to selected targets</span></label>
-                <label class="dashboard-form-field dashboard-form-field--wide"><span>Target languages · select one or more</span><select name="FocusLanguageCodes" multiple size="4" aria-describedby="language-focus-help">@foreach (var language in dashboard.Languages.Where(language => !string.Equals(language.LanguageCode, "en", StringComparison.OrdinalIgnoreCase))) { <option value="@language.LanguageCode" selected="@(policy.FocusedTargetLanguageCodes.Contains(language.LanguageCode, StringComparer.OrdinalIgnoreCase))">@language.DisplayName</option> }</select></label>
+            <p class="dashboard-section-copy">Use the same approved English learning sets for only the languages you choose. Leave focus off to return to automatic demand-driven work across every enabled language.</p>
+            <div class="legend-connect-focus-controls">
+                <div class="legend-connect-focus-switch-field">
+                    <span class="legend-connect-focus-label">Learning focus</span>
+                    <input id="legendConnectFocusEnabled" class="legend-connect-focus-switch-input" name="FocusOverrideEnabled" type="checkbox" value="true" role="switch" aria-describedby="language-focus-help" @(focusOverrideEnabled ? "checked" : null) />
+                    <label for="legendConnectFocusEnabled" class="legend-connect-focus-switch"><span class="legend-connect-focus-switch-track" aria-hidden="true"></span><span>Limit this run to selected languages</span></label>
+                </div>
+                <div class="legend-connect-language-field">
+                    <span class="legend-connect-focus-label" id="language-focus-label">Target languages</span>
+                    <details class="legend-connect-language-picker" data-language-picker>
+                        <summary aria-labelledby="language-focus-label" aria-describedby="language-focus-help">
+                            <span data-language-picker-summary>Select one or more languages</span>
+                            <span class="legend-connect-language-picker-chevron" aria-hidden="true"></span>
+                        </summary>
+                        <div class="legend-connect-language-picker-menu">
+                            <label class="legend-connect-language-search"><span class="visually-hidden">Find a target language</span><input type="search" data-language-picker-search autocomplete="off" placeholder="Find a language" /></label>
+                            <div class="legend-connect-language-options" role="group" aria-labelledby="language-focus-label">
+                                @foreach (var language in dashboard.Languages.Where(language => !string.Equals(language.LanguageCode, "en", StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    var isFocusedLanguage = policy.FocusedTargetLanguageCodes.Contains(language.LanguageCode, StringComparer.OrdinalIgnoreCase);
+                                    <label class="legend-connect-language-option" data-language-picker-option><input name="FocusLanguageCodes" type="checkbox" value="@language.LanguageCode" data-language-choice @(isFocusedLanguage ? "checked" : null) /><span>@language.DisplayName</span></label>
+                                }
+                            </div>
+                            <p class="legend-connect-language-empty" data-language-picker-empty hidden>No enabled target language matches that search.</p>
+                        </div>
+                    </details>
+                </div>
             </div>
-            <p class="legend-connect-focus-note" id="language-focus-help">@(focusOverrideEnabled ? $"Focused now: {focusedLanguageNames}." : "No focus is active; all enabled language pairs are prioritized by demand, coverage, and quality.")</p>
-            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Activate corpus autonomous</button></div>
+            <div class="legend-connect-focus-footer">
+                <p class="legend-connect-focus-note" id="language-focus-help" data-language-focus-help>@(focusOverrideEnabled ? $"Focused now: {focusedLanguageNames}." : "Focus is off. All enabled language pairs are prioritized by demand, coverage, and quality.")</p>
+                <button type="submit" class="dashboard-command-action btn-carrier-settings">Step 2 · Activate corpus autonomous</button>
+            </div>
         </form>
         <div class="search-actions"><form method="post" asp-action="PauseAutonomousAcquisition" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<button type="submit" class="dashboard-command-action btn-carrier-settings">Pause autonomous acquisition</button></form></div>
         </div>
@@ -233,7 +258,7 @@
                         <h2 class="modal-title" id="languageKnowledgeModalTitle">@health.DisplayName (@health.LanguageCode)</h2>
                         <p class="dashboard-section-copy">@health.StoragePartition · @health.HealthState · @health.QualityState</p>
                     </div>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close language dataset"></button>
+                    <button type="button" class="dashboard-modal-close" data-bs-dismiss="modal" aria-label="Close language details and return to Legend Connect">×</button>
                 </div>
                 <div class="modal-body">
                     <div class="dashboard-hero-stats dashboard-detail-modal-metrics" aria-label="Language dataset totals">
@@ -374,6 +399,7 @@
 }
 
 @section Scripts {
+    <script src="~/js/legend-connect.js" asp-append-version="true"></script>
     @if (Model.SelectedLanguageKnowledge is not null)
     {
         <script>
