@@ -63,6 +63,12 @@ import kotlinx.serialization.Serializable
 @Serializable data class MobileDailyScripture(val date: String, val reference: String, val translation: String, val verses: List<String> = emptyList(), val text: String = "", val source: String = "DailyCatalog", @SerialName("passageText") val passageText: String = text)
 @Serializable data class MobileAgentClient(@SerialName("profileId") val profileId: String, @SerialName("displayName") val displayName: String, val email: String, @SerialName("crmStatus") val crmStatus: String, val avatar: MobileAvatar? = null)
 @Serializable data class MobileAgentLead(@SerialName("leadId") val leadId: String, @SerialName("displayName") val displayName: String, @SerialName("crmStage") val crmStage: String, @SerialName("updatedUtc") val updatedUtc: String)
+/**
+ * A short-lived, same-origin entry point to the existing AgentPortal client
+ * intake. The portal remains the sole owner of fields, validation, styling,
+ * and CRM provisioning.
+ */
+@Serializable data class MobileClientCreationPortalLaunch(@SerialName("launchPath") val launchPath: String)
 
 @Serializable data class FinancialSnapshot(
     val position: FinancialPosition? = null,

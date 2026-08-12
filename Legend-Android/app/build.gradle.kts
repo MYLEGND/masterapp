@@ -27,6 +27,12 @@ val legendRuntimeAssets = legendRuntimeRoot.map { it.dir("assets") }
 val legendRuntimeRes = legendRuntimeRoot.map { it.dir("res") }
 val sharedLegendDesignSpec = rootProject.file("../Legend-Design/legend-design.tokens.json")
 val legendDesignAssets = layout.buildDirectory.dir("generated/legend-design/assets")
+// The iOS asset catalog owns the brand artwork. Android packages that source
+// at build time instead of keeping a second, drift-prone copy in res/.
+val sharedLegendBrandLogo = rootProject.file(
+    "../Legend-ios/Legend/Resources/Assets.xcassets/LegendLogo.imageset/legend-logo.png",
+)
+val legendBrandAssets = layout.buildDirectory.dir("generated/legend-brand/assets")
 val msalRedirectUri = legendValue("LEGEND_MSAL_REDIRECT_URI")
 // MSAL's config/Entra URI uses a URL-encoded Base64 hash. Android's manifest intent filter
 // needs that same hash decoded for its path matcher. Deriving both from one value prevents drift.
@@ -62,6 +68,12 @@ val generateLegendRuntimeConfiguration by tasks.registering(Sync::class) {
 val bundleLegendDesignSpecification by tasks.registering(Sync::class) {
     from(sharedLegendDesignSpec)
     into(legendDesignAssets)
+}
+
+/** Packages the exact iOS-owned LEGEND® artwork for the Android sign-in shell. */
+val bundleLegendBrandArtwork by tasks.registering(Sync::class) {
+    from(sharedLegendBrandLogo)
+    into(legendBrandAssets)
 }
 
 android {
@@ -116,6 +128,7 @@ android {
     sourceSets.getByName("main") {
         assets.directories.add(legendRuntimeAssets.get().asFile.absolutePath)
         assets.directories.add(legendDesignAssets.get().asFile.absolutePath)
+        assets.directories.add(legendBrandAssets.get().asFile.absolutePath)
         res.directories.add(legendRuntimeRes.get().asFile.absolutePath)
     }
 }
@@ -123,6 +136,7 @@ android {
 tasks.named("preBuild").configure {
     dependsOn(generateLegendRuntimeConfiguration)
     dependsOn(bundleLegendDesignSpecification)
+    dependsOn(bundleLegendBrandArtwork)
 }
 
 dependencies {

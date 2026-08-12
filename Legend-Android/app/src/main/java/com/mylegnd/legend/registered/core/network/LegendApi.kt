@@ -27,6 +27,7 @@ interface LegendApi {
     @GET("api/v1/mobile/financial") suspend fun financial(@Header("X-Legend-Participant-Type") participantType: String): Response<FinancialSnapshot>
     @GET("api/v1/mobile/agent/clients") suspend fun agentClients(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentClient>>
     @GET("api/v1/mobile/agent/leads") suspend fun agentLeads(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentLead>>
+    @POST("api/v1/mobile/agent/clients/portal-launch") suspend fun clientCreationPortalLaunch(@Header("X-Legend-Participant-Type") participantType: String, @Body request: EmptyRequest = EmptyRequest()): Response<MobileClientCreationPortalLaunch>
     @GET("api/v1/mobile/account") suspend fun account(@Header("X-Legend-Participant-Type") participantType: String): Response<MobileAccountProfile>
     @PUT("api/v1/mobile/account") suspend fun updateAccount(@Header("X-Legend-Participant-Type") participantType: String, @Body request: AccountUpdateRequest): Response<MobileAccountProfile>
     @PUT("api/v1/mobile/account/privacy") suspend fun updatePrivacy(@Header("X-Legend-Participant-Type") participantType: String, @Body request: AccountPrivacyUpdateRequest): Response<MobileAccountProfile>
@@ -108,8 +109,6 @@ interface LegendApi {
     @POST("api/v1/mobile/social/posts/{id}/repost") suspend fun repost(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: EmptyRequest = EmptyRequest()): Response<SocialStateResult>
     @POST("api/v1/mobile/social/posts/{id}/share") suspend fun recordShare(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: EmptyRequest = EmptyRequest()): Response<SocialStateResult>
     @POST("api/v1/mobile/social/posts/{id}/view") suspend fun recordView(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: SocialViewRequest): Response<SocialPostMetrics>
-    @GET("api/v1/mobile/social/insights/creator") suspend fun creatorInsights(@Header("X-Legend-Participant-Type") participantType: String): Response<CreatorInsights>
-    @GET("api/v1/mobile/social/posts/{id}/insights") suspend fun postInsights(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String): Response<SocialPostInsight>
     @GET("api/v1/mobile/social/profiles/metrics") suspend fun profileMetrics(@Header("X-Legend-Participant-Type") participantType: String, @Query("userId") userId: String? = null, @Query("participantType") profileParticipantType: String? = null, @Query("profileId") profileId: String? = null): Response<SocialProfileMetrics>
     @POST("api/v1/mobile/social/profiles/visit") suspend fun recordProfileVisit(@Header("X-Legend-Participant-Type") participantType: String, @Body request: SocialProfileVisitRequest): Response<SocialStateResult>
     @GET("api/v1/mobile/notifications") suspend fun notifications(@Header("X-Legend-Participant-Type") participantType: String): Response<NotificationSnapshot>

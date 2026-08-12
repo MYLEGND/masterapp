@@ -6,11 +6,33 @@ import android.content.Context
 import android.net.Uri
 import com.mylegnd.legend.registered.core.media.SocialMediaUploader
 import com.mylegnd.legend.registered.core.media.MessagingAttachmentUploader
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 sealed interface LoadState<out T> { data object Idle : LoadState<Nothing>; data object Loading : LoadState<Nothing>; data class Data<T>(val value: T) : LoadState<T>; data class Error(val message: String) : LoadState<Nothing> }
 private suspend fun <T> request(block: suspend () -> T): LoadState<T> = runCatching { LoadState.Data(block()) }.getOrElse { LoadState.Error((it as? LegendApiException)?.problem?.message ?: "Legend is unavailable right now.") }
 class HomeRepository(private val client: LegendApiClient) { suspend fun load(role: String) = request { client.api.home(role).legendBody() } }
-class AgentWorkspaceRepository(private val client: LegendApiClient) { suspend fun clients(role: String) = request { client.api.agentClients(role).legendBody() }; suspend fun leads(role: String) = request { client.api.agentLeads(role).legendBody() } }
+class AgentWorkspaceRepository(private val client: LegendApiClient) {
+    suspend fun clients(role: String) = request { client.api.agentClients(role).legendBody() }
+    suspend fun leads(role: String) = request { client.api.agentLeads(role).legendBody() }
+
+    /**
+     * The server creates the ticket. Android only verifies that the returned
+     * location remains on the configured AgentPortal origin before hosting it.
+     */
+    suspend fun clientCreationPortalLaunch(role: String) = request {
+        val launch = client.api.clientCreationPortalLaunch(role).legendBody()
+        val base = client.baseUrl.toHttpUrlOrNull()
+            ?: error("Legend mobile API configuration is invalid.")
+        val launchUrl = launch.launchPath.toHttpUrlOrNull() ?: base.resolve(launch.launchPath)
+            ?: error("Legend returned an invalid client-intake location.")
+        require(
+            launchUrl.scheme == base.scheme &&
+                launchUrl.host == base.host &&
+                launchUrl.port == base.port,
+        ) { "Legend returned a client-intake location outside the approved portal." }
+        launch.copy(launchPath = launchUrl.toString())
+    }
+}
 class FinancialRepository(private val client: LegendApiClient) { suspend fun load(role: String) = request { client.api.financial(role).legendBody() } }
 class AccountRepository(private val client: LegendApiClient) { suspend fun profile(role: String) = request { client.api.account(role).legendBody() }; suspend fun lifecycle(role: String) = request { client.api.lifecycle(role).legendBody() }; suspend fun usernameAvailability(role: String, username: String?) = request { client.api.usernameAvailability(role, username).legendBody() }; suspend fun update(role: String, update: AccountUpdateRequest) = request { client.api.updateAccount(role, update).legendBody() }; suspend fun updatePrivacy(role: String, isPrivate: Boolean) = request { client.api.updatePrivacy(role, AccountPrivacyUpdateRequest(isPrivate)).legendBody() }; suspend fun updateTranslationLearningConsent(role: String, allowsConsentedTranslationLearning: Boolean) = request { client.api.updateTranslationLearningConsent(role, TranslationLearningConsentUpdateRequest(allowsConsentedTranslationLearning)).legendBody() }; suspend fun updateAvatar(role: String, base64Content: String) = request { client.api.updateAvatar(role, AccountAvatarUpdateRequest(base64Content)).legendBody() }; suspend fun requestDeletion(role: String, confirmation: String) = request { client.api.deletionRequest(role, ConfirmationRequest(confirmation)).legendBody() }; suspend fun pause(role: String) = request { client.api.pauseAccount(role, ConfirmationRequest("PAUSE")).legendBody() }; suspend fun resume(role: String) = request { client.api.resumeAccount(role).legendBody() } }
 class DailyScriptureManagementRepository(private val client: LegendApiClient) { suspend fun management(role: String) = request { client.api.dailyScriptureManagement(role).legendBody() }; suspend fun create(role: String, draft: DailyScriptureOverrideRequest) = request { client.api.createDailyScriptureOverride(role, draft).legendBody() }; suspend fun update(role: String, id: String, draft: DailyScriptureOverrideRequest) = request { client.api.updateDailyScriptureOverride(role, id, draft).legendBody() }; suspend fun remove(role: String, id: String) = request { client.api.deleteDailyScriptureOverride(role, id).legendBody() } }
@@ -89,8 +111,6 @@ class SocialRepository(private val client: LegendApiClient) {
     suspend fun toggleRepost(role: String, id: String) = request { client.api.repost(role, id).legendBody() }
     suspend fun recordShare(role: String, id: String) = request { client.api.recordShare(role, id).legendBody() }
     suspend fun recordView(role: String, id: String, requestBody: SocialViewRequest) = request { client.api.recordView(role, id, requestBody).legendBody() }
-    suspend fun creatorInsights(role: String) = request { client.api.creatorInsights(role).legendBody() }
-    suspend fun postInsights(role: String, id: String) = request { client.api.postInsights(role, id).legendBody() }
     suspend fun recordProfileVisit(role: String, author: SocialAuthor, sourcePostId: String? = null) = request { client.api.recordProfileVisit(role, SocialProfileVisitRequest(author.identity.userId, author.identity.participantType, sourcePostId)).legendBody() }
     suspend fun joinPromotedGroup(role: String, id: String) = request { client.api.joinPromotedGroup(role, id).legendBody() }
 }

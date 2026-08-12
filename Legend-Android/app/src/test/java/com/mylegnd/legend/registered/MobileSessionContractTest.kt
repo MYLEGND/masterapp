@@ -11,6 +11,7 @@ import com.mylegnd.legend.registered.core.network.JourneyDashboard
 import com.mylegnd.legend.registered.core.model.FounderManagedAccount
 import com.mylegnd.legend.registered.core.model.DailyScriptureManagementSnapshot
 import com.mylegnd.legend.registered.core.model.CommunitySafetyReport
+import com.mylegnd.legend.registered.core.model.MobileClientCreationPortalLaunch
 import com.mylegnd.legend.registered.core.realtime.toHubUrl
 import okhttp3.Request
 import kotlinx.serialization.json.Json
@@ -106,6 +107,15 @@ class MobileSessionContractTest {
         assertEquals("SocialPost", report.targetKind)
         assertEquals("Open", report.status)
         assertEquals("Sanitized report detail", report.detail)
+    }
+
+    @Test fun `client creation portal fixture retains only the server-issued launch path`() {
+        val launch = json.decodeFromString(
+            MobileClientCreationPortalLaunch.serializer(),
+            """{"launchPath":"/mobile/agent/clients/create?ticket=sanitized-ticket"}""",
+        )
+
+        assertEquals("/mobile/agent/clients/create?ticket=sanitized-ticket", launch.launchPath)
     }
 
     @Test fun `realtime hub keeps a valid OkHttp HTTP URL for WebSocket upgrade`() {

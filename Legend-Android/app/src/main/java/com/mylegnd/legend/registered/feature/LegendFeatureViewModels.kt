@@ -8,8 +8,10 @@ import com.mylegnd.legend.registered.core.network.DiscoveryResult
 import com.mylegnd.legend.registered.core.network.DiscoveryProfile
 import com.mylegnd.legend.registered.core.network.JourneyDashboard
 import com.mylegnd.legend.registered.core.network.NotificationItem
+import com.mylegnd.legend.registered.core.network.NotificationBadge
 import com.mylegnd.legend.registered.core.network.NotificationSnapshot
 import com.mylegnd.legend.registered.core.network.SocialViewRequest
+import com.mylegnd.legend.registered.core.realtime.LegendMessagingRealtimeEvent
 import com.mylegnd.legend.registered.data.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,11 +21,48 @@ import android.content.Context
 import android.net.Uri
 import com.mylegnd.legend.registered.core.media.ProfileAvatarPreparer
 
-class HomeViewModel(private val repository: HomeRepository, private val role: String) : ViewModel() { private val _state = MutableStateFlow<LoadState<MobileHomeResponse>>(LoadState.Idle); val state: StateFlow<LoadState<MobileHomeResponse>> = _state.asStateFlow(); fun load() = viewModelScope.launch { _state.value = LoadState.Loading; _state.value = repository.load(role) } }
+class HomeViewModel(private val repository: HomeRepository, private val role: String) : ViewModel() {
+    private val _state = MutableStateFlow<LoadState<MobileHomeResponse>>(LoadState.Idle)
+    val state: StateFlow<LoadState<MobileHomeResponse>> = _state.asStateFlow()
+
+    fun load() = viewModelScope.launch {
+        _state.value = LoadState.Loading
+        _state.value = repository.load(role)
+    }
+
+    /** Rehydrates the server-owned home aggregate without interrupting the active surface. */
+    fun refreshForRealtime() = viewModelScope.launch {
+        when (val fresh = repository.load(role)) {
+            is LoadState.Data -> _state.value = fresh
+            else -> Unit
+        }
+    }
+}
 class AgentWorkspaceViewModel(private val repository: AgentWorkspaceRepository, private val role: String) : ViewModel() {
-    private val _clients = MutableStateFlow<LoadState<List<MobileAgentClient>>>(LoadState.Idle); val clients: StateFlow<LoadState<List<MobileAgentClient>>> = _clients.asStateFlow()
-    private val _leads = MutableStateFlow<LoadState<List<MobileAgentLead>>>(LoadState.Idle); val leads: StateFlow<LoadState<List<MobileAgentLead>>> = _leads.asStateFlow()
-    fun load() = viewModelScope.launch { if (!role.equals("Agent", ignoreCase = true)) return@launch; _clients.value = LoadState.Loading; _leads.value = LoadState.Loading; _clients.value = repository.clients(role); _leads.value = repository.leads(role) }
+    private val _clients = MutableStateFlow<LoadState<List<MobileAgentClient>>>(LoadState.Idle)
+    val clients: StateFlow<LoadState<List<MobileAgentClient>>> = _clients.asStateFlow()
+    private val _leads = MutableStateFlow<LoadState<List<MobileAgentLead>>>(LoadState.Idle)
+    val leads: StateFlow<LoadState<List<MobileAgentLead>>> = _leads.asStateFlow()
+    private val _clientCreationPortal = MutableStateFlow<LoadState<MobileClientCreationPortalLaunch>>(LoadState.Idle)
+    val clientCreationPortal: StateFlow<LoadState<MobileClientCreationPortalLaunch>> = _clientCreationPortal.asStateFlow()
+
+    fun load() = viewModelScope.launch {
+        if (!role.equals("Agent", ignoreCase = true)) return@launch
+        _clients.value = LoadState.Loading
+        _leads.value = LoadState.Loading
+        _clients.value = repository.clients(role)
+        _leads.value = repository.leads(role)
+    }
+
+    fun launchClientCreationPortal() = viewModelScope.launch {
+        if (!role.equals("Agent", ignoreCase = true)) return@launch
+        _clientCreationPortal.value = LoadState.Loading
+        _clientCreationPortal.value = repository.clientCreationPortalLaunch(role)
+    }
+
+    fun clearClientCreationPortal() {
+        _clientCreationPortal.value = LoadState.Idle
+    }
 }
 class FinancialViewModel(private val repository: FinancialRepository, private val role: String) : ViewModel() { private val _state = MutableStateFlow<LoadState<FinancialSnapshot>>(LoadState.Idle); val state: StateFlow<LoadState<FinancialSnapshot>> = _state.asStateFlow(); fun load() = viewModelScope.launch { _state.value = LoadState.Loading; _state.value = repository.load(role) } }
 class MessagingViewModel(private val repository: MessagingRepository, private val role: String) : ViewModel() {
@@ -35,10 +74,18 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     val recipients: StateFlow<LoadState<List<MessagingRecipient>>> = _recipients.asStateFlow()
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
+    private val _callOptions = MutableStateFlow<LoadState<ConversationCallOptions>>(LoadState.Idle)
+    val callOptions: StateFlow<LoadState<ConversationCallOptions>> = _callOptions.asStateFlow()
 
     fun load() = viewModelScope.launch {
         _conversations.value = LoadState.Loading
         _conversations.value = repository.conversations(role)
+    }
+
+    /** Uses the existing conversation-owned call contract shared with iOS. */
+    fun loadCallOptions(conversationId: String) = viewModelScope.launch {
+        _callOptions.value = LoadState.Loading
+        _callOptions.value = repository.callOptions(role, conversationId)
     }
 
     fun loadMore() = viewModelScope.launch {
@@ -280,6 +327,24 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         if (repository.deleteMessage(role, message.conversationId, message.id) is LoadState.Data) open(message.conversationId)
     }
 
+    /**
+     * Reconciles the one server wake-up event used by iOS and Android. It
+     * deliberately never inserts a realtime body or derives an unread count;
+     * both projections are reloaded from AgentPortal.
+     */
+    fun reconcileRealtime(event: LegendMessagingRealtimeEvent) {
+        val conversationId = event.conversationId ?: return
+        viewModelScope.launch {
+            refreshInboxSilently()
+            val selected = (_detail.value as? LoadState.Data)?.value
+            if (selected?.id != conversationId) return@launch
+            when (val fresh = repository.conversation(role, conversationId)) {
+                is LoadState.Data -> _detail.value = fresh
+                else -> Unit
+            }
+        }
+    }
+
     private suspend fun refreshInboxSilently() {
         when (val fresh = repository.conversations(role)) {
             is LoadState.Data -> _conversations.value = fresh
@@ -299,7 +364,6 @@ class SocialViewModel(private val repository: SocialRepository, private val role
     private val _profilePosts = MutableStateFlow<LoadState<List<SocialPost>>>(LoadState.Idle); val profilePosts: StateFlow<LoadState<List<SocialPost>>> = _profilePosts.asStateFlow()
     private val _profileMetrics = MutableStateFlow<LoadState<SocialProfileMetrics>>(LoadState.Idle); val profileMetrics: StateFlow<LoadState<SocialProfileMetrics>> = _profileMetrics.asStateFlow()
     private val _followRequests = MutableStateFlow<LoadState<List<SocialFollowRequestItem>>>(LoadState.Idle); val followRequests: StateFlow<LoadState<List<SocialFollowRequestItem>>> = _followRequests.asStateFlow()
-    private val _creatorInsights = MutableStateFlow<LoadState<CreatorInsights>>(LoadState.Idle); val creatorInsights: StateFlow<LoadState<CreatorInsights>> = _creatorInsights.asStateFlow()
     private val _publicProfilePosts = MutableStateFlow<LoadState<List<SocialPost>>>(LoadState.Idle); val publicProfilePosts: StateFlow<LoadState<List<SocialPost>>> = _publicProfilePosts.asStateFlow()
     private val _publicProfileMetrics = MutableStateFlow<LoadState<SocialProfileMetrics>>(LoadState.Idle); val publicProfileMetrics: StateFlow<LoadState<SocialProfileMetrics>> = _publicProfileMetrics.asStateFlow()
     fun load() = viewModelScope.launch { _state.value = LoadState.Loading; _state.value = repository.feed(role) }
@@ -319,7 +383,6 @@ class SocialViewModel(private val repository: SocialRepository, private val role
     fun loadPublicProfile(author: SocialAuthor) = viewModelScope.launch { _publicProfilePosts.value = LoadState.Loading; _publicProfileMetrics.value = LoadState.Loading; _publicProfilePosts.value = repository.publicProfilePosts(role, author); _publicProfileMetrics.value = repository.profileMetrics(role, author); repository.recordProfileVisit(role, author) }
     fun loadFollowRequests() = viewModelScope.launch { _followRequests.value = LoadState.Loading; _followRequests.value = repository.followRequests(role) }
     fun decideFollowRequest(id: String, approve: Boolean) = viewModelScope.launch { repository.decideFollowRequest(role, id, approve); loadFollowRequests(); load() }
-    fun loadCreatorInsights() = viewModelScope.launch { _creatorInsights.value = LoadState.Loading; _creatorInsights.value = repository.creatorInsights(role) }
     fun joinPromotedGroup(id: String, onJoined: () -> Unit) = viewModelScope.launch {
         if (repository.joinPromotedGroup(role, id) is LoadState.Data) {
             load()
@@ -331,6 +394,24 @@ class NotificationsViewModel(private val repository: NotificationRepository, pri
     private val _state = MutableStateFlow<LoadState<NotificationSnapshot>>(LoadState.Idle)
     val state: StateFlow<LoadState<NotificationSnapshot>> = _state.asStateFlow()
     fun load() = viewModelScope.launch { _state.value = LoadState.Loading; _state.value = repository.snapshot(role) }
+
+    /**
+     * Applies the server's own revisioned badge event just as iOS does. The
+     * notification list stays server-owned and is reloaded when opened.
+     */
+    fun applyRealtime(event: LegendMessagingRealtimeEvent) {
+        val unreadCount = event.unreadCount ?: return
+        val current = (_state.value as? LoadState.Data)?.value
+        val currentBadge = current?.badge
+        val revision = event.revision ?: currentBadge?.revision ?: 0L
+        if (currentBadge != null && revision < currentBadge.revision) return
+        val nextBadge = NotificationBadge(
+            unreadCount = unreadCount,
+            revision = revision,
+            updatedUtc = event.occurredUtc ?: currentBadge?.updatedUtc ?: java.time.Instant.now().toString(),
+        )
+        _state.value = LoadState.Data((current ?: NotificationSnapshot(nextBadge)).copy(badge = nextBadge))
+    }
     fun markRead(id: String, open: (NotificationItem) -> Unit) = viewModelScope.launch {
         val item = (_state.value as? LoadState.Data)?.value?.notifications?.firstOrNull { it.id == id }
         repository.markRead(role, id)

@@ -22,7 +22,17 @@ class LegendFirebaseMessagingService : FirebaseMessagingService() {
         (application as? LegendApplication)?.container?.fcmPushRegistration?.registerFreshToken(token)
     }
     override fun onMessageReceived(message: RemoteMessage) {
-        LegendRealtimeEvents.conversationUpdated(message.data["conversationId"])
+        // FCM and SignalR intentionally converge on one small server-issued
+        // event contract. Neither transport becomes a local message or badge
+        // authority; the app reconciles against the existing API projections.
+        LegendRealtimeEvents.publish(
+            com.mylegnd.legend.registered.core.realtime.LegendMessagingRealtimeEvent(
+                conversationId = message.data["conversationId"],
+                notificationId = message.data["notificationId"],
+                unreadCount = message.data["unreadCount"]?.toIntOrNull(),
+                revision = message.data["revision"]?.toLongOrNull(),
+            ),
+        )
         val notification = message.notification ?: return
         val conversationId = message.data["conversationId"].orEmpty()
         val intent = Intent(this, MainActivity::class.java)

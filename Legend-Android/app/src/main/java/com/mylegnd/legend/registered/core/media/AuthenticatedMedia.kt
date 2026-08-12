@@ -175,7 +175,11 @@ fun LegendProtectedAvatar(
 ) {
     var file by remember(avatar?.resourcePath) { mutableStateOf<File?>(null) }
     LaunchedEffect(avatar?.resourcePath, participantType) {
-        if (avatar != null) runCatching { repository.profileAvatarFile(avatar, participantType) }.onSuccess { file = it }
+        file = null
+        if (avatar != null) {
+            runCatching { repository.profileAvatarFile(avatar, participantType) }
+                .onSuccess { file = it }
+        }
     }
     if (file == null) {
         LegendAvatar(displayName, modifier = modifier, size = size)
@@ -187,6 +191,7 @@ fun LegendProtectedAvatar(
                 .size(size)
                 .clip(CircleShape)
                 .border(1.dp, LegendColors.Gold.copy(alpha = 0.7f), CircleShape),
+            contentScale = ContentScale.Crop,
         )
     }
 }

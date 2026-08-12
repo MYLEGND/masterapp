@@ -2,6 +2,7 @@ package com.mylegnd.legend.registered.core.design
 
 import android.content.Context
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +37,10 @@ object LegendDesignAuthority {
     internal fun radius(name: String) = required().radii.required(name).dp
     internal fun size(name: String) = required().sizes.required(name).dp
     internal fun socialFormat(name: String) = required().socialFormats.required(name)
+    internal fun gradient(name: String): Brush = Brush.linearGradient(
+        required().gradients.required(name).map(::color),
+    )
+    internal fun opacity(name: String): Float = required().opacity.required(name)
     internal fun typography(name: String): TextStyle {
         val token = required().typography.required(name)
         return TextStyle(
@@ -69,6 +74,7 @@ object LegendColors {
     val BrandBlueSurface get() = LegendDesignAuthority.color("brandBlueSurface")
     val BrandBlueInset get() = LegendDesignAuthority.color("brandBlueInset")
     val ContactNavy get() = LegendDesignAuthority.color("contactNavy")
+    val ContactConnected get() = LegendDesignAuthority.color("contactConnected")
     val Verified get() = LegendDesignAuthority.color("verified")
     val TextPrimary get() = LegendDesignAuthority.color("textPrimary")
     val TextSecondary get() = LegendDesignAuthority.color("textSecondary")
@@ -78,6 +84,23 @@ object LegendColors {
     val Warning get() = LegendDesignAuthority.semanticColor("warning")
     val Error get() = LegendDesignAuthority.semanticColor("danger")
     val Info get() = LegendDesignAuthority.semanticColor("information")
+}
+
+/** Canonical gradients from the shared iOS-authored design specification. */
+object LegendGradients {
+    val Hero get() = LegendDesignAuthority.gradient("hero")
+    val Gold get() = LegendDesignAuthority.gradient("gold")
+    val Finance get() = LegendDesignAuthority.gradient("finance")
+    val FinancialSheet get() = LegendDesignAuthority.gradient("financialSheet")
+    val PageWashDark get() = LegendDesignAuthority.gradient("pageWashDark")
+}
+
+/** Named opacity values keep cross-platform component treatments in lockstep. */
+object LegendOpacity {
+    val ContactBorder get() = LegendDesignAuthority.opacity("contactBorder")
+    val ContactSupporting get() = LegendDesignAuthority.opacity("contactSupporting")
+    val ContactDetail get() = LegendDesignAuthority.opacity("contactDetail")
+    val ContactAction get() = LegendDesignAuthority.opacity("contactAction")
 }
 
 object LegendSpacing {
@@ -140,6 +163,8 @@ internal object LegendTypography {
 private data class LegendDesignSpecification(
     val colors: Map<String, LegendColorToken>,
     val platformSemanticColors: Map<String, LegendPlatformSemanticColor>,
+    val gradients: Map<String, List<String>>,
+    val opacity: Map<String, Float>,
     val spacing: Map<String, Float>,
     val radii: Map<String, Float>,
     val sizes: Map<String, Float>,

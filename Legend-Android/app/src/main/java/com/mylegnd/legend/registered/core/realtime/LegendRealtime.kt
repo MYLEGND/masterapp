@@ -10,9 +10,11 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -23,13 +25,27 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Server events are intentionally small wake-up signals. The Android UI never
- * accepts a message body over realtime transport; it refetches the same
- * authorized REST projection used during normal load and recovery.
+ * accepts a message body over realtime transport. Conversation events wake
+ * the existing repositories so they refetch the same authorized REST
+ * projection used during normal load and recovery. Badge values are the
+ * server-issued notification projection, versioned by the server revision.
  */
+data class LegendMessagingRealtimeEvent(
+    val conversationId: String? = null,
+    val messageId: String? = null,
+    val notificationId: String? = null,
+    val unreadCount: Int? = null,
+    val revision: Long? = null,
+    val occurredUtc: String? = null,
+)
+
 object LegendRealtimeEvents {
-    private val mutableEvents = MutableSharedFlow<String?>(extraBufferCapacity = 8)
-    val conversationUpdates = mutableEvents.asSharedFlow()
-    fun conversationUpdated(conversationId: String?) { mutableEvents.tryEmit(conversationId) }
+    private val mutableEvents = MutableSharedFlow<LegendMessagingRealtimeEvent>(extraBufferCapacity = 8)
+    val events = mutableEvents.asSharedFlow()
+
+    fun publish(event: LegendMessagingRealtimeEvent) {
+        mutableEvents.tryEmit(event)
+    }
 }
 
 /**
@@ -127,7 +143,17 @@ class MobileMessagingRealtimeClient(
         val target = envelope["target"]?.jsonPrimitive?.content?.lowercase() ?: return
         if (target !in EVENT_TARGETS) return
         val event = envelope["arguments"]?.jsonArray?.firstOrNull()?.jsonObject
-        LegendRealtimeEvents.conversationUpdated(event?.get("conversationId")?.jsonPrimitive?.content)
+        val update = LegendMessagingRealtimeEvent(
+            conversationId = event.string("conversationId"),
+            messageId = event.string("messageId"),
+            notificationId = event.string("notificationId"),
+            unreadCount = event.string("unreadCount")?.toIntOrNull(),
+            revision = event.string("revision")?.toLongOrNull(),
+            occurredUtc = event.string("occurredUtc"),
+        )
+        if (update.conversationId != null || update.notificationId != null || update.unreadCount != null) {
+            LegendRealtimeEvents.publish(update)
+        }
     }
 
     private fun scheduleReconnect(connectionGeneration: Long) {
@@ -146,6 +172,9 @@ class MobileMessagingRealtimeClient(
         val RECONNECT_DELAYS_MILLIS = longArrayOf(1_000, 2_000, 5_000, 10_000, 30_000)
     }
 }
+
+private fun JsonObject?.string(name: String): String? =
+    this?.get(name)?.jsonPrimitive?.contentOrNull
 
 /**
  * OkHttp upgrades an HTTP(S) request to WebSocket transport in
