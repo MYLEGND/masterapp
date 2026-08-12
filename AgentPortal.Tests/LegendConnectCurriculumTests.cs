@@ -71,6 +71,11 @@ public sealed class LegendConnectCurriculumTests
                 .ToListAsync();
             Assert.Equal(4, examples.Count);
             Assert.All(examples, item => Assert.NotNull(item.DerivedFromCurriculumExampleId));
+            Assert.All(examples, item => Assert.Equal("ProviderDerived", item.Provenance));
+            var targetUnitIds = examples.Select(item => item.TextUnitId).ToArray();
+            Assert.All(await db.LegendLanguageTextUnits
+                .Where(item => targetUnitIds.Contains(item.Id))
+                .ToListAsync(), item => Assert.Equal("ProviderDerived", item.Provenance));
             Assert.Equal(12, await db.LegendCurriculumExampleVariations
                 .CountAsync(item => examples.Select(example => example.Id).Contains(item.CurriculumExampleId)));
 
@@ -78,6 +83,7 @@ public sealed class LegendConnectCurriculumTests
                 .Where(item => item.CurriculumFamilyId == family.Id && item.LanguageCode == language)
                 .ToListAsync();
             Assert.NotEmpty(evidence);
+            Assert.All(evidence, item => Assert.Equal("ProviderDerived", item.Provenance));
             var exampleIds = examples.Select(item => item.Id).ToHashSet();
             Assert.All(evidence, item =>
             {
@@ -90,6 +96,7 @@ public sealed class LegendConnectCurriculumTests
                 .ToListAsync();
             Assert.Contains(patterns, item => item.MaturityState == "Supported" && item.SupportCount >= 3);
             Assert.All(patterns, item => Assert.False(item.IsProductionEligible));
+            Assert.All(patterns, item => Assert.Equal("ProviderDerived", item.Provenance));
         }
 
         var fallbackProvider = new CountingProvider();

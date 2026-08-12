@@ -9,6 +9,19 @@ using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Messaging;
 
+/// <summary>
+/// Canonical provenance labels for evidence that moves through the shared
+/// language-intelligence pipeline. Founder approval belongs to the source
+/// asset; a provider result remains provider-derived until a Founder verifies
+/// that exact directional alignment.
+/// </summary>
+internal static class LegendConnectKnowledgeProvenance
+{
+    internal const string FounderApproved = "FounderApproved";
+    internal const string ProviderDerived = "ProviderDerived";
+    internal const string ConsentedLiveTranslation = "ConsentedLiveTranslation";
+}
+
 internal sealed class NullTranslationLearningPublisher : ITranslationLearningPublisher
 {
     internal static readonly NullTranslationLearningPublisher Instance = new();
@@ -130,7 +143,7 @@ internal sealed class LegendTranslationTrainingEligibilityPolicy
         return new TranslationLearningEligibility(
             true,
             "Eligible",
-            "ConsentedLiveTranslation");
+            LegendConnectKnowledgeProvenance.ConsentedLiveTranslation);
     }
 
     private async Task<IReadOnlyList<ParticipantProfileKey>?> ResolveParticipantProfilesAsync(
@@ -368,6 +381,28 @@ internal sealed class LegendConnectCorpusService
                 return;
             }
 
+            // Provider-derived targets are only valid as expansions of an
+            // existing canonical source asset. Never recreate a source from a
+            // queued payload: doing so would sever the target's atomic
+            // provenance and reintroduce a second ingestion boundary.
+            if (string.Equals(item.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal) &&
+                (LegendLanguageIdentity.TextHash(item.SourceText) != item.SourceTextHash ||
+                 !await _db.Set<LegendLanguageTextUnit>().AsNoTracking().AnyAsync(unit =>
+                     unit.LanguageCode == item.SourceLanguageCode &&
+                     unit.NormalizedHash == item.SourceTextHash &&
+                     unit.IsTrainingEligible,
+                     cancellationToken)))
+            {
+                item.ProcessingState = "Superseded";
+                item.PromotionOutcome = "Superseded";
+                item.FailureCode = "source_entry_unavailable";
+                item.ProcessedUtc = DateTime.UtcNow;
+                item.LeaseExpiresUtc = null;
+                await _db.SaveChangesAsync(cancellationToken);
+                LegendConnectTelemetry.CorpusEvent(item.ProcessingState, item.PairKey);
+                return;
+            }
+
             var pair = await _languages.GetOrCreateEnabledPairAsync(
                 item.SourceLanguageCode,
                 item.TargetLanguageCode,
@@ -417,7 +452,7 @@ internal sealed class LegendConnectCorpusService
             {
                 var consentedLiveTranslation = string.Equals(
                     item.Provenance,
-                    "ConsentedLiveTranslation",
+                    LegendConnectKnowledgeProvenance.ConsentedLiveTranslation,
                     StringComparison.Ordinal);
                 alignment = new LegendTranslationAlignment
                 {
@@ -443,7 +478,7 @@ internal sealed class LegendConnectCorpusService
                 alignment!.ObservationCount++;
                 alignment.UpdatedUtc = DateTime.UtcNow;
                 if (!alignment.HumanVerified &&
-                    string.Equals(item.Provenance, "ConsentedLiveTranslation", StringComparison.Ordinal))
+                    string.Equals(item.Provenance, LegendConnectKnowledgeProvenance.ConsentedLiveTranslation, StringComparison.Ordinal))
                 {
                     alignment.Confidence = Math.Max(alignment.Confidence ?? 0m, 0.98m);
                     if (!string.Equals(alignment.QualityState, "Verified", StringComparison.Ordinal))
@@ -1194,7 +1229,8 @@ internal sealed class LegendConnectAutonomousGapPlanner
                 .AsNoTracking()
                 .SingleOrDefaultAsync(item => item.LanguageCode == pair.SourceLanguageCode &&
                     item.NormalizedHash == candidate.SourceTextHash, cancellationToken);
-            if (source is not null && !source.IsTrainingEligible)
+            if (source is null || !source.IsTrainingEligible ||
+                !string.Equals(source.Text, LegendLanguageIdentity.NormalizeText(candidate.SourceText), StringComparison.Ordinal))
             {
                 candidate.IsApproved = false;
                 candidate.ProcessingState = "Superseded";
@@ -1355,7 +1391,8 @@ internal sealed class LegendConnectAutonomousLearningService
         var source = await _db.Set<LegendLanguageTextUnit>()
             .SingleOrDefaultAsync(item => item.LanguageCode == pair.SourceLanguageCode &&
                 item.NormalizedHash == candidate.SourceTextHash, cancellationToken);
-        if (source is not null && !source.IsTrainingEligible)
+        if (source is null || !source.IsTrainingEligible ||
+            !string.Equals(source.Text, LegendLanguageIdentity.NormalizeText(candidate.SourceText), StringComparison.Ordinal))
         {
             candidate.IsApproved = false;
             candidate.ProcessingState = "Superseded";
@@ -1445,7 +1482,10 @@ internal sealed class LegendConnectAutonomousLearningService
                 SourceText = candidate.SourceText,
                 TargetText = translation.TranslatedText,
                 Provider = translation.Provider,
-                Provenance = candidate.Provenance,
+                // The candidate retains the Founder-approved source
+                // provenance. The Azure result is a distinct target asset and
+                // must not inherit approval or verification from that source.
+                Provenance = LegendConnectKnowledgeProvenance.ProviderDerived,
                 ContextCategory = candidate.Category,
                 EligibilityState = "Eligible",
                 ProcessingState = "Pending",

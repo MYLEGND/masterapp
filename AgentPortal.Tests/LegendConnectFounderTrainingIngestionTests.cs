@@ -174,6 +174,174 @@ public sealed class LegendConnectFounderTrainingIngestionTests
     }
 
     [Fact]
+    public async Task AtomicFounderSources_KeepProviderTargetsAsObservationsAcrossEverySharedLanguagePath()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var registry = new LegendLanguageRegistry(db, Configuration());
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var ingestion = new LegendConnectFounderTrainingIngestionAuthority(db, registry, corpus, curriculum);
+        var submitted = await ingestion.SubmitAsync("founder-1", SourceSeed("I understand you."));
+        Assert.True(submitted.Succeeded, submitted.Message);
+
+        var source = await db.LegendLanguageTextUnits.SingleAsync(item =>
+            item.LanguageCode == "en" && item.Text == "I understand you.");
+        var targets = new List<LegendLanguageTextUnit>();
+        foreach (var language in new[] { "ht", "es", "fr", "ja" })
+        {
+            var pair = await registry.GetOrCreateEnabledPairAsync("en", language);
+            Assert.NotNull(pair);
+            var target = TextUnit(language, $"provider result {language}", "FounderApproved");
+            targets.Add(target);
+            db.AddRange(
+                target,
+                new LegendTranslationAlignment
+                {
+                    Id = Guid.NewGuid(),
+                    PairKey = pair!.PairKey,
+                    SourceTextUnitId = source.Id,
+                    TargetTextUnitId = target.Id,
+                    Provider = "AzureTranslator",
+                    Confidence = .9m,
+                    QualityState = "Observation",
+                    HumanVerified = false,
+                    ObservationCount = 1
+                },
+                new LegendLanguageContextRelationship
+                {
+                    Id = Guid.NewGuid(),
+                    PairKey = pair.PairKey,
+                    SourceTextUnitId = source.Id,
+                    RelatedTextUnitId = target.Id,
+                    RelationshipKind = "ContextualExample",
+                    ContextSignature = "legacy-provider-result",
+                    SourcePatternSignature = "legacy-provider-result",
+                    Confidence = 1m,
+                    QualityState = "Verified",
+                    Provenance = "FounderApproved",
+                    ObservationCount = 1
+                });
+        }
+        await db.SaveChangesAsync();
+
+        await ingestion.ReconcileLegacyAsync(25);
+        var firstUpdatedUtc = targets.ToDictionary(item => item.Id, item =>
+            db.LegendLanguageTextUnits.Single(unit => unit.Id == item.Id).UpdatedUtc);
+        await ingestion.ReconcileLegacyAsync(25);
+
+        foreach (var target in targets)
+        {
+            var persistedTarget = await db.LegendLanguageTextUnits.SingleAsync(item => item.Id == target.Id);
+            var alignment = await db.LegendTranslationAlignments.SingleAsync(item => item.TargetTextUnitId == target.Id);
+            var context = await db.LegendLanguageContextRelationships.SingleAsync(item => item.RelatedTextUnitId == target.Id);
+            Assert.Equal("ProviderDerived", persistedTarget.Provenance);
+            Assert.False(alignment.HumanVerified);
+            Assert.Equal("Observation", alignment.QualityState);
+            Assert.Null(alignment.SupersededUtc);
+            Assert.Equal("ProviderDerived", context.Provenance);
+            Assert.Equal("Observation", context.QualityState);
+            Assert.True(context.Confidence <= .5m);
+            Assert.Equal(firstUpdatedUtc[target.Id], persistedTarget.UpdatedUtc);
+        }
+    }
+
+    [Fact]
+    public async Task PreviouslyReconciledLegacyLineage_RetiresLateDerivedArtifacts_AndPreservesHumanVerifiedMultiSentenceKnowledge()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var registry = new LegendLanguageRegistry(db, Configuration());
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var ingestion = new LegendConnectFounderTrainingIngestionAuthority(db, registry, corpus, curriculum);
+        var pair = await registry.GetOrCreateEnabledPairAsync("en", "ht");
+        Assert.NotNull(pair);
+
+        var malformedSource = TextUnit("en", "First source. Second source.", "FounderApproved");
+        malformedSource.IsTrainingEligible = false;
+        var malformedTarget = TextUnit("ht", "first target second target", "AzureTranslator");
+        var alignment = new LegendTranslationAlignment
+        {
+            Id = Guid.NewGuid(), PairKey = pair!.PairKey, SourceTextUnitId = malformedSource.Id,
+            TargetTextUnitId = malformedTarget.Id, Provider = "AzureTranslator", QualityState = "Observation", ObservationCount = 1
+        };
+        var context = new LegendLanguageContextRelationship
+        {
+            Id = Guid.NewGuid(), PairKey = pair.PairKey, SourceTextUnitId = malformedSource.Id,
+            RelatedTextUnitId = malformedTarget.Id, RelationshipKind = "ContextualExample", ContextSignature = "interrupted-reconciliation",
+            SourcePatternSignature = "interrupted-reconciliation", Confidence = .5m, QualityState = "Observation",
+            Provenance = "FounderApproved", ObservationCount = 1
+        };
+        var candidate = new LegendCorpusCandidate
+        {
+            Id = Guid.NewGuid(), IdempotencyKey = "interrupted-legacy-derived", SourceLanguageCode = "en", TargetLanguageCode = "ht",
+            SourceText = malformedSource.Text, SourceTextHash = malformedSource.NormalizedHash, Category = "FounderApprovedSeed",
+            Provenance = "FounderApproved", IsApproved = true, ProcessingState = "Queued"
+        };
+        var learningEvent = new LegendTranslationLearningEvent
+        {
+            Id = Guid.NewGuid(), IdempotencyKey = "interrupted-legacy-derived-event", SourceLanguageCode = "en", TargetLanguageCode = "ht",
+            PairKey = pair.PairKey, SourceTextHash = malformedSource.NormalizedHash, TargetTextHash = malformedTarget.NormalizedHash,
+            SourceText = malformedSource.Text, TargetText = malformedTarget.Text, Provider = "AzureTranslator",
+            Provenance = "FounderApproved", EligibilityState = "Eligible", ProcessingState = "Processed", PromotionOutcome = "Promoted"
+        };
+        var legacySubmission = new LegendFounderTrainingSubmission
+        {
+            Id = Guid.NewGuid(), SourceLanguageCode = "en", RawText = malformedSource.Text,
+            RawTextHash = malformedSource.NormalizedHash, LegacySourceTextUnitId = malformedSource.Id,
+            RawCharacterCount = malformedSource.Text.Length, AtomicUnitCount = 2, ProcessingState = "Reconciled"
+        };
+        var humanSource = TextUnit("en", "Please come. Bring water.", "FounderApproved");
+        var humanTarget = TextUnit("ht", "Tanpri vini. Pote dlo.", "FounderApproved");
+        var humanAlignment = new LegendTranslationAlignment
+        {
+            Id = Guid.NewGuid(), PairKey = pair.PairKey, SourceTextUnitId = humanSource.Id, TargetTextUnitId = humanTarget.Id,
+            Provider = "FounderApproved", Confidence = 1m, QualityState = "Verified", HumanVerified = true, ObservationCount = 1
+        };
+        db.AddRange(malformedSource, malformedTarget, alignment, context, candidate, learningEvent, legacySubmission,
+            humanSource, humanTarget, humanAlignment);
+        await db.SaveChangesAsync();
+
+        await ingestion.ReconcileLegacyAsync(25);
+        var firstSupersededUtc = (await db.LegendTranslationAlignments.SingleAsync(item => item.Id == alignment.Id)).SupersededUtc;
+        await ingestion.ReconcileLegacyAsync(25);
+
+        Assert.False((await db.LegendLanguageTextUnits.SingleAsync(item => item.Id == malformedTarget.Id)).IsTrainingEligible);
+        Assert.Equal(firstSupersededUtc, (await db.LegendTranslationAlignments.SingleAsync(item => item.Id == alignment.Id)).SupersededUtc);
+        Assert.NotNull((await db.LegendLanguageContextRelationships.SingleAsync(item => item.Id == context.Id)).SupersededUtc);
+        Assert.Equal("Superseded", (await db.LegendCorpusCandidates.SingleAsync(item => item.Id == candidate.Id)).ProcessingState);
+        Assert.Equal("Superseded", (await db.LegendTranslationLearningEvents.SingleAsync(item => item.Id == learningEvent.Id)).ProcessingState);
+        Assert.True((await db.LegendLanguageTextUnits.SingleAsync(item => item.Id == humanSource.Id)).IsTrainingEligible);
+        Assert.True((await db.LegendLanguageTextUnits.SingleAsync(item => item.Id == humanTarget.Id)).IsTrainingEligible);
+        Assert.Null((await db.LegendTranslationAlignments.SingleAsync(item => item.Id == humanAlignment.Id)).SupersededUtc);
+    }
+
+    [Fact]
+    public async Task ProviderDerivedEvent_WithoutAnExistingCanonicalSource_IsSupersededBeforeItCanCreateATarget()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var registry = new LegendLanguageRegistry(db, Configuration());
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var pair = await registry.GetOrCreateEnabledPairAsync("en", "ht");
+        Assert.NotNull(pair);
+        var eventItem = new LegendTranslationLearningEvent
+        {
+            Id = Guid.NewGuid(), IdempotencyKey = "missing-canonical-source", SourceLanguageCode = "en", TargetLanguageCode = "ht",
+            PairKey = pair!.PairKey, SourceText = "Unregistered source.", TargetText = "sib san sous.",
+            SourceTextHash = LegendLanguageIdentity.TextHash("Unregistered source."),
+            TargetTextHash = LegendLanguageIdentity.TextHash("sib san sous."), Provider = "AzureTranslator",
+            Provenance = "ProviderDerived", EligibilityState = "Eligible", ProcessingState = "Pending"
+        };
+        db.Add(eventItem);
+        await db.SaveChangesAsync();
+
+        await corpus.ProcessAsync(eventItem);
+
+        Assert.Equal("Superseded", (await db.LegendTranslationLearningEvents.SingleAsync(item => item.Id == eventItem.Id)).ProcessingState);
+        Assert.Empty(await db.LegendLanguageTextUnits.ToListAsync());
+        Assert.Empty(await db.LegendTranslationAlignments.ToListAsync());
+    }
+
+    [Fact]
     public async Task RetiredAssets_AreExcludedFromTranslationMemoryAndContextEvaluation()
     {
         await using var db = ControllerTestHelpers.BuildDb();

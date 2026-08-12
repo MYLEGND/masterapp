@@ -41,6 +41,9 @@ public sealed class LegendConnectContinuationTests
             TranslationRequestCount = 50,
             LastRequestedUtc = DateTime.UtcNow
         });
+        db.LegendLanguageTextUnits.AddRange(
+            CanonicalSource("en", "Low demand approved example"),
+            CanonicalSource("en", "High demand approved example"));
         db.LegendCorpusCandidates.AddRange(
             Candidate("low", "en", "fr", "Low demand approved example"),
             Candidate("high", "en", "ht", "High demand approved example"));
@@ -62,7 +65,7 @@ public sealed class LegendConnectContinuationTests
         Assert.Equal(1, provider.TranslateCalls);
         Assert.Equal("High demand approved example", provider.LastText);
         Assert.Contains(await db.LegendTranslationAlignments.ToListAsync(), item => item.PairKey == "en:ht");
-        Assert.Equal(2, await db.LegendLanguageTextUnits.CountAsync(item => item.LanguageCode == "en" || item.LanguageCode == "ht"));
+        Assert.Equal(3, await db.LegendLanguageTextUnits.CountAsync(item => item.LanguageCode == "en" || item.LanguageCode == "ht"));
     }
 
     [Fact]
@@ -397,6 +400,17 @@ public sealed class LegendConnectContinuationTests
         Id = Guid.NewGuid(), IdempotencyKey = key, SourceLanguageCode = source, TargetLanguageCode = target,
         SourceText = text, SourceTextHash = LegendLanguageIdentity.TextHash(text), Category = "ApprovedTestCorpus",
         Provenance = "ApprovedTestCorpus", IsApproved = true, ProcessingState = "Pending", CreatedUtc = DateTime.UtcNow
+    };
+
+    private static LegendLanguageTextUnit CanonicalSource(string languageCode, string text) => new()
+    {
+        Id = Guid.NewGuid(),
+        LanguageCode = languageCode,
+        StoragePartition = LegendLanguageIdentity.DatasetNamespace(languageCode),
+        NormalizedHash = LegendLanguageIdentity.TextHash(text),
+        Text = LegendLanguageIdentity.NormalizeText(text),
+        Provenance = "FounderApproved",
+        IsTrainingEligible = true
     };
 
     private static LegendTranslationLearningEvent EligibleEvent(LegendLanguagePairSnapshot pair, string source, string target, string suffix) => new()

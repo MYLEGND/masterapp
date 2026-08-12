@@ -70,14 +70,25 @@ public sealed class LegendConnectSystemHardeningTests
             ["LegendConnect:Providers:AzureTranslator:LiveReserveCharacters"] = "100"
         }).Build();
         var registry = new LegendLanguageRegistry(db, configuration);
+        var sourceText = "Retry only after the existing lease expires.";
+        db.LegendLanguageTextUnits.Add(new LegendLanguageTextUnit
+        {
+            Id = Guid.NewGuid(),
+            LanguageCode = "en",
+            StoragePartition = LegendLanguageIdentity.DatasetNamespace("en"),
+            NormalizedHash = LegendLanguageIdentity.TextHash(sourceText),
+            Text = LegendLanguageIdentity.NormalizeText(sourceText),
+            Provenance = "FounderApproved",
+            IsTrainingEligible = true
+        });
         db.LegendCorpusCandidates.Add(new LegendCorpusCandidate
         {
             Id = Guid.NewGuid(),
             IdempotencyKey = "provider-failure-retry",
             SourceLanguageCode = "en",
             TargetLanguageCode = "ht",
-            SourceText = "Retry only after the existing lease expires.",
-            SourceTextHash = LegendLanguageIdentity.TextHash("Retry only after the existing lease expires."),
+            SourceText = sourceText,
+            SourceTextHash = LegendLanguageIdentity.TextHash(sourceText),
             Category = "ApprovedTestCorpus",
             Provenance = "ApprovedTestCorpus",
             IsApproved = true,

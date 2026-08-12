@@ -166,7 +166,12 @@ public sealed class LegendConnectRuntimePolicyTests
         var french = Candidate("automatic-french", "en", "fr", "Higher demand French learning set");
         var reverseHaitian = Candidate("not-english-source", "ht", "en", "Konesans ki pa soti nan seri Angle a");
         reverseHaitian.Priority = 999;
-        db.AddRange(haitian, spanish, french, reverseHaitian);
+        db.AddRange(
+            CanonicalSource("en", haitian.SourceText),
+            CanonicalSource("en", spanish.SourceText),
+            CanonicalSource("en", french.SourceText),
+            CanonicalSource("ht", reverseHaitian.SourceText),
+            haitian, spanish, french, reverseHaitian);
         await db.SaveChangesAsync();
 
         await policy.ConfigureAutonomousLanguageFocusAsync(
@@ -235,7 +240,9 @@ public sealed class LegendConnectRuntimePolicyTests
             await policy.UpdateAsync("founder", new LegendConnectRuntimePolicyMutation(100, 20, 80, true, "Shadow", 0.98m));
             await policy.RecordWorkerHeartbeatAsync("Learning");
             await policy.RecordWorkerHeartbeatAsync("Acquisition");
-            seeded.LegendCorpusCandidates.Add(Candidate("shared-candidate", "en", "ht", "One approved candidate"));
+            seeded.AddRange(
+                CanonicalSource("en", "One approved candidate"),
+                Candidate("shared-candidate", "en", "ht", "One approved candidate"));
             await seeded.SaveChangesAsync();
             Assert.Equal("ACTIVE", (await policy.ActivateAsync("founder")).State);
         }
@@ -292,6 +299,17 @@ public sealed class LegendConnectRuntimePolicyTests
         Id = Guid.NewGuid(), IdempotencyKey = key, SourceLanguageCode = source, TargetLanguageCode = target,
         SourceText = text, SourceTextHash = LegendLanguageIdentity.TextHash(text), Category = "ApprovedTestCorpus",
         Provenance = "ApprovedTestCorpus", IsApproved = true, ProcessingState = "Pending", CreatedUtc = DateTime.UtcNow
+    };
+
+    private static LegendLanguageTextUnit CanonicalSource(string languageCode, string text) => new()
+    {
+        Id = Guid.NewGuid(),
+        LanguageCode = languageCode,
+        StoragePartition = LegendLanguageIdentity.DatasetNamespace(languageCode),
+        NormalizedHash = LegendLanguageIdentity.TextHash(text),
+        Text = LegendLanguageIdentity.NormalizeText(text),
+        Provenance = "FounderApproved",
+        IsTrainingEligible = true
     };
 
     private sealed class TestAccess : IControlledResourceAccessService

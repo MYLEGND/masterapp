@@ -707,7 +707,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             TextUnitId = textUnit.Id,
             LanguageCode = languageCode,
             DerivedFromCurriculumExampleId = derivedFromCurriculumExampleId,
-            Provenance = "FounderApproved",
+            // A target curriculum example retains the provenance of its own
+            // language asset. Founder approval of an English source does not
+            // verify a provider-derived target realization.
+            Provenance = textUnit.Provenance,
             CreatedUtc = DateTime.UtcNow,
             UpdatedUtc = DateTime.UtcNow
         };
@@ -851,7 +854,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                             VariationDimension = dimension,
                             RealizationSignature = signature,
                             MaturityState = "Observation",
-                            Provenance = "FounderApproved",
+                            Provenance = EvidenceProvenance(left.Example.Provenance, right.Example.Provenance),
                             CreatedUtc = DateTime.UtcNow,
                             UpdatedUtc = DateTime.UtcNow
                         };
@@ -884,7 +887,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                             EvidenceSignature = signature,
                             BaselineComponentSignature = comparison.BaselineComponentSignature,
                             ComparedComponentSignature = comparison.ComparedComponentSignature,
-                            Provenance = "FounderApproved",
+                            Provenance = EvidenceProvenance(left.Example.Provenance, right.Example.Provenance),
                             CreatedUtc = DateTime.UtcNow
                         });
                     }
@@ -938,6 +941,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
     private static string RealizationSignature(string left, string right) =>
         $"{TextShape(left)}>{TextShape(right)}";
+
+    private static string EvidenceProvenance(string left, string right) =>
+        string.Equals(left, LegendConnectKnowledgeProvenance.FounderApproved, StringComparison.Ordinal) &&
+        string.Equals(right, LegendConnectKnowledgeProvenance.FounderApproved, StringComparison.Ordinal)
+            ? LegendConnectKnowledgeProvenance.FounderApproved
+            : LegendConnectKnowledgeProvenance.ProviderDerived;
 
     private static StructuralComparison CanonicalComparison(
         string leftText,

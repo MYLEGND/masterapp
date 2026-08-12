@@ -118,6 +118,17 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
         if (enabledCodes.Length == 0)
             return new LegendFounderTrainingReconciliationResult(0, 0, 0, 0);
 
+        // A prior reconciliation can already have recorded the raw
+        // submission while a process was interrupted before every derived
+        // target artifact was retired. Revisit only those explicit legacy
+        // lineages; do not infer corruption from target text or language.
+        var supersededRelationships = await ReconcileKnownLegacyDerivedArtifactsAsync(take, cancellationToken);
+
+        // Run this before selecting legacy source assets so a historical
+        // provider target that was mislabeled FounderApproved cannot be
+        // mistaken for another Founder source submission.
+        await ReconcileProviderDerivedTargetProvenanceAsync(take, cancellationToken);
+
         var sources = await _db.Set<LegendLanguageTextUnit>()
             .Where(item => item.IsTrainingEligible && item.Provenance == "FounderApproved" &&
                 enabledCodes.Contains(item.LanguageCode))
@@ -128,6 +139,13 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
             .Where(item => !_db.Set<LegendTranslationAlignment>()
                 .Any(alignment => alignment.SourceTextUnitId == item.Id &&
                     alignment.SupersededUtc == null && alignment.HumanVerified))
+            // A human-verified target is a legitimate explicit language
+            // asset, not a pre-decomposition Founder source block. This also
+            // preserves valid multi-sentence translations without a
+            // content-based exception.
+            .Where(item => !_db.Set<LegendTranslationAlignment>()
+                .Any(alignment => alignment.TargetTextUnitId == item.Id &&
+                    alignment.SupersededUtc == null && alignment.HumanVerified))
             .OrderBy(item => item.CreatedUtc)
             .Take(Math.Clamp(take, 1, 100))
             .ToListAsync(cancellationToken);
@@ -135,7 +153,6 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
         var reviewed = 0;
         var reconciled = 0;
         var atomicUnits = 0;
-        var supersededRelationships = 0;
         foreach (var source in sources)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -208,17 +225,140 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
             }
         }
 
-        if ((reconciled > 0 || reviewed > 0) && _operations is not null)
+        if ((reconciled > 0 || reviewed > 0 || supersededRelationships > 0) && _operations is not null)
         {
             await _operations.TryRecordAsync(
                 "FounderTrainingReconciliation",
                 "Info",
                 "Processed",
                 errorCode: null,
-                summary: $"Reconciled {reconciled} legacy multi-unit Founder submission(s); reviewed {reviewed} already-atomic source asset(s).",
+                summary: $"Reconciled {reconciled} legacy multi-unit Founder submission(s); reviewed {reviewed} already-atomic source asset(s); retired {supersededRelationships} lineage-bound derived artifact(s).",
                 cancellationToken: cancellationToken);
         }
         return new LegendFounderTrainingReconciliationResult(reviewed, reconciled, atomicUnits, supersededRelationships);
+    }
+
+    private async Task<int> ReconcileKnownLegacyDerivedArtifactsAsync(
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var legacySourceIds = await _db.Set<LegendFounderTrainingSubmission>()
+            .Where(item => item.LegacySourceTextUnitId != null && item.AtomicUnitCount > 1)
+            .OrderBy(item => item.CreatedUtc)
+            .Take(Math.Clamp(take, 1, 100))
+            .Select(item => item.LegacySourceTextUnitId!.Value)
+            .ToListAsync(cancellationToken);
+        if (legacySourceIds.Count == 0)
+            return 0;
+
+        var sources = await _db.Set<LegendLanguageTextUnit>()
+            .Where(item => legacySourceIds.Contains(item.Id))
+            .ToListAsync(cancellationToken);
+        var reconciled = 0;
+        foreach (var source in sources)
+            reconciled += await DecommissionLegacySourceAsync(source, cancellationToken);
+        return reconciled;
+    }
+
+    private async Task ReconcileProviderDerivedTargetProvenanceAsync(
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var providerDerived = await (
+            from alignment in _db.Set<LegendTranslationAlignment>()
+            join source in _db.Set<LegendLanguageTextUnit>() on alignment.SourceTextUnitId equals source.Id
+            join target in _db.Set<LegendLanguageTextUnit>() on alignment.TargetTextUnitId equals target.Id
+            where alignment.SupersededUtc == null && !alignment.HumanVerified &&
+                target.IsTrainingEligible && target.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                _db.Set<LegendFounderTrainingSubmissionUnit>().Any(unit => unit.TextUnitId == source.Id)
+            orderby alignment.UpdatedUtc
+            select new { alignment, target }
+        ).Take(Math.Clamp(take, 1, 100)).ToListAsync(cancellationToken);
+
+        foreach (var item in providerDerived)
+        {
+            var hasHumanVerifiedReference = await _db.Set<LegendTranslationAlignment>()
+                .AnyAsync(alignment => alignment.TargetTextUnitId == item.target.Id &&
+                    alignment.SupersededUtc == null && alignment.HumanVerified, cancellationToken);
+            if (hasHumanVerifiedReference)
+                continue;
+
+            var changed = false;
+            if (!string.Equals(item.target.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal))
+            {
+                item.target.Provenance = LegendConnectKnowledgeProvenance.ProviderDerived;
+                item.target.UpdatedUtc = DateTime.UtcNow;
+                changed = true;
+            }
+
+            var contexts = await _db.Set<LegendLanguageContextRelationship>()
+                .Where(context => context.SupersededUtc == null &&
+                    context.PairKey == item.alignment.PairKey &&
+                    context.SourceTextUnitId == item.alignment.SourceTextUnitId &&
+                    context.RelatedTextUnitId == item.alignment.TargetTextUnitId)
+                .ToListAsync(cancellationToken);
+            foreach (var context in contexts)
+            {
+                if (string.Equals(context.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal) &&
+                    string.Equals(context.QualityState, "Observation", StringComparison.Ordinal) &&
+                    context.Confidence <= .5m)
+                    continue;
+                context.Provenance = LegendConnectKnowledgeProvenance.ProviderDerived;
+                context.QualityState = "Observation";
+                context.Confidence = Math.Min(context.Confidence, .5m);
+                context.UpdatedUtc = DateTime.UtcNow;
+                changed = true;
+            }
+
+            var examples = await _db.Set<LegendCurriculumExample>()
+                .Where(example => example.TextUnitId == item.target.Id && example.SupersededUtc == null &&
+                    example.DerivedFromCurriculumExampleId != null)
+                .ToListAsync(cancellationToken);
+            foreach (var example in examples)
+            {
+                if (string.Equals(example.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal))
+                    continue;
+                example.Provenance = LegendConnectKnowledgeProvenance.ProviderDerived;
+                example.UpdatedUtc = DateTime.UtcNow;
+                changed = true;
+            }
+
+            if (examples.Count > 0)
+            {
+                var exampleIds = examples.Select(example => example.Id).ToArray();
+                var evidence = await _db.Set<LegendLanguageStructuralEvidence>()
+                    .Where(evidence => evidence.SupersededUtc == null &&
+                        (exampleIds.Contains(evidence.BaselineCurriculumExampleId) ||
+                         exampleIds.Contains(evidence.ComparedCurriculumExampleId)))
+                    .ToListAsync(cancellationToken);
+                foreach (var structuralEvidence in evidence)
+                {
+                    if (string.Equals(structuralEvidence.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal))
+                        continue;
+                    structuralEvidence.Provenance = LegendConnectKnowledgeProvenance.ProviderDerived;
+                    changed = true;
+                }
+
+                var patternIds = evidence.Select(evidence => evidence.StructuralPatternId).Distinct().ToArray();
+                if (patternIds.Length > 0)
+                {
+                    var patterns = await _db.Set<LegendLanguageStructuralPattern>()
+                        .Where(pattern => patternIds.Contains(pattern.Id) && pattern.SupersededUtc == null)
+                        .ToListAsync(cancellationToken);
+                    foreach (var pattern in patterns)
+                    {
+                        if (string.Equals(pattern.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal))
+                            continue;
+                        pattern.Provenance = LegendConnectKnowledgeProvenance.ProviderDerived;
+                        pattern.UpdatedUtc = DateTime.UtcNow;
+                        changed = true;
+                    }
+                }
+            }
+
+            if (changed)
+                await _db.SaveChangesAsync(cancellationToken);
+        }
     }
 
     private async Task<LegendConnectKnowledgeSubmissionResult> IngestCoreAsync(
@@ -418,27 +558,44 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
             .Select(item => item.TargetTextUnitId)
             .ToHashSet();
         var retiredTargetIds = targetIds.Where(item => !retainedTargetIds.Contains(item)).ToArray();
-        foreach (var alignment in alignments)
-        {
-            alignment.SupersededUtc = now;
-            alignment.UpdatedUtc = now;
-        }
+        var targets = retiredTargetIds.Length == 0
+            ? new List<LegendLanguageTextUnit>()
+            : await _db.Set<LegendLanguageTextUnit>()
+                .Where(item => retiredTargetIds.Contains(item.Id))
+                .ToListAsync(cancellationToken);
 
         var contexts = await _db.Set<LegendLanguageContextRelationship>()
             .Where(item => item.SupersededUtc == null &&
                 (item.SourceTextUnitId == source.Id || item.RelatedTextUnitId == source.Id ||
                  retiredTargetIds.Contains(item.SourceTextUnitId) || retiredTargetIds.Contains(item.RelatedTextUnitId)))
             .ToListAsync(cancellationToken);
+        var candidates = await _db.Set<LegendCorpusCandidate>()
+            .Where(item => item.SourceLanguageCode == source.LanguageCode &&
+                item.SourceTextHash == source.NormalizedHash &&
+                (item.IsApproved || item.ProcessingState != "Superseded" ||
+                 item.FailureCode != "legacy_multi_unit_reconciled"))
+            .ToListAsync(cancellationToken);
+        var learningEvents = await _db.Set<LegendTranslationLearningEvent>()
+            .Where(item => item.SourceLanguageCode == source.LanguageCode &&
+                item.SourceTextHash == source.NormalizedHash && item.ProcessingState != "Superseded")
+            .ToListAsync(cancellationToken);
+        var targetsToRetire = targets.Where(item => item.IsTrainingEligible).ToList();
+        if (alignments.Count == 0 && contexts.Count == 0 && candidates.Count == 0 && learningEvents.Count == 0 &&
+            !source.IsTrainingEligible && targetsToRetire.Count == 0)
+            return 0;
+
+        foreach (var alignment in alignments)
+        {
+            alignment.SupersededUtc = now;
+            alignment.UpdatedUtc = now;
+        }
+
         foreach (var context in contexts)
         {
             context.SupersededUtc = now;
             context.UpdatedUtc = now;
         }
 
-        var candidates = await _db.Set<LegendCorpusCandidate>()
-            .Where(item => item.IsApproved && item.SourceLanguageCode == source.LanguageCode &&
-                item.SourceTextHash == source.NormalizedHash)
-            .ToListAsync(cancellationToken);
         foreach (var candidate in candidates)
         {
             candidate.IsApproved = false;
@@ -448,11 +605,6 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
             candidate.LeaseExpiresUtc = null;
         }
 
-        var learningEvents = await _db.Set<LegendTranslationLearningEvent>()
-            .Where(item => item.SourceLanguageCode == source.LanguageCode &&
-                item.SourceTextHash == source.NormalizedHash &&
-                (item.ProcessingState == "Pending" || item.ProcessingState == "Processing"))
-            .ToListAsync(cancellationToken);
         foreach (var learningEvent in learningEvents)
         {
             learningEvent.ProcessingState = "Superseded";
@@ -464,23 +616,17 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
 
         source.IsTrainingEligible = false;
         source.UpdatedUtc = now;
-        if (retiredTargetIds.Length > 0)
+        foreach (var target in targetsToRetire)
         {
-            var targets = await _db.Set<LegendLanguageTextUnit>()
-                .Where(item => retiredTargetIds.Contains(item.Id))
-                .ToListAsync(cancellationToken);
-            foreach (var target in targets)
-            {
-                target.IsTrainingEligible = false;
-                target.UpdatedUtc = now;
-            }
+            target.IsTrainingEligible = false;
+            target.UpdatedUtc = now;
         }
 
         await _db.SaveChangesAsync(cancellationToken);
-        var supersededTextIds = targetIds.Append(source.Id).ToArray();
+        var supersededTextIds = retiredTargetIds.Append(source.Id).ToArray();
         await _curriculum.ReconcileSupersededExamplesAsync(supersededTextIds, cancellationToken);
         await RefreshPairCoverageAsync(pairKeys, cancellationToken);
-        return alignments.Count + contexts.Count;
+        return alignments.Count + contexts.Count + candidates.Count + learningEvents.Count + targetsToRetire.Count + 1;
     }
 
     private async Task RefreshPairCoverageAsync(
