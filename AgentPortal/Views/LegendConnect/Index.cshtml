@@ -66,7 +66,8 @@
                     </div>
                 </section>
             </div>
-            <div class="dashboard-hero-stats" aria-label="Legend Connect operational snapshot">
+            <div class="dashboard-hero-stats legend-connect-copy-source--metrics" aria-label="Legend Connect operational snapshot" data-legend-copy-source="operational-snapshot">
+                <partial name="_CopyButton" model="@("operational-snapshot")" />
                 <div class="dashboard-stat-card is-primary @LegendConnectMetricTone.InformationalActivity(dashboard.Languages.Count)" data-legend-live-card="active-languages"><span class="dashboard-stat-label">Active languages</span><span class="dashboard-stat-value" data-legend-live-value="active-languages">@dashboard.Languages.Count.ToString("N0")</span></div>
                 <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.Pairs.Count)" data-legend-live-card="directional-pairs"><span class="dashboard-stat-label">Directional pairs</span><span class="dashboard-stat-value" data-legend-live-value="directional-pairs">@dashboard.Pairs.Count.ToString("N0")</span></div>
                 <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(dashboard.FailedLearningJobCount)" data-legend-live-card="learning-failures"><span class="dashboard-stat-label">Learning failures</span><span class="dashboard-stat-value" data-legend-live-value="learning-failures">@dashboard.FailedLearningJobCount.ToString("N0")</span></div>
@@ -86,12 +87,13 @@
 
     <partial name="_CoreManagement" model="Model" />
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="production-readiness-title">
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="production-readiness-title" data-legend-copy-source="production-readiness">
         <summary class="legend-connect-disclosure-summary">
             <span><span class="dashboard-section-kicker">Founder operations / activation</span><span class="dashboard-section-title" id="production-readiness-title">Legend® Connect production readiness</span></span>
             <span class="dashboard-status-chip">@readiness.State</span>
         </summary>
         <div class="legend-connect-disclosure-body">
+        <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("production-readiness")" /></div>
         <p class="dashboard-section-copy">@readiness.Summary</p>
         <div class="dashboard-data-surface">
             <table class="table dashboard-data-table">
@@ -177,9 +179,10 @@
         </div>
     </details>
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="translation-operations-title">
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="translation-operations-title" data-legend-copy-source="translation-operations">
         <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Live translation</span><span class="dashboard-section-title" id="translation-operations-title">Translation operations</span></span><span class="legend-connect-disclosure-status">Metrics</span></summary>
         <div class="legend-connect-disclosure-body">
+        <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("translation-operations")" /></div>
         <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--four">
             <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.SameLanguageBypassCount)" data-legend-live-card="same-language-bypasses"><span class="dashboard-stat-label">Same-language bypasses</span><span class="dashboard-stat-value" data-legend-live-value="same-language-bypasses">@dashboard.SameLanguageBypassCount.ToString("N0")</span></div>
             <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryHitCount)" data-legend-live-card="translation-memory-hits"><span class="dashboard-stat-label">Translation Memory hits</span><span class="dashboard-stat-value" data-legend-live-value="translation-memory-hits">@dashboard.TranslationMemoryHitCount.ToString("N0")</span></div>
@@ -202,9 +205,10 @@
         </div>
     </details>
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="translation-quality-title">
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="translation-quality-title" data-legend-copy-source="translation-quality">
         <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Shared evidence authority</span><span class="dashboard-section-title" id="translation-quality-title">Translation quality review</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="translation-quality-needs-review-summary">@Model.TranslationQuality.NeedsReviewCount.ToString("N0") needs review</span></summary>
         <div class="legend-connect-disclosure-body">
+            <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("translation-quality")" /></div>
             <p class="dashboard-section-copy">Provider output remains an observation. This queue contains only Founder-owned training material with a recorded contradiction; private-message bodies are never shown here.</p>
             <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--five" aria-label="Translation quality evidence summary">
                 <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(Model.TranslationQuality.NeedsReviewCount)" data-legend-live-card="quality-needs-review"><span class="dashboard-stat-label">Needs review</span><span class="dashboard-stat-value" data-legend-live-value="quality-needs-review">@Model.TranslationQuality.NeedsReviewCount.ToString("N0")</span></div>
@@ -240,9 +244,10 @@
         </div>
     </details>
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="active-pairs-title">
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="active-pairs-title" data-legend-copy-source="active-directional-pairs">
         <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Directional health</span><span class="dashboard-section-title" id="active-pairs-title">Active directional pairs</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="active-pairs-summary">@dashboard.Pairs.Count.ToString("N0") pairs</span></summary>
         <div class="legend-connect-disclosure-body">
+        <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("active-directional-pairs")" /></div>
         <div class="dashboard-data-surface">
             <table class="table dashboard-data-table">
                 <thead><tr><th>Pair</th><th>Demand</th><th>Memory / context served</th><th>Provider fallback required</th><th>Internal coverage</th><th>Quality confidence</th><th>Approved backlog</th><th>30-day additions</th><th>Health</th></tr></thead>
@@ -261,9 +266,10 @@
 
     @if (Model.SelectedPair is { } selectedPair)
     {
-        <details class="dashboard-analytics-panel legend-connect-disclosure" open aria-labelledby="pair-health-title">
+        <details class="dashboard-analytics-panel legend-connect-disclosure" open aria-labelledby="pair-health-title" data-legend-copy-source="selected-directional-pair">
             <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Pair health</span><span class="dashboard-section-title" id="pair-health-title">@selectedPair.PairKey</span></span><span class="legend-connect-disclosure-status">Selected</span></summary>
             <div class="legend-connect-disclosure-body">
+            <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("selected-directional-pair")" /></div>
             <p class="dashboard-section-copy">@selectedPair.HealthState · @selectedPair.QualityState · @selectedPair.FailureCount failure@(selectedPair.FailureCount == 1 ? string.Empty : "s")</p>
             @if (selectedPair.RecentAlignments.Count > 0)
             {
@@ -299,9 +305,10 @@
         </details>
     }
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="runtime-audit-title">
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="runtime-audit-title" data-legend-copy-source="runtime-audit">
         <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Founder audit</span><span class="dashboard-section-title" id="runtime-audit-title">Recent operational changes</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="runtime-audit-entries">@Model.RuntimeAudit.Count.ToString("N0") entries</span></summary>
         <div class="legend-connect-disclosure-body">
+        <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("runtime-audit")" /></div>
         @if (Model.RuntimeAudit.Count == 0)
         {
             <p class="dashboard-section-copy">No Founder runtime-policy or language-focus changes have been recorded.</p>
@@ -318,9 +325,10 @@
         </div>
     </details>
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="operational-events-title">
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="operational-events-title" data-legend-copy-source="operational-events">
         <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Bounded diagnostics</span><span class="dashboard-section-title" id="operational-events-title">Recent backend events</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="operational-events-summary">@dashboard.RecentOperationalEvents.Count.ToString("N0") events</span></summary>
         <div class="legend-connect-disclosure-body">
+        <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("operational-events")" /></div>
         @if (dashboard.RecentOperationalEvents.Count == 0)
         {
             <p>No recorded Legend Connect operational events.</p>
@@ -374,14 +382,17 @@
 
     <div class="modal fade legend-modal dashboard-detail-modal" id="languageKnowledgeModal" tabindex="-1" aria-labelledby="languageKnowledgeModalTitle" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
+            <div class="modal-content" data-legend-copy-source="language-dataset">
                 <div class="modal-header">
                     <div>
                         <span class="dashboard-section-kicker">Stored learning dataset</span>
                         <h2 class="modal-title" id="languageKnowledgeModalTitle">@health.DisplayName (@health.LanguageCode)</h2>
                         <p class="dashboard-section-copy"><span class="@LegendConnectMetricTone.Info">@health.StoragePartition</span> · <span class="@LegendConnectMetricTone.Health(health.HealthState)">@health.HealthState</span> · <span class="@LegendConnectMetricTone.Quality(health.QualityState)">@health.QualityState</span></p>
                     </div>
-                    <button type="button" class="dashboard-modal-close" data-bs-dismiss="modal" aria-label="Close language details and return to Legend Connect">×</button>
+                    <div class="legend-connect-modal-actions">
+                        <partial name="_CopyButton" model="@("language-dataset")" />
+                        <button type="button" class="dashboard-modal-close" data-bs-dismiss="modal" aria-label="Close language details and return to Legend Connect">×</button>
+                    </div>
                 </div>
                 <div class="modal-body">
                     <div class="dashboard-hero-stats dashboard-detail-modal-metrics" aria-label="Language dataset totals">

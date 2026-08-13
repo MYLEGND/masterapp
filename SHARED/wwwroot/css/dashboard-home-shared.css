@@ -772,6 +772,69 @@
 
 .legend-connect-page .legend-connect-metric-separator { color: var(--dash-text-soft); }
 
+/* One shared copy control for Founder-visible data projections. The control
+   copies text only and never owns or transforms the operational data. */
+.legend-connect-copy-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.38rem;
+    min-height: 34px;
+    padding: 0.38rem 0.66rem;
+    border: 1px solid rgba(140, 199, 255, 0.46);
+    border-radius: 999px;
+    background: rgba(8, 26, 57, 0.78);
+    color: #dcecff;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.legend-connect-copy-button:hover,
+.legend-connect-copy-button:focus-visible,
+.legend-connect-copy-button.is-copied {
+    border-color: rgba(101, 224, 164, 0.86);
+    background: rgba(14, 78, 68, 0.92);
+    color: #d9ffed;
+}
+
+.legend-connect-copy-button:focus-visible {
+    outline: 2px solid #8cc7ff;
+    outline-offset: 3px;
+}
+
+.legend-connect-copy-icon {
+    font-size: 0.94rem;
+    line-height: 0;
+}
+
+.legend-connect-copy-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    min-height: 34px;
+}
+
+.legend-connect-copy-source--metrics {
+    position: relative;
+    padding-top: 2.72rem;
+}
+
+.legend-connect-copy-source--metrics > .legend-connect-copy-button {
+    position: absolute;
+    top: 0;
+    right: 0;
+}
+
+.legend-connect-modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex: 0 0 auto;
+}
+
 .legend-connect-page .legend-connect-disclosure {
     padding: 0;
 }
@@ -2638,6 +2701,8 @@ textarea.client-create-notes {
 }
 
 .legend-modal .modal-content {
+    inline-size: 100%;
+    min-inline-size: 0;
     background:
         radial-gradient(720px 260px at 50% 0%, rgba(49, 89, 191, 0.18), transparent 54%),
         linear-gradient(180deg, rgba(16, 37, 76, 0.995), rgba(10, 22, 46, 0.995));
@@ -2648,6 +2713,7 @@ textarea.client-create-notes {
     max-height: calc(100vh - clamp(32px, 8vh, 72px));
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 .legend-modal .modal-header {
@@ -2663,6 +2729,8 @@ textarea.client-create-notes {
 
 .legend-modal .modal-body {
     overflow-y: auto;
+    overflow-x: hidden;
+    min-inline-size: 0;
     min-height: 0;
     overscroll-behavior: contain;
 }
@@ -2707,7 +2775,8 @@ textarea.client-create-notes {
    palette or a page-local modal implementation. */
 .dashboard-detail-modal .modal-dialog {
     width: min(1080px, calc(100vw - 2rem));
-    max-width: none;
+    max-width: calc(100vw - 2rem);
+    min-width: 0;
     margin: 1rem auto;
 }
 
@@ -2723,6 +2792,16 @@ textarea.client-create-notes {
 .dashboard-detail-modal .modal-header {
     align-items: flex-start;
     gap: 1rem;
+}
+
+.dashboard-detail-modal .modal-header > :first-child {
+    min-inline-size: 0;
+}
+
+.dashboard-detail-modal .modal-title,
+.dashboard-detail-modal .dashboard-section-copy,
+.dashboard-detail-modal .dashboard-stat-label {
+    overflow-wrap: anywhere;
 }
 
 .dashboard-modal-close {
@@ -2764,6 +2843,7 @@ textarea.client-create-notes {
 .dashboard-detail-modal-section {
     display: grid;
     gap: 0.65rem;
+    min-inline-size: 0;
     padding: 1rem 0;
     border-top: 1px solid rgba(150, 182, 255, 0.16);
 }
@@ -2777,14 +2857,20 @@ textarea.client-create-notes {
     font-size: clamp(1.02rem, 1.5vw, 1.28rem);
 }
 
+.dashboard-detail-modal .dashboard-data-surface {
+    max-inline-size: 100%;
+    min-inline-size: 0;
+}
+
 @media (max-width: 720px) {
     .dashboard-detail-modal .modal-dialog {
-        width: calc(100vw - 0.5rem);
-        margin: 0.25rem auto;
+        width: calc(100vw - 1rem);
+        max-width: calc(100vw - 1rem);
+        margin: 0.5rem auto;
     }
 
     .dashboard-detail-modal .modal-content {
-        max-height: calc(100vh - 0.5rem);
+        max-height: calc(100dvh - 1rem);
         border-radius: 18px;
     }
 
@@ -2796,12 +2882,29 @@ textarea.client-create-notes {
     .dashboard-detail-modal .modal-header {
         position: sticky;
         top: 0;
-        z-index: 1;
+        z-index: 2;
+        gap: 0.65rem;
     }
 
     .dashboard-modal-close {
-        inline-size: 40px;
-        block-size: 40px;
+        inline-size: 44px;
+        block-size: 44px;
+        border-width: 2px;
+        font-size: 1.8rem;
+    }
+
+    .dashboard-detail-modal .modal-body {
+        overflow-x: hidden;
+    }
+
+    .dashboard-detail-modal .dashboard-stat-card {
+        min-height: 72px;
+        min-inline-size: 0;
+        padding: 0.62rem 0.66rem;
+    }
+
+    .dashboard-detail-modal .dashboard-stat-value {
+        font-size: clamp(1.08rem, 6vw, 1.42rem);
     }
 }
 
@@ -3423,9 +3526,14 @@ textarea.client-create-notes {
         padding-right: 1rem;
     }
 
-    .dashboard-hero-stats,
+    .dashboard-hero-stats:not(.dashboard-detail-modal-metrics),
     .dashboard-analytics-grid {
         grid-template-columns: 1fr;
+    }
+
+    .dashboard-detail-modal .dashboard-detail-modal-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
     }
 
     .dashboard-form-grid {
@@ -3591,6 +3699,16 @@ textarea.client-create-notes {
     .legend-connect-disclosure-body,
     .legend-connect-page .legend-connect-active-languages {
         padding: 0.84rem 0.9rem 0.96rem;
+    }
+
+    .legend-connect-copy-button {
+        min-height: 32px;
+        padding: 0.34rem 0.56rem;
+        font-size: 0.68rem;
+    }
+
+    .legend-connect-modal-actions {
+        gap: 0.4rem;
     }
 
     .legend-connect-acquisition-focus {

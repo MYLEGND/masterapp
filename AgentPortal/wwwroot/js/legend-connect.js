@@ -1,4 +1,78 @@
 (() => {
+    const copyButtons = Array.from(document.querySelectorAll("[data-legend-copy-button]"));
+    if (copyButtons.length === 0) return;
+
+    const sourceFor = target => Array.from(document.querySelectorAll("[data-legend-copy-source]"))
+        .find(source => source.dataset.legendCopySource === target);
+
+    function copyTextFor(source) {
+        const copy = source.cloneNode(true);
+        copy.querySelectorAll("script, style, form, input, select, textarea, button, [data-legend-copy-button], [aria-hidden='true'], [hidden]")
+            .forEach(node => node.remove());
+        copy.querySelectorAll("br").forEach(node => node.replaceWith("\n"));
+        copy.querySelectorAll("tr").forEach(row => {
+            const cells = Array.from(row.querySelectorAll("th, td"))
+                .map(cell => cell.textContent.replace(/\s+/g, " ").trim())
+                .filter(Boolean);
+            row.replaceChildren(document.createTextNode(`\n${cells.join(" | ")}\n`));
+        });
+        copy.querySelectorAll("h1, h2, h3, h4, p, li, .dashboard-stat-card, .legend-connect-disclosure-status")
+            .forEach(node => node.after(document.createTextNode("\n")));
+
+        return copy.textContent
+            .split("\n")
+            .map(line => line.replace(/[ \t]+/g, " ").trim())
+            .filter(Boolean)
+            .join("\n");
+    }
+
+    async function writeToClipboard(text) {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+
+        const fallback = document.createElement("textarea");
+        fallback.value = text;
+        fallback.setAttribute("readonly", "");
+        fallback.style.position = "fixed";
+        fallback.style.opacity = "0";
+        document.body.append(fallback);
+        fallback.select();
+        const copied = document.execCommand("copy");
+        fallback.remove();
+        if (!copied) throw new Error("Clipboard copy was unavailable.");
+    }
+
+    function announce(button, copied) {
+        const label = button.querySelector("[data-legend-copy-label]");
+        if (!label) return;
+
+        label.textContent = copied ? "Copied" : "Copy failed";
+        button.classList.toggle("is-copied", copied);
+        window.setTimeout(() => {
+            label.textContent = "Copy";
+            button.classList.remove("is-copied");
+        }, 2_000);
+    }
+
+    copyButtons.forEach(button => button.addEventListener("click", async () => {
+        const source = sourceFor(button.dataset.legendCopyTarget);
+        if (!source) return announce(button, false);
+
+        const text = copyTextFor(source);
+        if (!text) return announce(button, false);
+
+        try {
+            await writeToClipboard(text);
+            announce(button, true);
+        } catch {
+            announce(button, false);
+        }
+    }));
+})();
+
+(() => {
     const form = document.querySelector("[data-language-focus-form]");
     if (!form) return;
 

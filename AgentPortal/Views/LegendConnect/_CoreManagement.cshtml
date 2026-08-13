@@ -6,9 +6,10 @@
     var accountScale = Model.AccountScale;
 }
 
-<section class="dashboard-analytics-panel legend-connect-client-management" aria-labelledby="account-usage-title">
+<section class="dashboard-analytics-panel legend-connect-client-management" aria-labelledby="account-usage-title" data-legend-copy-source="client-translation-usage">
     <div class="dashboard-section-head dashboard-section-head-tight">
         <div><span class="dashboard-section-kicker">Client CRM authority</span><h2 class="dashboard-section-title" id="account-usage-title">Active subscription translation accounts</h2></div>
+        <partial name="_CopyButton" model="@("client-translation-usage")" />
     </div>
     <p class="dashboard-section-copy">Only active Client CRM records with a current paid subscription are searchable here. Historic access, usage, and removed accounts are not an account directory. Permission, entitlement, and consumption remain separate server authorities.</p>
     <form method="get" asp-action="Index" class="dashboard-search-panel" role="search" aria-label="Search active paying Client CRM accounts">
@@ -101,8 +102,8 @@
     </div>
 </section>
 
-<section class="dashboard-analytics-panel legend-connect-manual-training" aria-labelledby="manual-training-title">
-    <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Approved knowledge</span><h2 class="dashboard-section-title" id="manual-training-title">Founder manual training</h2></div></div>
+<section class="dashboard-analytics-panel legend-connect-manual-training" aria-labelledby="manual-training-title" data-legend-copy-source="founder-training">
+    <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Approved knowledge</span><h2 class="dashboard-section-title" id="manual-training-title">Founder manual training</h2></div><partial name="_CopyButton" model="@("founder-training")" /></div>
     <p class="dashboard-section-copy">Leave the target language empty to submit source training. Lists, phrases, and prose are retained once as your raw submission, decomposed into canonical atomic learning units, and sent only through the existing corpus, curriculum, capacity, and Azure acquisition path. Providing both texts keeps the existing verified alignment workflow unchanged.</p>
     <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--three" aria-label="Founder training ingestion status">
         <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.FounderRawSubmissionCount)" data-legend-live-card="raw-submissions-retained"><span class="dashboard-stat-label">Raw submissions retained</span><span class="dashboard-stat-value" data-legend-live-value="raw-submissions-retained">@dashboard.FounderRawSubmissionCount.ToString("N0")</span></div>
@@ -140,8 +141,8 @@
     </details>
 </section>
 
-<section class="category-container legend-connect-active-languages" aria-labelledby="active-languages-title">
-    <div class="category-head"><div><span class="dashboard-section-kicker">Registry health</span><h2 class="dashboard-section-title" id="active-languages-title">Active languages</h2></div></div>
+<section class="category-container legend-connect-active-languages" aria-labelledby="active-languages-title" data-legend-copy-source="active-languages-registry">
+    <div class="category-head"><div><span class="dashboard-section-kicker">Registry health</span><h2 class="dashboard-section-title" id="active-languages-title">Active languages</h2></div><partial name="_CopyButton" model="@("active-languages-registry")" /></div>
     <div class="dashboard-data-surface">
         <table class="table dashboard-data-table">
             <thead><tr><th>Language</th><th>Dataset</th><th>Entries</th><th>Pairs</th><th>Approved / pending candidates</th><th>Provider dependency</th><th>Last provider / Founder expansion</th><th>Health</th></tr></thead>
