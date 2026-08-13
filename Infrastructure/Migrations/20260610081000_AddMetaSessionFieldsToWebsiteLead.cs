@@ -1,35 +1,46 @@
+using System;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Infrastructure.Migrations
 {
+    [DbContext(typeof(MasterAppDbContext))]
+    [Migration("20260610081000_AddMetaSessionFieldsToWebsiteLead")]
     public partial class AddMetaSessionFieldsToWebsiteLead : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            var textType = migrationBuilder.ActiveProvider.Contains(
+                "SqlServer",
+                StringComparison.OrdinalIgnoreCase)
+                ? "nvarchar(max)"
+                : "TEXT";
+
             migrationBuilder.AddColumn<string>(
                 name: "ClientIpAddress",
                 table: "WebsiteLeads",
-                type: "nvarchar(max)",
+                type: textType,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "ClientUserAgent",
                 table: "WebsiteLeads",
-                type: "nvarchar(max)",
+                type: textType,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "Fbp",
                 table: "WebsiteLeads",
-                type: "nvarchar(max)",
+                type: textType,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "Fbc",
                 table: "WebsiteLeads",
-                type: "nvarchar(max)",
+                type: textType,
                 nullable: true);
         }
 

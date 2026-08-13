@@ -38,6 +38,113 @@ public sealed class LegendConnectRuntimePolicyTests
     }
 
     [Fact]
+    public async Task FounderProductionCompositionControl_UsesTheOnePersistedModeAndAuditsEachExplicitTransition()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var policy = Policy(db, registry, configuration);
+
+        Assert.Equal("Shadow", (await policy.GetEffectiveAsync()).ContextualCompositionMode);
+        Assert.Equal("Disabled", (await policy.SetContextualCompositionModeAsync("founder", "Disabled")).ContextualCompositionMode);
+        Assert.Equal("Active", (await policy.SetContextualCompositionModeAsync("founder", "Active")).ContextualCompositionMode);
+
+        var reloaded = Policy(db, new LegendLanguageRegistry(db, configuration), configuration);
+        Assert.Equal("Active", (await reloaded.GetEffectiveAsync()).ContextualCompositionMode);
+        Assert.Equal("Shadow", (await reloaded.SetContextualCompositionModeAsync("founder", "Shadow")).ContextualCompositionMode);
+        Assert.Equal("Disabled", (await reloaded.SetContextualCompositionModeAsync("founder", "Disabled")).ContextualCompositionMode);
+
+        var persisted = await db.LegendConnectRuntimePolicies.SingleAsync();
+        Assert.Equal("Disabled", persisted.ContextualCompositionMode);
+        var audits = await reloaded.GetRecentAuditAsync();
+        Assert.Contains(audits, item => item.Action == "ContextualCompositionModeChanged" && item.Detail!.Contains("context mode: Shadow → Disabled"));
+        Assert.Contains(audits, item => item.Action == "ContextualCompositionModeChanged" && item.Detail!.Contains("context mode: Disabled → Active"));
+        Assert.Contains(audits, item => item.Action == "ContextualCompositionModeChanged" && item.Detail!.Contains("context mode: Active → Shadow"));
+    }
+
+    [Fact]
+    public async Task ProductionCompositionMode_OnlyPermitsTheExistingGatedInternalPath()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        _ = await registry.GetOrCreateEnabledPairAsync("en", "ht");
+        _ = await registry.GetOrCreateEnabledPairAsync("en", "fr");
+        var policy = Policy(db, registry, configuration);
+
+        var contextualSource = CanonicalSource("en", "Contextually approved phrase");
+        var contextualTarget = CanonicalSource("ht", "Fraz kontèks apwouve");
+        var lowQualitySource = CanonicalSource("en", "Low quality phrase");
+        var lowQualityTarget = CanonicalSource("ht", "Fraz kalite ba");
+        var ineligibleSource = CanonicalSource("en", "Ineligible evidence phrase");
+        var ineligibleTarget = CanonicalSource("ht", "Fraz ki pa kalifye");
+        ineligibleTarget.IsTrainingEligible = false;
+        var exactSource = CanonicalSource("en", "Exact trusted phrase");
+        var exactTarget = CanonicalSource("ht", "Fraz egzak konfyans");
+        db.AddRange(contextualSource, contextualTarget, lowQualitySource, lowQualityTarget, ineligibleSource, ineligibleTarget, exactSource, exactTarget);
+        db.AddRange(
+            ContextRelationship(contextualSource, contextualTarget, "Verified", 0.99m),
+            ContextRelationship(lowQualitySource, lowQualityTarget, "Observation", 0.99m),
+            ContextRelationship(ineligibleSource, ineligibleTarget, "Verified", 0.99m),
+            new LegendTranslationAlignment
+            {
+                Id = Guid.NewGuid(), PairKey = "en:ht", SourceTextUnitId = exactSource.Id, TargetTextUnitId = exactTarget.Id,
+                Provider = "FounderApproved", QualityState = "Verified", HumanVerified = true, UpdatedUtc = DateTime.UtcNow
+            });
+        await db.SaveChangesAsync();
+
+        var provider = new RecordingProvider();
+        var router = new LegendConnectTranslationRouter(
+            provider,
+            registry,
+            new TranslationCapacityAuthority(db, configuration, NullLogger<TranslationCapacityAuthority>.Instance, policy),
+            NullLogger<LegendConnectTranslationRouter>.Instance,
+            intelligence: new LegendConnectTranslationIntelligence(db, configuration, policy),
+            runtimePolicy: policy);
+
+        await policy.SetContextualCompositionModeAsync("founder", "Disabled");
+        var disabled = await router.TranslateAsync(contextualSource.Text, "ht", "en");
+        Assert.Equal("AzureTranslator", disabled.Provider);
+        Assert.Equal(1, provider.TranslateCalls);
+
+        await policy.SetContextualCompositionModeAsync("founder", "Active");
+        var active = await router.TranslateAsync(contextualSource.Text, "ht", "en");
+        Assert.Equal("LegendConnectContextualComposition", active.Provider);
+        Assert.Equal(contextualTarget.Text, active.TranslatedText);
+        Assert.Equal(1, provider.TranslateCalls);
+
+        var lowQuality = await router.TranslateAsync(lowQualitySource.Text, "ht", "en");
+        var ineligible = await router.TranslateAsync(ineligibleSource.Text, "ht", "en");
+        var isolated = await router.TranslateAsync(contextualSource.Text, "fr", "en");
+        Assert.Equal("AzureTranslator", lowQuality.Provider);
+        Assert.Equal("AzureTranslator", ineligible.Provider);
+        Assert.Equal("AzureTranslator", isolated.Provider);
+        Assert.Equal(4, provider.TranslateCalls);
+
+        var exactMemory = await router.TranslateAsync(exactSource.Text, "ht", "en");
+        var sameLanguage = await router.TranslateAsync("Leave this untouched", "en", "en");
+        Assert.Equal("LegendConnectTranslationMemory", exactMemory.Provider);
+        Assert.Equal(exactTarget.Text, exactMemory.TranslatedText);
+        Assert.Equal("LegendConnectSameLanguage", sameLanguage.Provider);
+        Assert.Equal("Leave this untouched", sameLanguage.TranslatedText);
+        Assert.Equal(4, provider.TranslateCalls);
+    }
+
+    [Fact]
+    public void RuntimePolicy_HasOnlyOnePersistedCompositionMode()
+    {
+        var compositionProperties = typeof(LegendConnectRuntimePolicy)
+            .GetProperties()
+            .Where(property => property.Name.Contains("Composition", StringComparison.Ordinal))
+            .Select(property => property.Name)
+            .ToArray();
+
+        Assert.Equal<string>(["ContextualCompositionMode"], compositionProperties);
+        Assert.DoesNotContain(typeof(LegendConnectRuntimePolicySnapshot).GetProperties(), property =>
+            property.Name.Contains("ProductionComposition", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task RuntimePolicy_RejectsNonFounderAndInvalidProtectedReserve()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -51,6 +158,7 @@ public sealed class LegendConnectRuntimePolicyTests
             new LegendConnectRuntimePolicyMutation(100, 10, 90, true, "Shadow", 0.98m)));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => nonFounder.ConfigureAutonomousLanguageFocusAsync("member",
             new LegendConnectAutonomousLanguageFocusMutation(true, ["ht"])));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => nonFounder.SetContextualCompositionModeAsync("member", "Active"));
 
         var policy = Policy(db, registry, configuration);
         await Assert.ThrowsAsync<ArgumentException>(() => policy.UpdateAsync("founder",
@@ -426,6 +534,26 @@ public sealed class LegendConnectRuntimePolicyTests
         Text = LegendLanguageIdentity.NormalizeText(text),
         Provenance = "FounderApproved",
         IsTrainingEligible = true
+    };
+
+    private static LegendLanguageContextRelationship ContextRelationship(
+        LegendLanguageTextUnit source,
+        LegendLanguageTextUnit target,
+        string qualityState,
+        decimal confidence) => new()
+    {
+        Id = Guid.NewGuid(),
+        PairKey = "en:ht",
+        SourceTextUnitId = source.Id,
+        RelatedTextUnitId = target.Id,
+        RelationshipKind = "ContextualExample",
+        ContextSignature = "production-control",
+        SourcePatternSignature = LegendLanguageIdentity.ContextPatternSignature(source.Text),
+        Confidence = confidence,
+        QualityState = qualityState,
+        Provenance = "FounderApproved",
+        ObservationCount = 1,
+        UpdatedUtc = DateTime.UtcNow
     };
 
     private sealed class TestAccess : IControlledResourceAccessService

@@ -11,2967 +11,2989 @@ namespace Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            if (migrationBuilder.ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+            var isSqlServer = (migrationBuilder.ActiveProvider ?? string.Empty).Contains(
+                "SqlServer",
+                StringComparison.OrdinalIgnoreCase);
+
+            if (!isSqlServer)
             {
-                // SQLite: skip this normalization migration to avoid temp-table rebuild issues.
-                return;
-            }
-            migrationBuilder.DropIndex(
-                name: "IX_AgentAssistants_AssistantUserId",
-                table: "AgentAssistants");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ZipCode",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 24,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(24)",
-                oldMaxLength: 24,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedUtc",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "State",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 40,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(40)",
-                oldMaxLength: 40,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Phone2",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 60,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(60)",
-                oldMaxLength: 60,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Phone",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 60,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(60)",
-                oldMaxLength: 60);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "OriginalLeadType",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "MortgageLender",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LoanAmount",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LastName",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Gender",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 20,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(20)",
-                oldMaxLength: 20,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "FirstName",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Email",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 320,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(320)",
-                oldMaxLength: 320);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "DOB",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "CrmStatus",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 60,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(60)",
-                oldMaxLength: 60);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "CrmStage",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80);
-
-            migrationBuilder.AlterColumn<long>(
-                name: "CrmOrder",
-                table: "WorkstationLeadProfiles",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(long),
-                oldType: "bigint");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "County",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "City",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CallsYearStartUtc",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<int>(
-                name: "CallsYear",
-                table: "WorkstationLeadProfiles",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CallsWeekStartUtc",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<int>(
-                name: "CallsWeek",
-                table: "WorkstationLeadProfiles",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CallsTodayDateUtc",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<int>(
-                name: "CallsToday",
-                table: "WorkstationLeadProfiles",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CallsMonthStartUtc",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<int>(
-                name: "CallsMonth",
-                table: "WorkstationLeadProfiles",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "CallCount",
-                table: "WorkstationLeadProfiles",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Bucket",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Btc",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 40,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(40)",
-                oldMaxLength: 40,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentUserId",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Age",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 12,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(12)",
-                oldMaxLength: 12,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AddressLine",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 240,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(240)",
-                oldMaxLength: 240,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LeadId",
-                table: "WorkstationLeadProfiles",
-                type: "TEXT",
-                maxLength: 64,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(64)",
-                oldMaxLength: 64);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "VisitorId",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "UtmSource",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "UtmMedium",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "UtmCampaign",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "TermsAccepted",
-                table: "WebsiteLeads",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Status",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 40,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(40)",
-                oldMaxLength: 40);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "SourcePageKey",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "SourceCtaKey",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "SessionId",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "PreferredContactMethod",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 60,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(60)",
-                oldMaxLength: 60,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Phone",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Notes",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 2000,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(2000)",
-                oldMaxLength: 2000,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "MarketingEmailConsent",
-                table: "WebsiteLeads",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "LeadId",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LastName",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "IsInternal",
-                table: "WebsiteLeads",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "InterestType",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Host",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "FirstName",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Environment",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 40,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(40)",
-                oldMaxLength: 40,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Email",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 320,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(320)",
-                oldMaxLength: 320);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "CallTextConsent",
-                table: "WebsiteLeads",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "AgentTrackingProfileId",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentSlug",
-                table: "WebsiteLeads",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<long>(
-                name: "Id",
-                table: "WebsiteLeads",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(long),
-                oldType: "bigint")
-                .Annotation("Sqlite:Autoincrement", true)
-                .OldAnnotation("Sqlite:Autoincrement", true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedUtc",
-                table: "UnderwritingRecords",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ScopeKey",
-                table: "UnderwritingRecords",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "QueueKey",
-                table: "UnderwritingRecords",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ProductCode",
-                table: "UnderwritingRecords",
-                type: "TEXT",
-                maxLength: 32,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(32)",
-                oldMaxLength: 32,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "PayloadJson",
-                table: "UnderwritingRecords",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "PageTitle",
-                table: "UnderwritingRecords",
-                type: "TEXT",
-                maxLength: 240,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(240)",
-                oldMaxLength: 240,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Name",
-                table: "UnderwritingRecords",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LeadName",
-                table: "UnderwritingRecords",
-                type: "TEXT",
-                maxLength: 240,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(240)",
-                oldMaxLength: 240,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LeadId",
-                table: "UnderwritingRecords",
-                type: "TEXT",
-                maxLength: 128,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(128)",
-                oldMaxLength: 128,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "IsDraft",
-                table: "UnderwritingRecords",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "UnderwritingRecords",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentUserId",
-                table: "UnderwritingRecords",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "UnderwritingRecords",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedUtc",
-                table: "RecurringExpenses",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Type",
-                table: "RecurringExpenses",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "StartDate",
-                table: "RecurringExpenses",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Scope",
-                table: "RecurringExpenses",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "OwnerUserId",
-                table: "RecurringExpenses",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Notes",
-                table: "RecurringExpenses",
-                type: "TEXT",
-                maxLength: 240,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(240)",
-                oldMaxLength: 240,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "NextDueDate",
-                table: "RecurringExpenses",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Name",
-                table: "RecurringExpenses",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "IsActive",
-                table: "RecurringExpenses",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Frequency",
-                table: "RecurringExpenses",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "RecurringExpenses",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Category",
-                table: "RecurringExpenses",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentUserId",
-                table: "RecurringExpenses",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Id",
-                table: "RecurringExpenses",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int")
-                .Annotation("Sqlite:Autoincrement", true)
-                .OldAnnotation("Sqlite:Autoincrement", true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedUtc",
-                table: "Proposals",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ScopeKey",
-                table: "Proposals",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "QueueKey",
-                table: "Proposals",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "PageTitle",
-                table: "Proposals",
-                type: "TEXT",
-                maxLength: 240,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(240)",
-                oldMaxLength: 240,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Name",
-                table: "Proposals",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LeadName",
-                table: "Proposals",
-                type: "TEXT",
-                maxLength: 240,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(240)",
-                oldMaxLength: 240,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LeadKey",
-                table: "Proposals",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LeadId",
-                table: "Proposals",
-                type: "TEXT",
-                maxLength: 128,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(128)",
-                oldMaxLength: 128);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "IsDraft",
-                table: "Proposals",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "Proposals",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "BucketsJson",
-                table: "Proposals",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentUserId",
-                table: "Proposals",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "Proposals",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedUtc",
-                table: "ProductionRecords",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Status",
-                table: "ProductionRecords",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Side",
-                table: "ProductionRecords",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Notes",
-                table: "ProductionRecords",
-                type: "TEXT",
-                maxLength: 240,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(240)",
-                oldMaxLength: 240,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LeadId",
-                table: "ProductionRecords",
-                type: "TEXT",
-                maxLength: 128,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(128)",
-                oldMaxLength: 128,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "ProductionRecords",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ClientUserId",
-                table: "ProductionRecords",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentUserId",
-                table: "ProductionRecords",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "ProductionRecords",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Zip",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 40,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(40)",
-                oldMaxLength: 40,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "WorkState",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "WorkLocation",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "WorkAuthorizationStatus",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "TechnologyAck",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "TaxFilingStatus",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "SubmittedUtc",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "StateWithholding",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "State",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "StartDate",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "SsnNote",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 400,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(400)",
-                oldMaxLength: 400,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "SsnLast4",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 4,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(4)",
-                oldMaxLength: 4,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "RoleType",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ResidentStateLicense",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "PreferredName",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Phone",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 60,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(60)",
-                oldMaxLength: 60);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "PayrollAcknowledgement",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "PayType",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "NonSolicitAck",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "NonResidentStates",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 400,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(400)",
-                oldMaxLength: 400,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "MiddleName",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Manager",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "MailingAddress",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 240,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(240)",
-                oldMaxLength: 240,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LicensesHeld",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 400,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(400)",
-                oldMaxLength: 400,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LicenseNumbers",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 400,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(400)",
-                oldMaxLength: 400,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "LegalNameConfirmed",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LastName",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "JobTitle",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "InviteId",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HasVoidedCheck",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HasSsnDocument",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HasSignedAgreements",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HasResume",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HasRegulatoryIssues",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HasPriorTermination",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HasOtherDisclosures",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HasLicenseCopy",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HasIdDocument",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HasCriminalHistory",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HasCertifications",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HasAdministrativeActions",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(bool),
-                oldType: "bit",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "HandbookAck",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "FirstName",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "FederalWithholding",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "EmploymentType",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "EmergencyContactRelationship",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "EmergencyContactPhone",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 60,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(60)",
-                oldMaxLength: 60);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "EmergencyContactName",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Email",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 320,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(320)",
-                oldMaxLength: 320);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "EligibilityDocumentsAck",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ElectronicSignatureName",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "ElectronicSignatureDate",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "ElectronicSignatureAck",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "EOCoverage",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 400,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(400)",
-                oldMaxLength: 400,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "DriverLicenseState",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 40,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(40)",
-                oldMaxLength: 40,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "DriverLicenseNumber",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Department",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "DateOfBirth",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "CurrentAddress",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 240,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(240)",
-                oldMaxLength: 240);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "ConfidentialityAck",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "ComplianceAck",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "CompensationAck",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "City",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "CitizenshipStatus",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "CertificationTruthful",
-                table: "OnboardingSubmissions",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "CarrierAppointments",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 400,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(400)",
-                oldMaxLength: 400,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "BankRoutingNumber",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 64,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(64)",
-                oldMaxLength: 64);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "BankName",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "BankAccountType",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "BankAccountNumber",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                maxLength: 64,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(64)",
-                oldMaxLength: 64);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "OnboardingSubmissions",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "TokenHash",
-                table: "OnboardingInvites",
-                type: "TEXT",
-                maxLength: 128,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(128)",
-                oldMaxLength: 128);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "SubmittedUtc",
-                table: "OnboardingInvites",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Status",
-                table: "OnboardingInvites",
-                type: "TEXT",
-                maxLength: 40,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(40)",
-                oldMaxLength: 40);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "RoleType",
-                table: "OnboardingInvites",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "RevokedUtc",
-                table: "OnboardingInvites",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LastName",
-                table: "OnboardingInvites",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "FirstName",
-                table: "OnboardingInvites",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "ExpiresUtc",
-                table: "OnboardingInvites",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Email",
-                table: "OnboardingInvites",
-                type: "TEXT",
-                maxLength: 320,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(320)",
-                oldMaxLength: 320);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "OnboardingInvites",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "CreatedBy",
-                table: "OnboardingInvites",
-                type: "TEXT",
-                maxLength: 320,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(320)",
-                oldMaxLength: 320);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "OnboardingInvites",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedUtc",
-                table: "HouseholdMembers",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "RelationshipType",
-                table: "HouseholdMembers",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Phone",
-                table: "HouseholdMembers",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LastName",
-                table: "HouseholdMembers",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "FirstName",
-                table: "HouseholdMembers",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Email",
-                table: "HouseholdMembers",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "DOB",
-                table: "HouseholdMembers",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "HouseholdMembers",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ClientUserId",
-                table: "HouseholdMembers",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "HouseholdMembers",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedUtc",
-                table: "FinanceToolStates",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ToolId",
-                table: "FinanceToolStates",
-                type: "TEXT",
-                maxLength: 100,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(100)",
-                oldMaxLength: 100);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "JsonState",
-                table: "FinanceToolStates",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "FinanceToolStates",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "ClientProfileId",
-                table: "FinanceToolStates",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "FinanceToolStates",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedUtc",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "SignificantOtherPhone",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "SignificantOtherLastName",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "SignificantOtherFirstName",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "SignificantOtherEmail",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "SignificantOtherDOB",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Phone",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "NormalizedEmail",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "MaritalStatus",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LastName",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "FirstName",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Email",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "DOB",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "CrmTags",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "CrmStatus",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "CrmPriority",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "CrmNotes",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "CrmNextText",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CrmNextDate",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CrmLastTouch",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ClientUserId",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentNotes",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "ClientProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedUtc",
-                table: "BookkeepingEntries",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Type",
-                table: "BookkeepingEntries",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Scope",
-                table: "BookkeepingEntries",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "RecurringExpenseId",
-                table: "BookkeepingEntries",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(int),
-                oldType: "int",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "OwnerUserId",
-                table: "BookkeepingEntries",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Notes",
-                table: "BookkeepingEntries",
-                type: "TEXT",
-                maxLength: 240,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(240)",
-                oldMaxLength: 240,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "EntryDate",
-                table: "BookkeepingEntries",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "BookkeepingEntries",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Category",
-                table: "BookkeepingEntries",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentUserId",
-                table: "BookkeepingEntries",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Id",
-                table: "BookkeepingEntries",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "int")
-                .Annotation("Sqlite:Autoincrement", true)
-                .OldAnnotation("Sqlite:Autoincrement", true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "VisitorId",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "UtmSource",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "UtmMedium",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "UtmCampaign",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Url",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 500,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(500)",
-                oldMaxLength: 500,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "SubmitOutcome",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 40,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(40)",
-                oldMaxLength: 40,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "SessionId",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "SectionKey",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Referrer",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 500,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(500)",
-                oldMaxLength: 500,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "ReceivedUtc",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "QuoteType",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Path",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 300,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(300)",
-                oldMaxLength: 300,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "PageKey",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "IsInternal",
-                table: "AnalyticsEvents",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Host",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "FormKey",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "EventUtc",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "EventType",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 80,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(80)",
-                oldMaxLength: 80);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "EventId",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Environment",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 40,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(40)",
-                oldMaxLength: 40,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ElementKey",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 160,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(160)",
-                oldMaxLength: 160,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "ClientEventId",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ButtonLabel",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "AgentTrackingProfileId",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                nullable: true,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentSlug",
-                table: "AnalyticsEvents",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<long>(
-                name: "Id",
-                table: "AnalyticsEvents",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(long),
-                oldType: "bigint")
-                .Annotation("Sqlite:Autoincrement", true)
-                .OldAnnotation("Sqlite:Autoincrement", true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedUtc",
-                table: "AgentTrackingProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Status",
-                table: "AgentTrackingProfiles",
-                type: "TEXT",
-                maxLength: 40,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(40)",
-                oldMaxLength: 40);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Slug",
-                table: "AgentTrackingProfiles",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "PreferredEnvironment",
-                table: "AgentTrackingProfiles",
-                type: "TEXT",
-                maxLength: 40,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(40)",
-                oldMaxLength: 40,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "DisplayName",
-                table: "AgentTrackingProfiles",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "AgentTrackingProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentUserId",
-                table: "AgentTrackingProfiles",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentUpn",
-                table: "AgentTrackingProfiles",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "AgentTrackingProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Slug",
-                table: "AgentTrackingAliases",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "IsCanonical",
-                table: "AgentTrackingAliases",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "AgentTrackingAliases",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "AgentTrackingProfileId",
-                table: "AgentTrackingAliases",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "AgentTrackingAliases",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "UpdatedUtc",
-                table: "AgentProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Title",
-                table: "AgentProfiles",
-                type: "TEXT",
-                maxLength: 120,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(120)",
-                oldMaxLength: 120,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Phone",
-                table: "AgentProfiles",
-                type: "TEXT",
-                maxLength: 64,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(64)",
-                oldMaxLength: 64,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Npn",
-                table: "AgentProfiles",
-                type: "TEXT",
-                maxLength: 64,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(64)",
-                oldMaxLength: 64,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "FullName",
-                table: "AgentProfiles",
-                type: "TEXT",
-                maxLength: 200,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(200)",
-                oldMaxLength: 200,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<int>(
-                name: "DisplayOrder",
-                table: "AgentProfiles",
-                type: "INTEGER",
-                nullable: true,
-                oldClrType: typeof(int),
-                oldType: "int",
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "AgentProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentUserId",
-                table: "AgentProfiles",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentUpn",
-                table: "AgentProfiles",
-                type: "TEXT",
-                maxLength: 320,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(320)",
-                oldMaxLength: 320);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "AgentProfiles",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "AgentClients",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ClientUserId",
-                table: "AgentClients",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentUserId",
-                table: "AgentClients",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AgentUpn",
-                table: "AgentClients",
-                type: "TEXT",
-                maxLength: 320,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(320)",
-                oldMaxLength: 320);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "AgentClients",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "ParentAgentUserId",
-                table: "AgentAssistants",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "LastName",
-                table: "AgentAssistants",
-                type: "TEXT",
-                maxLength: 100,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(100)",
-                oldMaxLength: 100);
-
-            migrationBuilder.AlterColumn<bool>(
-                name: "IsActive",
-                table: "AgentAssistants",
-                type: "INTEGER",
-                nullable: false,
-                oldClrType: typeof(bool),
-                oldType: "bit");
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "InvitedAt",
-                table: "AgentAssistants",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "FirstName",
-                table: "AgentAssistants",
-                type: "TEXT",
-                maxLength: 100,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(100)",
-                oldMaxLength: 100);
-
-            migrationBuilder.AlterColumn<string>(
-                name: "Email",
-                table: "AgentAssistants",
-                type: "TEXT",
-                maxLength: 320,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(320)",
-                oldMaxLength: 320);
-
-            migrationBuilder.AlterColumn<DateTime>(
-                name: "CreatedUtc",
-                table: "AgentAssistants",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(DateTime),
-                oldType: "datetime2");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "AssistantUserId",
-                table: "AgentAssistants",
-                type: "TEXT",
-                maxLength: 450,
-                nullable: true,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(450)",
-                oldMaxLength: 450,
-                oldNullable: true);
-
-            migrationBuilder.AlterColumn<Guid>(
-                name: "Id",
-                table: "AgentAssistants",
-                type: "TEXT",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uniqueidentifier");
-
-            migrationBuilder.CreateTable(
+
+                if (migrationBuilder.ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+                {
+                    // SQLite: skip this normalization migration to avoid temp-table rebuild issues.
+                    return;
+                }
+                migrationBuilder.DropIndex(
+                    name: "IX_AgentAssistants_AssistantUserId",
+                    table: "AgentAssistants");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ZipCode",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 24,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(24)",
+                    oldMaxLength: 24,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "UpdatedUtc",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "State",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 40,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(40)",
+                    oldMaxLength: 40,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Phone2",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 60,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(60)",
+                    oldMaxLength: 60,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Phone",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 60,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(60)",
+                    oldMaxLength: 60);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "OriginalLeadType",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "MortgageLender",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LoanAmount",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LastName",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Gender",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 20,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(20)",
+                    oldMaxLength: 20,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "FirstName",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Email",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 320,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(320)",
+                    oldMaxLength: 320);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "DOB",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "CrmStatus",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 60,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(60)",
+                    oldMaxLength: 60);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "CrmStage",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80);
+
+                migrationBuilder.AlterColumn<long>(
+                    name: "CrmOrder",
+                    table: "WorkstationLeadProfiles",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(long),
+                    oldType: "bigint");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "County",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "City",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CallsYearStartUtc",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "CallsYear",
+                    table: "WorkstationLeadProfiles",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CallsWeekStartUtc",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "CallsWeek",
+                    table: "WorkstationLeadProfiles",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CallsTodayDateUtc",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "CallsToday",
+                    table: "WorkstationLeadProfiles",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CallsMonthStartUtc",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "CallsMonth",
+                    table: "WorkstationLeadProfiles",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "CallCount",
+                    table: "WorkstationLeadProfiles",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Bucket",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Btc",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 40,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(40)",
+                    oldMaxLength: 40,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentUserId",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Age",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 12,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(12)",
+                    oldMaxLength: 12,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AddressLine",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 240,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(240)",
+                    oldMaxLength: 240,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LeadId",
+                    table: "WorkstationLeadProfiles",
+                    type: "TEXT",
+                    maxLength: 64,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(64)",
+                    oldMaxLength: 64);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "VisitorId",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "UtmSource",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "UtmMedium",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "UtmCampaign",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "TermsAccepted",
+                    table: "WebsiteLeads",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Status",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 40,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(40)",
+                    oldMaxLength: 40);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "SourcePageKey",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "SourceCtaKey",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "SessionId",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "PreferredContactMethod",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 60,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(60)",
+                    oldMaxLength: 60,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Phone",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Notes",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 2000,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(2000)",
+                    oldMaxLength: 2000,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "MarketingEmailConsent",
+                    table: "WebsiteLeads",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "LeadId",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LastName",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "IsInternal",
+                    table: "WebsiteLeads",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "InterestType",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Host",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "FirstName",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Environment",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 40,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(40)",
+                    oldMaxLength: 40,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Email",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 320,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(320)",
+                    oldMaxLength: 320);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "CallTextConsent",
+                    table: "WebsiteLeads",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "AgentTrackingProfileId",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentSlug",
+                    table: "WebsiteLeads",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<long>(
+                    name: "Id",
+                    table: "WebsiteLeads",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(long),
+                    oldType: "bigint")
+                    .Annotation("Sqlite:Autoincrement", true)
+                    .OldAnnotation("Sqlite:Autoincrement", true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "UpdatedUtc",
+                    table: "UnderwritingRecords",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ScopeKey",
+                    table: "UnderwritingRecords",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "QueueKey",
+                    table: "UnderwritingRecords",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ProductCode",
+                    table: "UnderwritingRecords",
+                    type: "TEXT",
+                    maxLength: 32,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(32)",
+                    oldMaxLength: 32,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "PayloadJson",
+                    table: "UnderwritingRecords",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "PageTitle",
+                    table: "UnderwritingRecords",
+                    type: "TEXT",
+                    maxLength: 240,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(240)",
+                    oldMaxLength: 240,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Name",
+                    table: "UnderwritingRecords",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LeadName",
+                    table: "UnderwritingRecords",
+                    type: "TEXT",
+                    maxLength: 240,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(240)",
+                    oldMaxLength: 240,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LeadId",
+                    table: "UnderwritingRecords",
+                    type: "TEXT",
+                    maxLength: 128,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(128)",
+                    oldMaxLength: 128,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "IsDraft",
+                    table: "UnderwritingRecords",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "UnderwritingRecords",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentUserId",
+                    table: "UnderwritingRecords",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "UnderwritingRecords",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "UpdatedUtc",
+                    table: "RecurringExpenses",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "Type",
+                    table: "RecurringExpenses",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "StartDate",
+                    table: "RecurringExpenses",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "Scope",
+                    table: "RecurringExpenses",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "OwnerUserId",
+                    table: "RecurringExpenses",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Notes",
+                    table: "RecurringExpenses",
+                    type: "TEXT",
+                    maxLength: 240,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(240)",
+                    oldMaxLength: 240,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "NextDueDate",
+                    table: "RecurringExpenses",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Name",
+                    table: "RecurringExpenses",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "IsActive",
+                    table: "RecurringExpenses",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "Frequency",
+                    table: "RecurringExpenses",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "RecurringExpenses",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "Category",
+                    table: "RecurringExpenses",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentUserId",
+                    table: "RecurringExpenses",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "Id",
+                    table: "RecurringExpenses",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int")
+                    .Annotation("Sqlite:Autoincrement", true)
+                    .OldAnnotation("Sqlite:Autoincrement", true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "UpdatedUtc",
+                    table: "Proposals",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ScopeKey",
+                    table: "Proposals",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "QueueKey",
+                    table: "Proposals",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "PageTitle",
+                    table: "Proposals",
+                    type: "TEXT",
+                    maxLength: 240,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(240)",
+                    oldMaxLength: 240,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Name",
+                    table: "Proposals",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LeadName",
+                    table: "Proposals",
+                    type: "TEXT",
+                    maxLength: 240,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(240)",
+                    oldMaxLength: 240,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LeadKey",
+                    table: "Proposals",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LeadId",
+                    table: "Proposals",
+                    type: "TEXT",
+                    maxLength: 128,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(128)",
+                    oldMaxLength: 128);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "IsDraft",
+                    table: "Proposals",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "Proposals",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "BucketsJson",
+                    table: "Proposals",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentUserId",
+                    table: "Proposals",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "Proposals",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "UpdatedUtc",
+                    table: "ProductionRecords",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "Status",
+                    table: "ProductionRecords",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "Side",
+                    table: "ProductionRecords",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Notes",
+                    table: "ProductionRecords",
+                    type: "TEXT",
+                    maxLength: 240,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(240)",
+                    oldMaxLength: 240,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LeadId",
+                    table: "ProductionRecords",
+                    type: "TEXT",
+                    maxLength: 128,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(128)",
+                    oldMaxLength: 128,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "ProductionRecords",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ClientUserId",
+                    table: "ProductionRecords",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentUserId",
+                    table: "ProductionRecords",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "ProductionRecords",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Zip",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 40,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(40)",
+                    oldMaxLength: 40,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "WorkState",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "WorkLocation",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "WorkAuthorizationStatus",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "TechnologyAck",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "TaxFilingStatus",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "SubmittedUtc",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "StateWithholding",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "State",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "StartDate",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "SsnNote",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 400,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(400)",
+                    oldMaxLength: 400,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "SsnLast4",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 4,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(4)",
+                    oldMaxLength: 4,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "RoleType",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ResidentStateLicense",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "PreferredName",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Phone",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 60,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(60)",
+                    oldMaxLength: 60);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "PayrollAcknowledgement",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "PayType",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "NonSolicitAck",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "NonResidentStates",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 400,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(400)",
+                    oldMaxLength: 400,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "MiddleName",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Manager",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "MailingAddress",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 240,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(240)",
+                    oldMaxLength: 240,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LicensesHeld",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 400,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(400)",
+                    oldMaxLength: 400,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LicenseNumbers",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 400,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(400)",
+                    oldMaxLength: 400,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "LegalNameConfirmed",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LastName",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "JobTitle",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "InviteId",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HasVoidedCheck",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(bool),
+                    oldType: "bit",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HasSsnDocument",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(bool),
+                    oldType: "bit",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HasSignedAgreements",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(bool),
+                    oldType: "bit",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HasResume",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(bool),
+                    oldType: "bit",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HasRegulatoryIssues",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(bool),
+                    oldType: "bit",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HasPriorTermination",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(bool),
+                    oldType: "bit",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HasOtherDisclosures",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(bool),
+                    oldType: "bit",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HasLicenseCopy",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(bool),
+                    oldType: "bit",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HasIdDocument",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(bool),
+                    oldType: "bit",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HasCriminalHistory",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(bool),
+                    oldType: "bit",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HasCertifications",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(bool),
+                    oldType: "bit",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HasAdministrativeActions",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(bool),
+                    oldType: "bit",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "HandbookAck",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "FirstName",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "FederalWithholding",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "EmploymentType",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "EmergencyContactRelationship",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "EmergencyContactPhone",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 60,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(60)",
+                    oldMaxLength: 60);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "EmergencyContactName",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Email",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 320,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(320)",
+                    oldMaxLength: 320);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "EligibilityDocumentsAck",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ElectronicSignatureName",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "ElectronicSignatureDate",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "ElectronicSignatureAck",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "EOCoverage",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 400,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(400)",
+                    oldMaxLength: 400,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "DriverLicenseState",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 40,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(40)",
+                    oldMaxLength: 40,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "DriverLicenseNumber",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Department",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "DateOfBirth",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "CurrentAddress",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 240,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(240)",
+                    oldMaxLength: 240);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "ConfidentialityAck",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "ComplianceAck",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "CompensationAck",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "City",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "CitizenshipStatus",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "CertificationTruthful",
+                    table: "OnboardingSubmissions",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "CarrierAppointments",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 400,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(400)",
+                    oldMaxLength: 400,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "BankRoutingNumber",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 64,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(64)",
+                    oldMaxLength: 64);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "BankName",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "BankAccountType",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "BankAccountNumber",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    maxLength: 64,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(64)",
+                    oldMaxLength: 64);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "OnboardingSubmissions",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "TokenHash",
+                    table: "OnboardingInvites",
+                    type: "TEXT",
+                    maxLength: 128,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(128)",
+                    oldMaxLength: 128);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "SubmittedUtc",
+                    table: "OnboardingInvites",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Status",
+                    table: "OnboardingInvites",
+                    type: "TEXT",
+                    maxLength: 40,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(40)",
+                    oldMaxLength: 40);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "RoleType",
+                    table: "OnboardingInvites",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "RevokedUtc",
+                    table: "OnboardingInvites",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LastName",
+                    table: "OnboardingInvites",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "FirstName",
+                    table: "OnboardingInvites",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "ExpiresUtc",
+                    table: "OnboardingInvites",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Email",
+                    table: "OnboardingInvites",
+                    type: "TEXT",
+                    maxLength: 320,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(320)",
+                    oldMaxLength: 320);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "OnboardingInvites",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "CreatedBy",
+                    table: "OnboardingInvites",
+                    type: "TEXT",
+                    maxLength: 320,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(320)",
+                    oldMaxLength: 320);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "OnboardingInvites",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "UpdatedUtc",
+                    table: "HouseholdMembers",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "RelationshipType",
+                    table: "HouseholdMembers",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Phone",
+                    table: "HouseholdMembers",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LastName",
+                    table: "HouseholdMembers",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "FirstName",
+                    table: "HouseholdMembers",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Email",
+                    table: "HouseholdMembers",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "DOB",
+                    table: "HouseholdMembers",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "HouseholdMembers",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ClientUserId",
+                    table: "HouseholdMembers",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "HouseholdMembers",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "UpdatedUtc",
+                    table: "FinanceToolStates",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ToolId",
+                    table: "FinanceToolStates",
+                    type: "TEXT",
+                    maxLength: 100,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(100)",
+                    oldMaxLength: 100);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "JsonState",
+                    table: "FinanceToolStates",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "FinanceToolStates",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "ClientProfileId",
+                    table: "FinanceToolStates",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "FinanceToolStates",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "UpdatedUtc",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "SignificantOtherPhone",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "SignificantOtherLastName",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "SignificantOtherFirstName",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "SignificantOtherEmail",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "SignificantOtherDOB",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Phone",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "NormalizedEmail",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "MaritalStatus",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LastName",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "FirstName",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Email",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "DOB",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "CrmTags",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "CrmStatus",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "CrmPriority",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "CrmNotes",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "CrmNextText",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CrmNextDate",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CrmLastTouch",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ClientUserId",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentNotes",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(max)");
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "ClientProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "UpdatedUtc",
+                    table: "BookkeepingEntries",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "Type",
+                    table: "BookkeepingEntries",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "Scope",
+                    table: "BookkeepingEntries",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "RecurringExpenseId",
+                    table: "BookkeepingEntries",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(int),
+                    oldType: "int",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "OwnerUserId",
+                    table: "BookkeepingEntries",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Notes",
+                    table: "BookkeepingEntries",
+                    type: "TEXT",
+                    maxLength: 240,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(240)",
+                    oldMaxLength: 240,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "EntryDate",
+                    table: "BookkeepingEntries",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "BookkeepingEntries",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "Category",
+                    table: "BookkeepingEntries",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentUserId",
+                    table: "BookkeepingEntries",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "Id",
+                    table: "BookkeepingEntries",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(int),
+                    oldType: "int")
+                    .Annotation("Sqlite:Autoincrement", true)
+                    .OldAnnotation("Sqlite:Autoincrement", true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "VisitorId",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "UtmSource",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "UtmMedium",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "UtmCampaign",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Url",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 500,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(500)",
+                    oldMaxLength: 500,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "SubmitOutcome",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 40,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(40)",
+                    oldMaxLength: 40,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "SessionId",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "SectionKey",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Referrer",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 500,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(500)",
+                    oldMaxLength: 500,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "ReceivedUtc",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "QuoteType",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Path",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 300,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(300)",
+                    oldMaxLength: 300,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "PageKey",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "IsInternal",
+                    table: "AnalyticsEvents",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Host",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "FormKey",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "EventUtc",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "EventType",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 80,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(80)",
+                    oldMaxLength: 80);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "EventId",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Environment",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 40,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(40)",
+                    oldMaxLength: 40,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ElementKey",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 160,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(160)",
+                    oldMaxLength: 160,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "ClientEventId",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ButtonLabel",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "AgentTrackingProfileId",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    nullable: true,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentSlug",
+                    table: "AnalyticsEvents",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<long>(
+                    name: "Id",
+                    table: "AnalyticsEvents",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(long),
+                    oldType: "bigint")
+                    .Annotation("Sqlite:Autoincrement", true)
+                    .OldAnnotation("Sqlite:Autoincrement", true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "UpdatedUtc",
+                    table: "AgentTrackingProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Status",
+                    table: "AgentTrackingProfiles",
+                    type: "TEXT",
+                    maxLength: 40,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(40)",
+                    oldMaxLength: 40);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Slug",
+                    table: "AgentTrackingProfiles",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "PreferredEnvironment",
+                    table: "AgentTrackingProfiles",
+                    type: "TEXT",
+                    maxLength: 40,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(40)",
+                    oldMaxLength: 40,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "DisplayName",
+                    table: "AgentTrackingProfiles",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "AgentTrackingProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentUserId",
+                    table: "AgentTrackingProfiles",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentUpn",
+                    table: "AgentTrackingProfiles",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "AgentTrackingProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Slug",
+                    table: "AgentTrackingAliases",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "IsCanonical",
+                    table: "AgentTrackingAliases",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "AgentTrackingAliases",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "AgentTrackingProfileId",
+                    table: "AgentTrackingAliases",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "AgentTrackingAliases",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "UpdatedUtc",
+                    table: "AgentProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Title",
+                    table: "AgentProfiles",
+                    type: "TEXT",
+                    maxLength: 120,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(120)",
+                    oldMaxLength: 120,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Phone",
+                    table: "AgentProfiles",
+                    type: "TEXT",
+                    maxLength: 64,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(64)",
+                    oldMaxLength: 64,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Npn",
+                    table: "AgentProfiles",
+                    type: "TEXT",
+                    maxLength: 64,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(64)",
+                    oldMaxLength: 64,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "FullName",
+                    table: "AgentProfiles",
+                    type: "TEXT",
+                    maxLength: 200,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(200)",
+                    oldMaxLength: 200,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<int>(
+                    name: "DisplayOrder",
+                    table: "AgentProfiles",
+                    type: "INTEGER",
+                    nullable: true,
+                    oldClrType: typeof(int),
+                    oldType: "int",
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "AgentProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentUserId",
+                    table: "AgentProfiles",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentUpn",
+                    table: "AgentProfiles",
+                    type: "TEXT",
+                    maxLength: 320,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(320)",
+                    oldMaxLength: 320);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "AgentProfiles",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "AgentClients",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ClientUserId",
+                    table: "AgentClients",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentUserId",
+                    table: "AgentClients",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AgentUpn",
+                    table: "AgentClients",
+                    type: "TEXT",
+                    maxLength: 320,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(320)",
+                    oldMaxLength: 320);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "AgentClients",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "ParentAgentUserId",
+                    table: "AgentAssistants",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "LastName",
+                    table: "AgentAssistants",
+                    type: "TEXT",
+                    maxLength: 100,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(100)",
+                    oldMaxLength: 100);
+
+                migrationBuilder.AlterColumn<bool>(
+                    name: "IsActive",
+                    table: "AgentAssistants",
+                    type: "INTEGER",
+                    nullable: false,
+                    oldClrType: typeof(bool),
+                    oldType: "bit");
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "InvitedAt",
+                    table: "AgentAssistants",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "FirstName",
+                    table: "AgentAssistants",
+                    type: "TEXT",
+                    maxLength: 100,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(100)",
+                    oldMaxLength: 100);
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "Email",
+                    table: "AgentAssistants",
+                    type: "TEXT",
+                    maxLength: 320,
+                    nullable: false,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(320)",
+                    oldMaxLength: 320);
+
+                migrationBuilder.AlterColumn<DateTime>(
+                    name: "CreatedUtc",
+                    table: "AgentAssistants",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(DateTime),
+                    oldType: "datetime2");
+
+                migrationBuilder.AlterColumn<string>(
+                    name: "AssistantUserId",
+                    table: "AgentAssistants",
+                    type: "TEXT",
+                    maxLength: 450,
+                    nullable: true,
+                    oldClrType: typeof(string),
+                    oldType: "nvarchar(450)",
+                    oldMaxLength: 450,
+                    oldNullable: true);
+
+                migrationBuilder.AlterColumn<Guid>(
+                    name: "Id",
+                    table: "AgentAssistants",
+                    type: "TEXT",
+                    nullable: false,
+                    oldClrType: typeof(Guid),
+                    oldType: "uniqueidentifier");
+
+                        }
+
+            string GuidType() =>
+                isSqlServer ? "uniqueidentifier" : "TEXT";
+
+            string DateType() =>
+                isSqlServer ? "datetime2" : "TEXT";
+
+            string StringType(int? maxLength = null) =>
+                isSqlServer
+                    ? maxLength.HasValue
+                        ? $"nvarchar({maxLength.Value})"
+                        : "nvarchar(max)"
+                    : "TEXT";
+
+migrationBuilder.CreateTable(
                 name: "ActionItems",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    RelatedEntityType = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    RelatedEntityId = table.Column<string>(type: "TEXT", maxLength: 180, nullable: false),
-                    Title = table.Column<string>(type: "TEXT", maxLength: 240, nullable: false),
-                    Description = table.Column<string>(type: "TEXT", nullable: false),
-                    OwnerType = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    OwnerId = table.Column<string>(type: "TEXT", maxLength: 180, nullable: false),
-                    EffectiveAgentOid = table.Column<string>(type: "TEXT", maxLength: 180, nullable: false),
-                    DueDateUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    Status = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    Priority = table.Column<string>(type: "TEXT", maxLength: 10, nullable: false),
-                    DecisionId = table.Column<Guid>(type: "TEXT", nullable: true),
-                    BlockerId = table.Column<Guid>(type: "TEXT", nullable: true),
-                    Source = table.Column<string>(type: "TEXT", maxLength: 120, nullable: true),
-                    SourceRef = table.Column<string>(type: "TEXT", maxLength: 200, nullable: true),
-                    CreatedBy = table.Column<string>(type: "TEXT", maxLength: 180, nullable: false),
-                    CreatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    CompletedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    DismissedReason = table.Column<string>(type: "TEXT", maxLength: 400, nullable: true)
+                    Id = table.Column<Guid>(type: GuidType(), nullable: false),
+                    RelatedEntityType = table.Column<string>(type: StringType(40), maxLength: 40, nullable: false),
+                    RelatedEntityId = table.Column<string>(type: StringType(180), maxLength: 180, nullable: false),
+                    Title = table.Column<string>(type: StringType(240), maxLength: 240, nullable: false),
+                    Description = table.Column<string>(type: StringType(), nullable: false),
+                    OwnerType = table.Column<string>(type: StringType(40), maxLength: 40, nullable: false),
+                    OwnerId = table.Column<string>(type: StringType(180), maxLength: 180, nullable: false),
+                    EffectiveAgentOid = table.Column<string>(type: StringType(180), maxLength: 180, nullable: false),
+                    DueDateUtc = table.Column<DateTime>(type: DateType(), nullable: true),
+                    Status = table.Column<string>(type: StringType(40), maxLength: 40, nullable: false),
+                    Priority = table.Column<string>(type: StringType(10), maxLength: 10, nullable: false),
+                    DecisionId = table.Column<Guid>(type: GuidType(), nullable: true),
+                    BlockerId = table.Column<Guid>(type: GuidType(), nullable: true),
+                    Source = table.Column<string>(type: StringType(120), maxLength: 120, nullable: true),
+                    SourceRef = table.Column<string>(type: StringType(200), maxLength: 200, nullable: true),
+                    CreatedBy = table.Column<string>(type: StringType(180), maxLength: 180, nullable: false),
+                    CreatedUtc = table.Column<DateTime>(type: DateType(), nullable: false),
+                    UpdatedUtc = table.Column<DateTime>(type: DateType(), nullable: true),
+                    CompletedAtUtc = table.Column<DateTime>(type: DateType(), nullable: true),
+                    DismissedReason = table.Column<string>(type: StringType(400), maxLength: 400, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -2982,12 +3004,12 @@ namespace Infrastructure.Migrations
                 name: "ActionLogs",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ActionId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ActorId = table.Column<string>(type: "TEXT", maxLength: 180, nullable: false),
-                    Verb = table.Column<string>(type: "TEXT", maxLength: 120, nullable: false),
-                    PayloadJson = table.Column<string>(type: "TEXT", nullable: true),
-                    OccurredUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: GuidType(), nullable: false),
+                    ActionId = table.Column<Guid>(type: GuidType(), nullable: false),
+                    ActorId = table.Column<string>(type: StringType(180), maxLength: 180, nullable: false),
+                    Verb = table.Column<string>(type: StringType(120), maxLength: 120, nullable: false),
+                    PayloadJson = table.Column<string>(type: StringType(), nullable: true),
+                    OccurredUtc = table.Column<DateTime>(type: DateType(), nullable: false)
                 },
                 constraints: table =>
                 {
@@ -2998,19 +3020,19 @@ namespace Infrastructure.Migrations
                 name: "Blockers",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    RelatedEntityType = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    RelatedEntityId = table.Column<string>(type: "TEXT", maxLength: 180, nullable: false),
-                    BlockerType = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    BlockerReason = table.Column<string>(type: "TEXT", maxLength: 400, nullable: false),
-                    BlockerOwnerType = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    BlockerOwnerId = table.Column<string>(type: "TEXT", maxLength: 180, nullable: false),
-                    Status = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    UnblockDueDateUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    CreatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    ResolvedUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    Notes = table.Column<string>(type: "TEXT", maxLength: 800, nullable: true)
+                    Id = table.Column<Guid>(type: GuidType(), nullable: false),
+                    RelatedEntityType = table.Column<string>(type: StringType(40), maxLength: 40, nullable: false),
+                    RelatedEntityId = table.Column<string>(type: StringType(180), maxLength: 180, nullable: false),
+                    BlockerType = table.Column<string>(type: StringType(40), maxLength: 40, nullable: false),
+                    BlockerReason = table.Column<string>(type: StringType(400), maxLength: 400, nullable: false),
+                    BlockerOwnerType = table.Column<string>(type: StringType(40), maxLength: 40, nullable: false),
+                    BlockerOwnerId = table.Column<string>(type: StringType(180), maxLength: 180, nullable: false),
+                    Status = table.Column<string>(type: StringType(40), maxLength: 40, nullable: false),
+                    UnblockDueDateUtc = table.Column<DateTime>(type: DateType(), nullable: true),
+                    CreatedUtc = table.Column<DateTime>(type: DateType(), nullable: false),
+                    UpdatedUtc = table.Column<DateTime>(type: DateType(), nullable: true),
+                    ResolvedUtc = table.Column<DateTime>(type: DateType(), nullable: true),
+                    Notes = table.Column<string>(type: StringType(800), maxLength: 800, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -3021,15 +3043,15 @@ namespace Infrastructure.Migrations
                 name: "DecisionRecords",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    RelatedEntityType = table.Column<string>(type: "TEXT", maxLength: 40, nullable: false),
-                    RelatedEntityId = table.Column<string>(type: "TEXT", maxLength: 180, nullable: false),
-                    Title = table.Column<string>(type: "TEXT", maxLength: 240, nullable: false),
-                    Rationale = table.Column<string>(type: "TEXT", nullable: false),
-                    RecommendationType = table.Column<string>(type: "TEXT", maxLength: 60, nullable: false),
-                    CreatedBy = table.Column<string>(type: "TEXT", maxLength: 180, nullable: false),
-                    CreatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedUtc = table.Column<DateTime>(type: "TEXT", nullable: true)
+                    Id = table.Column<Guid>(type: GuidType(), nullable: false),
+                    RelatedEntityType = table.Column<string>(type: StringType(40), maxLength: 40, nullable: false),
+                    RelatedEntityId = table.Column<string>(type: StringType(180), maxLength: 180, nullable: false),
+                    Title = table.Column<string>(type: StringType(240), maxLength: 240, nullable: false),
+                    Rationale = table.Column<string>(type: StringType(), nullable: false),
+                    RecommendationType = table.Column<string>(type: StringType(60), maxLength: 60, nullable: false),
+                    CreatedBy = table.Column<string>(type: StringType(180), maxLength: 180, nullable: false),
+                    CreatedUtc = table.Column<DateTime>(type: DateType(), nullable: false),
+                    UpdatedUtc = table.Column<DateTime>(type: DateType(), nullable: true)
                 },
                 constraints: table =>
                 {
@@ -3040,21 +3062,40 @@ namespace Infrastructure.Migrations
                 name: "PlaybookExecutions",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ExecutionKey = table.Column<string>(type: "TEXT", maxLength: 200, nullable: false),
-                    MetadataJson = table.Column<string>(type: "TEXT", nullable: true),
-                    CreatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: GuidType(), nullable: false),
+                    ExecutionKey = table.Column<string>(type: StringType(200), maxLength: 200, nullable: false),
+                    MetadataJson = table.Column<string>(type: StringType(), nullable: true),
+                    CreatedUtc = table.Column<DateTime>(type: DateType(), nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_PlaybookExecutions", x => x.Id);
                 });
 
-            migrationBuilder.CreateIndex(
-                name: "IX_AgentAssistants_AssistantUserId",
-                table: "AgentAssistants",
-                column: "AssistantUserId",
-                unique: true);
+            if (isSqlServer)
+            {
+                migrationBuilder.Sql(
+                    """
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM sys.indexes
+                        WHERE name = N'IX_AgentAssistants_AssistantUserId'
+                          AND object_id = OBJECT_ID(N'dbo.AgentAssistants')
+                    )
+                    BEGIN
+                        CREATE UNIQUE INDEX [IX_AgentAssistants_AssistantUserId]
+                        ON [dbo].[AgentAssistants] ([AssistantUserId]);
+                    END
+                    """);
+            }
+            else
+            {
+                migrationBuilder.CreateIndex(
+                    name: "IX_AgentAssistants_AssistantUserId",
+                    table: "AgentAssistants",
+                    column: "AssistantUserId",
+                    unique: true);
+            }
 
             migrationBuilder.CreateIndex(
                 name: "IX_ActionItems_EffectiveAgentOid_Status_DueDateUtc",

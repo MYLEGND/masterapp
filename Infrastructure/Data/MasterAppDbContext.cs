@@ -154,6 +154,7 @@ public class MasterAppDbContext : DbContext
         JourneyCirclesModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         SocialFeedModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         var isSqlServer = Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
+        var unboundedTextColumnType = isSqlServer ? "nvarchar(max)" : "TEXT";
 
         modelBuilder.Entity<AccountLifecycleRecord>(entity =>
         {
@@ -678,7 +679,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.ProcessingStatus).HasConversion<string>().HasMaxLength(40).IsRequired();
             e.Property(x => x.SafeErrorCode).HasMaxLength(120);
             e.Property(x => x.PayloadHash).HasMaxLength(128).IsRequired();
-            e.Property(x => x.RetainedPayloadJson).HasColumnType("text");
+            e.Property(x => x.RetainedPayloadJson).HasColumnType(unboundedTextColumnType);
 
             e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderEventId }).IsUnique();
             e.HasIndex(x => new { x.ProcessingStatus, x.RetryUtc });
@@ -736,7 +737,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Source).HasMaxLength(80).IsRequired();
             e.Property(x => x.ReasonCode).HasMaxLength(120);
             e.Property(x => x.CorrelationId).HasMaxLength(128);
-            e.Property(x => x.SanitizedMetadataJson).HasColumnType("text");
+            e.Property(x => x.SanitizedMetadataJson).HasColumnType(unboundedTextColumnType);
 
             e.HasIndex(x => new { x.EntityType, x.EntityId, x.OccurredUtc });
             e.HasIndex(x => new { x.ActorId, x.OccurredUtc });
@@ -861,7 +862,7 @@ public class MasterAppDbContext : DbContext
         modelBuilder.Entity<ClientFinancialPlan>(e =>
         {
             e.HasKey(x => x.Id);
-            e.Property(x => x.JsonData).IsRequired().HasColumnType("TEXT");
+            e.Property(x => x.JsonData).IsRequired().HasColumnType(unboundedTextColumnType);
             e.Property(x => x.UpdatedBy).HasMaxLength(320);
             e.Property(x => x.Version).HasDefaultValue(1);
             e.Property(x => x.IsDeleted).HasDefaultValue(false);
@@ -1267,7 +1268,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.WorkLocation).HasMaxLength(200);
             e.Property(x => x.EmploymentType).HasMaxLength(80);
             e.Property(x => x.PayType).HasMaxLength(80);
-            e.Property(x => x.WorkNotes).HasColumnType("text");
+            e.Property(x => x.WorkNotes).HasColumnType(unboundedTextColumnType);
 
             e.Property(x => x.SsnLast4).HasMaxLength(400);   // widened: stores encrypted ciphertext
             e.Property(x => x.SsnNote).HasMaxLength(400);
@@ -1292,15 +1293,15 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.LicenseNumbers).HasMaxLength(400);
             e.Property(x => x.CarrierAppointments).HasMaxLength(400);
             e.Property(x => x.EOCoverage).HasMaxLength(400);
-            e.Property(x => x.SupervisionNotes).HasColumnType("text");
+            e.Property(x => x.SupervisionNotes).HasColumnType(unboundedTextColumnType);
 
-            e.Property(x => x.RegulatoryExplanation).HasColumnType("text");
-            e.Property(x => x.CriminalExplanation).HasColumnType("text");
-            e.Property(x => x.AdministrativeExplanation).HasColumnType("text");
-            e.Property(x => x.TerminationExplanation).HasColumnType("text");
-            e.Property(x => x.OtherDisclosuresExplanation).HasColumnType("text");
+            e.Property(x => x.RegulatoryExplanation).HasColumnType(unboundedTextColumnType);
+            e.Property(x => x.CriminalExplanation).HasColumnType(unboundedTextColumnType);
+            e.Property(x => x.AdministrativeExplanation).HasColumnType(unboundedTextColumnType);
+            e.Property(x => x.TerminationExplanation).HasColumnType(unboundedTextColumnType);
+            e.Property(x => x.OtherDisclosuresExplanation).HasColumnType(unboundedTextColumnType);
 
-            e.Property(x => x.DocumentNotes).HasColumnType("text");
+            e.Property(x => x.DocumentNotes).HasColumnType(unboundedTextColumnType);
 
             e.HasIndex(x => x.InviteId).IsUnique();
 
@@ -1336,7 +1337,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Btc).HasMaxLength(40);
             e.Property(x => x.CrmStatus).HasMaxLength(60);
             e.Property(x => x.CrmStage).HasMaxLength(80);
-            e.Property(x => x.CrmNotes).HasColumnType("text");
+            e.Property(x => x.CrmNotes).HasColumnType(unboundedTextColumnType);
 
             e.HasIndex(x => x.AgentUserId);
             e.HasIndex(x => new { x.AgentUserId, x.Phone });
@@ -1389,7 +1390,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Operation).HasMaxLength(80).IsRequired();
             e.Property(x => x.Source).HasMaxLength(80).IsRequired();
             e.Property(x => x.Error).HasMaxLength(2048);
-            e.Property(x => x.DiagnosticJson).HasColumnType("text");
+            e.Property(x => x.DiagnosticJson).HasColumnType(unboundedTextColumnType);
 
             e.HasIndex(x => x.AppointmentId);
             e.HasIndex(x => x.WorkstationLeadId);
@@ -1421,7 +1422,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.MeetingUrl).HasMaxLength(2048);
             e.Property(x => x.LastSyncStatus).HasMaxLength(80);
             e.Property(x => x.LastSyncError).HasMaxLength(2048);
-            e.Property(x => x.RawProviderPayloadJson).HasColumnType("text");
+            e.Property(x => x.RawProviderPayloadJson).HasColumnType(unboundedTextColumnType);
 
             e.HasIndex(x => x.WorkstationLeadId);
             e.HasIndex(x => new { x.WorkstationLeadId, x.UpdatedUtc });

@@ -30,7 +30,7 @@ END
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ClientProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ToolId = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    JsonState = table.Column<string>(type: "TEXT", nullable: false),
+                    JsonState = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
                 },

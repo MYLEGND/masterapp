@@ -36,7 +36,7 @@ namespace Infrastructure.Migrations.ScriptsCrm
                     CrmStatus = table.Column<string>(type: "nvarchar(60)", maxLength: 60, nullable: false),
                     CrmStage = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
                     CrmOrder = table.Column<long>(type: "bigint", nullable: false),
-                    CrmNotes = table.Column<string>(type: "TEXT", nullable: true),
+                    CrmNotes = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     CallCount = table.Column<int>(type: "int", nullable: false, defaultValue: 0),
                     CreatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false)

@@ -200,26 +200,52 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
     public async Task<LegendConnectRuntimePolicySnapshot> UpdateCompositionAsync(
         string founderUserId,
         bool learningEnabled,
-        string contextualCompositionMode,
+        string? contextualCompositionMode,
         decimal contextualMinimumConfidence,
         CancellationToken cancellationToken = default)
     {
         var founder = await RequireFounderAsync(founderUserId, cancellationToken);
         if (contextualMinimumConfidence is < 0.90m or > 1m)
             throw new ArgumentException("Contextual confidence must remain between 0.90 and 1.00.", nameof(contextualMinimumConfidence));
-        var normalizedMode = NormalizeContextualMode(contextualCompositionMode);
         return await PersistFounderMutationAsync(async () =>
         {
             var policy = await GetTrackedPolicyAsync(cancellationToken);
             var before = ToSnapshot(policy, true);
             policy.LearningEnabled = learningEnabled;
-            policy.ContextualCompositionMode = normalizedMode;
+            // The top-level production control owns explicit mode changes.
+            // This existing composition-settings save preserves the current
+            // server mode when no mode was supplied; it cannot reset Active,
+            // Shadow, or Disabled through a second Founder settings path.
+            policy.ContextualCompositionMode = contextualCompositionMode is null
+                ? before.ContextualCompositionMode
+                : NormalizeContextualMode(contextualCompositionMode);
             policy.ContextualMinimumConfidence = contextualMinimumConfidence;
             policy.UpdatedByUserId = founder;
             policy.UpdatedUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
             var after = ToSnapshot(policy, true);
             await WritePolicyAuditAsync(founder, "RuntimeCompositionPolicyChanged", before, after, null, null, cancellationToken);
+            return after;
+        }, cancellationToken);
+    }
+
+    public async Task<LegendConnectRuntimePolicySnapshot> SetContextualCompositionModeAsync(
+        string founderUserId,
+        string contextualCompositionMode,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await RequireFounderAsync(founderUserId, cancellationToken);
+        var normalizedMode = NormalizeContextualMode(contextualCompositionMode);
+        return await PersistFounderMutationAsync(async () =>
+        {
+            var policy = await GetTrackedPolicyAsync(cancellationToken);
+            var before = ToSnapshot(policy, true);
+            policy.ContextualCompositionMode = normalizedMode;
+            policy.UpdatedByUserId = founder;
+            policy.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            var after = ToSnapshot(policy, true);
+            await WritePolicyAuditAsync(founder, "ContextualCompositionModeChanged", before, after, null, null, cancellationToken);
             return after;
         }, cancellationToken);
     }
@@ -328,6 +354,7 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         CancellationToken cancellationToken = default) =>
         await _db.Set<LegendConnectKnowledgeAuditEntry>().AsNoTracking()
             .Where(item => item.Action.StartsWith("RuntimePolicy") ||
+                           item.Action.StartsWith("ContextualCompositionMode") ||
                            item.Action.StartsWith("AutonomousAcquisition") ||
                            item.Action.StartsWith("FounderAutonomousLanguageFocus"))
             .OrderByDescending(item => item.OccurredUtc)

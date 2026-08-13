@@ -275,6 +275,30 @@ public sealed class LegendConnectController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/composition-mode")]
+    public async Task<IActionResult> SetCompositionMode(
+        [FromForm] FounderLegendConnectCompositionModeInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.SetCompositionModeAsync(User, input, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect production composition mode update failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route("founder/legend-connect/activate")]
     public async Task<IActionResult> ActivateAutonomousAcquisition(
         [FromForm] FounderLegendConnectActivationInput input,

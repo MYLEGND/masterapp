@@ -83,8 +83,18 @@ public interface ILegendConnectRuntimePolicyAuthority
     Task<LegendConnectRuntimePolicySnapshot> UpdateCompositionAsync(
         string founderUserId,
         bool learningEnabled,
-        string contextualCompositionMode,
+        string? contextualCompositionMode,
         decimal contextualMinimumConfidence,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Changes only the existing persisted composition mode. This is the
+    /// canonical Founder command behind the top-level production control; it
+    /// deliberately owns no separate enablement state.
+    /// </summary>
+    Task<LegendConnectRuntimePolicySnapshot> SetContextualCompositionModeAsync(
+        string founderUserId,
+        string contextualCompositionMode,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectProductionReadinessSnapshot> ActivateAsync(

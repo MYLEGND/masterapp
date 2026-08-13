@@ -105,10 +105,39 @@ public sealed class FounderLegendConnectService
             await _runtimePolicy.UpdateCompositionAsync(
                 founder,
                 input.LearningEnabled,
+                contextualCompositionMode: null,
+                contextualMinimumConfidence: input.ContextualMinimumConfidence,
+                cancellationToken: cancellationToken);
+            return new FounderLegendConnectOperationResult(true, "Legend Connect learning and confidence settings were saved across the deployment. Production composition remains under the top-level server control.");
+        }
+        catch (ArgumentException exception)
+        {
+            return new FounderLegendConnectOperationResult(false, exception.Message);
+        }
+    }
+
+    public async Task<FounderLegendConnectOperationResult> SetCompositionModeAsync(
+        ClaimsPrincipal user,
+        FounderLegendConnectCompositionModeInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        if (_runtimePolicy is null)
+            return new FounderLegendConnectOperationResult(false, "Legend Connect runtime policy authority is unavailable.");
+        try
+        {
+            var policy = await _runtimePolicy.SetContextualCompositionModeAsync(
+                founder,
                 input.ContextualCompositionMode,
-                input.ContextualMinimumConfidence,
                 cancellationToken);
-            return new FounderLegendConnectOperationResult(true, "Legend Connect composition policy was saved across the deployment. Azure capacity remains synchronized from the Translator resource.");
+            return new FounderLegendConnectOperationResult(
+                true,
+                policy.ContextualCompositionMode switch
+                {
+                    "Active" => "Production composition is active. Existing eligibility, quality, language-isolation, and Azure fallback gates remain in force.",
+                    "Shadow" => "Production composition is in Shadow mode. It remains observational and does not serve internal composed output.",
+                    _ => "Production composition is disabled. Azure fallback remains available where internal routing does not serve a translation."
+                });
         }
         catch (ArgumentException exception)
         {

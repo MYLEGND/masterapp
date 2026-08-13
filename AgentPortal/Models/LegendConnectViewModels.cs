@@ -80,8 +80,16 @@ public sealed record FounderLegendConnectEntitlementResult(
 public sealed class FounderLegendConnectRuntimePolicyInput
 {
     public bool LearningEnabled { get; set; }
-    public string ContextualCompositionMode { get; set; } = "Shadow";
     public decimal ContextualMinimumConfidence { get; set; } = 0.98m;
+}
+
+/// <summary>
+/// Transport only: the value is validated and persisted by the one existing
+/// Legend Connect runtime-policy authority.
+/// </summary>
+public sealed class FounderLegendConnectCompositionModeInput
+{
+    public string ContextualCompositionMode { get; set; } = string.Empty;
 }
 
 public sealed class FounderLegendConnectActivationInput

@@ -205,6 +205,62 @@ public sealed class LegendConnectOperationalProofTests
     }
 
     [Fact]
+    public async Task FounderProductionCompositionControl_PostsThroughTheCanonicalModeAuthorityAndReloadsServerState()
+    {
+        var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var founderId = Guid.NewGuid().ToString();
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        try
+        {
+            using var host = await BuildFounderHttpHostAsync(founderId);
+            var client = host.GetTestClient();
+            var tokenRequest = new HttpRequestMessage(HttpMethod.Get, "/__legend-connect-proof/token");
+            tokenRequest.Headers.Add(FounderHeader, founderId);
+            var tokenResponse = await client.SendAsync(tokenRequest);
+            tokenResponse.EnsureSuccessStatusCode();
+            var token = await tokenResponse.Content.ReadFromJsonAsync<AntiforgeryTokenDto>();
+            Assert.NotNull(token);
+            var cookie = ExtractAntiforgeryCookie(tokenResponse);
+
+            await AssertFounderRedirectAsync(client, founderId, token!.RequestToken, cookie,
+                "/founder/legend-connect/composition-mode", new Dictionary<string, string>
+                {
+                    ["ContextualCompositionMode"] = "Disabled"
+                });
+            await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
+                "/founder/legend-connect/composition-mode", new Dictionary<string, string>
+                {
+                    ["ContextualCompositionMode"] = "Active"
+                });
+
+            await using (var reloadScope = host.Services.CreateAsyncScope())
+            {
+                var runtime = reloadScope.ServiceProvider.GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
+                Assert.Equal("Active", (await runtime.GetEffectiveAsync()).ContextualCompositionMode);
+            }
+
+            await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
+                "/founder/legend-connect/composition-mode", new Dictionary<string, string>
+                {
+                    ["ContextualCompositionMode"] = "Shadow"
+                });
+
+            await using var verificationScope = host.Services.CreateAsyncScope();
+            var db = verificationScope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            var persisted = await db.LegendConnectRuntimePolicies.AsNoTracking().SingleAsync();
+            Assert.Equal("Shadow", persisted.ContextualCompositionMode);
+            Assert.Contains(await db.LegendConnectKnowledgeAuditEntries.AsNoTracking().ToListAsync(), entry =>
+                entry.FounderUserId == founderId &&
+                entry.Action == "ContextualCompositionModeChanged" &&
+                entry.Detail!.Contains("context mode: Disabled → Active"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounder);
+        }
+    }
+
+    [Fact]
     public async Task FounderActorResolution_UsesTheSharedCanonicalClaimAndFailsClosedWithoutAnAgentAccount()
     {
         var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
@@ -276,9 +332,12 @@ public sealed class LegendConnectOperationalProofTests
             Assert.NotNull(token);
             var cookie = ExtractAntiforgeryCookie(tokenResponse);
 
-            using var nonFounder = new HttpRequestMessage(HttpMethod.Post, "/founder/legend-connect/activate")
+            using var nonFounder = new HttpRequestMessage(HttpMethod.Post, "/founder/legend-connect/composition-mode")
             {
-                Content = new FormUrlEncodedContent(new Dictionary<string, string>())
+                Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["ContextualCompositionMode"] = "Active"
+                })
             };
             nonFounder.Headers.Add(FounderHeader, Guid.NewGuid().ToString());
             nonFounder.Headers.Add("RequestVerificationToken", token!.RequestToken);
@@ -287,9 +346,12 @@ public sealed class LegendConnectOperationalProofTests
             using var nonFounderResponse = await client.SendAsync(nonFounder);
             Assert.Equal(HttpStatusCode.Forbidden, nonFounderResponse.StatusCode);
 
-            using var unauthenticated = new HttpRequestMessage(HttpMethod.Post, "/founder/legend-connect/activate")
+            using var unauthenticated = new HttpRequestMessage(HttpMethod.Post, "/founder/legend-connect/composition-mode")
             {
-                Content = new FormUrlEncodedContent(new Dictionary<string, string>())
+                Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["ContextualCompositionMode"] = "Active"
+                })
             };
             unauthenticated.Headers.Add("RequestVerificationToken", token.RequestToken);
             if (!string.IsNullOrWhiteSpace(cookie))

@@ -363,9 +363,11 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.ReasonCode).IsRequired().HasMaxLength(120);
             entity.Property(item => item.ResolutionState).IsRequired().HasMaxLength(40);
             entity.Property(item => item.EvidenceIdentity).IsRequired().HasMaxLength(160);
+            entity.Property(item => item.SemanticSignature).HasMaxLength(64);
             entity.HasIndex(item => item.EvidenceIdentity).IsUnique();
             entity.HasIndex(item => new { item.ObservedAlignmentId, item.ResolutionState, item.SupersededUtc });
             entity.HasIndex(item => new { item.PairKey, item.Signal, item.ResolutionState });
+            entity.HasIndex(item => new { item.PairKey, item.SemanticSignature, item.Signal, item.SupersededUtc });
             entity.HasOne<LegendTranslationAlignment>()
                 .WithMany()
                 .HasForeignKey(item => item.ObservedAlignmentId)
@@ -528,20 +530,23 @@ internal static class MessagingModelConfiguration
         {
             entity.ToTable("LegendLanguageStructuralPatterns");
             entity.HasKey(item => item.Id);
+            entity.Property(item => item.PairKey).IsRequired().HasMaxLength(72);
             entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
             entity.Property(item => item.VariationDimension).IsRequired().HasMaxLength(80);
             entity.Property(item => item.RealizationSignature).IsRequired().HasMaxLength(1_000);
             entity.Property(item => item.MaturityState).IsRequired().HasMaxLength(40);
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.Confidence).HasPrecision(5, 4);
             entity.HasIndex(item => item.SupersededUtc);
             entity.HasIndex(item => new
             {
                 item.CurriculumFamilyId,
+                item.PairKey,
                 item.LanguageCode,
                 item.VariationDimension,
                 item.RealizationSignature
             }).IsUnique();
-            entity.HasIndex(item => new { item.LanguageCode, item.MaturityState, item.IsProductionEligible });
+            entity.HasIndex(item => new { item.PairKey, item.LanguageCode, item.MaturityState, item.IsProductionEligible });
             entity.HasOne<LegendCurriculumFamily>()
                 .WithMany()
                 .HasForeignKey(item => item.CurriculumFamilyId)
@@ -591,6 +596,7 @@ internal static class MessagingModelConfiguration
         {
             entity.ToTable("LegendLanguageStructuralEvidence");
             entity.HasKey(item => item.Id);
+            entity.Property(item => item.PairKey).IsRequired().HasMaxLength(72);
             entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
             entity.Property(item => item.VariationDimension).IsRequired().HasMaxLength(80);
             entity.Property(item => item.BaselineVariationValue).IsRequired().HasMaxLength(160);
@@ -598,17 +604,20 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.EvidenceSignature).IsRequired().HasMaxLength(1_000);
             entity.Property(item => item.BaselineComponentSignature).IsRequired().HasMaxLength(1_000);
             entity.Property(item => item.ComparedComponentSignature).IsRequired().HasMaxLength(1_000);
+            entity.Property(item => item.IndependentSourceIdentity).IsRequired().HasMaxLength(96);
+            entity.Property(item => item.ContributionState).IsRequired().HasMaxLength(40);
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
             entity.HasIndex(item => item.SupersededUtc);
             entity.HasIndex(item => new
             {
                 item.CurriculumFamilyId,
+                item.PairKey,
                 item.LanguageCode,
                 item.VariationDimension,
                 item.BaselineCurriculumExampleId,
                 item.ComparedCurriculumExampleId
             }).IsUnique();
-            entity.HasIndex(item => new { item.StructuralPatternId, item.CreatedUtc });
+            entity.HasIndex(item => new { item.StructuralPatternId, item.ContributionState, item.SupersededUtc });
             entity.HasOne<LegendLanguageStructuralPattern>()
                 .WithMany()
                 .HasForeignKey(item => item.StructuralPatternId)
@@ -683,10 +692,12 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
             entity.Property(item => item.Dimension).IsRequired().HasMaxLength(80);
             entity.Property(item => item.Value).IsRequired().HasMaxLength(160);
+            entity.Property(item => item.SemanticSignature).HasMaxLength(64);
             entity.Property(item => item.AnchorSignature).IsRequired().HasMaxLength(64);
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
             entity.HasIndex(item => new { item.CurriculumExampleId, item.AnchorSignature }).IsUnique();
             entity.HasIndex(item => new { item.LanguageCode, item.Dimension, item.Value, item.SupersededUtc });
+            entity.HasIndex(item => new { item.SemanticSignature, item.SupersededUtc });
             entity.HasIndex(item => new { item.TextUnitId, item.SupersededUtc });
             entity.HasOne<LegendLanguageTextUnit>()
                 .WithMany()

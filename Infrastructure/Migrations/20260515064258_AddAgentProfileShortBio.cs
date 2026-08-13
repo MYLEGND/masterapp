@@ -13,7 +13,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "ShortBio",
                 table: "AgentProfiles",
-                type: "TEXT",
+                type: "nvarchar(280)",
                 maxLength: 280,
                 nullable: true);
         }

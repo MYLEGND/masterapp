@@ -6,84 +6,131 @@ namespace Infrastructure.Migrations
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            var isSqlite = migrationBuilder.ActiveProvider?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) ?? false;
+            var isSqlite = migrationBuilder.ActiveProvider?.Contains(
+                "Sqlite",
+                StringComparison.OrdinalIgnoreCase) ?? false;
+
             if (isSqlite)
             {
                 // Dev/local SQLite already has simple indexes; skip provider-specific additions.
                 return;
             }
 
-            // AnalyticsEvents
-            migrationBuilder.CreateIndex(
-                name: "IX_AnalyticsEvents_UtmSource",
-                table: "AnalyticsEvents",
-                column: "UtmSource");
+            var isSqlServer = migrationBuilder.ActiveProvider?.Contains(
+                "SqlServer",
+                StringComparison.OrdinalIgnoreCase) ?? false;
 
-            migrationBuilder.CreateIndex(
-                name: "IX_AnalyticsEvents_UtmCampaign",
-                table: "AnalyticsEvents",
-                column: "UtmCampaign");
+            if (!isSqlServer)
+            {
+                throw new InvalidOperationException(
+                    $"Unsupported provider for analytics scale index migration: {migrationBuilder.ActiveProvider}");
+            }
 
-            migrationBuilder.CreateIndex(
-                name: "IX_AnalyticsEvents_AgentTrackingProfileId_EventUtc",
-                table: "AnalyticsEvents",
-                columns: new[] { "AgentTrackingProfileId", "EventUtc" });
+            void CreateIndexIfMissing(
+                string name,
+                string table,
+                params string[] columns)
+            {
+                var columnSql = string.Join(
+                    ", ",
+                    columns.Select(column => $"[{column.Replace("]", "]]")}]"));
 
-            migrationBuilder.CreateIndex(
-                name: "IX_AnalyticsEvents_Environment_EventUtc",
-                table: "AnalyticsEvents",
-                columns: new[] { "Environment", "EventUtc" });
+                var escapedName = name.Replace("'", "''");
+                var escapedTable = table.Replace("'", "''");
+                var quotedName = name.Replace("]", "]]");
+                var quotedTable = table.Replace("]", "]]");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_AnalyticsEvents_EventType_EventUtc",
-                table: "AnalyticsEvents",
-                columns: new[] { "EventType", "EventUtc" });
+                migrationBuilder.Sql($"""
+IF OBJECT_ID(N'[dbo].[{quotedTable}]', N'U') IS NOT NULL
+   AND NOT EXISTS (
+       SELECT 1
+       FROM sys.indexes
+       WHERE name = N'{escapedName}'
+         AND object_id = OBJECT_ID(N'[dbo].[{quotedTable}]')
+   )
+BEGIN
+    CREATE INDEX [{quotedName}]
+        ON [dbo].[{quotedTable}] ({columnSql});
+END
+""");
+            }
 
-            migrationBuilder.CreateIndex(
-                name: "IX_AnalyticsEvents_PageKey_EventUtc",
-                table: "AnalyticsEvents",
-                columns: new[] { "PageKey", "EventUtc" });
+            CreateIndexIfMissing(
+                "IX_AnalyticsEvents_UtmSource",
+                "AnalyticsEvents",
+                "UtmSource");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_AnalyticsEvents_ElementKey_EventUtc",
-                table: "AnalyticsEvents",
-                columns: new[] { "ElementKey", "EventUtc" });
+            CreateIndexIfMissing(
+                "IX_AnalyticsEvents_UtmCampaign",
+                "AnalyticsEvents",
+                "UtmCampaign");
 
-            // WebsiteLeads
-            migrationBuilder.CreateIndex(
-                name: "IX_WebsiteLeads_CreatedUtc",
-                table: "WebsiteLeads",
-                column: "CreatedUtc");
+            CreateIndexIfMissing(
+                "IX_AnalyticsEvents_AgentTrackingProfileId_EventUtc",
+                "AnalyticsEvents",
+                "AgentTrackingProfileId",
+                "EventUtc");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_WebsiteLeads_AgentTrackingProfileId_CreatedUtc",
-                table: "WebsiteLeads",
-                columns: new[] { "AgentTrackingProfileId", "CreatedUtc" });
+            CreateIndexIfMissing(
+                "IX_AnalyticsEvents_Environment_EventUtc",
+                "AnalyticsEvents",
+                "Environment",
+                "EventUtc");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_WebsiteLeads_Environment_CreatedUtc",
-                table: "WebsiteLeads",
-                columns: new[] { "Environment", "CreatedUtc" });
+            CreateIndexIfMissing(
+                "IX_AnalyticsEvents_EventType_EventUtc",
+                "AnalyticsEvents",
+                "EventType",
+                "EventUtc");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_WebsiteLeads_SourcePageKey",
-                table: "WebsiteLeads",
-                column: "SourcePageKey");
+            CreateIndexIfMissing(
+                "IX_AnalyticsEvents_PageKey_EventUtc",
+                "AnalyticsEvents",
+                "PageKey",
+                "EventUtc");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_WebsiteLeads_SourceCtaKey",
-                table: "WebsiteLeads",
-                column: "SourceCtaKey");
+            CreateIndexIfMissing(
+                "IX_AnalyticsEvents_ElementKey_EventUtc",
+                "AnalyticsEvents",
+                "ElementKey",
+                "EventUtc");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_WebsiteLeads_UtmSource",
-                table: "WebsiteLeads",
-                column: "UtmSource");
+            CreateIndexIfMissing(
+                "IX_WebsiteLeads_CreatedUtc",
+                "WebsiteLeads",
+                "CreatedUtc");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_WebsiteLeads_UtmCampaign",
-                table: "WebsiteLeads",
-                column: "UtmCampaign");
+            CreateIndexIfMissing(
+                "IX_WebsiteLeads_AgentTrackingProfileId_CreatedUtc",
+                "WebsiteLeads",
+                "AgentTrackingProfileId",
+                "CreatedUtc");
+
+            CreateIndexIfMissing(
+                "IX_WebsiteLeads_Environment_CreatedUtc",
+                "WebsiteLeads",
+                "Environment",
+                "CreatedUtc");
+
+            CreateIndexIfMissing(
+                "IX_WebsiteLeads_SourcePageKey",
+                "WebsiteLeads",
+                "SourcePageKey");
+
+            CreateIndexIfMissing(
+                "IX_WebsiteLeads_SourceCtaKey",
+                "WebsiteLeads",
+                "SourceCtaKey");
+
+            CreateIndexIfMissing(
+                "IX_WebsiteLeads_UtmSource",
+                "WebsiteLeads",
+                "UtmSource");
+
+            CreateIndexIfMissing(
+                "IX_WebsiteLeads_UtmCampaign",
+                "WebsiteLeads",
+                "UtmCampaign");
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)

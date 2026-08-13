@@ -18,6 +18,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "ActionCategory",
                 table: "ActionItems",
+                type: "nvarchar(60)",
                 maxLength: 60,
                 nullable: false,
                 defaultValue: "Other");
@@ -25,6 +26,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "ActionSurface",
                 table: "ActionItems",
+                type: "nvarchar(40)",
                 maxLength: 40,
                 nullable: false,
                 defaultValue: "CrmOnly");
@@ -32,12 +34,14 @@ namespace Infrastructure.Migrations
             migrationBuilder.AddColumn<bool>(
                 name: "IsEscalated",
                 table: "ActionItems",
+                type: "bit",
                 nullable: false,
                 defaultValue: false);
 
             migrationBuilder.AddColumn<string>(
                 name: "PipelineStage",
                 table: "ActionItems",
+                type: "nvarchar(120)",
                 maxLength: 120,
                 nullable: true);
 

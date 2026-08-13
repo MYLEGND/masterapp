@@ -1,38 +1,49 @@
+using System;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Infrastructure.Migrations
 {
+    [DbContext(typeof(MasterAppDbContext))]
+    [Migration("20260614070000_AddMetaIdentityToWebsiteLeadIntakeLinks")]
     public partial class AddMetaIdentityToWebsiteLeadIntakeLinks : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            string StringType(int length) => migrationBuilder.ActiveProvider.Contains(
+                "SqlServer",
+                StringComparison.OrdinalIgnoreCase)
+                ? $"nvarchar({length})"
+                : "TEXT";
+
             migrationBuilder.AddColumn<string>(
                 name: "ClientIpAddress",
                 table: "WebsiteLeadIntakeLinks",
-                type: "nvarchar(128)",
+                type: StringType(128),
                 maxLength: 128,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "ClientUserAgent",
                 table: "WebsiteLeadIntakeLinks",
-                type: "nvarchar(1024)",
+                type: StringType(1024),
                 maxLength: 1024,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "Fbc",
                 table: "WebsiteLeadIntakeLinks",
-                type: "nvarchar(512)",
+                type: StringType(512),
                 maxLength: 512,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "Fbp",
                 table: "WebsiteLeadIntakeLinks",
-                type: "nvarchar(256)",
+                type: StringType(256),
                 maxLength: 256,
                 nullable: true);
         }

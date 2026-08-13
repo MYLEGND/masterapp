@@ -1,4 +1,5 @@
 ﻿using System;
+using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -7,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(MasterAppDbContext))]
     [Migration("20260403090000_AddClientFinancialPlan")]
     public partial class AddClientFinancialPlan : Migration
     {
@@ -17,13 +19,13 @@ namespace Infrastructure.Migrations
                 name: "ClientFinancialPlans",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ClientId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    JsonData = table.Column<string>(type: "TEXT", nullable: false, defaultValue: "{}"),
-                    LastUpdatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedBy = table.Column<string>(type: "TEXT", maxLength: 320, nullable: true),
-                    Version = table.Column<int>(type: "INTEGER", nullable: false, defaultValue: 1),
-                    IsDeleted = table.Column<bool>(type: "INTEGER", nullable: false, defaultValue: false)
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ClientId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    JsonData = table.Column<string>(type: "nvarchar(max)", nullable: false, defaultValue: "{}"),
+                    LastUpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedBy = table.Column<string>(type: "nvarchar(320)", maxLength: 320, nullable: true),
+                    Version = table.Column<int>(type: "int", nullable: false, defaultValue: 1),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false, defaultValue: false)
                 },
                 constraints: table =>
                 {

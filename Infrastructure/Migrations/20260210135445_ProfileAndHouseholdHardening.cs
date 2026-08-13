@@ -19,7 +19,7 @@ namespace Infrastructure.Migrations
                 maxLength: 320,
                 nullable: false,
                 oldClrType: typeof(string),
-                oldType: "TEXT");
+                oldType: "nvarchar(max)");
 
             migrationBuilder.AlterColumn<string>(
                 name: "AgentUpn",
@@ -28,7 +28,7 @@ namespace Infrastructure.Migrations
                 maxLength: 320,
                 nullable: false,
                 oldClrType: typeof(string),
-                oldType: "TEXT");
+                oldType: "nvarchar(max)");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ClientProfiles_Email",
@@ -97,7 +97,7 @@ WHERE rowid IN (
             migrationBuilder.AlterColumn<string>(
                 name: "Email",
                 table: "ClientProfiles",
-                type: "TEXT",
+                type: "nvarchar(max)",
                 nullable: false,
                 oldClrType: typeof(string),
                 oldType: "nvarchar(320)",
@@ -106,7 +106,7 @@ WHERE rowid IN (
             migrationBuilder.AlterColumn<string>(
                 name: "AgentUpn",
                 table: "AgentClients",
-                type: "TEXT",
+                type: "nvarchar(max)",
                 nullable: false,
                 oldClrType: typeof(string),
                 oldType: "nvarchar(320)",
@@ -118,7 +118,7 @@ WHERE rowid IN (
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ClientUserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false),
-                    StateJson = table.Column<string>(type: "TEXT", nullable: false),
+                    StateJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     ToolKey = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
                 },

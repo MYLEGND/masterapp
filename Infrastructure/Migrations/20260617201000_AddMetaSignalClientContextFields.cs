@@ -1,101 +1,113 @@
+using System;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Infrastructure.Migrations
 {
+    [DbContext(typeof(MasterAppDbContext))]
+    [Migration("20260617201000_AddMetaSignalClientContextFields")]
     public partial class AddMetaSignalClientContextFields : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            var isSqlServer = migrationBuilder.ActiveProvider.Contains(
+                "SqlServer",
+                StringComparison.OrdinalIgnoreCase);
+            var textType = isSqlServer ? "nvarchar(max)" : "TEXT";
+            var integerType = isSqlServer ? "int" : "INTEGER";
+            var boolType = isSqlServer ? "bit" : "INTEGER";
+
             migrationBuilder.AddColumn<string>(
                 name: "DeviceType",
                 table: "MetaSignalEvents",
-                type: "nvarchar(max)",
+                type: textType,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "Browser",
                 table: "MetaSignalEvents",
-                type: "nvarchar(max)",
+                type: textType,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "OperatingSystem",
                 table: "MetaSignalEvents",
-                type: "nvarchar(max)",
+                type: textType,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "UserAgent",
                 table: "MetaSignalEvents",
-                type: "nvarchar(max)",
+                type: textType,
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "ViewportWidth",
                 table: "MetaSignalEvents",
-                type: "int",
+                type: integerType,
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "ViewportHeight",
                 table: "MetaSignalEvents",
-                type: "int",
+                type: integerType,
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "ScreenWidth",
                 table: "MetaSignalEvents",
-                type: "int",
+                type: integerType,
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "ScreenHeight",
                 table: "MetaSignalEvents",
-                type: "int",
+                type: integerType,
                 nullable: true);
 
             migrationBuilder.AddColumn<bool>(
                 name: "WebDriver",
                 table: "MetaSignalEvents",
-                type: "bit",
+                type: boolType,
                 nullable: true);
 
             migrationBuilder.AddColumn<bool>(
                 name: "IsHeadless",
                 table: "MetaSignalEvents",
-                type: "bit",
+                type: boolType,
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "MouseMoveCount",
                 table: "MetaSignalEvents",
-                type: "int",
+                type: integerType,
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "HumanInteractionCount",
                 table: "MetaSignalEvents",
-                type: "int",
+                type: integerType,
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "VisibilityChangeCount",
                 table: "MetaSignalEvents",
-                type: "int",
+                type: integerType,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "Language",
                 table: "MetaSignalEvents",
-                type: "nvarchar(max)",
+                type: textType,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "TimeZone",
                 table: "MetaSignalEvents",
-                type: "nvarchar(max)",
+                type: textType,
                 nullable: true);
         }
 

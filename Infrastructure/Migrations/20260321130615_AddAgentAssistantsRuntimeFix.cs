@@ -11,19 +11,29 @@ namespace Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            var isSqlServer = migrationBuilder.ActiveProvider.Contains(
+                "SqlServer",
+                StringComparison.OrdinalIgnoreCase);
+
+            string GuidType() => isSqlServer ? "uniqueidentifier" : "TEXT";
+            string DateType() => isSqlServer ? "datetime2" : "TEXT";
+            string BoolType() => isSqlServer ? "bit" : "INTEGER";
+            string StringType(int maxLength) =>
+                isSqlServer ? $"nvarchar({maxLength})" : "TEXT";
+
             migrationBuilder.CreateTable(
                 name: "AgentAssistants",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ParentAgentUserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: false),
-                    AssistantUserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: true),
-                    FirstName = table.Column<string>(type: "TEXT", maxLength: 100, nullable: false),
-                    LastName = table.Column<string>(type: "TEXT", maxLength: 100, nullable: false),
-                    Email = table.Column<string>(type: "TEXT", maxLength: 320, nullable: false),
-                    IsActive = table.Column<bool>(type: "INTEGER", nullable: false),
-                    InvitedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    CreatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: GuidType(), nullable: false),
+                    ParentAgentUserId = table.Column<string>(type: StringType(450), maxLength: 450, nullable: false),
+                    AssistantUserId = table.Column<string>(type: StringType(450), maxLength: 450, nullable: true),
+                    FirstName = table.Column<string>(type: StringType(100), maxLength: 100, nullable: false),
+                    LastName = table.Column<string>(type: StringType(100), maxLength: 100, nullable: false),
+                    Email = table.Column<string>(type: StringType(320), maxLength: 320, nullable: false),
+                    IsActive = table.Column<bool>(type: BoolType(), nullable: false),
+                    InvitedAt = table.Column<DateTime>(type: DateType(), nullable: false),
+                    CreatedUtc = table.Column<DateTime>(type: DateType(), nullable: false)
                 },
                 constraints: table =>
                 {

@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS ""AgentProfiles"" (
                 migrationBuilder.AddColumn<string>(
                     name: "Phone",
                     table: "AgentProfiles",
+                    type: "nvarchar(64)",
                     maxLength: 64,
                     nullable: true);
             }

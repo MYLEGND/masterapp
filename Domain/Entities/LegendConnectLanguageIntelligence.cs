@@ -137,6 +137,13 @@ public sealed class LegendTranslationQualityEvidence
     /// artificial support.
     /// </summary>
     public string EvidenceIdentity { get; set; } = string.Empty;
+    /// <summary>
+    /// Optional language-neutral semantic component identity supplied by
+    /// Founder-controlled curriculum evidence. Empty means the observation
+    /// did not have sufficient semantic information; it is never guessed
+    /// from source or target words.
+    /// </summary>
+    public string? SemanticSignature { get; set; }
     public DateTime? ResolvedUtc { get; set; }
     public Guid? ResolvedByAlignmentId { get; set; }
     public DateTime? SupersededUtc { get; set; }
@@ -301,12 +308,22 @@ public sealed class LegendLanguageStructuralPattern
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid CurriculumFamilyId { get; set; }
+    /// <summary>
+    /// Target-language realization evidence is directional. The empty scope
+    /// is reserved for monolingual Founder source observations; no target
+    /// pair may borrow their maturity.
+    /// </summary>
+    public string PairKey { get; set; } = string.Empty;
     public string LanguageCode { get; set; } = string.Empty;
     public string VariationDimension { get; set; } = string.Empty;
     public string RealizationSignature { get; set; } = string.Empty;
     public string MaturityState { get; set; } = "Observation";
     public int SupportCount { get; set; }
     public int ContradictionCount { get; set; }
+    public int IndependentSourceCount { get; set; }
+    public int HumanVerifiedSupportCount { get; set; }
+    public int ProviderOnlySupportCount { get; set; }
+    public decimal Confidence { get; set; }
     public bool IsProductionEligible { get; set; }
     public string Provenance { get; set; } = "FounderApproved";
     public DateTime? SupersededUtc { get; set; }
@@ -324,6 +341,11 @@ public sealed class LegendLanguageStructuralEvidence
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid StructuralPatternId { get; set; }
     public Guid CurriculumFamilyId { get; set; }
+    /// <summary>
+    /// The same non-null pair scope as the owning structural pattern. Empty
+    /// denotes a monolingual Founder source comparison.
+    /// </summary>
+    public string PairKey { get; set; } = string.Empty;
     public string LanguageCode { get; set; } = string.Empty;
     public string VariationDimension { get; set; } = string.Empty;
     public Guid BaselineCurriculumExampleId { get; set; }
@@ -339,6 +361,19 @@ public sealed class LegendLanguageStructuralEvidence
     /// </summary>
     public string BaselineComponentSignature { get; set; } = string.Empty;
     public string ComparedComponentSignature { get; set; } = string.Empty;
+    /// <summary>
+    /// Stable identity of the distinct source assets that supplied this
+    /// comparison. Repeated provider calls and exact duplicates therefore
+    /// cannot manufacture independent support.
+    /// </summary>
+    public string IndependentSourceIdentity { get; set; } = string.Empty;
+    /// <summary>
+    /// Supported, Contradictory, or Insufficient. Provider-derived evidence
+    /// starts Insufficient and cannot mature a target-language pattern on its
+    /// own.
+    /// </summary>
+    public string ContributionState { get; set; } = "Insufficient";
+    public bool IsHumanVerifiedSupport { get; set; }
     public string Provenance { get; set; } = "FounderApproved";
     public DateTime? SupersededUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
@@ -417,6 +452,14 @@ public sealed class LegendLanguageCompositionalAnchor
     public Guid CurriculumExampleId { get; set; }
     public string Dimension { get; set; } = string.Empty;
     public string Value { get; set; } = string.Empty;
+    /// <summary>
+    /// Stable language-neutral identity for one Founder-controlled semantic
+    /// dimension/value. It does not contain a curriculum-family, source-word,
+    /// or target-language rule, so independent controlled examples may
+    /// accumulate meaning evidence safely. It stays blank for historical rows
+    /// until existing controlled evidence is safely reconciled.
+    /// </summary>
+    public string? SemanticSignature { get; set; }
     public string AnchorSignature { get; set; } = string.Empty;
     public string Provenance { get; set; } = "FounderApproved";
     public DateTime? SupersededUtc { get; set; }

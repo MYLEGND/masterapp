@@ -18,7 +18,7 @@ namespace Infrastructure.Migrations
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     ClientUserId = table.Column<string>(type: "nvarchar(450)", maxLength: 450, nullable: false),
                     ToolKey = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    StateJson = table.Column<string>(type: "TEXT", nullable: false),
+                    StateJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     UpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
                 },
                 constraints: table =>

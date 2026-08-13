@@ -18,18 +18,21 @@ public partial class BackfillLegacyWorkstationLeadOriginalType : Migration
             migrationBuilder.Sql(
                 """
                 IF OBJECT_ID(N'dbo.WorkstationLeadProfiles', N'U') IS NOT NULL
+                   AND COL_LENGTH(N'dbo.WorkstationLeadProfiles', N'OriginalLeadType') IS NOT NULL
                 BEGIN
-                    UPDATE dbo.WorkstationLeadProfiles
-                    SET OriginalLeadType = N'MortgageProtection'
-                    WHERE OriginalLeadType IS NULL
-                       OR LTRIM(RTRIM(OriginalLeadType)) = N''
-                       OR LTRIM(RTRIM(OriginalLeadType)) NOT IN (
-                            N'MortgageProtection',
-                            N'LifeInsurance',
-                            N'FinalExpense',
-                            N'Medicare',
-                            N'DisabilityInsurance'
-                       );
+                    EXEC(N'
+                        UPDATE dbo.WorkstationLeadProfiles
+                        SET OriginalLeadType = N''MortgageProtection''
+                        WHERE OriginalLeadType IS NULL
+                           OR LTRIM(RTRIM(OriginalLeadType)) = N''''
+                           OR LTRIM(RTRIM(OriginalLeadType)) NOT IN (
+                                N''MortgageProtection'',
+                                N''LifeInsurance'',
+                                N''FinalExpense'',
+                                N''Medicare'',
+                                N''DisabilityInsurance''
+                           );
+                    ');
                 END
                 """);
         }

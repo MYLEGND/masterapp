@@ -1230,6 +1230,17 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                 await scope.ServiceProvider
                     .GetRequiredService<LegendConnectFounderTrainingIngestionAuthority>()
                     .ReconcileLegacyAsync(25, stoppingToken);
+                // Reuse the existing learning worker for bounded,
+                // idempotent reevaluation. This is not a second planner or
+                // queue: active alignments stay historical while their
+                // reusable structural contribution is recalculated through
+                // the canonical curriculum and quality authorities.
+                await scope.ServiceProvider
+                    .GetRequiredService<LegendConnectCurriculumService>()
+                    .ReevaluateHistoricalAlignmentsAsync(100, stoppingToken);
+                await scope.ServiceProvider
+                    .GetRequiredService<ILegendConnectTranslationIntelligence>()
+                    .ReevaluateHistoricalProviderObservationsAsync(100, stoppingToken);
                 if ((await runtime.GetEffectiveAsync(stoppingToken)).LearningEnabled)
                 {
                     await scope.ServiceProvider.GetRequiredService<LegendConnectCorpusService>()

@@ -476,6 +476,258 @@
     grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
+/* The top-level Founder production control reuses the one persisted
+   ContextualCompositionMode. These are presentation rules only; no client
+   state or alternate composition authority is introduced. */
+.legend-connect-production-control {
+    display: grid;
+    gap: 0.48rem;
+    width: min(100%, 520px);
+    margin-top: 0.4rem;
+    padding: 0.68rem 0.72rem;
+    border: 1px solid rgba(212, 170, 71, 0.34);
+    border-radius: 15px;
+    background:
+        linear-gradient(135deg, rgba(212, 170, 71, 0.12), transparent 46%),
+        rgba(7, 18, 39, 0.56);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.legend-connect-production-control-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.68rem;
+}
+
+.legend-connect-production-control-head > span:first-child {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+}
+
+.legend-connect-production-kicker {
+    color: #f0d991;
+    font-size: 0.62rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.legend-connect-production-title {
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-weight: 900;
+    line-height: 1.1;
+}
+
+.legend-connect-production-control > p {
+    margin: 0;
+    color: var(--dash-text-soft);
+    font-size: 0.73rem;
+    font-weight: 650;
+    line-height: 1.36;
+}
+
+.legend-connect-composition-status {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    min-height: 26px;
+    padding: 0.22rem 0.52rem;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    font-size: 0.64rem;
+    font-weight: 900;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.legend-connect-composition-status--disabled {
+    color: #c0ccdd;
+    background: rgba(148, 163, 184, 0.12);
+}
+
+.legend-connect-composition-status--shadow {
+    color: #f0d991;
+    background: rgba(212, 170, 71, 0.14);
+    box-shadow: inset 0 0 12px rgba(212, 170, 71, 0.08);
+}
+
+.legend-connect-composition-status--active {
+    color: #ffe29a;
+    border-color: rgba(255, 226, 154, 0.84);
+    background: linear-gradient(180deg, rgba(212, 170, 71, 0.34), rgba(143, 106, 29, 0.28));
+    box-shadow: 0 0 14px rgba(212, 170, 71, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.legend-connect-production-actions {
+    display: grid;
+    gap: 0.46rem;
+}
+
+.legend-connect-production-actions form,
+.legend-connect-composition-modes form {
+    margin: 0;
+}
+
+.legend-connect-production-primary,
+.legend-connect-composition-mode,
+.legend-connect-modal-cancel,
+.legend-connect-modal-confirm {
+    appearance: none;
+    border: 1px solid transparent;
+    font: inherit;
+    font-weight: 900;
+    cursor: pointer;
+    transition: transform 0.16s ease, background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.legend-connect-production-primary {
+    width: 100%;
+    min-height: 40px;
+    padding: 0.48rem 0.72rem;
+    border-color: rgba(255, 231, 163, 0.86);
+    border-radius: 11px;
+    background: linear-gradient(180deg, #f4d880, #c89b35);
+    color: #142344;
+    font-size: 0.76rem;
+    letter-spacing: 0.025em;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.48), 0 7px 16px rgba(4, 10, 28, 0.22);
+}
+
+.legend-connect-production-primary--disable {
+    border-color: rgba(240, 217, 145, 0.7);
+    background: rgba(8, 18, 38, 0.68);
+    color: #f0d991;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.legend-connect-production-primary:hover,
+.legend-connect-production-primary:focus-visible,
+.legend-connect-modal-confirm:hover,
+.legend-connect-modal-confirm:focus-visible {
+    border-color: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 20px rgba(4, 10, 28, 0.3);
+}
+
+.legend-connect-composition-modes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.38rem;
+}
+
+.legend-connect-composition-mode {
+    width: 100%;
+    min-height: 32px;
+    padding: 0.3rem 0.4rem;
+    border-color: rgba(150, 182, 255, 0.26);
+    border-radius: 9px;
+    background: rgba(8, 18, 38, 0.62);
+    color: var(--dash-text-soft);
+    font-size: 0.68rem;
+}
+
+.legend-connect-composition-mode:hover,
+.legend-connect-composition-mode:focus-visible {
+    border-color: rgba(240, 217, 145, 0.82);
+    background: rgba(212, 170, 71, 0.12);
+}
+
+.legend-connect-composition-mode.is-current,
+.legend-connect-composition-mode:disabled {
+    cursor: default;
+    opacity: 1;
+}
+
+.legend-connect-composition-mode.is-current {
+    border-color: rgba(240, 217, 145, 0.72);
+    background: rgba(212, 170, 71, 0.16);
+    color: #f7e3a6;
+}
+
+.legend-connect-composition-mode--active.is-current {
+    border-color: rgba(255, 226, 154, 0.84);
+    background: rgba(212, 170, 71, 0.32);
+    color: #fff1c3;
+}
+
+.legend-connect-production-primary:focus-visible,
+.legend-connect-composition-mode:focus-visible,
+.legend-connect-modal-cancel:focus-visible,
+.legend-connect-modal-confirm:focus-visible {
+    outline: 2px solid #fff0b5;
+    outline-offset: 3px;
+}
+
+.legend-connect-composition-modal .modal-dialog {
+    width: min(520px, calc(100vw - 2rem));
+    max-width: none;
+}
+
+.legend-connect-composition-modal .modal-header,
+.legend-connect-composition-modal .modal-body,
+.legend-connect-composition-modal .modal-footer {
+    padding: 0.84rem 0.92rem;
+}
+
+.legend-connect-composition-modal .modal-header {
+    align-items: flex-start;
+    gap: 0.68rem;
+}
+
+.legend-connect-composition-modal .modal-body {
+    display: grid;
+    gap: 0.58rem;
+    color: var(--dash-text-soft);
+    font-size: 0.82rem;
+    line-height: 1.46;
+}
+
+.legend-connect-composition-modal .modal-body p {
+    margin: 0;
+}
+
+.legend-connect-composition-modal .modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.55rem;
+    border-color: rgba(212, 170, 71, 0.16);
+}
+
+.legend-connect-composition-modal .modal-footer form {
+    margin: 0;
+}
+
+.legend-connect-modal-cancel,
+.legend-connect-modal-confirm {
+    min-height: 38px;
+    padding: 0.42rem 0.66rem;
+    border-radius: 9px;
+    font-size: 0.73rem;
+}
+
+.legend-connect-modal-cancel {
+    border-color: rgba(150, 182, 255, 0.32);
+    background: rgba(8, 18, 38, 0.7);
+    color: var(--dash-text-soft);
+}
+
+.legend-connect-modal-cancel:hover,
+.legend-connect-modal-cancel:focus-visible {
+    border-color: rgba(240, 217, 145, 0.72);
+    color: #ffffff;
+}
+
+.legend-connect-modal-confirm {
+    border-color: rgba(255, 231, 163, 0.86);
+    background: linear-gradient(180deg, #f4d880, #c89b35);
+    color: #142344;
+}
+
 /* Semantic Founder telemetry tones. The values remain server-authoritative;
    these classes only make healthy, neutral, active, pending, and blocked
    states scannable in the established Legend dashboard language. */
@@ -3367,6 +3619,61 @@ textarea.client-create-notes {
     }
 
     .legend-connect-focus-footer .dashboard-command-action {
+        width: 100%;
+    }
+
+    .legend-connect-production-control {
+        width: 100%;
+        padding: 0.64rem;
+        border-radius: 13px;
+    }
+
+    .legend-connect-production-control-head {
+        align-items: flex-start;
+    }
+
+    .legend-connect-production-title {
+        font-size: 0.86rem;
+    }
+
+    .legend-connect-production-control > p {
+        font-size: 0.71rem;
+    }
+
+    .legend-connect-composition-modes {
+        gap: 0.3rem;
+    }
+
+    .legend-connect-composition-mode {
+        min-height: 34px;
+        padding-inline: 0.2rem;
+        font-size: 0.64rem;
+    }
+
+    .legend-connect-composition-modal .modal-dialog {
+        width: calc(100vw - 0.5rem);
+        margin: 0.25rem auto;
+    }
+
+    .legend-connect-composition-modal .modal-content {
+        max-height: calc(100dvh - 0.5rem);
+        border-radius: 18px;
+    }
+
+    .legend-connect-composition-modal .modal-header,
+    .legend-connect-composition-modal .modal-body,
+    .legend-connect-composition-modal .modal-footer {
+        padding: 0.76rem;
+    }
+
+    .legend-connect-composition-modal .modal-footer {
+        align-items: stretch;
+        flex-direction: column-reverse;
+    }
+
+    .legend-connect-composition-modal .modal-footer form,
+    .legend-connect-modal-cancel,
+    .legend-connect-modal-confirm {
         width: 100%;
     }
 }

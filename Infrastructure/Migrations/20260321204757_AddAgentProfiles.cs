@@ -1,4 +1,5 @@
 using System;
+using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -7,23 +8,33 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(MasterAppDbContext))]
     [Migration("20260321204757_AddAgentProfiles")]
     public partial class AddAgentProfiles : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            var isSqlServer = migrationBuilder.ActiveProvider.Contains(
+                "SqlServer",
+                StringComparison.OrdinalIgnoreCase);
+
+            string GuidType() => isSqlServer ? "uniqueidentifier" : "TEXT";
+            string DateType() => isSqlServer ? "datetime2" : "TEXT";
+            string StringType(int maxLength) =>
+                isSqlServer ? $"nvarchar({maxLength})" : "TEXT";
+
             migrationBuilder.CreateTable(
                 name: "AgentProfiles",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    AgentUserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: false),
-                    AgentUpn = table.Column<string>(type: "TEXT", maxLength: 320, nullable: false),
-                    FullName = table.Column<string>(type: "TEXT", maxLength: 200, nullable: true),
-                    Npn = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                    CreatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: GuidType(), nullable: false),
+                    AgentUserId = table.Column<string>(type: StringType(450), maxLength: 450, nullable: false),
+                    AgentUpn = table.Column<string>(type: StringType(320), maxLength: 320, nullable: false),
+                    FullName = table.Column<string>(type: StringType(200), maxLength: 200, nullable: true),
+                    Npn = table.Column<string>(type: StringType(64), maxLength: 64, nullable: true),
+                    CreatedUtc = table.Column<DateTime>(type: DateType(), nullable: false),
+                    UpdatedUtc = table.Column<DateTime>(type: DateType(), nullable: false)
                 },
                 constraints: table =>
                 {

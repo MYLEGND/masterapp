@@ -26,31 +26,31 @@ namespace Infrastructure.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "CrmNextText",
                 table: "ClientProfiles",
-                type: "TEXT",
+                type: "nvarchar(max)",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "CrmNotes",
                 table: "ClientProfiles",
-                type: "TEXT",
+                type: "nvarchar(max)",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "CrmPriority",
                 table: "ClientProfiles",
-                type: "TEXT",
+                type: "nvarchar(max)",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "CrmStatus",
                 table: "ClientProfiles",
-                type: "TEXT",
+                type: "nvarchar(max)",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "CrmTags",
                 table: "ClientProfiles",
-                type: "TEXT",
+                type: "nvarchar(max)",
                 nullable: true);
         }
 

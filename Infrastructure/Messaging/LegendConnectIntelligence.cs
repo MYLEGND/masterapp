@@ -43,6 +43,10 @@ internal interface ILegendConnectTranslationIntelligence
         Guid alignmentId,
         CancellationToken cancellationToken = default);
 
+    Task<int> ReevaluateHistoricalProviderObservationsAsync(
+        int take,
+        CancellationToken cancellationToken = default);
+
     Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
         CancellationToken cancellationToken = default);
 
@@ -202,6 +206,41 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             signalsRecorded = true;
         }
 
+        // Founder-controlled semantic anchors describe only facts explicitly
+        // present in a structured source curriculum. When a different
+        // human-verified target exists for this exact directional source, the
+        // provider result is marked as insufficient for each known component.
+        // This is deliberately component evidence, not a claim that a word
+        // count or a target-language token proves a particular grammar rule.
+        if (conflicts.Count > 0)
+        {
+            var semanticComponents = await _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+                .Where(item => item.TextUnitId == observation.Source.Id && item.SupersededUtc == null &&
+                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    item.SemanticSignature != null && item.SemanticSignature != string.Empty)
+                .Select(item => new { item.SemanticSignature, item.Dimension, item.Value })
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            foreach (var component in semanticComponents)
+            {
+                foreach (var conflictingAlignmentId in conflicts)
+                {
+                    changed |= await AddEvidenceIfAbsentAsync(
+                        observation,
+                        "Insufficient",
+                        "known_semantic_component_not_realized",
+                        conflictingAlignmentId,
+                        null,
+                        null,
+                        "Open",
+                        null,
+                        cancellationToken,
+                        component.SemanticSignature);
+                    signalsRecorded = true;
+                }
+            }
+        }
+
         // The context signature is an existing canonical structural summary,
         // not a token or English-word substitution rule. A relationship is
         // usable only when it is Founder-approved verified evidence in this
@@ -259,6 +298,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                     evidence.SupersededUtc == null &&
                     evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                     pattern.SupersededUtc == null &&
+                    pattern.PairKey == observation.Alignment.PairKey &&
                     pattern.LanguageCode == observation.Target.LanguageCode &&
                     pattern.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                     (pattern.MaturityState == "Supported" || pattern.MaturityState == "Validated")
@@ -308,6 +348,23 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
 
         if (changed)
             await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<int> ReevaluateHistoricalProviderObservationsAsync(
+        int take,
+        CancellationToken cancellationToken = default)
+    {
+        var observationIds = await _db.Set<LegendTranslationAlignment>().AsNoTracking()
+            .Where(item => item.Provenance == LegendConnectKnowledgeProvenance.ProviderDerived &&
+                item.SupersededUtc == null)
+            .OrderBy(item => item.UpdatedUtc)
+            .ThenBy(item => item.Id)
+            .Take(Math.Clamp(take, 1, 250))
+            .Select(item => item.Id)
+            .ToListAsync(cancellationToken);
+        foreach (var observationId in observationIds)
+            await EvaluateProviderObservationAsync(observationId, cancellationToken);
+        return observationIds.Count;
     }
 
     public async Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
@@ -545,13 +602,15 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
         Guid? contextRelationshipId,
         string resolutionState,
         Guid? resolvedByAlignmentId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? semanticSignature = null)
     {
         var identity = LegendLanguageIdentity.TextHash(string.Join('|',
             observation.Alignment.Id.ToString("D"), signal, reasonCode,
             relatedAlignmentId?.ToString("D") ?? "none",
             structuralPatternId?.ToString("D") ?? "none",
-            contextRelationshipId?.ToString("D") ?? "none"));
+            contextRelationshipId?.ToString("D") ?? "none",
+            semanticSignature ?? "none"));
         if (_db.Set<LegendTranslationQualityEvidence>().Local.Any(item => item.EvidenceIdentity == identity) ||
             await _db.Set<LegendTranslationQualityEvidence>().AnyAsync(item => item.EvidenceIdentity == identity, cancellationToken))
         {
@@ -573,6 +632,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             ReasonCode = reasonCode,
             ResolutionState = resolutionState,
             EvidenceIdentity = identity,
+            SemanticSignature = semanticSignature,
             ResolvedUtc = resolutionState == "Open" ? null : now,
             ResolvedByAlignmentId = resolvedByAlignmentId,
             CreatedUtc = now,

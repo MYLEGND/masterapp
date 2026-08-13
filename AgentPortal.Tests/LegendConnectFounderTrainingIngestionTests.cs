@@ -444,9 +444,11 @@ public sealed class LegendConnectFounderTrainingIngestionTests
 
         Assert.True(third.Succeeded, third.Message);
         var originalPattern = await db.LegendLanguageStructuralPatterns.SingleAsync(item => item.Id == supportedBeforeContradiction.Id);
-        Assert.True(originalPattern.ContradictionCount > 0);
-        Assert.Equal("Observation", originalPattern.MaturityState);
-        Assert.False(await curriculum.TryValidatePatternAsync(originalPattern.Id));
+        Assert.Equal(0, originalPattern.ContradictionCount);
+        Assert.True(await curriculum.TryValidatePatternAsync(originalPattern.Id));
+        var validated = await db.LegendLanguageStructuralPatterns.SingleAsync(item => item.Id == originalPattern.Id);
+        Assert.Equal("Validated", validated.MaturityState);
+        Assert.False(validated.IsProductionEligible);
     }
 
     [Fact]

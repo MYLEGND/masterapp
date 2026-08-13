@@ -27,7 +27,7 @@ namespace Infrastructure.Migrations
                     ReasonCode = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
                     CorrelationId = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
                     OccurredUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    SanitizedMetadataJson = table.Column<string>(type: "text", nullable: true)
+                    SanitizedMetadataJson = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -52,7 +52,7 @@ namespace Infrastructure.Migrations
                     RetryUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                     SafeErrorCode = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
                     PayloadHash = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
-                    RetainedPayloadJson = table.Column<string>(type: "text", nullable: true),
+                    RetainedPayloadJson = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
                 },
                 constraints: table =>

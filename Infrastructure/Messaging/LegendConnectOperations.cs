@@ -427,6 +427,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 && reusableSourceTextUnitId is null
                 ? await _founderTrainingIngestion.SubmitAsync(founder, approved, cancellationToken)
                 : await _corpus.SubmitApprovedKnowledgeAsync(approved, cancellationToken, reusableSourceTextUnitId);
+            if (result.Succeeded && result.AlignmentId is { } alignmentId)
+                await _curriculum.AttachValidatedAlignmentAsync(alignmentId, cancellationToken);
             await WriteAuditAsync(founder, "FounderKnowledgeSubmitted", result, null, cancellationToken);
             if (result.DuplicatePrevented && _operationalEvents is not null)
             {
@@ -528,6 +530,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 if (retiredTargetTextUnitId is not null)
                     await _curriculum.ReconcileSupersededExamplesAsync([retiredTargetTextUnitId.Value], cancellationToken);
             }
+            await _curriculum.AttachValidatedAlignmentAsync(result.AlignmentId.Value, cancellationToken);
             await WriteAuditAsync(founder, "FounderKnowledgeCorrected", result, supersededAlignmentId, cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -558,7 +561,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 
         var result = await _intelligence.ApproveProviderObservationAsync(alignmentId, cancellationToken);
         if (result.Succeeded)
+        {
+            await _curriculum.AttachValidatedAlignmentAsync(alignmentId, cancellationToken);
             await WriteQualityReviewAuditAsync(founder, "FounderProviderObservationApproved", result, alignmentId, cancellationToken);
+        }
         return ToQualityReviewActionResult(result);
     }
 

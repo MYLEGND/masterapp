@@ -8,6 +8,13 @@
     var readiness = Model.ProductionReadiness;
     var routedRequestCount = dashboard.TranslationMemoryHitCount + dashboard.ContextualInternalServeCount + dashboard.AzureFallbackCount;
     var focusEnabled = policy.FocusedTargetLanguageCodes.Count > 0;
+    var compositionMode = policy.ContextualCompositionMode switch
+    {
+        "Disabled" => "Disabled",
+        "Active" => "Active",
+        _ => "Shadow"
+    };
+    var compositionStateClass = compositionMode.ToLowerInvariant();
     var focusedLanguageNames = string.Join(", ", dashboard.Languages
         .Where(language => policy.FocusedTargetLanguageCodes.Contains(language.LanguageCode, StringComparer.OrdinalIgnoreCase))
         .Select(language => language.DisplayName));
@@ -24,6 +31,40 @@
                 <span class="dashboard-eyebrow">Founder · Language intelligence</span>
                 <h1 class="dashboard-hero-title" id="legend-connect-title">Legend® Connect</h1>
                 <p>Server-owned language, learning, quality, and capacity operations.</p>
+                <section class="legend-connect-production-control" aria-labelledby="production-composition-title">
+                    <div class="legend-connect-production-control-head">
+                        <span><span class="legend-connect-production-kicker">Production composition</span><span class="legend-connect-production-title" id="production-composition-title">Internal composition boundary</span></span>
+                        <span class="legend-connect-composition-status legend-connect-composition-status--@compositionStateClass" aria-label="Current server mode: @compositionMode">@compositionMode</span>
+                    </div>
+                    <p>Controls the existing production-eligible internal composition boundary before Azure fallback. All evidence, confidence, language-isolation, consent, and Translation Memory gates remain intact.</p>
+                    <div class="legend-connect-production-actions">
+                        @if (compositionMode == "Active")
+                        {
+                            <form method="post" asp-action="SetCompositionMode">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="ContextualCompositionMode" value="Disabled" />
+                                <button type="submit" class="legend-connect-production-primary legend-connect-production-primary--disable">Disable production composition</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <button type="button" class="legend-connect-production-primary" data-bs-toggle="modal" data-bs-target="#productionCompositionConfirmationModal">Enable production composition</button>
+                        }
+                        <div class="legend-connect-composition-modes" role="group" aria-label="Select production composition mode">
+                            <form method="post" asp-action="SetCompositionMode">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="ContextualCompositionMode" value="Disabled" />
+                                <button type="submit" class="legend-connect-composition-mode @(compositionMode == "Disabled" ? "is-current" : null)" aria-current="@(compositionMode == "Disabled" ? "true" : null)" @(compositionMode == "Disabled" ? "disabled" : null)>Disabled</button>
+                            </form>
+                            <form method="post" asp-action="SetCompositionMode">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="ContextualCompositionMode" value="Shadow" />
+                                <button type="submit" class="legend-connect-composition-mode @(compositionMode == "Shadow" ? "is-current" : null)" aria-current="@(compositionMode == "Shadow" ? "true" : null)" @(compositionMode == "Shadow" ? "disabled" : null)>Shadow</button>
+                            </form>
+                            <button type="button" class="legend-connect-composition-mode legend-connect-composition-mode--active @(compositionMode == "Active" ? "is-current" : null)" aria-current="@(compositionMode == "Active" ? "true" : null)" data-bs-toggle="modal" data-bs-target="#productionCompositionConfirmationModal" @(compositionMode == "Active" ? "disabled" : null)>Active</button>
+                        </div>
+                    </div>
+                </section>
             </div>
             <div class="dashboard-hero-stats" aria-label="Legend Connect operational snapshot">
                 <div class="dashboard-stat-card is-primary @LegendConnectMetricTone.InformationalActivity(dashboard.Languages.Count)"><span class="dashboard-stat-label">Active languages</span><span class="dashboard-stat-value">@dashboard.Languages.Count</span></div>
@@ -88,11 +129,10 @@
         <form method="post" asp-action="UpdateRuntimePolicy" class="dashboard-search-panel">
             @Html.AntiForgeryToken()
             <div class="dashboard-form-grid">
-                <label class="dashboard-form-field"><span>Contextual composition mode</span><select name="ContextualCompositionMode"><option value="Disabled" selected="@(policy.ContextualCompositionMode == "Disabled")">Disabled</option><option value="Shadow" selected="@(policy.ContextualCompositionMode == "Shadow")">Shadow</option><option value="Active" selected="@(policy.ContextualCompositionMode == "Active")">Active</option></select></label>
                 <label class="dashboard-form-field"><span>Contextual minimum confidence</span><input name="ContextualMinimumConfidence" type="number" min="0.90" max="1" step="0.01" value="@policy.ContextualMinimumConfidence.ToString(System.Globalization.CultureInfo.InvariantCulture)" required /></label>
                 <label class="dashboard-form-field"><span>Learning pipeline</span><span><input name="LearningEnabled" type="checkbox" value="true" @(policy.LearningEnabled ? "checked" : null) /> Enable autonomous learning processing</span></label>
             </div>
-            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save composition policy</button></div>
+            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save learning settings</button></div>
         </form>
         <form method="post" asp-action="ActivateAutonomousAcquisition" class="legend-connect-acquisition-focus" data-language-focus-form>
             @Html.AntiForgeryToken()
@@ -297,6 +337,32 @@
         </div>
     </details>
 </main>
+
+<div class="modal fade legend-modal legend-connect-composition-modal" id="productionCompositionConfirmationModal" tabindex="-1" aria-labelledby="productionCompositionConfirmationTitle" aria-describedby="productionCompositionConfirmationDetail" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <span class="dashboard-section-kicker">Founder confirmation</span>
+                    <h2 class="modal-title" id="productionCompositionConfirmationTitle">Enable production composition?</h2>
+                </div>
+                <button type="button" class="dashboard-modal-close" data-bs-dismiss="modal" aria-label="Close confirmation and return to Legend Connect">×</button>
+            </div>
+            <div class="modal-body" id="productionCompositionConfirmationDetail">
+                <p>LEGEND® Connect may use existing production-eligible internal structural composition before provider fallback where the current runtime gate permits it.</p>
+                <p>This does not bypass Translation Memory rules, production eligibility, confidence thresholds, quality evidence, language isolation, Azure fallback, or consent and privacy controls.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="legend-connect-modal-cancel" data-bs-dismiss="modal">Cancel</button>
+                <form method="post" asp-action="SetCompositionMode">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="ContextualCompositionMode" value="Active" />
+                    <button type="submit" class="legend-connect-modal-confirm">Enable production composition</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 
 @if (Model.SelectedLanguageKnowledge is { } languageKnowledge)
 {

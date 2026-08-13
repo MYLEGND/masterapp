@@ -42,7 +42,7 @@ namespace Infrastructure.Migrations
                     EventUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     ReceivedUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     SubmitOutcome = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: true),
-                    MetadataJson = table.Column<string>(type: "TEXT", nullable: true)
+                    MetadataJson = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
                 constraints: table =>
                 {

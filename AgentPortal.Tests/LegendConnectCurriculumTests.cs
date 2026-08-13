@@ -94,7 +94,13 @@ public sealed class LegendConnectCurriculumTests
             var patterns = await db.LegendLanguageStructuralPatterns
                 .Where(item => item.CurriculumFamilyId == family.Id && item.LanguageCode == language)
                 .ToListAsync();
-            Assert.Contains(patterns, item => item.MaturityState == "Supported" && item.SupportCount >= 3);
+            Assert.Contains(patterns, item => item.ProviderOnlySupportCount > 0);
+            Assert.All(patterns, item =>
+            {
+                Assert.Equal(0, item.SupportCount);
+                Assert.NotEqual("Supported", item.MaturityState);
+                Assert.NotEqual("Validated", item.MaturityState);
+            });
             Assert.All(patterns, item => Assert.False(item.IsProductionEligible));
             Assert.All(patterns, item => Assert.Equal("ProviderDerived", item.Provenance));
         }
@@ -121,7 +127,7 @@ public sealed class LegendConnectCurriculumTests
     }
 
     [Fact]
-    public async Task ContradictoryTargetEvidence_DoesNotPromoteOrValidateAStructuralPattern()
+    public async Task ProviderOnlyTargetEvidence_DoesNotPromoteOrValidateAStructuralPattern()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var configuration = Configuration();
@@ -134,14 +140,19 @@ public sealed class LegendConnectCurriculumTests
         await ProcessQueuedCurriculumAsync(db, configuration, registry, corpus, curriculum, new ContradictoryShapeProvider());
 
         var family = await db.LegendCurriculumFamilies.SingleAsync(item => item.FamilyKey == "possession.contradiction");
-        var pattern = await db.LegendLanguageStructuralPatterns
+        var patterns = await db.LegendLanguageStructuralPatterns
             .Where(item => item.CurriculumFamilyId == family.Id && item.LanguageCode == "es" && item.VariationDimension == "person")
-            .OrderByDescending(item => item.ContradictionCount)
-            .FirstAsync();
-        Assert.True(pattern.ContradictionCount > 0);
-        Assert.Equal("Observation", pattern.MaturityState);
-        Assert.False(await curriculum.TryValidatePatternAsync(pattern.Id));
-        Assert.False((await db.LegendLanguageStructuralPatterns.SingleAsync(item => item.Id == pattern.Id)).IsProductionEligible);
+            .ToListAsync();
+        Assert.NotEmpty(patterns);
+        Assert.All(patterns, pattern =>
+        {
+            Assert.Equal(0, pattern.SupportCount);
+            Assert.True(pattern.ProviderOnlySupportCount > 0);
+            Assert.NotEqual("Supported", pattern.MaturityState);
+            Assert.False(pattern.IsProductionEligible);
+        });
+        foreach (var pattern in patterns)
+            Assert.False(await curriculum.TryValidatePatternAsync(pattern.Id));
     }
 
     [Fact]

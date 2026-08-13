@@ -35,11 +35,28 @@ IF EXISTS (
                 migrationBuilder.Sql("DROP INDEX IF EXISTS \"IX_ClientProfiles_Email\";");
             }
 
-            migrationBuilder.CreateIndex(
-                name: "IX_ClientProfiles_Email",
-                table: "ClientProfiles",
-                column: "Email",
-                unique: true);
+            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+            {
+                migrationBuilder.Sql(@"
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = N'IX_ClientProfiles_Email'
+      AND object_id = OBJECT_ID(N'[ClientProfiles]')
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_ClientProfiles_Email]
+        ON [ClientProfiles] ([Email]);
+END");
+            }
+            else
+            {
+                migrationBuilder.CreateIndex(
+                    name: "IX_ClientProfiles_Email",
+                    table: "ClientProfiles",
+                    column: "Email",
+                    unique: true);
+            }
         }
 
         /// <inheritdoc />

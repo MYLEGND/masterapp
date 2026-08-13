@@ -15,7 +15,7 @@ namespace Infrastructure.Migrations.ScriptsCrm
             migrationBuilder.AddColumn<string>(
                 name: "OpportunityPlanningJson",
                 table: "ScriptLeadProfiles",
-                type: "TEXT",
+                type: "nvarchar(max)",
                 nullable: true);
         }
 
