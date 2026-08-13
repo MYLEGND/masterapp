@@ -519,6 +519,125 @@ public sealed class LegendConnectOperationalProofTests
     }
 
     [Fact]
+    public async Task FounderCorrection_RetiresOnlyItsDerivedActiveEvidenceAndReplaysWithoutResurrection()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var operations = Operations(db, registry, configuration);
+        var first = await operations.SubmitFounderKnowledgeAsync("founder", new LegendConnectKnowledgeSubmission(
+            "en", "A controlled source one.", "ht", "Yon sib kontwole youn.", "Training", null, null, "FounderApproved"));
+        var unrelated = await operations.SubmitFounderKnowledgeAsync("founder", new LegendConnectKnowledgeSubmission(
+            "en", "A controlled source two.", "ht", "Yon sib kontwole de.", "Training", null, null, "FounderApproved"));
+        Assert.True(first.Succeeded, first.Message);
+        Assert.True(unrelated.Succeeded, unrelated.Message);
+
+        var firstSource = await db.LegendLanguageTextUnits.SingleAsync(item => item.Id == first.SourceTextUnitId);
+        var firstTarget = await db.LegendLanguageTextUnits.SingleAsync(item => item.Id == first.TargetTextUnitId);
+        var unrelatedSource = await db.LegendLanguageTextUnits.SingleAsync(item => item.Id == unrelated.SourceTextUnitId);
+        var unrelatedTarget = await db.LegendLanguageTextUnits.SingleAsync(item => item.Id == unrelated.TargetTextUnitId);
+        var family = new LegendCurriculumFamily { Id = Guid.NewGuid(), FamilyKey = "correction.lineage", Provenance = "FounderApproved" };
+        var firstSourceExample = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(), CurriculumFamilyId = family.Id, TextUnitId = firstSource.Id,
+            LanguageCode = "en", Provenance = "FounderApproved"
+        };
+        var firstTargetExample = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(), CurriculumFamilyId = family.Id, TextUnitId = firstTarget.Id,
+            LanguageCode = "ht", Provenance = "FounderApproved", DerivedFromCurriculumExampleId = firstSourceExample.Id
+        };
+        var unrelatedSourceExample = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(), CurriculumFamilyId = family.Id, TextUnitId = unrelatedSource.Id,
+            LanguageCode = "en", Provenance = "FounderApproved"
+        };
+        var unrelatedTargetExample = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(), CurriculumFamilyId = family.Id, TextUnitId = unrelatedTarget.Id,
+            LanguageCode = "ht", Provenance = "FounderApproved", DerivedFromCurriculumExampleId = unrelatedSourceExample.Id
+        };
+        var pattern = new LegendLanguageStructuralPattern
+        {
+            Id = Guid.NewGuid(), CurriculumFamilyId = family.Id, PairKey = "en:ht", LanguageCode = "ht",
+            PropositionSignature = "correction-proposition", VariationDimension = "controlled", RealizationSignature = "controlled",
+            SupportCount = 2, IndependentSourceCount = 2, HumanVerifiedSupportCount = 2, Confidence = 1m,
+            MaturityState = "Candidate", Provenance = "FounderApproved"
+        };
+        var relationship = new LegendLanguageStructuralRelationship
+        {
+            Id = Guid.NewGuid(), PairKey = "en:ht", LanguageCode = "ht", VariationDimension = "controlled",
+            RelationshipSignature = "correction-relationship", AnchorLayoutSignature = "controlled:0:1",
+            SupportCount = 2, IndependentSourceCount = 2, HumanVerifiedSupportCount = 2, Confidence = 1m,
+            MaturityState = "Candidate", Provenance = "FounderApproved"
+        };
+        var retiredEvidence = StructuralEvidence(pattern, relationship, family, firstTargetExample, "first-source");
+        var activeUnrelatedEvidence = StructuralEvidence(pattern, relationship, family, unrelatedTargetExample, "unrelated-source");
+        var retiredAnchor = new LegendLanguageCompositionalAnchor
+        {
+            Id = Guid.NewGuid(), LanguageCode = "ht", TextUnitId = firstTarget.Id, CurriculumFamilyId = family.Id,
+            CurriculumExampleId = firstTargetExample.Id, Dimension = "controlled", Value = "before",
+            SemanticSignature = "correction-semantic", AnchorSignature = "correction-anchor", Provenance = "FounderApproved"
+        };
+        var controlledContext = new LegendLanguageContextRelationship
+        {
+            Id = Guid.NewGuid(), PairKey = "en:ht", SourceTextUnitId = firstTarget.Id, RelatedTextUnitId = unrelatedTarget.Id,
+            RelationshipKind = "ControlledVariation", ContextSignature = "correction-controlled", SourcePatternSignature = "correction-controlled",
+            Confidence = 1m, QualityState = "Verified", Provenance = "FounderApproved", ObservationCount = 1
+        };
+        db.AddRange(family, firstSourceExample, firstTargetExample, unrelatedSourceExample, unrelatedTargetExample,
+            pattern, relationship, retiredEvidence, activeUnrelatedEvidence, retiredAnchor, controlledContext);
+        await db.SaveChangesAsync();
+        var directContext = await db.LegendLanguageContextRelationships.SingleAsync(item =>
+            item.PairKey == "en:ht" && item.SourceTextUnitId == firstSource.Id && item.RelatedTextUnitId == firstTarget.Id);
+
+        var correction = await operations.CorrectFounderKnowledgeAsync("founder", first.AlignmentId!.Value,
+            new LegendConnectKnowledgeSubmission(
+                "en", firstSource.Text, "ht", "Yon sib kontwole korije.", "Training", null, null, "FounderApproved"));
+
+        Assert.True(correction.Succeeded, correction.Message);
+        Assert.NotNull((await db.LegendTranslationAlignments.SingleAsync(item => item.Id == first.AlignmentId)).SupersededUtc);
+        Assert.NotNull((await db.LegendCurriculumExamples.SingleAsync(item => item.Id == firstTargetExample.Id)).SupersededUtc);
+        Assert.NotNull((await db.LegendLanguageStructuralEvidence.SingleAsync(item => item.Id == retiredEvidence.Id)).SupersededUtc);
+        Assert.NotNull((await db.LegendLanguageCompositionalAnchors.SingleAsync(item => item.Id == retiredAnchor.Id)).SupersededUtc);
+        Assert.Null((await db.LegendLanguageStructuralEvidence.SingleAsync(item => item.Id == activeUnrelatedEvidence.Id)).SupersededUtc);
+        Assert.NotNull((await db.LegendLanguageContextRelationships.SingleAsync(item => item.Id == directContext.Id)).SupersededUtc);
+        Assert.NotNull((await db.LegendLanguageContextRelationships.SingleAsync(item => item.Id == controlledContext.Id)).SupersededUtc);
+        Assert.Null((await db.LegendLanguageContextRelationships.SingleAsync(item => item.PairKey == "en:ht" &&
+            item.SourceTextUnitId == unrelatedSource.Id && item.RelatedTextUnitId == unrelatedTarget.Id)).SupersededUtc);
+
+        var refreshedPattern = await db.LegendLanguageStructuralPatterns.SingleAsync(item => item.Id == pattern.Id);
+        var refreshedRelationship = await db.LegendLanguageStructuralRelationships.SingleAsync(item => item.Id == relationship.Id);
+        Assert.Equal(1, refreshedPattern.SupportCount);
+        Assert.Equal("Observation", refreshedPattern.MaturityState);
+        Assert.Equal(1, refreshedRelationship.SupportCount);
+        Assert.Equal("Observation", refreshedRelationship.MaturityState);
+        Assert.Equal(2, (await db.LegendLanguagePairs.SingleAsync(item => item.PairKey == "en:ht")).CorpusCoverage);
+
+        var beforeReplay = new
+        {
+            Examples = await db.LegendCurriculumExamples.CountAsync(),
+            Evidence = await db.LegendLanguageStructuralEvidence.CountAsync(),
+            ActiveEvidence = await db.LegendLanguageStructuralEvidence.CountAsync(item => item.SupersededUtc == null),
+            Contexts = await db.LegendLanguageContextRelationships.CountAsync()
+        };
+        var curriculum = new LegendConnectCurriculumService(
+            db, registry, new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance));
+        await curriculum.ReevaluateHistoricalAlignmentsAsync(100);
+        await curriculum.ReevaluateHistoricalAlignmentsAsync(100);
+        var afterReplay = new
+        {
+            Examples = await db.LegendCurriculumExamples.CountAsync(),
+            Evidence = await db.LegendLanguageStructuralEvidence.CountAsync(),
+            ActiveEvidence = await db.LegendLanguageStructuralEvidence.CountAsync(item => item.SupersededUtc == null),
+            Contexts = await db.LegendLanguageContextRelationships.CountAsync()
+        };
+        Assert.Equal(beforeReplay, afterReplay);
+        Assert.NotNull((await db.LegendLanguageStructuralEvidence.SingleAsync(item => item.Id == retiredEvidence.Id)).SupersededUtc);
+        Assert.Null(await curriculum.TryComposeAsync("en", "ht", "A future uncontrolled sentence."));
+    }
+
+    [Fact]
     public async Task FounderValidationFailure_UsesTheExistingPrgFeedbackInsteadOfAQuietFailure()
     {
         var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
@@ -556,6 +675,22 @@ public sealed class LegendConnectOperationalProofTests
         ILegendLanguageRegistry registry,
         IConfiguration configuration) =>
         new(db, registry, new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance), configuration);
+
+    private static LegendLanguageStructuralEvidence StructuralEvidence(
+        LegendLanguageStructuralPattern pattern,
+        LegendLanguageStructuralRelationship relationship,
+        LegendCurriculumFamily family,
+        LegendCurriculumExample example,
+        string independentSourceIdentity) => new()
+    {
+        Id = Guid.NewGuid(), StructuralPatternId = pattern.Id, StructuralRelationshipId = relationship.Id,
+        StructuralRelationshipContributionState = "Supported", CurriculumFamilyId = family.Id, PairKey = "en:ht",
+        LanguageCode = "ht", VariationDimension = "controlled", BaselineCurriculumExampleId = example.Id,
+        ComparedCurriculumExampleId = example.Id, BaselineVariationValue = "before", ComparedVariationValue = "after",
+        EvidenceSignature = "evidence:" + independentSourceIdentity, BaselineComponentSignature = "component:before",
+        ComparedComponentSignature = "component:after", IndependentSourceIdentity = independentSourceIdentity,
+        ContributionState = "Supported", IsHumanVerifiedSupport = true, Provenance = "FounderApproved"
+    };
 
     private static FounderLegendConnectService Service(
         MasterAppDbContext db,

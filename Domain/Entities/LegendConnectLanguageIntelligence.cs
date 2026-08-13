@@ -307,6 +307,13 @@ public sealed class LegendCurriculumExampleVariation
 public sealed class LegendLanguageStructuralPattern
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>
+    /// Stable identity of the explicitly controlled proposition being
+    /// observed. It is derived only from Founder-supplied variation
+    /// dimension/value pairs, never from a family, submission, or source
+    /// asset. Those records remain the provenance of individual evidence.
+    /// </summary>
+    public string PropositionSignature { get; set; } = string.Empty;
     public Guid CurriculumFamilyId { get; set; }
     /// <summary>
     /// Target-language realization evidence is directional. The empty scope
@@ -332,6 +339,54 @@ public sealed class LegendLanguageStructuralPattern
 }
 
 /// <summary>
+/// A reusable observation drawn from multiple proposition-level structural
+/// comparisons. Its identity is limited to explicit Founder-controlled
+/// dimensions and the observed layouts of known components. It is therefore
+/// neither a grammar rule nor a replacement for <see cref="LegendLanguageStructuralPattern"/>:
+/// proposition evidence remains the durable source lineage for this aggregate.
+/// </summary>
+public sealed class LegendLanguageStructuralRelationship
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    /// <summary>
+    /// Directional pair scope. The empty scope remains a monolingual source
+    /// observation and cannot provide target-language maturity.
+    /// </summary>
+    public string PairKey { get; set; } = string.Empty;
+    public string LanguageCode { get; set; } = string.Empty;
+    /// <summary>
+    /// The explicitly controlled dimension that changed between each pair of
+    /// examples. It is never inferred from text.
+    /// </summary>
+    public string VariationDimension { get; set; } = string.Empty;
+    /// <summary>
+    /// Stable identity of a candidate reusable relationship. It deliberately
+    /// excludes curriculum family, exact text, lexical values, and
+    /// PropositionSignature so independently controlled propositions can
+    /// contribute without being conflated with one another.
+    /// </summary>
+    public string RelationshipSignature { get; set; } = string.Empty;
+    /// <summary>
+    /// The first explicitly anchored component layout observed for this
+    /// relationship. A later trusted comparison with the same controlled
+    /// identity but a different layout is retained as contradictory evidence.
+    /// </summary>
+    public string AnchorLayoutSignature { get; set; } = string.Empty;
+    public string MaturityState { get; set; } = "Observation";
+    public int SupportCount { get; set; }
+    public int ContradictionCount { get; set; }
+    public int IndependentSourceCount { get; set; }
+    public int HumanVerifiedSupportCount { get; set; }
+    public int ProviderOnlySupportCount { get; set; }
+    public decimal Confidence { get; set; }
+    public bool IsProductionEligible { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
 /// An auditable same-language comparison supporting one structural pattern.
 /// It records the controlled semantic change and the two canonical examples,
 /// not an invented grammatical rule.
@@ -340,6 +395,19 @@ public sealed class LegendLanguageStructuralEvidence
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid StructuralPatternId { get; set; }
+    /// <summary>
+    /// Optional link to the broader reusable relationship that this already
+    /// auditable proposition comparison can support or contradict. Null means
+    /// the comparison lacked sufficiently explicit known component evidence.
+    /// </summary>
+    public Guid? StructuralRelationshipId { get; set; }
+    /// <summary>
+    /// The contribution of this comparison to its broader reusable
+    /// relationship. It is intentionally separate from
+    /// <see cref="ContributionState"/>, which remains the contribution to the
+    /// exact controlled proposition.
+    /// </summary>
+    public string? StructuralRelationshipContributionState { get; set; }
     public Guid CurriculumFamilyId { get; set; }
     /// <summary>
     /// The same non-null pair scope as the owning structural pattern. Empty
@@ -656,6 +724,31 @@ public sealed class LegendConnectRuntimePolicy
     public decimal ContextualMinimumConfidence { get; set; } = 0.98m;
     public DateTime? LastLearningWorkerHeartbeatUtc { get; set; }
     public DateTime? LastAcquisitionWorkerHeartbeatUtc { get; set; }
+    /// <summary>
+    /// The last canonical language-intelligence evaluator version that
+    /// completed a bounded replay of all active historical evidence. Raw
+    /// Founder provenance and historical observations are never versioned or
+    /// rewritten by this watermark.
+    /// </summary>
+    public int CompletedLanguageIntelligenceEvaluatorVersion { get; set; }
+    /// <summary>
+    /// The evaluator version currently being replayed through the existing
+    /// learning worker. A zero value means no replay has been initialized.
+    /// </summary>
+    public int TargetLanguageIntelligenceEvaluatorVersion { get; set; }
+    /// <summary>
+    /// Durable phase of the one canonical historical reevaluation cycle.
+    /// It is operational state only; the curriculum, intelligence, and
+    /// correction authorities remain the source of derived knowledge.
+    /// </summary>
+    public string LanguageIntelligenceReevaluationPhase { get; set; } = "Complete";
+    /// <summary>
+    /// The last stable historical identity completed in the current phase.
+    /// The existing worker uses it solely to continue a bounded replay.
+    /// </summary>
+    public Guid? LanguageIntelligenceReevaluationCursor { get; set; }
+    public DateTime? LanguageIntelligenceReevaluationStartedUtc { get; set; }
+    public DateTime? LanguageIntelligenceReevaluationCompletedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public string? UpdatedByUserId { get; set; }
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();

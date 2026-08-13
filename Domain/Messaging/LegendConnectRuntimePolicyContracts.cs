@@ -33,6 +33,46 @@ public sealed record LegendConnectRuntimePolicyMutation(
     string ContextualCompositionMode,
     decimal ContextualMinimumConfidence);
 
+/// <summary>
+/// The durable phases of the single historical replay owned by the existing
+/// learning worker. They describe progression only; each phase calls the
+/// existing curriculum or quality evaluator rather than another processor.
+/// </summary>
+public static class LegendConnectLanguageIntelligenceReevaluationPhases
+{
+    public const string SourceFamilies = "SourceFamilies";
+    public const string Alignments = "Alignments";
+    public const string ProviderObservations = "ProviderObservations";
+    public const string Complete = "Complete";
+
+    public static bool IsWorkPhase(string? phase) => phase is SourceFamilies or Alignments or ProviderObservations;
+}
+
+/// <summary>
+/// A bounded result from one existing canonical evaluator pass. The cursor is
+/// a stable historical identity, never a source-text or provenance rewrite.
+/// </summary>
+public sealed record LegendConnectHistoricalReevaluationProgress(
+    int ProcessedCount,
+    Guid? LastProcessedId,
+    bool PhaseComplete);
+
+/// <summary>
+/// Durable replay state read and advanced by the one existing learning worker.
+/// A future material evaluator change advances its version and reuses these
+/// same phases against active historical evidence.
+/// </summary>
+public sealed record LegendConnectLanguageIntelligenceReevaluationSnapshot(
+    int TargetEvaluatorVersion,
+    int CompletedEvaluatorVersion,
+    string Phase,
+    Guid? Cursor,
+    DateTime? StartedUtc,
+    DateTime? CompletedUtc)
+{
+    public bool RequiresWork => LegendConnectLanguageIntelligenceReevaluationPhases.IsWorkPhase(Phase);
+}
+
 public sealed record LegendConnectAutonomousLanguageFocusMutation(
     bool Enabled,
     IReadOnlyCollection<string>? TargetLanguageCodes);
@@ -108,6 +148,25 @@ public interface ILegendConnectRuntimePolicyAuthority
     Task<LegendConnectRuntimePolicySnapshot> ConfigureAutonomousLanguageFocusAsync(
         string founderUserId,
         LegendConnectAutonomousLanguageFocusMutation mutation,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Starts or resumes the one versioned historical replay when the current
+    /// canonical evaluator is newer than the completed durable watermark.
+    /// </summary>
+    Task<LegendConnectLanguageIntelligenceReevaluationSnapshot> GetOrStartLanguageIntelligenceReevaluationAsync(
+        int evaluatorVersion,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records progress from an existing curriculum or quality-evidence page.
+    /// It never derives language intelligence itself.
+    /// </summary>
+    Task AdvanceLanguageIntelligenceReevaluationAsync(
+        int evaluatorVersion,
+        string phase,
+        Guid? lastProcessedId,
+        bool phaseComplete,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<LegendConnectFounderOperationalAuditSnapshot>> GetRecentAuditAsync(

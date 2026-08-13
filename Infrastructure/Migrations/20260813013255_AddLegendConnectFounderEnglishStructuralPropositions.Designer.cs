@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260813013255_AddLegendConnectFounderEnglishStructuralPropositions")]
+    partial class AddLegendConnectFounderEnglishStructuralPropositions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -4855,9 +4858,6 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("CompletedLanguageIntelligenceEvaluatorVersion")
-                        .HasColumnType("int");
-
                     b.Property<string>("ContextualCompositionMode")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -4869,20 +4869,6 @@ namespace Infrastructure.Migrations
 
                     b.Property<bool>("CorpusAcquisitionEnabled")
                         .HasColumnType("bit");
-
-                    b.Property<DateTime?>("LanguageIntelligenceReevaluationCompletedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("LanguageIntelligenceReevaluationCursor")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("LanguageIntelligenceReevaluationPhase")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<DateTime?>("LanguageIntelligenceReevaluationStartedUtc")
-                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("LastAcquisitionWorkerHeartbeatUtc")
                         .HasColumnType("datetime2");
@@ -4929,9 +4915,6 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
-
-                    b.Property<int>("TargetLanguageIntelligenceEvaluatorVersion")
-                        .HasColumnType("int");
 
                     b.Property<string>("UpdatedByUserId")
                         .HasMaxLength(450)
@@ -5796,13 +5779,6 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("StructuralPatternId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("StructuralRelationshipContributionState")
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<Guid?>("StructuralRelationshipId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateTime?>("SupersededUtc")
                         .HasColumnType("datetime2");
 
@@ -5820,8 +5796,6 @@ namespace Infrastructure.Migrations
                     b.HasIndex("SupersededUtc");
 
                     b.HasIndex("StructuralPatternId", "ContributionState", "SupersededUtc");
-
-                    b.HasIndex("StructuralRelationshipId", "StructuralRelationshipContributionState", "SupersededUtc");
 
                     b.HasIndex("CurriculumFamilyId", "PairKey", "LanguageCode", "VariationDimension", "BaselineCurriculumExampleId", "ComparedCurriculumExampleId")
                         .IsUnique();
@@ -5916,90 +5890,6 @@ namespace Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("LegendLanguageStructuralPatterns", (string)null);
-                });
-
-            modelBuilder.Entity("Domain.Entities.LegendLanguageStructuralRelationship", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("AnchorLayoutSignature")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<decimal>("Confidence")
-                        .HasPrecision(5, 4)
-                        .HasColumnType("decimal(5,4)");
-
-                    b.Property<int>("ContradictionCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("HumanVerifiedSupportCount")
-                        .HasColumnType("int");
-
-                    b.Property<int>("IndependentSourceCount")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsProductionEligible")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("LanguageCode")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<string>("MaturityState")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("PairKey")
-                        .IsRequired()
-                        .HasMaxLength(72)
-                        .HasColumnType("nvarchar(72)");
-
-                    b.Property<string>("Provenance")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<int>("ProviderOnlySupportCount")
-                        .HasColumnType("int");
-
-                    b.Property<string>("RelationshipSignature")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<DateTime?>("SupersededUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("SupportCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("VariationDimension")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SupersededUtc");
-
-                    b.HasIndex("PairKey", "LanguageCode", "MaturityState", "IsProductionEligible");
-
-                    b.HasIndex("PairKey", "LanguageCode", "VariationDimension", "RelationshipSignature")
-                        .IsUnique();
-
-                    b.ToTable("LegendLanguageStructuralRelationships", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Entities.LegendLanguageTextUnit", b =>
@@ -10263,11 +10153,6 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("StructuralPatternId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("Domain.Entities.LegendLanguageStructuralRelationship", null)
-                        .WithMany()
-                        .HasForeignKey("StructuralRelationshipId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Domain.Entities.LegendLanguageStructuralPattern", b =>

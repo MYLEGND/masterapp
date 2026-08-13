@@ -625,30 +625,9 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
         await _db.SaveChangesAsync(cancellationToken);
         var supersededTextIds = retiredTargetIds.Append(source.Id).ToArray();
         await _curriculum.ReconcileSupersededExamplesAsync(supersededTextIds, cancellationToken);
-        await RefreshPairCoverageAsync(pairKeys, cancellationToken);
+        foreach (var pairKey in pairKeys.Distinct(StringComparer.OrdinalIgnoreCase))
+            await _corpus.RefreshPairCoverageAsync(pairKey, cancellationToken);
         return alignments.Count + contexts.Count + candidates.Count + learningEvents.Count + targetsToRetire.Count + 1;
-    }
-
-    private async Task RefreshPairCoverageAsync(
-        IReadOnlyList<string> pairKeys,
-        CancellationToken cancellationToken)
-    {
-        foreach (var pairKey in pairKeys)
-        {
-            var pair = await _db.Set<LegendLanguagePair>().SingleOrDefaultAsync(item => item.PairKey == pairKey, cancellationToken);
-            if (pair is null)
-                continue;
-            pair.CorpusCoverage = await (
-                from alignment in _db.Set<LegendTranslationAlignment>()
-                join source in _db.Set<LegendLanguageTextUnit>() on alignment.SourceTextUnitId equals source.Id
-                join target in _db.Set<LegendLanguageTextUnit>() on alignment.TargetTextUnitId equals target.Id
-                where alignment.PairKey == pairKey && alignment.SupersededUtc == null &&
-                    source.IsTrainingEligible && target.IsTrainingEligible
-                select alignment.Id
-            ).CountAsync(cancellationToken);
-            pair.UpdatedUtc = DateTime.UtcNow;
-        }
-        await _db.SaveChangesAsync(cancellationToken);
     }
 
     private static LegendConnectKnowledgeSubmissionResult Rejected(string errorCode, string message, string sourceLanguage = "") => new(

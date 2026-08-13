@@ -359,6 +359,33 @@ internal sealed class LegendConnectCorpusService
         }
     }
 
+    /// <summary>
+    /// Keeps the pair projection derived from the canonical active-alignment
+    /// lineage. Submission, correction, and historical reconciliation all use
+    /// this one calculation rather than maintaining competing counters.
+    /// </summary>
+    internal async Task RefreshPairCoverageAsync(string pairKey, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(pairKey))
+            return;
+
+        var pair = await _db.Set<LegendLanguagePair>()
+            .SingleOrDefaultAsync(item => item.PairKey == pairKey, cancellationToken);
+        if (pair is null)
+            return;
+
+        pair.CorpusCoverage = await (
+            from alignment in _db.Set<LegendTranslationAlignment>()
+            join source in _db.Set<LegendLanguageTextUnit>() on alignment.SourceTextUnitId equals source.Id
+            join target in _db.Set<LegendLanguageTextUnit>() on alignment.TargetTextUnitId equals target.Id
+            where alignment.PairKey == pairKey && alignment.SupersededUtc == null &&
+                source.IsTrainingEligible && target.IsTrainingEligible
+            select alignment.Id
+        ).CountAsync(cancellationToken);
+        pair.UpdatedUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task ProcessAsync(LegendTranslationLearningEvent item, CancellationToken cancellationToken = default)
     {
         if (item.ProcessingState is not ("Pending" or "Processing") || item.EligibilityState != "Eligible" ||
@@ -504,8 +531,6 @@ internal sealed class LegendConnectCorpusService
 
             var pairEntity = await _db.Set<LegendLanguagePair>()
                 .SingleAsync(candidate => candidate.PairKey == pair.PairKey, cancellationToken);
-            pairEntity.CorpusCoverage = await _db.Set<LegendTranslationAlignment>()
-                .CountAsync(candidate => candidate.PairKey == pair.PairKey && candidate.SupersededUtc == null, cancellationToken);
             if (alignment.HumanVerified)
                 pairEntity.QualityState = "Validated";
             pairEntity.UpdatedUtc = DateTime.UtcNow;
@@ -516,6 +541,7 @@ internal sealed class LegendConnectCorpusService
             item.FailureCode = null;
             item.PromotionOutcome = alignmentCreated ? "Promoted" : "Reused";
             await _db.SaveChangesAsync(cancellationToken);
+            await RefreshPairCoverageAsync(pair.PairKey, cancellationToken);
             if (_intelligence is not null &&
                 string.Equals(item.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal))
             {
@@ -744,11 +770,10 @@ internal sealed class LegendConnectCorpusService
             {
                 var pairEntity = await _db.Set<LegendLanguagePair>()
                     .SingleAsync(item => item.PairKey == pairKey, cancellationToken);
-                pairEntity.CorpusCoverage = await _db.Set<LegendTranslationAlignment>()
-                    .CountAsync(item => item.PairKey == pairKey && item.SupersededUtc == null, cancellationToken);
                 pairEntity.QualityState = "Validated";
                 pairEntity.UpdatedUtc = DateTime.UtcNow;
                 await _db.SaveChangesAsync(cancellationToken);
+                await RefreshPairCoverageAsync(pairKey, cancellationToken);
             }
 
             if (transaction is not null)
@@ -1205,6 +1230,17 @@ internal sealed class LegendConnectCorpusService
     }
 }
 
+/// <summary>
+/// Deployment-owned marker for material changes to the canonical language
+/// evaluator. Advance it only when a change alters derived language
+/// intelligence; the runtime policy then sends active historical evidence
+/// through this same hosted worker exactly once per version.
+/// </summary>
+internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
+{
+    internal const int Current = 1;
+}
+
 internal sealed class LegendConnectLearningHostedService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopes;
@@ -1230,17 +1266,37 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                 await scope.ServiceProvider
                     .GetRequiredService<LegendConnectFounderTrainingIngestionAuthority>()
                     .ReconcileLegacyAsync(25, stoppingToken);
-                // Reuse the existing learning worker for bounded,
-                // idempotent reevaluation. This is not a second planner or
-                // queue: active alignments stay historical while their
-                // reusable structural contribution is recalculated through
-                // the canonical curriculum and quality authorities.
-                await scope.ServiceProvider
-                    .GetRequiredService<LegendConnectCurriculumService>()
-                    .ReevaluateHistoricalAlignmentsAsync(100, stoppingToken);
-                await scope.ServiceProvider
-                    .GetRequiredService<ILegendConnectTranslationIntelligence>()
-                    .ReevaluateHistoricalProviderObservationsAsync(100, stoppingToken);
+                // Reuse the existing learning worker for a bounded, durable
+                // evaluator-version replay. This is not a second planner,
+                // queue, or historical processor: each phase delegates to
+                // the canonical curriculum or quality authority and records
+                // only a runtime-policy cursor after that page succeeds.
+                var replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                    stoppingToken);
+                if (replay.RequiresWork)
+                {
+                    LegendConnectHistoricalReevaluationProgress progress;
+                    if (replay.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
+                    {
+                        progress = await scope.ServiceProvider
+                            .GetRequiredService<ILegendConnectTranslationIntelligence>()
+                            .ReevaluateHistoricalProviderObservationsAsync(100, replay.Cursor, stoppingToken);
+                    }
+                    else
+                    {
+                        progress = await scope.ServiceProvider
+                            .GetRequiredService<LegendConnectCurriculumService>()
+                            .ReevaluateHistoricalAlignmentsAsync(100, replay.Phase, replay.Cursor, stoppingToken);
+                    }
+
+                    await runtime.AdvanceLanguageIntelligenceReevaluationAsync(
+                        LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                        replay.Phase,
+                        progress.LastProcessedId,
+                        progress.PhaseComplete,
+                        stoppingToken);
+                }
                 if ((await runtime.GetEffectiveAsync(stoppingToken)).LearningEnabled)
                 {
                     await scope.ServiceProvider.GetRequiredService<LegendConnectCorpusService>()

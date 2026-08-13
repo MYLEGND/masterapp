@@ -47,6 +47,11 @@ internal interface ILegendConnectTranslationIntelligence
         int take,
         CancellationToken cancellationToken = default);
 
+    Task<LegendConnectHistoricalReevaluationProgress> ReevaluateHistoricalProviderObservationsAsync(
+        int take,
+        Guid? afterId,
+        CancellationToken cancellationToken = default);
+
     Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
         CancellationToken cancellationToken = default);
 
@@ -352,19 +357,33 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
 
     public async Task<int> ReevaluateHistoricalProviderObservationsAsync(
         int take,
+        CancellationToken cancellationToken = default) =>
+        (await ReevaluateHistoricalProviderObservationsAsync(take, afterId: null, cancellationToken)).ProcessedCount;
+
+    /// <summary>
+    /// Processes one bounded stable-identity page through this existing
+    /// provider-quality evaluator. It remains observation-only and is used by
+    /// the same learning worker as the curriculum replay.
+    /// </summary>
+    public async Task<LegendConnectHistoricalReevaluationProgress> ReevaluateHistoricalProviderObservationsAsync(
+        int take,
+        Guid? afterId,
         CancellationToken cancellationToken = default)
     {
+        var pageSize = Math.Clamp(take, 1, 250);
         var observationIds = await _db.Set<LegendTranslationAlignment>().AsNoTracking()
             .Where(item => item.Provenance == LegendConnectKnowledgeProvenance.ProviderDerived &&
-                item.SupersededUtc == null)
-            .OrderBy(item => item.UpdatedUtc)
-            .ThenBy(item => item.Id)
-            .Take(Math.Clamp(take, 1, 250))
+                item.SupersededUtc == null && (!afterId.HasValue || item.Id.CompareTo(afterId.Value) > 0))
+            .OrderBy(item => item.Id)
+            .Take(pageSize)
             .Select(item => item.Id)
             .ToListAsync(cancellationToken);
         foreach (var observationId in observationIds)
             await EvaluateProviderObservationAsync(observationId, cancellationToken);
-        return observationIds.Count;
+        return new LegendConnectHistoricalReevaluationProgress(
+            observationIds.Count,
+            observationIds.Count == 0 ? null : observationIds[^1],
+            observationIds.Count < pageSize);
     }
 
     public async Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(

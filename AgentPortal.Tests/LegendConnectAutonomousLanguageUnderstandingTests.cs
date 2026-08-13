@@ -208,6 +208,76 @@ public sealed class LegendConnectAutonomousLanguageUnderstandingTests
     }
 
     [Fact]
+    public async Task IndependentFounderBatchesAndFamiliesAccumulateOneControlledPropositionWithoutOpeningProduction()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db, futureLanguageOnly: true);
+        var submissions = new[]
+        {
+            new LegendConnectCurriculumBatchSubmission(
+                "controlled.assertion.one", "Controlled assertion",
+                [
+                    new LegendConnectCurriculumExampleSubmission("I confirm the schedule.", Polarity("affirmative")),
+                    new LegendConnectCurriculumExampleSubmission("I do not confirm the schedule.", Polarity("negative"))
+                ]),
+            new LegendConnectCurriculumBatchSubmission(
+                "controlled.assertion.two", "Controlled assertion",
+                [
+                    new LegendConnectCurriculumExampleSubmission("We accept the request.", Polarity("affirmative")),
+                    new LegendConnectCurriculumExampleSubmission("We do not accept the request.", Polarity("negative"))
+                ]),
+            new LegendConnectCurriculumBatchSubmission(
+                "controlled.assertion.three", "Controlled assertion",
+                [
+                    new LegendConnectCurriculumExampleSubmission("They recognize the change.", Polarity("affirmative")),
+                    new LegendConnectCurriculumExampleSubmission("They do not recognize the change.", Polarity("negative"))
+                ])
+        };
+        foreach (var submission in submissions)
+            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(submission)).Succeeded);
+
+        var pattern = await db.LegendLanguageStructuralPatterns.SingleAsync(item =>
+            item.PairKey == string.Empty && item.LanguageCode == "en" &&
+            item.VariationDimension == "polarity" && item.SupersededUtc == null);
+        var evidence = await db.LegendLanguageStructuralEvidence
+            .Where(item => item.StructuralPatternId == pattern.Id && item.SupersededUtc == null)
+            .ToListAsync();
+        Assert.Equal(3, evidence.Select(item => item.CurriculumFamilyId).Distinct().Count());
+        Assert.Equal(3, pattern.SupportCount);
+        Assert.True(pattern.IndependentSourceCount >= 3);
+        Assert.Equal(3, pattern.HumanVerifiedSupportCount);
+        Assert.Equal(0, pattern.ProviderOnlySupportCount);
+        Assert.Equal("Supported", pattern.MaturityState);
+        Assert.False(pattern.IsProductionEligible);
+        Assert.Equal(3, await db.LegendLanguageContextRelationships.CountAsync(item =>
+            item.RelationshipKind == "ControlledVariation" &&
+            item.ContextCategory == "ControlledVariation:polarity" &&
+            item.Provenance == "FounderApproved" && item.SupersededUtc == null));
+
+        var first = new
+        {
+            PatternCount = await db.LegendLanguageStructuralPatterns.CountAsync(),
+            EvidenceCount = await db.LegendLanguageStructuralEvidence.CountAsync(),
+            ContextCount = await db.LegendLanguageContextRelationships.CountAsync()
+        };
+        await fixture.Curriculum.ReevaluateHistoricalAlignmentsAsync(100);
+        await fixture.Curriculum.ReevaluateHistoricalAlignmentsAsync(100);
+        var second = new
+        {
+            PatternCount = await db.LegendLanguageStructuralPatterns.CountAsync(),
+            EvidenceCount = await db.LegendLanguageStructuralEvidence.CountAsync(),
+            ContextCount = await db.LegendLanguageContextRelationships.CountAsync()
+        };
+        Assert.Equal(first, second);
+
+        Assert.True(await fixture.Curriculum.TryValidatePatternAsync(pattern.Id));
+        var validated = await db.LegendLanguageStructuralPatterns.SingleAsync(item => item.Id == pattern.Id);
+        Assert.Equal("Validated", validated.MaturityState);
+        Assert.False(validated.IsProductionEligible);
+        Assert.Null(await fixture.Curriculum.TryComposeAsync("en", "x-test", "An unobserved statement."));
+    }
+
+    [Fact]
     public async Task LexicalSenseAndPhrasalAnchorsRemainSeparateEvidenceInsteadOfUniversalWordMappings()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -270,6 +340,9 @@ public sealed class LegendConnectAutonomousLanguageUnderstandingTests
             ["lexical-sense"] = sense,
             ["semantic-unit"] = semanticUnit
         };
+
+    private static IReadOnlyDictionary<string, string> Polarity(string value) =>
+        new Dictionary<string, string> { ["polarity"] = value };
 
     private static QualityFixture CreateFixture(MasterAppDbContext db, bool futureLanguageOnly = false)
     {

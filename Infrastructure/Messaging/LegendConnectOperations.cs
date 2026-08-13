@@ -521,6 +521,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             prior.QualityState = "Superseded";
             prior.UpdatedUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
+            await _curriculum.ReconcileSupersededAlignmentAsync(
+                prior.PairKey,
+                prior.SourceTextUnitId,
+                prior.TargetTextUnitId,
+                cancellationToken);
             if (string.Equals(prior.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal))
             {
                 var retiredTargetTextUnitId = await _intelligence.RecordHumanCorrectionAsync(
@@ -530,6 +535,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 if (retiredTargetTextUnitId is not null)
                     await _curriculum.ReconcileSupersededExamplesAsync([retiredTargetTextUnitId.Value], cancellationToken);
             }
+            await _corpus.RefreshPairCoverageAsync(prior.PairKey, cancellationToken);
             await _curriculum.AttachValidatedAlignmentAsync(result.AlignmentId.Value, cancellationToken);
             await WriteAuditAsync(founder, "FounderKnowledgeCorrected", result, supersededAlignmentId, cancellationToken);
             if (transaction is not null)

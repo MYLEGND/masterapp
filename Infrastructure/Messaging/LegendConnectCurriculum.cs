@@ -19,6 +19,62 @@ internal interface ILegendConnectStructuralCompositionGate
         string targetLanguageCode,
         string text,
         CancellationToken cancellationToken = default);
+
+    Task<LegendShadowCompositionCapability> EvaluateShadowCompositionAsync(
+        LegendShadowCompositionRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// An explicitly described component of a bounded shadow-composition request.
+/// Callers supply the known semantic identity and its proposed realized span;
+/// the gate verifies both against canonical Founder-approved evidence and does
+/// not infer either from an unseen sentence.
+/// </summary>
+internal sealed record LegendShadowCompositionComponent(
+    string Dimension,
+    string Value,
+    string SurfaceForm,
+    int StartTokenIndex,
+    int TokenLength = 1);
+
+/// <summary>
+/// One previously learned controlled variation that the request needs. The
+/// exact proposition remains authoritative; this type only identifies the
+/// existing dimension/value pair to evaluate.
+/// </summary>
+internal sealed record LegendShadowCompositionRelationshipRequirement(
+    string Dimension,
+    string FirstValue,
+    string SecondValue);
+
+/// <summary>
+/// Demand-driven, non-persistent request to assess a proposed target-language
+/// construction. It is not a sentence generator and is never used by the
+/// production translation router.
+/// </summary>
+internal sealed record LegendShadowCompositionRequest(
+    string SourceLanguageCode,
+    string TargetLanguageCode,
+    string ProposedTargetText,
+    IReadOnlyList<LegendShadowCompositionComponent> Components,
+    IReadOnlyList<LegendShadowCompositionRelationshipRequirement> RequiredRelationships);
+
+/// <summary>
+/// Read-only composition capability result. Supported and validated states are
+/// shadow-only observations; they never grant production eligibility.
+/// </summary>
+internal sealed record LegendShadowCompositionCapability(
+    string State,
+    bool IsExactObserved,
+    bool IsProductionEligible,
+    IReadOnlyList<string> Reasons)
+{
+    internal const string ExactObserved = "ExactObserved";
+    internal const string InsufficientEvidence = "InsufficientEvidence";
+    internal const string Contradicted = "Contradicted";
+    internal const string SupportedForShadowEvaluation = "SupportedForShadowEvaluation";
+    internal const string ValidatedForShadowEvaluation = "ValidatedForShadowEvaluation";
 }
 
 internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralCompositionGate
@@ -259,18 +315,127 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         await _db.SaveChangesAsync(cancellationToken);
 
         var affectedPatterns = evidence.Select(item => item.StructuralPatternId).Distinct().ToArray();
+        var affectedRelationships = evidence
+            .Where(item => item.StructuralRelationshipId is not null)
+            .Select(item => item.StructuralRelationshipId!.Value)
+            .Distinct()
+            .ToArray();
         foreach (var patternId in affectedPatterns)
+            await RefreshPatternMaturityAsync(patternId, cancellationToken);
+        foreach (var relationshipId in affectedRelationships)
+            await RefreshStructuralRelationshipMaturityAsync(relationshipId, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Retires only the active curriculum projection that was derived from one
+    /// superseded directional alignment. The alignment and its prior evidence
+    /// remain auditable; no active composition or contextual decision may
+    /// continue to use that exact source/target realization. This deliberately
+    /// reuses the established structural-evidence reconciliation authority
+    /// rather than introducing a correction-specific learning path.
+    /// </summary>
+    internal async Task ReconcileSupersededAlignmentAsync(
+        string pairKey,
+        Guid sourceTextUnitId,
+        Guid targetTextUnitId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(pairKey) || sourceTextUnitId == Guid.Empty || targetTextUnitId == Guid.Empty)
+            return;
+
+        var now = DateTime.UtcNow;
+        var examples = await (
+            from targetExample in _db.Set<LegendCurriculumExample>()
+            join sourceExample in _db.Set<LegendCurriculumExample>()
+                on targetExample.DerivedFromCurriculumExampleId equals sourceExample.Id
+            where targetExample.SupersededUtc == null &&
+                targetExample.TextUnitId == targetTextUnitId &&
+                sourceExample.TextUnitId == sourceTextUnitId
+            select targetExample
+        ).ToListAsync(cancellationToken);
+
+        foreach (var example in examples)
         {
-            var pattern = await _db.Set<LegendLanguageStructuralPattern>()
-                .SingleAsync(item => item.Id == patternId, cancellationToken);
-            await RefreshPatternMaturityAsync(
-                pattern.CurriculumFamilyId,
-                pattern.PairKey,
-                pattern.LanguageCode,
-                pattern.VariationDimension,
-                pattern.RealizationSignature,
-                cancellationToken);
+            example.SupersededUtc = now;
+            example.UpdatedUtc = now;
         }
+
+        var exampleIds = examples.Select(item => item.Id).ToArray();
+        var evidence = exampleIds.Length == 0
+            ? new List<LegendLanguageStructuralEvidence>()
+            : await _db.Set<LegendLanguageStructuralEvidence>()
+                .Where(item => item.SupersededUtc == null &&
+                    (exampleIds.Contains(item.BaselineCurriculumExampleId) ||
+                     exampleIds.Contains(item.ComparedCurriculumExampleId)))
+                .ToListAsync(cancellationToken);
+        foreach (var item in evidence)
+            item.SupersededUtc = now;
+
+        // Contextual examples originate directly from the alignment. Controlled
+        // variation contexts are pair-scoped projections of its target example.
+        // Both must become historical when that realization is corrected, while
+        // contexts for other pairs and other source/target identities remain live.
+        var contexts = await _db.Set<LegendLanguageContextRelationship>()
+            .Where(item => item.SupersededUtc == null && item.PairKey == pairKey &&
+                ((item.RelationshipKind == "ContextualExample" &&
+                    item.SourceTextUnitId == sourceTextUnitId && item.RelatedTextUnitId == targetTextUnitId) ||
+                 (item.RelationshipKind == "ControlledVariation" &&
+                    (item.SourceTextUnitId == targetTextUnitId || item.RelatedTextUnitId == targetTextUnitId))))
+            .ToListAsync(cancellationToken);
+        foreach (var context in contexts)
+        {
+            context.SupersededUtc = now;
+            context.UpdatedUtc = now;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        // A corrected target can retain current lexical/component observations
+        // only when another active canonical lineage still uses that text unit.
+        // This avoids a global text reset while preventing an otherwise orphaned
+        // corrected realization from continuing to supply active observations.
+        var targetRemainsCurrent = await _db.Set<LegendCurriculumExample>()
+            .AnyAsync(item => item.TextUnitId == targetTextUnitId && item.SupersededUtc == null, cancellationToken) ||
+            await _db.Set<LegendTranslationAlignment>()
+                .AnyAsync(item => item.SupersededUtc == null &&
+                    (item.SourceTextUnitId == targetTextUnitId || item.TargetTextUnitId == targetTextUnitId), cancellationToken);
+        if (!targetRemainsCurrent)
+        {
+            var occurrences = await _db.Set<LegendLanguageLexicalOccurrence>()
+                .Where(item => item.TextUnitId == targetTextUnitId && item.SupersededUtc == null)
+                .ToListAsync(cancellationToken);
+            foreach (var occurrence in occurrences)
+            {
+                occurrence.SupersededUtc = now;
+                occurrence.UpdatedUtc = now;
+            }
+            var lexicalRelationships = await _db.Set<LegendLanguageLexicalRelationship>()
+                .Where(item => item.TextUnitId == targetTextUnitId && item.SupersededUtc == null)
+                .ToListAsync(cancellationToken);
+            foreach (var lexicalRelationship in lexicalRelationships)
+            {
+                lexicalRelationship.SupersededUtc = now;
+                lexicalRelationship.UpdatedUtc = now;
+            }
+            var anchors = await _db.Set<LegendLanguageCompositionalAnchor>()
+                .Where(item => item.TextUnitId == targetTextUnitId && item.SupersededUtc == null)
+                .ToListAsync(cancellationToken);
+            foreach (var anchor in anchors)
+                anchor.SupersededUtc = now;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        if (examples.Count == 0 && evidence.Count == 0 && contexts.Count == 0)
+            return;
+
+        foreach (var patternId in evidence.Select(item => item.StructuralPatternId).Distinct())
+            await RefreshPatternMaturityAsync(patternId, cancellationToken);
+        foreach (var relationshipId in evidence
+            .Where(item => item.StructuralRelationshipId is not null)
+            .Select(item => item.StructuralRelationshipId!.Value)
+            .Distinct())
+            await RefreshStructuralRelationshipMaturityAsync(relationshipId, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
     }
 
@@ -334,21 +499,76 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         int take,
         CancellationToken cancellationToken = default)
     {
-        // Rebuild existing monolingual controlled evidence first. The empty
-        // pair scope is a source-language observation, not shared target
-        // structure, so it must be recalculated independently from every
-        // directional realization below.
-        var sourceFamilies = await (
-            from example in _db.Set<LegendCurriculumExample>().AsNoTracking()
-            join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
-                on example.TextUnitId equals unit.Id
-            where example.DerivedFromCurriculumExampleId == null && example.SupersededUtc == null &&
-                unit.IsTrainingEligible
-            select new { example.CurriculumFamilyId, example.LanguageCode }
-        ).Distinct().OrderBy(item => item.CurriculumFamilyId).ThenBy(item => item.LanguageCode)
-            .Take(Math.Clamp(take, 1, 250)).ToListAsync(cancellationToken);
-        foreach (var sourceFamily in sourceFamilies)
-            await AnalyzeFamilyLanguageAsync(sourceFamily.CurriculumFamilyId, sourceFamily.LanguageCode, pairKey: null, cancellationToken);
+        // Preserve the original idempotent replay entry point used by tests
+        // and direct callers. The worker uses the overload below so a future
+        // evaluator revision can traverse every active historical identity.
+        _ = await ReevaluateHistoricalAlignmentsAsync(
+            take,
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            afterId: null,
+            cancellationToken);
+        var alignments = await ReevaluateHistoricalAlignmentsAsync(
+            take,
+            LegendConnectLanguageIntelligenceReevaluationPhases.Alignments,
+            afterId: null,
+            cancellationToken);
+        return alignments.ProcessedCount;
+    }
+
+    /// <summary>
+    /// Processes one bounded page of the existing canonical curriculum
+    /// reevaluator. The durable runtime-policy cursor selects a stable
+    /// historical identity; all analysis still flows through the same
+    /// curriculum, lexical, structural, maturity, and correction rules.
+    /// </summary>
+    internal async Task<LegendConnectHistoricalReevaluationProgress> ReevaluateHistoricalAlignmentsAsync(
+        int take,
+        string phase,
+        Guid? afterId,
+        CancellationToken cancellationToken = default)
+    {
+        var pageSize = Math.Clamp(take, 1, 250);
+        if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies)
+        {
+            // Rebuild monolingual controlled evidence first. Empty pair scope
+            // remains a source-language observation and cannot lend target
+            // maturity to a directional pair.
+            var sourceFamilyIds = await (
+                from example in _db.Set<LegendCurriculumExample>().AsNoTracking()
+                join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                    on example.TextUnitId equals unit.Id
+                where example.DerivedFromCurriculumExampleId == null && example.SupersededUtc == null &&
+                    unit.IsTrainingEligible && (!afterId.HasValue || example.CurriculumFamilyId.CompareTo(afterId.Value) > 0)
+                select example.CurriculumFamilyId
+            ).Distinct().OrderBy(item => item).Take(pageSize).ToListAsync(cancellationToken);
+
+            foreach (var familyId in sourceFamilyIds)
+            {
+                var languages = await (
+                    from example in _db.Set<LegendCurriculumExample>().AsNoTracking()
+                    join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                        on example.TextUnitId equals unit.Id
+                    where example.CurriculumFamilyId == familyId && example.DerivedFromCurriculumExampleId == null &&
+                        example.SupersededUtc == null && unit.IsTrainingEligible
+                    select example.LanguageCode
+                ).Distinct().OrderBy(item => item).ToListAsync(cancellationToken);
+                foreach (var languageCode in languages)
+                {
+                    if (string.Equals(languageCode, "en", StringComparison.OrdinalIgnoreCase))
+                        await ReconcileFounderApprovedEnglishEvidenceAsync(familyId, cancellationToken);
+                    await AnalyzeFamilyLanguageAsync(familyId, languageCode, pairKey: null, cancellationToken);
+                }
+            }
+
+            await EnsureHistoricalSemanticSignaturesAsync(cancellationToken);
+            return new LegendConnectHistoricalReevaluationProgress(
+                sourceFamilyIds.Count,
+                sourceFamilyIds.Count == 0 ? null : sourceFamilyIds[^1],
+                sourceFamilyIds.Count < pageSize);
+        }
+
+        if (phase != LegendConnectLanguageIntelligenceReevaluationPhases.Alignments)
+            throw new ArgumentOutOfRangeException(nameof(phase), "The curriculum evaluator handles source-family or alignment pages only.");
 
         var alignmentIds = await (
             from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
@@ -357,17 +577,21 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
                 on alignment.TargetTextUnitId equals target.Id
             where alignment.SupersededUtc == null && source.IsTrainingEligible && target.IsTrainingEligible &&
+                (!afterId.HasValue || alignment.Id.CompareTo(afterId.Value) > 0) &&
                 _db.Set<LegendCurriculumExample>().Any(example =>
                     example.TextUnitId == source.Id && example.SupersededUtc == null)
-            orderby alignment.UpdatedUtc, alignment.Id
+            orderby alignment.Id
             select alignment.Id
-        ).Take(Math.Clamp(take, 1, 250)).ToListAsync(cancellationToken);
+        ).Take(pageSize).ToListAsync(cancellationToken);
 
         foreach (var alignmentId in alignmentIds)
             await AttachAlignmentToCurriculumAsync(alignmentId, cancellationToken);
 
         await EnsureHistoricalSemanticSignaturesAsync(cancellationToken);
-        return alignmentIds.Count;
+        return new LegendConnectHistoricalReevaluationProgress(
+            alignmentIds.Count,
+            alignmentIds.Count == 0 ? null : alignmentIds[^1],
+            alignmentIds.Count < pageSize);
     }
 
     private async Task AttachAlignmentToCurriculumAsync(
@@ -471,6 +695,300 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             cancellationToken);
         return null;
     }
+
+    /// <summary>
+    /// Evaluates an explicitly bounded, previously unseen target construction
+    /// against the active canonical evidence graph. It is deliberately
+    /// read-only: no composition is persisted, no corpus asset is generated,
+    /// and no production translation path can receive a formulation from it.
+    /// </summary>
+    public async Task<LegendShadowCompositionCapability> EvaluateShadowCompositionAsync(
+        LegendShadowCompositionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var sourceLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            request.SourceLanguageCode, cancellationToken);
+        var targetLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            request.TargetLanguageCode, cancellationToken);
+        if (sourceLanguage is null || targetLanguage is null ||
+            string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
+        {
+            return Insufficient("invalid_language_pair");
+        }
+
+        var normalizedTarget = LegendLanguageIdentity.NormalizeText(request.ProposedTargetText);
+        var components = NormalizeShadowComponents(request.Components, normalizedTarget);
+        var relationships = NormalizeShadowRequirements(request.RequiredRelationships);
+        if (string.IsNullOrWhiteSpace(normalizedTarget) || components is null || relationships is null)
+            return Insufficient("invalid_shadow_composition_request");
+        if (components.Count > 24 || relationships.Count is < 1 or > 8)
+            return Insufficient("shadow_composition_request_limit");
+
+        var pairKey = LegendLanguageIdentity.PairKey(sourceLanguage, targetLanguage);
+        var exactObserved = await (
+            from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
+            join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on alignment.TargetTextUnitId equals target.Id
+            where alignment.PairKey == pairKey && alignment.SupersededUtc == null && alignment.HumanVerified &&
+                target.IsTrainingEligible && target.LanguageCode == targetLanguage &&
+                target.NormalizedHash == LegendLanguageIdentity.TextHash(normalizedTarget)
+            select alignment.Id
+        ).AnyAsync(cancellationToken);
+        if (exactObserved)
+        {
+            return new LegendShadowCompositionCapability(
+                LegendShadowCompositionCapability.ExactObserved,
+                true,
+                false,
+                ["exact_trusted_target_observed"]);
+        }
+
+        var semanticSignatures = components.Select(item => item.SemanticSignature).Distinct(StringComparer.Ordinal).ToArray();
+        var sourceSignatures = await _db.Set<LegendLanguageCompositionalAnchor>()
+            .AsNoTracking()
+            .Where(item => item.LanguageCode == sourceLanguage &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                item.SupersededUtc == null && item.SemanticSignature != null &&
+                semanticSignatures.Contains(item.SemanticSignature))
+            .Select(item => item.SemanticSignature!)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var missingSourceSemantics = semanticSignatures.Except(sourceSignatures, StringComparer.Ordinal).ToList();
+        if (missingSourceSemantics.Count > 0)
+            return Insufficient("source_semantic_component_unknown");
+
+        var targetAnchorProofs = await (
+            from anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+            join lexeme in _db.Set<LegendLanguageLexeme>().AsNoTracking()
+                on anchor.LexemeId equals lexeme.Id
+            where anchor.LanguageCode == targetLanguage &&
+                anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                anchor.SupersededUtc == null && anchor.SemanticSignature != null &&
+                semanticSignatures.Contains(anchor.SemanticSignature)
+            select new { SemanticSignature = anchor.SemanticSignature!, lexeme.SurfaceForm }
+        ).ToListAsync(cancellationToken);
+        var realizedComponents = targetAnchorProofs
+            .Select(item => ComponentIdentity(item.SemanticSignature, item.SurfaceForm))
+            .ToHashSet(StringComparer.Ordinal);
+        if (components.Any(item => !realizedComponents.Contains(ComponentIdentity(item.SemanticSignature, item.SurfaceForm))))
+            return Insufficient("known_semantic_component_not_realized");
+
+        var propositionRequirements = relationships
+            .Select(item => new ShadowPropositionRequirement(
+                item.Dimension,
+                ControlledPropositionSignature(item.Dimension, item.FirstValue, item.SecondValue)))
+            .ToList();
+        var patternStates = new Dictionary<string, LegendLanguageStructuralPattern>(StringComparer.Ordinal);
+        foreach (var requirement in propositionRequirements)
+        {
+            var pattern = await _db.Set<LegendLanguageStructuralPattern>()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item => item.PairKey == pairKey && item.LanguageCode == targetLanguage &&
+                    item.VariationDimension == requirement.Dimension &&
+                    item.PropositionSignature == requirement.PropositionSignature && item.SupersededUtc == null,
+                    cancellationToken);
+            if (pattern is null || pattern.SupportCount < 3 || pattern.IndependentSourceCount < 3 ||
+                pattern.HumanVerifiedSupportCount < 3)
+            {
+                return Insufficient("required_proposition_not_supported:" + requirement.Dimension);
+            }
+            if (pattern.ContradictionCount > 0)
+                return Contradicted("required_proposition_contradicted:" + requirement.Dimension);
+            if (pattern.MaturityState is not ("Supported" or "Validated"))
+                return Insufficient("required_proposition_not_mature:" + requirement.Dimension);
+            patternStates.Add(requirement.Dimension, pattern);
+        }
+
+        var requestedLayout = ShadowAnchorLayout(components);
+        foreach (var requirement in relationships)
+        {
+            var relationResult = await EvaluateShadowRelationshipAsync(
+                pairKey,
+                targetLanguage,
+                requirement.Dimension,
+                requestedLayout,
+                cancellationToken);
+            if (relationResult == ShadowRelationshipState.Contradicted)
+                return Contradicted("required_relationship_contradicted:" + requirement.Dimension);
+            if (relationResult != ShadowRelationshipState.Supported)
+                return Insufficient("required_relationship_not_supported:" + requirement.Dimension);
+        }
+
+        // Existing explicit validation belongs to a proposition. Relationship
+        // maturity has no independent validation transition, so all required
+        // propositions must be validated before exposing the narrower
+        // validated-for-shadow distinction.
+        var allValidated = patternStates.Values.All(item => item.MaturityState == "Validated");
+        return new LegendShadowCompositionCapability(
+            allValidated
+                ? LegendShadowCompositionCapability.ValidatedForShadowEvaluation
+                : LegendShadowCompositionCapability.SupportedForShadowEvaluation,
+            false,
+            false,
+            ["active_founder_supported_semantics", "active_supported_structural_relationships"]);
+    }
+
+    private async Task<ShadowRelationshipState> EvaluateShadowRelationshipAsync(
+        string pairKey,
+        string targetLanguage,
+        string dimension,
+        string requestedLayout,
+        CancellationToken cancellationToken)
+    {
+        // The request has a maximum of eight relationship dimensions and each
+        // dimension reads at most sixteen existing supporting observations.
+        // This is a bounded evidence lookup, never a corpus-wide combination.
+        var relationships = await _db.Set<LegendLanguageStructuralRelationship>()
+            .AsNoTracking()
+            .Where(item => item.PairKey == pairKey && item.LanguageCode == targetLanguage &&
+                item.VariationDimension == dimension && item.SupersededUtc == null)
+            .OrderByDescending(item => item.UpdatedUtc)
+            .Take(16)
+            .ToListAsync(cancellationToken);
+        if (relationships.Count == 0)
+            return ShadowRelationshipState.Insufficient;
+
+        var relationshipIds = relationships.Select(item => item.Id).ToArray();
+        var evidence = await _db.Set<LegendLanguageStructuralEvidence>()
+            .AsNoTracking()
+            .Where(item => relationshipIds.Contains(item.StructuralRelationshipId ?? Guid.Empty) &&
+                item.StructuralRelationshipContributionState == "Supported" && item.SupersededUtc == null)
+            .OrderByDescending(item => item.CreatedUtc)
+            .Take(128)
+            .Select(item => new { item.StructuralRelationshipId, item.BaselineCurriculumExampleId, item.ComparedCurriculumExampleId })
+            .ToListAsync(cancellationToken);
+        if (evidence.Count == 0)
+            return ShadowRelationshipState.Insufficient;
+
+        var exampleIds = evidence.SelectMany(item => new[]
+            { item.BaselineCurriculumExampleId, item.ComparedCurriculumExampleId }).Distinct().ToArray();
+        var anchors = await _db.Set<LegendLanguageCompositionalAnchor>()
+            .AsNoTracking()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId) && item.LanguageCode == targetLanguage &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved && item.SupersededUtc == null &&
+                item.SemanticSignature != null && item.ComponentStartTokenIndex != null && item.ComponentLength != null &&
+                item.ComponentLength > 0)
+            .Select(item => new ShadowAnchor(
+                item.CurriculumExampleId,
+                item.Dimension,
+                item.ComponentStartTokenIndex!.Value,
+                item.ComponentLength!.Value))
+            .ToListAsync(cancellationToken);
+        var layouts = anchors
+            .GroupBy(item => item.CurriculumExampleId)
+            .ToDictionary(group => group.Key, group => ShadowAnchorLayout(group), EqualityComparer<Guid>.Default);
+
+        var compatibleRelationshipIds = evidence
+            .Where(item => layouts.GetValueOrDefault(item.BaselineCurriculumExampleId) == requestedLayout ||
+                layouts.GetValueOrDefault(item.ComparedCurriculumExampleId) == requestedLayout)
+            .Select(item => item.StructuralRelationshipId!.Value)
+            .Distinct()
+            .ToHashSet();
+        if (compatibleRelationshipIds.Count == 0)
+            return ShadowRelationshipState.Insufficient;
+
+        var compatible = relationships.Where(item => compatibleRelationshipIds.Contains(item.Id)).ToList();
+        if (compatible.Any(item => item.ContradictionCount > 0))
+            return ShadowRelationshipState.Contradicted;
+        return compatible.Any(item => item.MaturityState is "Supported" or "Validated" &&
+                item.SupportCount >= 3 && item.IndependentSourceCount >= 3 &&
+                item.HumanVerifiedSupportCount >= 3 && item.ProviderOnlySupportCount == 0)
+            ? ShadowRelationshipState.Supported
+            : ShadowRelationshipState.Insufficient;
+    }
+
+    private static IReadOnlyList<ShadowCompositionComponent>? NormalizeShadowComponents(
+        IReadOnlyList<LegendShadowCompositionComponent>? input,
+        string normalizedTarget)
+    {
+        if (input is null || input.Count is < 1 or > 24)
+            return null;
+        var tokens = normalizedTarget.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var normalized = new List<ShadowCompositionComponent>(input.Count);
+        foreach (var component in input)
+        {
+            var dimension = NormalizeOptional(component.Dimension, 80);
+            var value = NormalizeOptional(component.Value, 160);
+            var surface = NormalizeOptional(component.SurfaceForm, 256);
+            if (dimension is null || value is null || surface is null || component.StartTokenIndex < 0 ||
+                component.TokenLength is < 1 or > 8 || component.StartTokenIndex + component.TokenLength > tokens.Length)
+            {
+                return null;
+            }
+            var realizedSurface = string.Join(' ', tokens.Skip(component.StartTokenIndex).Take(component.TokenLength));
+            if (!string.Equals(LegendLanguageIdentity.NormalizeText(surface), realizedSurface, StringComparison.OrdinalIgnoreCase))
+                return null;
+            normalized.Add(new ShadowCompositionComponent(
+                dimension,
+                value,
+                realizedSurface.ToLowerInvariant(),
+                component.StartTokenIndex,
+                component.TokenLength,
+                SemanticSignature(dimension, value)));
+        }
+        return normalized.Select(item => item.Dimension).Distinct(StringComparer.Ordinal).Count() == normalized.Count &&
+            !HasOverlappingComponents(normalized)
+            ? normalized
+            : null;
+    }
+
+    private static IReadOnlyList<ShadowRelationshipRequirement>? NormalizeShadowRequirements(
+        IReadOnlyList<LegendShadowCompositionRelationshipRequirement>? input)
+    {
+        if (input is null || input.Count is < 1 or > 8)
+            return null;
+        var normalized = new List<ShadowRelationshipRequirement>(input.Count);
+        foreach (var requirement in input)
+        {
+            var dimension = NormalizeOptional(requirement.Dimension, 80);
+            var first = NormalizeOptional(requirement.FirstValue, 160);
+            var second = NormalizeOptional(requirement.SecondValue, 160);
+            if (dimension is null || first is null || second is null ||
+                string.Equals(first, second, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+            normalized.Add(new ShadowRelationshipRequirement(dimension, first, second));
+        }
+        return normalized.Select(item => item.Dimension).Distinct(StringComparer.Ordinal).Count() == normalized.Count
+            ? normalized
+            : null;
+    }
+
+    private static bool HasOverlappingComponents(IReadOnlyList<ShadowCompositionComponent> components) =>
+        components.OrderBy(item => item.StartTokenIndex)
+            .Zip(components.OrderBy(item => item.StartTokenIndex).Skip(1),
+                (left, right) => left.StartTokenIndex + left.TokenLength > right.StartTokenIndex)
+            .Any(item => item);
+
+    private static string ComponentIdentity(string semanticSignature, string surfaceForm) =>
+        semanticSignature + "|" + LegendLanguageIdentity.NormalizeText(surfaceForm).ToLowerInvariant();
+
+    private static string ShadowAnchorLayout(IEnumerable<ShadowAnchor> anchors) =>
+        string.Join('|', anchors
+            .OrderBy(item => item.StartTokenIndex)
+            .ThenBy(item => item.TokenLength)
+            .ThenBy(item => item.Dimension, StringComparer.Ordinal)
+            .Select(item => $"{item.Dimension}:{item.StartTokenIndex}:{item.TokenLength}"));
+
+    private static string ShadowAnchorLayout(IEnumerable<ShadowCompositionComponent> components) =>
+        string.Join('|', components
+            .OrderBy(item => item.StartTokenIndex)
+            .ThenBy(item => item.TokenLength)
+            .ThenBy(item => item.Dimension, StringComparer.Ordinal)
+            .Select(item => $"{item.Dimension}:{item.StartTokenIndex}:{item.TokenLength}"));
+
+    private static LegendShadowCompositionCapability Insufficient(string reason) => new(
+        LegendShadowCompositionCapability.InsufficientEvidence,
+        false,
+        false,
+        [reason]);
+
+    private static LegendShadowCompositionCapability Contradicted(string reason) => new(
+        LegendShadowCompositionCapability.Contradicted,
+        false,
+        false,
+        [reason]);
 
     /// <summary>
     /// Extends the existing lexical-observation extractor to any registry
@@ -606,9 +1124,20 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         IReadOnlyList<LegendCurriculumExample> examples,
         CancellationToken cancellationToken)
     {
-        var englishExamples = examples
+        var englishCandidates = examples
             .Where(item => string.Equals(item.LanguageCode, "en", StringComparison.OrdinalIgnoreCase) && item.SupersededUtc is null)
             .DistinctBy(item => item.Id)
+            .ToList();
+        if (englishCandidates.Count == 0)
+            return;
+
+        var founderApprovedUnitIds = await _db.Set<LegendLanguageTextUnit>()
+            .Where(item => englishCandidates.Select(example => example.TextUnitId).Contains(item.Id) &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+            .Select(item => item.Id)
+            .ToHashSetAsync(cancellationToken);
+        var englishExamples = englishCandidates
+            .Where(item => founderApprovedUnitIds.Contains(item.TextUnitId))
             .ToList();
         if (englishExamples.Count == 0)
             return;
@@ -697,6 +1226,43 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
         if (pending)
             await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Replays existing Founder-approved English curriculum through the same
+    /// lexical and semantic-anchor authority used for a new curriculum batch.
+    /// It creates no raw submission, corpus asset, or second parser; historic
+    /// examples simply receive the missing reusable evidence projection.
+    /// </summary>
+    private async Task ReconcileFounderApprovedEnglishEvidenceAsync(
+        Guid familyId,
+        CancellationToken cancellationToken)
+    {
+        var family = await _db.Set<LegendCurriculumFamily>()
+            .SingleOrDefaultAsync(item => item.Id == familyId, cancellationToken);
+        if (family is null || family.Provenance != LegendConnectKnowledgeProvenance.FounderApproved)
+            return;
+
+        var examples = await _db.Set<LegendCurriculumExample>()
+            .Where(item => item.CurriculumFamilyId == familyId && item.LanguageCode == "en" &&
+                item.DerivedFromCurriculumExampleId == null && item.SupersededUtc == null)
+            .ToListAsync(cancellationToken);
+        if (examples.Count == 0)
+            return;
+
+        var textUnits = await _db.Set<LegendLanguageTextUnit>()
+            .Where(item => examples.Select(example => example.TextUnitId).Contains(item.Id) &&
+                item.IsTrainingEligible && item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+            .ToDictionaryAsync(item => item.Id, cancellationToken);
+        var inputs = examples
+            .Where(item => textUnits.ContainsKey(item.TextUnitId))
+            .Select(item => new AtomicInput(textUnits[item.TextUnitId], "StructuredExample", null, null, null))
+            .ToList();
+        if (inputs.Count == 0)
+            return;
+
+        await EnsureLanguageLexicalObservationsAsync(inputs, "en", cancellationToken);
+        await AttachExplicitEnglishSemanticAnchorsAsync(family, examples, cancellationToken);
     }
 
     private async Task EnsureParagraphNeighborRelationshipsAsync(
@@ -907,7 +1473,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .ToDictionary(
                 group => group.Key,
                 group => group.ToDictionary(item => item.Dimension, item => item.Value, StringComparer.Ordinal));
-        var affected = new HashSet<(string Dimension, string Signature)>();
+        var anchorsByExample = await LoadExplicitControlledAnchorsByExampleAsync(
+            exampleIds,
+            languageCode,
+            cancellationToken);
+        var affectedPatternIds = new HashSet<Guid>();
+        var affectedRelationshipIds = new HashSet<Guid>();
 
         for (var leftIndex = 0; leftIndex < examples.Count - 1; leftIndex++)
         {
@@ -931,17 +1502,17 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     // variation values provide the semantic comparison; no
                     // English transformation or target-language rule exists.
                     var comparison = CanonicalComparison(
-                        left.Text, leftValue, left.Example.Id,
+                        dimension, left.Text, leftValue, left.Example.Id,
                         right.Text, rightValue, right.Example.Id);
-                    var signature = comparison.Signature;
+                    var propositionSignature = comparison.PropositionSignature;
                     var pattern = _db.Set<LegendLanguageStructuralPattern>().Local
-                        .SingleOrDefault(item => item.CurriculumFamilyId == familyId && item.PairKey == pairScope &&
+                        .SingleOrDefault(item => item.PairKey == pairScope &&
                             item.LanguageCode == languageCode && item.VariationDimension == dimension &&
-                            item.RealizationSignature == signature)
+                            item.PropositionSignature == propositionSignature)
                         ?? await _db.Set<LegendLanguageStructuralPattern>()
-                            .SingleOrDefaultAsync(item => item.CurriculumFamilyId == familyId && item.PairKey == pairScope &&
+                            .SingleOrDefaultAsync(item => item.PairKey == pairScope &&
                                 item.LanguageCode == languageCode && item.VariationDimension == dimension &&
-                                item.RealizationSignature == signature, cancellationToken);
+                                item.PropositionSignature == propositionSignature, cancellationToken);
                     var bothHumanVerified = left.IsHumanVerifiedSupport && right.IsHumanVerifiedSupport;
                     var contributionState = bothHumanVerified
                         ? "Supported"
@@ -954,10 +1525,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                         {
                             Id = Guid.NewGuid(),
                             CurriculumFamilyId = familyId,
+                            PropositionSignature = propositionSignature,
                             PairKey = pairScope,
                             LanguageCode = languageCode,
                             VariationDimension = dimension,
-                            RealizationSignature = signature,
+                            // The proposition is shared through
+                            // PropositionSignature. This retains the first
+                            // observed language-local realization solely for
+                            // audit and never for cross-family identity.
+                            RealizationSignature = comparison.Signature,
                             MaturityState = "Observation",
                             Provenance = bothHumanVerified
                                 ? LegendConnectKnowledgeProvenance.FounderApproved
@@ -982,9 +1558,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                         item.VariationDimension == dimension &&
                         item.BaselineCurriculumExampleId == comparison.BaselineExampleId &&
                         item.ComparedCurriculumExampleId == comparison.ComparedExampleId, cancellationToken);
+                    var priorPatternId = existingEvidence?.StructuralPatternId;
+                    var priorRelationshipId = existingEvidence?.StructuralRelationshipId;
+                    LegendLanguageStructuralEvidence structuralEvidence;
                     if (existingEvidence is null)
                     {
-                        _db.Set<LegendLanguageStructuralEvidence>().Add(new LegendLanguageStructuralEvidence
+                        structuralEvidence = new LegendLanguageStructuralEvidence
                         {
                             Id = Guid.NewGuid(),
                             StructuralPatternId = pattern.Id,
@@ -996,7 +1575,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                             ComparedCurriculumExampleId = comparison.ComparedExampleId,
                             BaselineVariationValue = comparison.BaselineValue,
                             ComparedVariationValue = comparison.ComparedValue,
-                            EvidenceSignature = signature,
+                            EvidenceSignature = propositionSignature,
                             BaselineComponentSignature = comparison.BaselineComponentSignature,
                             ComparedComponentSignature = comparison.ComparedComponentSignature,
                             IndependentSourceIdentity = sourceIdentity,
@@ -1006,29 +1585,82 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                                 ? LegendConnectKnowledgeProvenance.FounderApproved
                                 : LegendConnectKnowledgeProvenance.ProviderDerived,
                             CreatedUtc = DateTime.UtcNow
-                        });
+                        };
+                        _db.Set<LegendLanguageStructuralEvidence>().Add(structuralEvidence);
                     }
                     else
                     {
-                        existingEvidence.StructuralPatternId = pattern.Id;
-                        existingEvidence.IndependentSourceIdentity = sourceIdentity;
-                        existingEvidence.ContributionState = contributionState;
-                        existingEvidence.IsHumanVerifiedSupport = bothHumanVerified;
-                        existingEvidence.Provenance = bothHumanVerified
+                        structuralEvidence = existingEvidence;
+                        structuralEvidence.StructuralPatternId = pattern.Id;
+                        structuralEvidence.IndependentSourceIdentity = sourceIdentity;
+                        structuralEvidence.ContributionState = contributionState;
+                        structuralEvidence.IsHumanVerifiedSupport = bothHumanVerified;
+                        structuralEvidence.Provenance = bothHumanVerified
                             ? LegendConnectKnowledgeProvenance.FounderApproved
                             : LegendConnectKnowledgeProvenance.ProviderDerived;
-                        existingEvidence.SupersededUtc = null;
+                        structuralEvidence.SupersededUtc = null;
                     }
-                    affected.Add((dimension, signature));
+
+                    // Provider output remains on the existing proposition
+                    // evidence as an insufficient observation. It may not
+                    // establish or contradict a reusable relationship.
+                    var relationshipCandidate = bothHumanVerified
+                        ? TryCreateReusableStructuralRelationship(
+                            dimension,
+                            anchorsByExample.GetValueOrDefault(comparison.BaselineExampleId, []),
+                            anchorsByExample.GetValueOrDefault(comparison.ComparedExampleId, []))
+                        : null;
+                    if (relationshipCandidate is null)
+                    {
+                        structuralEvidence.StructuralRelationshipId = null;
+                        structuralEvidence.StructuralRelationshipContributionState = null;
+                    }
+                    else
+                    {
+                        var relationship = await GetOrCreateStructuralRelationshipAsync(
+                            pairScope,
+                            languageCode,
+                            dimension,
+                            relationshipCandidate,
+                            bothHumanVerified,
+                            cancellationToken);
+                        structuralEvidence.StructuralRelationshipId = relationship.Id;
+                        structuralEvidence.StructuralRelationshipContributionState = !bothHumanVerified
+                            ? "Insufficient"
+                            : string.Equals(
+                                relationship.AnchorLayoutSignature,
+                                relationshipCandidate.AnchorLayoutSignature,
+                                StringComparison.Ordinal)
+                                ? "Supported"
+                                : "Contradictory";
+                        affectedRelationshipIds.Add(relationship.Id);
+                    }
+                    affectedPatternIds.Add(pattern.Id);
+                    if (priorPatternId is { } prior && prior != pattern.Id)
+                        affectedPatternIds.Add(prior);
+                    if (priorRelationshipId is { } priorRelationship &&
+                        priorRelationship != structuralEvidence.StructuralRelationshipId)
+                        affectedRelationshipIds.Add(priorRelationship);
+                    if (bothHumanVerified)
+                        await EnsureControlledVariationContextAsync(
+                            left,
+                            right,
+                            comparison,
+                            pairKey,
+                            dimension,
+                            propositionSignature,
+                            cancellationToken);
                 }
             }
         }
 
-        if (affected.Count == 0)
+        if (affectedPatternIds.Count == 0)
             return;
         await _db.SaveChangesAsync(cancellationToken);
-        foreach (var (dimension, signature) in affected)
-            await RefreshPatternMaturityAsync(familyId, pairScope, languageCode, dimension, signature, cancellationToken);
+        foreach (var patternId in affectedPatternIds)
+            await RefreshPatternMaturityAsync(patternId, cancellationToken);
+        foreach (var relationshipId in affectedRelationshipIds)
+            await RefreshStructuralRelationshipMaturityAsync(relationshipId, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
     }
 
@@ -1099,18 +1731,281 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         ).AnyAsync(cancellationToken);
     }
 
-    private async Task RefreshPatternMaturityAsync(
-        Guid familyId,
+    /// <summary>
+    /// Records the existing context-relationship projection of an explicitly
+    /// controlled Founder variation. It is a classification of supplied
+    /// evidence, not a classifier for unlabeled text or a second context
+    /// graph. Provider-derived comparisons deliberately never enter here.
+    /// </summary>
+    private async Task EnsureControlledVariationContextAsync(
+        AnalysisExample left,
+        AnalysisExample right,
+        StructuralComparison comparison,
         string? pairKey,
-        string languageCode,
         string dimension,
-        string signature,
+        string propositionSignature,
+        CancellationToken cancellationToken)
+    {
+        var baseline = left.Example.Id == comparison.BaselineExampleId ? left : right;
+        var compared = left.Example.Id == comparison.ComparedExampleId ? left : right;
+        var contextCategory = "ControlledVariation:" + dimension;
+        var existing = await _db.Set<LegendLanguageContextRelationship>()
+            .SingleOrDefaultAsync(item => item.PairKey == pairKey &&
+                item.SourceTextUnitId == baseline.SourceTextUnitId &&
+                item.RelatedTextUnitId == compared.SourceTextUnitId &&
+                item.RelationshipKind == "ControlledVariation" &&
+                item.ContextSignature == propositionSignature,
+                cancellationToken);
+        if (existing is null)
+        {
+            _db.Set<LegendLanguageContextRelationship>().Add(new LegendLanguageContextRelationship
+            {
+                Id = Guid.NewGuid(),
+                PairKey = pairKey,
+                SourceTextUnitId = baseline.SourceTextUnitId,
+                RelatedTextUnitId = compared.SourceTextUnitId,
+                RelationshipKind = "ControlledVariation",
+                ContextSignature = propositionSignature,
+                SourcePatternSignature = propositionSignature,
+                ContextCategory = contextCategory,
+                Confidence = 1m,
+                QualityState = "Verified",
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                ObservationCount = 1,
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            });
+            return;
+        }
+
+        var changed = existing.SupersededUtc is not null ||
+            existing.ContextCategory != contextCategory ||
+            existing.QualityState != "Verified" ||
+            existing.Provenance != LegendConnectKnowledgeProvenance.FounderApproved ||
+            existing.Confidence != 1m;
+        existing.SupersededUtc = null;
+        existing.ContextCategory = contextCategory;
+        existing.QualityState = "Verified";
+        existing.Provenance = LegendConnectKnowledgeProvenance.FounderApproved;
+        existing.Confidence = 1m;
+        if (changed)
+            existing.UpdatedUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Loads only explicit, Founder-approved component anchors. A sentence
+    /// without those durable anchors remains unknown for reusable structural
+    /// learning even when its surface form resembles another sentence.
+    /// </summary>
+    private async Task<Dictionary<Guid, IReadOnlyList<ExplicitControlledAnchor>>> LoadExplicitControlledAnchorsByExampleAsync(
+        IReadOnlyCollection<Guid> exampleIds,
+        string languageCode,
+        CancellationToken cancellationToken)
+    {
+        var anchors = await _db.Set<LegendLanguageCompositionalAnchor>()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId) &&
+                item.LanguageCode == languageCode &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                item.SupersededUtc == null &&
+                item.SemanticSignature != null && item.SemanticSignature != string.Empty &&
+                item.ComponentStartTokenIndex != null && item.ComponentLength != null && item.ComponentLength > 0)
+            .Select(item => new ExplicitControlledAnchor(
+                item.CurriculumExampleId,
+                item.Dimension,
+                item.SemanticSignature!,
+                item.ComponentStartTokenIndex!.Value,
+                item.ComponentLength!.Value))
+            .ToListAsync(cancellationToken);
+
+        return anchors
+            .GroupBy(item => item.CurriculumExampleId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<ExplicitControlledAnchor>)group
+                    .OrderBy(item => item.ComponentStartTokenIndex)
+                    .ThenBy(item => item.ComponentLength)
+                    .ThenBy(item => item.Dimension, StringComparer.Ordinal)
+                    .ThenBy(item => item.SemanticSignature, StringComparer.Ordinal)
+                    .ToList());
+    }
+
+    /// <summary>
+    /// Builds a candidate relationship only where controlled component
+    /// anchors establish one changed dimension and at least one separately
+    /// stable component. The signature intentionally contains no words or
+    /// proposition values, enabling explicitly anchored lexical substitutions
+    /// to contribute without guessing their semantics.
+    /// </summary>
+    private static ReusableStructuralRelationshipCandidate? TryCreateReusableStructuralRelationship(
+        string changedDimension,
+        IReadOnlyList<ExplicitControlledAnchor> baselineAnchors,
+        IReadOnlyList<ExplicitControlledAnchor> comparedAnchors)
+    {
+        if (baselineAnchors.Count == 0 || comparedAnchors.Count == 0)
+            return null;
+
+        var baselineByDimension = baselineAnchors
+            .GroupBy(item => item.Dimension, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderBy(item => item.ComponentStartTokenIndex)
+                    .ThenBy(item => item.ComponentLength)
+                    .ThenBy(item => item.SemanticSignature, StringComparer.Ordinal)
+                    .ToList(),
+                StringComparer.Ordinal);
+        var comparedByDimension = comparedAnchors
+            .GroupBy(item => item.Dimension, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderBy(item => item.ComponentStartTokenIndex)
+                    .ThenBy(item => item.ComponentLength)
+                    .ThenBy(item => item.SemanticSignature, StringComparer.Ordinal)
+                    .ToList(),
+                StringComparer.Ordinal);
+        if (!baselineByDimension.ContainsKey(changedDimension) ||
+            !comparedByDimension.ContainsKey(changedDimension) ||
+            !baselineByDimension.Keys.Order(StringComparer.Ordinal)
+                .SequenceEqual(comparedByDimension.Keys.Order(StringComparer.Ordinal), StringComparer.Ordinal))
+            return null;
+
+        var invariantDimensions = baselineByDimension.Keys
+            .Where(item => !string.Equals(item, changedDimension, StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        if (invariantDimensions.Count == 0)
+            return null;
+
+        // The evidence establishes that precisely one explicitly controlled
+        // dimension changed. Any other anchored component must retain the
+        // same supplied semantic value in this comparison; otherwise this is
+        // not a controlled structural observation.
+        foreach (var invariantDimension in invariantDimensions)
+        {
+            var baselineInvariant = baselineByDimension[invariantDimension]
+                .Select(item => item.SemanticSignature)
+                .Order(StringComparer.Ordinal);
+            var comparedInvariant = comparedByDimension[invariantDimension]
+                .Select(item => item.SemanticSignature)
+                .Order(StringComparer.Ordinal);
+            if (!baselineInvariant.SequenceEqual(comparedInvariant, StringComparer.Ordinal))
+                return null;
+        }
+
+        var componentDimensions = string.Join('|', baselineByDimension
+            .OrderBy(item => item.Key, StringComparer.Ordinal)
+            .Select(item => $"{item.Key}:{item.Value.Count}"));
+        var relationshipSignature = LegendLanguageIdentity.TextHash(
+            $"controlled-anchor-relationship|{changedDimension.Trim().ToLowerInvariant()}|{componentDimensions}");
+        var layout = $"baseline:{AnchorLayout(baselineAnchors)}|compared:{AnchorLayout(comparedAnchors)}";
+        return new ReusableStructuralRelationshipCandidate(
+            relationshipSignature,
+            LegendLanguageIdentity.TextHash(layout));
+    }
+
+    private async Task<LegendLanguageStructuralRelationship> GetOrCreateStructuralRelationshipAsync(
+        string pairKey,
+        string languageCode,
+        string variationDimension,
+        ReusableStructuralRelationshipCandidate candidate,
+        bool founderSupported,
+        CancellationToken cancellationToken)
+    {
+        var relationship = _db.Set<LegendLanguageStructuralRelationship>().Local
+            .SingleOrDefault(item => item.PairKey == pairKey && item.LanguageCode == languageCode &&
+                item.VariationDimension == variationDimension &&
+                item.RelationshipSignature == candidate.RelationshipSignature)
+            ?? await _db.Set<LegendLanguageStructuralRelationship>().SingleOrDefaultAsync(item =>
+                item.PairKey == pairKey && item.LanguageCode == languageCode &&
+                item.VariationDimension == variationDimension &&
+                item.RelationshipSignature == candidate.RelationshipSignature,
+                cancellationToken);
+        if (relationship is null)
+        {
+            relationship = new LegendLanguageStructuralRelationship
+            {
+                Id = Guid.NewGuid(),
+                PairKey = pairKey,
+                LanguageCode = languageCode,
+                VariationDimension = variationDimension,
+                RelationshipSignature = candidate.RelationshipSignature,
+                AnchorLayoutSignature = candidate.AnchorLayoutSignature,
+                MaturityState = "Observation",
+                Provenance = founderSupported
+                    ? LegendConnectKnowledgeProvenance.FounderApproved
+                    : LegendConnectKnowledgeProvenance.ProviderDerived,
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            };
+            _db.Set<LegendLanguageStructuralRelationship>().Add(relationship);
+            return relationship;
+        }
+
+        relationship.SupersededUtc = null;
+        if (founderSupported)
+            relationship.Provenance = LegendConnectKnowledgeProvenance.FounderApproved;
+        relationship.UpdatedUtc = DateTime.UtcNow;
+        return relationship;
+    }
+
+    private async Task RefreshStructuralRelationshipMaturityAsync(
+        Guid relationshipId,
+        CancellationToken cancellationToken)
+    {
+        var relationship = await _db.Set<LegendLanguageStructuralRelationship>()
+            .SingleAsync(item => item.Id == relationshipId, cancellationToken);
+        var evidence = await _db.Set<LegendLanguageStructuralEvidence>()
+            .Where(item => item.StructuralRelationshipId == relationship.Id && item.SupersededUtc == null)
+            .ToListAsync(cancellationToken);
+        var supported = evidence.Where(item => item.StructuralRelationshipContributionState == "Supported").ToList();
+        var contradictory = evidence.Where(item => item.StructuralRelationshipContributionState == "Contradictory").ToList();
+        relationship.SupportCount = supported.Select(item => item.IndependentSourceIdentity).Distinct(StringComparer.Ordinal).Count();
+        relationship.ContradictionCount = contradictory.Select(item => item.IndependentSourceIdentity).Distinct(StringComparer.Ordinal).Count();
+        relationship.IndependentSourceCount = supported
+            .SelectMany(item => item.IndependentSourceIdentity.Split('|', StringSplitOptions.RemoveEmptyEntries))
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        relationship.HumanVerifiedSupportCount = supported
+            .Where(item => item.IsHumanVerifiedSupport)
+            .Select(item => item.IndependentSourceIdentity)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        relationship.ProviderOnlySupportCount = evidence
+            .Where(item => !item.IsHumanVerifiedSupport &&
+                item.StructuralRelationshipContributionState != "Contradictory")
+            .Select(item => item.IndependentSourceIdentity)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        relationship.Confidence = relationship.SupportCount == 0
+            ? 0m
+            : decimal.Round((decimal)relationship.HumanVerifiedSupportCount /
+                Math.Max(1, relationship.SupportCount + relationship.ContradictionCount), 4);
+        relationship.IsProductionEligible = false;
+        relationship.SupersededUtc = evidence.Count == 0 ? DateTime.UtcNow : null;
+        relationship.MaturityState = evidence.Count == 0
+            ? "Superseded"
+            : relationship.ContradictionCount > 0
+            ? "Observation"
+            : relationship.SupportCount >= 3 && relationship.IndependentSourceCount >= 3
+            ? "Supported"
+            : relationship.SupportCount == 2
+            ? "Candidate"
+            : "Observation";
+        relationship.UpdatedUtc = DateTime.UtcNow;
+    }
+
+    private static string AnchorLayout(IReadOnlyList<ExplicitControlledAnchor> anchors) =>
+        string.Join('|', anchors
+            .OrderBy(item => item.ComponentStartTokenIndex)
+            .ThenBy(item => item.ComponentLength)
+            .ThenBy(item => item.Dimension, StringComparer.Ordinal)
+            .Select(item => $"{item.Dimension}:{item.ComponentStartTokenIndex}:{item.ComponentLength}"));
+
+    private async Task RefreshPatternMaturityAsync(
+        Guid patternId,
         CancellationToken cancellationToken)
     {
         var pattern = await _db.Set<LegendLanguageStructuralPattern>()
-            .SingleAsync(item => item.CurriculumFamilyId == familyId && item.PairKey == pairKey &&
-                item.LanguageCode == languageCode && item.VariationDimension == dimension &&
-                item.RealizationSignature == signature, cancellationToken);
+            .SingleAsync(item => item.Id == patternId, cancellationToken);
         var evidence = await _db.Set<LegendLanguageStructuralEvidence>()
             .Where(item => item.StructuralPatternId == pattern.Id && item.SupersededUtc == null)
             .ToListAsync(cancellationToken);
@@ -1172,6 +2067,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             : $"{rightSourceTextUnitId:D}|{leftSourceTextUnitId:D}";
 
     private static StructuralComparison CanonicalComparison(
+        string dimension,
         string leftText,
         string leftValue,
         Guid leftExampleId,
@@ -1184,6 +2080,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var comparedText = forward ? rightText : leftText;
         return new StructuralComparison(
             RealizationSignature(baselineText, comparedText),
+            ControlledPropositionSignature(
+                dimension,
+                forward ? leftValue : rightValue,
+                forward ? rightValue : leftValue),
             forward ? leftExampleId : rightExampleId,
             forward ? rightExampleId : leftExampleId,
             forward ? leftValue : rightValue,
@@ -1239,6 +2139,19 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string value) => LegendLanguageIdentity.TextHash(
             $"semantic|{dimension.Trim().ToLowerInvariant()}|{value.Trim().ToLowerInvariant()}");
 
+    private static string ControlledPropositionSignature(
+        string dimension,
+        string baselineValue,
+        string comparedValue)
+    {
+        var first = baselineValue.Trim().ToLowerInvariant();
+        var second = comparedValue.Trim().ToLowerInvariant();
+        if (string.Compare(first, second, StringComparison.Ordinal) > 0)
+            (first, second) = (second, first);
+        return LegendLanguageIdentity.TextHash(
+            $"controlled-proposition|{dimension.Trim().ToLowerInvariant()}|{first}|{second}");
+    }
+
     private static string TextShape(string text)
     {
         var tokens = LegendLanguageIdentity.NormalizeText(text)
@@ -1279,12 +2192,54 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
     private sealed record StructuralComparison(
         string Signature,
+        string PropositionSignature,
         Guid BaselineExampleId,
         Guid ComparedExampleId,
         string BaselineValue,
         string ComparedValue,
         string BaselineComponentSignature,
         string ComparedComponentSignature);
+
+    private sealed record ExplicitControlledAnchor(
+        Guid CurriculumExampleId,
+        string Dimension,
+        string SemanticSignature,
+        int ComponentStartTokenIndex,
+        int ComponentLength);
+
+    private sealed record ShadowCompositionComponent(
+        string Dimension,
+        string Value,
+        string SurfaceForm,
+        int StartTokenIndex,
+        int TokenLength,
+        string SemanticSignature);
+
+    private sealed record ShadowRelationshipRequirement(
+        string Dimension,
+        string FirstValue,
+        string SecondValue);
+
+    private sealed record ShadowPropositionRequirement(
+        string Dimension,
+        string PropositionSignature);
+
+    private sealed record ShadowAnchor(
+        Guid CurriculumExampleId,
+        string Dimension,
+        int StartTokenIndex,
+        int TokenLength);
+
+    private enum ShadowRelationshipState
+    {
+        Insufficient,
+        Contradicted,
+        Supported
+    }
+
+    private sealed record ReusableStructuralRelationshipCandidate(
+        string RelationshipSignature,
+        string AnchorLayoutSignature);
 
     private static IReadOnlyList<NormalizedCurriculumExample>? NormalizeExamples(
         IReadOnlyList<LegendConnectCurriculumExampleSubmission>? examples)

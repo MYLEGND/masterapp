@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260813022151_AddLegendConnectCrossExampleStructuralRelationships")]
+    partial class AddLegendConnectCrossExampleStructuralRelationships
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -4855,9 +4858,6 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("CompletedLanguageIntelligenceEvaluatorVersion")
-                        .HasColumnType("int");
-
                     b.Property<string>("ContextualCompositionMode")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -4869,20 +4869,6 @@ namespace Infrastructure.Migrations
 
                     b.Property<bool>("CorpusAcquisitionEnabled")
                         .HasColumnType("bit");
-
-                    b.Property<DateTime?>("LanguageIntelligenceReevaluationCompletedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("LanguageIntelligenceReevaluationCursor")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("LanguageIntelligenceReevaluationPhase")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<DateTime?>("LanguageIntelligenceReevaluationStartedUtc")
-                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("LastAcquisitionWorkerHeartbeatUtc")
                         .HasColumnType("datetime2");
@@ -4929,9 +4915,6 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
-
-                    b.Property<int>("TargetLanguageIntelligenceEvaluatorVersion")
-                        .HasColumnType("int");
 
                     b.Property<string>("UpdatedByUserId")
                         .HasMaxLength(450)

@@ -349,6 +349,172 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         return await GetEffectiveAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Owns only the durable version/checkpoint for the existing learning
+    /// worker. The worker remains responsible for invoking the canonical
+    /// curriculum and quality evaluators for each bounded page.
+    /// </summary>
+    public async Task<LegendConnectLanguageIntelligenceReevaluationSnapshot> GetOrStartLanguageIntelligenceReevaluationAsync(
+        int evaluatorVersion,
+        CancellationToken cancellationToken = default)
+    {
+        if (evaluatorVersion <= 0)
+            throw new ArgumentOutOfRangeException(nameof(evaluatorVersion), "Evaluator version must be positive.");
+
+        if (!_db.Database.IsRelational())
+        {
+            var inMemoryPolicy = await GetTrackedPolicyAsync(cancellationToken);
+            if (inMemoryPolicy.CompletedLanguageIntelligenceEvaluatorVersion >= evaluatorVersion &&
+                inMemoryPolicy.LanguageIntelligenceReevaluationPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)
+            {
+                return ToReevaluationSnapshot(inMemoryPolicy);
+            }
+
+            if (inMemoryPolicy.TargetLanguageIntelligenceEvaluatorVersion != evaluatorVersion ||
+                !LegendConnectLanguageIntelligenceReevaluationPhases.IsWorkPhase(
+                    inMemoryPolicy.LanguageIntelligenceReevaluationPhase))
+            {
+                inMemoryPolicy.TargetLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
+                inMemoryPolicy.LanguageIntelligenceReevaluationPhase = LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies;
+                inMemoryPolicy.LanguageIntelligenceReevaluationCursor = null;
+                inMemoryPolicy.LanguageIntelligenceReevaluationStartedUtc = DateTime.UtcNow;
+                inMemoryPolicy.LanguageIntelligenceReevaluationCompletedUtc = null;
+                inMemoryPolicy.UpdatedUtc = DateTime.UtcNow;
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+
+            return ToReevaluationSnapshot(inMemoryPolicy);
+        }
+
+        var policy = await GetLanguageIntelligencePolicyAsync(cancellationToken);
+        if (policy.CompletedLanguageIntelligenceEvaluatorVersion >= evaluatorVersion &&
+            policy.LanguageIntelligenceReevaluationPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)
+        {
+            return ToReevaluationSnapshot(policy);
+        }
+
+        var phaseIsValid = LegendConnectLanguageIntelligenceReevaluationPhases.IsWorkPhase(
+            policy.LanguageIntelligenceReevaluationPhase);
+        if (policy.TargetLanguageIntelligenceEvaluatorVersion != evaluatorVersion || !phaseIsValid)
+        {
+            var now = DateTime.UtcNow;
+            await _db.Set<LegendConnectRuntimePolicy>()
+                .Where(item => item.ScopeKey == GlobalScope)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.TargetLanguageIntelligenceEvaluatorVersion, evaluatorVersion)
+                    .SetProperty(item => item.LanguageIntelligenceReevaluationPhase,
+                        LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies)
+                    .SetProperty(item => item.LanguageIntelligenceReevaluationCursor, (Guid?)null)
+                    .SetProperty(item => item.LanguageIntelligenceReevaluationStartedUtc, now)
+                    .SetProperty(item => item.LanguageIntelligenceReevaluationCompletedUtc, (DateTime?)null)
+                    .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
+            policy.TargetLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
+            policy.LanguageIntelligenceReevaluationPhase = LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies;
+            policy.LanguageIntelligenceReevaluationCursor = null;
+            policy.LanguageIntelligenceReevaluationStartedUtc = now;
+            policy.LanguageIntelligenceReevaluationCompletedUtc = null;
+            policy.UpdatedUtc = now;
+        }
+
+        return ToReevaluationSnapshot(policy);
+    }
+
+    public async Task AdvanceLanguageIntelligenceReevaluationAsync(
+        int evaluatorVersion,
+        string phase,
+        Guid? lastProcessedId,
+        bool phaseComplete,
+        CancellationToken cancellationToken = default)
+    {
+        if (evaluatorVersion <= 0 || !LegendConnectLanguageIntelligenceReevaluationPhases.IsWorkPhase(phase))
+            return;
+
+        if (!_db.Database.IsRelational())
+        {
+            var inMemoryPolicy = await GetTrackedPolicyAsync(cancellationToken);
+            if (inMemoryPolicy.TargetLanguageIntelligenceEvaluatorVersion != evaluatorVersion ||
+                !string.Equals(inMemoryPolicy.LanguageIntelligenceReevaluationPhase, phase, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (lastProcessedId.HasValue)
+                inMemoryPolicy.LanguageIntelligenceReevaluationCursor = lastProcessedId;
+            if (phaseComplete)
+            {
+                inMemoryPolicy.LanguageIntelligenceReevaluationCursor = null;
+                inMemoryPolicy.LanguageIntelligenceReevaluationPhase = phase switch
+                {
+                    LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies =>
+                        LegendConnectLanguageIntelligenceReevaluationPhases.Alignments,
+                    LegendConnectLanguageIntelligenceReevaluationPhases.Alignments =>
+                        LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations,
+                    _ => LegendConnectLanguageIntelligenceReevaluationPhases.Complete
+                };
+                if (inMemoryPolicy.LanguageIntelligenceReevaluationPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)
+                {
+                    inMemoryPolicy.CompletedLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
+                    inMemoryPolicy.LanguageIntelligenceReevaluationCompletedUtc = DateTime.UtcNow;
+                }
+            }
+
+            inMemoryPolicy.UpdatedUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var policy = await GetLanguageIntelligencePolicyAsync(cancellationToken);
+        // A newer deployment may have already begun another evaluator pass;
+        // stale worker pages must not move its durable cursor backward.
+        if (policy.TargetLanguageIntelligenceEvaluatorVersion != evaluatorVersion ||
+            !string.Equals(policy.LanguageIntelligenceReevaluationPhase, phase, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        var nextPhase = phase;
+        var completedVersion = policy.CompletedLanguageIntelligenceEvaluatorVersion;
+        var completedUtc = policy.LanguageIntelligenceReevaluationCompletedUtc;
+        if (phaseComplete)
+        {
+            nextPhase = phase switch
+            {
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies =>
+                    LegendConnectLanguageIntelligenceReevaluationPhases.Alignments,
+                LegendConnectLanguageIntelligenceReevaluationPhases.Alignments =>
+                    LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations,
+                _ => LegendConnectLanguageIntelligenceReevaluationPhases.Complete
+            };
+            if (nextPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)
+            {
+                completedVersion = evaluatorVersion;
+                completedUtc = now;
+            }
+        }
+
+        // Heartbeats update this singleton too. A conditional update avoids a
+        // row-version collision after a successful canonical evaluator page.
+        var update = _db.Set<LegendConnectRuntimePolicy>()
+            .Where(item => item.ScopeKey == GlobalScope &&
+                item.TargetLanguageIntelligenceEvaluatorVersion == evaluatorVersion &&
+                item.LanguageIntelligenceReevaluationPhase == phase);
+        var updated = phaseComplete
+            ? await update.ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.LanguageIntelligenceReevaluationCursor, (Guid?)null)
+                .SetProperty(item => item.LanguageIntelligenceReevaluationPhase, nextPhase)
+                .SetProperty(item => item.CompletedLanguageIntelligenceEvaluatorVersion, completedVersion)
+                .SetProperty(item => item.LanguageIntelligenceReevaluationCompletedUtc, completedUtc)
+                .SetProperty(item => item.UpdatedUtc, now), cancellationToken)
+            : lastProcessedId.HasValue
+            ? await update.ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.LanguageIntelligenceReevaluationCursor, lastProcessedId)
+                .SetProperty(item => item.UpdatedUtc, now), cancellationToken)
+            : await update.ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
+        _ = updated;
+    }
+
     public async Task<IReadOnlyList<LegendConnectFounderOperationalAuditSnapshot>> GetRecentAuditAsync(
         int take = 30,
         CancellationToken cancellationToken = default) =>
@@ -450,6 +616,19 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         }
     }
 
+    private async Task<LegendConnectRuntimePolicy> GetLanguageIntelligencePolicyAsync(
+        CancellationToken cancellationToken)
+    {
+        var policy = await _db.Set<LegendConnectRuntimePolicy>().AsNoTracking()
+            .SingleOrDefaultAsync(item => item.ScopeKey == GlobalScope, cancellationToken);
+        if (policy is not null)
+            return policy;
+
+        _ = await GetTrackedPolicyAsync(cancellationToken);
+        return await _db.Set<LegendConnectRuntimePolicy>().AsNoTracking()
+            .SingleAsync(item => item.ScopeKey == GlobalScope, cancellationToken);
+    }
+
     private LegendConnectRuntimePolicySnapshot BootstrapPolicy()
     {
         var capacity = Math.Max(0, _configuration.GetValue<long?>("LegendConnect:Providers:AzureTranslator:MonthlyCapacityCharacters") ?? 0);
@@ -482,6 +661,15 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         policy.LastLearningWorkerHeartbeatUtc,
         policy.LastAcquisitionWorkerHeartbeatUtc,
         policy.UpdatedUtc);
+
+    private static LegendConnectLanguageIntelligenceReevaluationSnapshot ToReevaluationSnapshot(
+        LegendConnectRuntimePolicy policy) => new(
+        policy.TargetLanguageIntelligenceEvaluatorVersion,
+        policy.CompletedLanguageIntelligenceEvaluatorVersion,
+        policy.LanguageIntelligenceReevaluationPhase,
+        policy.LanguageIntelligenceReevaluationCursor,
+        policy.LanguageIntelligenceReevaluationStartedUtc,
+        policy.LanguageIntelligenceReevaluationCompletedUtc);
 
     private async Task<LegendConnectRuntimePolicySnapshot> ToEffectiveSnapshotAsync(
         LegendConnectRuntimePolicy policy,

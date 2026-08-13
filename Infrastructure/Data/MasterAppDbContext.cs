@@ -104,6 +104,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<LegendCurriculumExample> LegendCurriculumExamples => Set<LegendCurriculumExample>();
     public DbSet<LegendCurriculumExampleVariation> LegendCurriculumExampleVariations => Set<LegendCurriculumExampleVariation>();
     public DbSet<LegendLanguageStructuralPattern> LegendLanguageStructuralPatterns => Set<LegendLanguageStructuralPattern>();
+    public DbSet<LegendLanguageStructuralRelationship> LegendLanguageStructuralRelationships => Set<LegendLanguageStructuralRelationship>();
     public DbSet<LegendLanguageStructuralEvidence> LegendLanguageStructuralEvidence => Set<LegendLanguageStructuralEvidence>();
     public DbSet<LegendLanguageLexeme> LegendLanguageLexemes => Set<LegendLanguageLexeme>();
     public DbSet<LegendLanguageLexicalOccurrence> LegendLanguageLexicalOccurrences => Set<LegendLanguageLexicalOccurrence>();
