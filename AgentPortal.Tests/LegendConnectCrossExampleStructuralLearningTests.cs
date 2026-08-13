@@ -25,6 +25,8 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
+        var operations = new LegendConnectOperations(
+            db, fixture.Registry, fixture.Corpus, fixture.Configuration, curriculum: fixture.Curriculum);
         foreach (var batch in ControlledAgentBatches())
             Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
 
@@ -51,6 +53,22 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
         Assert.Equal(0, relationship.ContradictionCount);
         Assert.Equal("Supported", relationship.MaturityState);
         Assert.False(relationship.IsProductionEligible);
+
+        var projection = Assert.IsType<LegendConnectLanguageKnowledgeSnapshot>(
+            await operations.GetLanguageKnowledgeAsync("en"));
+        Assert.All(projection.StructuralPatterns ?? [], item =>
+        {
+            Assert.Equal("Observation", item.MaturityState);
+            Assert.Equal(1, item.SupportCount);
+        });
+        var projectedRelationship = Assert.Single(projection.StructuralRelationships ?? []);
+        Assert.Equal("agent", projectedRelationship.VariationDimension);
+        Assert.Equal("Supported", projectedRelationship.MaturityState);
+        Assert.Equal(3, projectedRelationship.SupportCount);
+        Assert.Equal(6, projectedRelationship.IndependentSourceCount);
+        Assert.Equal(3, projectedRelationship.HumanVerifiedSupportCount);
+        Assert.Equal(0, projectedRelationship.ProviderOnlySupportCount);
+        Assert.False(projectedRelationship.IsProductionEligible);
 
         var first = new
         {

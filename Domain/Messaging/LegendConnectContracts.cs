@@ -267,7 +267,8 @@ public sealed record LegendConnectLanguageKnowledgeSnapshot(
     IReadOnlyList<LegendConnectLanguageContextRelationshipSnapshot> ContextRelationships,
     IReadOnlyList<LegendConnectPairHealthSnapshot> DirectionalPairs,
     IReadOnlyList<LegendConnectLanguageLearningActivitySnapshot> RecentLearningActivity,
-    IReadOnlyList<LegendConnectStructuralPatternSnapshot>? StructuralPatterns = null);
+    IReadOnlyList<LegendConnectStructuralPatternSnapshot>? StructuralPatterns = null,
+    IReadOnlyList<LegendConnectStructuralRelationshipSnapshot>? StructuralRelationships = null);
 
 /// <summary>
 /// Privacy-safe structural-learning projection. It intentionally contains no
@@ -279,6 +280,25 @@ public sealed record LegendConnectStructuralPatternSnapshot(
     string VariationDimension,
     string MaturityState,
     int SupportCount,
+    int ContradictionCount,
+    bool IsProductionEligible,
+    DateTime UpdatedUtc);
+
+/// <summary>
+/// Privacy-safe Founder projection of reusable structural evidence accumulated
+/// across independent curriculum families. This is intentionally distinct from
+/// a per-family structural pattern: it is the existing aggregate that can earn
+/// supported maturity without granting production composition authority.
+/// </summary>
+public sealed record LegendConnectStructuralRelationshipSnapshot(
+    string PairKey,
+    string LanguageCode,
+    string VariationDimension,
+    string MaturityState,
+    int SupportCount,
+    int IndependentSourceCount,
+    int HumanVerifiedSupportCount,
+    int ProviderOnlySupportCount,
     int ContradictionCount,
     bool IsProductionEligible,
     DateTime UpdatedUtc);

@@ -377,6 +377,41 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     pattern.UpdatedUtc)
             ).Take(LanguageKnowledgeDetailRecordLimit).ToListAsync(cancellationToken);
 
+        // Patterns retain a single controlled comparison and its owning
+        // curriculum family. Reusable relationships are the existing
+        // cross-family aggregation authority, so project them separately
+        // rather than misrepresenting a per-family observation as the total
+        // independent support for that relationship.
+        var activeStructuralRelationshipIds = activeCurriculumExampleIds.Length == 0
+            ? Array.Empty<Guid>()
+            : await _db.Set<LegendLanguageStructuralEvidence>().AsNoTracking()
+                .Where(item => item.SupersededUtc == null && item.StructuralRelationshipId != null &&
+                    activeCurriculumExampleIds.Contains(item.BaselineCurriculumExampleId) &&
+                    activeCurriculumExampleIds.Contains(item.ComparedCurriculumExampleId))
+                .Select(item => item.StructuralRelationshipId!.Value)
+                .Distinct()
+                .ToArrayAsync(cancellationToken);
+        var structuralRelationships = activeStructuralRelationshipIds.Length == 0
+            ? new List<LegendConnectStructuralRelationshipSnapshot>()
+            : await _db.Set<LegendLanguageStructuralRelationship>().AsNoTracking()
+                .Where(item => activeStructuralRelationshipIds.Contains(item.Id) &&
+                    item.LanguageCode == language.LanguageCode && item.SupersededUtc == null)
+                .OrderByDescending(item => item.UpdatedUtc)
+                .Take(LanguageKnowledgeDetailRecordLimit)
+                .Select(item => new LegendConnectStructuralRelationshipSnapshot(
+                    item.PairKey,
+                    item.LanguageCode,
+                    item.VariationDimension,
+                    item.MaturityState,
+                    item.SupportCount,
+                    item.IndependentSourceCount,
+                    item.HumanVerifiedSupportCount,
+                    item.ProviderOnlySupportCount,
+                    item.ContradictionCount,
+                    item.IsProductionEligible,
+                    item.UpdatedUtc))
+                .ToListAsync(cancellationToken);
+
         return new LegendConnectLanguageKnowledgeSnapshot(
             BuildLanguageHealth(language, state),
             LanguageKnowledgeDetailRecordLimit,
@@ -386,7 +421,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             contextRelationships,
             languagePairs,
             recentLearningActivity,
-            structuralPatterns);
+            structuralPatterns,
+            structuralRelationships);
     }
 
     public async Task<LegendConnectPairHealthSnapshot?> GetPairHealthAsync(

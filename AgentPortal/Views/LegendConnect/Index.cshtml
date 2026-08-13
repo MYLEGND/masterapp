@@ -421,6 +421,24 @@
                         }
                     </section>
 
+                    <section class="dashboard-detail-modal-section" aria-labelledby="structural-relationships-title">
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Cross-example structural learning</span><h3 class="dashboard-section-title" id="structural-relationships-title">Reusable structural relationships</h3></div></div>
+                        <p class="dashboard-section-copy">This is the server-owned aggregate across independent Founder-approved comparisons. Per-family pattern rows can correctly remain at Support 1 while the matching reusable relationship progresses through Observation, Candidate, and Supported. Provider-only observations remain separate and cannot create Founder-trusted support.</p>
+                        @if (languageKnowledge.StructuralRelationships is not { Count: > 0 })
+                        {
+                            <p class="dashboard-section-copy">No reusable cross-example structural relationship has been earned for this language yet.</p>
+                        }
+                        else
+                        {
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Semantic dimension</th><th>Maturity</th><th>Support</th><th>Independent sources</th><th>Human verified</th><th>Provider-only</th><th>Contradictions</th><th>Production eligible</th><th>Updated</th></tr></thead><tbody>
+                            @foreach (var relationship in languageKnowledge.StructuralRelationships)
+                            {
+                                <tr><td><span class="@LegendConnectMetricTone.Info">@(string.IsNullOrEmpty(relationship.PairKey) ? "Monolingual" : relationship.PairKey)</span></td><td><span class="@LegendConnectMetricTone.Info">@relationship.VariationDimension</span></td><td><span class="@LegendConnectMetricTone.Maturity(relationship.MaturityState)">@relationship.MaturityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.SupportCount)">@relationship.SupportCount</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.IndependentSourceCount)">@relationship.IndependentSourceCount</span></td><td><span class="@LegendConnectMetricTone.Verification(relationship.HumanVerifiedSupportCount > 0)">@relationship.HumanVerifiedSupportCount</span></td><td><span class="@LegendConnectMetricTone.Info">@relationship.ProviderOnlySupportCount</span></td><td><span class="@LegendConnectMetricTone.Contradictions(relationship.ContradictionCount)">@relationship.ContradictionCount</span></td><td><span class="@LegendConnectMetricTone.ProductionEligibility(relationship.IsProductionEligible)">@(relationship.IsProductionEligible ? "Yes" : "No")</span></td><td>@relationship.UpdatedUtc.ToString("u")</td></tr>
+                            }
+                            </tbody></table></div>
+                        }
+                    </section>
+
                     <section class="dashboard-detail-modal-section" aria-labelledby="canonical-entries-title">
                         <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Approved canonical assets</span><h3 class="dashboard-section-title" id="canonical-entries-title">Entries used for learning</h3></div></div>
                         @if (languageKnowledge.CanonicalEntries.Count == 0)
