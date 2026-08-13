@@ -250,7 +250,7 @@
         <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("active-directional-pairs")" /></div>
         <div class="dashboard-data-surface">
             <table class="table dashboard-data-table">
-                <thead><tr><th>Pair</th><th>Demand</th><th>Memory / context served</th><th>Provider fallback required</th><th>Internal coverage</th><th>Quality confidence</th><th>Approved backlog</th><th>30-day additions</th><th>Health</th></tr></thead>
+                <thead><tr><th>Pair</th><th>Demand</th><th>Memory / context served</th><th>Provider fallback required</th><th>Internal coverage</th><th>Operational pair state</th><th>Approved backlog</th><th>30-day additions</th><th>Operational health</th></tr></thead>
                 <tbody>
                 @foreach (var pair in dashboard.Pairs)
                 {
@@ -270,10 +270,10 @@
             <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Pair health</span><span class="dashboard-section-title" id="pair-health-title">@selectedPair.PairKey</span></span><span class="legend-connect-disclosure-status">Selected</span></summary>
             <div class="legend-connect-disclosure-body">
             <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("selected-directional-pair")" /></div>
-            <p class="dashboard-section-copy">@selectedPair.HealthState · @selectedPair.QualityState · @selectedPair.FailureCount failure@(selectedPair.FailureCount == 1 ? string.Empty : "s")</p>
+            <p class="dashboard-section-copy">Operational health: @selectedPair.HealthState · Pair state: @selectedPair.QualityState · @selectedPair.FailureCount failure@(selectedPair.FailureCount == 1 ? string.Empty : "s"). Pair state reports the directional dataset pipeline; it is not a claim that every retained alignment is linguistically verified.</p>
             @if (selectedPair.RecentAlignments.Count > 0)
             {
-                <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Approved source</th><th>Approved target</th><th>Quality</th><th>Updated</th></tr></thead><tbody>
+                <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Retained source</th><th>Retained target</th><th>Alignment state</th><th>Updated</th></tr></thead><tbody>
                 @foreach (var alignment in selectedPair.RecentAlignments)
                 {
                     <tr><td>@alignment.SourceText</td><td>@alignment.TargetText</td><td>@alignment.QualityState</td><td>@alignment.UpdatedUtc.ToString("u")</td></tr>
@@ -416,7 +416,8 @@
                     <div>
                         <span class="dashboard-section-kicker">Stored learning dataset</span>
                         <h2 class="modal-title" id="languageKnowledgeModalTitle">@health.DisplayName (@health.LanguageCode)</h2>
-                        <p class="dashboard-section-copy"><span class="@LegendConnectMetricTone.Info">@health.StoragePartition</span> · <span class="@LegendConnectMetricTone.Health(health.HealthState)">@health.HealthState</span> · <span class="@LegendConnectMetricTone.Quality(health.QualityState)">@health.QualityState</span></p>
+                        <p class="dashboard-section-copy"><span class="@LegendConnectMetricTone.Info">@health.StoragePartition</span> · <span class="@LegendConnectMetricTone.Health(health.HealthState)">Operational health: @health.HealthState</span> · <span class="@LegendConnectMetricTone.Quality(health.QualityState)">Pair state: @health.QualityState</span></p>
+                        <p class="dashboard-section-copy">Pair state reflects connected directional dataset health. It does not mean every retained alignment or provider observation has been linguistically verified.</p>
                     </div>
                     <div class="legend-connect-modal-actions">
                         <partial name="_CopyButton" model="@("language-dataset")" />
@@ -469,15 +470,15 @@
                     </section>
 
                     <section class="dashboard-detail-modal-section" aria-labelledby="canonical-entries-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Approved canonical assets</span><h3 class="dashboard-section-title" id="canonical-entries-title">Entries used for learning</h3></div></div>
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Retained canonical assets</span><h3 class="dashboard-section-title" id="canonical-entries-title">Entries used for learning</h3></div></div>
                         @if (languageKnowledge.CanonicalEntries.Count == 0)
                         {
-                            <p class="dashboard-section-copy">No approved canonical entries are stored in @health.StoragePartition yet. This is the real empty dataset state.</p>
+                            <p class="dashboard-section-copy">No retained canonical entries are stored in @health.StoragePartition yet. This is the real empty dataset state.</p>
                         }
                         else
                         {
                             <p class="dashboard-section-copy">Showing the newest @canonicalDisplayed of @health.CanonicalEntryCount retained @(health.CanonicalEntryCount == 1 ? "entry" : "entries").</p>
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Approved text</th><th>Provenance</th><th>Created</th><th>Updated</th></tr></thead><tbody>
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Retained text</th><th>Provenance</th><th>Created</th><th>Updated</th></tr></thead><tbody>
                             @foreach (var entry in languageKnowledge.CanonicalEntries)
                             {
                                 <tr><td>@entry.Text</td><td><span class="@LegendConnectMetricTone.Provenance(entry.Provenance)">@entry.Provenance</span></td><td>@entry.CreatedUtc.ToString("u")</td><td>@entry.UpdatedUtc.ToString("u")</td></tr>
@@ -487,15 +488,15 @@
                     </section>
 
                     <section class="dashboard-detail-modal-section" aria-labelledby="active-alignments-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Directional translation memory</span><h3 class="dashboard-section-title" id="active-alignments-title">Active approved alignments</h3></div></div>
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Directional translation memory</span><h3 class="dashboard-section-title" id="active-alignments-title">Active retained alignments</h3></div></div>
                         @if (languageKnowledge.ActiveAlignments.Count == 0)
                         {
-                            <p class="dashboard-section-copy">No active approved directional alignments are stored for this language yet.</p>
+                            <p class="dashboard-section-copy">No active retained directional alignments are stored for this language yet.</p>
                         }
                         else
                         {
-                            <p class="dashboard-section-copy">Showing the newest @alignmentDisplayed of @health.TranslationMemoryRelationshipCount active alignment@(health.TranslationMemoryRelationshipCount == 1 ? string.Empty : "s").</p>
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Approved source</th><th>Approved target</th><th>Provider</th><th>Confidence</th><th>Quality</th><th>Verification</th><th>Evidence</th><th>Updated</th></tr></thead><tbody>
+                            <p class="dashboard-section-copy">Showing the newest @alignmentDisplayed of @health.TranslationMemoryRelationshipCount active retained alignment@(health.TranslationMemoryRelationshipCount == 1 ? string.Empty : "s"). Provider-derived observations remain retained and explicitly unverified unless a Founder verifies them.</p>
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Retained source</th><th>Retained target</th><th>Provider</th><th>Confidence</th><th>Alignment state</th><th>Verification</th><th>Evidence</th><th>Updated</th></tr></thead><tbody>
                             @foreach (var alignment in languageKnowledge.ActiveAlignments)
                             {
                                 <tr><td>@alignment.PairKey</td><td>@alignment.SourceText</td><td>@alignment.TargetText</td><td><span class="@LegendConnectMetricTone.Info">@alignment.Provider</span></td><td><span class="@LegendConnectMetricTone.Confidence(alignment.Confidence)">@(alignment.Confidence?.ToString("P0") ?? "Not scored")</span></td><td><span class="@LegendConnectMetricTone.Quality(alignment.QualityState)">@alignment.QualityState</span></td><td><span class="@LegendConnectMetricTone.Verification(alignment.HumanVerified)">@(alignment.HumanVerified ? "Human verified" : "Not human verified")</span></td><td><span class="@LegendConnectMetricTone.Evidence(alignment.ObservationCount)">@alignment.ObservationCount</span></td><td>@alignment.UpdatedUtc.ToString("u")</td></tr>
@@ -508,12 +509,12 @@
                         <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Reusable context</span><h3 class="dashboard-section-title" id="context-relationships-title">Stored context relationships</h3></div></div>
                         @if (languageKnowledge.ContextRelationships.Count == 0)
                         {
-                            <p class="dashboard-section-copy">No approved context relationships are stored for this language yet.</p>
+                            <p class="dashboard-section-copy">No active context relationships are stored for this language yet.</p>
                         }
                         else
                         {
                             <p class="dashboard-section-copy">Showing the newest @contextDisplayed of @health.ContextRelationshipCount relationship@(health.ContextRelationshipCount == 1 ? string.Empty : "s").</p>
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Source asset</th><th>Related asset</th><th>Kind / provenance</th><th>Context</th><th>Usage</th><th>Quality</th><th>Evidence</th><th>Updated</th></tr></thead><tbody>
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Source asset</th><th>Related asset</th><th>Kind / provenance</th><th>Context</th><th>Usage</th><th>Relationship state</th><th>Evidence</th><th>Updated</th></tr></thead><tbody>
                             @foreach (var relationship in languageKnowledge.ContextRelationships)
                             {
                                 <tr><td><span class="@LegendConnectMetricTone.Info">@(relationship.PairKey ?? "Monolingual")</span></td><td>@relationship.SourceText</td><td>@relationship.RelatedText</td><td><span class="@LegendConnectMetricTone.Info">@relationship.RelationshipKind</span><br /><small class="@LegendConnectMetricTone.Provenance(relationship.Provenance)">@relationship.Provenance</small></td><td>@(relationship.ContextCategory ?? "Not classified")</td><td>@(relationship.UsageRegister ?? "Not specified")</td><td><span class="@LegendConnectMetricTone.Quality(relationship.QualityState)">@relationship.QualityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.ObservationCount)">@relationship.ObservationCount</span></td><td>@relationship.UpdatedUtc.ToString("u")</td></tr>
@@ -530,7 +531,7 @@
                         }
                         else
                         {
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Demand</th><th>Memory reuse</th><th>Provider fallback required</th><th>Coverage</th><th>Quality</th><th>Health</th></tr></thead><tbody>
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Demand</th><th>Memory reuse</th><th>Provider fallback required</th><th>Coverage</th><th>Operational pair state</th><th>Operational health</th></tr></thead><tbody>
                             @foreach (var pair in languageKnowledge.DirectionalPairs)
                             {
                                 <tr><td>@pair.PairKey</td><td><span class="@LegendConnectMetricTone.InformationalActivity(pair.DemandCount)">@pair.DemandCount</span></td><td><span class="@LegendConnectMetricTone.BeneficialActivity(pair.TranslationMemoryReuseCount)">@pair.TranslationMemoryReuseCount</span></td><td><span class="@LegendConnectMetricTone.Dependency(pair.AzureFallbackRate, pair.DemandCount)">@pair.AzureFallbackCount (@pair.AzureFallbackRate.ToString("P0"))</span></td><td><span class="@LegendConnectMetricTone.BeneficialActivity(pair.Coverage)">@pair.Coverage</span></td><td><span class="@LegendConnectMetricTone.Quality(pair.QualityState)">@pair.QualityState</span></td><td><span class="@LegendConnectMetricTone.Health(pair.HealthState)">@pair.HealthState</span></td></tr>
