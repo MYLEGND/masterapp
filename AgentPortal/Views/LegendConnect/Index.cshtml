@@ -67,10 +67,10 @@
                 </section>
             </div>
             <div class="dashboard-hero-stats" aria-label="Legend Connect operational snapshot">
-                <div class="dashboard-stat-card is-primary @LegendConnectMetricTone.InformationalActivity(dashboard.Languages.Count)"><span class="dashboard-stat-label">Active languages</span><span class="dashboard-stat-value">@dashboard.Languages.Count</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.Pairs.Count)"><span class="dashboard-stat-label">Directional pairs</span><span class="dashboard-stat-value">@dashboard.Pairs.Count</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(dashboard.FailedLearningJobCount)"><span class="dashboard-stat-label">Learning failures</span><span class="dashboard-stat-value">@dashboard.FailedLearningJobCount</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.DuplicatePreventionCount)"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value">@dashboard.DuplicatePreventionCount</span></div>
+                <div class="dashboard-stat-card is-primary @LegendConnectMetricTone.InformationalActivity(dashboard.Languages.Count)" data-legend-live-card="active-languages"><span class="dashboard-stat-label">Active languages</span><span class="dashboard-stat-value" data-legend-live-value="active-languages">@dashboard.Languages.Count.ToString("N0")</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.Pairs.Count)" data-legend-live-card="directional-pairs"><span class="dashboard-stat-label">Directional pairs</span><span class="dashboard-stat-value" data-legend-live-value="directional-pairs">@dashboard.Pairs.Count.ToString("N0")</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(dashboard.FailedLearningJobCount)" data-legend-live-card="learning-failures"><span class="dashboard-stat-label">Learning failures</span><span class="dashboard-stat-value" data-legend-live-value="learning-failures">@dashboard.FailedLearningJobCount.ToString("N0")</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.DuplicatePreventionCount)" data-legend-live-card="duplicate-prevention"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value" data-legend-live-value="duplicate-prevention">@dashboard.DuplicatePreventionCount.ToString("N0")</span></div>
             </div>
         </div>
     </section>
@@ -100,11 +100,11 @@
             </table>
         </div>
         <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--five" aria-label="Approved corpus readiness">
-            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(readiness.ApprovedCandidateCount)"><span class="dashboard-stat-label">Approved candidates</span><span class="dashboard-stat-value">@readiness.ApprovedCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.PendingCandidateCount)"><span class="dashboard-stat-label">Eligible pending</span><span class="dashboard-stat-value">@readiness.PendingCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.RejectedOrIneligibleCandidateCount)"><span class="dashboard-stat-label">Rejected / ineligible</span><span class="dashboard-stat-value">@readiness.RejectedOrIneligibleCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(readiness.DuplicateCandidateCount)"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value">@readiness.DuplicateCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.AwaitingKnowledgePairCount)"><span class="dashboard-stat-label">Pairs awaiting knowledge</span><span class="dashboard-stat-value">@readiness.AwaitingKnowledgePairCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(readiness.ApprovedCandidateCount)" data-legend-live-card="approved-candidates"><span class="dashboard-stat-label">Approved candidates</span><span class="dashboard-stat-value" data-legend-live-value="approved-candidates">@readiness.ApprovedCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.PendingCandidateCount)" data-legend-live-card="eligible-pending"><span class="dashboard-stat-label">Eligible pending</span><span class="dashboard-stat-value" data-legend-live-value="eligible-pending">@readiness.PendingCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.RejectedOrIneligibleCandidateCount)" data-legend-live-card="rejected-ineligible"><span class="dashboard-stat-label">Rejected / ineligible</span><span class="dashboard-stat-value" data-legend-live-value="rejected-ineligible">@readiness.RejectedOrIneligibleCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(readiness.DuplicateCandidateCount)" data-legend-live-card="readiness-duplicates-prevented"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value" data-legend-live-value="readiness-duplicates-prevented">@readiness.DuplicateCandidateCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.AwaitingKnowledgePairCount)" data-legend-live-card="pairs-awaiting-knowledge"><span class="dashboard-stat-label">Pairs awaiting knowledge</span><span class="dashboard-stat-value" data-legend-live-value="pairs-awaiting-knowledge">@readiness.AwaitingKnowledgePairCount.ToString("N0")</span></div>
         </div>
         <section class="dashboard-search-panel" aria-label="Azure Translator subscription capacity">
             <div class="legend-connect-focus-heading">
@@ -181,37 +181,37 @@
         <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Live translation</span><span class="dashboard-section-title" id="translation-operations-title">Translation operations</span></span><span class="legend-connect-disclosure-status">Metrics</span></summary>
         <div class="legend-connect-disclosure-body">
         <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--four">
-            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.SameLanguageBypassCount)"><span class="dashboard-stat-label">Same-language bypasses</span><span class="dashboard-stat-value">@dashboard.SameLanguageBypassCount</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryHitCount)"><span class="dashboard-stat-label">Translation Memory hits</span><span class="dashboard-stat-value">@dashboard.TranslationMemoryHitCount</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.AzureFallbackCount)"><span class="dashboard-stat-label">Provider fallback required</span><span class="dashboard-stat-value">@dashboard.AzureFallbackCount</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.ContextualInternalServeCount)"><span class="dashboard-stat-label">Trusted contextual served</span><span class="dashboard-stat-value">@dashboard.ContextualInternalServeCount</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.Avoidance(dashboard.ProviderAvoidanceRate, routedRequestCount)"><span class="dashboard-stat-label">Provider avoidance</span><span class="dashboard-stat-value">@dashboard.ProviderAvoidanceRate.ToString("P0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.Dependency(dashboard.AzureDependencyRate, routedRequestCount)"><span class="dashboard-stat-label">Provider dependency</span><span class="dashboard-stat-value">@dashboard.AzureDependencyRate.ToString("P0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.AzureCharactersUsed)"><span class="dashboard-stat-label">Azure characters used</span><span class="dashboard-stat-value">@dashboard.AzureCharactersUsed.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedLiveCharacters)"><span class="dashboard-stat-label">Consumed live characters</span><span class="dashboard-stat-value">@dashboard.ConsumedLiveCharacters.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedCorpusCharacters)"><span class="dashboard-stat-label">Consumed corpus characters</span><span class="dashboard-stat-value">@dashboard.ConsumedCorpusCharacters.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.ReservedProviderCharacters)"><span class="dashboard-stat-label">Provider characters reserved</span><span class="dashboard-stat-value">@dashboard.ReservedProviderCharacters.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.SameLanguageBypassCount)" data-legend-live-card="same-language-bypasses"><span class="dashboard-stat-label">Same-language bypasses</span><span class="dashboard-stat-value" data-legend-live-value="same-language-bypasses">@dashboard.SameLanguageBypassCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryHitCount)" data-legend-live-card="translation-memory-hits"><span class="dashboard-stat-label">Translation Memory hits</span><span class="dashboard-stat-value" data-legend-live-value="translation-memory-hits">@dashboard.TranslationMemoryHitCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.AzureFallbackCount)" data-legend-live-card="provider-fallback-required"><span class="dashboard-stat-label">Provider fallback required</span><span class="dashboard-stat-value" data-legend-live-value="provider-fallback-required">@dashboard.AzureFallbackCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.ContextualInternalServeCount)" data-legend-live-card="trusted-contextual-served"><span class="dashboard-stat-label">Trusted contextual served</span><span class="dashboard-stat-value" data-legend-live-value="trusted-contextual-served">@dashboard.ContextualInternalServeCount.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.Avoidance(dashboard.ProviderAvoidanceRate, routedRequestCount)" data-legend-live-card="provider-avoidance"><span class="dashboard-stat-label">Provider avoidance</span><span class="dashboard-stat-value" data-legend-live-value="provider-avoidance">@dashboard.ProviderAvoidanceRate.ToString("P0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.Dependency(dashboard.AzureDependencyRate, routedRequestCount)" data-legend-live-card="provider-dependency"><span class="dashboard-stat-label">Provider dependency</span><span class="dashboard-stat-value" data-legend-live-value="provider-dependency">@dashboard.AzureDependencyRate.ToString("P0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.AzureCharactersUsed)" data-legend-live-card="azure-characters-used"><span class="dashboard-stat-label">Azure characters used</span><span class="dashboard-stat-value" data-legend-live-value="azure-characters-used">@dashboard.AzureCharactersUsed.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedLiveCharacters)" data-legend-live-card="consumed-live-characters"><span class="dashboard-stat-label">Consumed live characters</span><span class="dashboard-stat-value" data-legend-live-value="consumed-live-characters">@dashboard.ConsumedLiveCharacters.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedCorpusCharacters)" data-legend-live-card="consumed-corpus-characters"><span class="dashboard-stat-label">Consumed corpus characters</span><span class="dashboard-stat-value" data-legend-live-value="consumed-corpus-characters">@dashboard.ConsumedCorpusCharacters.ToString("N0")</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.ReservedProviderCharacters)" data-legend-live-card="provider-characters-reserved"><span class="dashboard-stat-label">Provider characters reserved</span><span class="dashboard-stat-value" data-legend-live-value="provider-characters-reserved">@dashboard.ReservedProviderCharacters.ToString("N0")</span></div>
             <div class="dashboard-stat-card @LegendConnectMetricTone.CapacityLimit(providerCapacity?.MonthlyIncludedCharacterAllowance ?? 0)"><span class="dashboard-stat-label">Monthly included allowance</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-limit">@AzureCapacityDisplay(providerCapacity?.MonthlyIncludedCharacterAllowance, true)</span></div>
             <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.MonthlyRemainingCharacters)"><span class="dashboard-stat-label">Monthly allowance left</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-remaining">@AzureCapacityDisplay(providerCapacity?.MonthlyRemainingCharacters, true)</span></div>
             <div class="dashboard-stat-card @LegendConnectMetricTone.CapacityLimit(providerCapacity?.HourlyCharacterLimit ?? 0)"><span class="dashboard-stat-label">Hourly velocity capacity</span><span class="dashboard-stat-value" data-azure-capacity-value="hourly-limit">@AzureCapacityDisplay(providerCapacity?.HourlyCharacterLimit)</span></div>
             <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.HourlyRemainingCharacters)"><span class="dashboard-stat-label">Hourly capacity left</span><span class="dashboard-stat-value" data-azure-capacity-value="hourly-remaining">@AzureCapacityDisplay(providerCapacity?.HourlyRemainingCharacters)</span></div>
             <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.SafeAcquisitionCharacters)"><span class="dashboard-stat-label">Safe acquisition available</span><span class="dashboard-stat-value" data-azure-capacity-value="safe">@AzureCapacityDisplay(providerCapacity?.SafeAcquisitionCharacters)</span></div>
             <div class="dashboard-stat-card @(providerCapacity?.IsSynchronized == true ? LegendConnectMetricTone.Info : LegendConnectMetricTone.Neutral)"><span class="dashboard-stat-label">Azure capacity status</span><span class="dashboard-stat-value" data-azure-capacity-status>@(providerCapacity?.Status ?? "Unavailable")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.LearningJobCount)"><span class="dashboard-stat-label">Pending learning jobs</span><span class="dashboard-stat-value">@dashboard.LearningJobCount</span></div>
+            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.LearningJobCount)" data-legend-live-card="pending-learning-jobs"><span class="dashboard-stat-label">Pending learning jobs</span><span class="dashboard-stat-value" data-legend-live-value="pending-learning-jobs">@dashboard.LearningJobCount.ToString("N0")</span></div>
         </div>
         </div>
     </details>
 
     <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="translation-quality-title">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Shared evidence authority</span><span class="dashboard-section-title" id="translation-quality-title">Translation quality review</span></span><span class="legend-connect-disclosure-status">@Model.TranslationQuality.NeedsReviewCount needs review</span></summary>
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Shared evidence authority</span><span class="dashboard-section-title" id="translation-quality-title">Translation quality review</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="translation-quality-needs-review-summary">@Model.TranslationQuality.NeedsReviewCount.ToString("N0") needs review</span></summary>
         <div class="legend-connect-disclosure-body">
             <p class="dashboard-section-copy">Provider output remains an observation. This queue contains only Founder-owned training material with a recorded contradiction; private-message bodies are never shown here.</p>
             <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--five" aria-label="Translation quality evidence summary">
-                <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(Model.TranslationQuality.NeedsReviewCount)"><span class="dashboard-stat-label">Needs review</span><span class="dashboard-stat-value">@Model.TranslationQuality.NeedsReviewCount</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(Model.TranslationQuality.ProviderObservationCount)"><span class="dashboard-stat-label">Provider observations</span><span class="dashboard-stat-value">@Model.TranslationQuality.ProviderObservationCount</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(Model.TranslationQuality.SupportedObservationCount)"><span class="dashboard-stat-label">Supported observations</span><span class="dashboard-stat-value">@Model.TranslationQuality.SupportedObservationCount</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(Model.TranslationQuality.ContradictionCount)"><span class="dashboard-stat-label">Contradictions</span><span class="dashboard-stat-value">@Model.TranslationQuality.ContradictionCount</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(Model.TranslationQuality.HumanVerifiedAlignmentCount)"><span class="dashboard-stat-label">Human verified</span><span class="dashboard-stat-value">@Model.TranslationQuality.HumanVerifiedAlignmentCount</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(Model.TranslationQuality.NeedsReviewCount)" data-legend-live-card="quality-needs-review"><span class="dashboard-stat-label">Needs review</span><span class="dashboard-stat-value" data-legend-live-value="quality-needs-review">@Model.TranslationQuality.NeedsReviewCount.ToString("N0")</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(Model.TranslationQuality.ProviderObservationCount)" data-legend-live-card="quality-provider-observations"><span class="dashboard-stat-label">Provider observations</span><span class="dashboard-stat-value" data-legend-live-value="quality-provider-observations">@Model.TranslationQuality.ProviderObservationCount.ToString("N0")</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(Model.TranslationQuality.SupportedObservationCount)" data-legend-live-card="quality-supported-observations"><span class="dashboard-stat-label">Supported observations</span><span class="dashboard-stat-value" data-legend-live-value="quality-supported-observations">@Model.TranslationQuality.SupportedObservationCount.ToString("N0")</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(Model.TranslationQuality.ContradictionCount)" data-legend-live-card="quality-contradictions"><span class="dashboard-stat-label">Contradictions</span><span class="dashboard-stat-value" data-legend-live-value="quality-contradictions">@Model.TranslationQuality.ContradictionCount.ToString("N0")</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(Model.TranslationQuality.HumanVerifiedAlignmentCount)" data-legend-live-card="quality-human-verified"><span class="dashboard-stat-label">Human verified</span><span class="dashboard-stat-value" data-legend-live-value="quality-human-verified">@Model.TranslationQuality.HumanVerifiedAlignmentCount.ToString("N0")</span></div>
             </div>
             @if (Model.TranslationQuality.ReviewItems.Count == 0)
             {
@@ -241,7 +241,7 @@
     </details>
 
     <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="active-pairs-title">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Directional health</span><span class="dashboard-section-title" id="active-pairs-title">Active directional pairs</span></span><span class="legend-connect-disclosure-status">@dashboard.Pairs.Count pairs</span></summary>
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Directional health</span><span class="dashboard-section-title" id="active-pairs-title">Active directional pairs</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="active-pairs-summary">@dashboard.Pairs.Count.ToString("N0") pairs</span></summary>
         <div class="legend-connect-disclosure-body">
         <div class="dashboard-data-surface">
             <table class="table dashboard-data-table">
@@ -300,7 +300,7 @@
     }
 
     <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="runtime-audit-title">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Founder audit</span><span class="dashboard-section-title" id="runtime-audit-title">Recent operational changes</span></span><span class="legend-connect-disclosure-status">@Model.RuntimeAudit.Count entries</span></summary>
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Founder audit</span><span class="dashboard-section-title" id="runtime-audit-title">Recent operational changes</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="runtime-audit-entries">@Model.RuntimeAudit.Count.ToString("N0") entries</span></summary>
         <div class="legend-connect-disclosure-body">
         @if (Model.RuntimeAudit.Count == 0)
         {
@@ -319,7 +319,7 @@
     </details>
 
     <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="operational-events-title">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Bounded diagnostics</span><span class="dashboard-section-title" id="operational-events-title">Recent backend events</span></span><span class="legend-connect-disclosure-status">@dashboard.RecentOperationalEvents.Count events</span></summary>
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Bounded diagnostics</span><span class="dashboard-section-title" id="operational-events-title">Recent backend events</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="operational-events-summary">@dashboard.RecentOperationalEvents.Count.ToString("N0") events</span></summary>
         <div class="legend-connect-disclosure-body">
         @if (dashboard.RecentOperationalEvents.Count == 0)
         {
@@ -379,7 +379,7 @@
                     <div>
                         <span class="dashboard-section-kicker">Stored learning dataset</span>
                         <h2 class="modal-title" id="languageKnowledgeModalTitle">@health.DisplayName (@health.LanguageCode)</h2>
-                        <p class="dashboard-section-copy">@health.StoragePartition · @health.HealthState · @health.QualityState</p>
+                        <p class="dashboard-section-copy"><span class="@LegendConnectMetricTone.Info">@health.StoragePartition</span> · <span class="@LegendConnectMetricTone.Health(health.HealthState)">@health.HealthState</span> · <span class="@LegendConnectMetricTone.Quality(health.QualityState)">@health.QualityState</span></p>
                     </div>
                     <button type="button" class="dashboard-modal-close" data-bs-dismiss="modal" aria-label="Close language details and return to Legend Connect">×</button>
                 </div>
@@ -404,7 +404,7 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Family</th><th>Semantic dimension</th><th>Maturity</th><th>Support</th><th>Contradictions</th><th>Production eligible</th><th>Updated</th></tr></thead><tbody>
                             @foreach (var pattern in languageKnowledge.StructuralPatterns)
                             {
-                                <tr><td>@pattern.FamilyKey</td><td>@pattern.VariationDimension</td><td>@pattern.MaturityState</td><td>@pattern.SupportCount</td><td>@pattern.ContradictionCount</td><td>@(pattern.IsProductionEligible ? "Yes" : "No")</td><td>@pattern.UpdatedUtc.ToString("u")</td></tr>
+                                <tr><td>@pattern.FamilyKey</td><td><span class="@LegendConnectMetricTone.Info">@pattern.VariationDimension</span></td><td><span class="@LegendConnectMetricTone.Maturity(pattern.MaturityState)">@pattern.MaturityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(pattern.SupportCount)">@pattern.SupportCount</span></td><td><span class="@LegendConnectMetricTone.Contradictions(pattern.ContradictionCount)">@pattern.ContradictionCount</span></td><td><span class="@LegendConnectMetricTone.ProductionEligibility(pattern.IsProductionEligible)">@(pattern.IsProductionEligible ? "Yes" : "No")</span></td><td>@pattern.UpdatedUtc.ToString("u")</td></tr>
                             }
                             </tbody></table></div>
                         }
@@ -422,7 +422,7 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Approved text</th><th>Provenance</th><th>Created</th><th>Updated</th></tr></thead><tbody>
                             @foreach (var entry in languageKnowledge.CanonicalEntries)
                             {
-                                <tr><td>@entry.Text</td><td>@entry.Provenance</td><td>@entry.CreatedUtc.ToString("u")</td><td>@entry.UpdatedUtc.ToString("u")</td></tr>
+                                <tr><td>@entry.Text</td><td><span class="@LegendConnectMetricTone.Provenance(entry.Provenance)">@entry.Provenance</span></td><td>@entry.CreatedUtc.ToString("u")</td><td>@entry.UpdatedUtc.ToString("u")</td></tr>
                             }
                             </tbody></table></div>
                         }
@@ -437,10 +437,10 @@
                         else
                         {
                             <p class="dashboard-section-copy">Showing the newest @alignmentDisplayed of @health.TranslationMemoryRelationshipCount active alignment@(health.TranslationMemoryRelationshipCount == 1 ? string.Empty : "s").</p>
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Approved source</th><th>Approved target</th><th>Provider</th><th>Quality</th><th>Observations</th><th>Updated</th></tr></thead><tbody>
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Approved source</th><th>Approved target</th><th>Provider</th><th>Confidence</th><th>Quality</th><th>Verification</th><th>Evidence</th><th>Updated</th></tr></thead><tbody>
                             @foreach (var alignment in languageKnowledge.ActiveAlignments)
                             {
-                                <tr><td>@alignment.PairKey</td><td>@alignment.SourceText</td><td>@alignment.TargetText</td><td>@alignment.Provider</td><td>@alignment.QualityState</td><td>@alignment.ObservationCount</td><td>@alignment.UpdatedUtc.ToString("u")</td></tr>
+                                <tr><td>@alignment.PairKey</td><td>@alignment.SourceText</td><td>@alignment.TargetText</td><td><span class="@LegendConnectMetricTone.Info">@alignment.Provider</span></td><td><span class="@LegendConnectMetricTone.Confidence(alignment.Confidence)">@(alignment.Confidence?.ToString("P0") ?? "Not scored")</span></td><td><span class="@LegendConnectMetricTone.Quality(alignment.QualityState)">@alignment.QualityState</span></td><td><span class="@LegendConnectMetricTone.Verification(alignment.HumanVerified)">@(alignment.HumanVerified ? "Human verified" : "Not human verified")</span></td><td><span class="@LegendConnectMetricTone.Evidence(alignment.ObservationCount)">@alignment.ObservationCount</span></td><td>@alignment.UpdatedUtc.ToString("u")</td></tr>
                             }
                             </tbody></table></div>
                         }
@@ -455,10 +455,10 @@
                         else
                         {
                             <p class="dashboard-section-copy">Showing the newest @contextDisplayed of @health.ContextRelationshipCount relationship@(health.ContextRelationshipCount == 1 ? string.Empty : "s").</p>
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Source asset</th><th>Related asset</th><th>Kind</th><th>Context</th><th>Usage</th><th>Quality</th><th>Updated</th></tr></thead><tbody>
+                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Source asset</th><th>Related asset</th><th>Kind / provenance</th><th>Context</th><th>Usage</th><th>Quality</th><th>Evidence</th><th>Updated</th></tr></thead><tbody>
                             @foreach (var relationship in languageKnowledge.ContextRelationships)
                             {
-                                <tr><td>@(relationship.PairKey ?? "Monolingual")</td><td>@relationship.SourceText</td><td>@relationship.RelatedText</td><td>@relationship.RelationshipKind</td><td>@(relationship.ContextCategory ?? "Not classified")</td><td>@(relationship.UsageRegister ?? "Not specified")</td><td>@relationship.QualityState</td><td>@relationship.UpdatedUtc.ToString("u")</td></tr>
+                                <tr><td><span class="@LegendConnectMetricTone.Info">@(relationship.PairKey ?? "Monolingual")</span></td><td>@relationship.SourceText</td><td>@relationship.RelatedText</td><td><span class="@LegendConnectMetricTone.Info">@relationship.RelationshipKind</span><br /><small class="@LegendConnectMetricTone.Provenance(relationship.Provenance)">@relationship.Provenance</small></td><td>@(relationship.ContextCategory ?? "Not classified")</td><td>@(relationship.UsageRegister ?? "Not specified")</td><td><span class="@LegendConnectMetricTone.Quality(relationship.QualityState)">@relationship.QualityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.ObservationCount)">@relationship.ObservationCount</span></td><td>@relationship.UpdatedUtc.ToString("u")</td></tr>
                             }
                             </tbody></table></div>
                         }
@@ -475,7 +475,7 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Demand</th><th>Memory reuse</th><th>Provider fallback required</th><th>Coverage</th><th>Quality</th><th>Health</th></tr></thead><tbody>
                             @foreach (var pair in languageKnowledge.DirectionalPairs)
                             {
-                                <tr><td>@pair.PairKey</td><td>@pair.DemandCount</td><td>@pair.TranslationMemoryReuseCount</td><td>@pair.AzureFallbackCount (@pair.AzureFallbackRate.ToString("P0"))</td><td>@pair.Coverage</td><td>@pair.QualityState</td><td>@pair.HealthState</td></tr>
+                                <tr><td>@pair.PairKey</td><td><span class="@LegendConnectMetricTone.InformationalActivity(pair.DemandCount)">@pair.DemandCount</span></td><td><span class="@LegendConnectMetricTone.BeneficialActivity(pair.TranslationMemoryReuseCount)">@pair.TranslationMemoryReuseCount</span></td><td><span class="@LegendConnectMetricTone.Dependency(pair.AzureFallbackRate, pair.DemandCount)">@pair.AzureFallbackCount (@pair.AzureFallbackRate.ToString("P0"))</span></td><td><span class="@LegendConnectMetricTone.BeneficialActivity(pair.Coverage)">@pair.Coverage</span></td><td><span class="@LegendConnectMetricTone.Quality(pair.QualityState)">@pair.QualityState</span></td><td><span class="@LegendConnectMetricTone.Health(pair.HealthState)">@pair.HealthState</span></td></tr>
                             }
                             </tbody></table></div>
                         }
@@ -493,7 +493,7 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Provenance</th><th>Eligibility</th><th>State</th><th>Outcome</th><th>Attempts</th><th>Created</th><th>Processed</th><th>Failure</th></tr></thead><tbody>
                             @foreach (var activity in languageKnowledge.RecentLearningActivity)
                             {
-                                <tr><td>@activity.PairKey</td><td>@activity.Provenance</td><td>@activity.EligibilityState</td><td>@activity.ProcessingState</td><td>@(activity.PromotionOutcome ?? "Awaiting")</td><td>@activity.AttemptCount</td><td>@activity.CreatedUtc.ToString("u")</td><td>@(activity.ProcessedUtc?.ToString("u") ?? "Not processed")</td><td>@(activity.FailureCode ?? "None")</td></tr>
+                                <tr><td>@activity.PairKey</td><td><span class="@LegendConnectMetricTone.Provenance(activity.Provenance)">@activity.Provenance</span></td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.EligibilityState)">@activity.EligibilityState</span></td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.ProcessingState)">@activity.ProcessingState</span></td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.PromotionOutcome ?? "Awaiting")">@(activity.PromotionOutcome ?? "Awaiting")</span></td><td><span class="@LegendConnectMetricTone.Evidence(activity.AttemptCount)">@activity.AttemptCount</span></td><td>@activity.CreatedUtc.ToString("u")</td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.ProcessedUtc.HasValue ? "Processed" : "Not processed")">@(activity.ProcessedUtc?.ToString("u") ?? "Not processed")</span></td><td><span class="@(activity.FailureCode is null ? LegendConnectMetricTone.Success : LegendConnectMetricTone.Danger)">@(activity.FailureCode ?? "None")</span></td></tr>
                             }
                             </tbody></table></div>
                         }
@@ -510,7 +510,7 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>When</th><th>Category</th><th>Pair</th><th>State</th><th>Code</th><th>Summary</th></tr></thead><tbody>
                             @foreach (var diagnostic in health.RecentErrors)
                             {
-                                <tr><td>@diagnostic.OccurredUtc.ToString("u")</td><td>@diagnostic.Category</td><td>@(diagnostic.PairKey ?? "Language")</td><td>@diagnostic.Status</td><td>@diagnostic.ErrorCode</td><td>@diagnostic.Summary</td></tr>
+                                <tr><td>@diagnostic.OccurredUtc.ToString("u")</td><td><span class="@LegendConnectMetricTone.Info">@diagnostic.Category</span></td><td>@(diagnostic.PairKey ?? "Language")</td><td><span class="@LegendConnectMetricTone.Lifecycle(diagnostic.Status)">@diagnostic.Status</span></td><td><span class="@(string.IsNullOrWhiteSpace(diagnostic.ErrorCode) ? LegendConnectMetricTone.Neutral : LegendConnectMetricTone.Danger)">@(diagnostic.ErrorCode ?? "None")</span></td><td>@diagnostic.Summary</td></tr>
                             }
                             </tbody></table></div>
                         }

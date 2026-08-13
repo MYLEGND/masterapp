@@ -72,6 +72,25 @@ public sealed class LegendConnectController : Controller
         }
     }
 
+    [HttpGet]
+    [Route("founder/legend-connect/metrics")]
+    public async Task<IActionResult> GetLiveMetrics(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _service.GetLiveMetricsAsync(User, cancellationToken));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect live metric projection failed to load.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route("founder/legend-connect/knowledge")]

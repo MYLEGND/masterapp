@@ -92,6 +92,36 @@ public sealed class FounderLegendConnectService
         return await _operations.GetProviderCapacityAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Retrieves the current aggregate display metrics from the existing
+    /// server-owned authorities. This deliberately has no client-side
+    /// calculations, cached counters, or operational side effects.
+    /// </summary>
+    public async Task<FounderLegendConnectLiveMetricsSnapshot> GetLiveMetricsAsync(
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        var dashboard = await _operations.GetDashboardAsync(cancellationToken);
+        var translationQuality = await _operations.GetTranslationQualityAsync(cancellationToken);
+        var accountScale = _entitlements is null
+            ? new TranslationFounderScaleSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0)
+            : await _entitlements.GetFounderScaleAsync(cancellationToken);
+        var readiness = _runtimePolicy is null
+            ? new LegendConnectProductionReadinessSnapshot("BLOCKED", false, "Legend Connect runtime policy authority is unavailable.", Array.Empty<LegendConnectReadinessCheck>(), 0, 0, 0, 0, 0)
+            : await _runtimePolicy.GetReadinessAsync(cancellationToken);
+        var runtimeAuditCount = _runtimePolicy is null
+            ? 0
+            : (await _runtimePolicy.GetRecentAuditAsync(cancellationToken: cancellationToken)).Count;
+
+        return FounderLegendConnectLiveMetricsSnapshot.Create(
+            dashboard,
+            translationQuality,
+            accountScale,
+            readiness,
+            runtimeAuditCount);
+    }
+
     public async Task<FounderLegendConnectOperationResult> UpdateRuntimePolicyAsync(
         ClaimsPrincipal user,
         FounderLegendConnectRuntimePolicyInput input,

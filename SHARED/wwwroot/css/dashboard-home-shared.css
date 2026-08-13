@@ -734,6 +734,7 @@
 .legend-connect-page {
     --legend-connect-metric-neutral: #aebfd8;
     --legend-connect-metric-info: #8cc7ff;
+    --legend-connect-metric-authority: #c7a3ff;
     --legend-connect-metric-success: #65e0a4;
     --legend-connect-metric-warning: #ffd071;
     --legend-connect-metric-danger: #ff969d;
@@ -741,24 +742,28 @@
 
 .legend-connect-page .legend-connect-metric--neutral { color: var(--legend-connect-metric-neutral); }
 .legend-connect-page .legend-connect-metric--info { color: var(--legend-connect-metric-info); }
+.legend-connect-page .legend-connect-metric--authority { color: var(--legend-connect-metric-authority); }
 .legend-connect-page .legend-connect-metric--success { color: var(--legend-connect-metric-success); }
 .legend-connect-page .legend-connect-metric--warning { color: var(--legend-connect-metric-warning); }
 .legend-connect-page .legend-connect-metric--danger { color: var(--legend-connect-metric-danger); }
 
 .legend-connect-page .dashboard-stat-card.legend-connect-metric--neutral { border-color: rgba(174, 191, 216, 0.28); }
 .legend-connect-page .dashboard-stat-card.legend-connect-metric--info { border-color: rgba(140, 199, 255, 0.42); background: linear-gradient(145deg, rgba(20, 66, 118, 0.9), rgba(8, 26, 57, 0.98)); }
+.legend-connect-page .dashboard-stat-card.legend-connect-metric--authority { border-color: rgba(199, 163, 255, 0.46); background: linear-gradient(145deg, rgba(66, 42, 109, 0.92), rgba(34, 21, 70, 0.98)); }
 .legend-connect-page .dashboard-stat-card.legend-connect-metric--success { border-color: rgba(101, 224, 164, 0.42); background: linear-gradient(145deg, rgba(14, 78, 68, 0.92), rgba(7, 37, 47, 0.98)); }
 .legend-connect-page .dashboard-stat-card.legend-connect-metric--warning { border-color: rgba(255, 208, 113, 0.48); background: linear-gradient(145deg, rgba(89, 59, 16, 0.93), rgba(46, 31, 16, 0.98)); }
 .legend-connect-page .dashboard-stat-card.legend-connect-metric--danger { border-color: rgba(255, 150, 157, 0.5); background: linear-gradient(145deg, rgba(104, 33, 50, 0.93), rgba(54, 20, 35, 0.98)); }
 
 .legend-connect-page .dashboard-stat-card.legend-connect-metric--neutral .dashboard-stat-value { color: var(--legend-connect-metric-neutral); }
 .legend-connect-page .dashboard-stat-card.legend-connect-metric--info .dashboard-stat-value { color: var(--legend-connect-metric-info); }
+.legend-connect-page .dashboard-stat-card.legend-connect-metric--authority .dashboard-stat-value { color: var(--legend-connect-metric-authority); }
 .legend-connect-page .dashboard-stat-card.legend-connect-metric--success .dashboard-stat-value { color: var(--legend-connect-metric-success); }
 .legend-connect-page .dashboard-stat-card.legend-connect-metric--warning .dashboard-stat-value { color: var(--legend-connect-metric-warning); }
 .legend-connect-page .dashboard-stat-card.legend-connect-metric--danger .dashboard-stat-value { color: var(--legend-connect-metric-danger); }
 
 .legend-connect-page .dashboard-data-table .legend-connect-metric--neutral,
 .legend-connect-page .dashboard-data-table .legend-connect-metric--info,
+.legend-connect-page .dashboard-data-table .legend-connect-metric--authority,
 .legend-connect-page .dashboard-data-table .legend-connect-metric--success,
 .legend-connect-page .dashboard-data-table .legend-connect-metric--warning,
 .legend-connect-page .dashboard-data-table .legend-connect-metric--danger {

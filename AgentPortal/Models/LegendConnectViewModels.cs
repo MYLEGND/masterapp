@@ -99,3 +99,107 @@ public sealed class FounderLegendConnectActivationInput
 }
 
 public sealed record FounderLegendConnectOperationResult(bool Succeeded, string Message);
+
+/// <summary>
+/// Read-only display projection for the Founder dashboard's aggregate metrics.
+/// It carries values already calculated by the canonical Legend Connect
+/// authorities; the browser only renders these server-formatted values.
+/// </summary>
+public sealed record FounderLegendConnectLiveMetricSnapshot(
+    string DisplayValue,
+    string Tone);
+
+public sealed record FounderLegendConnectLiveMetricsSnapshot(
+    IReadOnlyDictionary<string, FounderLegendConnectLiveMetricSnapshot> Metrics)
+{
+    public static FounderLegendConnectLiveMetricsSnapshot Create(
+        LegendConnectDashboardSnapshot dashboard,
+        LegendConnectTranslationQualitySnapshot translationQuality,
+        TranslationFounderScaleSnapshot accountScale,
+        LegendConnectProductionReadinessSnapshot readiness,
+        int runtimeAuditCount)
+    {
+        var metrics = new Dictionary<string, FounderLegendConnectLiveMetricSnapshot>(StringComparer.Ordinal);
+        var routedRequestCount = dashboard.TranslationMemoryHitCount +
+            dashboard.ContextualInternalServeCount +
+            dashboard.AzureFallbackCount;
+
+        Add(metrics, "active-languages", dashboard.Languages.Count, LegendConnectMetricTone.InformationalActivity(dashboard.Languages.Count));
+        Add(metrics, "directional-pairs", dashboard.Pairs.Count, LegendConnectMetricTone.InformationalActivity(dashboard.Pairs.Count));
+        Add(metrics, "learning-failures", dashboard.FailedLearningJobCount, LegendConnectMetricTone.Failure(dashboard.FailedLearningJobCount));
+        Add(metrics, "duplicate-prevention", dashboard.DuplicatePreventionCount, LegendConnectMetricTone.BeneficialActivity(dashboard.DuplicatePreventionCount));
+
+        Add(metrics, "approved-candidates", readiness.ApprovedCandidateCount, LegendConnectMetricTone.BeneficialActivity(readiness.ApprovedCandidateCount));
+        Add(metrics, "eligible-pending", readiness.PendingCandidateCount, LegendConnectMetricTone.PendingWork(readiness.PendingCandidateCount));
+        Add(metrics, "rejected-ineligible", readiness.RejectedOrIneligibleCandidateCount, LegendConnectMetricTone.PendingWork(readiness.RejectedOrIneligibleCandidateCount));
+        Add(metrics, "readiness-duplicates-prevented", readiness.DuplicateCandidateCount, LegendConnectMetricTone.BeneficialActivity(readiness.DuplicateCandidateCount));
+        Add(metrics, "pairs-awaiting-knowledge", readiness.AwaitingKnowledgePairCount, LegendConnectMetricTone.PendingWork(readiness.AwaitingKnowledgePairCount));
+
+        Add(metrics, "same-language-bypasses", dashboard.SameLanguageBypassCount, LegendConnectMetricTone.BeneficialActivity(dashboard.SameLanguageBypassCount));
+        Add(metrics, "translation-memory-hits", dashboard.TranslationMemoryHitCount, LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryHitCount));
+        Add(metrics, "provider-fallback-required", dashboard.AzureFallbackCount, LegendConnectMetricTone.PendingWork(dashboard.AzureFallbackCount));
+        Add(metrics, "trusted-contextual-served", dashboard.ContextualInternalServeCount, LegendConnectMetricTone.BeneficialActivity(dashboard.ContextualInternalServeCount));
+        AddPercent(metrics, "provider-avoidance", dashboard.ProviderAvoidanceRate, LegendConnectMetricTone.Avoidance(dashboard.ProviderAvoidanceRate, routedRequestCount));
+        AddPercent(metrics, "provider-dependency", dashboard.AzureDependencyRate, LegendConnectMetricTone.Dependency(dashboard.AzureDependencyRate, routedRequestCount));
+        Add(metrics, "azure-characters-used", dashboard.AzureCharactersUsed, LegendConnectMetricTone.InformationalActivity(dashboard.AzureCharactersUsed));
+        Add(metrics, "consumed-live-characters", dashboard.ConsumedLiveCharacters, LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedLiveCharacters));
+        Add(metrics, "consumed-corpus-characters", dashboard.ConsumedCorpusCharacters, LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedCorpusCharacters));
+        Add(metrics, "provider-characters-reserved", dashboard.ReservedProviderCharacters, LegendConnectMetricTone.PendingWork(dashboard.ReservedProviderCharacters));
+        Add(metrics, "pending-learning-jobs", dashboard.LearningJobCount, LegendConnectMetricTone.PendingWork(dashboard.LearningJobCount));
+
+        Add(metrics, "quality-needs-review", translationQuality.NeedsReviewCount, LegendConnectMetricTone.PendingWork(translationQuality.NeedsReviewCount));
+        Add(metrics, "quality-provider-observations", translationQuality.ProviderObservationCount, LegendConnectMetricTone.InformationalActivity(translationQuality.ProviderObservationCount));
+        Add(metrics, "quality-supported-observations", translationQuality.SupportedObservationCount, LegendConnectMetricTone.BeneficialActivity(translationQuality.SupportedObservationCount));
+        Add(metrics, "quality-contradictions", translationQuality.ContradictionCount, LegendConnectMetricTone.Failure(translationQuality.ContradictionCount));
+        Add(metrics, "quality-human-verified", translationQuality.HumanVerifiedAlignmentCount, LegendConnectMetricTone.BeneficialActivity(translationQuality.HumanVerifiedAlignmentCount));
+
+        Add(metrics, "provider-operations", dashboard.ProviderOperationCount, LegendConnectMetricTone.InformationalActivity(dashboard.ProviderOperationCount));
+        Add(metrics, "provider-billable-characters", dashboard.ProviderBillableCharacters, LegendConnectMetricTone.InformationalActivity(dashboard.ProviderBillableCharacters));
+        Add(metrics, "same-language-avoided", dashboard.SameLanguageCharactersAvoided, LegendConnectMetricTone.BeneficialActivity(dashboard.SameLanguageCharactersAvoided));
+        Add(metrics, "memory-avoided", dashboard.TranslationMemoryCharactersAvoided, LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryCharactersAvoided));
+        Add(metrics, "context-avoided", dashboard.ContextualCharactersAvoided, LegendConnectMetricTone.BeneficialActivity(dashboard.ContextualCharactersAvoided));
+        Add(metrics, "quota-denied", dashboard.QuotaDeniedRequestCount, LegendConnectMetricTone.Failure(dashboard.QuotaDeniedRequestCount));
+        Add(metrics, "provider-failures", dashboard.ProviderFailureCount, LegendConnectMetricTone.Failure(dashboard.ProviderFailureCount));
+        Add(metrics, "group-target-reuse", dashboard.GroupUniqueTargetReuseCount, LegendConnectMetricTone.BeneficialActivity(dashboard.GroupUniqueTargetReuseCount));
+        Add(metrics, "high-consumption-accounts", accountScale.HighConsumptionAccountCount, LegendConnectMetricTone.Failure(accountScale.HighConsumptionAccountCount));
+
+        Add(metrics, "consented-accounts", dashboard.ConsentedLiveLearningAccountCount, LegendConnectMetricTone.InformationalActivity(dashboard.ConsentedLiveLearningAccountCount));
+        Add(metrics, "eligible-live-translations", dashboard.EligibleConsentedLiveTranslationCount, LegendConnectMetricTone.PendingWork(dashboard.EligibleConsentedLiveTranslationCount));
+        Add(metrics, "promoted-to-learning", dashboard.PromotedConsentedLiveTranslationCount, LegendConnectMetricTone.BeneficialActivity(dashboard.PromotedConsentedLiveTranslationCount));
+        Add(metrics, "canonical-reuse-prevented-duplicates", dashboard.ReusedConsentedLiveTranslationCount, LegendConnectMetricTone.BeneficialActivity(dashboard.ReusedConsentedLiveTranslationCount));
+        Add(metrics, "awaiting-corpus-processing", dashboard.PendingConsentedLiveTranslationCount, LegendConnectMetricTone.PendingWork(dashboard.PendingConsentedLiveTranslationCount));
+
+        Add(metrics, "raw-submissions-retained", dashboard.FounderRawSubmissionCount, LegendConnectMetricTone.InformationalActivity(dashboard.FounderRawSubmissionCount));
+        Add(metrics, "atomic-learning-units", dashboard.FounderAtomicLearningUnitCount, LegendConnectMetricTone.BeneficialActivity(dashboard.FounderAtomicLearningUnitCount));
+        Add(metrics, "active-directional-alignments", dashboard.ActiveDirectionalAtomicAlignmentCount, LegendConnectMetricTone.BeneficialActivity(dashboard.ActiveDirectionalAtomicAlignmentCount));
+        Add(metrics, "legacy-multi-unit-assets-retired", dashboard.SupersededLegacyMultiUnitAssetCount, LegendConnectMetricTone.InformationalActivity(dashboard.SupersededLegacyMultiUnitAssetCount));
+
+        AddDisplay(metrics, "translation-quality-needs-review-summary", $"{translationQuality.NeedsReviewCount:N0} needs review", LegendConnectMetricTone.PendingWork(translationQuality.NeedsReviewCount));
+        AddDisplay(metrics, "active-pairs-summary", $"{dashboard.Pairs.Count:N0} pairs", LegendConnectMetricTone.InformationalActivity(dashboard.Pairs.Count));
+        AddDisplay(metrics, "runtime-audit-entries", $"{runtimeAuditCount:N0} entries", LegendConnectMetricTone.InformationalActivity(runtimeAuditCount));
+        AddDisplay(metrics, "operational-events-summary", $"{dashboard.RecentOperationalEvents.Count:N0} events", LegendConnectMetricTone.InformationalActivity(dashboard.RecentOperationalEvents.Count));
+
+        return new FounderLegendConnectLiveMetricsSnapshot(metrics);
+    }
+
+    private static void Add(
+        IDictionary<string, FounderLegendConnectLiveMetricSnapshot> metrics,
+        string key,
+        long value,
+        string tone) =>
+        AddDisplay(metrics, key, value.ToString("N0"), tone);
+
+    private static void AddPercent(
+        IDictionary<string, FounderLegendConnectLiveMetricSnapshot> metrics,
+        string key,
+        decimal value,
+        string tone) =>
+        AddDisplay(metrics, key, value.ToString("P0"), tone);
+
+    private static void AddDisplay(
+        IDictionary<string, FounderLegendConnectLiveMetricSnapshot> metrics,
+        string key,
+        string displayValue,
+        string tone) =>
+        metrics.Add(key, new FounderLegendConnectLiveMetricSnapshot(displayValue, tone));
+}

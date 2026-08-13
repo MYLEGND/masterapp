@@ -8,6 +8,7 @@ public static class LegendConnectMetricTone
 {
     public const string Neutral = "legend-connect-metric--neutral";
     public const string Info = "legend-connect-metric--info";
+    public const string Authority = "legend-connect-metric--authority";
     public const string Success = "legend-connect-metric--success";
     public const string Warning = "legend-connect-metric--warning";
     public const string Danger = "legend-connect-metric--danger";
@@ -74,10 +75,94 @@ public static class LegendConnectMetricTone
 
     public static string Quality(string? qualityState) => qualityState?.Trim().ToUpperInvariant() switch
     {
-        "VALIDATED" or "VERIFIED" or "TRUSTED" => Success,
-        "OBSERVATION" => Neutral,
-        "WARNING" or "REVIEW" => Warning,
-        "REJECTED" or "BLOCKED" or "INVALID" => Danger,
+        "VALIDATED" or "VERIFIED" or "TRUSTED" or "SUPPORTED" => Success,
+        "OBSERVATION" => Info,
+        "WARNING" or "REVIEW" or "NEEDSREVIEW" or "INSUFFICIENT" or "PENDING" => Warning,
+        "REJECTED" or "BLOCKED" or "INVALID" or "SUPERSEDED" or "FAILED" => Danger,
         _ => Info
     };
+
+    public static string Maturity(string? maturityState) => Quality(maturityState);
+
+    public static string Provenance(string? provenance, bool humanVerified = false)
+    {
+        if (humanVerified)
+        {
+            return Authority;
+        }
+
+        return provenance?.Trim().ToUpperInvariant() switch
+        {
+            "FOUNDERAPPROVED" or "HUMANVERIFIED" => Authority,
+            "PROVIDERDERIVED" or "AZURETRANSLATOR" or "CONSENTEDLIVETRANSLATION" => Info,
+            "LEGACY" or "IMPORTED" => Warning,
+            _ => Neutral
+        };
+    }
+
+    public static string Confidence(decimal? confidence) => confidence switch
+    {
+        null => Neutral,
+        >= 0.98m => Success,
+        >= 0.85m => Info,
+        >= 0.60m => Warning,
+        _ => Danger
+    };
+
+    public static string Evidence(int count) => count switch
+    {
+        >= 2 => Success,
+        > 0 => Info,
+        _ => Warning
+    };
+
+    public static string Contradictions(int count) => count > 0 ? Danger : Success;
+
+    public static string ProductionEligibility(bool eligible) => eligible ? Success : Warning;
+
+    public static string Verification(bool humanVerified) => humanVerified ? Authority : Warning;
+
+    public static string Lifecycle(string? state)
+    {
+        var normalized = state?.Trim().ToUpperInvariant();
+        if (string.IsNullOrEmpty(normalized) || normalized is "NONE" or "NOTPROCESSED")
+        {
+            return Neutral;
+        }
+
+        if (normalized.Contains("FAIL", StringComparison.Ordinal) ||
+            normalized.Contains("REJECT", StringComparison.Ordinal) ||
+            normalized.Contains("BLOCK", StringComparison.Ordinal) ||
+            normalized.Contains("ERROR", StringComparison.Ordinal) ||
+            normalized.Contains("DENIED", StringComparison.Ordinal) ||
+            normalized.Contains("INELIGIBLE", StringComparison.Ordinal))
+        {
+            return Danger;
+        }
+
+        if (normalized.Contains("PENDING", StringComparison.Ordinal) ||
+            normalized.Contains("PROCESSING", StringComparison.Ordinal) ||
+            normalized.Contains("AWAIT", StringComparison.Ordinal) ||
+            normalized.Contains("QUEUED", StringComparison.Ordinal) ||
+            normalized.Contains("REVIEW", StringComparison.Ordinal) ||
+            normalized.Contains("HOLD", StringComparison.Ordinal))
+        {
+            return Warning;
+        }
+
+        if (normalized.Contains("OBSERV", StringComparison.Ordinal))
+        {
+            return Info;
+        }
+
+        return normalized.Contains("PROMOT", StringComparison.Ordinal) ||
+               normalized.Contains("PROCESSED", StringComparison.Ordinal) ||
+               normalized.Contains("COMPLETE", StringComparison.Ordinal) ||
+               normalized.Contains("APPROVED", StringComparison.Ordinal) ||
+               normalized.Contains("ELIGIBLE", StringComparison.Ordinal) ||
+               normalized.Contains("SUCCEED", StringComparison.Ordinal) ||
+               normalized.Contains("ACTIVE", StringComparison.Ordinal)
+            ? Success
+            : Info;
+    }
 }

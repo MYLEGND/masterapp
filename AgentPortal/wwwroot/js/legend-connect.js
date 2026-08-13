@@ -102,6 +102,59 @@
 })();
 
 (() => {
+    const valueNodes = Array.from(document.querySelectorAll("[data-legend-live-value]"));
+    if (valueNodes.length === 0) return;
+
+    const cardNodes = Array.from(document.querySelectorAll("[data-legend-live-card]"));
+
+    function applyTone(card, tone) {
+        Array.from(card.classList)
+            .filter(className => className.startsWith("legend-connect-metric--"))
+            .forEach(className => card.classList.remove(className));
+
+        if (tone) card.classList.add(tone);
+    }
+
+    function update(snapshot) {
+        const metrics = snapshot?.metrics;
+        if (!metrics) return;
+
+        valueNodes.forEach(node => {
+            const metric = metrics[node.dataset.legendLiveValue];
+            if (metric?.displayValue !== undefined) node.textContent = metric.displayValue;
+        });
+
+        cardNodes.forEach(card => {
+            const metric = metrics[card.dataset.legendLiveCard];
+            if (metric?.tone) applyTone(card, metric.tone);
+        });
+    }
+
+    async function refresh() {
+        try {
+            const response = await fetch("/founder/legend-connect/metrics", {
+                cache: "no-store",
+                credentials: "same-origin",
+                headers: { Accept: "application/json" }
+            });
+            if (!response.ok) return;
+            update(await response.json());
+        } catch {
+            // Preserve the last server-rendered projection when a read fails.
+        }
+    }
+
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) void refresh();
+    });
+
+    void refresh();
+    window.setInterval(() => {
+        if (!document.hidden) void refresh();
+    }, 30_000);
+})();
+
+(() => {
     const statusNodes = Array.from(document.querySelectorAll("[data-azure-capacity-status]"));
     if (statusNodes.length === 0) return;
 
@@ -152,6 +205,7 @@
     async function refresh() {
         try {
             const response = await fetch("/founder/legend-connect/capacity", {
+                cache: "no-store",
                 credentials: "same-origin",
                 headers: { Accept: "application/json" }
             });
@@ -163,6 +217,12 @@
         }
     }
 
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) void refresh();
+    });
+
     void refresh();
-    window.setInterval(refresh, 30_000);
+    window.setInterval(() => {
+        if (!document.hidden) void refresh();
+    }, 30_000);
 })();
