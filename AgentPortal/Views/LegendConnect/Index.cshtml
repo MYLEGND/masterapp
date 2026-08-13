@@ -372,6 +372,35 @@
     </div>
 </div>
 
+<div class="modal fade legend-modal dashboard-detail-modal legend-connect-summary-modal" id="legendConnectMetricSummaryModal" tabindex="-1" aria-labelledby="legendConnectMetricSummaryModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content" data-legend-copy-source="metric-summary">
+            <div class="modal-header">
+                <div>
+                    <span class="dashboard-section-kicker" data-legend-summary-context>Live server summary</span>
+                    <h2 class="modal-title" id="legendConnectMetricSummaryModalTitle" data-legend-summary-title>Metric details</h2>
+                    <p class="dashboard-section-copy" data-legend-summary-description>This Founder view uses the current server-backed Legend Connect projection.</p>
+                </div>
+                <div class="legend-connect-modal-actions">
+                    <partial name="_CopyButton" model="@("metric-summary")" />
+                    <button type="button" class="dashboard-modal-close" data-bs-dismiss="modal" aria-label="Close metric details and return to Legend Connect">×</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <section class="dashboard-detail-modal-section" aria-labelledby="legendConnectMetricSummarySelectedTitle">
+                    <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Selected metric</span><h3 class="dashboard-section-title" id="legendConnectMetricSummarySelectedTitle">Current value</h3></div></div>
+                    <div class="dashboard-hero-stats dashboard-detail-modal-metrics legend-connect-summary-selected" data-legend-summary-selected></div>
+                </section>
+                <section class="dashboard-detail-modal-section" aria-labelledby="legendConnectMetricSummaryGroupTitle">
+                    <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Complete related data</span><h3 class="dashboard-section-title" id="legendConnectMetricSummaryGroupTitle">Current section summary</h3></div></div>
+                    <p class="dashboard-section-copy">Every value below is the current server-provided value from this same section. Opening this modal does not recalculate, modify, or create operational data.</p>
+                    <div class="dashboard-hero-stats dashboard-detail-modal-metrics legend-connect-summary-breakdown" data-legend-summary-breakdown></div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
 @if (Model.SelectedLanguageKnowledge is { } languageKnowledge)
 {
     var health = languageKnowledge.Health;

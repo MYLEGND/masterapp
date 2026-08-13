@@ -7,7 +7,7 @@
 
     function copyTextFor(source) {
         const copy = source.cloneNode(true);
-        copy.querySelectorAll("script, style, form, input, select, textarea, button, [data-legend-copy-button], [aria-hidden='true'], [hidden]")
+        copy.querySelectorAll("script, style, form, input, select, textarea, button, [data-legend-copy-button], .legend-connect-summary-pill-action, [aria-hidden='true'], [hidden]")
             .forEach(node => node.remove());
         copy.querySelectorAll("br").forEach(node => node.replaceWith("\n"));
         copy.querySelectorAll("tr").forEach(row => {
@@ -299,4 +299,145 @@
     window.setInterval(() => {
         if (!document.hidden) void refresh();
     }, 30_000);
+})();
+
+(() => {
+    const modalElement = document.getElementById("legendConnectMetricSummaryModal");
+    const page = document.querySelector(".legend-connect-page");
+    if (!modalElement || !page || !window.bootstrap?.Modal) return;
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+    const title = modalElement.querySelector("[data-legend-summary-title]");
+    const context = modalElement.querySelector("[data-legend-summary-context]");
+    const description = modalElement.querySelector("[data-legend-summary-description]");
+    const selected = modalElement.querySelector("[data-legend-summary-selected]");
+    const breakdown = modalElement.querySelector("[data-legend-summary-breakdown]");
+    const tiles = Array.from(page.querySelectorAll(".dashboard-stat-card"))
+        .filter(tile => !tile.closest(".modal"));
+    let activeTile = null;
+    let activeGroup = null;
+    let observer = null;
+
+    if (!title || !context || !description || !selected || !breakdown || tiles.length === 0) return;
+
+    const normalizedText = element => (element?.textContent || "").replace(/\s+/g, " ").trim();
+
+    function labelFor(tile) {
+        return normalizedText(tile.querySelector(".dashboard-stat-label")) || "Legend Connect metric";
+    }
+
+    function valueFor(tile) {
+        return normalizedText(tile.querySelector(".dashboard-stat-value")) || "Unavailable";
+    }
+
+    function contextFor(tile) {
+        const disclosure = tile.closest(".legend-connect-disclosure");
+        const disclosureTitle = disclosure?.querySelector(".dashboard-section-title");
+        if (disclosureTitle) return normalizedText(disclosureTitle);
+
+        const capacity = tile.closest(".dashboard-search-panel");
+        const capacityTitle = capacity?.querySelector(".dashboard-section-title");
+        if (capacityTitle) return normalizedText(capacityTitle);
+
+        const section = tile.closest("section, .dashboard-command-center-panel");
+        const sectionTitle = section?.querySelector("h1, h2, h3, .dashboard-section-title");
+        return normalizedText(sectionTitle) || "Legend Connect";
+    }
+
+    function cloneTile(tile) {
+        const copy = tile.cloneNode(true);
+        copy.classList.remove("legend-connect-summary-pill");
+        copy.removeAttribute("role");
+        copy.removeAttribute("tabindex");
+        copy.removeAttribute("aria-haspopup");
+        copy.removeAttribute("aria-controls");
+        copy.removeAttribute("data-legend-summary-tile");
+        copy.removeAttribute("data-legend-live-card");
+        copy.removeAttribute("data-legend-live-value");
+        copy.removeAttribute("data-azure-capacity-value");
+        copy.removeAttribute("data-azure-capacity-status");
+        copy.querySelector(".legend-connect-summary-pill-action")?.remove();
+        copy.querySelectorAll("[data-legend-live-card], [data-legend-live-value], [data-azure-capacity-value], [data-azure-capacity-status]")
+            .forEach(node => {
+                node.removeAttribute("data-legend-live-card");
+                node.removeAttribute("data-legend-live-value");
+                node.removeAttribute("data-azure-capacity-value");
+                node.removeAttribute("data-azure-capacity-status");
+            });
+        return copy;
+    }
+
+    function relatedTilesFor(tile) {
+        const group = tile.closest(".dashboard-hero-stats");
+        return group
+            ? Array.from(group.querySelectorAll(":scope > .dashboard-stat-card"))
+            : [tile];
+    }
+
+    function render() {
+        if (!activeTile) return;
+
+        const metricLabel = labelFor(activeTile);
+        const metricValue = valueFor(activeTile);
+        const section = contextFor(activeTile);
+        title.textContent = metricLabel;
+        context.textContent = section;
+        description.textContent = `${metricLabel} is currently ${metricValue}. This modal shows the full live summary for ${section}.`;
+        selected.replaceChildren(cloneTile(activeTile));
+        breakdown.replaceChildren(...relatedTilesFor(activeTile).map(cloneTile));
+    }
+
+    function observeActiveGroup() {
+        observer?.disconnect();
+        if (!activeGroup) return;
+        observer = new MutationObserver(render);
+        observer.observe(activeGroup, {
+            subtree: true,
+            childList: true,
+            characterData: true,
+            attributes: true,
+            attributeFilter: ["class"]
+        });
+    }
+
+    function open(tile) {
+        activeTile = tile;
+        activeGroup = tile.closest(".dashboard-hero-stats");
+        render();
+        observeActiveGroup();
+        modal.show();
+    }
+
+    tiles.forEach(tile => {
+        tile.classList.add("legend-connect-summary-pill");
+        tile.dataset.legendSummaryTile = "true";
+        tile.setAttribute("role", "button");
+        tile.setAttribute("tabindex", "0");
+        tile.setAttribute("aria-haspopup", "dialog");
+        tile.setAttribute("aria-controls", "legendConnectMetricSummaryModal");
+        const action = document.createElement("span");
+        action.className = "legend-connect-summary-pill-action";
+        action.setAttribute("aria-hidden", "true");
+        action.textContent = "View details";
+        tile.append(action);
+        tile.addEventListener("click", event => {
+            event.preventDefault();
+            event.stopPropagation();
+            open(tile);
+        });
+        tile.addEventListener("keydown", event => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            event.stopPropagation();
+            open(tile);
+        });
+    });
+
+    modalElement.addEventListener("hidden.bs.modal", () => {
+        observer?.disconnect();
+        const returnFocus = activeTile;
+        activeGroup = null;
+        activeTile = null;
+        returnFocus?.focus();
+    });
 })();

@@ -731,7 +731,7 @@
 /* Semantic Founder telemetry tones. The values remain server-authoritative;
    these classes only make healthy, neutral, active, pending, and blocked
    states scannable in the established Legend dashboard language. */
-.legend-connect-page {
+:is(.legend-connect-page, .legend-connect-summary-modal) {
     --legend-connect-metric-neutral: #aebfd8;
     --legend-connect-metric-info: #8cc7ff;
     --legend-connect-metric-authority: #c7a3ff;
@@ -740,26 +740,78 @@
     --legend-connect-metric-danger: #ff969d;
 }
 
-.legend-connect-page .legend-connect-metric--neutral { color: var(--legend-connect-metric-neutral); }
-.legend-connect-page .legend-connect-metric--info { color: var(--legend-connect-metric-info); }
-.legend-connect-page .legend-connect-metric--authority { color: var(--legend-connect-metric-authority); }
-.legend-connect-page .legend-connect-metric--success { color: var(--legend-connect-metric-success); }
-.legend-connect-page .legend-connect-metric--warning { color: var(--legend-connect-metric-warning); }
-.legend-connect-page .legend-connect-metric--danger { color: var(--legend-connect-metric-danger); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .legend-connect-metric--neutral { color: var(--legend-connect-metric-neutral); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .legend-connect-metric--info { color: var(--legend-connect-metric-info); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .legend-connect-metric--authority { color: var(--legend-connect-metric-authority); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .legend-connect-metric--success { color: var(--legend-connect-metric-success); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .legend-connect-metric--warning { color: var(--legend-connect-metric-warning); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .legend-connect-metric--danger { color: var(--legend-connect-metric-danger); }
 
-.legend-connect-page .dashboard-stat-card.legend-connect-metric--neutral { border-color: rgba(174, 191, 216, 0.28); }
-.legend-connect-page .dashboard-stat-card.legend-connect-metric--info { border-color: rgba(140, 199, 255, 0.42); background: linear-gradient(145deg, rgba(20, 66, 118, 0.9), rgba(8, 26, 57, 0.98)); }
-.legend-connect-page .dashboard-stat-card.legend-connect-metric--authority { border-color: rgba(199, 163, 255, 0.46); background: linear-gradient(145deg, rgba(66, 42, 109, 0.92), rgba(34, 21, 70, 0.98)); }
-.legend-connect-page .dashboard-stat-card.legend-connect-metric--success { border-color: rgba(101, 224, 164, 0.42); background: linear-gradient(145deg, rgba(14, 78, 68, 0.92), rgba(7, 37, 47, 0.98)); }
-.legend-connect-page .dashboard-stat-card.legend-connect-metric--warning { border-color: rgba(255, 208, 113, 0.48); background: linear-gradient(145deg, rgba(89, 59, 16, 0.93), rgba(46, 31, 16, 0.98)); }
-.legend-connect-page .dashboard-stat-card.legend-connect-metric--danger { border-color: rgba(255, 150, 157, 0.5); background: linear-gradient(145deg, rgba(104, 33, 50, 0.93), rgba(54, 20, 35, 0.98)); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--neutral { border-color: rgba(174, 191, 216, 0.28); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--info { border-color: rgba(140, 199, 255, 0.42); background: linear-gradient(145deg, rgba(20, 66, 118, 0.9), rgba(8, 26, 57, 0.98)); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--authority { border-color: rgba(199, 163, 255, 0.46); background: linear-gradient(145deg, rgba(66, 42, 109, 0.92), rgba(34, 21, 70, 0.98)); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--success { border-color: rgba(101, 224, 164, 0.42); background: linear-gradient(145deg, rgba(14, 78, 68, 0.92), rgba(7, 37, 47, 0.98)); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--warning { border-color: rgba(255, 208, 113, 0.48); background: linear-gradient(145deg, rgba(89, 59, 16, 0.93), rgba(46, 31, 16, 0.98)); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--danger { border-color: rgba(255, 150, 157, 0.5); background: linear-gradient(145deg, rgba(104, 33, 50, 0.93), rgba(54, 20, 35, 0.98)); }
 
-.legend-connect-page .dashboard-stat-card.legend-connect-metric--neutral .dashboard-stat-value { color: var(--legend-connect-metric-neutral); }
-.legend-connect-page .dashboard-stat-card.legend-connect-metric--info .dashboard-stat-value { color: var(--legend-connect-metric-info); }
-.legend-connect-page .dashboard-stat-card.legend-connect-metric--authority .dashboard-stat-value { color: var(--legend-connect-metric-authority); }
-.legend-connect-page .dashboard-stat-card.legend-connect-metric--success .dashboard-stat-value { color: var(--legend-connect-metric-success); }
-.legend-connect-page .dashboard-stat-card.legend-connect-metric--warning .dashboard-stat-value { color: var(--legend-connect-metric-warning); }
-.legend-connect-page .dashboard-stat-card.legend-connect-metric--danger .dashboard-stat-value { color: var(--legend-connect-metric-danger); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--neutral .dashboard-stat-value { color: var(--legend-connect-metric-neutral); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--info .dashboard-stat-value { color: var(--legend-connect-metric-info); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--authority .dashboard-stat-value { color: var(--legend-connect-metric-authority); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--success .dashboard-stat-value { color: var(--legend-connect-metric-success); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--warning .dashboard-stat-value { color: var(--legend-connect-metric-warning); }
+:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--danger .dashboard-stat-value { color: var(--legend-connect-metric-danger); }
+
+/* Every numeric Founder summary uses one shared detail interaction. The modal
+   reads the existing live projection; these rules only present the trigger. */
+.legend-connect-page .dashboard-stat-card.legend-connect-summary-pill {
+    position: relative;
+    inline-size: 100%;
+    cursor: pointer;
+    text-align: start;
+    transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.legend-connect-page .dashboard-stat-card.legend-connect-summary-pill:hover {
+    transform: translateY(-2px);
+    border-color: rgba(240, 217, 145, 0.7);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 22px rgba(2, 9, 28, 0.26);
+}
+
+.legend-connect-page .dashboard-stat-card.legend-connect-summary-pill:focus-visible {
+    outline: 3px solid rgba(240, 217, 145, 0.88);
+    outline-offset: 3px;
+}
+
+.legend-connect-summary-pill-action {
+    justify-self: start;
+    margin-top: auto;
+    padding: 0.2rem 0.44rem;
+    border: 1px solid rgba(240, 217, 145, 0.38);
+    border-radius: 999px;
+    color: #f7df98;
+    font-size: 0.61rem;
+    font-weight: 900;
+    letter-spacing: 0.065em;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.legend-connect-summary-modal .modal-content {
+    max-inline-size: min(920px, calc(100vw - 2rem));
+}
+
+.legend-connect-summary-modal .legend-connect-summary-selected {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.legend-connect-summary-modal .dashboard-stat-card {
+    cursor: default;
+}
+
+.legend-connect-summary-modal .dashboard-stat-card:hover {
+    transform: none;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
 
 .legend-connect-page .dashboard-data-table .legend-connect-metric--neutral,
 .legend-connect-page .dashboard-data-table .legend-connect-metric--info,
