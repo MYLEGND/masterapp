@@ -237,9 +237,17 @@
             const metric = metrics[card.dataset.legendLiveCard];
             if (metric?.tone) applyTone(card, metric.tone);
         });
+
+        window.dispatchEvent(new CustomEvent("legend-connect-live-metrics", {
+            detail: snapshot.providerCapacity
+        }));
     }
 
+    let isRefreshing = false;
+
     async function refresh() {
+        if (isRefreshing) return;
+        isRefreshing = true;
         try {
             const response = await fetch("/founder/legend-connect/metrics", {
                 cache: "no-store",
@@ -250,6 +258,8 @@
             update(await response.json());
         } catch {
             // Preserve the last server-rendered projection when a read fails.
+        } finally {
+            isRefreshing = false;
         }
     }
 
@@ -257,7 +267,6 @@
         if (!document.hidden) void refresh();
     });
 
-    void refresh();
     window.setInterval(() => {
         if (!document.hidden) void refresh();
     }, 30_000);
@@ -291,6 +300,7 @@
     ]);
 
     function update(snapshot) {
+        if (!snapshot) return;
         statusNodes.forEach(node => node.textContent = snapshot.status || "Unavailable");
         valueNodes.forEach(node => {
             const value = valueFor[node.dataset.azureCapacityValue]?.(snapshot);
@@ -311,29 +321,7 @@
         });
     }
 
-    async function refresh() {
-        try {
-            const response = await fetch("/founder/legend-connect/capacity", {
-                cache: "no-store",
-                credentials: "same-origin",
-                headers: { Accept: "application/json" }
-            });
-            if (!response.ok) return;
-            update(await response.json());
-        } catch {
-            // The server keeps the last verified projection visible. A failed
-            // refresh never invents capacity or changes translation behavior.
-        }
-    }
-
-    document.addEventListener("visibilitychange", () => {
-        if (!document.hidden) void refresh();
-    });
-
-    void refresh();
-    window.setInterval(() => {
-        if (!document.hidden) void refresh();
-    }, 30_000);
+    window.addEventListener("legend-connect-live-metrics", event => update(event.detail));
 })();
 
 (() => {

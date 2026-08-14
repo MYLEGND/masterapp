@@ -488,6 +488,16 @@ public sealed record LegendConnectDashboardSnapshot(
     LegendConnectProviderCapacitySnapshot? ProviderCapacity = null);
 
 /// <summary>
+/// One coherent Founder dashboard read. The selected language and pair are
+/// derived from the same operational state as the dashboard so opening a
+/// detailed route does not repeat the complete operational projection.
+/// </summary>
+public sealed record LegendConnectDashboardProjectionSnapshot(
+    LegendConnectDashboardSnapshot Dashboard,
+    LegendConnectLanguageKnowledgeSnapshot? SelectedLanguageKnowledge,
+    LegendConnectPairHealthSnapshot? SelectedPair);
+
+/// <summary>
 /// A Founder-safe, record-level explanation for one live dashboard metric.
 /// These rows are projections of the established operational ledgers and
 /// corpus records; they never create a second reporting or learning store.
@@ -514,6 +524,11 @@ public sealed record LegendConnectMetricDetailSnapshot(
 public interface ILegendConnectOperations
 {
     Task<LegendConnectDashboardSnapshot> GetDashboardAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectDashboardProjectionSnapshot> GetDashboardProjectionAsync(
+        string? languageCode,
+        string? pairKey,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(

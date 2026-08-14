@@ -40,14 +40,9 @@ public sealed class FounderLegendConnectService
         string? accountSearch = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        var dashboard = await _operations.GetDashboardAsync(cancellationToken);
+        var dashboardProjection = await _operations.GetDashboardProjectionAsync(language, pair, cancellationToken);
+        var dashboard = dashboardProjection.Dashboard;
         var translationQuality = await _operations.GetTranslationQualityAsync(cancellationToken);
-        var selectedLanguageKnowledge = string.IsNullOrWhiteSpace(language)
-            ? null
-            : await _operations.GetLanguageKnowledgeAsync(language, cancellationToken);
-        var selectedPair = string.IsNullOrWhiteSpace(pair)
-            ? null
-            : await _operations.GetPairHealthAsync(pair, cancellationToken);
         var accountDirectory = _entitlements is null
             ? new TranslationFounderAccountSearchSnapshot(
                 Array.Empty<TranslationFounderAccountUsageSnapshot>(),
@@ -69,9 +64,9 @@ public sealed class FounderLegendConnectService
         return new FounderLegendConnectDashboardVm
         {
             Dashboard = dashboard,
-            SelectedLanguage = selectedLanguageKnowledge?.Health,
-            SelectedLanguageKnowledge = selectedLanguageKnowledge,
-            SelectedPair = selectedPair,
+            SelectedLanguage = dashboardProjection.SelectedLanguageKnowledge?.Health,
+            SelectedLanguageKnowledge = dashboardProjection.SelectedLanguageKnowledge,
+            SelectedPair = dashboardProjection.SelectedPair,
             TranslationQuality = translationQuality,
             AccountUsage = accountDirectory.Accounts,
             AccountSearchQuery = accountDirectory.Query,

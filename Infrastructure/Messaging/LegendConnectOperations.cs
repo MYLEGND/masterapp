@@ -58,7 +58,35 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // Ensures the data-backed baseline is available for a newly initialized
         // environment without treating the baseline list as a runtime authority.
         await _registry.ListEnabledTranslationLanguagesAsync(cancellationToken);
+        return await BuildDashboardAsync(await LoadStateAsync(cancellationToken), cancellationToken);
+    }
+
+    public async Task<LegendConnectDashboardProjectionSnapshot> GetDashboardProjectionAsync(
+        string? languageCode,
+        string? pairKey,
+        CancellationToken cancellationToken = default)
+    {
+        // The registry baseline and all Founder-facing projections intentionally
+        // share one read boundary. This preserves the existing authorities while
+        // preventing a selected language or pair from reloading the full state.
+        await _registry.ListEnabledTranslationLanguagesAsync(cancellationToken);
         var state = await LoadStateAsync(cancellationToken);
+        var dashboard = await BuildDashboardAsync(state, cancellationToken);
+        var selectedLanguage = string.IsNullOrWhiteSpace(languageCode)
+            ? null
+            : await BuildLanguageKnowledgeAsync(state, languageCode, cancellationToken);
+        var pair = ResolvePair(state.Pairs, pairKey);
+
+        return new LegendConnectDashboardProjectionSnapshot(
+            dashboard,
+            selectedLanguage,
+            pair is null ? null : BuildPairHealth(pair, state));
+    }
+
+    private async Task<LegendConnectDashboardSnapshot> BuildDashboardAsync(
+        LegendConnectOperationalState state,
+        CancellationToken cancellationToken)
+    {
         var activeLearningEvents = ActiveLearningEvents(state).ToList();
         var activeCandidates = ActiveCandidates(state).ToList();
         var languages = state.Languages
@@ -217,8 +245,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (string.IsNullOrWhiteSpace(key))
             return EmptyMetricDetail("unknown", "Metric details", "A Legend Connect metric was not specified.");
 
-        if (key.StartsWith("capacity-", StringComparison.Ordinal))
+        if (key.StartsWith("capacity-", StringComparison.Ordinal) ||
+            key is "azure-characters-used" or "consumed-live-characters" or "consumed-corpus-characters" or
+                "provider-characters-reserved")
             return await BuildCapacityMetricDetailAsync(key, cancellationToken);
+
+        if (key is "provider-operations" or "provider-billable-characters" or "same-language-avoided" or
+            "memory-avoided" or "context-avoided" or "quota-denied" or "provider-failures" or
+            "group-target-reuse" or "high-consumption-accounts")
+            return await BuildUsageMetricDetailAsync(key, cancellationToken);
 
         var state = await LoadStateAsync(cancellationToken);
         return key switch
@@ -229,10 +264,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "duplicate-prevention" or "readiness-duplicates-prevented" => BuildDuplicateMetricDetail(state, key),
             "approved-candidates" or "eligible-pending" or "rejected-ineligible" or "pairs-awaiting-knowledge" => BuildCandidateMetricDetail(state, key),
             "same-language-bypasses" or "translation-memory-hits" or "provider-fallback-required" or "trusted-contextual-served" or "provider-avoidance" or "provider-dependency" => BuildDemandMetricDetail(state, key),
-            "azure-characters-used" or "consumed-live-characters" or "consumed-corpus-characters" or "provider-characters-reserved" => await BuildCapacityMetricDetailAsync(key, cancellationToken),
             "pending-learning-jobs" => BuildPendingLearningMetricDetail(state),
             "quality-needs-review" or "quality-provider-observations" or "quality-supported-observations" or "quality-contradictions" or "quality-human-verified" => await BuildQualityMetricDetailAsync(state, key, cancellationToken),
-            "provider-operations" or "provider-billable-characters" or "same-language-avoided" or "memory-avoided" or "context-avoided" or "quota-denied" or "provider-failures" or "group-target-reuse" or "high-consumption-accounts" => await BuildUsageMetricDetailAsync(key, cancellationToken),
             "consented-accounts" or "eligible-live-translations" or "promoted-to-learning" or "canonical-reuse-prevented-duplicates" or "awaiting-corpus-processing" => BuildConsentedLearningMetricDetail(state, key),
             "raw-submissions-retained" or "atomic-learning-units" or "active-directional-alignments" or "legacy-multi-unit-assets-retired" => BuildFounderTrainingMetricDetail(state, key),
             _ => EmptyMetricDetail(key, "Metric details", "This card has no configured Legend Connect detail projection.")
@@ -818,7 +851,14 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // The registry remains responsible for ensuring its data-backed
         // baseline before this Founder-only operational projection is read.
         await _registry.ListEnabledTranslationLanguagesAsync(cancellationToken);
-        var state = await LoadStateAsync(cancellationToken);
+        return await BuildLanguageKnowledgeAsync(await LoadStateAsync(cancellationToken), languageCode, cancellationToken);
+    }
+
+    private async Task<LegendConnectLanguageKnowledgeSnapshot?> BuildLanguageKnowledgeAsync(
+        LegendConnectOperationalState state,
+        string languageCode,
+        CancellationToken cancellationToken)
+    {
         var language = ResolveLanguage(state.Languages, languageCode);
         if (language is null)
             return null;
@@ -1030,8 +1070,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     {
         await _registry.ListEnabledTranslationLanguagesAsync(cancellationToken);
         var state = await LoadStateAsync(cancellationToken);
-        var pair = state.Pairs.SingleOrDefault(item =>
-            string.Equals(item.PairKey, pairKey?.Trim(), StringComparison.OrdinalIgnoreCase));
+        var pair = ResolvePair(state.Pairs, pairKey);
         return pair is null ? null : BuildPairHealth(pair, state);
     }
 
@@ -1979,6 +2018,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             string.Equals(item.CanonicalName, candidate, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(item.NativeName, candidate, StringComparison.OrdinalIgnoreCase));
     }
+
+    private static LegendLanguagePair? ResolvePair(IEnumerable<LegendLanguagePair> pairs, string? pairKey) =>
+        pairs.SingleOrDefault(item =>
+            string.Equals(item.PairKey, pairKey?.Trim(), StringComparison.OrdinalIgnoreCase));
 
     private static LegendConnectOperationalEventSnapshot ToSnapshot(LegendConnectOperationalEvent item) => new(
         item.OccurredUtc, item.Category, item.Severity, item.Status, item.LanguageCode,

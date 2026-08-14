@@ -121,7 +121,8 @@ public sealed record FounderLegendConnectLiveMetricSnapshot(
     string Tone);
 
 public sealed record FounderLegendConnectLiveMetricsSnapshot(
-    IReadOnlyDictionary<string, FounderLegendConnectLiveMetricSnapshot> Metrics)
+    IReadOnlyDictionary<string, FounderLegendConnectLiveMetricSnapshot> Metrics,
+    LegendConnectProviderCapacitySnapshot? ProviderCapacity)
 {
     public static FounderLegendConnectLiveMetricsSnapshot Create(
         LegendConnectDashboardSnapshot dashboard,
@@ -190,7 +191,7 @@ public sealed record FounderLegendConnectLiveMetricsSnapshot(
         AddDisplay(metrics, "runtime-audit-entries", $"{runtimeAuditCount:N0} entries", LegendConnectMetricTone.InformationalActivity(runtimeAuditCount));
         AddDisplay(metrics, "operational-events-summary", $"{dashboard.RecentOperationalEvents.Count:N0} events", LegendConnectMetricTone.InformationalActivity(dashboard.RecentOperationalEvents.Count));
 
-        return new FounderLegendConnectLiveMetricsSnapshot(metrics);
+        return new FounderLegendConnectLiveMetricsSnapshot(metrics, dashboard.ProviderCapacity);
     }
 
     private static void Add(
