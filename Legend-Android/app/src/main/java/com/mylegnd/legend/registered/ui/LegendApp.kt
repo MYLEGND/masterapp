@@ -33,8 +33,10 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -5552,56 +5554,468 @@ private fun FinancialScreen(repository: FinancialRepository, participantType: St
         factory = LegendViewModelFactory { FinancialViewModel(repository, participantType) },
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var detailKey by remember { mutableStateOf<String?>(null) }
+    var route by remember { mutableStateOf(FinancialRoute.CashFlowLanding) }
+    var detailDestination by remember { mutableStateOf<FinancialDetailDestination?>(null) }
+    var outlookDetail by remember { mutableStateOf<FinancialOutlookSelection?>(null) }
     LaunchedEffect(Unit) { viewModel.load() }
+    BackHandler(enabled = route != FinancialRoute.CashFlowLanding && outlookDetail == null) {
+        when (route) {
+            FinancialRoute.Detail -> {
+                detailDestination = null
+                route = FinancialRoute.Intelligence
+            }
+            FinancialRoute.Intelligence -> route = FinancialRoute.CashFlowLanding
+            FinancialRoute.CashFlowLanding -> Unit
+        }
+    }
     when (state) {
         LoadState.Idle, LoadState.Loading -> LegendLoadingState()
         is LoadState.Error -> LegendErrorState((state as LoadState.Error).message, viewModel::load)
         is LoadState.Data -> {
             val snapshot = (state as LoadState.Data<FinancialSnapshot>).value
-            val selectedSection = detailKey?.let { key -> snapshot.healthSnapshot?.sections?.firstOrNull { it.key == key } }
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().background(LegendColors.Canvas),
-                contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md),
-                verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
-            ) {
-                item {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { if (detailKey == null) back() else detailKey = null }, modifier = Modifier.background(LegendColors.Surface, CircleShape)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = LegendColors.Navy) }
-                        Spacer(Modifier.width(LegendSpacing.Sm))
-                        Text(if (selectedSection == null) "Financial Intelligence" else selectedSection.title, style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                    }
-                }
-                if (selectedSection != null) {
-                    item { FinancialHealthSectionDetail(selectedSection) }
-                } else {
-                    snapshot.position?.let { position -> item { FinancialPositionHero(position) } }
-                    snapshot.presentation?.assignedAgent?.takeIf { it.hasAssignedAgent }?.displayName?.let { name -> item { Text("Your LEGEND guide: $name", style = LegendTypography.Supporting, color = LegendColors.TextSecondary) } }
-                    val priorities = snapshot.presentation?.prioritySections.orEmpty()
-                    if (priorities.isNotEmpty()) {
-                        item { Text("Your priorities", style = LegendTypography.Section, color = LegendColors.TextPrimary) }
-                        items(priorities.sortedBy { it.priority }, key = { it.key }) { section -> FinancialPriorityCard(section) { detailKey = section.key } }
-                    }
-                    snapshot.intelligence?.let { intelligence ->
-                        item { FinancialIntelligenceCard(intelligence) }
-                    }
-                    snapshot.upcomingBills.takeIf { it.isNotEmpty() }?.let { bills ->
-                        item { Text("Upcoming activity", style = LegendTypography.Section, color = LegendColors.TextPrimary) }
-                        items(bills, key = { it.id }) { bill ->
-                            Surface(color = LegendColors.Surface, shape = LegendShapes.Control, modifier = Modifier.fillMaxWidth()) {
-                                Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(bill.displayName, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
-                                        Text("${bill.cadence} · ${bill.nextExpectedDateUtc}", style = LegendTypography.Label, color = LegendColors.TextSecondary)
-                                    }
-                                    Text(financialCurrencyCents(bill.averageAmountCents), style = LegendTypography.CardTitle, color = LegendColors.Navy)
-                                }
-                            }
+            val openDestination: (FinancialDetailDestination) -> Unit = { destination ->
+                when (destination) {
+                    FinancialDetailDestination.CurrentOutlook -> {
+                        snapshot.operatingSystem?.weekAtGlance?.let {
+                            outlookDetail = FinancialOutlookSelection.Week(it)
                         }
                     }
-                    snapshot.operatingSystem?.projection?.summary?.takeIf(String::isNotBlank)?.let { summary -> item { FinancialOperatingSystemCard(summary) } }
-                    if (priorities.isEmpty() && snapshot.healthSnapshot == null && snapshot.position == null) item { LegendMessagingEmptyCard("Financial snapshot incomplete", "Your saved financial health data will appear here after it is completed in your account workspace.", action = back) }
+                    FinancialDetailDestination.MonthlyOutlook -> {
+                        snapshot.operatingSystem?.monthAtGlance?.let {
+                            outlookDetail = FinancialOutlookSelection.Month(it)
+                        }
+                    }
+                    else -> {
+                        detailDestination = destination
+                        route = FinancialRoute.Detail
+                    }
                 }
+            }
+
+            when (route) {
+                FinancialRoute.CashFlowLanding -> FinancialCashFlowLanding(
+                    snapshot = snapshot,
+                    openFinancialIntelligence = { route = FinancialRoute.Intelligence },
+                    openWeek = {
+                        snapshot.operatingSystem?.weekAtGlance?.let {
+                            outlookDetail = FinancialOutlookSelection.Week(it)
+                        }
+                    },
+                    openMonth = {
+                        snapshot.operatingSystem?.monthAtGlance?.let {
+                            outlookDetail = FinancialOutlookSelection.Month(it)
+                        }
+                    },
+                )
+
+                FinancialRoute.Intelligence -> FinancialIntelligenceDashboard(
+                    snapshot = snapshot,
+                    backToProfile = back,
+                    openDestination = openDestination,
+                )
+
+                FinancialRoute.Detail -> {
+                    val destination = detailDestination
+                    if (destination == null) {
+                        route = FinancialRoute.Intelligence
+                    } else {
+                        FinancialDetailScreen(
+                            destination = destination,
+                            snapshot = snapshot,
+                            backToFinancialIntelligence = {
+                                detailDestination = null
+                                route = FinancialRoute.Intelligence
+                            },
+                            backToProfile = back,
+                            openDestination = openDestination,
+                        )
+                    }
+                }
+            }
+
+            outlookDetail?.let { selection ->
+                FinancialOutlookDialog(
+                    selection = selection,
+                    dismiss = { outlookDetail = null },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialCashFlowLanding(
+    snapshot: FinancialSnapshot,
+    openFinancialIntelligence: () -> Unit,
+    openWeek: () -> Unit,
+    openMonth: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(LegendColors.Canvas),
+        contentPadding = PaddingValues(
+            horizontal = LegendSpacing.PageHorizontal,
+            vertical = LegendSpacing.Md,
+        ),
+        verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+    ) {
+        item { FinancialCashFlowHero(openFinancialIntelligence) }
+
+        val operatingSystem = snapshot.operatingSystem
+        if (operatingSystem?.weekAtGlance != null) {
+            item {
+                FinancialOutlookPreview(
+                    eyebrow = "This week",
+                    title = "Week at a Glance",
+                    period = financialDateRange(
+                        operatingSystem.weekAtGlance.startDate,
+                        operatingSystem.weekAtGlance.endDate,
+                    ),
+                    pressureStatus = operatingSystem.weekAtGlance.pressureStatus,
+                    openingCashCents = operatingSystem.weekAtGlance.openingCashCents,
+                    incomeCents = operatingSystem.weekAtGlance.incomeCents,
+                    billsCents = operatingSystem.weekAtGlance.debitExpenseCents + operatingSystem.weekAtGlance.creditExpenseCents,
+                    endingCashCents = operatingSystem.weekAtGlance.endingCashCents,
+                    open = openWeek,
+                )
+            }
+        }
+        if (operatingSystem?.monthAtGlance != null) {
+            item {
+                FinancialOutlookPreview(
+                    eyebrow = "This month",
+                    title = "Month at a Glance",
+                    period = financialMonth(operatingSystem.monthAtGlance.monthKey),
+                    pressureStatus = operatingSystem.monthAtGlance.pressureStatus,
+                    openingCashCents = operatingSystem.monthAtGlance.openingCashCents,
+                    incomeCents = operatingSystem.monthAtGlance.incomeCents,
+                    billsCents = operatingSystem.monthAtGlance.debitExpenseCents + operatingSystem.monthAtGlance.creditExpenseCents,
+                    endingCashCents = operatingSystem.monthAtGlance.endingCashCents,
+                    open = openMonth,
+                )
+            }
+        }
+        if (operatingSystem?.weekAtGlance == null && operatingSystem?.monthAtGlance == null) {
+            item {
+                FinancialAvailabilityCard(
+                    operatingSystem?.projection?.summary
+                        ?: "Your saved financial outlook will appear here when it is ready.",
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialCashFlowHero(open: () -> Unit) {
+    Surface(color = LegendColors.Navy, shape = LegendShapes.Hero, modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().background(LegendGradients.Finance).padding(LegendSpacing.Lg),
+            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+        ) {
+            Text("FINANCIAL INTELLIGENCE", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+            Text("Cash flow at a glance", style = LegendTypography.Hero, color = LegendColors.OnNavy)
+            Text("Current week and month", style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.70f))
+            Button(
+                onClick = open,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = LegendColors.GoldBright,
+                    contentColor = LegendColors.Midnight,
+                ),
+                shape = LegendShapes.Control,
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ShowChart, null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(LegendSpacing.Xs))
+                Text("Financial Intelligence", style = LegendTypography.BodyEmphasis)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialOutlookPreview(
+    eyebrow: String,
+    title: String,
+    period: String,
+    pressureStatus: String,
+    openingCashCents: Long,
+    incomeCents: Long,
+    billsCents: Long,
+    endingCashCents: Long,
+    open: () -> Unit,
+) {
+    Surface(
+        color = LegendColors.Navy,
+        shape = LegendShapes.ProminentCard,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = open),
+    ) {
+        Column(
+            modifier = Modifier.padding(LegendSpacing.CardContent),
+            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+        ) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+                    Text(eyebrow.uppercase(), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+                    Text(title, style = LegendTypography.Section, color = LegendColors.OnNavy)
+                    Text(period, style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.68f))
+                }
+                FinancialStatusBadge(pressureStatus, financialStatusTone(pressureStatus))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+                FinancialOutlookMetric("Opening cash", financialCurrencyCents(openingCashCents), Icons.Default.AccountBalanceWallet, financialAmountTone(openingCashCents, FinancialAmountKind.OpeningCash), Modifier.weight(1f))
+                FinancialOutlookMetric("Income", financialCurrencyCents(incomeCents), Icons.Default.SouthWest, financialAmountTone(incomeCents, FinancialAmountKind.Income), Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+                FinancialOutlookMetric("Bills", financialCurrencyCents(billsCents), Icons.Default.Description, financialAmountTone(billsCents, FinancialAmountKind.Bills), Modifier.weight(1f))
+                FinancialOutlookMetric("Ending cash", financialCurrencyCents(endingCashCents), Icons.Default.Payments, financialAmountTone(endingCashCents, FinancialAmountKind.EndingCash), Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialOutlookMetric(
+    label: String,
+    value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tone: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.background(LegendColors.OnNavy.copy(alpha = 0.06f), LegendShapes.Control).padding(LegendSpacing.Xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(30.dp).background(tone.copy(alpha = 0.17f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { Icon(icon, null, tint = tone, modifier = Modifier.size(17.dp)) }
+        Spacer(Modifier.width(LegendSpacing.Xs))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+            Text(label, style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.66f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(value, style = LegendTypography.BodyEmphasis, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun FinancialIntelligenceDashboard(
+    snapshot: FinancialSnapshot,
+    backToProfile: () -> Unit,
+    openDestination: (FinancialDetailDestination) -> Unit,
+) {
+    val sections = FinancialPresentationOrder.dashboardSections(snapshot.presentation?.prioritySections.orEmpty())
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(LegendColors.Canvas),
+        contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+    ) {
+        item { FinancialProfileBackControl(backToProfile) }
+        if (sections.isEmpty()) {
+            item {
+                FinancialAvailabilityCard(
+                    snapshot.operatingSystem?.projection?.summary
+                        ?: "A prioritized financial view is not available from the mobile service yet.",
+                )
+            }
+        } else {
+            items(sections, key = { it.key }) { section ->
+                val destination = FinancialDetailDestination.fromServerKey(section.key)
+                if (destination != null) {
+                    FinancialPriorityCard(section, destination) { openDestination(destination) }
+                }
+            }
+        }
+        item { FinancialLastUpdated(snapshot) }
+    }
+}
+
+@Composable
+private fun FinancialProfileBackControl(back: () -> Unit) {
+    OutlinedButton(
+        onClick = back,
+        shape = LegendShapes.Control,
+        border = androidx.compose.foundation.BorderStroke(
+            LegendSpacing.Hairline,
+            LegendColors.Gold.copy(alpha = 0.38f),
+        ),
+        contentPadding = PaddingValues(horizontal = LegendSpacing.Sm),
+    ) {
+        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(LegendSpacing.Micro))
+        Text("Profile", style = LegendTypography.BodyEmphasis)
+    }
+}
+
+@Composable
+private fun FinancialDetailNavigation(backToFinancialIntelligence: () -> Unit, backToProfile: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+        OutlinedButton(
+            onClick = backToFinancialIntelligence,
+            modifier = Modifier.weight(1f),
+            shape = LegendShapes.Control,
+        ) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, modifier = Modifier.size(17.dp))
+            Spacer(Modifier.width(LegendSpacing.Micro))
+            Text("Financial Intelligence", style = LegendTypography.Label, maxLines = 1)
+        }
+        OutlinedButton(onClick = backToProfile, shape = LegendShapes.Control) {
+            Text("Profile", style = LegendTypography.Label)
+        }
+    }
+}
+
+@Composable
+private fun FinancialPriorityCard(
+    section: FinancialPrioritySection,
+    destination: FinancialDetailDestination,
+    open: () -> Unit,
+) {
+    val tone = financialSummaryTone(section.primaryMetric)
+    Surface(
+        color = LegendColors.Navy,
+        shape = LegendShapes.ProminentCard,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = open),
+    ) {
+        Row(Modifier.padding(LegendSpacing.CardContent), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(42.dp).background(tone.copy(alpha = 0.17f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(financialDestinationIcon(destination), null, tint = tone, modifier = Modifier.size(23.dp))
+            }
+            Spacer(Modifier.width(LegendSpacing.Sm))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(section.eyebrow.uppercase(), modifier = Modifier.weight(1f), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    FinancialStatusBadge(section.status, tone)
+                }
+                Text(section.title, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FinancialPriorityMetric(section.primaryMetric, tone, Modifier.weight(1f))
+                    section.secondaryMetric?.let {
+                        Spacer(Modifier.width(LegendSpacing.Sm))
+                        FinancialPriorityMetric(it, financialSummaryTone(it), Modifier.weight(1f))
+                    }
+                    Icon(Icons.Default.ChevronRight, "Open ${section.title}", tint = LegendColors.OnNavy.copy(alpha = 0.68f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialPriorityMetric(metric: FinancialSummaryMetric, tone: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+        Text(metric.label.uppercase(), style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.62f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(financialMetricValue(metric), style = LegendTypography.BodyEmphasis, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun FinancialDetailScreen(
+    destination: FinancialDetailDestination,
+    snapshot: FinancialSnapshot,
+    backToFinancialIntelligence: () -> Unit,
+    backToProfile: () -> Unit,
+    openDestination: (FinancialDetailDestination) -> Unit,
+) {
+    val priority = snapshot.presentation?.prioritySections?.firstOrNull { it.key == destination.key }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(LegendColors.Canvas),
+        contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+    ) {
+        item { FinancialDetailNavigation(backToFinancialIntelligence, backToProfile) }
+        priority?.let { section ->
+            item {
+                FinancialPriorityStatusBanner(
+                    status = section.status,
+                    detail = section.reason,
+                    tone = financialSummaryTone(section.primaryMetric),
+                    destination = destination,
+                )
+            }
+        }
+
+        when (destination) {
+            FinancialDetailDestination.Assets,
+            FinancialDetailDestination.Liabilities,
+            FinancialDetailDestination.CashFlow,
+            FinancialDetailDestination.Protection,
+            FinancialDetailDestination.TaxProfile -> {
+                val section = snapshot.healthSnapshot?.sections?.firstOrNull { it.key == destination.healthSectionKey }
+                if (section == null) {
+                    item { FinancialAvailabilityCard("The saved ${destination.key.replace('-', ' ')} detail is not available yet.") }
+                } else {
+                    item { FinancialHealthSectionDetail(section) }
+                }
+            }
+
+            FinancialDetailDestination.FinancialPosition -> {
+                snapshot.position?.let { position -> item { FinancialPositionHero(position) } }
+                val sections = snapshot.healthSnapshot?.sections.orEmpty()
+                if (sections.isEmpty()) {
+                    item { FinancialAvailabilityCard("Saved balance-sheet details are not available yet.") }
+                } else {
+                    item { FinancialHealthSectionGrid(sections, openDestination) }
+                }
+            }
+
+            FinancialDetailDestination.DebtObligations -> {
+                val obligation = snapshot.operatingSystem?.monthAtGlance?.largestObligation
+                if (obligation == null) {
+                    item { FinancialAvailabilityCard(snapshot.operatingSystem?.projection?.summary ?: "No largest scheduled obligation is available for the current month.") }
+                } else {
+                    item { FinancialLargestObligationCard(obligation) }
+                }
+            }
+
+            FinancialDetailDestination.UpcomingActivity -> {
+                if (snapshot.upcomingBills.isEmpty()) {
+                    item { FinancialAvailabilityCard("No saved recurring financial items are currently scheduled.") }
+                } else {
+                    items(snapshot.upcomingBills, key = { it.id }) { bill -> FinancialUpcomingBillCard(bill) }
+                }
+            }
+
+            FinancialDetailDestination.ProtectionDiscussion -> {
+                val section = snapshot.healthSnapshot?.sections?.firstOrNull { it.key == FinancialDetailDestination.Protection.key }
+                if (section == null) {
+                    item { FinancialAvailabilityCard("Saved protection information is not available yet.") }
+                } else {
+                    item { FinancialHealthSectionDetail(section) }
+                }
+            }
+
+            FinancialDetailDestination.DataAttention -> {
+                item {
+                    FinancialAvailabilityCard(
+                        snapshot.operatingSystem?.projection?.summary
+                            ?: "The current Expense Lens projection is not available.",
+                    )
+                }
+            }
+
+            FinancialDetailDestination.CurrentOutlook,
+            FinancialDetailDestination.MonthlyOutlook -> Unit
+        }
+    }
+}
+
+@Composable
+private fun FinancialPriorityStatusBanner(
+    status: String,
+    detail: String,
+    tone: androidx.compose.ui.graphics.Color,
+    destination: FinancialDetailDestination,
+) {
+    Surface(color = tone.copy(alpha = 0.12f), shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(LegendSpacing.CardContent), verticalAlignment = Alignment.Top) {
+            Icon(financialDestinationIcon(destination), null, tint = tone, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(LegendSpacing.Sm))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+                FinancialStatusBadge(status, tone)
+                Text(detail, style = LegendTypography.Supporting, color = LegendColors.TextPrimary)
             }
         }
     }
@@ -5610,58 +6024,58 @@ private fun FinancialScreen(repository: FinancialRepository, participantType: St
 @Composable
 private fun FinancialPositionHero(position: FinancialPosition) {
     Surface(color = LegendColors.Navy, shape = LegendShapes.Hero, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(LegendSpacing.Lg), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-            Text(position.positionStatus.uppercase(), style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
-            Text(position.positionSummary, style = LegendTypography.Body, color = LegendColors.OnNavy)
-            Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Lg)) {
-                FinancialHeroMetric("Health", position.healthScore.toString())
-                FinancialHeroMetric("Net worth", financialCurrency(position.netWorth))
-                FinancialHeroMetric("Protection gap", financialCurrency(position.protectionGapTotal))
+        Column(Modifier.padding(LegendSpacing.Lg), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+            Text("BALANCE SHEET", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(position.positionStatus, modifier = Modifier.weight(1f), style = LegendTypography.Section, color = LegendColors.OnNavy)
+                FinancialStatusBadge(position.positionStatus, financialStatusTone(position.positionStatus))
             }
-        }
-    }
-}
-
-@Composable private fun FinancialHeroMetric(label: String, value: String) = Column { Text(label.uppercase(), style = LegendTypography.Label, color = LegendColors.GoldSoft); Text(value, style = LegendTypography.CardTitle, color = LegendColors.OnNavy) }
-
-@Composable
-private fun FinancialPriorityCard(section: FinancialPrioritySection, open: () -> Unit) {
-    Surface(color = LegendColors.Navy, shape = LegendShapes.ProminentCard, modifier = Modifier.fillMaxWidth().clickable(onClick = open)) {
-        Row(Modifier.padding(LegendSpacing.Md), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.AccountBalance, null, tint = financialTone(section.primaryMetric.semantic), modifier = Modifier.size(25.dp))
-            Spacer(Modifier.width(LegendSpacing.Sm))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
-                Text(section.eyebrow.uppercase(), style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
-                Text(section.title, style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
-                Text(section.reason, style = LegendTypography.Label, color = LegendColors.GoldSoft, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(financialMetricValue(section.primaryMetric), style = LegendTypography.CardTitle, color = financialTone(section.primaryMetric.semantic))
-                Icon(Icons.Default.ChevronRight, null, tint = LegendColors.OnNavy)
+            Text(position.positionSummary, style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f))
+            Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+                FinancialHeroMetric("Net worth", financialCurrency(position.netWorth), financialAmountTone(position.netWorth, FinancialAmountKind.NetWorth), Modifier.weight(1f))
+                FinancialHeroMetric("Liabilities", financialCurrency(position.liabilitiesTotal), financialAmountTone(position.liabilitiesTotal, FinancialAmountKind.Liabilities), Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun FinancialIntelligenceCard(intelligence: FinancialIntelligence) {
-    Surface(color = LegendColors.Surface, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-            Text("Financial intelligence", style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
-            Text(intelligence.currentRiskSummary, style = LegendTypography.Body, color = LegendColors.TextPrimary)
-            intelligence.currentOpportunitySummary.takeIf(String::isNotBlank)?.let { Text(it, style = LegendTypography.Supporting, color = LegendColors.Success) }
-            intelligence.currentLeakageSummary.takeIf(String::isNotBlank)?.let { Text(it, style = LegendTypography.Supporting, color = LegendColors.Warning) }
+private fun FinancialHeroMetric(label: String, value: String, tone: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) = Column(modifier, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+    Text(label.uppercase(), style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.62f))
+    Text(value, style = LegendTypography.Section, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
+@Composable
+private fun FinancialHealthSectionGrid(
+    sections: List<FinancialHealthSection>,
+    openDestination: (FinancialDetailDestination) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+        sections.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+                row.forEach { section ->
+                    val destination = FinancialDetailDestination.fromServerKey(section.key)
+                    FinancialHealthSectionCard(section, Modifier.weight(1f), destination?.let { { openDestination(it) } })
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
         }
     }
 }
 
 @Composable
-private fun FinancialOperatingSystemCard(summary: String) {
-    Surface(color = LegendColors.SurfaceInset, shape = LegendShapes.Control, modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.CalendarMonth, null, tint = LegendColors.Gold)
-            Spacer(Modifier.width(LegendSpacing.Sm))
-            Text(summary, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+private fun FinancialHealthSectionCard(section: FinancialHealthSection, modifier: Modifier, open: (() -> Unit)?) {
+    val total = section.total
+    val tone = total?.let { financialHealthMetricTone(it, section.semantic) } ?: financialSemanticTone(section.semantic)
+    Surface(
+        color = LegendColors.NavyElevated,
+        shape = LegendShapes.Card,
+        modifier = modifier.then(if (open != null) Modifier.clickable(onClick = open) else Modifier),
+    ) {
+        Column(Modifier.padding(LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+            Text(section.title, style = LegendTypography.BodyEmphasis, color = LegendColors.OnNavy, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            total?.let { Text(financialMetricValue(it), style = LegendTypography.CardTitle, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            if (open != null) Icon(Icons.Default.ChevronRight, "Open ${section.title}", tint = LegendColors.OnNavy.copy(alpha = 0.60f), modifier = Modifier.align(Alignment.End).size(18.dp))
         }
     }
 }
@@ -5669,13 +6083,14 @@ private fun FinancialOperatingSystemCard(summary: String) {
 @Composable
 private fun FinancialHealthSectionDetail(section: FinancialHealthSection) {
     Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
-        Text(section.period ?: section.semantic, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
-        section.total?.let { total -> FinancialHealthMetricRow(total, emphasized = true) }
+        Text(section.title, style = LegendTypography.Section, color = LegendColors.TextPrimary)
+        section.period?.takeIf(String::isNotBlank)?.let { Text(it, style = LegendTypography.Supporting, color = LegendColors.TextSecondary) }
+        section.total?.let { total -> FinancialHealthMetricRow(total, section.semantic, emphasized = true) }
         section.groups.forEach { group ->
             Surface(color = LegendColors.Surface, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                    group.title?.let { Text(it, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary) }
-                    group.metrics.forEach { metric -> FinancialHealthMetricRow(metric, false) }
+                    group.title?.takeIf(String::isNotBlank)?.let { Text(it, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary) }
+                    group.metrics.forEach { metric -> FinancialHealthMetricRow(metric, section.semantic, emphasized = false) }
                 }
             }
         }
@@ -5683,15 +6098,413 @@ private fun FinancialHealthSectionDetail(section: FinancialHealthSection) {
 }
 
 @Composable
-private fun FinancialHealthMetricRow(metric: FinancialMetric, emphasized: Boolean) {
+private fun FinancialHealthMetricRow(metric: FinancialMetric, sectionSemantic: String, emphasized: Boolean) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(metric.label, modifier = Modifier.weight(1f), style = if (emphasized) LegendTypography.CardTitle else LegendTypography.Body, color = LegendColors.TextPrimary)
-        Text(financialMetricValue(metric), style = if (emphasized) LegendTypography.CardTitle else LegendTypography.BodyEmphasis, color = LegendColors.Navy)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+            Text(metric.label, style = if (emphasized) LegendTypography.CardTitle else LegendTypography.Body, color = LegendColors.TextPrimary)
+            metric.status?.takeIf(String::isNotBlank)?.let { Text(it, style = LegendTypography.Label, color = financialSemanticTone(it)) }
+        }
+        Text(financialMetricValue(metric), style = if (emphasized) LegendTypography.CardTitle else LegendTypography.BodyEmphasis, color = financialHealthMetricTone(metric, sectionSemantic), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
-private fun financialMetricValue(metric: FinancialSummaryMetric): String = metric.amountCents?.let(::financialCurrencyCents) ?: metric.date ?: metric.textValue ?: "Not available"
+@Composable
+private fun FinancialLargestObligationCard(obligation: FinancialLargestObligation) {
+    Surface(color = LegendColors.Navy, shape = LegendShapes.ProminentCard, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+            Text("LARGEST UPCOMING OBLIGATION", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+            Text(obligation.title, style = LegendTypography.Section, color = LegendColors.OnNavy)
+            Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Lg)) {
+                FinancialHeroMetric("Amount", financialCurrencyCents(obligation.amountCents), financialAmountTone(obligation.amountCents, FinancialAmountKind.Debt), Modifier.weight(1f))
+                FinancialHeroMetric("Scheduled", financialDate(obligation.occursOn), LegendColors.Info, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialUpcomingBillCard(bill: UpcomingBill) {
+    Surface(color = LegendColors.Surface, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(LegendSpacing.CardContent), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.CalendarMonth, null, tint = LegendColors.Warning, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(LegendSpacing.Sm))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+                Text(bill.displayName, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
+                Text("${bill.cadence} · ${financialDate(bill.nextExpectedDateUtc)}", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+            }
+            Text(financialCurrencyCents(bill.averageAmountCents), style = LegendTypography.CardTitle, color = financialAmountTone(bill.averageAmountCents, FinancialAmountKind.Bills))
+        }
+    }
+}
+
+@Composable
+private fun FinancialAvailabilityCard(detail: String) {
+    Surface(color = LegendColors.SurfaceInset, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(LegendSpacing.CardContent), verticalAlignment = Alignment.Top) {
+            Icon(Icons.Default.Info, null, tint = LegendColors.Info, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(LegendSpacing.Sm))
+            Text(detail, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+        }
+    }
+}
+
+@Composable
+private fun FinancialLastUpdated(snapshot: FinancialSnapshot) {
+    val freshness = snapshot.operatingSystem?.freshness
+    val value = freshness?.financeStateUpdatedUtc
+        ?: snapshot.position?.updatedUtc
+        ?: snapshot.intelligence?.lastEvaluatedUtc
+        ?: return
+    Surface(color = LegendColors.Navy, shape = LegendShapes.Control, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.History, null, tint = LegendColors.OnNavy.copy(alpha = 0.70f), modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(LegendSpacing.Xs))
+            Text("Last updated ${financialDateTime(value)}", style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f))
+        }
+    }
+}
+
+@Composable
+private fun FinancialOutlookDialog(selection: FinancialOutlookSelection, dismiss: () -> Unit) {
+    Dialog(
+        onDismissRequest = dismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Surface(color = LegendColors.Navy, modifier = Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().background(LegendGradients.FinancialSheet)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().statusBarsPadding(),
+                    contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md),
+                    verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+                ) {
+                    item { FinancialOutlookDialogHeader(selection, dismiss) }
+                    selection.pressureSummary?.takeIf(String::isNotBlank)?.let { summary -> item { FinancialOutlookSummary(summary) } }
+                    when (selection) {
+                        is FinancialOutlookSelection.Week -> {
+                            item { FinancialOutlookTotals(selection.value) }
+                            item { FinancialCashFlowEvents(selection.value.events) }
+                        }
+                        is FinancialOutlookSelection.Month -> {
+                            item { FinancialOutlookTotals(selection.value) }
+                            selection.value.largestObligation?.let { obligation -> item { FinancialLargestObligationCard(obligation) } }
+                            item { FinancialMonthTiming(selection.value.weeks) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialOutlookDialogHeader(selection: FinancialOutlookSelection, dismiss: () -> Unit) {
+    Surface(color = LegendColors.OnNavy.copy(alpha = 0.07f), shape = LegendShapes.ProminentCard, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+                    Text(selection.eyebrow.uppercase(), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+                    Text(selection.title, style = LegendTypography.Hero, color = LegendColors.OnNavy)
+                    Text(selection.period, style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.70f))
+                }
+                IconButton(onClick = dismiss, modifier = Modifier.size(LegendSize.MinimumTapTarget).background(LegendColors.OnNavy.copy(alpha = 0.08f), CircleShape)) {
+                    Icon(Icons.Default.Close, "Close ${selection.title}", tint = LegendColors.OnNavy)
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FinancialStatusBadge(selection.pressureStatus, financialStatusTone(selection.pressureStatus))
+                Spacer(Modifier.weight(1f))
+                Text("SERVER-SYNCED", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.OnNavy.copy(alpha = 0.55f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialOutlookSummary(summary: String) {
+    Surface(color = LegendColors.OnNavy.copy(alpha = 0.07f), shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(LegendSpacing.CardContent), verticalAlignment = Alignment.Top) {
+            Icon(Icons.AutoMirrored.Filled.ShowChart, null, tint = LegendColors.GoldBright, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(LegendSpacing.Sm))
+            Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+                Text("OUTLOOK SUMMARY", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+                Text(summary, style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.76f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialOutlookTotals(outlook: FinancialWeekAtGlance) {
+    FinancialOutlookTotals(
+        openingCashCents = outlook.openingCashCents,
+        incomeCents = outlook.incomeCents,
+        debitExpenseCents = outlook.debitExpenseCents,
+        creditExpenseCents = outlook.creditExpenseCents,
+        requiredDebtPaymentCents = outlook.requiredDebtPaymentCents,
+        extraDebtPaymentCents = outlook.extraDebtPaymentCents,
+        endingCashCents = outlook.endingCashCents,
+        openingDebtCents = outlook.openingDebtCents,
+        endingDebtCents = outlook.endingDebtCents,
+        savingsContributionCents = null,
+    )
+}
+
+@Composable
+private fun FinancialOutlookTotals(outlook: FinancialMonthAtGlance) {
+    FinancialOutlookTotals(
+        openingCashCents = outlook.openingCashCents,
+        incomeCents = outlook.incomeCents,
+        debitExpenseCents = outlook.debitExpenseCents,
+        creditExpenseCents = outlook.creditExpenseCents,
+        requiredDebtPaymentCents = outlook.requiredDebtPaymentCents,
+        extraDebtPaymentCents = outlook.extraDebtPaymentCents,
+        endingCashCents = outlook.endingCashCents,
+        openingDebtCents = outlook.openingDebtCents,
+        endingDebtCents = outlook.endingDebtCents,
+        savingsContributionCents = outlook.savingsContributionCents,
+    )
+}
+
+@Composable
+private fun FinancialOutlookTotals(
+    openingCashCents: Long,
+    incomeCents: Long,
+    debitExpenseCents: Long,
+    creditExpenseCents: Long,
+    requiredDebtPaymentCents: Long,
+    extraDebtPaymentCents: Long,
+    endingCashCents: Long,
+    openingDebtCents: Long,
+    endingDebtCents: Long,
+    savingsContributionCents: Long?,
+) {
+    val metrics = buildList {
+        add(FinancialDialogMetric("Opening cash", openingCashCents, FinancialAmountKind.OpeningCash))
+        add(FinancialDialogMetric("Income", incomeCents, FinancialAmountKind.Income))
+        add(FinancialDialogMetric("Debit expenses", debitExpenseCents, FinancialAmountKind.Bills))
+        add(FinancialDialogMetric("Credit expenses", creditExpenseCents, FinancialAmountKind.Bills))
+        add(FinancialDialogMetric("Required debt payment", requiredDebtPaymentCents, FinancialAmountKind.Debt))
+        add(FinancialDialogMetric("Extra debt payment", extraDebtPaymentCents, FinancialAmountKind.Debt))
+        savingsContributionCents?.let { add(FinancialDialogMetric("Savings contribution", it, FinancialAmountKind.Savings)) }
+        add(FinancialDialogMetric("Ending cash", endingCashCents, FinancialAmountKind.EndingCash))
+        add(FinancialDialogMetric("Opening debt", openingDebtCents, FinancialAmountKind.Debt))
+        add(FinancialDialogMetric("Ending debt", endingDebtCents, FinancialAmountKind.Debt))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+        Text("CASH FLOW BREAKDOWN", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+        metrics.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+                row.forEach { metric -> FinancialDialogMetricCard(metric, Modifier.weight(1f)) }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialDialogMetricCard(metric: FinancialDialogMetric, modifier: Modifier) {
+    val tone = financialAmountTone(metric.amountCents, metric.kind)
+    Surface(color = LegendColors.OnNavy.copy(alpha = 0.07f), shape = LegendShapes.Control, modifier = modifier) {
+        Column(Modifier.padding(LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+            Text(metric.label.uppercase(), style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.64f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(financialCurrencyCents(metric.amountCents), style = LegendTypography.BodyEmphasis, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun FinancialCashFlowEvents(events: List<FinancialCashFlowEvent>) {
+    Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+        Text("SCHEDULED EVENTS", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+        if (events.isEmpty()) {
+            FinancialAvailabilityCard("No server-synchronized cash-flow events are scheduled for this week.")
+        } else {
+            events.sortedBy { it.occursOn }.forEach { event ->
+                val tone = financialEventTone(event)
+                Surface(color = LegendColors.OnNavy.copy(alpha = 0.07f), shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(financialEventIcon(event), null, tint = tone, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(LegendSpacing.Sm))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+                            Text(event.title, style = LegendTypography.BodyEmphasis, color = LegendColors.OnNavy)
+                            Text("${financialDate(event.occursOn)} · ${event.status}", style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.64f))
+                        }
+                        Text(financialCurrencyCents(event.amountCents), style = LegendTypography.BodyEmphasis, color = tone)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialMonthTiming(weeks: List<FinancialWeekSummary>) {
+    Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+        Text("WEEKLY TIMING", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+        if (weeks.isEmpty()) {
+            FinancialAvailabilityCard("No server-synchronized weekly timing is available for this month.")
+        } else {
+            weeks.sortedBy { it.startDate }.forEach { week ->
+                Surface(color = LegendColors.OnNavy.copy(alpha = 0.07f), shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(financialDateRange(week.startDate, week.endDate), modifier = Modifier.weight(1f), style = LegendTypography.BodyEmphasis, color = LegendColors.OnNavy)
+                            FinancialStatusBadge(week.pressureStatus, financialStatusTone(week.pressureStatus))
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+                            FinancialHeroMetric("Income", financialCurrencyCents(week.incomeCents), financialAmountTone(week.incomeCents, FinancialAmountKind.Income), Modifier.weight(1f))
+                            FinancialHeroMetric("Outflow", financialCurrencyCents(week.outflowCents), financialAmountTone(week.outflowCents, FinancialAmountKind.Bills), Modifier.weight(1f))
+                            FinancialHeroMetric("Ending cash", financialCurrencyCents(week.endingCashCents), financialAmountTone(week.endingCashCents, FinancialAmountKind.EndingCash), Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialStatusBadge(status: String, tone: androidx.compose.ui.graphics.Color) {
+    Surface(color = tone.copy(alpha = 0.16f), shape = LegendShapes.Control) {
+        Row(Modifier.padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(8.dp).background(tone, CircleShape))
+            Spacer(Modifier.width(LegendSpacing.Micro))
+            Text(status, style = LegendTypography.Label, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+private enum class FinancialRoute { CashFlowLanding, Intelligence, Detail }
+
+private sealed class FinancialOutlookSelection {
+    abstract val title: String
+    abstract val eyebrow: String
+    abstract val period: String
+    abstract val pressureStatus: String
+    abstract val pressureSummary: String?
+
+    data class Week(val value: FinancialWeekAtGlance) : FinancialOutlookSelection() {
+        override val title = "Week at a Glance"
+        override val eyebrow = "Synced weekly outlook"
+        override val period = financialDateRange(value.startDate, value.endDate)
+        override val pressureStatus = value.pressureStatus
+        override val pressureSummary = value.pressureSummary
+    }
+
+    data class Month(val value: FinancialMonthAtGlance) : FinancialOutlookSelection() {
+        override val title = "Month at a Glance"
+        override val eyebrow = "Synced monthly outlook"
+        override val period = financialMonth(value.monthKey)
+        override val pressureStatus = value.pressureStatus
+        override val pressureSummary = value.pressureSummary
+    }
+}
+
+private data class FinancialDialogMetric(val label: String, val amountCents: Long, val kind: FinancialAmountKind)
+
+private enum class FinancialAmountKind { Assets, Liabilities, NetWorth, Income, Bills, Debt, EndingCash, OpeningCash, Savings }
+
+private fun financialMetricValue(metric: FinancialSummaryMetric): String = metric.amountCents?.let(::financialCurrencyCents) ?: metric.date?.let(::financialDate) ?: metric.textValue ?: "Not available"
 private fun financialMetricValue(metric: FinancialMetric): String = metric.amountCents?.let(::financialCurrencyCents) ?: metric.numericValue?.toString() ?: metric.textValue ?: "Not available"
 private fun financialCurrencyCents(value: Long): String = java.text.NumberFormat.getCurrencyInstance(java.util.Locale.US).format(value / 100.0)
 private fun financialCurrency(value: Double): String = java.text.NumberFormat.getCurrencyInstance(java.util.Locale.US).format(value)
-private fun financialTone(semantic: String) = when (semantic.lowercase()) { "positive" -> LegendColors.Success; "negative" -> LegendColors.Error; "caution" -> LegendColors.Warning; else -> LegendColors.GoldBright }
+private fun financialDate(value: String): String = runCatching {
+    java.time.LocalDate.parse(value.take(10)).format(java.time.format.DateTimeFormatter.ofPattern("MMM d", java.util.Locale.US))
+}.getOrDefault(value)
+private fun financialDateTime(value: String): String {
+    val formatter = java.time.format.DateTimeFormatter.ofPattern("MMM d 'at' h:mm a", java.util.Locale.US)
+    return runCatching { java.time.OffsetDateTime.parse(value).format(formatter) }
+        .recoverCatching { java.time.LocalDateTime.parse(value).format(formatter) }
+        .getOrElse { financialDate(value) }
+}
+private fun financialDateRange(start: String, end: String) = "${financialDate(start)} – ${financialDate(end)}"
+private fun financialMonth(value: String): String = runCatching {
+    java.time.LocalDate.parse("${value.take(7)}-01").format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.US))
+}.getOrDefault(value)
+
+private fun financialSummaryTone(metric: FinancialSummaryMetric): androidx.compose.ui.graphics.Color {
+    val label = metric.label.lowercase()
+    val amount = metric.amountCents
+    if (amount != null) {
+        val kind = when {
+            label.contains("liabilit") -> FinancialAmountKind.Liabilities
+            label.contains("debt") || label.contains("loan") || label.contains("payoff") -> FinancialAmountKind.Debt
+            label.contains("bill") || label.contains("expense") || label.contains("outflow") || label.contains("spending") -> FinancialAmountKind.Bills
+            label.contains("income") || label.contains("inflow") -> FinancialAmountKind.Income
+            label.contains("asset") -> FinancialAmountKind.Assets
+            label.contains("net worth") -> FinancialAmountKind.NetWorth
+            label.contains("opening cash") -> FinancialAmountKind.OpeningCash
+            label.contains("ending cash") -> FinancialAmountKind.EndingCash
+            else -> null
+        }
+        if (kind != null) return financialAmountTone(amount, kind)
+        if (amount < 0) return LegendColors.Error
+    }
+    return financialSemanticTone(metric.semantic)
+}
+
+private fun financialHealthMetricTone(metric: FinancialMetric, sectionSemantic: String): androidx.compose.ui.graphics.Color {
+    val amount = metric.amountCents ?: return financialSemanticTone(metric.status ?: sectionSemantic)
+    val semantic = "${sectionSemantic.lowercase()} ${metric.label.lowercase()}"
+    val kind = when {
+        semantic.contains("liabilit") -> FinancialAmountKind.Liabilities
+        semantic.contains("debt") || semantic.contains("loan") -> FinancialAmountKind.Debt
+        semantic.contains("expense") || semantic.contains("bill") || semantic.contains("tax") || semantic.contains("cost") || semantic.contains("outflow") -> FinancialAmountKind.Bills
+        semantic.contains("income") || semantic.contains("earn") -> FinancialAmountKind.Income
+        semantic.contains("asset") -> FinancialAmountKind.Assets
+        semantic.contains("net worth") -> FinancialAmountKind.NetWorth
+        else -> null
+    }
+    return kind?.let { financialAmountTone(amount, it) } ?: if (amount < 0) LegendColors.Error else financialSemanticTone(sectionSemantic)
+}
+
+private fun financialAmountTone(value: Long, kind: FinancialAmountKind): androidx.compose.ui.graphics.Color = financialAmountTone(value.toDouble(), kind)
+private fun financialAmountTone(value: Double, kind: FinancialAmountKind): androidx.compose.ui.graphics.Color {
+    if (value < 0) return LegendColors.Error
+    if (value == 0.0) return LegendColors.TextTertiary
+    return when (kind) {
+        FinancialAmountKind.Assets,
+        FinancialAmountKind.NetWorth,
+        FinancialAmountKind.Income,
+        FinancialAmountKind.EndingCash,
+        FinancialAmountKind.OpeningCash,
+        FinancialAmountKind.Savings -> LegendColors.Success
+        FinancialAmountKind.Liabilities,
+        FinancialAmountKind.Bills,
+        FinancialAmountKind.Debt -> LegendColors.Error
+    }
+}
+
+private fun financialSemanticTone(value: String): androidx.compose.ui.graphics.Color = when (value.lowercase()) {
+    "positive", "healthy", "ready", "complete", "on-track" -> LegendColors.Success
+    "negative", "critical", "risk", "overdue", "shortfall" -> LegendColors.Error
+    "caution", "warning", "review", "incomplete", "scheduled", "needs attention" -> LegendColors.Warning
+    "informational", "information", "current" -> LegendColors.Info
+    else -> LegendColors.GoldBright
+}
+
+private fun financialStatusTone(status: String): androidx.compose.ui.graphics.Color = financialSemanticTone(status)
+private fun financialEventTone(event: FinancialCashFlowEvent): androidx.compose.ui.graphics.Color = when {
+    event.kind.contains("income", ignoreCase = true) -> financialAmountTone(event.amountCents, FinancialAmountKind.Income)
+    event.kind.contains("debt", ignoreCase = true) -> financialAmountTone(event.amountCents, FinancialAmountKind.Debt)
+    else -> financialAmountTone(event.amountCents, FinancialAmountKind.Bills)
+}
+private fun financialEventIcon(event: FinancialCashFlowEvent): androidx.compose.ui.graphics.vector.ImageVector = when {
+    event.kind.contains("income", ignoreCase = true) -> Icons.Default.SouthWest
+    event.kind.contains("debt", ignoreCase = true) -> Icons.Default.CreditCard
+    else -> Icons.Default.Description
+}
+private fun financialDestinationIcon(destination: FinancialDetailDestination): androidx.compose.ui.graphics.vector.ImageVector = when (destination) {
+    FinancialDetailDestination.Assets,
+    FinancialDetailDestination.FinancialPosition -> Icons.Default.AccountBalance
+    FinancialDetailDestination.Liabilities,
+    FinancialDetailDestination.DebtObligations -> Icons.Default.CreditCard
+    FinancialDetailDestination.CashFlow,
+    FinancialDetailDestination.CurrentOutlook,
+    FinancialDetailDestination.MonthlyOutlook -> Icons.AutoMirrored.Filled.ShowChart
+    FinancialDetailDestination.Protection,
+    FinancialDetailDestination.ProtectionDiscussion -> Icons.Default.Shield
+    FinancialDetailDestination.TaxProfile -> Icons.AutoMirrored.Filled.ReceiptLong
+    FinancialDetailDestination.UpcomingActivity -> Icons.Default.CalendarMonth
+    FinancialDetailDestination.DataAttention -> Icons.Default.WarningAmber
+}

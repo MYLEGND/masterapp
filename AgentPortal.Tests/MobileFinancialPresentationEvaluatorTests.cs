@@ -17,8 +17,7 @@ public sealed class MobileFinancialPresentationEvaluatorTests
             upcomingBills: [],
             operatingSystem: OperatingSystem(
                 week: Week(endingCashCents: -25_00, pressureStatus: "Critical"),
-                month: Month()),
-            assignedAgent: NoAssignedAgent());
+                month: Month()));
 
         var currentOutlook = Section(presentation, "current-outlook");
         var monthlyOutlook = Section(presentation, "monthly-outlook");
@@ -39,8 +38,7 @@ public sealed class MobileFinancialPresentationEvaluatorTests
             upcomingBills: [],
             operatingSystem: OperatingSystem(
                 week: Week(),
-                month: Month()),
-            assignedAgent: NoAssignedAgent());
+                month: Month()));
 
         var position = Section(presentation, "financial-position");
         var weeklyOutlook = Section(presentation, "current-outlook");
@@ -68,8 +66,7 @@ public sealed class MobileFinancialPresentationEvaluatorTests
                         "Northstar Mortgage",
                         new DateOnly(2026, 8, 1),
                         150_00,
-                        "DebitExpense"))),
-            assignedAgent: NoAssignedAgent());
+                        "DebitExpense"))));
 
         var obligation = Section(presentation, "debt-obligations");
         var position = Section(presentation, "financial-position");
@@ -88,8 +85,7 @@ public sealed class MobileFinancialPresentationEvaluatorTests
             position: Position(),
             intelligence: null,
             upcomingBills: [],
-            operatingSystem: null,
-            assignedAgent: NoAssignedAgent());
+            operatingSystem: null);
 
         var dataAttention = Section(presentation, "data-attention");
         var position = Section(presentation, "financial-position");
@@ -117,9 +113,9 @@ public sealed class MobileFinancialPresentationEvaluatorTests
         ];
 
         var first = MobileFinancialPresentationEvaluator.Evaluate(
-            Position(), null, upcomingBills, operatingSystem, NoAssignedAgent());
+            Position(), null, upcomingBills, operatingSystem);
         var second = MobileFinancialPresentationEvaluator.Evaluate(
-            Position(), null, upcomingBills, operatingSystem, NoAssignedAgent());
+            Position(), null, upcomingBills, operatingSystem);
 
         Assert.Equal(
             first.PrioritySections.Select(section => (section.Key, section.Priority)),
@@ -130,50 +126,10 @@ public sealed class MobileFinancialPresentationEvaluatorTests
                        section.Status.Contains("critical", StringComparison.OrdinalIgnoreCase));
     }
 
-    [Fact]
-    public void Evaluate_WithAssignedAgent_UsesVerifiedDiscussionCopyWithoutDirectiveAdvice()
-    {
-        var presentation = MobileFinancialPresentationEvaluator.Evaluate(
-            Position(),
-            null,
-            [],
-            OperatingSystem(week: Week(), month: Month()),
-            new MobileFinancialAssignedAgentContext(true, "Avery Agent", "Avery"));
-
-        Assert.All(presentation.PrioritySections, section =>
-        {
-            Assert.Contains("Avery", section.DiscussionPrompt);
-            Assert.DoesNotContain("you should", section.DiscussionPrompt, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("we recommend", section.DiscussionPrompt, StringComparison.OrdinalIgnoreCase);
-        });
-    }
-
-    [Fact]
-    public void Evaluate_WithoutAssignedAgent_UsesReflectiveNonAdvisoryCopy()
-    {
-        var presentation = MobileFinancialPresentationEvaluator.Evaluate(
-            Position(),
-            null,
-            [],
-            OperatingSystem(week: Week(), month: Month()),
-            NoAssignedAgent());
-
-        Assert.All(presentation.PrioritySections, section =>
-        {
-            Assert.Contains("consider", section.DiscussionPrompt, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("you should", section.DiscussionPrompt, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("we recommend", section.DiscussionPrompt, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("must", section.DiscussionPrompt, StringComparison.OrdinalIgnoreCase);
-        });
-    }
-
     private static MobileFinancialPrioritySection Section(
         MobileFinancialPresentation presentation,
         string key) =>
         Assert.Single(presentation.PrioritySections.Where(section => section.Key == key));
-
-    private static MobileFinancialAssignedAgentContext NoAssignedAgent() =>
-        new(false, null, null);
 
     private static MobileFinancialPosition Position(
         int healthScore = 72,

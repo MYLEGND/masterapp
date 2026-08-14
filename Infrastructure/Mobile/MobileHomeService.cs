@@ -171,10 +171,6 @@ public sealed class MobileHomeService : IMobileHomeService
             actor.ProfileId,
             cancellationToken);
 
-        var assignedAgent = await ResolveFinancialAssignedAgentAsync(
-            actor.ProfileId,
-            cancellationToken);
-
         var intelligenceSummary = intelligence is null
             ? null
             : new MobileFinancialIntelligenceSummary(
@@ -199,8 +195,7 @@ public sealed class MobileHomeService : IMobileHomeService
             position,
             intelligenceSummary,
             upcomingBills,
-            operatingSystem,
-            assignedAgent);
+            operatingSystem);
 
         return MobileFinancialResult.Success(new MobileFinancialSnapshot(
             position,
@@ -244,11 +239,7 @@ public sealed class MobileHomeService : IMobileHomeService
             position,
             intelligence: null,
             upcomingBills: Array.Empty<MobileUpcomingBill>(),
-            operatingSystem: operatingSystem,
-            assignedAgent: new MobileFinancialAssignedAgentContext(
-                HasAssignedAgent: false,
-                DisplayName: null,
-                FirstName: null));
+            operatingSystem: operatingSystem);
 
         return MobileFinancialResult.Success(new MobileFinancialSnapshot(
             position,
@@ -364,60 +355,6 @@ public sealed class MobileHomeService : IMobileHomeService
         .Trim()
         .Split(' ', StringSplitOptions.RemoveEmptyEntries)
         .FirstOrDefault();
-
-    private async Task<MobileFinancialAssignedAgentContext>
-        ResolveFinancialAssignedAgentAsync(
-            Guid clientProfileId,
-            CancellationToken cancellationToken)
-    {
-        var clientUserId = await _db.ClientProfiles
-            .AsNoTracking()
-            .Where(profile => profile.Id == clientProfileId)
-            .Select(profile => profile.ClientUserId)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        if (string.IsNullOrWhiteSpace(clientUserId))
-        {
-            return new MobileFinancialAssignedAgentContext(false, null, null);
-        }
-
-        var normalizedClientUserId = clientUserId.Trim().ToLowerInvariant();
-        var assignedAgentUserId = await _db.AgentClients
-            .AsNoTracking()
-            .Where(link =>
-                link.ClientUserId.ToLower() == normalizedClientUserId &&
-                !string.IsNullOrWhiteSpace(link.AgentUserId))
-            .OrderByDescending(link => link.CreatedUtc)
-            .ThenBy(link => link.Id)
-            .Select(link => link.AgentUserId)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (string.IsNullOrWhiteSpace(assignedAgentUserId))
-        {
-            return new MobileFinancialAssignedAgentContext(false, null, null);
-        }
-
-        var normalizedAgentUserId = assignedAgentUserId.Trim().ToLowerInvariant();
-        var displayName = await _db.AgentProfiles
-            .AsNoTracking()
-            .Where(profile =>
-                profile.IsActive &&
-                profile.AgentUserId.ToLower() == normalizedAgentUserId)
-            .Select(profile => profile.FullName)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var normalizedDisplayName = string.IsNullOrWhiteSpace(displayName)
-            ? null
-            : displayName.Trim();
-        var firstName = normalizedDisplayName?
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .FirstOrDefault();
-
-        return new MobileFinancialAssignedAgentContext(
-            true,
-            normalizedDisplayName,
-            firstName);
-    }
 
     public async Task<MobileAgentClientsResult> GetAgentClientsAsync(
         MobileResolvedActor actor,

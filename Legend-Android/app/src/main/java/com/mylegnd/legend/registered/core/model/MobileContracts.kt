@@ -91,14 +91,77 @@ import kotlinx.serialization.Serializable
 @Serializable data class FinancialWeekSummary(@SerialName("weekKey") val weekKey: String, @SerialName("startDate") val startDate: String, @SerialName("endDate") val endDate: String, @SerialName("incomeCents") val incomeCents: Long, @SerialName("outflowCents") val outflowCents: Long, @SerialName("endingCashCents") val endingCashCents: Long, @SerialName("endingDebtCents") val endingDebtCents: Long, @SerialName("pressureStatus") val pressureStatus: String)
 @Serializable data class FinancialLargestObligation(val title: String, @SerialName("occursOn") val occursOn: String, @SerialName("amountCents") val amountCents: Long, val kind: String)
 @Serializable data class FinancialToolSummary(@SerialName("toolId") val toolId: String, val title: String, val category: String, val priority: Int, @SerialName("availabilityStatus") val availabilityStatus: String, @SerialName("updatedUtc") val updatedUtc: String? = null, val summary: String? = null, val metrics: List<FinancialMetric> = emptyList())
-@Serializable data class FinancialPresentation(@SerialName("assignedAgent") val assignedAgent: FinancialAssignedAgent? = null, @SerialName("prioritySections") val prioritySections: List<FinancialPrioritySection> = emptyList())
-@Serializable data class FinancialAssignedAgent(@SerialName("hasAssignedAgent") val hasAssignedAgent: Boolean, @SerialName("displayName") val displayName: String? = null, @SerialName("firstName") val firstName: String? = null)
-@Serializable data class FinancialPrioritySection(val key: String, val eyebrow: String, val title: String, @SerialName("systemImage") val systemImage: String, val priority: Int, val status: String, val reason: String, @SerialName("discussionPrompt") val discussionPrompt: String, @SerialName("primaryMetric") val primaryMetric: FinancialSummaryMetric, @SerialName("secondaryMetric") val secondaryMetric: FinancialSummaryMetric? = null)
+@Serializable data class FinancialPresentation(@SerialName("prioritySections") val prioritySections: List<FinancialPrioritySection> = emptyList())
+@Serializable data class FinancialPrioritySection(val key: String, val eyebrow: String, val title: String, @SerialName("systemImage") val systemImage: String, val priority: Int, val status: String, val reason: String, @SerialName("primaryMetric") val primaryMetric: FinancialSummaryMetric, @SerialName("secondaryMetric") val secondaryMetric: FinancialSummaryMetric? = null)
 @Serializable data class FinancialSummaryMetric(val label: String, @SerialName("amountCents") val amountCents: Long? = null, val date: String? = null, @SerialName("textValue") val textValue: String? = null, val semantic: String)
 @Serializable data class FinancialHealthSnapshot(@SerialName("updatedUtc") val updatedUtc: String, val sections: List<FinancialHealthSection>)
 @Serializable data class FinancialHealthSection(val key: String, val title: String, val semantic: String, val period: String? = null, val groups: List<FinancialHealthGroup> = emptyList(), val total: FinancialMetric? = null)
 @Serializable data class FinancialHealthGroup(val key: String, val title: String? = null, val metrics: List<FinancialMetric> = emptyList())
 @Serializable data class FinancialMetric(val key: String, val label: String, @SerialName("valueType") val valueType: String, @SerialName("amountCents") val amountCents: Long? = null, @SerialName("numericValue") val numericValue: Double? = null, @SerialName("textValue") val textValue: String? = null, val status: String? = null)
+
+/**
+ * The native rendering destination for a server-authoritative financial
+ * presentation key. This deliberately mirrors the iOS route vocabulary so
+ * either client can render every response section without inventing a second
+ * financial model or silently discarding a supported detail route.
+ */
+internal enum class FinancialDetailDestination(val key: String) {
+    Assets("assets"),
+    Liabilities("liabilities"),
+    CashFlow("cash-flow"),
+    Protection("protection"),
+    TaxProfile("tax-profile"),
+    CurrentOutlook("current-outlook"),
+    MonthlyOutlook("monthly-outlook"),
+    DebtObligations("debt-obligations"),
+    FinancialPosition("financial-position"),
+    UpcomingActivity("upcoming-activity"),
+    ProtectionDiscussion("protection-discussion"),
+    DataAttention("data-attention");
+
+    val healthSectionKey: String?
+        get() = when (this) {
+            Assets, Liabilities, CashFlow, Protection, TaxProfile -> key
+            CurrentOutlook,
+            MonthlyOutlook,
+            DebtObligations,
+            FinancialPosition,
+            UpcomingActivity,
+            ProtectionDiscussion,
+            DataAttention -> null
+        }
+
+    companion object {
+        fun fromServerKey(key: String): FinancialDetailDestination? =
+            entries.firstOrNull { it.key == key }
+    }
+}
+
+/** Keeps the small iOS-defined dashboard ordering rule in one Android authority. */
+internal object FinancialPresentationOrder {
+    fun dashboardSections(
+        sections: List<FinancialPrioritySection>,
+    ): List<FinancialPrioritySection> {
+        val preferredKeys = listOf(
+            FinancialDetailDestination.FinancialPosition.key,
+            FinancialDetailDestination.DataAttention.key,
+        )
+        return sections
+            .filter {
+                it.key != FinancialDetailDestination.CurrentOutlook.key &&
+                    it.key != FinancialDetailDestination.MonthlyOutlook.key
+            }
+            .withIndex()
+            .sortedWith(
+                compareBy<IndexedValue<FinancialPrioritySection>> {
+                    preferredKeys.indexOf(it.value.key)
+                        .takeIf { index -> index >= 0 }
+                        ?: preferredKeys.size + it.index
+                },
+            )
+            .map(IndexedValue<FinancialPrioritySection>::value)
+    }
+}
 
 @Serializable data class MobileParticipant(
     val identity: MobileIdentity,

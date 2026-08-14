@@ -19,11 +19,9 @@ public static class MobileFinancialPresentationEvaluator
         MobileFinancialPosition? position,
         MobileFinancialIntelligenceSummary? intelligence,
         IReadOnlyList<MobileUpcomingBill> upcomingBills,
-        MobileFinancialOperatingSystemSnapshot? operatingSystem,
-        MobileFinancialAssignedAgentContext assignedAgent)
+        MobileFinancialOperatingSystemSnapshot? operatingSystem)
     {
         var sections = new List<(MobileFinancialPrioritySection Section, int TieBreaker)>();
-        var discussionPrompt = BuildDiscussionPrompt(assignedAgent);
 
         if (operatingSystem is null ||
             !string.Equals(
@@ -41,7 +39,6 @@ public static class MobileFinancialPresentationEvaluator
                     status: "Data incomplete",
                     reason: operatingSystem?.Projection.Summary
                         ?? "A current Expense Lens projection is not available.",
-                    discussionPrompt: discussionPrompt,
                     primaryMetric: TextMetric(
                         "Projection",
                         "Not available",
@@ -79,7 +76,6 @@ public static class MobileFinancialPresentationEvaluator
                     priority: positionPriority,
                     status: positionStatus,
                     reason: $"Saved financial health information reports a {position.PositionStatus} position.",
-                    discussionPrompt: discussionPrompt,
                     primaryMetric: AmountMetric(
                         "Net worth",
                         ToCents(position.NetWorth),
@@ -101,7 +97,6 @@ public static class MobileFinancialPresentationEvaluator
                         priority: severeHealth ? HighImportance : Planning,
                         status: "Review",
                         reason: "Saved financial health information includes an open protection amount.",
-                        discussionPrompt: discussionPrompt,
                         primaryMetric: AmountMetric(
                             "Open amount",
                             ToCents(position.ProtectionGapTotal),
@@ -136,7 +131,6 @@ public static class MobileFinancialPresentationEvaluator
                     reason: negativeEndingCash
                         ? "Projected ending cash for the current week is below zero."
                         : "Current-week cash-flow timing is available.",
-                    discussionPrompt: discussionPrompt,
                     primaryMetric: AmountMetric(
                         "Ending cash",
                         week.EndingCashCents,
@@ -173,7 +167,6 @@ public static class MobileFinancialPresentationEvaluator
                     reason: negativeEndingCash
                         ? "Projected ending cash for the current month is below zero."
                         : "Monthly cash-flow timing is available.",
-                    discussionPrompt: discussionPrompt,
                     primaryMetric: AmountMetric(
                         "Ending cash",
                         month.EndingCashCents,
@@ -200,7 +193,6 @@ public static class MobileFinancialPresentationEvaluator
                         priority: obligationPriority,
                         status: obligationPriority == HighImportance ? "Review" : "Scheduled",
                         reason: "This is the largest scheduled outflow in the current monthly view.",
-                        discussionPrompt: discussionPrompt,
                         primaryMetric: AmountMetric(
                             "Amount",
                             obligation.AmountCents,
@@ -229,7 +221,6 @@ public static class MobileFinancialPresentationEvaluator
                     priority: Planning,
                     status: "Scheduled",
                     reason: "The next recurring financial item is shown from saved financial data.",
-                    discussionPrompt: discussionPrompt,
                     primaryMetric: AmountMetric(
                         "Amount",
                         nextBill.AverageAmountCents,
@@ -252,7 +243,6 @@ public static class MobileFinancialPresentationEvaluator
                     priority: HighImportance,
                     status: "Incomplete",
                     reason: "Financial Intelligence reports that some saved information is incomplete.",
-                    discussionPrompt: discussionPrompt,
                     primaryMetric: TextMetric(
                         "Completeness",
                         intelligence.DataCompletenessScore.ToString("0%"),
@@ -262,7 +252,6 @@ public static class MobileFinancialPresentationEvaluator
         }
 
         return new MobileFinancialPresentation(
-            assignedAgent,
             sections
                 .OrderBy(item => item.Section.Priority)
                 .ThenBy(item => item.TieBreaker)
@@ -280,7 +269,6 @@ public static class MobileFinancialPresentationEvaluator
         int priority,
         string status,
         string reason,
-        string discussionPrompt,
         MobileFinancialSummaryMetric primaryMetric,
         MobileFinancialSummaryMetric? secondaryMetric) =>
         new(
@@ -291,7 +279,6 @@ public static class MobileFinancialPresentationEvaluator
             priority,
             status,
             reason,
-            discussionPrompt,
             primaryMetric,
             secondaryMetric);
 
@@ -312,23 +299,6 @@ public static class MobileFinancialPresentationEvaluator
         string text,
         string semantic) =>
         new(label, null, null, text, semantic);
-
-    private static string BuildDiscussionPrompt(
-        MobileFinancialAssignedAgentContext assignedAgent)
-    {
-        if (assignedAgent.HasAssignedAgent &&
-            !string.IsNullOrWhiteSpace(assignedAgent.FirstName))
-        {
-            return $"Consider reviewing this with {assignedAgent.FirstName}.";
-        }
-
-        if (assignedAgent.HasAssignedAgent)
-        {
-            return "Consider reviewing this with your assigned agent.";
-        }
-
-        return "This view can help you consider the timing and amount before making a related financial decision.";
-    }
 
     private static bool ContainsAny(string? value, params string[] candidates)
     {

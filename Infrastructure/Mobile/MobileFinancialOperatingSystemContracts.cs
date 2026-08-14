@@ -113,17 +113,7 @@ public sealed record MobileFinancialLargestObligation(
 /// mobile client and never owns financial calculations or editable state.
 /// </summary>
 public sealed record MobileFinancialPresentation(
-    MobileFinancialAssignedAgentContext AssignedAgent,
     IReadOnlyList<MobileFinancialPrioritySection> PrioritySections);
-
-/// <summary>
-/// Safe assigned-agent context resolved from the current client's persisted
-/// AgentClients relationship and matching active AgentProfile only.
-/// </summary>
-public sealed record MobileFinancialAssignedAgentContext(
-    bool HasAssignedAgent,
-    string? DisplayName,
-    string? FirstName);
 
 /// <summary>
 /// One compact, server-ranked Financial Intelligence destination. The native
@@ -137,7 +127,6 @@ public sealed record MobileFinancialPrioritySection(
     int Priority,
     string Status,
     string Reason,
-    string DiscussionPrompt,
     MobileFinancialSummaryMetric PrimaryMetric,
     MobileFinancialSummaryMetric? SecondaryMetric);
 

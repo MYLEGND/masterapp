@@ -1589,7 +1589,6 @@ public sealed class MobileIntegrationTests
         await db.SaveChangesAsync();
 
         var presentation = new MobileFinancialPresentation(
-            new MobileFinancialAssignedAgentContext(true, "Morgan Riley", "Morgan"),
             [
                 new MobileFinancialPrioritySection(
                     "current-outlook",
@@ -1599,7 +1598,6 @@ public sealed class MobileIntegrationTests
                     1,
                     "Current",
                     "Current-week cash-flow timing is available.",
-                    "Consider reviewing this with Morgan.",
                     new MobileFinancialSummaryMetric(
                         "Ending cash",
                         125_00,
@@ -1624,7 +1622,6 @@ public sealed class MobileIntegrationTests
         var response = Assert.IsType<OkObjectResult>(result);
         var snapshot = Assert.IsType<MobileFinancialSnapshot>(response.Value);
         var returnedPresentation = Assert.IsType<MobileFinancialPresentation>(snapshot.Presentation);
-        Assert.Equal("Morgan", returnedPresentation.AssignedAgent.FirstName);
         Assert.Equal("current-outlook", Assert.Single(returnedPresentation.PrioritySections).Key);
         home.VerifyAll();
     }
@@ -1645,7 +1642,6 @@ public sealed class MobileIntegrationTests
         await db.SaveChangesAsync();
 
         var presentation = new MobileFinancialPresentation(
-            new MobileFinancialAssignedAgentContext(false, null, null),
             [
                 new MobileFinancialPrioritySection(
                     "current-outlook",
@@ -1655,7 +1651,6 @@ public sealed class MobileIntegrationTests
                     1,
                     "Current",
                     "Current-week cash-flow timing is available.",
-                    "This view can help you consider the timing and amount before making a related financial decision.",
                     new MobileFinancialSummaryMetric(
                         "Ending cash",
                         125_00,
@@ -1684,7 +1679,6 @@ public sealed class MobileIntegrationTests
         var snapshot = Assert.IsType<MobileFinancialSnapshot>(response.Value);
         var returnedPresentation = Assert.IsType<MobileFinancialPresentation>(
             snapshot.Presentation);
-        Assert.False(returnedPresentation.AssignedAgent.HasAssignedAgent);
         Assert.Equal(
             "current-outlook",
             Assert.Single(returnedPresentation.PrioritySections).Key);

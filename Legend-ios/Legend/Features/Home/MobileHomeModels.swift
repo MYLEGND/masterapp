@@ -201,14 +201,7 @@ struct MobileFinancialHealthMetricResponse:
 }
 
 struct MobileFinancialPresentationResponse: Codable, Equatable, Sendable {
-    let assignedAgent: MobileFinancialAssignedAgentContextResponse
     let prioritySections: [MobileFinancialPrioritySectionResponse]
-}
-
-struct MobileFinancialAssignedAgentContextResponse: Codable, Equatable, Sendable {
-    let hasAssignedAgent: Bool
-    let displayName: String?
-    let firstName: String?
 }
 
 struct MobileFinancialPrioritySectionResponse:
@@ -224,7 +217,6 @@ struct MobileFinancialPrioritySectionResponse:
     let priority: Int
     let status: String
     let reason: String
-    let discussionPrompt: String
     let primaryMetric: MobileFinancialSummaryMetricResponse
     let secondaryMetric: MobileFinancialSummaryMetricResponse?
 

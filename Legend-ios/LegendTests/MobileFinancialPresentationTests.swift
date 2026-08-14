@@ -12,11 +12,6 @@ final class MobileFinancialPresentationTests: XCTestCase {
               "upcomingBills": [],
               "operatingSystem": null,
               "presentation": {
-                "assignedAgent": {
-                  "hasAssignedAgent": true,
-                  "displayName": "Morgan Riley",
-                  "firstName": "Morgan"
-                },
                 "prioritySections": [
                   {
                     "key": "current-outlook",
@@ -26,7 +21,6 @@ final class MobileFinancialPresentationTests: XCTestCase {
                     "priority": 1,
                     "status": "Projected shortfall",
                     "reason": "Projected ending cash for the current week is below zero.",
-                    "discussionPrompt": "Consider reviewing this with Morgan.",
                     "primaryMetric": {
                       "label": "Ending cash",
                       "amountCents": -2500,
@@ -44,7 +38,6 @@ final class MobileFinancialPresentationTests: XCTestCase {
                     "priority": 2,
                     "status": "Review",
                     "reason": "This is the largest scheduled outflow in the current monthly view.",
-                    "discussionPrompt": "Consider reviewing this with Morgan.",
                     "primaryMetric": {
                       "label": "Amount",
                       "amountCents": 150000,
@@ -62,7 +55,6 @@ final class MobileFinancialPresentationTests: XCTestCase {
         let presentation = try XCTUnwrap(financial.presentation)
         XCTAssertEqual(presentation.prioritySections.map(\.key), ["current-outlook", "debt-obligations"])
         XCTAssertEqual(presentation.prioritySections.first?.primaryMetric.semantic, .negative)
-        XCTAssertEqual(presentation.assignedAgent.firstName, "Morgan")
         XCTAssertFalse(presentation.prioritySections.contains {
             $0.title.localizedCaseInsensitiveContains("Partner Income Stream")
         })
@@ -281,19 +273,6 @@ final class MobileFinancialPresentationTests: XCTestCase {
         XCTAssertEqual(protection.groups.first?.metrics.first?.textValue, "Partial")
         XCTAssertEqual(protection.groups.first?.metrics.last?.label, "Jordan Gap")
         XCTAssertEqual(protection.groups.first?.metrics.last?.amountCents, 6000000)
-    }
-
-    func testDiscussionCopyUsesAssignedAgentOrNonAdvisoryReflection() {
-        let agentPrompt = "Consider reviewing this with Morgan."
-        let noAgentPrompt = "This view can help you consider the timing and amount before making a related financial decision."
-
-        XCTAssertTrue(agentPrompt.contains("Morgan"))
-        XCTAssertFalse(agentPrompt.localizedCaseInsensitiveContains("you should"))
-        XCTAssertFalse(agentPrompt.localizedCaseInsensitiveContains("we recommend"))
-        XCTAssertTrue(noAgentPrompt.localizedCaseInsensitiveContains("consider"))
-        XCTAssertFalse(noAgentPrompt.localizedCaseInsensitiveContains("you should"))
-        XCTAssertFalse(noAgentPrompt.localizedCaseInsensitiveContains("we recommend"))
-        XCTAssertFalse(noAgentPrompt.localizedCaseInsensitiveContains("must"))
     }
 
     func testSavedIncomeLabelAndNeutralFallbackDecodeExactlyAsServerSuppliesThem() throws {

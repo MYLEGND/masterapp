@@ -4389,7 +4389,7 @@ private struct LegendFinanceView: View {
                    ) {
                     financialIntelligenceStatusBanner(
                         title: section.status,
-                        detail: "\(section.reason) \(section.discussionPrompt)",
+                        detail: section.reason,
                         tone: financialSummaryTone(
                             section.primaryMetric
                         ),
