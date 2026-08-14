@@ -65,6 +65,7 @@ public sealed class MobileClientCreationPortalTests
         var view = Assert.IsType<ViewResult>(portalResult);
         Assert.Equal(nameof(ClientsController.Create), view.ViewName);
         Assert.Equal(ticket, view.ViewData["MobileClientCreationPortalTicket"]);
+        Assert.Equal("Client", Assert.IsType<CreateClientViewModel>(view.Model).RecordType);
 
         var validationResult = await controller.MobileClientCreationPortalSubmit(
             ticket,

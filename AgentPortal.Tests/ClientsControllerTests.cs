@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
 using AgentPortal.Models;
@@ -277,6 +278,76 @@ public class ClientsControllerTests
         Assert.Equal(30, persistedMeta.MeetingDurationMinutes);
     }
 
+
+    [Fact]
+    public async Task Index_HistoricalMobileCrmRecordsAppearInTheirCanonicalPipelineBuckets()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+        var clientUserId = Guid.NewGuid().ToString("D");
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = clientUserId,
+            FirstName = "Historical",
+            LastName = "Client",
+            Email = "historical.client@example.test",
+            CrmStatus = "Active",
+            CrmNotes = null,
+            CreatedUtc = DateTime.UtcNow.AddDays(-1),
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = agentId,
+            ClientUserId = clientUserId,
+            AgentUpn = "agent-1@example.com",
+            CreatedUtc = DateTime.UtcNow.AddDays(-1)
+        });
+        var crmLeadUserId = "lead-mobile-historical";
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = crmLeadUserId,
+            FirstName = "Historical",
+            LastName = "Lead",
+            Email = "historical.lead@example.test",
+            CrmStatus = "Lead",
+            CrmNotes = ClientCrmMetaSerializer.Serialize(new ClientCrmMeta
+            {
+                RecordType = "Lead",
+                PipelineStage = "Qualified"
+            }),
+            CreatedUtc = DateTime.UtcNow.AddDays(-1),
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = agentId,
+            ClientUserId = crmLeadUserId,
+            AgentUpn = "agent-1@example.com",
+            CreatedUtc = DateTime.UtcNow.AddDays(-1)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId, "agent-1@example.com"));
+
+        var result = await controller.Index(null);
+
+        var records = Assert.IsType<List<ClientListItemViewModel>>(
+            Assert.IsType<ViewResult>(result).Model);
+        var client = Assert.Single(records.Where(record => record.ClientUserId == clientUserId));
+        Assert.Equal("Client", client.RecordType);
+        Assert.Equal("Client", client.PipelineStage);
+
+        var lead = Assert.Single(records.Where(record => record.ClientUserId == crmLeadUserId));
+        Assert.Equal("Lead", lead.RecordType);
+        Assert.Equal("Qualified", lead.PipelineStage);
+    }
 
     [Fact]
     public async Task Create_WhenLeadCreated_UsesTheDefaultCrmPlacement()

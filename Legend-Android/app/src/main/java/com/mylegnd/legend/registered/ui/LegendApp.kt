@@ -1278,7 +1278,7 @@ private fun LegendAgentWorkspaceCard(
             }
             when (clients) {
                 is LoadState.Data -> {
-                    Text("${clients.value.size} active clients", style = LegendTypography.Label, color = LegendColors.GoldSoft)
+                    Text("${clients.value.size} active client members", style = LegendTypography.Label, color = LegendColors.GoldSoft)
                     clients.value.take(3).forEach { client ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             LegendProtectedAvatar(client.avatar, client.displayName, participantType, mediaRepository, size = 34.dp)
@@ -1289,7 +1289,7 @@ private fun LegendAgentWorkspaceCard(
                             }
                         }
                     }
-                    if (clients.value.isEmpty()) Text("No active clients are currently available from the CRM authority.", style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
+                    if (clients.value.isEmpty()) Text("No active client members are currently available from the CRM authority.", style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
                 }
                 is LoadState.Error -> Text(clients.message, style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
                 else -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(modifier = Modifier.size(16.dp), color = LegendColors.GoldBright, strokeWidth = 2.dp); Spacer(Modifier.width(LegendSpacing.Xs)); Text("Loading client CRM", style = LegendTypography.Supporting, color = LegendColors.GoldSoft) }

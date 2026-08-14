@@ -403,13 +403,12 @@ public sealed class MobileHomeService : IMobileHomeService
         }
 
         var agentUserId = actor.Actor.UserId.ToLowerInvariant();
-        var leadRows = await _db.WorkstationLeadProfiles
+        var workstationLeadRows = await _db.WorkstationLeadProfiles
             .AsNoTracking()
             .Where(lead =>
                 lead.AgentUserId.ToLower() == agentUserId &&
                 (lead.CrmStage == null || lead.CrmStage.ToLower() != "notinterested"))
             .OrderByDescending(lead => lead.UpdatedUtc)
-            .Take(50)
             .Select(lead => new MobileAgentLeadProfileRow(
                 lead.LeadId,
                 lead.FirstName,
@@ -418,13 +417,57 @@ public sealed class MobileHomeService : IMobileHomeService
                 lead.UpdatedUtc))
             .ToListAsync(cancellationToken);
 
-        return MobileAgentLeadsResult.Success(leadRows
+        // The shared mobile intake writes CRM-only leads to ClientProfiles so
+        // they participate in the same portal pipeline as desktop-created
+        // records. They are not member-directory entries and must therefore be
+        // projected here, alongside workstation leads, rather than through the
+        // subscription-gated client directory above.
+        var clientCrmLeadRows = await (
+            from link in _db.AgentClients.AsNoTracking()
+            join profile in _db.ClientProfiles.AsNoTracking()
+                on link.ClientUserId equals profile.ClientUserId
+            where link.AgentUserId.ToLower() == agentUserId
+            select new MobileAgentClientCrmLeadRow(
+                profile.Id,
+                profile.ClientUserId,
+                profile.FirstName,
+                profile.LastName,
+                profile.CrmNotes,
+                profile.CrmStatus,
+                profile.UpdatedUtc))
+            .ToListAsync(cancellationToken);
+
+        var clientCrmLeads = clientCrmLeadRows
+            .GroupBy(lead => lead.ProfileId)
+            .Select(group => group.OrderByDescending(lead => lead.UpdatedUtc).First())
+            .Where(lead => ClientRecordClassification.IsLead(
+                lead.ClientUserId,
+                lead.CrmNotes,
+                lead.CrmStatus))
+            .Select(lead => new MobileAgentLead(
+                lead.ClientUserId,
+                string.Join(" ", new[] { lead.FirstName, lead.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim(),
+                ClientRecordClassification.ResolvePipelineStage(lead.ClientUserId, lead.CrmNotes),
+                lead.UpdatedUtc));
+
+        var leads = workstationLeadRows
             .Select(lead => new MobileAgentLead(
                 lead.LeadId,
                 string.Join(" ", new[] { lead.FirstName, lead.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim(),
                 lead.CrmStage,
                 lead.UpdatedUtc))
-            .ToArray());
+            .Concat(clientCrmLeads)
+            .GroupBy(lead => lead.LeadId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderByDescending(lead => lead.UpdatedUtc)
+                .ThenBy(lead => lead.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .First())
+            .OrderByDescending(lead => lead.UpdatedUtc)
+            .ThenBy(lead => lead.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Take(50)
+            .ToArray();
+
+        return MobileAgentLeadsResult.Success(leads);
     }
 
     private async Task<MobileHome> BuildClientHomeAsync(
@@ -553,6 +596,15 @@ public sealed class MobileHomeService : IMobileHomeService
         string FirstName,
         string LastName,
         string CrmStage,
+        DateTime UpdatedUtc);
+
+    private sealed record MobileAgentClientCrmLeadRow(
+        Guid ProfileId,
+        string ClientUserId,
+        string FirstName,
+        string LastName,
+        string? CrmNotes,
+        string? CrmStatus,
         DateTime UpdatedUtc);
 }
 

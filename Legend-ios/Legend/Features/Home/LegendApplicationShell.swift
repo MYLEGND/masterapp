@@ -2290,7 +2290,14 @@ private struct LegendAgentClientsView: View {
             .task { store.loadLeads() }
         }
         .fullScreenCover(isPresented: $isClientCreationPresented, onDismiss: {
-            Task { await bootstrap.refreshClients() }
+            // The shared intake can create either a Client or a CRM-only Lead.
+            // Reconcile both server projections when it closes so the selected
+            // record is visible immediately in its canonical workspace.
+            Task {
+                async let clients = bootstrap.refreshClients()
+                async let leads = bootstrap.refreshLeads()
+                _ = await (clients, leads)
+            }
         }) {
             LegendAgentClientCreationPortalView(store: store, onClose: {
                 isClientCreationPresented = false
@@ -2304,7 +2311,7 @@ private struct LegendAgentClientsView: View {
             LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                 LegendNextSectionHeader(
                     eyebrow: "CRM",
-                    title: "Active clients",
+                    title: "Client CRM",
                     detail: "\(clients.count) live records"
                 )
 
@@ -2312,8 +2319,8 @@ private struct LegendAgentClientsView: View {
 
                 if clients.isEmpty {
                     LegendNextEmptyState(
-                        title: "No active clients",
-                        message: "Your active Client and Business Client CRM records will appear here.",
+                        title: "No active client members",
+                        message: "Client and Business Client records with active shared-app access will appear here.",
                         systemImage: "person.2")
                 } else {
                     ForEach(clients) { client in
@@ -2409,7 +2416,7 @@ private struct LegendAgentLeadsView: View {
         if leads.isEmpty {
             LegendNextEmptyState(
                 title: "No active leads",
-                message: "Your active workstation lead records will appear here.",
+                message: "Your active CRM lead records will appear here.",
                 systemImage: "person.crop.circle.badge.plus")
         } else {
             LegendScrollView {

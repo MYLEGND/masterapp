@@ -1178,20 +1178,10 @@ namespace AgentPortal.Controllers;
         };
 
     private static string ResolveRecordType(string? clientUserId, ClientCrmMeta meta)
-    {
-        var explicitRecordType = NormalizeRecordType(meta.RecordType, defaultToLead: false);
-        if (!string.IsNullOrWhiteSpace(explicitRecordType))
-            return explicitRecordType;
-
-        var stage = NormalizePipelineStage(meta.PipelineStage);
-        if (string.Equals(stage, "BusinessClient", StringComparison.OrdinalIgnoreCase))
-            return "BusinessClient";
-
-        if (HasPortalAccess(clientUserId))
-            return "Client";
-
-        return "Lead";
-    }
+        => ClientRecordClassification.Resolve(
+            clientUserId,
+            meta.RecordType,
+            meta.PipelineStage);
 
     private static string? ResolveSourceWorkstationLeadId(ClientProfile profile, ClientCrmMeta meta, LeadAppointment? latestAppointment = null)
     {
@@ -1823,6 +1813,9 @@ namespace AgentPortal.Controllers;
         meta.Activities = safeActivities;
         var attemptCounts = CrmAttemptTracking.CountClientActivityAttempts(safeActivities, IsContactAttempt, nowUtc, dialTimeZone);
         var recordType = ResolveRecordType(profile.ClientUserId, meta);
+        var pipelineStage = ClientRecordClassification.ResolvePipelineStage(
+            profile.ClientUserId,
+            profile.CrmNotes);
 
         return new
         {
@@ -1856,9 +1849,9 @@ namespace AgentPortal.Controllers;
             crmNextText = profile.CrmNextText ?? "",
             crmTags = profile.CrmTags ?? "",
             agentNotes = profile.AgentNotes ?? "",
-            pipelineStage = meta.PipelineStage,
+            pipelineStage,
             pipelineOrder = meta.PipelineOrder,
-            pipelineStageLabel = StageLabel(meta.PipelineStage),
+            pipelineStageLabel = StageLabel(pipelineStage),
             waitingOn = meta.WaitingOn,
             waitingOnLabel = WaitingOnLabel(meta.WaitingOn),
             pinnedBrief = meta.PinnedBrief ?? "",
@@ -2243,7 +2236,9 @@ namespace AgentPortal.Controllers;
                     MortgageLender = meta.MortgageLender,
                     LoanAmount = meta.LoanAmount,
                     SourceWorkstationLeadId = ResolveSourceWorkstationLeadId(x, meta, latestAppointment),
-                    PipelineStage = meta.PipelineStage,
+                    PipelineStage = ClientRecordClassification.ResolvePipelineStage(
+                        x.ClientUserId,
+                        x.CrmNotes),
                     PipelineOrder = meta.PipelineOrder,
                     MeetingLocation = meta.MeetingLocation,
                     ZoomJoinUrl = meta.ZoomJoinUrl,
@@ -3049,7 +3044,9 @@ namespace AgentPortal.Controllers;
 
         ViewData["MobileClientCreationPortalTicket"] = ticket;
         return RenderMobileClientCreationPortal(
-            await Create(returnUrl: "/mobile/agent/clients/create-complete"));
+            await Create(
+                returnUrl: "/mobile/agent/clients/create-complete",
+                recordType: "Client"));
     }
 
     [AllowAnonymous]
@@ -3206,6 +3203,11 @@ namespace AgentPortal.Controllers;
         var requestedRecordType = NormalizeRecordType(recordType);
         if (!IsPortalRecordType(requestedRecordType))
             requestedRecordType = "Client";
+        // A native client-intake launch explicitly selects Client. Preserve
+        // that choice in the shared Razor form rather than falling back to the
+        // desktop model's standalone Lead default.
+        if (!string.IsNullOrWhiteSpace(recordType))
+            model.RecordType = requestedRecordType;
 
         if (!string.IsNullOrWhiteSpace(sourceClientId))
         {
