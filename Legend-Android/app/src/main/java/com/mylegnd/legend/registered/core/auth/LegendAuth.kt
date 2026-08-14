@@ -13,16 +13,21 @@ import kotlin.coroutines.resumeWithException
 
 /** MSAL owns OAuth/refresh-token persistence; bearer tokens are never written by Legend code. */
 interface LegendAuthClient {
-    suspend fun restoreAccessToken(): String?
-    suspend fun signIn(activity: Activity): String
-    suspend fun signOut()
+    suspend fun restoreAccessToken(accountId: String? = null): String?
+    suspend fun signIn(activity: Activity, forceReauthentication: Boolean = false): LegendAuthenticatedAccount
+    suspend fun signedInAccounts(): List<LegendAuthenticatedAccount>
+    suspend fun signOut(accountId: String? = null)
 }
 
+data class LegendAuthenticatedAccount(val id: String, val displayName: String)
+
 class MsalLegendAuthClient(private val context: Context, private val configuration: LegendRuntimeConfiguration) : LegendAuthClient {
-    private suspend fun application(): ISingleAccountPublicClientApplication = suspendCancellableCoroutine { continuation ->
-        PublicClientApplication.createSingleAccountPublicClientApplication(context.applicationContext, R.raw.legend_msal_config,
-            object : IPublicClientApplication.ISingleAccountApplicationCreatedListener {
-                override fun onCreated(application: ISingleAccountPublicClientApplication) = continuation.resume(application)
+    private var activeAccountId: String? = null
+
+    private suspend fun application(): IMultipleAccountPublicClientApplication = suspendCancellableCoroutine { continuation ->
+        PublicClientApplication.createMultipleAccountPublicClientApplication(context.applicationContext, R.raw.legend_msal_config,
+            object : IPublicClientApplication.IMultipleAccountApplicationCreatedListener {
+                override fun onCreated(application: IMultipleAccountPublicClientApplication) = continuation.resume(application)
                 override fun onError(exception: MsalException) {
                     LegendLogger.authenticationFailure("initialize", exception)
                     continuation.resumeWithException(exception)
@@ -30,50 +35,73 @@ class MsalLegendAuthClient(private val context: Context, private val configurati
             })
     }
 
-    override suspend fun restoreAccessToken(): String? {
+    override suspend fun restoreAccessToken(accountId: String?): String? {
         if (!configuration.isReady) return null
         val app = application()
-        val account = suspendCancellableCoroutine<IAccount?> { continuation ->
-            app.getCurrentAccountAsync(object : ISingleAccountPublicClientApplication.CurrentAccountCallback {
-                override fun onAccountLoaded(activeAccount: IAccount?) = continuation.resume(activeAccount)
-                override fun onAccountChanged(priorAccount: IAccount?, currentAccount: IAccount?) = continuation.resume(currentAccount)
-                override fun onError(exception: MsalException) {
-                    LegendLogger.authenticationFailure("current_account", exception)
-                    continuation.resumeWithException(exception)
-                }
-            })
-        } ?: return null
+        val requestedAccountId = accountId ?: activeAccountId
+        val account = accounts(app).firstOrNull { requestedAccountId == null || it.id == requestedAccountId } ?: return null
+        activeAccountId = account.id
         return acquireSilent(app, account)
     }
 
-    override suspend fun signIn(activity: Activity): String {
+    override suspend fun signIn(activity: Activity, forceReauthentication: Boolean): LegendAuthenticatedAccount {
         check(configuration.isReady) { "Mobile configuration is incomplete." }
         val app = application()
         return suspendCancellableCoroutine { continuation ->
-            val parameters = SignInParameters.builder().withActivity(activity)
+            val parameters = AcquireTokenParameters.Builder()
+                .startAuthorizationFromActivity(activity)
                 .withScopes(resourceScopes())
+                .withPrompt(if (forceReauthentication) Prompt.LOGIN else Prompt.SELECT_ACCOUNT)
                 .withCallback(object : AuthenticationCallback {
-                    override fun onSuccess(result: IAuthenticationResult) = continuation.resume(result.accessToken)
+                    override fun onSuccess(result: IAuthenticationResult) {
+                        val account = result.account
+                        activeAccountId = account.id
+                        continuation.resume(LegendAuthenticatedAccount(account.id, account.username.orEmpty()))
+                    }
                     override fun onError(exception: MsalException) {
                         LegendLogger.authenticationFailure("interactive", exception)
                         continuation.resumeWithException(exception)
                     }
                     override fun onCancel() = continuation.resumeWithException(AuthenticationCancelledException())
                 }).build()
-            app.signIn(parameters)
+            app.acquireToken(parameters)
         }
     }
 
-    override suspend fun signOut() {
-        if (!configuration.isReady) return
-        val app = application()
-        suspendCancellableCoroutine<Unit> { continuation -> app.signOut(object : ISingleAccountPublicClientApplication.SignOutCallback {
-            override fun onSignOut() = continuation.resume(Unit)
-            override fun onError(exception: MsalException) = continuation.resumeWithException(exception)
-        }) }
+    override suspend fun signedInAccounts(): List<LegendAuthenticatedAccount> {
+        if (!configuration.isReady) return emptyList()
+        return accounts(application()).map { LegendAuthenticatedAccount(it.id, it.username.orEmpty()) }
     }
 
-    private suspend fun acquireSilent(app: ISingleAccountPublicClientApplication, account: IAccount): String? = suspendCancellableCoroutine { continuation ->
+    override suspend fun signOut(accountId: String?) {
+        if (!configuration.isReady) return
+        val app = application()
+        val account = accounts(app).firstOrNull { it.id == (accountId ?: activeAccountId) } ?: return
+        suspendCancellableCoroutine<Unit> { continuation ->
+            app.removeAccount(account, object : IMultipleAccountPublicClientApplication.RemoveAccountCallback {
+                override fun onRemoved() {
+                    if (activeAccountId == account.id) activeAccountId = null
+                    continuation.resume(Unit)
+                }
+                override fun onError(exception: MsalException) {
+                    LegendLogger.authenticationFailure("remove_account", exception)
+                    continuation.resumeWithException(exception)
+                }
+            })
+        }
+    }
+
+    private suspend fun accounts(app: IMultipleAccountPublicClientApplication): List<IAccount> = suspendCancellableCoroutine { continuation ->
+        app.getAccounts(object : IPublicClientApplication.LoadAccountsCallback {
+            override fun onTaskCompleted(accounts: List<IAccount>) = continuation.resume(accounts)
+            override fun onError(exception: MsalException) {
+                LegendLogger.authenticationFailure("accounts", exception)
+                continuation.resumeWithException(exception)
+            }
+        })
+    }
+
+    private suspend fun acquireSilent(app: IMultipleAccountPublicClientApplication, account: IAccount): String? = suspendCancellableCoroutine { continuation ->
         val parameters = AcquireTokenSilentParameters.Builder().forAccount(account).fromAuthority(configuration.entraAuthority)
             .withScopes(resourceScopes())
             .withCallback(object : SilentAuthenticationCallback {

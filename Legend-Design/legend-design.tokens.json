@@ -197,6 +197,11 @@
     "messagesSuppressesBottomNavigationInThread": true,
     "brand": "LEGEND®"
   },
+  "accountSession": {
+    "interactiveSignInRetentionDays": 90,
+    "profileDoubleTapCyclesAccount": true,
+    "allowsAdditionalSignedInAccounts": true
+  },
   "terminology": {
     "post": "Post",
     "story": "Story",
@@ -217,6 +222,9 @@
     "content.story": "Story",
     "content.hac": "Hac",
     "message.original": "Original",
-    "account.deletion": "Request account deletion"
+    "account.deletion": "Request account deletion",
+    "account.add": "Add account",
+    "account.switch": "Switch account",
+    "account.securityCheckpoint": "Sign in again every 90 days"
   }
 }

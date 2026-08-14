@@ -43,7 +43,12 @@ struct OAuthTokenSet: Codable, Equatable, Sendable {
     }
 
     var requiresInteractiveSignIn: Bool {
-        Date().timeIntervalSince(interactiveSignInAt) >= 60 * 60 * 24 * 90
+        Date().timeIntervalSince(interactiveSignInAt) >= Self.interactiveSignInRetention
+    }
+
+    private static var interactiveSignInRetention: TimeInterval {
+        TimeInterval(LegendSharedDesign.accountSession.interactiveSignInRetentionDays)
+            * 60 * 60 * 24
     }
 
     func refreshed(
@@ -65,7 +70,40 @@ protocol SecureTokenStoring: Sendable {
     func clear() throws
 }
 
-struct KeychainTokenStore: SecureTokenStoring {
+/// A server-confirmed Legend identity with a locally retained credential. The
+/// browser/OAuth authority remains unchanged; this is only the secure device
+/// index needed to reopen another already-signed-in Legend account.
+struct MobileSignedInAccount: Codable, Equatable, Sendable, Identifiable {
+    let id: String
+    var displayName: String
+    var participantType: ParticipantType
+    var lastUsedAt: Date
+
+    init(
+        id: String,
+        displayName: String,
+        participantType: ParticipantType,
+        lastUsedAt: Date = Date()
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.participantType = participantType
+        self.lastUsedAt = lastUsedAt
+    }
+}
+
+/// The same secure storage authority can retain several independently issued
+/// credentials. A selected record is still exposed through SecureTokenStoring
+/// so existing API stores never receive a second token path.
+protocol MultiAccountSecureTokenStoring: SecureTokenStoring {
+    func signedInAccounts() throws -> [MobileSignedInAccount]
+    func selectedAccountID() throws -> String?
+    func selectAccount(id: String) throws -> OAuthTokenSet?
+    func upsert(_ tokens: OAuthTokenSet, for account: MobileSignedInAccount) throws -> MobileSignedInAccount
+    func removeAccount(id: String) throws
+}
+
+struct KeychainTokenStore: MultiAccountSecureTokenStoring {
     private let service: String
     private let account = "session"
 
@@ -74,21 +112,120 @@ struct KeychainTokenStore: SecureTokenStoring {
     }
 
     func read() throws -> OAuthTokenSet? {
+        let catalog = try readCatalog()
+        if let selectedID = catalog.selectedAccountID,
+           let selected = catalog.accounts.first(where: { $0.account.id == selectedID }) {
+            return selected.tokens
+        }
+        if let first = catalog.accounts.sorted(by: { $0.account.lastUsedAt > $1.account.lastUsedAt }).first {
+            return first.tokens
+        }
+        return catalog.legacyTokens
+    }
+
+    func save(_ tokens: OAuthTokenSet) throws {
+        var catalog = try readCatalog()
+        if let selectedID = catalog.selectedAccountID,
+           let index = catalog.accounts.firstIndex(where: { $0.account.id == selectedID }) {
+            catalog.accounts[index].tokens = tokens
+            catalog.accounts[index].account.lastUsedAt = Date()
+        } else {
+            // A first interactive login is intentionally provisional until the
+            // server confirms the Legend identity that owns it.
+            catalog.legacyTokens = tokens
+        }
+        try writeCatalog(catalog)
+    }
+
+    func clear() throws {
+        var catalog = try readCatalog()
+        guard let selectedID = catalog.selectedAccountID else {
+            try deleteKeychainValue()
+            return
+        }
+        catalog.accounts.removeAll { $0.account.id == selectedID }
+        catalog.selectedAccountID = catalog.accounts
+            .max(by: { $0.account.lastUsedAt < $1.account.lastUsedAt })?
+            .account.id
+        try writeCatalog(catalog)
+    }
+
+    func signedInAccounts() throws -> [MobileSignedInAccount] {
+        try readCatalog().accounts
+            .filter { !$0.tokens.requiresInteractiveSignIn }
+            .map(\.account)
+            .sorted { $0.lastUsedAt > $1.lastUsedAt }
+    }
+
+    func selectedAccountID() throws -> String? {
+        try readCatalog().selectedAccountID
+    }
+
+    func selectAccount(id: String) throws -> OAuthTokenSet? {
+        var catalog = try readCatalog()
+        guard let index = catalog.accounts.firstIndex(where: { $0.account.id == id }) else {
+            return nil
+        }
+        catalog.selectedAccountID = id
+        catalog.accounts[index].account.lastUsedAt = Date()
+        let tokens = catalog.accounts[index].tokens
+        try writeCatalog(catalog)
+        return tokens
+    }
+
+    func upsert(_ tokens: OAuthTokenSet, for account: MobileSignedInAccount) throws -> MobileSignedInAccount {
+        var catalog = try readCatalog()
+        let existingCredentialID = catalog.accounts.first(where: {
+            Self.sameCredential($0.tokens, tokens)
+        })?.account.id
+        let normalized = MobileSignedInAccount(
+            id: existingCredentialID ?? account.id,
+            displayName: account.displayName,
+            participantType: account.participantType,
+            lastUsedAt: Date())
+        if let index = catalog.accounts.firstIndex(where: { $0.account.id == normalized.id }) {
+            catalog.accounts[index] = StoredAccount(account: normalized, tokens: tokens)
+        } else {
+            catalog.accounts.append(StoredAccount(account: normalized, tokens: tokens))
+        }
+        catalog.selectedAccountID = normalized.id
+        catalog.legacyTokens = nil
+        try writeCatalog(catalog)
+        return normalized
+    }
+
+    func removeAccount(id: String) throws {
+        var catalog = try readCatalog()
+        catalog.accounts.removeAll { $0.account.id == id }
+        if catalog.selectedAccountID == id {
+            catalog.selectedAccountID = catalog.accounts
+                .max(by: { $0.account.lastUsedAt < $1.account.lastUsedAt })?
+                .account.id
+        }
+        try writeCatalog(catalog)
+    }
+
+    private func readCatalog() throws -> CredentialCatalog {
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return nil }
+        if status == errSecItemNotFound { return CredentialCatalog() }
         guard status == errSecSuccess, let data = result as? Data else {
             throw KeychainStoreError.readFailed(status)
         }
-        return try JSONDecoder().decode(OAuthTokenSet.self, from: data)
+        if let catalog = try? JSONDecoder().decode(CredentialCatalog.self, from: data) {
+            return catalog
+        }
+        // One-record installations are migrated only after their identity has
+        // been revalidated by the server; no guessed account association.
+        return CredentialCatalog(legacyTokens: try JSONDecoder().decode(OAuthTokenSet.self, from: data))
     }
 
-    func save(_ tokens: OAuthTokenSet) throws {
-        let data = try JSONEncoder().encode(tokens)
+    private func writeCatalog(_ catalog: CredentialCatalog) throws {
+        let data = try JSONEncoder().encode(catalog)
         var query = baseQuery
         query[kSecValueData as String] = data
         query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -103,11 +240,37 @@ struct KeychainTokenStore: SecureTokenStoring {
         guard addStatus == errSecSuccess else { throw KeychainStoreError.writeFailed(addStatus) }
     }
 
-    func clear() throws {
+    private func deleteKeychainValue() throws {
         let status = SecItemDelete(baseQuery as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainStoreError.deleteFailed(status)
         }
+    }
+
+    private struct StoredAccount: Codable, Equatable {
+        var account: MobileSignedInAccount
+        var tokens: OAuthTokenSet
+    }
+
+    private struct CredentialCatalog: Codable, Equatable {
+        var selectedAccountID: String?
+        var accounts: [StoredAccount]
+        var legacyTokens: OAuthTokenSet?
+
+        init(
+            selectedAccountID: String? = nil,
+            accounts: [StoredAccount] = [],
+            legacyTokens: OAuthTokenSet? = nil
+        ) {
+            self.selectedAccountID = selectedAccountID
+            self.accounts = accounts
+            self.legacyTokens = legacyTokens
+        }
+    }
+
+    private static func sameCredential(_ lhs: OAuthTokenSet, _ rhs: OAuthTokenSet) -> Bool {
+        LegendSessionCredentialFingerprint.make(from: lhs)
+            == LegendSessionCredentialFingerprint.make(from: rhs)
     }
 
     private var baseQuery: [String: Any] {

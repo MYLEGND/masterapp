@@ -174,11 +174,18 @@ struct LegendApplicationShell: View {
                     ),
                     accountAvatar: activeAccountAvatar,
                     accountDisplayName: activeAccountDisplayName,
+                    currentAccountID: coordinator.activeSignedInAccountID ?? currentSession.actor.identity.userID,
                     unreadMessageCount: unreadMessageCount,
                     alternateAccountTypes: currentSession.alternateParticipantTypes,
                     switchAccount: { participantType in
                         coordinator.switchToRole(participantType)
-                    }
+                    },
+                    signedInAccounts: coordinator.signedInAccounts,
+                    switchSignedInAccount: { accountID in
+                        coordinator.switchToSignedInAccount(accountID)
+                    },
+                    addAccount: coordinator.addAccount,
+                    cycleAccount: coordinator.cycleAccount
                 )
                 .opacity(scrollChrome.isBottomNavigationVisible ? 1 : 0)
                 .offset(y: scrollChrome.isBottomNavigationVisible ? 0 : 84)
@@ -525,9 +532,14 @@ private struct LegendNextTabBar: View {
     let tabs: [LegendAppTab]
     let accountAvatar: ProfileAvatar?
     let accountDisplayName: String
+    let currentAccountID: String
     let unreadMessageCount: Int
     let alternateAccountTypes: [ParticipantType]
     let switchAccount: (ParticipantType) -> Void
+    let signedInAccounts: [MobileSignedInAccount]
+    let switchSignedInAccount: (String) -> Void
+    let addAccount: () -> Void
+    let cycleAccount: () -> Void
 
     @State private var isAccountSwitcherPresented = false
     @State private var suppressNextAccountTap = false
@@ -550,11 +562,21 @@ private struct LegendNextTabBar: View {
             LegendAccountSwitcherSheet(
                 accountAvatar: accountAvatar,
                 accountDisplayName: accountDisplayName,
+                currentAccountID: currentAccountID,
                 currentAccountType: currentAccountType,
                 alternateAccountTypes: alternateAccountTypes,
                 switchAccount: { participantType in
                     isAccountSwitcherPresented = false
                     switchAccount(participantType)
+                },
+                signedInAccounts: signedInAccounts,
+                switchSignedInAccount: { accountID in
+                    isAccountSwitcherPresented = false
+                    switchSignedInAccount(accountID)
+                },
+                addAccount: {
+                    isAccountSwitcherPresented = false
+                    addAccount()
                 }
             )
         }
@@ -565,8 +587,12 @@ private struct LegendNextTabBar: View {
         _ tab: LegendAppTab
     ) -> some View {
         if tab == .account,
-           !alternateAccountTypes.isEmpty {
+           (!alternateAccountTypes.isEmpty || signedInAccounts.count > 1) {
             tabButtonContent(tab)
+                .simultaneousGesture(
+                    TapGesture(count: 2)
+                        .onEnded(cycleAccount)
+                )
                 .onLongPressGesture(
                     minimumDuration: 0.45,
                     maximumDistance: 24
@@ -611,8 +637,8 @@ private struct LegendNextTabBar: View {
             selection == tab ? "Selected" : ""
         )
         .accessibilityHint(
-            tab == .account && !alternateAccountTypes.isEmpty
-                ? "Tap to open your profile. Long press to switch accounts."
+            tab == .account && (!alternateAccountTypes.isEmpty || signedInAccounts.count > 1)
+                ? "Tap to open your profile. Double tap to switch accounts. Long press for account options."
                 : ""
         )
         .accessibilityAddTraits(
@@ -731,9 +757,13 @@ private struct LegendAccountSwitcherSheet: View {
 
     let accountAvatar: ProfileAvatar?
     let accountDisplayName: String
+    let currentAccountID: String
     let currentAccountType: ParticipantType
     let alternateAccountTypes: [ParticipantType]
     let switchAccount: (ParticipantType) -> Void
+    let signedInAccounts: [MobileSignedInAccount]
+    let switchSignedInAccount: (String) -> Void
+    let addAccount: () -> Void
 
     var body: some View {
         NavigationStack {
@@ -749,6 +779,8 @@ private struct LegendAccountSwitcherSheet: View {
                         sheetHeader
                         currentAccountCard
                         availableAccounts
+                        retainedAccounts
+                        addAccountButton
                         securityNotice
                     }
                     .padding(
@@ -983,6 +1015,77 @@ private struct LegendAccountSwitcherSheet: View {
         }
     }
 
+    @ViewBuilder
+    private var retainedAccounts: some View {
+        let alternatives = signedInAccounts.filter { $0.id != currentAccountID }
+        if !alternatives.isEmpty {
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                LegendNextSectionHeader(
+                    eyebrow: "Signed in on this device",
+                    title: "Other accounts",
+                    detail: "These accounts remain protected and require a fresh sign-in after the shared security checkpoint."
+                )
+                .foregroundStyle(.white)
+
+                ForEach(alternatives) { account in
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        switchSignedInAccount(account.id)
+                    } label: {
+                        HStack(spacing: LegendNextSpacing.sm) {
+                            Image(systemName: account.participantType.accountSystemImage)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(LegendNextColor.midnight)
+                                .frame(width: 48, height: 48)
+                                .background(LegendNextColor.goldBright, in: Circle())
+
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                                Text(account.displayName)
+                                    .font(LegendNextTypography.bodyEmphasis)
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                Text(account.participantType.accountLabel)
+                                    .font(LegendNextTypography.supporting)
+                                    .foregroundStyle(Color.white.opacity(0.64))
+                            }
+
+                            Spacer(minLength: LegendNextSpacing.xs)
+
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(LegendNextColor.goldBright)
+                        }
+                        .padding(LegendNextSpacing.sm)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            Color.white.opacity(0.055),
+                            in: RoundedRectangle(
+                                cornerRadius: LegendNextRadius.prominentCard,
+                                style: .continuous
+                            )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var addAccountButton: some View {
+        Button(action: addAccount) {
+            Label(
+                LegendSharedDesign.copy("account.add"),
+                systemImage: "person.badge.plus"
+            )
+            .font(LegendNextTypography.bodyEmphasis)
+            .foregroundStyle(LegendNextColor.midnight)
+            .frame(maxWidth: .infinity, minHeight: LegendNextSize.controlHeight)
+            .background(LegendNextGradient.gold, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Securely sign in to another Legend account on this device")
+    }
+
     private func accountButton(
         _ participantType: ParticipantType
     ) -> some View {
@@ -1113,9 +1216,7 @@ private struct LegendAccountSwitcherSheet: View {
     }
 
     private var preferredHeight: CGFloat {
-        alternateAccountTypes.count > 1
-            ? 690
-            : 610
+        (alternateAccountTypes.count + signedInAccounts.count) > 2 ? 760 : 670
     }
 }
 
@@ -5651,21 +5752,16 @@ private struct LegendAccountView: View {
     @ViewBuilder
     private var profileAccountMenu: some View {
         let handle = profileNavigationHandle
-        if currentSession.alternateParticipantTypes.isEmpty {
-            Text(handle)
-                .font(LegendNextTypography.label)
-                .tracking(0.4)
-                .foregroundStyle(LegendNextColor.textPrimary)
-        } else {
-            Menu {
-                Section {
-                    Label(
-                        "Current: \(currentSession.actor.identity.participantType.accountLabel)",
-                        systemImage: "checkmark.circle.fill"
-                    )
-                }
+        Menu {
+            Section {
+                Label(
+                    "Current: \(currentSession.actor.identity.participantType.accountLabel)",
+                    systemImage: "checkmark.circle.fill"
+                )
+            }
 
-                Section("Switch account") {
+            if !currentSession.alternateParticipantTypes.isEmpty {
+                Section(LegendSharedDesign.copy("account.switch")) {
                     ForEach(currentSession.alternateParticipantTypes, id: \.self) { participantType in
                         Button {
                             coordinator.switchToRole(participantType)
@@ -5677,19 +5773,47 @@ private struct LegendAccountView: View {
                         }
                     }
                 }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(handle)
-                    Image(systemName: "chevron.down")
-                        .font(.caption.weight(.bold))
-                }
-                .font(LegendNextTypography.label)
-                .tracking(0.4)
-                .foregroundStyle(LegendNextColor.textPrimary)
             }
-            .accessibilityLabel("\(handle). Switch account")
-            .accessibilityHint("Choose another authorized Legend account")
+
+            let currentID = coordinator.activeSignedInAccountID ?? currentSession.actor.identity.userID
+            let otherAccounts = coordinator.signedInAccounts.filter { $0.id != currentID }
+            if !otherAccounts.isEmpty {
+                Section("Signed in on this device") {
+                    ForEach(otherAccounts) { account in
+                        Button {
+                            coordinator.switchToSignedInAccount(account.id)
+                        } label: {
+                            Label(
+                                account.displayName,
+                                systemImage: account.participantType.accountSystemImage
+                            )
+                        }
+                    }
+                }
+            }
+
+            Section {
+                Button {
+                    coordinator.addAccount()
+                } label: {
+                    Label(
+                        LegendSharedDesign.copy("account.add"),
+                        systemImage: "person.badge.plus"
+                    )
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(handle)
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.bold))
+            }
+            .font(LegendNextTypography.label)
+            .tracking(0.4)
+            .foregroundStyle(LegendNextColor.textPrimary)
         }
+        .accessibilityLabel("\(handle). Account options")
+        .accessibilityHint("Switch accounts or securely add another account")
     }
 
     private var profileNavigationHandle: String {
@@ -6678,7 +6802,7 @@ private struct LegendAccountView: View {
 
                             LegendProfileSettingsRow(
                                 title: "Security checkpoint",
-                                detail: "Sign in again every 90 days",
+                                detail: LegendSharedDesign.copy("account.securityCheckpoint"),
                                 systemImage: "calendar.badge.exclamationmark",
                                 showsChevron: false)
 

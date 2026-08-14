@@ -2,7 +2,7 @@
   "client_id": "${entraClientId}",
   "redirect_uri": "${msalRedirectUri}",
   "broker_redirect_uri_registered": true,
-  "account_mode": "SINGLE",
+  "account_mode": "MULTIPLE",
   "authorities": [{
     "type": "AAD",
     "audience": {

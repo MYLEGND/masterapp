@@ -78,9 +78,12 @@ struct UserFacingFailure: Equatable {
 final class MobileSessionCoordinator: ObservableObject {
     @Published private(set) var state: MobileSessionState = .loading
     @Published private(set) var isOfferingBiometricSignIn = false
+    @Published private(set) var signedInAccounts: [MobileSignedInAccount] = []
+    @Published private(set) var activeSignedInAccountID: String?
 
     private let configuration: MobileConfiguration
     private let tokenStore: any SecureTokenStoring
+    private let multiAccountTokenStore: (any MultiAccountSecureTokenStoring)?
     private let authorizer: any OAuthAuthorizing
     private let tokenExchanger: any OAuthTokenExchanging
     private let diagnostics: LegendDiagnostics
@@ -127,7 +130,9 @@ final class MobileSessionCoordinator: ObservableObject {
         biometricSecurity: (any MobileBiometricSessionSecuring)? = nil
     ) {
         self.configuration = configuration
-        self.tokenStore = tokenStore ?? KeychainTokenStore(service: configuration.bundleIdentifier)
+        let resolvedTokenStore = tokenStore ?? KeychainTokenStore(service: configuration.bundleIdentifier)
+        self.tokenStore = resolvedTokenStore
+        self.multiAccountTokenStore = resolvedTokenStore as? any MultiAccountSecureTokenStoring
         self.authorizer = authorizer ?? SystemBrowserAuthorizer()
         self.tokenExchanger = tokenExchanger ?? URLSessionOAuthTokenExchanger()
         self.sessionService = sessionService
@@ -157,6 +162,8 @@ final class MobileSessionCoordinator: ObservableObject {
              .roleSelection, .authenticated:
             return
         }
+
+        refreshSignedInAccounts()
 
         let storedTokens: OAuthTokenSet
         do {
@@ -300,12 +307,14 @@ final class MobileSessionCoordinator: ObservableObject {
         }
     }
 
-    func signIn() {
+    func signIn(preservingActiveSession: Bool = false) {
         guard configuration.validation.isReady else {
             transition(to: .contractUnavailable(configuration.validation), reason: "Configuration unavailable during sign-in")
             return
         }
 
+        let priorState = preservingActiveSession ? state : nil
+        let priorTokens = preservingActiveSession ? activeTokens : nil
         Task {
             transition(to: .authenticating, reason: "Authorization session started")
             diagnostics.record(category: .authentication, summary: "Native authorization session started.")
@@ -331,7 +340,12 @@ final class MobileSessionCoordinator: ObservableObject {
                 // confirms an authorized Legend actor or authorized role selection.
                 activeTokens = tokens
                 try await establishSession(using: tokens)
-                try tokenStore.save(tokens)
+                // A role-neutral response has no server-confirmed typed actor
+                // yet. Retain it only provisionally until role selection uses
+                // the same server-authorized boundary.
+                if case .roleSelection = state {
+                    try tokenStore.save(tokens)
+                }
 
                 if case .authenticated(let session) = state {
                     offerBiometricSignInIfNeeded(for: session)
@@ -341,23 +355,24 @@ final class MobileSessionCoordinator: ObservableObject {
                     category: .authentication,
                     summary: "Server-confirmed OAuth credential stored successfully.")
             } catch {
-                activeTokens = nil
+                activeTokens = priorTokens
 
                 if let authorizationError = error as? ASWebAuthenticationSessionError,
                    authorizationError.code == .canceledLogin {
                     transition(
-                        to: .signedOut,
+                        to: priorState ?? .signedOut,
                         reason: "Authorization session cancelled")
                     return
                 }
 
-                if (error as? MobileAPIError)?.provesInvalidBearerCredential == true {
+                if !preservingActiveSession,
+                   (error as? MobileAPIError)?.provesInvalidBearerCredential == true {
                     try? tokenStore.clear()
                     launchCache.clear()
                 }
 
                 transition(
-                    to: .failed(failure(for: error)),
+                    to: priorState ?? .failed(failure(for: error)),
                     reason: "Native sign-in did not complete")
                 diagnostics.record(category: .authentication, summary: "Native sign-in did not complete. Failure category: \(failureCategory(for: error)).", correlationID: (error as? MobileAPIError)?.correlationID)
             }
@@ -367,6 +382,7 @@ final class MobileSessionCoordinator: ObservableObject {
     func signOut() {
         try? tokenStore.clear()
         activeTokens = nil
+        refreshSignedInAccounts()
         launchCache.clear()
         NativeUnreadBadge.clear()
         transition(to: configuration.validation.isReady ? .signedOut : .contractUnavailable(configuration.validation), reason: "User signed out")
@@ -459,6 +475,7 @@ final class MobileSessionCoordinator: ObservableObject {
     private func endSessionForRejectedCredential(reason: String) {
         try? tokenStore.clear()
         activeTokens = nil
+        refreshSignedInAccounts()
         launchCache.clear()
         NativeUnreadBadge.clear()
         authenticationRecoveryAttempts = 0
@@ -509,6 +526,77 @@ final class MobileSessionCoordinator: ObservableObject {
         }
 
         selectRole(participantType)
+    }
+
+    /// Opens the existing OAuth/PKCE account chooser. The server must confirm
+    /// the returned identity before this device retains it beside the current
+    /// account; no second mobile authorization path is introduced.
+    func addAccount() {
+        guard LegendSharedDesign.accountSession.allowsAdditionalSignedInAccounts else {
+            return
+        }
+        signIn(preservingActiveSession: true)
+    }
+
+    /// Reopens an already authenticated identity. Its secure credential is
+    /// silently refreshed if necessary, then the server re-establishes the
+    /// selected participant type before any account-scoped data can render.
+    func switchToSignedInAccount(_ accountID: String) {
+        guard let multiAccountTokenStore,
+              let account = signedInAccounts.first(where: { $0.id == accountID }) else {
+            return
+        }
+
+        Task {
+            transition(to: .authenticating, reason: "Stored Legend account switch started")
+            do {
+                guard let storedTokens = try multiAccountTokenStore.selectAccount(id: accountID) else {
+                    throw MobileAPIError.unauthorized(correlationID: nil)
+                }
+                guard !storedTokens.requiresInteractiveSignIn else {
+                    try multiAccountTokenStore.removeAccount(id: accountID)
+                    refreshSignedInAccounts()
+                    throw MobileAPIError.unauthorized(correlationID: nil)
+                }
+
+                activeTokens = storedTokens
+                launchCache.clear()
+                try await establishSession(
+                    using: try await usableTokens(from: storedTokens),
+                    preferredParticipantType: account.participantType)
+            } catch {
+                transition(
+                    to: .failed(failure(for: error, defaultTitle: "Account switch unavailable")),
+                    reason: "Stored Legend account switch did not complete")
+                diagnostics.record(
+                    category: .authentication,
+                    summary: "Stored Legend account switch did not complete. Failure category: \(failureCategory(for: error)).",
+                    correlationID: (error as? MobileAPIError)?.correlationID)
+            }
+        }
+    }
+
+    /// The profile avatar's double-tap is the fast path: switch an authorized
+    /// role on the same identity first, otherwise cycle retained identities.
+    func cycleAccount() {
+        guard LegendSharedDesign.accountSession.profileDoubleTapCyclesAccount,
+              case .authenticated(let currentSession) = state else {
+            return
+        }
+
+        if let nextRole = currentSession.alternateParticipantTypes.first {
+            switchToRole(nextRole)
+            return
+        }
+
+        let currentID = activeSignedInAccountID
+        guard signedInAccounts.count > 1,
+              let currentID,
+              let currentIndex = signedInAccounts.firstIndex(where: { $0.id == currentID }) else {
+            return
+        }
+        let next = signedInAccounts[(currentIndex + 1) % signedInAccounts.count]
+        switchToSignedInAccount(next.id)
     }
 
     func makeMessagingStore() -> MessagingStore {
@@ -827,6 +915,7 @@ final class MobileSessionCoordinator: ObservableObject {
     /// without remounting the visible account shell. A different Agent/Client
     /// identity remains the sole reason to rebuild the shell.
     private func commitConfirmedSession(_ session: MobileSession, reason: String) {
+        persistConfirmedAccount(session)
         cacheSession(session)
         authenticationRecoveryAttempts = 0
 
@@ -846,6 +935,38 @@ final class MobileSessionCoordinator: ObservableObject {
         }
 
         transition(to: .authenticated(session), reason: reason)
+    }
+
+    private func persistConfirmedAccount(_ session: MobileSession) {
+        guard let activeTokens else { return }
+        let account = MobileSignedInAccount(
+            id: session.actor.identity.userID,
+            displayName: session.actor.displayName,
+            participantType: session.actor.identity.participantType)
+        do {
+            if let multiAccountTokenStore {
+                let persisted = try multiAccountTokenStore.upsert(activeTokens, for: account)
+                activeSignedInAccountID = persisted.id
+            } else {
+                try tokenStore.save(activeTokens)
+                activeSignedInAccountID = account.id
+            }
+            refreshSignedInAccounts()
+        } catch {
+            diagnostics.record(
+                category: .authentication,
+                summary: "Server-confirmed account could not be retained securely on this device.")
+        }
+    }
+
+    private func refreshSignedInAccounts() {
+        guard let multiAccountTokenStore else {
+            signedInAccounts = []
+            activeSignedInAccountID = nil
+            return
+        }
+        signedInAccounts = (try? multiAccountTokenStore.signedInAccounts()) ?? []
+        activeSignedInAccountID = try? multiAccountTokenStore.selectedAccountID()
     }
 
     func cachedProtectedImageData(

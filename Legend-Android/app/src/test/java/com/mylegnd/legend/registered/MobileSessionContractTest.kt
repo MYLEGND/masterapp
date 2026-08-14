@@ -12,14 +12,34 @@ import com.mylegnd.legend.registered.core.model.FounderManagedAccount
 import com.mylegnd.legend.registered.core.model.DailyScriptureManagementSnapshot
 import com.mylegnd.legend.registered.core.model.CommunitySafetyReport
 import com.mylegnd.legend.registered.core.model.MobileClientCreationPortalLaunch
+import com.mylegnd.legend.registered.core.auth.CachedLegendSession
 import com.mylegnd.legend.registered.core.realtime.toHubUrl
 import okhttp3.Request
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
+import java.time.Instant
 
 class MobileSessionContractTest {
     private val json = Json { ignoreUnknownKeys = true }
+
+    @Test fun `account metadata honors the shared interactive sign-in boundary`() {
+        val now = Instant.parse("2026-08-14T12:00:00Z")
+        val valid = CachedLegendSession(
+            actorId = "member-1",
+            participantType = "Client",
+            displayName = "Sanitized Member",
+            cachedUtc = now.toString(),
+            accountId = "entra-account-1",
+            interactiveSignInUtc = now.minusSeconds(89L * 24L * 60L * 60L).toString(),
+        )
+        val expired = valid.copy(
+            interactiveSignInUtc = now.minusSeconds(90L * 24L * 60L * 60L).toString(),
+        )
+
+        assertFalse(valid.requiresInteractiveSignIn(retentionDays = 90, now = now))
+        assertTrue(expired.requiresInteractiveSignIn(retentionDays = 90, now = now))
+    }
     @Test fun `session fixture preserves typed actor and server capabilities`() {
         val fixture = """{"authenticated":true,"actor":{"identity":{"userId":"sanitized-user","participantType":"Client"},"profileId":"00000000-0000-0000-0000-000000000001","displayName":"Sanitized Member","avatar":{"kind":"remote","contentType":"image/jpeg","resourcePath":"/api/v1/mobile/profile-images/Client/00000000-0000-0000-0000-000000000001"}},"permittedParticipantTypes":["Client"],"requiresParticipantSelection":false,"capabilities":{"messaging":true,"isFounder":false,"canManageScripture":false,"canManageCommunity":false},"correlationId":"sanitized-correlation"}"""
         val response = json.decodeFromString(MobileSessionResponse.serializer(), fixture)

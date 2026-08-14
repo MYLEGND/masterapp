@@ -37,6 +37,7 @@ object LegendDesignAuthority {
     internal fun radius(name: String) = required().radii.required(name).dp
     internal fun size(name: String) = required().sizes.required(name).dp
     internal fun socialFormat(name: String) = required().socialFormats.required(name)
+    internal fun accountSession() = required().accountSession
     internal fun gradient(name: String): Brush = Brush.linearGradient(
         required().gradients.required(name).map(::color),
     )
@@ -170,11 +171,19 @@ private data class LegendDesignSpecification(
     val sizes: Map<String, Float>,
     val typography: Map<String, LegendTypographyToken>,
     val socialFormats: Map<String, LegendSocialFormatToken>,
+    val accountSession: LegendAccountSessionToken,
     val copy: Map<String, String>,
 )
 
 object LegendCopy {
     fun value(key: String): String = LegendDesignAuthority.copy(key)
+}
+
+/** The shared iOS-authored account-retention authority. */
+internal object LegendAccountSessionPolicy {
+    val InteractiveSignInRetentionDays get() = LegendDesignAuthority.accountSession().interactiveSignInRetentionDays
+    val ProfileDoubleTapCyclesAccount get() = LegendDesignAuthority.accountSession().profileDoubleTapCyclesAccount
+    val AllowsAdditionalSignedInAccounts get() = LegendDesignAuthority.accountSession().allowsAdditionalSignedInAccounts
 }
 
 /** Platform-neutral social canvas and picker rules extracted from iOS. */
@@ -215,6 +224,13 @@ internal data class LegendSocialFormatToken(
     val editorMaximumWidth: Double,
     val usesFixedCanvasAspectRatio: Boolean,
     val supportedCanvasAspectRatios: List<Double>,
+)
+
+@Serializable
+internal data class LegendAccountSessionToken(
+    val interactiveSignInRetentionDays: Int,
+    val profileDoubleTapCyclesAccount: Boolean,
+    val allowsAdditionalSignedInAccounts: Boolean,
 )
 
 private fun String.asColor(alpha: Float = 1f): Color {

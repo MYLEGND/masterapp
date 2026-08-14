@@ -96,6 +96,11 @@ enum LegendSharedDesign {
         required(specification.socialFormats[name], named: "social format \(name)")
     }
 
+    /// Shared account-retention rules used by each native mobile client.
+    static var accountSession: AccountSessionToken {
+        specification.accountSession
+    }
+
     private static func fontWeight(_ value: String) -> Font.Weight {
         switch value {
         case "regular": return .regular
@@ -148,6 +153,7 @@ enum LegendSharedDesign {
         fileprivate let motion: MotionToken
         fileprivate let elevation: [String: ElevationToken]
         fileprivate let copy: [String: String]
+        fileprivate let accountSession: AccountSessionToken
     }
 
     fileprivate struct ColorToken: Decodable {
@@ -175,6 +181,12 @@ enum LegendSharedDesign {
         let editorMaximumWidth: Double
         let usesFixedCanvasAspectRatio: Bool
         let supportedCanvasAspectRatios: [Double]
+    }
+
+    struct AccountSessionToken: Decodable {
+        let interactiveSignInRetentionDays: Int
+        let profileDoubleTapCyclesAccount: Bool
+        let allowsAdditionalSignedInAccounts: Bool
     }
 
     fileprivate struct SemanticColorToken: Decodable {

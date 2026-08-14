@@ -20,6 +20,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -59,6 +60,7 @@ import com.mylegnd.legend.registered.LegendContainer
 import com.mylegnd.legend.registered.LegendViewModelFactory
 import com.mylegnd.legend.registered.core.design.LegendColors
 import com.mylegnd.legend.registered.core.design.LegendCopy
+import com.mylegnd.legend.registered.core.design.LegendAccountSessionPolicy
 import com.mylegnd.legend.registered.core.design.LegendGradients
 import com.mylegnd.legend.registered.core.design.LegendOpacity
 import com.mylegnd.legend.registered.core.design.LegendShapes
@@ -81,6 +83,7 @@ import com.mylegnd.legend.registered.core.network.NotificationItem
 import com.mylegnd.legend.registered.core.network.NotificationSnapshot
 import com.mylegnd.legend.registered.core.realtime.LegendRealtimeEvents
 import com.mylegnd.legend.registered.core.session.ActiveLegendSession
+import com.mylegnd.legend.registered.core.session.SignedInLegendAccount
 import com.mylegnd.legend.registered.core.session.SessionState
 import com.mylegnd.legend.registered.core.session.SessionViewModel
 import com.mylegnd.legend.registered.data.FinancialRepository
@@ -94,6 +97,7 @@ import coil3.compose.AsyncImage
 fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
     val state by sessionViewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val activity = LocalActivity.current
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { }
@@ -131,6 +135,9 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
                 container = container,
                 signOut = sessionViewModel::signOut,
                 switchRole = sessionViewModel::selectRole,
+                switchSignedInAccount = sessionViewModel::switchSignedInAccount,
+                addAccount = { activity?.let(sessionViewModel::addAccount) },
+                cycleAccount = sessionViewModel::cycleAccount,
             )
         }
     }
@@ -230,6 +237,7 @@ private fun LegendPillNavigation(
     mediaRepository: AuthenticatedMediaRepository,
     participantType: String,
     select: (LegendTab) -> Unit,
+    cycleAccount: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -256,8 +264,18 @@ private fun LegendPillNavigation(
                     modifier = Modifier.weight(1f),
                     contentAlignment = Alignment.Center,
                 ) {
-                    IconButton(onClick = { select(tab) }, modifier = Modifier.size(LegendSize.MinimumTapTarget)) {
-                        if (tab == LegendTab.ACCOUNT) {
+                    if (tab == LegendTab.ACCOUNT) {
+                        Box(
+                            modifier = Modifier
+                                .size(LegendSize.MinimumTapTarget)
+                                .combinedClickable(
+                                    onClick = { select(tab) },
+                                    onDoubleClick = {
+                                        if (LegendAccountSessionPolicy.ProfileDoubleTapCyclesAccount) cycleAccount()
+                                    },
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
                             LegendProtectedAvatar(
                                 avatar = accountAvatar,
                                 displayName = accountName,
@@ -265,7 +283,9 @@ private fun LegendPillNavigation(
                                 repository = mediaRepository,
                                 size = LegendSize.AvatarMedium,
                             )
-                        } else {
+                        }
+                    } else {
+                        IconButton(onClick = { select(tab) }, modifier = Modifier.size(LegendSize.MinimumTapTarget)) {
                             Icon(
                                 imageVector = legendTabIcon(tab, selected),
                                 contentDescription = tab.label,
@@ -305,6 +325,9 @@ private fun AuthenticatedShell(
     container: LegendContainer,
     signOut: () -> Unit,
     switchRole: (String) -> Unit,
+    switchSignedInAccount: (String) -> Unit,
+    addAccount: () -> Unit,
+    cycleAccount: () -> Unit,
 ) {
     var tab by remember { mutableStateOf(LegendTab.HOME) }
     var homeChromeAction by remember { mutableStateOf<LegendHomeChromeAction?>(null) }
@@ -409,6 +432,7 @@ private fun AuthenticatedShell(
                     mediaRepository = container.authenticatedMediaRepository,
                     participantType = participantType,
                     select = { tab = it },
+                    cycleAccount = cycleAccount,
                 )
             }
         },
@@ -459,6 +483,10 @@ private fun AuthenticatedShell(
                     alternateParticipantTypes = session.permittedParticipantTypes
                         .filterNot { it.equals(participantType, ignoreCase = true) },
                     switchRole = switchRole,
+                    signedInAccounts = session.signedInAccounts,
+                    currentAccountId = session.accountId,
+                    switchSignedInAccount = switchSignedInAccount,
+                    addAccount = addAccount,
                     signOut = signOut,
                 )
             }
@@ -4193,6 +4221,10 @@ private fun AccountScreen(
     participantType: String,
     alternateParticipantTypes: List<String>,
     switchRole: (String) -> Unit,
+    signedInAccounts: List<SignedInLegendAccount>,
+    currentAccountId: String,
+    switchSignedInAccount: (String) -> Unit,
+    addAccount: () -> Unit,
     signOut: () -> Unit,
 ) {
     val profile by viewModel.profile.collectAsStateWithLifecycle()
@@ -4273,6 +4305,10 @@ private fun AccountScreen(
                                 openSettings = { settingsOpen = true },
                                 alternateParticipantTypes = alternateParticipantTypes,
                                 switchRole = switchRole,
+                                signedInAccounts = signedInAccounts,
+                                currentAccountId = currentAccountId,
+                                switchSignedInAccount = switchSignedInAccount,
+                                addAccount = addAccount,
                             )
                         }
                         item {
@@ -4455,6 +4491,10 @@ private fun LegendProfileIdentityCard(
     openSettings: () -> Unit,
     alternateParticipantTypes: List<String>,
     switchRole: (String) -> Unit,
+    signedInAccounts: List<SignedInLegendAccount>,
+    currentAccountId: String,
+    switchSignedInAccount: (String) -> Unit,
+    addAccount: () -> Unit,
 ) {
     var accountMenuOpen by remember { mutableStateOf(false) }
     Surface(
@@ -4496,32 +4536,31 @@ private fun LegendProfileIdentityCard(
                 Spacer(Modifier.width(LegendSpacing.Md))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
                     val handle = account.username?.takeIf(String::isNotBlank)?.let { "@$it" } ?: account.displayName
-                    if (alternateParticipantTypes.isEmpty()) {
-                        Text(handle, style = LegendTypography.Label, color = LegendColors.TextPrimary)
-                    } else {
-                        Box {
-                            Row(
-                                modifier = Modifier.clickable { accountMenuOpen = true },
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(handle, style = LegendTypography.Label, color = LegendColors.TextPrimary)
-                                Icon(
-                                    Icons.Default.KeyboardArrowDown,
-                                    "Switch LEGEND account",
-                                    tint = LegendColors.TextPrimary,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = accountMenuOpen,
-                                onDismissRequest = { accountMenuOpen = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Current: ${account.participantType}") },
-                                    leadingIcon = { Icon(Icons.Default.CheckCircle, null, tint = LegendColors.Gold) },
-                                    onClick = { accountMenuOpen = false },
-                                    enabled = false,
-                                )
+                    Box {
+                        Row(
+                            modifier = Modifier.clickable { accountMenuOpen = true },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(handle, style = LegendTypography.Label, color = LegendColors.TextPrimary)
+                            Icon(
+                                Icons.Default.KeyboardArrowDown,
+                                "Account options",
+                                tint = LegendColors.TextPrimary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = accountMenuOpen,
+                            onDismissRequest = { accountMenuOpen = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Current: ${account.participantType}") },
+                                leadingIcon = { Icon(Icons.Default.CheckCircle, null, tint = LegendColors.Gold) },
+                                onClick = { accountMenuOpen = false },
+                                enabled = false,
+                            )
+                            if (alternateParticipantTypes.isNotEmpty()) {
+                                HorizontalDivider()
                                 alternateParticipantTypes.forEach { role ->
                                     DropdownMenuItem(
                                         text = { Text("Continue as $role") },
@@ -4539,6 +4578,34 @@ private fun LegendProfileIdentityCard(
                                     )
                                 }
                             }
+                            val otherAccounts = signedInAccounts.filter { it.accountId != currentAccountId }
+                            if (otherAccounts.isNotEmpty()) {
+                                HorizontalDivider()
+                                otherAccounts.forEach { signedIn ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(signedIn.displayName)
+                                                Text(signedIn.participantType, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                                            }
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.AccountCircle, null, tint = LegendColors.Navy) },
+                                        onClick = {
+                                            accountMenuOpen = false
+                                            switchSignedInAccount(signedIn.accountId)
+                                        },
+                                    )
+                                }
+                            }
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text(LegendCopy.value("account.add")) },
+                                leadingIcon = { Icon(Icons.Default.PersonAdd, null, tint = LegendColors.Gold) },
+                                onClick = {
+                                    accountMenuOpen = false
+                                    addAccount()
+                                },
+                            )
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4811,6 +4878,7 @@ private fun LegendAccountSettingsSheet(
                     }
                 }
             }
+            item { AccountSettingsRow("Security checkpoint", LegendCopy.value("account.securityCheckpoint"), Icons.Default.Security, click = {}) }
             item { AccountSettingsRow("Sign out", "Securely end this Android session", Icons.AutoMirrored.Filled.Logout, signOut) }
         }
     }

@@ -69,7 +69,10 @@ struct MobileSessionCacheEntry: Codable, Equatable, Sendable {
     // Match the interactive sign-in checkpoint. A returning member can reopen the
     // exact last account throughout the valid 90-day session, while the coordinator
     // still revalidates the bearer in the background.
-    private static let maximumAge: TimeInterval = 60 * 60 * 24 * 90
+    private static var maximumAge: TimeInterval {
+        TimeInterval(LegendSharedDesign.accountSession.interactiveSignInRetentionDays)
+            * 60 * 60 * 24
+    }
 
     var isFresh: Bool {
         Date().timeIntervalSince(cachedUtc) < Self.maximumAge
