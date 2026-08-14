@@ -1002,7 +1002,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         string founderUserId,
         LegendConnectKnowledgeSubmission submission,
         CancellationToken cancellationToken = default,
-        Guid? reusableSourceTextUnitId = null)
+        Guid? reusableSourceTextUnitId = null,
+        Guid? reusableTargetTextUnitId = null)
     {
         var founder = NormalizeFounder(founderUserId);
         if (founder is null)
@@ -1020,7 +1021,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 && string.IsNullOrWhiteSpace(approved.TargetLanguageCode)
                 && reusableSourceTextUnitId is null
                 ? await _founderTrainingIngestion.SubmitAsync(founder, approved, cancellationToken)
-                : await _corpus.SubmitApprovedKnowledgeAsync(approved, cancellationToken, reusableSourceTextUnitId);
+                : await _corpus.SubmitApprovedKnowledgeAsync(
+                    approved,
+                    cancellationToken,
+                    reusableSourceTextUnitId,
+                    reusableTargetTextUnitId);
             if (result.Succeeded && result.AlignmentId is { } alignmentId)
                 await _curriculum.AttachValidatedAlignmentAsync(alignmentId, cancellationToken);
             await WriteAuditAsync(founder, "FounderKnowledgeSubmitted", result, null, cancellationToken);
@@ -1058,7 +1063,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         string founderUserId,
         Guid supersededAlignmentId,
         LegendConnectKnowledgeSubmission replacement,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid? reusableTargetTextUnitId = null)
     {
         var founder = NormalizeFounder(founderUserId);
         if (founder is null || supersededAlignmentId == Guid.Empty)
@@ -1102,7 +1108,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 founder,
                 replacement,
                 cancellationToken,
-                reusableSourceTextUnitId: reusableSourceTextUnitId);
+                reusableSourceTextUnitId: reusableSourceTextUnitId,
+                reusableTargetTextUnitId: reusableTargetTextUnitId);
             if (!result.Succeeded || result.AlignmentId is null)
             {
                 if (transaction is not null)
@@ -1148,6 +1155,376 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             if (transaction is not null)
                 await transaction.DisposeAsync();
         }
+    }
+
+    /// <summary>
+    /// Founder-facing entry point for attaching verified target realizations
+    /// to existing canonical source units. Resolution happens by the same
+    /// normalized text identity used by the corpus; every resulting mutation
+    /// delegates to the existing approval, correction, or submission path.
+    /// It intentionally owns no parallel alignment or evidence behavior.
+    /// </summary>
+    public async Task<LegendConnectVerifiedTargetBatchResult> SubmitFounderVerifiedTargetsAsync(
+        string founderUserId,
+        LegendConnectVerifiedTargetSubmission submission,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = NormalizeFounder(founderUserId);
+        var sourceLanguage = await _registry.NormalizeEnabledTranslationLanguageAsync(
+            submission.SourceLanguageCode,
+            cancellationToken);
+        var targetLanguage = await _registry.NormalizeEnabledTranslationLanguageAsync(
+            submission.TargetLanguageCode,
+            cancellationToken);
+        if (founder is null || sourceLanguage is null || targetLanguage is null ||
+            string.Equals(sourceLanguage, targetLanguage, StringComparison.OrdinalIgnoreCase))
+        {
+            return VerifiedTargetBatchRejected(
+                sourceLanguage ?? string.Empty,
+                targetLanguage,
+                "invalid_verified_target_batch",
+                "A verified Founder identity and two enabled, distinct languages are required.",
+                submission.Rows);
+        }
+        if (submission.Rows.Count is 0 or > 500)
+        {
+            return VerifiedTargetBatchRejected(
+                sourceLanguage,
+                targetLanguage,
+                "invalid_verified_target_batch",
+                "Submit from 1 to 500 verified target rows.",
+                submission.Rows);
+        }
+
+        var rows = new List<LegendConnectVerifiedTargetRowResult>(submission.Rows.Count);
+        foreach (var row in submission.Rows.OrderBy(item => item.RowNumber))
+        {
+            rows.Add(await ApplyFounderVerifiedTargetRowAsync(
+                founder,
+                sourceLanguage,
+                targetLanguage,
+                row,
+                submission.ContextCategory,
+                submission.UsageRegister,
+                submission.RegionalVariant,
+                cancellationToken));
+        }
+
+        var pairKey = LegendLanguageIdentity.PairKey(sourceLanguage, targetLanguage);
+        var result = new LegendConnectVerifiedTargetBatchResult(
+            rows.Any(IsVerifiedTargetSuccess),
+            rows.All(IsVerifiedTargetSuccess) ? null : "verified_target_rows_require_review",
+            null,
+            sourceLanguage,
+            targetLanguage,
+            pairKey,
+            rows);
+        return result with { Message = DescribeVerifiedTargetBatch(result) };
+    }
+
+    private async Task<LegendConnectVerifiedTargetRowResult> ApplyFounderVerifiedTargetRowAsync(
+        string founder,
+        string sourceLanguage,
+        string targetLanguage,
+        LegendConnectVerifiedTargetRow row,
+        string? contextCategory,
+        string? usageRegister,
+        string? regionalVariant,
+        CancellationToken cancellationToken)
+    {
+        var sourceText = LegendLanguageIdentity.NormalizeText(row.SourceText);
+        var targetText = LegendLanguageIdentity.NormalizeText(row.TargetText);
+        if (string.IsNullOrWhiteSpace(sourceText) || string.IsNullOrWhiteSpace(targetText) ||
+            sourceText.Length > 10_000 || targetText.Length > 10_000)
+        {
+            return VerifiedTargetRow(
+                row.RowNumber,
+                "Failed",
+                "Each source and verified target must be non-empty and no longer than 10,000 characters.",
+                null,
+                null,
+                null,
+                null);
+        }
+
+        var sourceHash = LegendLanguageIdentity.TextHash(sourceText);
+        var sourceMatches = await _db.Set<LegendLanguageTextUnit>()
+            .AsNoTracking()
+            .Where(item => item.LanguageCode == sourceLanguage &&
+                item.NormalizedHash == sourceHash &&
+                item.IsTrainingEligible &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                (_db.Set<LegendFounderTrainingSubmissionUnit>()
+                    .Any(unit => unit.TextUnitId == item.Id) ||
+                 _db.Set<LegendCurriculumExample>()
+                    .Any(example => example.TextUnitId == item.Id &&
+                        example.LanguageCode == sourceLanguage &&
+                        example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                        example.SupersededUtc == null) ||
+                 _db.Set<LegendTranslationAlignment>()
+                    .Any(alignment => alignment.SourceTextUnitId == item.Id &&
+                        alignment.HumanVerified && alignment.SupersededUtc == null &&
+                        alignment.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)))
+            .Take(2)
+            .ToListAsync(cancellationToken);
+        if (sourceMatches.Count == 0)
+        {
+            return VerifiedTargetRow(
+                row.RowNumber,
+                "Unmatched",
+                "No active Founder-approved canonical source matched this row; no target evidence was attached.",
+                null,
+                null,
+                null,
+                null);
+        }
+        if (sourceMatches.Count != 1)
+        {
+            return VerifiedTargetRow(
+                row.RowNumber,
+                "Ambiguous",
+                "More than one active Founder-approved canonical source matched this row; no target evidence was attached.",
+                null,
+                null,
+                null,
+                null);
+        }
+
+        var source = sourceMatches[0];
+        var pair = await _registry.GetOrCreateEnabledPairAsync(sourceLanguage, targetLanguage, cancellationToken);
+        if (pair is null)
+        {
+            return VerifiedTargetRow(
+                row.RowNumber,
+                "Failed",
+                "The selected directional pair is not enabled.",
+                source.Id,
+                null,
+                null,
+                null);
+        }
+
+        var targetHash = LegendLanguageIdentity.TextHash(targetText);
+        var targetMatches = await _db.Set<LegendLanguageTextUnit>()
+            .AsNoTracking()
+            .Where(item => item.LanguageCode == targetLanguage && item.NormalizedHash == targetHash)
+            .Take(2)
+            .ToListAsync(cancellationToken);
+        if (targetMatches.Count > 1)
+        {
+            return VerifiedTargetRow(
+                row.RowNumber,
+                "Failed",
+                "More than one canonical target matched this row; no target evidence was attached.",
+                source.Id,
+                null,
+                null,
+                pair.PairKey);
+        }
+        var canonicalTarget = targetMatches.SingleOrDefault(item => item.IsTrainingEligible);
+
+        var activeAlignments = await _db.Set<LegendTranslationAlignment>()
+            .Where(item => item.PairKey == pair.PairKey &&
+                item.SourceTextUnitId == source.Id &&
+                item.SupersededUtc == null)
+            .OrderBy(item => item.CreatedUtc)
+            .ToListAsync(cancellationToken);
+        var exactAlignments = canonicalTarget is null
+            ? new List<LegendTranslationAlignment>()
+            : activeAlignments.Where(item => item.TargetTextUnitId == canonicalTarget.Id).ToList();
+        if (exactAlignments.Count > 1)
+        {
+            return VerifiedTargetRow(
+                row.RowNumber,
+                "Ambiguous",
+                "Multiple active alignments match this target; no verification was guessed.",
+                source.Id,
+                canonicalTarget!.Id,
+                null,
+                pair.PairKey);
+        }
+        var exactAlignment = exactAlignments.SingleOrDefault();
+        if (exactAlignment is not null)
+        {
+            if (exactAlignment.HumanVerified)
+            {
+                return VerifiedTargetRow(
+                    row.RowNumber,
+                    "AlreadyVerified",
+                    "The active canonical target is already Founder-verified; no duplicate alignment was created.",
+                    source.Id,
+                    canonicalTarget!.Id,
+                    exactAlignment.Id,
+                    pair.PairKey);
+            }
+
+            if (string.Equals(exactAlignment.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal))
+            {
+                var approved = await ApproveProviderObservationAsync(founder, exactAlignment.Id, cancellationToken);
+                return approved.Succeeded
+                    ? VerifiedTargetRow(
+                        row.RowNumber,
+                        "ExistingTargetVerified",
+                        "The matching provider target was Founder-verified through the canonical trust path.",
+                        source.Id,
+                        canonicalTarget!.Id,
+                        exactAlignment.Id,
+                        pair.PairKey)
+                    : VerifiedTargetRow(
+                        row.RowNumber,
+                        "Failed",
+                        approved.Message,
+                        source.Id,
+                        canonicalTarget!.Id,
+                        exactAlignment.Id,
+                        pair.PairKey);
+            }
+        }
+
+        var trustedActive = activeAlignments.Where(item => item.HumanVerified).ToList();
+        if (trustedActive.Count > 1)
+        {
+            return VerifiedTargetRow(
+                row.RowNumber,
+                "Ambiguous",
+                "Multiple active verified target alignments exist for this source and directional pair; no correction was guessed.",
+                source.Id,
+                canonicalTarget?.Id,
+                null,
+                pair.PairKey);
+        }
+
+        var providerActive = activeAlignments
+            .Where(item => string.Equals(item.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal))
+            .ToList();
+        if (trustedActive.Count == 0 && providerActive.Count > 1)
+        {
+            return VerifiedTargetRow(
+                row.RowNumber,
+                "Ambiguous",
+                "Multiple active provider observations exist for this source and directional pair; no correction was guessed.",
+                source.Id,
+                canonicalTarget?.Id,
+                null,
+                pair.PairKey);
+        }
+        var prior = trustedActive.SingleOrDefault() ?? providerActive.SingleOrDefault();
+
+        var verifiedSubmission = new LegendConnectKnowledgeSubmission(
+            sourceLanguage,
+            sourceText,
+            targetLanguage,
+            targetText,
+            contextCategory,
+            usageRegister,
+            regionalVariant,
+            LegendConnectKnowledgeProvenance.FounderApproved);
+        if (prior is not null)
+        {
+            var corrected = await CorrectFounderKnowledgeAsync(
+                founder,
+                prior.Id,
+                verifiedSubmission,
+                cancellationToken,
+                canonicalTarget?.Id);
+            if (!corrected.Succeeded)
+            {
+                return VerifiedTargetRow(
+                    row.RowNumber,
+                    "Failed",
+                    corrected.Message ?? "The canonical correction was not applied.",
+                    source.Id,
+                    canonicalTarget?.Id,
+                    prior.Id,
+                    pair.PairKey);
+            }
+
+            return VerifiedTargetRow(
+                row.RowNumber,
+                string.Equals(prior.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal)
+                    ? "ProviderTargetCorrected"
+                    : "FounderTargetCorrected",
+                "The prior target alignment was superseded through the canonical correction lineage.",
+                source.Id,
+                corrected.TargetTextUnitId,
+                corrected.AlignmentId,
+                corrected.PairKey);
+        }
+
+        var added = await SubmitFounderKnowledgeAsync(
+            founder,
+            verifiedSubmission,
+            cancellationToken,
+            reusableSourceTextUnitId: source.Id,
+            reusableTargetTextUnitId: canonicalTarget?.Id);
+        return added.Succeeded
+            ? VerifiedTargetRow(
+                row.RowNumber,
+                "FounderTargetAdded",
+                "A Founder-verified target alignment was attached to the existing canonical source.",
+                source.Id,
+                added.TargetTextUnitId,
+                added.AlignmentId,
+                added.PairKey)
+            : VerifiedTargetRow(
+                row.RowNumber,
+                "Failed",
+                added.Message ?? "The Founder-verified target could not be attached.",
+                source.Id,
+                canonicalTarget?.Id,
+                null,
+                pair.PairKey);
+    }
+
+    private static LegendConnectVerifiedTargetBatchResult VerifiedTargetBatchRejected(
+        string sourceLanguage,
+        string? targetLanguage,
+        string errorCode,
+        string message,
+        IReadOnlyList<LegendConnectVerifiedTargetRow> rows) =>
+        new(
+            false,
+            errorCode,
+            message,
+            sourceLanguage,
+            targetLanguage,
+            null,
+            rows.Select(row => VerifiedTargetRow(row.RowNumber, "Failed", message, null, null, null, null)).ToList());
+
+    private static LegendConnectVerifiedTargetRowResult VerifiedTargetRow(
+        int rowNumber,
+        string status,
+        string message,
+        Guid? sourceTextUnitId,
+        Guid? targetTextUnitId,
+        Guid? alignmentId,
+        string? pairKey) => new(
+            rowNumber,
+            status,
+            message,
+            sourceTextUnitId,
+            targetTextUnitId,
+            alignmentId,
+            pairKey);
+
+    private static bool IsVerifiedTargetSuccess(LegendConnectVerifiedTargetRowResult row) => row.Status is
+        "ExistingTargetVerified" or "ProviderTargetCorrected" or "FounderTargetAdded" or
+        "FounderTargetCorrected" or "AlreadyVerified";
+
+    private static string DescribeVerifiedTargetBatch(LegendConnectVerifiedTargetBatchResult result)
+    {
+        var reviewRows = result.Rows
+            .Where(row => !IsVerifiedTargetSuccess(row))
+            .Take(50)
+            .Select(row => $"{row.RowNumber} {row.Status}");
+        var reviewSuffix = string.Join(", ", reviewRows);
+        if (result.Rows.Count(row => !IsVerifiedTargetSuccess(row)) > 50)
+            reviewSuffix += ", additional rows";
+        return $"Matched existing sources: {result.MatchedExistingSourceCount}; existing targets verified: {result.ExistingTargetVerifiedCount}; " +
+            $"provider targets corrected: {result.ProviderTargetCorrectedCount}; Founder targets corrected: {result.FounderTargetCorrectedCount}; " +
+            $"Founder targets added: {result.FounderTargetAddedCount}; already verified: {result.AlreadyVerifiedCount}; " +
+            $"unmatched: {result.UnmatchedSourceCount}; ambiguous: {result.AmbiguousCount}; failed: {result.FailedCount}." +
+            (string.IsNullOrWhiteSpace(reviewSuffix) ? string.Empty : $" Review rows: {reviewSuffix}.");
     }
 
     public async Task<LegendConnectQualityReviewActionResult> ApproveProviderObservationAsync(

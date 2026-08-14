@@ -121,6 +121,18 @@ public sealed class LegendConnectController : Controller
     {
         try
         {
+            if (input.FixTargetTranslation)
+            {
+                var verifiedTargets = await _service.SubmitVerifiedTargetsAsync(User, input, cancellationToken);
+                TempData[verifiedTargets.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] =
+                    verifiedTargets.Message ?? "The verified target rows require Founder review.";
+                return RedirectToAction(nameof(Index), new
+                {
+                    language = verifiedTargets.SourceLanguageCode,
+                    pair = verifiedTargets.PairKey
+                });
+            }
+
             var result = await _service.SubmitAsync(User, input, cancellationToken);
             TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] =
                 result.Message ?? (result.Succeeded

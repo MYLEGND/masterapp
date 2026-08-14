@@ -611,7 +611,8 @@ internal sealed class LegendConnectCorpusService
     internal async Task<LegendConnectKnowledgeSubmissionResult> SubmitApprovedKnowledgeAsync(
         LegendConnectKnowledgeSubmission submission,
         CancellationToken cancellationToken = default,
-        Guid? reusableSourceTextUnitId = null)
+        Guid? reusableSourceTextUnitId = null,
+        Guid? reusableTargetTextUnitId = null)
     {
         var sourceLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
             submission.SourceLanguageCode,
@@ -668,12 +669,28 @@ internal sealed class LegendConnectCorpusService
                     sourceLanguage, targetLanguage, null, null, null, null);
             }
         }
+        LegendLanguageTextUnit? reusableTarget = null;
+        if (reusableTargetTextUnitId is not null)
+        {
+            reusableTarget = await _db.Set<LegendLanguageTextUnit>().SingleOrDefaultAsync(item =>
+                item.Id == reusableTargetTextUnitId &&
+                item.IsTrainingEligible &&
+                item.LanguageCode == targetLanguage &&
+                item.NormalizedHash == targetHash, cancellationToken);
+            if (reusableTarget is null)
+            {
+                return new LegendConnectKnowledgeSubmissionResult(
+                    false, false, "correction_target_mismatch",
+                    "The verified target must match the active canonical target entry.",
+                    sourceLanguage, targetLanguage, null, reusableSource?.Id, null, null);
+            }
+        }
         if (reusableSource is null && await _db.Set<LegendLanguageTextUnit>().AnyAsync(item =>
                 item.LanguageCode == sourceLanguage && item.NormalizedHash == sourceHash, cancellationToken))
         {
             return Duplicate(sourceLanguage, targetLanguage, "This exact entry already exists in this language.");
         }
-        if (targetLanguage is not null && targetHash is not null &&
+        if (reusableTarget is null && targetLanguage is not null && targetHash is not null &&
             await _db.Set<LegendLanguageTextUnit>().AnyAsync(item =>
                 item.LanguageCode == targetLanguage && item.NormalizedHash == targetHash, cancellationToken))
         {
@@ -700,8 +717,9 @@ internal sealed class LegendConnectCorpusService
             string? pairKey = null;
             if (targetLanguage is not null && targetText is not null && targetHash is not null)
             {
-                target = NewTextUnit(targetLanguage, targetText, targetHash, submission.Provenance);
-                _db.Set<LegendLanguageTextUnit>().Add(target);
+                target = reusableTarget ?? NewTextUnit(targetLanguage, targetText, targetHash, submission.Provenance);
+                if (reusableTarget is null)
+                    _db.Set<LegendLanguageTextUnit>().Add(target);
                 var pair = await _languages.GetOrCreateEnabledPairAsync(sourceLanguage, targetLanguage, cancellationToken);
                 if (pair is null)
                 {

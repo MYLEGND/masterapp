@@ -73,6 +73,41 @@
 })();
 
 (() => {
+    const form = document.querySelector("[data-verified-target-form]");
+    if (!form) return;
+
+    const toggle = form.querySelector("[data-verified-target-toggle]");
+    const normalFields = Array.from(form.querySelectorAll("[data-verified-target-normal-fields]"));
+    const normalInputs = Array.from(form.querySelectorAll("[data-verified-target-normal-input]"));
+    const rowsField = form.querySelector("[data-verified-target-rows]");
+    const rowsInput = form.querySelector("[data-verified-target-rows-input]");
+    const targetLanguage = form.querySelector("[data-verified-target-language]");
+    const targetLanguageLabel = form.querySelector("[data-verified-target-language-label]");
+    const modeHelp = form.querySelector("#legendConnectVerifiedTargetModeHelp");
+    const submit = form.querySelector("[data-verified-target-submit]");
+    if (!toggle || !rowsField || !rowsInput || !targetLanguage || !targetLanguageLabel || !modeHelp || !submit) return;
+
+    function updateMode() {
+        const enabled = toggle.checked;
+        normalFields.forEach(field => field.hidden = enabled);
+        normalInputs.forEach(input => input.disabled = enabled);
+        rowsField.hidden = !enabled;
+        rowsInput.disabled = !enabled;
+        targetLanguage.required = enabled;
+        targetLanguageLabel.textContent = enabled
+            ? "Target language (required for verified targets)"
+            : "Target language (optional — leave empty to queue autonomous expansion)";
+        modeHelp.textContent = enabled
+            ? "Resolve exact existing sources and attach Founder-approved targets. No source curriculum will be created."
+            : "Off: preserve normal Founder curriculum submission. On: resolve existing canonical sources and attach verified targets only.";
+        submit.textContent = enabled ? "Apply verified target translations" : "Save approved knowledge";
+    }
+
+    toggle.addEventListener("change", updateMode);
+    updateMode();
+})();
+
+(() => {
     const form = document.querySelector("[data-language-focus-form]");
     if (!form) return;
 

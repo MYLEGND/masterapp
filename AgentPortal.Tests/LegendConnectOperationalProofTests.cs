@@ -105,6 +105,64 @@ public sealed class LegendConnectOperationalProofTests
     }
 
     [Fact]
+    public async Task FounderFixTargetTranslation_HttpPostPreservesNormalModeThenUsesTheCanonicalResolver()
+    {
+        var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var founderId = Guid.NewGuid().ToString();
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        try
+        {
+            using var host = await BuildFounderHttpHostAsync(founderId);
+            var client = host.GetTestClient();
+            var tokenRequest = new HttpRequestMessage(HttpMethod.Get, "/__legend-connect-proof/token");
+            tokenRequest.Headers.Add(FounderHeader, founderId);
+            var tokenResponse = await client.SendAsync(tokenRequest);
+            tokenResponse.EnsureSuccessStatusCode();
+            var token = await tokenResponse.Content.ReadFromJsonAsync<AntiforgeryTokenDto>();
+            Assert.NotNull(token);
+            var cookie = ExtractAntiforgeryCookie(tokenResponse);
+
+            await AssertFounderRedirectAsync(client, founderId, token!.RequestToken, cookie,
+                "/founder/legend-connect/knowledge", new Dictionary<string, string>
+                {
+                    ["SourceLanguageCode"] = "en",
+                    ["SourceText"] = "The Founder already approved this canonical source.",
+                    // This mode-specific field must be inert while the toggle is off.
+                    ["TargetTranslationRows"] = "ignored source | ignored target"
+                });
+
+            await using (var initialScope = host.Services.CreateAsyncScope())
+            {
+                var initialDb = initialScope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+                Assert.Single(await initialDb.LegendFounderTrainingSubmissions.ToListAsync());
+                Assert.Single(await initialDb.LegendLanguageTextUnits.Where(item => item.LanguageCode == "en").ToListAsync());
+                Assert.Empty(await initialDb.LegendTranslationAlignments.ToListAsync());
+            }
+
+            await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,
+                "/founder/legend-connect/knowledge", new Dictionary<string, string>
+                {
+                    ["FixTargetTranslation"] = "true",
+                    ["SourceLanguageCode"] = "en",
+                    ["TargetLanguageCode"] = "ht",
+                    ["TargetTranslationRows"] = "The Founder already approved this canonical source. | Fondatè a deja apwouve sous kanonik sa a."
+                });
+
+            await using var verificationScope = host.Services.CreateAsyncScope();
+            var db = verificationScope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            Assert.Single(await db.LegendFounderTrainingSubmissions.ToListAsync());
+            Assert.Single(await db.LegendLanguageTextUnits.Where(item => item.LanguageCode == "en").ToListAsync());
+            var alignment = Assert.Single(await db.LegendTranslationAlignments.ToListAsync());
+            Assert.True(alignment.HumanVerified);
+            Assert.Equal("FounderApproved", alignment.Provenance);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounder);
+        }
+    }
+
+    [Fact]
     public async Task FounderMutationPosts_ResolveTheCanonicalAgentThenPersistEveryFounderOperation()
     {
         var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");

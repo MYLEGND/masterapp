@@ -35,6 +35,17 @@ public class FounderLegendConnectKnowledgeInput
     public string SourceText { get; set; } = string.Empty;
     public string? TargetLanguageCode { get; set; }
     public string? TargetText { get; set; }
+    /// <summary>
+    /// Founder-controlled entry mode only. When enabled, target rows resolve
+    /// existing canonical source units instead of creating source curriculum.
+    /// </summary>
+    public bool FixTargetTranslation { get; set; }
+    /// <summary>
+    /// One exact source/target pair per line, separated by the same pipe
+    /// delimiter already used by the Founder structured-curriculum form.
+    /// This is transport syntax, not a language parser.
+    /// </summary>
+    public string? TargetTranslationRows { get; set; }
     public string? ContextCategory { get; set; }
     public string? UsageRegister { get; set; }
     public string? RegionalVariant { get; set; }

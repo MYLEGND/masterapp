@@ -331,6 +331,32 @@ public sealed class FounderLegendConnectService
             cancellationToken);
     }
 
+    /// <summary>
+    /// Converts only the Founder form's explicit row syntax, then delegates
+    /// source resolution and every mutation to the existing operations facade.
+    /// Normal curriculum submission never enters this method.
+    /// </summary>
+    public async Task<LegendConnectVerifiedTargetBatchResult> SubmitVerifiedTargetsAsync(
+        ClaimsPrincipal user,
+        FounderLegendConnectKnowledgeInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        if (!TryToVerifiedTargetSubmission(input, out var submission, out var error))
+        {
+            return new LegendConnectVerifiedTargetBatchResult(
+                false,
+                "invalid_verified_target_rows",
+                error,
+                input.SourceLanguageCode?.Trim() ?? string.Empty,
+                input.TargetLanguageCode?.Trim(),
+                null,
+                [new LegendConnectVerifiedTargetRowResult(1, "Failed", error ?? "Invalid verified target rows.", null, null, null, null)]);
+        }
+
+        return await _operations.SubmitFounderVerifiedTargetsAsync(founder, submission!, cancellationToken);
+    }
+
     public async Task<LegendConnectKnowledgeSubmissionResult> CorrectAsync(
         ClaimsPrincipal user,
         FounderLegendConnectCorrectionInput input,
@@ -397,6 +423,50 @@ public sealed class FounderLegendConnectService
         input.UsageRegister,
         input.RegionalVariant,
         "FounderApproved");
+
+    private static bool TryToVerifiedTargetSubmission(
+        FounderLegendConnectKnowledgeInput input,
+        out LegendConnectVerifiedTargetSubmission? submission,
+        out string? error)
+    {
+        submission = null;
+        error = null;
+        if (string.IsNullOrWhiteSpace(input.SourceLanguageCode) || string.IsNullOrWhiteSpace(input.TargetLanguageCode))
+        {
+            error = "Select both the existing source language and the target language to verify.";
+            return false;
+        }
+
+        var lines = input.TargetTranslationRows?
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            ?? [];
+        if (lines.Length == 0 || lines.Length > 500)
+        {
+            error = "Enter from 1 to 500 exact source | verified target rows.";
+            return false;
+        }
+
+        var rows = new List<LegendConnectVerifiedTargetRow>(lines.Length);
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var parts = lines[index].Split('|', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]))
+            {
+                error = $"Row {index + 1} must use exact source text | Founder-approved target text.";
+                return false;
+            }
+            rows.Add(new LegendConnectVerifiedTargetRow(index + 1, parts[0], parts[1]));
+        }
+
+        submission = new LegendConnectVerifiedTargetSubmission(
+            input.SourceLanguageCode,
+            input.TargetLanguageCode,
+            rows,
+            input.ContextCategory,
+            input.UsageRegister,
+            input.RegionalVariant);
+        return true;
+    }
 
     private static bool TryToCurriculumSubmission(
         FounderLegendConnectCurriculumInput input,

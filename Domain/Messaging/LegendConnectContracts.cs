@@ -97,6 +97,63 @@ public sealed record LegendConnectKnowledgeSubmissionResult(
     int QueuedCoverageCount = 0);
 
 /// <summary>
+/// One Founder-supplied, verified target realization for an already canonical
+/// source unit. This is an input to the existing alignment and correction
+/// authorities; it never represents a second source-curriculum record.
+/// </summary>
+public sealed record LegendConnectVerifiedTargetSubmission(
+    string SourceLanguageCode,
+    string TargetLanguageCode,
+    IReadOnlyList<LegendConnectVerifiedTargetRow> Rows,
+    string? ContextCategory,
+    string? UsageRegister,
+    string? RegionalVariant);
+
+public sealed record LegendConnectVerifiedTargetRow(
+    int RowNumber,
+    string SourceText,
+    string TargetText);
+
+/// <summary>
+/// Precise outcome for one verified-target row. Status values distinguish
+/// successful canonical transitions from fail-closed source resolution.
+/// </summary>
+public sealed record LegendConnectVerifiedTargetRowResult(
+    int RowNumber,
+    string Status,
+    string Message,
+    Guid? SourceTextUnitId,
+    Guid? TargetTextUnitId,
+    Guid? AlignmentId,
+    string? PairKey);
+
+/// <summary>
+/// A bounded, per-row result for Founder verified-target mode. Counts are
+/// projections of <see cref="Rows"/> and do not persist another workflow.
+/// </summary>
+public sealed record LegendConnectVerifiedTargetBatchResult(
+    bool Succeeded,
+    string? ErrorCode,
+    string? Message,
+    string SourceLanguageCode,
+    string? TargetLanguageCode,
+    string? PairKey,
+    IReadOnlyList<LegendConnectVerifiedTargetRowResult> Rows)
+{
+    public int MatchedExistingSourceCount => Rows.Count(item => item.Status is
+        "ExistingTargetVerified" or "ProviderTargetCorrected" or "FounderTargetCorrected" or
+        "FounderTargetAdded" or "AlreadyVerified");
+    public int ExistingTargetVerifiedCount => Rows.Count(item => item.Status == "ExistingTargetVerified");
+    public int ProviderTargetCorrectedCount => Rows.Count(item => item.Status == "ProviderTargetCorrected");
+    public int FounderTargetCorrectedCount => Rows.Count(item => item.Status == "FounderTargetCorrected");
+    public int FounderTargetAddedCount => Rows.Count(item => item.Status == "FounderTargetAdded");
+    public int AlreadyVerifiedCount => Rows.Count(item => item.Status == "AlreadyVerified");
+    public int UnmatchedSourceCount => Rows.Count(item => item.Status == "Unmatched");
+    public int AmbiguousCount => Rows.Count(item => item.Status == "Ambiguous");
+    public int FailedCount => Rows.Count(item => item.Status == "Failed");
+}
+
+/// <summary>
 /// A controlled semantic curriculum example. Variations identify meaning that
 /// changed; their realization is learned independently in every language.
 /// </summary>
@@ -484,12 +541,19 @@ public interface ILegendConnectOperations
         string founderUserId,
         LegendConnectKnowledgeSubmission submission,
         CancellationToken cancellationToken = default,
-        Guid? reusableSourceTextUnitId = null);
+        Guid? reusableSourceTextUnitId = null,
+        Guid? reusableTargetTextUnitId = null);
 
     Task<LegendConnectKnowledgeSubmissionResult> CorrectFounderKnowledgeAsync(
         string founderUserId,
         Guid supersededAlignmentId,
         LegendConnectKnowledgeSubmission replacement,
+        CancellationToken cancellationToken = default,
+        Guid? reusableTargetTextUnitId = null);
+
+    Task<LegendConnectVerifiedTargetBatchResult> SubmitFounderVerifiedTargetsAsync(
+        string founderUserId,
+        LegendConnectVerifiedTargetSubmission submission,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectQualityReviewActionResult> ApproveProviderObservationAsync(
