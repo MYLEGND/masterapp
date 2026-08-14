@@ -481,6 +481,56 @@ public sealed class LegendConnectContinuationTests
         Assert.Contains(language.RecentErrors, item => item.PairKey == "en:ht");
     }
 
+    [Fact]
+    public async Task ResolvedOperationalEventsDoNotKeepLanguageHealthCritical()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        db.LegendLanguageTextUnits.Add(CanonicalSource("en", "Current approved evidence."));
+        db.LegendConnectOperationalEvents.AddRange(Enumerable.Range(0, 3).Select(index =>
+            new LegendConnectOperationalEvent
+            {
+                Id = Guid.NewGuid(),
+                Category = "AzureProvider",
+                Severity = "Error",
+                Status = "Resolved",
+                LanguageCode = "en",
+                ErrorCode = "resolved_test_event",
+                Summary = "A resolved test event.",
+                IsResolved = true,
+                OccurredUtc = DateTime.UtcNow.AddMinutes(-index)
+            }));
+        await db.SaveChangesAsync();
+
+        var operations = Operations(db, registry, configuration);
+        var resolvedOnly = Assert.IsType<LegendConnectLanguageHealthSnapshot>(
+            await operations.GetLanguageHealthAsync("en"));
+
+        Assert.Equal("Healthy", resolvedOnly.HealthState);
+        Assert.Empty(resolvedOnly.RecentErrors);
+
+        db.LegendConnectOperationalEvents.Add(new LegendConnectOperationalEvent
+        {
+            Id = Guid.NewGuid(),
+            Category = "AzureProvider",
+            Severity = "Warning",
+            Status = "Retrying",
+            LanguageCode = "en",
+            ErrorCode = "active_test_event",
+            Summary = "An active test event.",
+            IsResolved = false,
+            OccurredUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var active = Assert.IsType<LegendConnectLanguageHealthSnapshot>(
+            await operations.GetLanguageHealthAsync("en"));
+        Assert.Equal("Warning", active.HealthState);
+        Assert.Single(active.RecentErrors);
+        Assert.False(active.RecentErrors[0].IsResolved);
+    }
+
     private static IConfiguration Configuration(bool enabled = false) => new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?>
         {

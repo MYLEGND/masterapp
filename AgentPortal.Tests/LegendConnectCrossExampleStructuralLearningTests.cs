@@ -93,6 +93,96 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
     }
 
     [Fact]
+    public async Task CrossFamilyFounderEvidenceWithEquivalentControlledOrderAndUnanchoredGapsAccumulates()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        var batches = new[]
+        {
+            new LegendConnectCurriculumBatchSubmission(
+                "agent.gap.one", "Controlled component layout",
+                [
+                    new LegendConnectCurriculumExampleSubmission("I inspect records.", AgentFrame("I", "inspect", "records")),
+                    new LegendConnectCurriculumExampleSubmission("You inspect records.", AgentFrame("You", "inspect", "records"))
+                ]),
+            new LegendConnectCurriculumBatchSubmission(
+                "agent.gap.two", "Controlled component layout",
+                [
+                    new LegendConnectCurriculumExampleSubmission("We carefully review reports.", AgentFrame("We", "review", "reports")),
+                    new LegendConnectCurriculumExampleSubmission("They carefully review reports.", AgentFrame("They", "review", "reports"))
+                ])
+        };
+        foreach (var batch in batches)
+            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
+
+        var relationship = await db.LegendLanguageStructuralRelationships.SingleAsync(item =>
+            item.PairKey == string.Empty && item.LanguageCode == "en" && item.VariationDimension == "agent");
+
+        Assert.Equal(2, relationship.SupportCount);
+        Assert.Equal(0, relationship.ContradictionCount);
+        Assert.Equal("Candidate", relationship.MaturityState);
+        Assert.False(relationship.IsProductionEligible);
+    }
+
+    [Fact]
+    public async Task HistoricalRelationshipIdentityIsSupersededByTheCanonicalReplayAndThenConverges()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        foreach (var batch in new[]
+        {
+            new LegendConnectCurriculumBatchSubmission(
+                "agent.replay.one", "Controlled component layout",
+                [
+                    new LegendConnectCurriculumExampleSubmission("I inspect records.", AgentFrame("I", "inspect", "records")),
+                    new LegendConnectCurriculumExampleSubmission("You inspect records.", AgentFrame("You", "inspect", "records"))
+                ]),
+            new LegendConnectCurriculumBatchSubmission(
+                "agent.replay.two", "Controlled component layout",
+                [
+                    new LegendConnectCurriculumExampleSubmission("We carefully review reports.", AgentFrame("We", "review", "reports")),
+                    new LegendConnectCurriculumExampleSubmission("They carefully review reports.", AgentFrame("They", "review", "reports"))
+                ])
+        })
+            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
+
+        var prior = await db.LegendLanguageStructuralRelationships.SingleAsync(item => item.VariationDimension == "agent");
+        prior.RelationshipSignature = LegendLanguageIdentity.TextHash(
+            "controlled-anchor-relationship|agent|agent:1|object:1|predicate:1");
+        await db.SaveChangesAsync();
+
+        await fixture.Curriculum.ReevaluateHistoricalAlignmentsAsync(100);
+
+        var active = await db.LegendLanguageStructuralRelationships.SingleAsync(item =>
+            item.VariationDimension == "agent" && item.SupersededUtc == null);
+        var retired = await db.LegendLanguageStructuralRelationships.SingleAsync(item => item.Id == prior.Id);
+        Assert.NotEqual(prior.Id, active.Id);
+        Assert.Equal(2, active.SupportCount);
+        Assert.Equal("Candidate", active.MaturityState);
+        Assert.NotNull(retired.SupersededUtc);
+        Assert.All(await db.LegendLanguageStructuralEvidence.ToListAsync(), item =>
+            Assert.Equal(active.Id, item.StructuralRelationshipId));
+
+        var first = new
+        {
+            Relationships = await db.LegendLanguageStructuralRelationships.CountAsync(),
+            Evidence = await db.LegendLanguageStructuralEvidence.CountAsync(),
+            Support = active.SupportCount,
+            Contradictions = active.ContradictionCount
+        };
+        await fixture.Curriculum.ReevaluateHistoricalAlignmentsAsync(100);
+        var reloaded = await db.LegendLanguageStructuralRelationships.SingleAsync(item => item.Id == active.Id);
+        var second = new
+        {
+            Relationships = await db.LegendLanguageStructuralRelationships.CountAsync(),
+            Evidence = await db.LegendLanguageStructuralEvidence.CountAsync(),
+            Support = reloaded.SupportCount,
+            Contradictions = reloaded.ContradictionCount
+        };
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
     public async Task ProviderDerivedExamplesRemainInsufficientAndCannotPromoteAReusableRelationship()
     {
         await using var db = ControllerTestHelpers.BuildDb();

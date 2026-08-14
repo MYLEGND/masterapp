@@ -909,6 +909,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     {
         var events = state.OperationalEvents
             .Where(item => item.Severity is "Warning" or "Error")
+            .Where(item => !item.IsResolved)
             .Where(item =>
                 (!string.IsNullOrWhiteSpace(languageCode) && string.Equals(item.LanguageCode, languageCode, StringComparison.OrdinalIgnoreCase)) ||
                 (!string.IsNullOrWhiteSpace(item.PairKey) && pairKeys.Contains(item.PairKey)))

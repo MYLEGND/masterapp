@@ -80,6 +80,11 @@ internal sealed record LegendShadowCompositionCapability(
 internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralCompositionGate
 {
     private const int MaximumExamplesPerBatch = 100;
+    // This value participates in the durable relationship identity. It is
+    // advanced only when the canonical grouping meaning changes, allowing the
+    // existing bounded evaluator replay to supersede its prior derived row
+    // without rewriting or conflating historical evidence.
+    private const string ReusableStructuralRelationshipIdentityVersion = "controlled-anchor-order-v2";
     private readonly MasterAppDbContext _db;
     private readonly ILegendLanguageRegistry _languages;
     private readonly LegendConnectCorpusService _corpus;
@@ -1895,7 +1900,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .OrderBy(item => item.Key, StringComparer.Ordinal)
             .Select(item => $"{item.Key}:{item.Value.Count}"));
         var relationshipSignature = LegendLanguageIdentity.TextHash(
-            $"controlled-anchor-relationship|{changedDimension.Trim().ToLowerInvariant()}|{componentDimensions}");
+            $"controlled-anchor-relationship|{ReusableStructuralRelationshipIdentityVersion}|{changedDimension.Trim().ToLowerInvariant()}|{componentDimensions}");
         var layout = $"baseline:{AnchorLayout(baselineAnchors)}|compared:{AnchorLayout(comparedAnchors)}";
         return new ReusableStructuralRelationshipCandidate(
             relationshipSignature,
@@ -1993,12 +1998,17 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         relationship.UpdatedUtc = DateTime.UtcNow;
     }
 
+    // A reusable relationship preserves the order and span of explicitly
+    // controlled components. Absolute positions are intentionally excluded:
+    // unrelated, unanchored words between those components do not change the
+    // controlled relationship. Reordered controlled components still produce
+    // a different layout and remain visible as a contradiction.
     private static string AnchorLayout(IReadOnlyList<ExplicitControlledAnchor> anchors) =>
         string.Join('|', anchors
             .OrderBy(item => item.ComponentStartTokenIndex)
             .ThenBy(item => item.ComponentLength)
             .ThenBy(item => item.Dimension, StringComparer.Ordinal)
-            .Select(item => $"{item.Dimension}:{item.ComponentStartTokenIndex}:{item.ComponentLength}"));
+            .Select(item => $"{item.Dimension}:{item.ComponentLength}"));
 
     private async Task RefreshPatternMaturityAsync(
         Guid patternId,

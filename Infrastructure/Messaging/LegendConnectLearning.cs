@@ -1238,7 +1238,7 @@ internal sealed class LegendConnectCorpusService
 /// </summary>
 internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
 {
-    internal const int Current = 1;
+    internal const int Current = 2;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService
