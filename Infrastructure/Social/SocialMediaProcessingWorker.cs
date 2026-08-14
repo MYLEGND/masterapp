@@ -49,16 +49,43 @@ internal sealed class SocialMediaProcessingWorker : BackgroundService, ISocialMe
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await EnqueueDurableWorkAsync(stoppingToken);
-
         using var timer = new PeriodicTimer(RecoverySweepInterval);
         while (!stoppingToken.IsCancellationRequested)
         {
-            while (_queue.Reader.TryRead(out var mediaAssetId))
-                await ProcessAsync(mediaAssetId, stoppingToken);
+            try
+            {
+                await EnqueueDurableWorkAsync(stoppingToken);
+                while (!stoppingToken.IsCancellationRequested)
+                {
+                    while (_queue.Reader.TryRead(out var mediaAssetId))
+                        await ProcessAsync(mediaAssetId, stoppingToken);
 
-            if (!await WaitForWorkOrRecoveryAsync(timer, stoppingToken))
+                    if (!await WaitForWorkOrRecoveryAsync(timer, stoppingToken))
+                        return;
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
                 return;
+            }
+            catch (Exception exception)
+            {
+                // The durable recovery sweep must not terminate the portal
+                // when SQL is briefly unavailable. The next pass queries the
+                // same canonical PendingProcessing/Processing rows; no work
+                // is discarded and no second queue is introduced.
+                _logger.LogWarning(
+                    exception,
+                    "Social media recovery sweep failed and will retry after the normal interval.");
+                try
+                {
+                    await Task.Delay(RecoverySweepInterval, stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    return;
+                }
+            }
         }
     }
 
