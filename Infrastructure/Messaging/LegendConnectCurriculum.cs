@@ -86,6 +86,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     // existing bounded evaluator replay to supersede its prior derived row
     // without rewriting or conflating historical evidence.
     private const string ReusableStructuralRelationshipIdentityVersion = "controlled-anchor-order-v3";
+    // Candidate identities retain the evidence interpretation that produced
+    // them. Advance only with the existing evaluator version when the
+    // canonical contrast meaning materially changes.
+    private const string TargetRealizationCandidateDerivationVersion = "target-contrast-v1";
     private readonly MasterAppDbContext _db;
     private readonly ILegendLanguageRegistry _languages;
     private readonly LegendConnectCorpusService _corpus;
@@ -680,6 +684,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .SingleOrDefaultAsync(item => item.PairKey == alignment.PairKey && item.IsEnabled, cancellationToken);
         if (pair is null)
             return;
+        await ReconcileRetiredTargetRealizationCandidatesAsync(pair.PairKey, cancellationToken);
         var source = await _db.Set<LegendLanguageTextUnit>().AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == alignment.SourceTextUnitId && item.IsTrainingEligible, cancellationToken);
         var target = await _db.Set<LegendLanguageTextUnit>()
@@ -769,6 +774,229 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             cancellationToken);
         return null;
     }
+
+    /// <summary>
+    /// Founder-safe read projection of the candidate aggregate created by the
+    /// existing controlled cross-example evaluator. It exposes only retained
+    /// curriculum and alignment assets, never private message content.
+    /// </summary>
+    internal async Task<LegendTargetRealizationReviewSnapshot> GetTargetRealizationReviewAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var candidates = await _db.Set<LegendLanguageTargetRealizationCandidate>()
+            .AsNoTracking()
+            .OrderBy(item => item.VerificationState == "Candidate" || item.VerificationState == "Contradicted" ? 0 : 1)
+            .ThenByDescending(item => item.UpdatedUtc)
+            .Take(100)
+            .ToListAsync(cancellationToken);
+        var candidateIds = candidates.Select(item => item.Id).ToArray();
+        var evidence = candidateIds.Length == 0
+            ? []
+            : await (
+                from item in _db.Set<LegendLanguageTargetRealizationEvidence>().AsNoTracking()
+                join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking() on item.SourceTextUnitId equals source.Id
+                join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking() on item.TargetTextUnitId equals target.Id
+                where candidateIds.Contains(item.CandidateId) && item.SupersededUtc == null
+                orderby item.CreatedUtc
+                select new { item, SourceText = source.Text, TargetText = target.Text }
+            ).ToListAsync(cancellationToken);
+        var evidenceByCandidate = evidence.GroupBy(item => item.item.CandidateId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<LegendTargetRealizationEvidenceSnapshot>)group
+                .Take(12)
+                .Select(item => new LegendTargetRealizationEvidenceSnapshot(
+                    item.item.Id,
+                    item.SourceText,
+                    item.TargetText,
+                    item.item.TargetStartTokenIndex,
+                    item.item.TargetTokenLength,
+                    item.item.IsHumanVerifiedSupport,
+                    item.item.Provenance))
+                .ToList());
+        return new LegendTargetRealizationReviewSnapshot(
+            await _db.Set<LegendLanguageTargetRealizationCandidate>().LongCountAsync(cancellationToken),
+            await _db.Set<LegendLanguageTargetRealizationCandidate>().LongCountAsync(item => item.VerificationState == "FounderVerified", cancellationToken),
+            await _db.Set<LegendLanguageTargetRealizationCandidate>().LongCountAsync(item => item.VerificationState == "Rejected", cancellationToken),
+            await _db.Set<LegendLanguageTargetRealizationCandidate>().LongCountAsync(item => item.ContradictionCount > 0 && item.SupersededUtc == null, cancellationToken),
+            candidates.Select(item =>
+            {
+                var candidateEvidence = evidenceByCandidate.GetValueOrDefault(item.Id, []);
+                var representative = candidateEvidence.FirstOrDefault();
+                return new LegendTargetRealizationCandidateSnapshot(
+                    item.Id,
+                    item.PairKey,
+                    item.SourceLanguageCode,
+                    item.TargetLanguageCode,
+                    item.VariationDimension,
+                    item.SemanticValue,
+                    item.TargetRealization,
+                    item.SlotSignature,
+                    representative is null
+                        ? "No active template evidence"
+                        : TargetTemplatePreview(
+                            representative.TargetText,
+                            representative.TargetStartTokenIndex,
+                            representative.TargetTokenLength,
+                            item.VariationDimension),
+                    item.VerificationState,
+                    item.MaturityState,
+                    item.SupportCount,
+                    item.IndependentSourceCount,
+                    item.HumanVerifiedSupportCount,
+                    item.ProviderOnlySupportCount,
+                    item.ContradictionCount,
+                    item.Confidence,
+                    item.IsProductionEligible,
+                    candidateEvidence);
+            })
+                .ToList());
+    }
+
+    internal async Task<LegendTargetRealizationReviewActionResult> VerifyTargetRealizationCandidateAsync(
+        string founderUserId,
+        Guid candidateId,
+        CancellationToken cancellationToken = default)
+    {
+        var candidate = await _db.Set<LegendLanguageTargetRealizationCandidate>()
+            .SingleOrDefaultAsync(item => item.Id == candidateId, cancellationToken);
+        if (candidate is null || candidate.SupersededUtc is not null)
+            return TargetRealizationActionFailure(candidateId, "candidate_not_found", "The target-realization candidate is unavailable.");
+        if (candidate.VerificationState == "Rejected")
+            return TargetRealizationActionFailure(candidateId, "candidate_rejected", "Rejected candidates remain historical and cannot be verified again.");
+
+        await RefreshTargetRealizationCandidateAsync(candidateId, cancellationToken);
+        if (candidate.ContradictionCount > 0)
+            return TargetRealizationActionFailure(candidateId, "candidate_contradicted", "Conflicting target realizations remain unresolved; Founder verification fails closed.");
+
+        var evidence = await _db.Set<LegendLanguageTargetRealizationEvidence>()
+            .Where(item => item.CandidateId == candidateId && item.SupersededUtc == null)
+            .OrderBy(item => item.CreatedUtc)
+            .ToListAsync(cancellationToken);
+        if (evidence.Count == 0)
+            return TargetRealizationActionFailure(candidateId, "candidate_without_active_evidence", "The candidate no longer has active directional evidence.");
+
+        // An anchor is scoped to its exact target curriculum example. Creating
+        // the established anchor projection for every independently supported
+        // instance makes the target realization available to the existing
+        // reusable-relationship evaluator when complete, non-overlapping
+        // component coverage is independently established.
+        LegendLanguageCompositionalAnchor? representativeAnchor = null;
+        var affectedFamilies = new HashSet<Guid>();
+        foreach (var item in evidence)
+        {
+            var anchor = await GetOrCreateVerifiedTargetAnchorAsync(candidate, item, cancellationToken);
+            representativeAnchor ??= anchor;
+            affectedFamilies.Add(anchor.CurriculumFamilyId);
+        }
+
+        candidate.VerificationState = "FounderVerified";
+        candidate.VerifiedAnchorId = representativeAnchor!.Id;
+        candidate.VerifiedUtc = DateTime.UtcNow;
+        candidate.VerifiedByFounderUserId = founderUserId;
+        candidate.IsProductionEligible = false;
+        candidate.UpdatedUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+        foreach (var familyId in affectedFamilies)
+        {
+            await AnalyzeFamilyLanguageAsync(
+                familyId,
+                candidate.TargetLanguageCode,
+                candidate.PairKey,
+                cancellationToken);
+        }
+        await RefreshTargetRealizationCandidateAsync(candidateId, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+        return new LegendTargetRealizationReviewActionResult(
+            true,
+            null,
+            "Founder verification created one trusted canonical target anchor. Existing evidence still determines maturity; production composition remains closed.",
+            candidate.Id,
+            candidate.VerificationState,
+            candidate.VerifiedAnchorId);
+    }
+
+    private async Task<LegendLanguageCompositionalAnchor> GetOrCreateVerifiedTargetAnchorAsync(
+        LegendLanguageTargetRealizationCandidate candidate,
+        LegendLanguageTargetRealizationEvidence evidence,
+        CancellationToken cancellationToken)
+    {
+        var anchorSignature = LegendLanguageIdentity.TextHash(
+            $"verified-target-realization|{candidate.Id:D}|{evidence.TargetCurriculumExampleId:D}|{evidence.TargetStartTokenIndex}:{evidence.TargetTokenLength}");
+        var existing = _db.Set<LegendLanguageCompositionalAnchor>().Local
+            .SingleOrDefault(item => item.CurriculumExampleId == evidence.TargetCurriculumExampleId &&
+                item.AnchorSignature == anchorSignature)
+            ?? await _db.Set<LegendLanguageCompositionalAnchor>()
+                .SingleOrDefaultAsync(item => item.CurriculumExampleId == evidence.TargetCurriculumExampleId &&
+                    item.AnchorSignature == anchorSignature, cancellationToken);
+        if (existing is not null)
+        {
+            existing.SupersededUtc = null;
+            return existing;
+        }
+
+        var occurrence = await _db.Set<LegendLanguageLexicalOccurrence>()
+            .AsNoTracking()
+            .Where(item => item.TextUnitId == evidence.TargetTextUnitId &&
+                item.TokenIndex == evidence.TargetStartTokenIndex && item.SupersededUtc == null)
+            .Select(item => item.LexemeId)
+            .SingleOrDefaultAsync(cancellationToken);
+        var familyId = await _db.Set<LegendCurriculumExample>()
+            .Where(item => item.Id == evidence.TargetCurriculumExampleId)
+            .Select(item => item.CurriculumFamilyId)
+            .SingleAsync(cancellationToken);
+        var anchor = new LegendLanguageCompositionalAnchor
+        {
+            Id = Guid.NewGuid(),
+            LanguageCode = candidate.TargetLanguageCode,
+            PairKey = candidate.PairKey,
+            TextUnitId = evidence.TargetTextUnitId,
+            LexemeId = occurrence == Guid.Empty ? null : occurrence,
+            ComponentStartTokenIndex = evidence.TargetStartTokenIndex,
+            ComponentLength = evidence.TargetTokenLength,
+            CurriculumFamilyId = familyId,
+            CurriculumExampleId = evidence.TargetCurriculumExampleId,
+            Dimension = candidate.VariationDimension,
+            Value = candidate.SemanticValue,
+            SemanticSignature = candidate.SemanticSignature,
+            AnchorSignature = anchorSignature,
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+            CreatedUtc = DateTime.UtcNow
+        };
+        _db.Set<LegendLanguageCompositionalAnchor>().Add(anchor);
+        return anchor;
+    }
+
+    internal async Task<LegendTargetRealizationReviewActionResult> RejectTargetRealizationCandidateAsync(
+        string founderUserId,
+        Guid candidateId,
+        CancellationToken cancellationToken = default)
+    {
+        var candidate = await _db.Set<LegendLanguageTargetRealizationCandidate>()
+            .SingleOrDefaultAsync(item => item.Id == candidateId, cancellationToken);
+        if (candidate is null || candidate.SupersededUtc is not null)
+            return TargetRealizationActionFailure(candidateId, "candidate_not_found", "The target-realization candidate is unavailable.");
+        if (candidate.VerificationState == "FounderVerified")
+            return TargetRealizationActionFailure(candidateId, "candidate_already_verified", "A verified realization must be changed through the existing Founder correction path.");
+
+        candidate.VerificationState = "Rejected";
+        candidate.MaturityState = "Superseded";
+        candidate.IsProductionEligible = false;
+        candidate.RejectedUtc = DateTime.UtcNow;
+        candidate.RejectedByFounderUserId = founderUserId;
+        candidate.UpdatedUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+        return new LegendTargetRealizationReviewActionResult(
+            true,
+            null,
+            "The candidate was rejected. Its evidence remains retained for audit and cannot become trusted.",
+            candidate.Id,
+            candidate.VerificationState,
+            null);
+    }
+
+    private static LegendTargetRealizationReviewActionResult TargetRealizationActionFailure(
+        Guid candidateId,
+        string errorCode,
+        string message) => new(false, errorCode, message, candidateId, "Unavailable", null);
 
     /// <summary>
     /// Evaluates an explicitly bounded, previously unseen target construction
@@ -1730,15 +1958,457 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             }
         }
 
-        if (affectedPatternIds.Count == 0)
-            return;
-        await _db.SaveChangesAsync(cancellationToken);
-        foreach (var patternId in affectedPatternIds)
-            await RefreshPatternMaturityAsync(patternId, cancellationToken);
-        foreach (var relationshipId in affectedRelationshipIds)
-            await RefreshStructuralRelationshipMaturityAsync(relationshipId, cancellationToken);
-        await _db.SaveChangesAsync(cancellationToken);
+        if (affectedPatternIds.Count > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            foreach (var patternId in affectedPatternIds)
+                await RefreshPatternMaturityAsync(patternId, cancellationToken);
+            foreach (var relationshipId in affectedRelationshipIds)
+                await RefreshStructuralRelationshipMaturityAsync(relationshipId, cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        // Target realization candidates are derived from this same controlled
+        // directional comparison. They retain a review-only state and do not
+        // participate in the existing trusted-anchor queries until a Founder
+        // explicitly verifies one.
+        if (!string.IsNullOrWhiteSpace(pairKey))
+            await DeriveTargetRealizationCandidatesAsync(
+                pairKey,
+                languageCode,
+                examples,
+                variationsByExample,
+                cancellationToken);
     }
+
+    private async Task DeriveTargetRealizationCandidatesAsync(
+        string pairKey,
+        string targetLanguageCode,
+        IReadOnlyList<AnalysisExample> examples,
+        IReadOnlyDictionary<Guid, Dictionary<string, string>> variationsByExample,
+        CancellationToken cancellationToken)
+    {
+        if (examples.Count < 2)
+            return;
+
+        var separator = pairKey.IndexOf(':', StringComparison.Ordinal);
+        if (separator <= 0 || separator == pairKey.Length - 1)
+            return;
+        var sourceLanguageCode = pairKey[..separator];
+        var affectedCandidateIds = new HashSet<Guid>();
+
+        for (var leftIndex = 0; leftIndex < examples.Count - 1; leftIndex++)
+        {
+            var left = examples[leftIndex];
+            if (!variationsByExample.TryGetValue(left.Example.Id, out var leftVariations) ||
+                left.Example.DerivedFromCurriculumExampleId is null || left.AlignmentId is null)
+            {
+                continue;
+            }
+
+            for (var rightIndex = leftIndex + 1; rightIndex < examples.Count; rightIndex++)
+            {
+                var right = examples[rightIndex];
+                if (!variationsByExample.TryGetValue(right.Example.Id, out var rightVariations) ||
+                    right.Example.DerivedFromCurriculumExampleId is null || right.AlignmentId is null)
+                {
+                    continue;
+                }
+
+                // Only an isolated, Founder-controlled semantic difference
+                // may produce a realization hypothesis. Comparisons with two
+                // changed values are not evidence of either target span.
+                var changedDimensions = leftVariations.Keys
+                    .Intersect(rightVariations.Keys, StringComparer.Ordinal)
+                    .Where(dimension => !string.Equals(
+                        leftVariations[dimension], rightVariations[dimension], StringComparison.Ordinal))
+                    .ToList();
+                if (changedDimensions.Count != 1 ||
+                    leftVariations.Count != rightVariations.Count ||
+                    leftVariations.Keys.Except(rightVariations.Keys, StringComparer.Ordinal).Any())
+                {
+                    continue;
+                }
+
+                var dimension = changedDimensions[0];
+                var contrast = TryGetSafeTargetContrast(left.Text, right.Text, dimension);
+                if (contrast is null)
+                    continue;
+
+                var contextSignature = CandidateContextSignature(leftVariations, dimension);
+                var leftCandidate = await GetOrCreateTargetRealizationCandidateAsync(
+                    pairKey,
+                    sourceLanguageCode,
+                    targetLanguageCode,
+                    dimension,
+                    leftVariations[dimension],
+                    contrast.Left,
+                    contextSignature,
+                    cancellationToken);
+                var rightCandidate = await GetOrCreateTargetRealizationCandidateAsync(
+                    pairKey,
+                    sourceLanguageCode,
+                    targetLanguageCode,
+                    dimension,
+                    rightVariations[dimension],
+                    contrast.Right,
+                    contextSignature,
+                    cancellationToken);
+
+                await AddTargetRealizationEvidenceIfAbsentAsync(
+                    leftCandidate,
+                    left,
+                    contrast.Left,
+                    cancellationToken);
+                await AddTargetRealizationEvidenceIfAbsentAsync(
+                    rightCandidate,
+                    right,
+                    contrast.Right,
+                    cancellationToken);
+                affectedCandidateIds.Add(leftCandidate.Id);
+                affectedCandidateIds.Add(rightCandidate.Id);
+            }
+        }
+
+        // Persist the candidate/evidence identities before computing their
+        // aggregate counts. Relational queries intentionally do not rely on
+        // unsaved tracked additions, which also keeps InMemory and SQL Server
+        // reconciliation semantics aligned.
+        if (_db.ChangeTracker.HasChanges())
+            await _db.SaveChangesAsync(cancellationToken);
+
+        affectedCandidateIds.UnionWith(await ReconcileRetiredTargetRealizationEvidenceAsync(pairKey, cancellationToken));
+        // Retired alignment evidence must be durable before the aggregate
+        // queries below. This is the same correction/reconciliation boundary
+        // used by current and historical alignment processing.
+        if (_db.ChangeTracker.HasChanges())
+            await _db.SaveChangesAsync(cancellationToken);
+        if (affectedCandidateIds.Count > 0)
+        {
+            var affectedContexts = await _db.Set<LegendLanguageTargetRealizationCandidate>().AsNoTracking()
+                .Where(item => affectedCandidateIds.Contains(item.Id))
+                .Select(item => new { item.PairKey, item.SemanticSignature, item.ContextSignature })
+                .ToListAsync(cancellationToken);
+            if (affectedContexts.Count > 0)
+            {
+                var allConflictingIds = await _db.Set<LegendLanguageTargetRealizationCandidate>().AsNoTracking()
+                    .Where(item => item.PairKey == pairKey && item.SupersededUtc == null)
+                    .Select(item => new { item.Id, item.PairKey, item.SemanticSignature, item.ContextSignature })
+                    .ToListAsync(cancellationToken);
+                affectedCandidateIds.UnionWith(allConflictingIds
+                    .Where(item => affectedContexts.Any(context =>
+                        context.PairKey == item.PairKey && context.SemanticSignature == item.SemanticSignature &&
+                        context.ContextSignature == item.ContextSignature))
+                    .Select(item => item.Id));
+            }
+        }
+
+        foreach (var candidateId in affectedCandidateIds)
+            await RefreshTargetRealizationCandidateAsync(candidateId, cancellationToken);
+        if (_db.ChangeTracker.HasChanges())
+            await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<LegendLanguageTargetRealizationCandidate> GetOrCreateTargetRealizationCandidateAsync(
+        string pairKey,
+        string sourceLanguageCode,
+        string targetLanguageCode,
+        string dimension,
+        string semanticValue,
+        TargetContrastSpan span,
+        string contextSignature,
+        CancellationToken cancellationToken)
+    {
+        var semanticSignature = SemanticSignature(dimension, semanticValue);
+        var identity = LegendLanguageIdentity.TextHash(string.Join('|',
+            "target-realization", TargetRealizationCandidateDerivationVersion, pairKey,
+            semanticSignature, span.Realization, span.SlotSignature, contextSignature));
+        var candidate = _db.Set<LegendLanguageTargetRealizationCandidate>().Local
+            .SingleOrDefault(item => item.CandidateIdentity == identity)
+            ?? await _db.Set<LegendLanguageTargetRealizationCandidate>()
+                .SingleOrDefaultAsync(item => item.CandidateIdentity == identity, cancellationToken);
+        if (candidate is not null)
+        {
+            if (candidate.SupersededUtc is not null)
+                candidate.SupersededUtc = null;
+            candidate.UpdatedUtc = DateTime.UtcNow;
+            return candidate;
+        }
+
+        candidate = new LegendLanguageTargetRealizationCandidate
+        {
+            Id = Guid.NewGuid(),
+            PairKey = pairKey,
+            SourceLanguageCode = sourceLanguageCode,
+            TargetLanguageCode = targetLanguageCode,
+            SemanticSignature = semanticSignature,
+            VariationDimension = dimension,
+            SemanticValue = semanticValue,
+            TargetRealization = span.Realization,
+            ContextSignature = contextSignature,
+            TemplateSignature = span.TemplateSignature,
+            SlotSignature = span.SlotSignature,
+            CandidateIdentity = identity,
+            VerificationState = "Candidate",
+            MaturityState = "Observation",
+            IsProductionEligible = false,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        _db.Set<LegendLanguageTargetRealizationCandidate>().Add(candidate);
+        return candidate;
+    }
+
+    private async Task AddTargetRealizationEvidenceIfAbsentAsync(
+        LegendLanguageTargetRealizationCandidate candidate,
+        AnalysisExample example,
+        TargetContrastSpan span,
+        CancellationToken cancellationToken)
+    {
+        var sourceExampleId = example.Example.DerivedFromCurriculumExampleId;
+        if (sourceExampleId is null || example.AlignmentId is null)
+            return;
+        var identity = LegendLanguageIdentity.TextHash(string.Join('|',
+            candidate.Id.ToString("D"), sourceExampleId.Value.ToString("D"), example.Example.Id.ToString("D"),
+            example.AlignmentId.Value.ToString("D"), span.StartTokenIndex, span.TokenLength));
+        if (_db.Set<LegendLanguageTargetRealizationEvidence>().Local.Any(item =>
+                item.CandidateId == candidate.Id && item.EvidenceIdentity == identity) ||
+            await _db.Set<LegendLanguageTargetRealizationEvidence>().AnyAsync(item =>
+                item.CandidateId == candidate.Id && item.EvidenceIdentity == identity, cancellationToken))
+        {
+            return;
+        }
+
+        _db.Set<LegendLanguageTargetRealizationEvidence>().Add(new LegendLanguageTargetRealizationEvidence
+        {
+            Id = Guid.NewGuid(),
+            CandidateId = candidate.Id,
+            SourceCurriculumExampleId = sourceExampleId.Value,
+            TargetCurriculumExampleId = example.Example.Id,
+            SourceTextUnitId = example.SourceTextUnitId,
+            TargetTextUnitId = example.TargetTextUnitId,
+            SourceAlignmentId = example.AlignmentId,
+            TargetStartTokenIndex = span.StartTokenIndex,
+            TargetTokenLength = span.TokenLength,
+            EvidenceIdentity = identity,
+            IsHumanVerifiedSupport = example.IsHumanVerifiedSupport,
+            // Trust and origin are deliberately separate. A Founder can
+            // verify a provider observation through the established review
+            // path, but its retained provenance must remain ProviderDerived.
+            Provenance = example.AlignmentProvenance,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+    }
+
+    private async Task<IReadOnlyCollection<Guid>> ReconcileRetiredTargetRealizationEvidenceAsync(
+        string pairKey,
+        CancellationToken cancellationToken)
+    {
+        var stale = await (
+            from evidence in _db.Set<LegendLanguageTargetRealizationEvidence>()
+            join candidate in _db.Set<LegendLanguageTargetRealizationCandidate>() on evidence.CandidateId equals candidate.Id
+            join alignment in _db.Set<LegendTranslationAlignment>() on evidence.SourceAlignmentId equals alignment.Id
+            where candidate.PairKey == pairKey && evidence.SupersededUtc == null && alignment.SupersededUtc != null
+            select evidence
+        ).ToListAsync(cancellationToken);
+        if (stale.Count == 0)
+            return [];
+        var now = DateTime.UtcNow;
+        foreach (var evidence in stale)
+        {
+            evidence.SupersededUtc = now;
+            evidence.UpdatedUtc = now;
+        }
+        return stale.Select(item => item.CandidateId).Distinct().ToArray();
+    }
+
+    /// <summary>
+    /// Keeps target-realization support attached to the active directional
+    /// alignment lineage. It is invoked from the existing alignment attach
+    /// path, so a current correction and a versioned historical replay use
+    /// the exact same reconciliation behavior.
+    /// </summary>
+    private async Task ReconcileRetiredTargetRealizationCandidatesAsync(
+        string pairKey,
+        CancellationToken cancellationToken)
+    {
+        var affectedCandidateIds = await ReconcileRetiredTargetRealizationEvidenceAsync(pairKey, cancellationToken);
+        if (affectedCandidateIds.Count == 0)
+            return;
+
+        await _db.SaveChangesAsync(cancellationToken);
+        foreach (var candidateId in affectedCandidateIds)
+            await RefreshTargetRealizationCandidateAsync(candidateId, cancellationToken);
+        if (_db.ChangeTracker.HasChanges())
+            await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task RefreshTargetRealizationCandidateAsync(
+        Guid candidateId,
+        CancellationToken cancellationToken)
+    {
+        var candidate = await _db.Set<LegendLanguageTargetRealizationCandidate>()
+            .SingleOrDefaultAsync(item => item.Id == candidateId, cancellationToken);
+        if (candidate is null)
+            return;
+
+        var evidence = await _db.Set<LegendLanguageTargetRealizationEvidence>()
+            .Where(item => item.CandidateId == candidateId && item.SupersededUtc == null)
+            .ToListAsync(cancellationToken);
+        if (evidence.Count == 0)
+        {
+            var supersededUtc = candidate.SupersededUtc ?? DateTime.UtcNow;
+            candidate.SupersededUtc = supersededUtc;
+            candidate.MaturityState = "Superseded";
+            candidate.IsProductionEligible = false;
+            if (candidate.VerifiedAnchorId is Guid verifiedAnchorId)
+            {
+                var anchor = await _db.Set<LegendLanguageCompositionalAnchor>()
+                    .SingleOrDefaultAsync(item => item.Id == verifiedAnchorId, cancellationToken);
+                if (anchor is not null && anchor.SupersededUtc is null)
+                    anchor.SupersededUtc = supersededUtc;
+            }
+            candidate.UpdatedUtc = DateTime.UtcNow;
+            return;
+        }
+
+        candidate.SupportCount = evidence.Select(item => item.SourceTextUnitId).Distinct().Count();
+        candidate.IndependentSourceCount = evidence.Select(item => item.SourceCurriculumExampleId).Distinct().Count();
+        candidate.HumanVerifiedSupportCount = evidence.Where(item => item.IsHumanVerifiedSupport)
+            .Select(item => item.SourceTextUnitId).Distinct().Count();
+        candidate.ProviderOnlySupportCount = evidence.Where(item => !item.IsHumanVerifiedSupport)
+            .Select(item => item.SourceTextUnitId).Distinct().Count();
+        var conflicting = await _db.Set<LegendLanguageTargetRealizationCandidate>().AsNoTracking()
+            .Where(item => item.Id != candidate.Id && item.PairKey == candidate.PairKey &&
+                item.SemanticSignature == candidate.SemanticSignature && item.ContextSignature == candidate.ContextSignature &&
+                item.SlotSignature == candidate.SlotSignature && item.TargetRealization != candidate.TargetRealization &&
+                item.SupersededUtc == null &&
+                item.VerificationState != "Rejected")
+            .Select(item => item.Id)
+            .ToListAsync(cancellationToken);
+        candidate.ContradictionCount = conflicting.Count;
+        candidate.Confidence = candidate.SupportCount == 0
+            ? 0m
+            : decimal.Round((decimal)candidate.HumanVerifiedSupportCount /
+                Math.Max(1, candidate.SupportCount + candidate.ContradictionCount), 4);
+        candidate.IsProductionEligible = false;
+        candidate.SupersededUtc = null;
+        if (candidate.VerificationState is not "FounderVerified" and not "Rejected")
+        {
+            candidate.VerificationState = candidate.ContradictionCount > 0
+                ? "Contradicted"
+                : "Candidate";
+        }
+        candidate.MaturityState = candidate.VerificationState switch
+        {
+            "Rejected" => "Superseded",
+            _ when candidate.ContradictionCount > 0 => "Observation",
+            "FounderVerified" when candidate.HumanVerifiedSupportCount >= 3 && candidate.IndependentSourceCount >= 3 => "Supported",
+            "FounderVerified" when candidate.HumanVerifiedSupportCount >= 2 => "Candidate",
+            "FounderVerified" => "Observation",
+            _ => "Observation"
+        };
+        candidate.UpdatedUtc = DateTime.UtcNow;
+    }
+
+    private static TargetContrast? TryGetSafeTargetContrast(string leftText, string rightText, string dimension)
+    {
+        var leftTokens = SurfaceComponents(leftText).Select(item => item.NormalizedText).ToArray();
+        var rightTokens = SurfaceComponents(rightText).Select(item => item.NormalizedText).ToArray();
+        if (leftTokens.Length == 0 || rightTokens.Length == 0)
+            return null;
+
+        var lcs = new int[leftTokens.Length + 1, rightTokens.Length + 1];
+        for (var leftIndex = leftTokens.Length - 1; leftIndex >= 0; leftIndex--)
+        for (var rightIndex = rightTokens.Length - 1; rightIndex >= 0; rightIndex--)
+            lcs[leftIndex, rightIndex] = string.Equals(leftTokens[leftIndex], rightTokens[rightIndex], StringComparison.Ordinal)
+                ? 1 + lcs[leftIndex + 1, rightIndex + 1]
+                : Math.Max(lcs[leftIndex + 1, rightIndex], lcs[leftIndex, rightIndex + 1]);
+
+        var leftMatched = new HashSet<int>();
+        var rightMatched = new HashSet<int>();
+        var i = 0;
+        var j = 0;
+        while (i < leftTokens.Length && j < rightTokens.Length)
+        {
+            if (string.Equals(leftTokens[i], rightTokens[j], StringComparison.Ordinal))
+            {
+                leftMatched.Add(i++);
+                rightMatched.Add(j++);
+            }
+            else if (lcs[i + 1, j] >= lcs[i, j + 1])
+            {
+                i++;
+            }
+            else
+            {
+                j++;
+            }
+        }
+
+        var leftUnmatched = Enumerable.Range(0, leftTokens.Length).Where(index => !leftMatched.Contains(index)).ToArray();
+        var rightUnmatched = Enumerable.Range(0, rightTokens.Length).Where(index => !rightMatched.Contains(index)).ToArray();
+        if (!IsOneContiguousSpan(leftUnmatched) || !IsOneContiguousSpan(rightUnmatched))
+            return null;
+
+        var left = BuildTargetContrastSpan(leftTokens, leftUnmatched, dimension);
+        var right = BuildTargetContrastSpan(rightTokens, rightUnmatched, dimension);
+        return left is null || right is null ? null : new TargetContrast(left, right);
+    }
+
+    private static string TargetTemplatePreview(
+        string targetText,
+        int startTokenIndex,
+        int tokenLength,
+        string dimension)
+    {
+        var tokens = LegendLanguageIdentity.NormalizeText(targetText)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (startTokenIndex < 0 || tokenLength <= 0 || startTokenIndex + tokenLength > tokens.Length)
+            return "Observed target template unavailable";
+        for (var index = startTokenIndex; index < startTokenIndex + tokenLength; index++)
+            tokens[index] = $"<{dimension}>";
+        return string.Join(' ', tokens);
+    }
+
+    private static bool IsOneContiguousSpan(IReadOnlyList<int> indexes) =>
+        indexes.Count > 0 && indexes.Skip(1).Select((index, offset) => index == indexes[offset] + 1).All(item => item);
+
+    private static TargetContrastSpan? BuildTargetContrastSpan(
+        IReadOnlyList<string> tokens,
+        IReadOnlyList<int> indexes,
+        string dimension)
+    {
+        if (!IsOneContiguousSpan(indexes))
+            return null;
+        var start = indexes[0];
+        var length = indexes.Count;
+        var realization = string.Join(' ', indexes.Select(index => tokens[index]));
+        if (string.IsNullOrWhiteSpace(realization))
+            return null;
+        var template = tokens.Select((token, index) => index >= start && index < start + length
+            ? $"<{dimension}>"
+            : token);
+        return new TargetContrastSpan(
+            realization,
+            start,
+            length,
+            LegendLanguageIdentity.TextHash("target-template|" + string.Join(' ', template)),
+            $"{dimension}:{start}:{length}:of:{tokens.Count}");
+    }
+
+    private static string CandidateContextSignature(
+        IReadOnlyDictionary<string, string> variations,
+        string changedDimension) =>
+        LegendLanguageIdentity.TextHash("target-realization-context|" + string.Join('|', variations
+            .Where(item => !string.Equals(item.Key, changedDimension, StringComparison.Ordinal))
+            .OrderBy(item => item.Key, StringComparer.Ordinal)
+            // Values are intentionally omitted: independently controlled
+            // examples may differ in lexical content while preserving the
+            // same declared structural slots. Distinct source senses remain
+            // separate through the changed component's SemanticSignature.
+            .Select(item => item.Key)));
 
     private async Task<List<AnalysisExample>> LoadAnalysisExamplesAsync(
         Guid familyId,
@@ -1758,8 +2428,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 select new { Example = example, Text = textUnit.Text, TextUnitId = textUnit.Id, textUnit.Provenance }
             ).ToListAsync(cancellationToken);
             return sourceExamples.Select(item => new AnalysisExample(
-                item.Example, item.Text, item.TextUnitId,
+                item.Example, item.Text, item.TextUnitId, item.TextUnitId,
                 string.Equals(item.Provenance, LegendConnectKnowledgeProvenance.FounderApproved, StringComparison.Ordinal),
+                item.Provenance,
                 null)).ToList();
         }
 
@@ -1775,10 +2446,25 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 targetExample.SupersededUtc == null && sourceExample.SupersededUtc == null &&
                 target.IsTrainingEligible && alignment.PairKey == pairKey && alignment.SupersededUtc == null
             orderby targetExample.Id
-            select new { Example = targetExample, Text = target.Text, SourceTextUnitId = sourceExample.TextUnitId, alignment.HumanVerified, alignment.Id }
+            select new
+            {
+                Example = targetExample,
+                Text = target.Text,
+                TargetTextUnitId = target.Id,
+                SourceTextUnitId = sourceExample.TextUnitId,
+                alignment.HumanVerified,
+                alignment.Provenance,
+                alignment.Id
+            }
         ).ToListAsync(cancellationToken);
         return targetExamples.Select(item => new AnalysisExample(
-            item.Example, item.Text, item.SourceTextUnitId, item.HumanVerified, item.Id)).ToList();
+            item.Example,
+            item.Text,
+            item.TargetTextUnitId,
+            item.SourceTextUnitId,
+            item.HumanVerified,
+            item.Provenance,
+            item.Id)).ToList();
     }
 
     private async Task<bool> HasTrustedDirectionalConflictAsync(
@@ -2277,8 +2963,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private sealed record AnalysisExample(
         LegendCurriculumExample Example,
         string Text,
+        Guid TargetTextUnitId,
         Guid SourceTextUnitId,
         bool IsHumanVerifiedSupport,
+        string AlignmentProvenance,
         Guid? AlignmentId);
 
     private sealed record SurfaceComponent(
@@ -2338,6 +3026,17 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private sealed record ReusableStructuralRelationshipCandidate(
         string RelationshipSignature,
         string AnchorLayoutSignature);
+
+    private sealed record TargetContrast(
+        TargetContrastSpan Left,
+        TargetContrastSpan Right);
+
+    private sealed record TargetContrastSpan(
+        string Realization,
+        int StartTokenIndex,
+        int TokenLength,
+        string TemplateSignature,
+        string SlotSignature);
 
     private sealed record StructuralEvidenceImpact(
         Guid StructuralPatternId,

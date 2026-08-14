@@ -245,6 +245,54 @@
         </div>
     </details>
 
+    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="target-realizations-title" data-legend-copy-source="target-realizations">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker @LegendConnectMetricTone.Info">Founder review required</span><span class="dashboard-section-title @LegendConnectMetricTone.Info" id="target-realizations-title">Target realization candidates</span></span><span class="legend-connect-disclosure-status @LegendConnectMetricTone.PendingWork(Model.TargetRealizations.CandidateCount - Model.TargetRealizations.FounderVerifiedCount - Model.TargetRealizations.RejectedCount)">@Model.TargetRealizations.CandidateCount.ToString("N0") retained</span></summary>
+        <div class="legend-connect-disclosure-body">
+            <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("target-realizations")" /></div>
+            <p class="dashboard-section-copy">These are evidence-backed target-language hypotheses, not translations. Only a Founder verification creates a trusted canonical anchor; maturity and production eligibility remain independently gated.</p>
+            <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--four">
+                <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(Model.TargetRealizations.CandidateCount - Model.TargetRealizations.FounderVerifiedCount - Model.TargetRealizations.RejectedCount)"><span class="dashboard-stat-label">Awaiting Founder review</span><span class="dashboard-stat-value">@Math.Max(0, Model.TargetRealizations.CandidateCount - Model.TargetRealizations.FounderVerifiedCount - Model.TargetRealizations.RejectedCount).ToString("N0")</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(Model.TargetRealizations.FounderVerifiedCount)"><span class="dashboard-stat-label">Founder verified anchors</span><span class="dashboard-stat-value">@Model.TargetRealizations.FounderVerifiedCount.ToString("N0")</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(Model.TargetRealizations.ContradictedCount)"><span class="dashboard-stat-label">Contradicted hypotheses</span><span class="dashboard-stat-value">@Model.TargetRealizations.ContradictedCount.ToString("N0")</span></div>
+                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(Model.TargetRealizations.RejectedCount)"><span class="dashboard-stat-label">Rejected history retained</span><span class="dashboard-stat-value">@Model.TargetRealizations.RejectedCount.ToString("N0")</span></div>
+            </div>
+            @if (Model.TargetRealizations.Candidates.Count == 0)
+            {
+                <p class="dashboard-section-copy">No controlled directional contrast has yet produced a reviewable target realization. Provider observations remain separate and cannot create trusted support.</p>
+            }
+            else
+            {
+                <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Directional component</th><th>Proposed target span / slot</th><th>Evidence and maturity</th><th>Founder review</th></tr></thead><tbody>
+                @foreach (var candidate in Model.TargetRealizations.Candidates)
+                {
+                    <tr>
+                        <td><strong>@candidate.PairKey</strong><br /><small class="@LegendConnectMetricTone.Info">@candidate.VariationDimension · @candidate.SemanticValue</small></td>
+                        <td><strong class="@LegendConnectMetricTone.Provenance(candidate.VerificationState, candidate.VerificationState == "FounderVerified")">@candidate.TargetRealization</strong><br /><small>Observed template: @candidate.TemplatePreview</small><br /><small>Slot: @candidate.SlotSignature</small></td>
+                        <td><span class="@LegendConnectMetricTone.Provenance(candidate.VerificationState, candidate.VerificationState == "FounderVerified")">@candidate.VerificationState</span> · <span class="@LegendConnectMetricTone.Maturity(candidate.MaturityState)">@candidate.MaturityState</span><br /><small>@candidate.SupportCount supporting · @candidate.HumanVerifiedSupportCount human-verified · @candidate.ProviderOnlySupportCount provider-only · <span class="@LegendConnectMetricTone.Contradictions(candidate.ContradictionCount)">@candidate.ContradictionCount contradiction@(candidate.ContradictionCount == 1 ? string.Empty : "s")</span> · production @candidate.IsProductionEligible</small>
+                        @if (candidate.Evidence.Count > 0)
+                        {
+                            <details class="legend-connect-account-parameters"><summary>Show @candidate.Evidence.Count retained supporting example@(candidate.Evidence.Count == 1 ? string.Empty : "s")</summary><ul>@foreach (var evidence in candidate.Evidence) { <li><span class="@LegendConnectMetricTone.Provenance(evidence.Provenance, evidence.HumanVerifiedSupport)">@evidence.Provenance</span> · @evidence.SourceText → @evidence.TargetText</li> }</ul></details>
+                        }
+                        </td>
+                        <td>
+                        @if (candidate.VerificationState is "Candidate" or "Contradicted")
+                        {
+                            <form method="post" asp-action="VerifyTargetRealizationCandidate" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<input type="hidden" name="CandidateId" value="@candidate.Id" /><button type="submit" class="dashboard-command-action btn-carrier-settings">Verify target anchor</button></form>
+                            <form method="post" asp-action="RejectTargetRealizationCandidate" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<input type="hidden" name="CandidateId" value="@candidate.Id" /><button type="submit" class="dashboard-command-action btn-carrier-settings">Reject candidate</button></form>
+                            <small>Leave it unchanged to defer review.</small>
+                        }
+                        else
+                        {
+                            <small>@(candidate.VerificationState == "FounderVerified" ? "Trusted anchor retained; production composition remains closed." : "Historical review state retained.")</small>
+                        }
+                        </td>
+                    </tr>
+                }
+                </tbody></table></div>
+            }
+        </div>
+    </details>
+
     <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="active-pairs-title" data-legend-copy-source="active-directional-pairs">
         <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Directional health</span><span class="dashboard-section-title" id="active-pairs-title">Active directional pairs</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="active-pairs-summary">@dashboard.Pairs.Count.ToString("N0") pairs</span></summary>
         <div class="legend-connect-disclosure-body">

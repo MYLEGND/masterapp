@@ -1278,6 +1278,40 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         CancellationToken cancellationToken = default) =>
         _intelligence.GetTranslationQualityAsync(cancellationToken);
 
+    public Task<LegendTargetRealizationReviewSnapshot> GetTargetRealizationReviewAsync(
+        CancellationToken cancellationToken = default) =>
+        _curriculum.GetTargetRealizationReviewAsync(cancellationToken);
+
+    public async Task<LegendTargetRealizationReviewActionResult> VerifyTargetRealizationCandidateAsync(
+        string founderUserId,
+        Guid candidateId,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = NormalizeFounder(founderUserId);
+        if (founder is null)
+            return new LegendTargetRealizationReviewActionResult(
+                false, "founder_identity_required", "A verified Founder identity is required.", candidateId, "Unavailable", null);
+
+        var result = await _curriculum.VerifyTargetRealizationCandidateAsync(founder, candidateId, cancellationToken);
+        await WriteTargetRealizationReviewAuditAsync(founder, "FounderTargetRealizationVerified", result, cancellationToken);
+        return result;
+    }
+
+    public async Task<LegendTargetRealizationReviewActionResult> RejectTargetRealizationCandidateAsync(
+        string founderUserId,
+        Guid candidateId,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = NormalizeFounder(founderUserId);
+        if (founder is null)
+            return new LegendTargetRealizationReviewActionResult(
+                false, "founder_identity_required", "A verified Founder identity is required.", candidateId, "Unavailable", null);
+
+        var result = await _curriculum.RejectTargetRealizationCandidateAsync(founder, candidateId, cancellationToken);
+        await WriteTargetRealizationReviewAuditAsync(founder, "FounderTargetRealizationRejected", result, cancellationToken);
+        return result;
+    }
+
     public async Task<LegendConnectKnowledgeSubmissionResult> SubmitFounderKnowledgeAsync(
         string founderUserId,
         LegendConnectKnowledgeSubmission submission,
@@ -1926,6 +1960,24 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             LanguageCode = result.SourceLanguageCode ?? string.Empty,
             PairKey = result.PairKey,
             AlignmentId = alignmentId,
+            Detail = Bound(result.Message, 500),
+            OccurredUtc = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task WriteTargetRealizationReviewAuditAsync(
+        string founderUserId,
+        string action,
+        LegendTargetRealizationReviewActionResult result,
+        CancellationToken cancellationToken)
+    {
+        _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
+        {
+            Id = Guid.NewGuid(),
+            FounderUserId = founderUserId,
+            Action = action,
+            Result = result.Succeeded ? "Succeeded" : result.ErrorCode ?? "Rejected",
             Detail = Bound(result.Message, 500),
             OccurredUtc = DateTime.UtcNow
         });

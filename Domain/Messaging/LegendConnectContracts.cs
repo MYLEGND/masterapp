@@ -517,6 +517,60 @@ public sealed record LegendConnectMetricDetailSnapshot(
     IReadOnlyList<LegendConnectMetricDetailSectionSnapshot> Sections);
 
 /// <summary>
+/// Founder-safe evidence for one derived target realization. All text comes
+/// from retained Founder-approved curriculum or a retained provider
+/// observation; private message bodies are never projected here.
+/// </summary>
+public sealed record LegendTargetRealizationEvidenceSnapshot(
+    Guid Id,
+    string SourceText,
+    string TargetText,
+    int TargetStartTokenIndex,
+    int TargetTokenLength,
+    bool HumanVerifiedSupport,
+    string Provenance);
+
+/// <summary>
+/// A reviewable, non-authoritative target-realization hypothesis. Founder
+/// verification is required before an existing canonical anchor is created.
+/// </summary>
+public sealed record LegendTargetRealizationCandidateSnapshot(
+    Guid Id,
+    string PairKey,
+    string SourceLanguageCode,
+    string TargetLanguageCode,
+    string VariationDimension,
+    string SemanticValue,
+    string TargetRealization,
+    string SlotSignature,
+    string TemplatePreview,
+    string VerificationState,
+    string MaturityState,
+    int SupportCount,
+    int IndependentSourceCount,
+    int HumanVerifiedSupportCount,
+    int ProviderOnlySupportCount,
+    int ContradictionCount,
+    decimal Confidence,
+    bool IsProductionEligible,
+    IReadOnlyList<LegendTargetRealizationEvidenceSnapshot> Evidence);
+
+public sealed record LegendTargetRealizationReviewSnapshot(
+    long CandidateCount,
+    long FounderVerifiedCount,
+    long RejectedCount,
+    long ContradictedCount,
+    IReadOnlyList<LegendTargetRealizationCandidateSnapshot> Candidates);
+
+public sealed record LegendTargetRealizationReviewActionResult(
+    bool Succeeded,
+    string? ErrorCode,
+    string Message,
+    Guid CandidateId,
+    string VerificationState,
+    Guid? VerifiedAnchorId);
+
+/// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation
 /// layers may use it only after their established Founder authorization guard
 /// succeeds; it owns neither identity authorization nor mobile contracts.
@@ -551,6 +605,19 @@ public interface ILegendConnectOperations
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<LegendTargetRealizationReviewSnapshot> GetTargetRealizationReviewAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<LegendTargetRealizationReviewActionResult> VerifyTargetRealizationCandidateAsync(
+        string founderUserId,
+        Guid candidateId,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendTargetRealizationReviewActionResult> RejectTargetRealizationCandidateAsync(
+        string founderUserId,
+        Guid candidateId,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectKnowledgeSubmissionResult> SubmitFounderKnowledgeAsync(

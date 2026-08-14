@@ -43,6 +43,7 @@ public sealed class FounderLegendConnectService
         var dashboardProjection = await _operations.GetDashboardProjectionAsync(language, pair, cancellationToken);
         var dashboard = dashboardProjection.Dashboard;
         var translationQuality = await _operations.GetTranslationQualityAsync(cancellationToken);
+        var targetRealizations = await _operations.GetTargetRealizationReviewAsync(cancellationToken);
         var accountDirectory = _entitlements is null
             ? new TranslationFounderAccountSearchSnapshot(
                 Array.Empty<TranslationFounderAccountUsageSnapshot>(),
@@ -68,6 +69,7 @@ public sealed class FounderLegendConnectService
             SelectedLanguageKnowledge = dashboardProjection.SelectedLanguageKnowledge,
             SelectedPair = dashboardProjection.SelectedPair,
             TranslationQuality = translationQuality,
+            TargetRealizations = targetRealizations,
             AccountUsage = accountDirectory.Accounts,
             AccountSearchQuery = accountDirectory.Query,
             HasAdditionalAccountResults = accountDirectory.HasMore,
@@ -392,6 +394,26 @@ public sealed class FounderLegendConnectService
     {
         var founder = await ResolveFounderActorAsync(user, cancellationToken);
         var result = await _operations.LeaveProviderObservationUnresolvedAsync(founder, input.AlignmentId, cancellationToken);
+        return new FounderLegendConnectOperationResult(result.Succeeded, result.Message);
+    }
+
+    public async Task<FounderLegendConnectOperationResult> VerifyTargetRealizationCandidateAsync(
+        ClaimsPrincipal user,
+        FounderLegendConnectTargetRealizationReviewInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        var result = await _operations.VerifyTargetRealizationCandidateAsync(founder, input.CandidateId, cancellationToken);
+        return new FounderLegendConnectOperationResult(result.Succeeded, result.Message);
+    }
+
+    public async Task<FounderLegendConnectOperationResult> RejectTargetRealizationCandidateAsync(
+        ClaimsPrincipal user,
+        FounderLegendConnectTargetRealizationReviewInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        var result = await _operations.RejectTargetRealizationCandidateAsync(founder, input.CandidateId, cancellationToken);
         return new FounderLegendConnectOperationResult(result.Succeeded, result.Message);
     }
 

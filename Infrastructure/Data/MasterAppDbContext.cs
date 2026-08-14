@@ -110,6 +110,8 @@ public class MasterAppDbContext : DbContext
     public DbSet<LegendLanguageLexicalOccurrence> LegendLanguageLexicalOccurrences => Set<LegendLanguageLexicalOccurrence>();
     public DbSet<LegendLanguageLexicalRelationship> LegendLanguageLexicalRelationships => Set<LegendLanguageLexicalRelationship>();
     public DbSet<LegendLanguageCompositionalAnchor> LegendLanguageCompositionalAnchors => Set<LegendLanguageCompositionalAnchor>();
+    public DbSet<LegendLanguageTargetRealizationCandidate> LegendLanguageTargetRealizationCandidates => Set<LegendLanguageTargetRealizationCandidate>();
+    public DbSet<LegendLanguageTargetRealizationEvidence> LegendLanguageTargetRealizationEvidence => Set<LegendLanguageTargetRealizationEvidence>();
     public DbSet<LegendFounderTrainingSubmission> LegendFounderTrainingSubmissions => Set<LegendFounderTrainingSubmission>();
     public DbSet<LegendFounderTrainingSubmissionUnit> LegendFounderTrainingSubmissionUnits => Set<LegendFounderTrainingSubmissionUnit>();
     public DbSet<LegendTranslationProviderCapacity> LegendTranslationProviderCapacities => Set<LegendTranslationProviderCapacity>();

@@ -512,6 +512,12 @@ public sealed class LegendLanguageCompositionalAnchor
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string LanguageCode { get; set; } = string.Empty;
+    /// <summary>
+    /// Directional scope for a Founder-verified target realization. Source
+    /// curriculum anchors predate directional target realization review and
+    /// intentionally retain an empty scope.
+    /// </summary>
+    public string? PairKey { get; set; }
     public Guid TextUnitId { get; set; }
     public Guid? LexemeId { get; set; }
     public int? ComponentStartTokenIndex { get; set; }
@@ -532,6 +538,93 @@ public sealed class LegendLanguageCompositionalAnchor
     public string Provenance { get; set; } = "FounderApproved";
     public DateTime? SupersededUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A bounded, cross-example hypothesis about one directional target-language
+/// realization. This is deliberately distinct from a
+/// <see cref="LegendLanguageCompositionalAnchor"/>: candidates preserve the
+/// inference and review lifecycle, while anchors remain the sole trusted
+/// span authority after a Founder explicitly verifies a candidate.
+/// </summary>
+public sealed class LegendLanguageTargetRealizationCandidate
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string PairKey { get; set; } = string.Empty;
+    public string SourceLanguageCode { get; set; } = string.Empty;
+    public string TargetLanguageCode { get; set; } = string.Empty;
+    /// <summary>
+    /// Existing language-neutral controlled component identity. It is never
+    /// inferred from source or target words.
+    /// </summary>
+    public string SemanticSignature { get; set; } = string.Empty;
+    public string VariationDimension { get; set; } = string.Empty;
+    public string SemanticValue { get; set; } = string.Empty;
+    /// <summary>Observed target-language span proposed for Founder review.</summary>
+    public string TargetRealization { get; set; } = string.Empty;
+    /// <summary>
+    /// Stable source-context identity. It prevents distinct controlled
+    /// contexts from being conflated as a single realization claim.
+    /// </summary>
+    public string ContextSignature { get; set; } = string.Empty;
+    /// <summary>
+    /// A privacy-safe hash of the observed target template with this span
+    /// represented as a slot. It describes evidence only; it is not an
+    /// executable production template.
+    /// </summary>
+    public string TemplateSignature { get; set; } = string.Empty;
+    public string SlotSignature { get; set; } = string.Empty;
+    /// <summary>Stable canonical identity for idempotent derivation.</summary>
+    public string CandidateIdentity { get; set; } = string.Empty;
+    /// <summary>Candidate, FounderVerified, Rejected, or Contradicted.</summary>
+    public string VerificationState { get; set; } = "Candidate";
+    /// <summary>Observation, Candidate, Supported, Validated, or Superseded.</summary>
+    public string MaturityState { get; set; } = "Observation";
+    public int SupportCount { get; set; }
+    public int IndependentSourceCount { get; set; }
+    public int HumanVerifiedSupportCount { get; set; }
+    public int ProviderOnlySupportCount { get; set; }
+    public int ContradictionCount { get; set; }
+    public decimal Confidence { get; set; }
+    /// <summary>
+    /// This milestone never opens composition. The field makes that gate
+    /// explicit and remains false until a later composition milestone proves
+    /// all independent requirements.
+    /// </summary>
+    public bool IsProductionEligible { get; set; }
+    public Guid? VerifiedAnchorId { get; set; }
+    public DateTime? VerifiedUtc { get; set; }
+    public string? VerifiedByFounderUserId { get; set; }
+    public DateTime? RejectedUtc { get; set; }
+    public string? RejectedByFounderUserId { get; set; }
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// One source/target controlled contrast that supports a target-realization
+/// candidate. It extends the existing cross-example lineage with the exact
+/// observed target span; it is not a second corpus, learner, or evidence
+/// engine.
+/// </summary>
+public sealed class LegendLanguageTargetRealizationEvidence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CandidateId { get; set; }
+    public Guid SourceCurriculumExampleId { get; set; }
+    public Guid TargetCurriculumExampleId { get; set; }
+    public Guid SourceTextUnitId { get; set; }
+    public Guid TargetTextUnitId { get; set; }
+    public Guid? SourceAlignmentId { get; set; }
+    public int TargetStartTokenIndex { get; set; }
+    public int TargetTokenLength { get; set; }
+    public string EvidenceIdentity { get; set; } = string.Empty;
+    public bool IsHumanVerifiedSupport { get; set; }
+    public string Provenance { get; set; } = string.Empty;
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>

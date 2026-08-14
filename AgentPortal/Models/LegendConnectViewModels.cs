@@ -14,6 +14,8 @@ public sealed class FounderLegendConnectDashboardVm
     public LegendConnectPairHealthSnapshot? SelectedPair { get; init; }
     public LegendConnectTranslationQualitySnapshot TranslationQuality { get; init; } = new(
         0, 0, 0, 0, 0, Array.Empty<LegendConnectTranslationQualityReviewSnapshot>());
+    public LegendTargetRealizationReviewSnapshot TargetRealizations { get; init; } = new(
+        0, 0, 0, 0, Array.Empty<LegendTargetRealizationCandidateSnapshot>());
     public IReadOnlyList<TranslationFounderAccountUsageSnapshot> AccountUsage { get; init; } =
         Array.Empty<TranslationFounderAccountUsageSnapshot>();
     public string? AccountSearchQuery { get; init; }
@@ -59,6 +61,11 @@ public sealed class FounderLegendConnectCorrectionInput : FounderLegendConnectKn
 public sealed class FounderLegendConnectQualityReviewInput
 {
     public Guid AlignmentId { get; set; }
+}
+
+public sealed class FounderLegendConnectTargetRealizationReviewInput
+{
+    public Guid CandidateId { get; set; }
 }
 
 /// <summary>

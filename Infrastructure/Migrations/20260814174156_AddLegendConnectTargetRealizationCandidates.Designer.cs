@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814174156_AddLegendConnectTargetRealizationCandidates")]
+    partial class AddLegendConnectTargetRealizationCandidates
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -244,7 +247,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("OwnerId", "Status", "DueDateUtc");
 
-                    b.ToTable("ActionItems", (string)null);
+                    b.ToTable("ActionItems");
                 });
 
             modelBuilder.Entity("Domain.Entities.ActionLog", b =>
@@ -276,7 +279,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("ActionId", "OccurredUtc");
 
-                    b.ToTable("ActionLogs", (string)null);
+                    b.ToTable("ActionLogs");
                 });
 
             modelBuilder.Entity("Domain.Entities.AgentAssistant", b =>
@@ -337,7 +340,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("ParentAgentUserId", "Email")
                         .IsUnique();
 
-                    b.ToTable("AgentAssistants", (string)null);
+                    b.ToTable("AgentAssistants");
                 });
 
             modelBuilder.Entity("Domain.Entities.AgentClient", b =>
@@ -372,7 +375,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("AgentUserId", "ClientUserId")
                         .IsUnique();
 
-                    b.ToTable("AgentClients", (string)null);
+                    b.ToTable("AgentClients");
                 });
 
             modelBuilder.Entity("Domain.Entities.AgentFinanceToolState", b =>
@@ -406,7 +409,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("AgentUserId", "ToolId")
                         .IsUnique();
 
-                    b.ToTable("AgentFinanceToolStates", (string)null);
+                    b.ToTable("AgentFinanceToolStates");
                 });
 
             modelBuilder.Entity("Domain.Entities.AgentProfile", b =>
@@ -523,7 +526,7 @@ namespace Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[NormalizedEmail] IS NOT NULL");
 
-                    b.ToTable("AgentProfiles", (string)null);
+                    b.ToTable("AgentProfiles");
                 });
 
             modelBuilder.Entity("Domain.Entities.AgentTrackingAlias", b =>
@@ -553,7 +556,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("AgentTrackingProfileId", "IsCanonical");
 
-                    b.ToTable("AgentTrackingAliases", (string)null);
+                    b.ToTable("AgentTrackingAliases");
                 });
 
             modelBuilder.Entity("Domain.Entities.AgentTrackingProfile", b =>
@@ -606,7 +609,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("Slug")
                         .IsUnique();
 
-                    b.ToTable("AgentTrackingProfiles", (string)null);
+                    b.ToTable("AgentTrackingProfiles");
                 });
 
             modelBuilder.Entity("Domain.Entities.AgentZoomLink", b =>
@@ -635,7 +638,7 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("AgentZoomLinks", (string)null);
+                    b.ToTable("AgentZoomLinks");
                 });
 
             modelBuilder.Entity("Domain.Entities.AnalyticsDriftAlert", b =>
@@ -740,7 +743,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("IsActive", "Severity", "ObservedUtc");
 
-                    b.ToTable("AnalyticsDriftAlerts", (string)null);
+                    b.ToTable("AnalyticsDriftAlerts");
                 });
 
             modelBuilder.Entity("Domain.Entities.AnalyticsEvent", b =>
@@ -1032,7 +1035,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("PageKey", "EventUtc");
 
-                    b.ToTable("AnalyticsEvents", (string)null);
+                    b.ToTable("AnalyticsEvents");
                 });
 
             modelBuilder.Entity("Domain.Entities.AppointmentSyncLog", b =>
@@ -1317,7 +1320,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("RelatedEntityType", "RelatedEntityId", "Status");
 
-                    b.ToTable("Blockers", (string)null);
+                    b.ToTable("Blockers");
                 });
 
             modelBuilder.Entity("Domain.Entities.BookkeepingEntry", b =>
@@ -1371,7 +1374,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("OwnerUserId", "Scope", "EntryDate");
 
-                    b.ToTable("BookkeepingEntries", (string)null);
+                    b.ToTable("BookkeepingEntries");
                 });
 
             modelBuilder.Entity("Domain.Entities.ClientAgentMessagingGrant", b =>
@@ -1603,7 +1606,7 @@ namespace Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[HouseholdAccountId] IS NOT NULL AND [IsDeleted] = 0");
 
-                    b.ToTable("ClientFinancialPlans", (string)null);
+                    b.ToTable("ClientFinancialPlans");
                 });
 
             modelBuilder.Entity("Domain.Entities.ClientIdentityContinuation", b =>
@@ -1888,7 +1891,7 @@ namespace Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[NormalizedEmail] IS NOT NULL");
 
-                    b.ToTable("ClientProfiles", (string)null);
+                    b.ToTable("ClientProfiles");
                 });
 
             modelBuilder.Entity("Domain.Entities.ClientSubscription", b =>
@@ -2174,7 +2177,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("Key")
                         .IsUnique();
 
-                    b.ToTable("CommerceBusinesses", (string)null);
+                    b.ToTable("CommerceBusinesses");
                 });
 
             modelBuilder.Entity("Domain.Entities.CommerceBusinessMember", b =>
@@ -2239,7 +2242,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("CommerceBusinessId", "NormalizedEmail")
                         .IsUnique();
 
-                    b.ToTable("CommerceBusinessMembers", (string)null);
+                    b.ToTable("CommerceBusinessMembers");
                 });
 
             modelBuilder.Entity("Domain.Entities.CommerceBusinessSettings", b =>
@@ -2283,7 +2286,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("CommerceBusinessId")
                         .IsUnique();
 
-                    b.ToTable("CommerceBusinessSettings", (string)null);
+                    b.ToTable("CommerceBusinessSettings");
                 });
 
             modelBuilder.Entity("Domain.Entities.CommerceBusinessStorefrontSettings", b =>
@@ -2328,7 +2331,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("CommerceBusinessId")
                         .IsUnique();
 
-                    b.ToTable("CommerceBusinessStorefrontSettings", (string)null);
+                    b.ToTable("CommerceBusinessStorefrontSettings");
                 });
 
             modelBuilder.Entity("Domain.Entities.CommerceBusinessSubscription", b =>
@@ -2390,7 +2393,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("CommerceBusinessSubscriptions", (string)null);
+                    b.ToTable("CommerceBusinessSubscriptions");
                 });
 
             modelBuilder.Entity("Domain.Entities.CommerceOrder", b =>
@@ -2566,7 +2569,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("CommerceBusinessId", "PaymentStatus", "FulfillmentStatus");
 
-                    b.ToTable("CommerceOrders", (string)null);
+                    b.ToTable("CommerceOrders");
                 });
 
             modelBuilder.Entity("Domain.Entities.CommerceOrderLine", b =>
@@ -2615,7 +2618,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("CommerceOrderId");
 
-                    b.ToTable("CommerceOrderLines", (string)null);
+                    b.ToTable("CommerceOrderLines");
                 });
 
             modelBuilder.Entity("Domain.Entities.CommerceProduct", b =>
@@ -2687,7 +2690,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("CommerceBusinessId", "IsActive", "DisplayOrder");
 
-                    b.ToTable("CommerceProducts", (string)null);
+                    b.ToTable("CommerceProducts");
                 });
 
             modelBuilder.Entity("Domain.Entities.CommerceProductDiscount", b =>
@@ -2728,7 +2731,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("CommerceProductId", "ExternalDiscountKey")
                         .IsUnique();
 
-                    b.ToTable("CommerceProductDiscounts", (string)null);
+                    b.ToTable("CommerceProductDiscounts");
                 });
 
             modelBuilder.Entity("Domain.Entities.CommerceProductImage", b =>
@@ -2788,7 +2791,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("CommerceProductId", "ExternalImageKey")
                         .IsUnique();
 
-                    b.ToTable("CommerceProductImages", (string)null);
+                    b.ToTable("CommerceProductImages");
                 });
 
             modelBuilder.Entity("Domain.Entities.CommerceProductInventoryItem", b =>
@@ -2827,7 +2830,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("CommerceProductId", "Size")
                         .IsUnique();
 
-                    b.ToTable("CommerceProductInventoryItems", (string)null);
+                    b.ToTable("CommerceProductInventoryItems");
                 });
 
             modelBuilder.Entity("Domain.Entities.Commitment", b =>
@@ -2901,7 +2904,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("RelatedEntityType", "RelatedEntityId");
 
-                    b.ToTable("Commitments", (string)null);
+                    b.ToTable("Commitments");
                 });
 
             modelBuilder.Entity("Domain.Entities.ControlledResourceGrant", b =>
@@ -3073,7 +3076,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("RelatedEntityType", "RelatedEntityId", "CreatedUtc");
 
-                    b.ToTable("DecisionRecords", (string)null);
+                    b.ToTable("DecisionRecords");
                 });
 
             modelBuilder.Entity("Domain.Entities.FinanceToolState", b =>
@@ -3109,7 +3112,7 @@ namespace Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[HouseholdAccountId] IS NOT NULL");
 
-                    b.ToTable("FinanceToolStates", (string)null);
+                    b.ToTable("FinanceToolStates");
                 });
 
             modelBuilder.Entity("Domain.Entities.FinancialIntelligence.ClientFinancialIntelligenceProfile", b =>
@@ -3179,7 +3182,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("LastEvaluatedUtc");
 
-                    b.ToTable("ClientFinancialIntelligenceProfiles", (string)null);
+                    b.ToTable("ClientFinancialIntelligenceProfiles");
                 });
 
             modelBuilder.Entity("Domain.Entities.FinancialIntelligence.ExpenseLensStreamLink", b =>
@@ -3229,7 +3232,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("ClientProfileId", "ExpenseLensToolId", "ExpenseLensItemId");
 
-                    b.ToTable("ExpenseLensStreamLinks", (string)null);
+                    b.ToTable("ExpenseLensStreamLinks");
                 });
 
             modelBuilder.Entity("Domain.Entities.FinancialIntelligence.FinancialDataConnection", b =>
@@ -3302,7 +3305,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("ClientProfileId", "ProviderKey", "ProviderItemId")
                         .IsUnique();
 
-                    b.ToTable("FinancialDataConnections", (string)null);
+                    b.ToTable("FinancialDataConnections");
                 });
 
             modelBuilder.Entity("Domain.Entities.FinancialIntelligence.FinancialFinding", b =>
@@ -3433,7 +3436,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("ClientProfileId", "Status", "PriorityScore");
 
-                    b.ToTable("FinancialFindings", (string)null);
+                    b.ToTable("FinancialFindings");
                 });
 
             modelBuilder.Entity("Domain.Entities.FinancialIntelligence.FinancialFindingFeedback", b =>
@@ -3480,7 +3483,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("ClientProfileId", "FeedbackType", "CreatedUtc");
 
-                    b.ToTable("FinancialFindingFeedback", (string)null);
+                    b.ToTable("FinancialFindingFeedback");
                 });
 
             modelBuilder.Entity("Domain.Entities.FinancialIntelligence.FinancialFindingObservation", b =>
@@ -3498,7 +3501,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("FinancialObservationId");
 
-                    b.ToTable("FinancialFindingObservations", (string)null);
+                    b.ToTable("FinancialFindingObservations");
                 });
 
             modelBuilder.Entity("Domain.Entities.FinancialIntelligence.FinancialObservation", b =>
@@ -3589,7 +3592,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("ClientProfileId", "ObservationType", "Status");
 
-                    b.ToTable("FinancialObservations", (string)null);
+                    b.ToTable("FinancialObservations");
                 });
 
             modelBuilder.Entity("Domain.Entities.FinancialIntelligence.ImportedFinancialAccount", b =>
@@ -3662,7 +3665,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("FinancialDataConnectionId", "ProviderAccountId")
                         .IsUnique();
 
-                    b.ToTable("ImportedFinancialAccounts", (string)null);
+                    b.ToTable("ImportedFinancialAccounts");
                 });
 
             modelBuilder.Entity("Domain.Entities.FinancialIntelligence.ImportedFinancialTransaction", b =>
@@ -3742,7 +3745,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("ClientProfileId", "IsPending", "IsRemoved");
 
-                    b.ToTable("ImportedFinancialTransactions", (string)null);
+                    b.ToTable("ImportedFinancialTransactions");
                 });
 
             modelBuilder.Entity("Domain.Entities.FinancialIntelligence.RecurringFinancialStream", b =>
@@ -3822,7 +3825,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("ClientProfileId", "StreamKey")
                         .IsUnique();
 
-                    b.ToTable("RecurringFinancialStreams", (string)null);
+                    b.ToTable("RecurringFinancialStreams");
                 });
 
             modelBuilder.Entity("Domain.Entities.GraphCalendarSubscription", b =>
@@ -3994,7 +3997,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("ClientUserId", "RelationshipType")
                         .IsUnique();
 
-                    b.ToTable("HouseholdMembers", (string)null);
+                    b.ToTable("HouseholdMembers");
                 });
 
             modelBuilder.Entity("Domain.Entities.HouseholdMemberInvitation", b =>
@@ -7501,7 +7504,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("SessionId", "QuoteType", "CreatedUtc");
 
-                    b.ToTable("MetaSignalEvents", (string)null);
+                    b.ToTable("MetaSignalEvents");
                 });
 
             modelBuilder.Entity("Domain.Entities.MobileActivityNotification", b =>
@@ -7833,7 +7836,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("TokenHash")
                         .IsUnique();
 
-                    b.ToTable("OnboardingInvites", (string)null);
+                    b.ToTable("OnboardingInvites");
                 });
 
             modelBuilder.Entity("Domain.Entities.OnboardingSubmission", b =>
@@ -8147,7 +8150,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("InviteId")
                         .IsUnique();
 
-                    b.ToTable("OnboardingSubmissions", (string)null);
+                    b.ToTable("OnboardingSubmissions");
                 });
 
             modelBuilder.Entity("Domain.Entities.PlaybookExecution", b =>
@@ -8172,7 +8175,7 @@ namespace Infrastructure.Migrations
                     b.HasIndex("ExecutionKey")
                         .IsUnique();
 
-                    b.ToTable("PlaybookExecutions", (string)null);
+                    b.ToTable("PlaybookExecutions");
                 });
 
             modelBuilder.Entity("Domain.Entities.ProductionRecord", b =>
@@ -8234,7 +8237,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("AgentUserId", "Side");
 
-                    b.ToTable("ProductionRecords", (string)null);
+                    b.ToTable("ProductionRecords");
                 });
 
             modelBuilder.Entity("Domain.Entities.Proposal", b =>
@@ -8360,7 +8363,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("OwnerUserId", "Scope", "IsActive");
 
-                    b.ToTable("RecurringExpenses", (string)null);
+                    b.ToTable("RecurringExpenses");
                 });
 
             modelBuilder.Entity("Domain.Entities.SocialFollow", b =>
@@ -9462,7 +9465,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("Environment", "CreatedUtc");
 
-                    b.ToTable("WebsiteLeads", (string)null);
+                    b.ToTable("WebsiteLeads");
                 });
 
             modelBuilder.Entity("Domain.Entities.WebsiteLeadIntakeLink", b =>
@@ -9637,7 +9640,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("WorkstationLeadId", "SubmittedUtc");
 
-                    b.ToTable("WebsiteLeadIntakeLinks", (string)null);
+                    b.ToTable("WebsiteLeadIntakeLinks");
                 });
 
             modelBuilder.Entity("Domain.Entities.WorkstationLeadProfile", b =>

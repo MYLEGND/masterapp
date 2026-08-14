@@ -252,6 +252,54 @@ public sealed class LegendConnectController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/target-realizations/verify")]
+    public async Task<IActionResult> VerifyTargetRealizationCandidate(
+        [FromForm] FounderLegendConnectTargetRealizationReviewInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.VerifyTargetRealizationCandidateAsync(User, input, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect target-realization verification failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/target-realizations/reject")]
+    public async Task<IActionResult> RejectTargetRealizationCandidate(
+        [FromForm] FounderLegendConnectTargetRealizationReviewInput input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.RejectTargetRealizationCandidateAsync(User, input, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect target-realization rejection failed.");
+            return FounderFailureRedirect();
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route("founder/legend-connect/curriculum")]
     public async Task<IActionResult> SubmitCurriculum(
         [FromForm] FounderLegendConnectCurriculumInput input,
