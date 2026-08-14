@@ -348,12 +348,26 @@
     const body = modalElement.querySelector("[data-legend-summary-body]");
     const tiles = Array.from(page.querySelectorAll(".dashboard-stat-card"))
         .filter(tile => !tile.closest(".modal") && metricKeyFor(tile));
+    const detailTones = ["neutral", "info", "authority", "success", "warning", "danger"];
     let activeTile = null;
     let requestVersion = 0;
 
     if (!title || !context || !description || !body || tiles.length === 0) return;
 
     const normalizedText = element => (element?.textContent || "").replace(/\s+/g, " ").trim();
+
+    function toneClass(tone) {
+        return detailTones.includes(tone) ? `legend-connect-metric--${tone}` : "legend-connect-metric--neutral";
+    }
+
+    function applyModalTone(tone) {
+        modalElement.classList.remove(...detailTones.map(toneName => toneClass(toneName)));
+        modalElement.classList.add(toneClass(tone));
+    }
+
+    function toneForTile(tile) {
+        return detailTones.find(tone => tile.classList.contains(toneClass(tone))) || "neutral";
+    }
 
     function metricKeyFor(tile) {
         if (tile.dataset.legendLiveCard) return tile.dataset.legendLiveCard;
@@ -369,7 +383,8 @@
         return element;
     }
 
-    function renderLoading(metricLabel) {
+    function renderLoading(metricLabel, tone) {
+        applyModalTone(tone);
         title.textContent = metricLabel;
         context.textContent = "Loading record-level detail";
         description.textContent = "Loading the current server-backed records behind this metric. No operational data is changed.";
@@ -399,6 +414,7 @@
             sectionElement.append(heading);
             appendText(sectionElement, "p", "dashboard-section-copy", section.description);
             const rows = Array.isArray(section.rows) ? section.rows : [];
+            const rowTones = Array.isArray(section.rowTones) ? section.rowTones : [];
             const columns = Array.isArray(section.columns) ? section.columns : [];
             if (columns.length === 0 || rows.length === 0) {
                 appendText(sectionElement, "p", "dashboard-section-copy", "No matching current records.");
@@ -412,8 +428,9 @@
                 columns.forEach(column => appendText(headerRow, "th", "", column));
                 thead.append(headerRow);
                 const tbody = document.createElement("tbody");
-                rows.forEach(row => {
+                rows.forEach((row, rowIndex) => {
                     const dataRow = document.createElement("tr");
+                    dataRow.className = toneClass(rowTones[rowIndex]);
                     columns.forEach((_, index) => appendText(dataRow, "td", "", Array.isArray(row) ? row[index] : ""));
                     tbody.append(dataRow);
                 });
@@ -429,7 +446,7 @@
         activeTile = tile;
         const metricKey = metricKeyFor(tile);
         const request = ++requestVersion;
-        renderLoading(normalizedText(tile.querySelector(".dashboard-stat-label")) || "Legend Connect metric");
+        renderLoading(normalizedText(tile.querySelector(".dashboard-stat-label")) || "Legend Connect metric", toneForTile(tile));
         modal.show();
         try {
             const response = await fetch(`/founder/legend-connect/metric-details?metric=${encodeURIComponent(metricKey)}`, {

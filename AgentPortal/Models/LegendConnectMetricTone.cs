@@ -88,12 +88,12 @@ public static class LegendConnectMetricTone
     {
         if (humanVerified)
         {
-            return Authority;
+            return Success;
         }
 
         return provenance?.Trim().ToUpperInvariant() switch
         {
-            "FOUNDERAPPROVED" or "HUMANVERIFIED" => Authority,
+            "FOUNDERAPPROVED" or "HUMANVERIFIED" => Success,
             "PROVIDERDERIVED" or "AZURETRANSLATOR" or "CONSENTEDLIVETRANSLATION" => Info,
             "LEGACY" or "IMPORTED" => Warning,
             _ => Neutral
@@ -120,7 +120,7 @@ public static class LegendConnectMetricTone
 
     public static string ProductionEligibility(bool eligible) => eligible ? Success : Warning;
 
-    public static string Verification(bool humanVerified) => humanVerified ? Authority : Warning;
+    public static string Verification(bool humanVerified) => humanVerified ? Success : Warning;
 
     public static string Lifecycle(string? state)
     {

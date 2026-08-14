@@ -731,7 +731,7 @@
 /* Semantic Founder telemetry tones. The values remain server-authoritative;
    these classes only make healthy, neutral, active, pending, and blocked
    states scannable in the established Legend dashboard language. */
-:is(.legend-connect-page, .legend-connect-summary-modal) {
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) {
     --legend-connect-metric-neutral: #aebfd8;
     --legend-connect-metric-info: #8cc7ff;
     --legend-connect-metric-authority: #c7a3ff;
@@ -740,26 +740,26 @@
     --legend-connect-metric-danger: #ff969d;
 }
 
-:is(.legend-connect-page, .legend-connect-summary-modal) .legend-connect-metric--neutral { color: var(--legend-connect-metric-neutral); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .legend-connect-metric--info { color: var(--legend-connect-metric-info); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .legend-connect-metric--authority { color: var(--legend-connect-metric-authority); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .legend-connect-metric--success { color: var(--legend-connect-metric-success); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .legend-connect-metric--warning { color: var(--legend-connect-metric-warning); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .legend-connect-metric--danger { color: var(--legend-connect-metric-danger); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .legend-connect-metric--neutral { color: var(--legend-connect-metric-neutral); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .legend-connect-metric--info { color: var(--legend-connect-metric-info); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .legend-connect-metric--authority { color: var(--legend-connect-metric-authority); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .legend-connect-metric--success { color: var(--legend-connect-metric-success); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .legend-connect-metric--warning { color: var(--legend-connect-metric-warning); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .legend-connect-metric--danger { color: var(--legend-connect-metric-danger); }
 
-:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--neutral { border-color: rgba(174, 191, 216, 0.28); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--info { border-color: rgba(140, 199, 255, 0.42); background: linear-gradient(145deg, rgba(20, 66, 118, 0.9), rgba(8, 26, 57, 0.98)); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--authority { border-color: rgba(199, 163, 255, 0.46); background: linear-gradient(145deg, rgba(66, 42, 109, 0.92), rgba(34, 21, 70, 0.98)); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--success { border-color: rgba(101, 224, 164, 0.42); background: linear-gradient(145deg, rgba(14, 78, 68, 0.92), rgba(7, 37, 47, 0.98)); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--warning { border-color: rgba(255, 208, 113, 0.48); background: linear-gradient(145deg, rgba(89, 59, 16, 0.93), rgba(46, 31, 16, 0.98)); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--danger { border-color: rgba(255, 150, 157, 0.5); background: linear-gradient(145deg, rgba(104, 33, 50, 0.93), rgba(54, 20, 35, 0.98)); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-stat-card.legend-connect-metric--neutral { border-color: rgba(174, 191, 216, 0.28); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-stat-card.legend-connect-metric--info { border-color: rgba(140, 199, 255, 0.42); background: linear-gradient(145deg, rgba(20, 66, 118, 0.9), rgba(8, 26, 57, 0.98)); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-stat-card.legend-connect-metric--authority { border-color: rgba(199, 163, 255, 0.46); background: linear-gradient(145deg, rgba(66, 42, 109, 0.92), rgba(34, 21, 70, 0.98)); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-stat-card.legend-connect-metric--success { border-color: rgba(101, 224, 164, 0.42); background: linear-gradient(145deg, rgba(14, 78, 68, 0.92), rgba(7, 37, 47, 0.98)); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-stat-card.legend-connect-metric--warning { border-color: rgba(255, 208, 113, 0.48); background: linear-gradient(145deg, rgba(89, 59, 16, 0.93), rgba(46, 31, 16, 0.98)); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-stat-card.legend-connect-metric--danger { border-color: rgba(255, 150, 157, 0.5); background: linear-gradient(145deg, rgba(104, 33, 50, 0.93), rgba(54, 20, 35, 0.98)); }
 
-:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--neutral .dashboard-stat-value { color: var(--legend-connect-metric-neutral); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--info .dashboard-stat-value { color: var(--legend-connect-metric-info); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--authority .dashboard-stat-value { color: var(--legend-connect-metric-authority); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--success .dashboard-stat-value { color: var(--legend-connect-metric-success); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--warning .dashboard-stat-value { color: var(--legend-connect-metric-warning); }
-:is(.legend-connect-page, .legend-connect-summary-modal) .dashboard-stat-card.legend-connect-metric--danger .dashboard-stat-value { color: var(--legend-connect-metric-danger); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-stat-card.legend-connect-metric--neutral .dashboard-stat-value { color: var(--legend-connect-metric-neutral); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-stat-card.legend-connect-metric--info .dashboard-stat-value { color: var(--legend-connect-metric-info); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-stat-card.legend-connect-metric--authority .dashboard-stat-value { color: var(--legend-connect-metric-authority); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-stat-card.legend-connect-metric--success .dashboard-stat-value { color: var(--legend-connect-metric-success); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-stat-card.legend-connect-metric--warning .dashboard-stat-value { color: var(--legend-connect-metric-warning); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-stat-card.legend-connect-metric--danger .dashboard-stat-value { color: var(--legend-connect-metric-danger); }
 
 /* Every numeric Founder summary uses one shared detail interaction. The modal
    reads the existing live projection; these rules only present the trigger. */
@@ -813,14 +813,44 @@
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.legend-connect-page .dashboard-data-table .legend-connect-metric--neutral,
-.legend-connect-page .dashboard-data-table .legend-connect-metric--info,
-.legend-connect-page .dashboard-data-table .legend-connect-metric--authority,
-.legend-connect-page .dashboard-data-table .legend-connect-metric--success,
-.legend-connect-page .dashboard-data-table .legend-connect-metric--warning,
-.legend-connect-page .dashboard-data-table .legend-connect-metric--danger {
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-data-table .legend-connect-metric--neutral,
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-data-table .legend-connect-metric--info,
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-data-table .legend-connect-metric--authority,
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-data-table .legend-connect-metric--success,
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-data-table .legend-connect-metric--warning,
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-data-table .legend-connect-metric--danger {
     font-weight: 850;
 }
+
+/* Row tones come from the same server detail projection as the displayed
+   records. This colors the actual curriculum/ledger text instead of showing
+   an unrelated duplicate summary card. */
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-data-table tbody tr.legend-connect-metric--neutral > td { color: var(--legend-connect-metric-neutral); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-data-table tbody tr.legend-connect-metric--info > td { color: var(--legend-connect-metric-info); background-color: rgba(35, 111, 191, 0.12); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-data-table tbody tr.legend-connect-metric--authority > td { color: var(--legend-connect-metric-authority); background-color: rgba(124, 78, 190, 0.13); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-data-table tbody tr.legend-connect-metric--success > td { color: var(--legend-connect-metric-success); background-color: rgba(30, 132, 100, 0.13); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-data-table tbody tr.legend-connect-metric--warning > td { color: var(--legend-connect-metric-warning); background-color: rgba(170, 109, 25, 0.14); }
+:is(.legend-connect-page, .legend-connect-summary-modal, .legend-connect-language-modal) .dashboard-data-table tbody tr.legend-connect-metric--danger > td { color: var(--legend-connect-metric-danger); background-color: rgba(162, 47, 68, 0.16); }
+
+.legend-connect-summary-modal.legend-connect-metric--neutral .modal-header { border-bottom-color: rgba(174, 191, 216, 0.36); }
+.legend-connect-summary-modal.legend-connect-metric--info .modal-header { border-bottom-color: rgba(140, 199, 255, 0.56); }
+.legend-connect-summary-modal.legend-connect-metric--authority .modal-header { border-bottom-color: rgba(199, 163, 255, 0.58); }
+.legend-connect-summary-modal.legend-connect-metric--success .modal-header { border-bottom-color: rgba(101, 224, 164, 0.56); }
+.legend-connect-summary-modal.legend-connect-metric--warning .modal-header { border-bottom-color: rgba(255, 208, 113, 0.6); }
+.legend-connect-summary-modal.legend-connect-metric--danger .modal-header { border-bottom-color: rgba(255, 150, 157, 0.62); }
+
+:is(.legend-connect-summary-modal, .legend-connect-language-modal).legend-connect-metric--neutral .modal-header .modal-title,
+:is(.legend-connect-summary-modal, .legend-connect-language-modal).legend-connect-metric--neutral .modal-header .dashboard-section-kicker { color: var(--legend-connect-metric-neutral); }
+:is(.legend-connect-summary-modal, .legend-connect-language-modal).legend-connect-metric--info .modal-header .modal-title,
+:is(.legend-connect-summary-modal, .legend-connect-language-modal).legend-connect-metric--info .modal-header .dashboard-section-kicker { color: var(--legend-connect-metric-info); }
+:is(.legend-connect-summary-modal, .legend-connect-language-modal).legend-connect-metric--authority .modal-header .modal-title,
+:is(.legend-connect-summary-modal, .legend-connect-language-modal).legend-connect-metric--authority .modal-header .dashboard-section-kicker { color: var(--legend-connect-metric-authority); }
+:is(.legend-connect-summary-modal, .legend-connect-language-modal).legend-connect-metric--success .modal-header .modal-title,
+:is(.legend-connect-summary-modal, .legend-connect-language-modal).legend-connect-metric--success .modal-header .dashboard-section-kicker { color: var(--legend-connect-metric-success); }
+:is(.legend-connect-summary-modal, .legend-connect-language-modal).legend-connect-metric--warning .modal-header .modal-title,
+:is(.legend-connect-summary-modal, .legend-connect-language-modal).legend-connect-metric--warning .modal-header .dashboard-section-kicker { color: var(--legend-connect-metric-warning); }
+:is(.legend-connect-summary-modal, .legend-connect-language-modal).legend-connect-metric--danger .modal-header .modal-title,
+:is(.legend-connect-summary-modal, .legend-connect-language-modal).legend-connect-metric--danger .modal-header .dashboard-section-kicker { color: var(--legend-connect-metric-danger); }
 
 .legend-connect-page .legend-connect-metric-separator { color: var(--dash-text-soft); }
 

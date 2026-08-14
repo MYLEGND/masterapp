@@ -401,7 +401,7 @@
     var contextDisplayed = Math.Min(health.ContextRelationshipCount, (long)languageKnowledge.DetailRecordLimit);
     var activityDisplayed = Math.Min(languageKnowledge.LearningActivityCount, (long)languageKnowledge.DetailRecordLimit);
 
-    <div class="modal fade legend-modal dashboard-detail-modal" id="languageKnowledgeModal" tabindex="-1" aria-labelledby="languageKnowledgeModalTitle" aria-hidden="true">
+    <div class="modal fade legend-modal dashboard-detail-modal legend-connect-language-modal @LegendConnectMetricTone.Health(health.HealthState)" id="languageKnowledgeModal" tabindex="-1" aria-labelledby="languageKnowledgeModalTitle" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content" data-legend-copy-source="language-dataset">
                 <div class="modal-header">
@@ -426,7 +426,7 @@
                     <p class="dashboard-section-copy">This is a live server projection. Approved entries, active alignments, and context links expose the actual retained learning data. Learning-event rows intentionally show only metadata so private message bodies never enter Founder operations.</p>
 
                     <section class="dashboard-detail-modal-section" aria-labelledby="structural-patterns-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Language-specific structural evidence</span><h3 class="dashboard-section-title" id="structural-patterns-title">Curriculum patterns</h3></div></div>
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Info">Language-specific structural evidence</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Info" id="structural-patterns-title">Curriculum patterns</h3></div></div>
                         <p class="dashboard-section-copy">These are privacy-safe maturity records. A family shares semantic variation metadata, while each language's evidence compares only canonical examples in that language. No pattern is allowed to compose a live translation until an independent production gate is approved.</p>
                         @if (languageKnowledge.StructuralPatterns is not { Count: > 0 })
                         {
@@ -437,14 +437,14 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Family</th><th>Semantic dimension</th><th>Maturity</th><th>Support</th><th>Contradictions</th><th>Production eligible</th><th>Updated</th></tr></thead><tbody>
                             @foreach (var pattern in languageKnowledge.StructuralPatterns)
                             {
-                                <tr><td>@pattern.FamilyKey</td><td><span class="@LegendConnectMetricTone.Info">@pattern.VariationDimension</span></td><td><span class="@LegendConnectMetricTone.Maturity(pattern.MaturityState)">@pattern.MaturityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(pattern.SupportCount)">@pattern.SupportCount</span></td><td><span class="@LegendConnectMetricTone.Contradictions(pattern.ContradictionCount)">@pattern.ContradictionCount</span></td><td><span class="@LegendConnectMetricTone.ProductionEligibility(pattern.IsProductionEligible)">@(pattern.IsProductionEligible ? "Yes" : "No")</span></td><td>@pattern.UpdatedUtc.ToString("u")</td></tr>
+                                <tr class="@(pattern.ContradictionCount > 0 ? LegendConnectMetricTone.Danger : LegendConnectMetricTone.Maturity(pattern.MaturityState))"><td>@pattern.FamilyKey</td><td><span class="@LegendConnectMetricTone.Info">@pattern.VariationDimension</span></td><td><span class="@LegendConnectMetricTone.Maturity(pattern.MaturityState)">@pattern.MaturityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(pattern.SupportCount)">@pattern.SupportCount</span></td><td><span class="@LegendConnectMetricTone.Contradictions(pattern.ContradictionCount)">@pattern.ContradictionCount</span></td><td><span class="@LegendConnectMetricTone.ProductionEligibility(pattern.IsProductionEligible)">@(pattern.IsProductionEligible ? "Yes" : "No")</span></td><td>@pattern.UpdatedUtc.ToString("u")</td></tr>
                             }
                             </tbody></table></div>
                         }
                     </section>
 
                     <section class="dashboard-detail-modal-section" aria-labelledby="structural-relationships-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Cross-example structural learning</span><h3 class="dashboard-section-title" id="structural-relationships-title">Reusable structural relationships</h3></div></div>
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Authority">Cross-example structural learning</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Authority" id="structural-relationships-title">Reusable structural relationships</h3></div></div>
                         <p class="dashboard-section-copy">This is the server-owned aggregate across independent Founder-approved comparisons. Per-family pattern rows can correctly remain at Support 1 while the matching reusable relationship progresses through Observation, Candidate, and Supported. Provider-only observations remain separate and cannot create Founder-trusted support.</p>
                         @if (languageKnowledge.StructuralRelationships is not { Count: > 0 })
                         {
@@ -455,14 +455,14 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Semantic dimension</th><th>Maturity</th><th>Support</th><th>Independent sources</th><th>Human verified</th><th>Provider-only</th><th>Contradictions</th><th>Production eligible</th><th>Updated</th></tr></thead><tbody>
                             @foreach (var relationship in languageKnowledge.StructuralRelationships)
                             {
-                                <tr><td><span class="@LegendConnectMetricTone.Info">@(string.IsNullOrEmpty(relationship.PairKey) ? "Monolingual" : relationship.PairKey)</span></td><td><span class="@LegendConnectMetricTone.Info">@relationship.VariationDimension</span></td><td><span class="@LegendConnectMetricTone.Maturity(relationship.MaturityState)">@relationship.MaturityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.SupportCount)">@relationship.SupportCount</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.IndependentSourceCount)">@relationship.IndependentSourceCount</span></td><td><span class="@LegendConnectMetricTone.Verification(relationship.HumanVerifiedSupportCount > 0)">@relationship.HumanVerifiedSupportCount</span></td><td><span class="@LegendConnectMetricTone.Info">@relationship.ProviderOnlySupportCount</span></td><td><span class="@LegendConnectMetricTone.Contradictions(relationship.ContradictionCount)">@relationship.ContradictionCount</span></td><td><span class="@LegendConnectMetricTone.ProductionEligibility(relationship.IsProductionEligible)">@(relationship.IsProductionEligible ? "Yes" : "No")</span></td><td>@relationship.UpdatedUtc.ToString("u")</td></tr>
+                                <tr class="@(relationship.ContradictionCount > 0 ? LegendConnectMetricTone.Danger : LegendConnectMetricTone.Maturity(relationship.MaturityState))"><td><span class="@LegendConnectMetricTone.Info">@(string.IsNullOrEmpty(relationship.PairKey) ? "Monolingual" : relationship.PairKey)</span></td><td><span class="@LegendConnectMetricTone.Info">@relationship.VariationDimension</span></td><td><span class="@LegendConnectMetricTone.Maturity(relationship.MaturityState)">@relationship.MaturityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.SupportCount)">@relationship.SupportCount</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.IndependentSourceCount)">@relationship.IndependentSourceCount</span></td><td><span class="@LegendConnectMetricTone.Verification(relationship.HumanVerifiedSupportCount > 0)">@relationship.HumanVerifiedSupportCount</span></td><td><span class="@LegendConnectMetricTone.Info">@relationship.ProviderOnlySupportCount</span></td><td><span class="@LegendConnectMetricTone.Contradictions(relationship.ContradictionCount)">@relationship.ContradictionCount</span></td><td><span class="@LegendConnectMetricTone.ProductionEligibility(relationship.IsProductionEligible)">@(relationship.IsProductionEligible ? "Yes" : "No")</span></td><td>@relationship.UpdatedUtc.ToString("u")</td></tr>
                             }
                             </tbody></table></div>
                         }
                     </section>
 
                     <section class="dashboard-detail-modal-section" aria-labelledby="canonical-entries-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Retained canonical assets</span><h3 class="dashboard-section-title" id="canonical-entries-title">Entries used for learning</h3></div></div>
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Success">Retained canonical assets</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Success" id="canonical-entries-title">Entries used for learning</h3></div></div>
                         @if (languageKnowledge.CanonicalEntries.Count == 0)
                         {
                             <p class="dashboard-section-copy">No retained canonical entries are stored in @health.StoragePartition yet. This is the real empty dataset state.</p>
@@ -473,14 +473,14 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Retained text</th><th>Provenance</th><th>Created</th><th>Updated</th></tr></thead><tbody>
                             @foreach (var entry in languageKnowledge.CanonicalEntries)
                             {
-                                <tr><td>@entry.Text</td><td><span class="@LegendConnectMetricTone.Provenance(entry.Provenance)">@entry.Provenance</span></td><td>@entry.CreatedUtc.ToString("u")</td><td>@entry.UpdatedUtc.ToString("u")</td></tr>
+                                <tr class="@LegendConnectMetricTone.Provenance(entry.Provenance)"><td>@entry.Text</td><td><span class="@LegendConnectMetricTone.Provenance(entry.Provenance)">@entry.Provenance</span></td><td>@entry.CreatedUtc.ToString("u")</td><td>@entry.UpdatedUtc.ToString("u")</td></tr>
                             }
                             </tbody></table></div>
                         }
                     </section>
 
                     <section class="dashboard-detail-modal-section" aria-labelledby="active-alignments-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Directional translation memory</span><h3 class="dashboard-section-title" id="active-alignments-title">Active retained alignments</h3></div></div>
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Info">Directional translation memory</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Info" id="active-alignments-title">Active retained alignments</h3></div></div>
                         @if (languageKnowledge.ActiveAlignments.Count == 0)
                         {
                             <p class="dashboard-section-copy">No active retained directional alignments are stored for this language yet.</p>
@@ -491,14 +491,14 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Retained source</th><th>Retained target</th><th>Provider</th><th>Confidence</th><th>Alignment state</th><th>Verification</th><th>Evidence</th><th>Updated</th></tr></thead><tbody>
                             @foreach (var alignment in languageKnowledge.ActiveAlignments)
                             {
-                                <tr><td>@alignment.PairKey</td><td>@alignment.SourceText</td><td>@alignment.TargetText</td><td><span class="@LegendConnectMetricTone.Info">@alignment.Provider</span></td><td><span class="@LegendConnectMetricTone.Confidence(alignment.Confidence)">@(alignment.Confidence?.ToString("P0") ?? "Not scored")</span></td><td><span class="@LegendConnectMetricTone.Quality(alignment.QualityState)">@alignment.QualityState</span></td><td><span class="@LegendConnectMetricTone.Verification(alignment.HumanVerified)">@(alignment.HumanVerified ? "Human verified" : "Not human verified")</span></td><td><span class="@LegendConnectMetricTone.Evidence(alignment.ObservationCount)">@alignment.ObservationCount</span></td><td>@alignment.UpdatedUtc.ToString("u")</td></tr>
+                                <tr class="@(alignment.HumanVerified ? LegendConnectMetricTone.Success : LegendConnectMetricTone.Quality(alignment.QualityState))"><td>@alignment.PairKey</td><td>@alignment.SourceText</td><td>@alignment.TargetText</td><td><span class="@LegendConnectMetricTone.Info">@alignment.Provider</span></td><td><span class="@LegendConnectMetricTone.Confidence(alignment.Confidence)">@(alignment.Confidence?.ToString("P0") ?? "Not scored")</span></td><td><span class="@LegendConnectMetricTone.Quality(alignment.QualityState)">@alignment.QualityState</span></td><td><span class="@LegendConnectMetricTone.Verification(alignment.HumanVerified)">@(alignment.HumanVerified ? "Human verified" : "Not human verified")</span></td><td><span class="@LegendConnectMetricTone.Evidence(alignment.ObservationCount)">@alignment.ObservationCount</span></td><td>@alignment.UpdatedUtc.ToString("u")</td></tr>
                             }
                             </tbody></table></div>
                         }
                     </section>
 
                     <section class="dashboard-detail-modal-section" aria-labelledby="context-relationships-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Reusable context</span><h3 class="dashboard-section-title" id="context-relationships-title">Stored context relationships</h3></div></div>
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Authority">Reusable context</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Authority" id="context-relationships-title">Stored context relationships</h3></div></div>
                         @if (languageKnowledge.ContextRelationships.Count == 0)
                         {
                             <p class="dashboard-section-copy">No active context relationships are stored for this language yet.</p>
@@ -509,14 +509,14 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Source asset</th><th>Related asset</th><th>Kind / provenance</th><th>Context</th><th>Usage</th><th>Relationship state</th><th>Evidence</th><th>Updated</th></tr></thead><tbody>
                             @foreach (var relationship in languageKnowledge.ContextRelationships)
                             {
-                                <tr><td><span class="@LegendConnectMetricTone.Info">@(relationship.PairKey ?? "Monolingual")</span></td><td>@relationship.SourceText</td><td>@relationship.RelatedText</td><td><span class="@LegendConnectMetricTone.Info">@relationship.RelationshipKind</span><br /><small class="@LegendConnectMetricTone.Provenance(relationship.Provenance)">@relationship.Provenance</small></td><td>@(relationship.ContextCategory ?? "Not classified")</td><td>@(relationship.UsageRegister ?? "Not specified")</td><td><span class="@LegendConnectMetricTone.Quality(relationship.QualityState)">@relationship.QualityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.ObservationCount)">@relationship.ObservationCount</span></td><td>@relationship.UpdatedUtc.ToString("u")</td></tr>
+                                <tr class="@LegendConnectMetricTone.Quality(relationship.QualityState)"><td><span class="@LegendConnectMetricTone.Info">@(relationship.PairKey ?? "Monolingual")</span></td><td>@relationship.SourceText</td><td>@relationship.RelatedText</td><td><span class="@LegendConnectMetricTone.Info">@relationship.RelationshipKind</span><br /><small class="@LegendConnectMetricTone.Provenance(relationship.Provenance)">@relationship.Provenance</small></td><td>@(relationship.ContextCategory ?? "Not classified")</td><td>@(relationship.UsageRegister ?? "Not specified")</td><td><span class="@LegendConnectMetricTone.Quality(relationship.QualityState)">@relationship.QualityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.ObservationCount)">@relationship.ObservationCount</span></td><td>@relationship.UpdatedUtc.ToString("u")</td></tr>
                             }
                             </tbody></table></div>
                         }
                     </section>
 
                     <section class="dashboard-detail-modal-section" aria-labelledby="language-pairs-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Directional health</span><h3 class="dashboard-section-title" id="language-pairs-title">Connected language pairs</h3></div></div>
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Info">Directional health</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Info" id="language-pairs-title">Connected language pairs</h3></div></div>
                         @if (languageKnowledge.DirectionalPairs.Count == 0)
                         {
                             <p class="dashboard-section-copy">No enabled directional pair is configured for this language yet.</p>
@@ -526,14 +526,14 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Demand</th><th>Memory reuse</th><th>Provider fallback required</th><th>Coverage</th><th>Operational pair state</th><th>Operational health</th></tr></thead><tbody>
                             @foreach (var pair in languageKnowledge.DirectionalPairs)
                             {
-                                <tr><td>@pair.PairKey</td><td><span class="@LegendConnectMetricTone.InformationalActivity(pair.DemandCount)">@pair.DemandCount</span></td><td><span class="@LegendConnectMetricTone.BeneficialActivity(pair.TranslationMemoryReuseCount)">@pair.TranslationMemoryReuseCount</span></td><td><span class="@LegendConnectMetricTone.Dependency(pair.AzureFallbackRate, pair.DemandCount)">@pair.AzureFallbackCount (@pair.AzureFallbackRate.ToString("P0"))</span></td><td><span class="@LegendConnectMetricTone.BeneficialActivity(pair.Coverage)">@pair.Coverage</span></td><td><span class="@LegendConnectMetricTone.Quality(pair.QualityState)">@pair.QualityState</span></td><td><span class="@LegendConnectMetricTone.Health(pair.HealthState)">@pair.HealthState</span></td></tr>
+                                <tr class="@LegendConnectMetricTone.Health(pair.HealthState)"><td>@pair.PairKey</td><td><span class="@LegendConnectMetricTone.InformationalActivity(pair.DemandCount)">@pair.DemandCount</span></td><td><span class="@LegendConnectMetricTone.BeneficialActivity(pair.TranslationMemoryReuseCount)">@pair.TranslationMemoryReuseCount</span></td><td><span class="@LegendConnectMetricTone.Dependency(pair.AzureFallbackRate, pair.DemandCount)">@pair.AzureFallbackCount (@pair.AzureFallbackRate.ToString("P0"))</span></td><td><span class="@LegendConnectMetricTone.BeneficialActivity(pair.Coverage)">@pair.Coverage</span></td><td><span class="@LegendConnectMetricTone.Quality(pair.QualityState)">@pair.QualityState</span></td><td><span class="@LegendConnectMetricTone.Health(pair.HealthState)">@pair.HealthState</span></td></tr>
                             }
                             </tbody></table></div>
                         }
                     </section>
 
                     <section class="dashboard-detail-modal-section" aria-labelledby="learning-activity-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Privacy-safe pipeline audit</span><h3 class="dashboard-section-title" id="learning-activity-title">Learning activity</h3></div></div>
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Warning">Privacy-safe pipeline audit</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Warning" id="learning-activity-title">Learning activity</h3></div></div>
                         @if (languageKnowledge.RecentLearningActivity.Count == 0)
                         {
                             <p class="dashboard-section-copy">No learning-pipeline activity has been recorded for this language yet.</p>
@@ -544,14 +544,14 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Provenance</th><th>Eligibility</th><th>State</th><th>Outcome</th><th>Attempts</th><th>Created</th><th>Processed</th><th>Failure</th></tr></thead><tbody>
                             @foreach (var activity in languageKnowledge.RecentLearningActivity)
                             {
-                                <tr><td>@activity.PairKey</td><td><span class="@LegendConnectMetricTone.Provenance(activity.Provenance)">@activity.Provenance</span></td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.EligibilityState)">@activity.EligibilityState</span></td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.ProcessingState)">@activity.ProcessingState</span></td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.PromotionOutcome ?? "Awaiting")">@(activity.PromotionOutcome ?? "Awaiting")</span></td><td><span class="@LegendConnectMetricTone.Evidence(activity.AttemptCount)">@activity.AttemptCount</span></td><td>@activity.CreatedUtc.ToString("u")</td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.ProcessedUtc.HasValue ? "Processed" : "Not processed")">@(activity.ProcessedUtc?.ToString("u") ?? "Not processed")</span></td><td><span class="@(activity.FailureCode is null ? LegendConnectMetricTone.Success : LegendConnectMetricTone.Danger)">@(activity.FailureCode ?? "None")</span></td></tr>
+                                <tr class="@(activity.FailureCode is null ? LegendConnectMetricTone.Lifecycle(activity.PromotionOutcome ?? activity.ProcessingState) : LegendConnectMetricTone.Danger)"><td>@activity.PairKey</td><td><span class="@LegendConnectMetricTone.Provenance(activity.Provenance)">@activity.Provenance</span></td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.EligibilityState)">@activity.EligibilityState</span></td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.ProcessingState)">@activity.ProcessingState</span></td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.PromotionOutcome ?? "Awaiting")">@(activity.PromotionOutcome ?? "Awaiting")</span></td><td><span class="@LegendConnectMetricTone.Evidence(activity.AttemptCount)">@activity.AttemptCount</span></td><td>@activity.CreatedUtc.ToString("u")</td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.ProcessedUtc.HasValue ? "Processed" : "Not processed")">@(activity.ProcessedUtc?.ToString("u") ?? "Not processed")</span></td><td><span class="@(activity.FailureCode is null ? LegendConnectMetricTone.Success : LegendConnectMetricTone.Danger)">@(activity.FailureCode ?? "None")</span></td></tr>
                             }
                             </tbody></table></div>
                         }
                     </section>
 
                     <section class="dashboard-detail-modal-section" aria-labelledby="language-errors-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Bounded diagnostics</span><h3 class="dashboard-section-title" id="language-errors-title">Recent errors</h3></div></div>
+                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Danger">Bounded diagnostics</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Danger" id="language-errors-title">Recent errors</h3></div></div>
                         @if (health.RecentErrors.Count == 0)
                         {
                             <p class="dashboard-section-copy">No current language or directional-pair errors are recorded.</p>
@@ -561,7 +561,7 @@
                             <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>When</th><th>Category</th><th>Pair</th><th>State</th><th>Code</th><th>Summary</th></tr></thead><tbody>
                             @foreach (var diagnostic in health.RecentErrors)
                             {
-                                <tr><td>@diagnostic.OccurredUtc.ToString("u")</td><td><span class="@LegendConnectMetricTone.Info">@diagnostic.Category</span></td><td>@(diagnostic.PairKey ?? "Language")</td><td><span class="@LegendConnectMetricTone.Lifecycle(diagnostic.Status)">@diagnostic.Status</span></td><td><span class="@(string.IsNullOrWhiteSpace(diagnostic.ErrorCode) ? LegendConnectMetricTone.Neutral : LegendConnectMetricTone.Danger)">@(diagnostic.ErrorCode ?? "None")</span></td><td>@diagnostic.Summary</td></tr>
+                                <tr class="@(string.IsNullOrWhiteSpace(diagnostic.ErrorCode) ? LegendConnectMetricTone.Lifecycle(diagnostic.Status) : LegendConnectMetricTone.Danger)"><td>@diagnostic.OccurredUtc.ToString("u")</td><td><span class="@LegendConnectMetricTone.Info">@diagnostic.Category</span></td><td>@(diagnostic.PairKey ?? "Language")</td><td><span class="@LegendConnectMetricTone.Lifecycle(diagnostic.Status)">@diagnostic.Status</span></td><td><span class="@(string.IsNullOrWhiteSpace(diagnostic.ErrorCode) ? LegendConnectMetricTone.Neutral : LegendConnectMetricTone.Danger)">@(diagnostic.ErrorCode ?? "None")</span></td><td>@diagnostic.Summary</td></tr>
                             }
                             </tbody></table></div>
                         }

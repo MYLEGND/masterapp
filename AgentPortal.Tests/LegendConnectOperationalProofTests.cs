@@ -844,8 +844,10 @@ public sealed class LegendConnectOperationalProofTests
 
         Assert.Equal("Provider-billable characters", billable.Title);
         Assert.Contains(billable.Sections.SelectMany(section => section.Rows), row => row.Contains("safe-billable-reference") && row.Contains("42"));
+        Assert.Contains("info", billable.Sections.SelectMany(section => section.RowTones));
         Assert.Equal("Quota denied", denied.Title);
         Assert.Contains(denied.Sections.SelectMany(section => section.Rows), row => row.Contains("safe-denied-reference") && row.Contains("translation_quota_exhausted"));
+        Assert.Contains("danger", denied.Sections.SelectMany(section => section.RowTones));
         Assert.DoesNotContain(denied.Sections, section => section.Title == "Current section summary");
     }
 

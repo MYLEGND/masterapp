@@ -14,7 +14,7 @@ public sealed class LegendConnectMetricToneTests
         Assert.Equal(expected, LegendConnectMetricTone.Quality(state));
 
     [Theory]
-    [InlineData("FounderApproved", LegendConnectMetricTone.Authority)]
+    [InlineData("FounderApproved", LegendConnectMetricTone.Success)]
     [InlineData("ProviderDerived", LegendConnectMetricTone.Info)]
     [InlineData("Legacy", LegendConnectMetricTone.Warning)]
     public void Provenance_MapsEvidenceOriginToOnePresentationTone(string provenance, string expected) =>
@@ -28,5 +28,6 @@ public sealed class LegendConnectMetricToneTests
         Assert.Equal(LegendConnectMetricTone.Danger, LegendConnectMetricTone.Confidence(0.20m));
         Assert.Equal(LegendConnectMetricTone.Warning, LegendConnectMetricTone.Lifecycle("Pending"));
         Assert.Equal(LegendConnectMetricTone.Danger, LegendConnectMetricTone.Lifecycle("Failed"));
+        Assert.Equal(LegendConnectMetricTone.Success, LegendConnectMetricTone.Verification(true));
     }
 }

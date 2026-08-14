@@ -569,7 +569,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                         {
                             submissionById[item.SubmissionId].CreatedUtc.ToString("u", CultureInfo.InvariantCulture), Display(item.SequenceNumber), Display(item.ParagraphNumber), item.UnitType,
                             textById[item.TextUnitId].LanguageCode, textById[item.TextUnitId].Text, Display(item.CreatedUtc)
-                        })));
+                        }),
+                    rowTone: "success"));
         }
 
         if (key == "active-directional-alignments")
@@ -617,8 +618,48 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         string title,
         string description,
         IReadOnlyList<string> columns,
-        IEnumerable<string[]> rows) =>
-        new(title, description, columns, rows.Select(item => (IReadOnlyList<string>)item).ToList());
+        IEnumerable<string[]> rows,
+        string? rowTone = null)
+    {
+        var detailRows = rows.Select(item => (IReadOnlyList<string>)item).ToList();
+        return new LegendConnectMetricDetailSectionSnapshot(
+            title,
+            description,
+            columns,
+            detailRows,
+            detailRows.Select(row => rowTone ?? DetailRowTone(row)).ToList());
+    }
+
+    /// <summary>
+    /// Derives a presentation-only row tone from the canonical state already
+    /// included in a Founder-safe detail row. It neither changes evidence nor
+    /// infers language data: it makes trusted, provider-observed, pending, and
+    /// blocked records visually distinguishable in every metric detail modal.
+    /// </summary>
+    private static string DetailRowTone(IReadOnlyList<string> row)
+    {
+        var values = string.Join(' ', row).ToUpperInvariant();
+
+        if (ContainsAny(values, "QUOTADENIED", "FAILED", "FAILURE", "REJECTED", "BLOCKED", "INVALID", "SUPERSEDED", "DENIED", "ERROR"))
+            return "danger";
+
+        if (ContainsAny(values, "NOT HUMAN VERIFIED", "NOTPROCESSED", "PENDING", "PROCESSING", "AWAITING", "QUEUED", "REVIEW", "HOLD", "INSUFFICIENT", "LEGACY", "IMPORTED"))
+            return "warning";
+
+        if (ContainsAny(values, "FOUNDERAPPROVED", "FOUNDER APPROVED", "HUMANVERIFIED", "HUMAN VERIFIED"))
+            return "success";
+
+        if (ContainsAny(values, "PROVIDERDERIVED", "PROVIDER DERIVED", "AZURETRANSLATOR", "AZURE TRANSLATOR", "OBSERVATION"))
+            return "info";
+
+        if (ContainsAny(values, "VALIDATED", "TRUSTED", "SUPPORTED", "APPROVED", "ELIGIBLE", "COMPLETED", "PROCESSED", "ACTIVE", "YES"))
+            return "success";
+
+        return "neutral";
+    }
+
+    private static bool ContainsAny(string value, params string[] candidates) =>
+        candidates.Any(value.Contains);
 
     private static string CapacityValueFor(
         string key,

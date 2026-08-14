@@ -496,7 +496,8 @@ public sealed record LegendConnectMetricDetailSectionSnapshot(
     string Title,
     string Description,
     IReadOnlyList<string> Columns,
-    IReadOnlyList<IReadOnlyList<string>> Rows);
+    IReadOnlyList<IReadOnlyList<string>> Rows,
+    IReadOnlyList<string> RowTones);
 
 public sealed record LegendConnectMetricDetailSnapshot(
     string MetricKey,
