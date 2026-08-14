@@ -130,6 +130,130 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
         Assert.Equal(converged, secondPass);
     }
 
+    [Fact]
+    public async Task CurrentVersion_ReplaysHistoricalProviderSemanticConflictsWithoutAnEnglishPivot_AndConverges()
+    {
+        await using var historicalDb = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var historicalRegistry = new LegendLanguageRegistry(historicalDb, configuration);
+        var historicalRuntime = new LegendConnectRuntimePolicyAuthority(
+            historicalDb, new FounderAccess(), historicalRegistry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var historicalIntelligence = new LegendConnectTranslationIntelligence(historicalDb, configuration, historicalRuntime);
+        var historicalCorpus = new LegendConnectCorpusService(
+            historicalDb, historicalRegistry, NullLogger<LegendConnectCorpusService>.Instance,
+            intelligence: historicalIntelligence);
+        var historicalCurriculum = new LegendConnectCurriculumService(historicalDb, historicalRegistry, historicalCorpus);
+
+        // The v3 checkpoint represents the already-deployed evaluator before
+        // this precise provider-quality retention correction.
+        await DrainCanonicalWorkerCycleAsync(historicalRuntime, historicalCurriculum, historicalIntelligence, 3, take: 1);
+        var historicalSeed = await SeedFounderConflictAsync(historicalDb, historicalRegistry);
+        var replay = await historicalRuntime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.True(replay.RequiresWork);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, replay.Phase);
+
+        await DrainCanonicalWorkerCycleAsync(
+            historicalRuntime,
+            historicalCurriculum,
+            historicalIntelligence,
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            take: 1);
+
+        var historicalEvidence = await QualityShapeAsync(historicalDb, historicalSeed.ProviderAlignmentId);
+        Assert.Equal(
+            [
+                "Contradictory|human_verified_directional_conflict|none|Open",
+                "Insufficient|known_semantic_component_not_realized|semantic|Open"
+            ],
+            historicalEvidence);
+        var historicalProvider = await historicalDb.LegendTranslationAlignments
+            .SingleAsync(item => item.Id == historicalSeed.ProviderAlignmentId);
+        Assert.Equal("ProviderDerived", historicalProvider.Provenance);
+        Assert.False(historicalProvider.HumanVerified);
+        var trustedMemory = await historicalIntelligence.TryGetTrustedExactMemoryAsync(
+            historicalSeed.SourceLanguageCode,
+            historicalSeed.TargetLanguageCode,
+            historicalSeed.SourceText);
+        Assert.Equal("trusted correction target", trustedMemory?.Text);
+
+        var historicalFirstPass = new
+        {
+            Quality = await historicalDb.LegendTranslationQualityEvidence.CountAsync(),
+            Structural = await historicalDb.LegendLanguageStructuralEvidence.CountAsync(),
+            Alignments = await historicalDb.LegendTranslationAlignments.CountAsync()
+        };
+        await DrainCanonicalWorkerCycleAsync(
+            historicalRuntime,
+            historicalCurriculum,
+            historicalIntelligence,
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            take: 1);
+        var historicalSecondPass = new
+        {
+            Quality = await historicalDb.LegendTranslationQualityEvidence.CountAsync(),
+            Structural = await historicalDb.LegendLanguageStructuralEvidence.CountAsync(),
+            Alignments = await historicalDb.LegendTranslationAlignments.CountAsync()
+        };
+        Assert.Equal(historicalFirstPass, historicalSecondPass);
+
+        await using var currentDb = ControllerTestHelpers.BuildDb();
+        var currentRegistry = new LegendLanguageRegistry(currentDb, configuration);
+        var currentIntelligence = new LegendConnectTranslationIntelligence(currentDb, configuration);
+        var currentSeed = await SeedFounderConflictAsync(currentDb, currentRegistry);
+        await currentIntelligence.EvaluateProviderObservationAsync(currentSeed.ProviderAlignmentId);
+
+        Assert.Equal(historicalEvidence, await QualityShapeAsync(currentDb, currentSeed.ProviderAlignmentId));
+
+        await historicalIntelligence.RecordHumanCorrectionAsync(
+            historicalSeed.ProviderAlignmentId,
+            historicalSeed.TrustedAlignmentId);
+        var correctedHistory = await historicalDb.LegendTranslationQualityEvidence
+            .Where(item => item.ObservedAlignmentId == historicalSeed.ProviderAlignmentId)
+            .ToListAsync();
+        Assert.Contains(correctedHistory, item =>
+            item.Signal == "Contradictory" &&
+            item.ReasonCode == "human_verified_directional_correction" &&
+            item.RelatedAlignmentId == historicalSeed.TrustedAlignmentId &&
+            item.ResolutionState == "Corrected");
+        Assert.Equal("ProviderDerived", (await historicalDb.LegendTranslationAlignments
+            .SingleAsync(item => item.Id == historicalSeed.ProviderAlignmentId)).Provenance);
+    }
+
+    [Fact]
+    public async Task ProviderOnlyOutliers_RemainRetainedInsufficientAndCannotManufactureTrustedSupport()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var intelligence = new LegendConnectTranslationIntelligence(db, configuration);
+        var pair = Assert.IsType<LegendLanguagePairSnapshot>(
+            await registry.GetOrCreateEnabledPairAsync("x-source", "x-target"));
+        var source = Unit("x-source", "provider-only source", "FounderApproved");
+        var firstTarget = Unit("x-target", "provider outcome one", "ProviderDerived");
+        var secondTarget = Unit("x-target", "provider outcome two", "ProviderDerived");
+        var first = ProviderObservation(pair, source, firstTarget);
+        var second = ProviderObservation(pair, source, secondTarget);
+        db.AddRange(source, firstTarget, secondTarget, first, second);
+        await db.SaveChangesAsync();
+
+        await intelligence.EvaluateProviderObservationAsync(first.Id);
+        await intelligence.EvaluateProviderObservationAsync(second.Id);
+        await intelligence.EvaluateProviderObservationAsync(first.Id);
+        await intelligence.EvaluateProviderObservationAsync(second.Id);
+
+        var evidence = await db.LegendTranslationQualityEvidence.ToListAsync();
+        Assert.Equal(2, evidence.Count);
+        Assert.All(evidence, item =>
+        {
+            Assert.Equal("Insufficient", item.Signal);
+            Assert.Equal("no_established_pair_specific_evidence", item.ReasonCode);
+        });
+        Assert.All(await db.LegendTranslationAlignments.ToListAsync(), item => Assert.False(item.HumanVerified));
+        Assert.Null(await intelligence.TryGetTrustedExactMemoryAsync("x-source", "x-target", source.Text));
+    }
+
     private static async Task DrainCanonicalWorkerCycleAsync(
         LegendConnectRuntimePolicyAuthority runtime,
         LegendConnectCurriculumService curriculum,
@@ -152,6 +276,53 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
         throw new Xunit.Sdk.XunitException("The bounded canonical historical replay did not converge.");
     }
 
+    private static async Task<ProviderConflictSeed> SeedFounderConflictAsync(
+        MasterAppDbContext db,
+        LegendLanguageRegistry registry)
+    {
+        const string sourceLanguageCode = "x-source";
+        const string targetLanguageCode = "x-target";
+        const string sourceText = "controlled provider audit source";
+        var pair = Assert.IsType<LegendLanguagePairSnapshot>(
+            await registry.GetOrCreateEnabledPairAsync(sourceLanguageCode, targetLanguageCode));
+        var source = Unit(sourceLanguageCode, sourceText, "FounderApproved");
+        var providerTarget = Unit(targetLanguageCode, "provider observation target", "ProviderDerived");
+        var trustedTarget = Unit(targetLanguageCode, "trusted correction target", "FounderApproved");
+        var family = new LegendCurriculumFamily
+        {
+            Id = Guid.NewGuid(), FamilyKey = "provider.audit.semantic", Provenance = "FounderApproved"
+        };
+        var example = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(), CurriculumFamilyId = family.Id, TextUnitId = source.Id,
+            LanguageCode = sourceLanguageCode, Provenance = "FounderApproved"
+        };
+        var semanticSignature = LegendLanguageIdentity.TextHash("semantic|controlled-state|reviewed");
+        var anchor = new LegendLanguageCompositionalAnchor
+        {
+            Id = Guid.NewGuid(), LanguageCode = sourceLanguageCode, TextUnitId = source.Id,
+            CurriculumFamilyId = family.Id, CurriculumExampleId = example.Id,
+            Dimension = "controlled-state", Value = "reviewed", SemanticSignature = semanticSignature,
+            AnchorSignature = LegendLanguageIdentity.TextHash($"{example.Id:D}|sentence|controlled-state|reviewed"),
+            Provenance = "FounderApproved"
+        };
+        var provider = ProviderObservation(pair, source, providerTarget);
+        var trusted = HumanAlignment(pair, source, trustedTarget);
+        db.AddRange(source, providerTarget, trustedTarget, family, example, anchor, provider, trusted);
+        await db.SaveChangesAsync();
+        return new ProviderConflictSeed(provider.Id, trusted.Id, sourceLanguageCode, targetLanguageCode, sourceText);
+    }
+
+    private static async Task<List<string>> QualityShapeAsync(MasterAppDbContext db, Guid alignmentId)
+    {
+        var evidence = await db.LegendTranslationQualityEvidence
+            .Where(item => item.ObservedAlignmentId == alignmentId && item.SupersededUtc == null)
+            .OrderBy(item => item.Signal).ThenBy(item => item.ReasonCode)
+            .ToListAsync();
+        return evidence.Select(item => string.Join("|", item.Signal, item.ReasonCode,
+            item.SemanticSignature == null ? "none" : "semantic", item.ResolutionState)).ToList();
+    }
+
     private static IConfiguration Configuration() => new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -165,7 +336,13 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             ["LegendConnect:LanguageRegistry:Baseline:0:NativeName"] = "English",
             ["LegendConnect:LanguageRegistry:Baseline:1:Code"] = "x-test",
             ["LegendConnect:LanguageRegistry:Baseline:1:Name"] = "Synthetic test language",
-            ["LegendConnect:LanguageRegistry:Baseline:1:NativeName"] = "Synthetic test language"
+            ["LegendConnect:LanguageRegistry:Baseline:1:NativeName"] = "Synthetic test language",
+            ["LegendConnect:LanguageRegistry:Baseline:2:Code"] = "x-source",
+            ["LegendConnect:LanguageRegistry:Baseline:2:Name"] = "Synthetic source language",
+            ["LegendConnect:LanguageRegistry:Baseline:2:NativeName"] = "Synthetic source language",
+            ["LegendConnect:LanguageRegistry:Baseline:3:Code"] = "x-target",
+            ["LegendConnect:LanguageRegistry:Baseline:3:Name"] = "Synthetic target language",
+            ["LegendConnect:LanguageRegistry:Baseline:3:NativeName"] = "Synthetic target language"
         }).Build();
 
     private static LegendLanguageTextUnit Unit(string languageCode, string text, string provenance) => new()
@@ -178,6 +355,32 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
         Provenance = provenance,
         IsTrainingEligible = true
     };
+
+    private static LegendTranslationAlignment ProviderObservation(
+        LegendLanguagePairSnapshot pair,
+        LegendLanguageTextUnit source,
+        LegendLanguageTextUnit target) => new()
+    {
+        Id = Guid.NewGuid(), PairKey = pair.PairKey, SourceTextUnitId = source.Id, TargetTextUnitId = target.Id,
+        Provider = "AzureTranslator", Provenance = "ProviderDerived", QualityState = "Observation", ObservationCount = 1
+    };
+
+    private static LegendTranslationAlignment HumanAlignment(
+        LegendLanguagePairSnapshot pair,
+        LegendLanguageTextUnit source,
+        LegendLanguageTextUnit target) => new()
+    {
+        Id = Guid.NewGuid(), PairKey = pair.PairKey, SourceTextUnitId = source.Id, TargetTextUnitId = target.Id,
+        Provider = "FounderApproved", Provenance = "FounderApproved", Confidence = 1m,
+        QualityState = "Verified", HumanVerified = true, ObservationCount = 1
+    };
+
+    private sealed record ProviderConflictSeed(
+        Guid ProviderAlignmentId,
+        Guid TrustedAlignmentId,
+        string SourceLanguageCode,
+        string TargetLanguageCode,
+        string SourceText);
 
     private sealed class FounderAccess : IControlledResourceAccessService
     {

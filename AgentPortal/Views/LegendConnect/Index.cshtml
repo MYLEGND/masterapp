@@ -386,16 +386,8 @@
                     <button type="button" class="dashboard-modal-close" data-bs-dismiss="modal" aria-label="Close metric details and return to Legend Connect">×</button>
                 </div>
             </div>
-            <div class="modal-body">
-                <section class="dashboard-detail-modal-section" aria-labelledby="legendConnectMetricSummarySelectedTitle">
-                    <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Selected metric</span><h3 class="dashboard-section-title" id="legendConnectMetricSummarySelectedTitle">Current value</h3></div></div>
-                    <div class="dashboard-hero-stats dashboard-detail-modal-metrics legend-connect-summary-selected" data-legend-summary-selected></div>
-                </section>
-                <section class="dashboard-detail-modal-section" aria-labelledby="legendConnectMetricSummaryGroupTitle">
-                    <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Complete related data</span><h3 class="dashboard-section-title" id="legendConnectMetricSummaryGroupTitle">Current section summary</h3></div></div>
-                    <p class="dashboard-section-copy">Every value below is the current server-provided value from this same section. Opening this modal does not recalculate, modify, or create operational data.</p>
-                    <div class="dashboard-hero-stats dashboard-detail-modal-metrics legend-connect-summary-breakdown" data-legend-summary-breakdown></div>
-                </section>
+            <div class="modal-body" data-legend-summary-body aria-live="polite">
+                <p class="dashboard-section-copy">Loading the current record-level detail…</p>
             </div>
         </div>
     </div>

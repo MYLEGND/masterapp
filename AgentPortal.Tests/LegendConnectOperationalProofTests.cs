@@ -745,6 +745,85 @@ public sealed class LegendConnectOperationalProofTests
     private static TempDataDictionary NewTempData(HttpContext context) =>
         new(context, Mock.Of<ITempDataProvider>());
 
+    [Fact]
+    public async Task MetricDetails_ReturnsTheActualUsageLedgerRowsInsteadOfDashboardCards()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        db.LegendTranslationSystemUsages.Add(new LegendTranslationSystemUsage
+        {
+            Id = Guid.NewGuid(),
+            UsageDate = today,
+            ProviderOperationCount = 2,
+            ProviderBillableCharacters = 42,
+            QuotaDeniedRequestCount = 1,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.LegendTranslationUsageLedgers.AddRange(
+            new LegendTranslationUsageLedger
+            {
+                Id = Guid.NewGuid(), RequestReference = "safe-billable-reference", UserId = "client-a", ParticipantType = "Client",
+                PeriodStart = new DateOnly(today.Year, today.Month, 1), SourceLanguageCode = "en", TargetLanguageCode = "ht",
+                Provider = "AzureTranslator", BillableCharacters = 42, ProviderExecuted = true, Succeeded = true,
+                State = "Completed", CreatedUtc = DateTime.UtcNow, CompletedUtc = DateTime.UtcNow
+            },
+            new LegendTranslationUsageLedger
+            {
+                Id = Guid.NewGuid(), RequestReference = "safe-denied-reference", UserId = "client-b", ParticipantType = "Client",
+                PeriodStart = new DateOnly(today.Year, today.Month, 1), SourceLanguageCode = "en", TargetLanguageCode = "fr",
+                Provider = "AzureTranslator", BillableCharacters = 18, ProviderExecuted = false, Succeeded = false,
+                State = "QuotaDenied", FailureCode = "translation_quota_exhausted", CreatedUtc = DateTime.UtcNow, CompletedUtc = DateTime.UtcNow
+            });
+        await db.SaveChangesAsync();
+
+        var billable = await operations.GetMetricDetailAsync("provider-billable-characters");
+        var denied = await operations.GetMetricDetailAsync("quota-denied");
+
+        Assert.Equal("Provider-billable characters", billable.Title);
+        Assert.Contains(billable.Sections.SelectMany(section => section.Rows), row => row.Contains("safe-billable-reference") && row.Contains("42"));
+        Assert.Equal("Quota denied", denied.Title);
+        Assert.Contains(denied.Sections.SelectMany(section => section.Rows), row => row.Contains("safe-denied-reference") && row.Contains("translation_quota_exhausted"));
+        Assert.DoesNotContain(denied.Sections, section => section.Title == "Current section summary");
+    }
+
+    [Fact]
+    public async Task MetricDetails_ResolvesEveryDashboardMetricKeyThroughTheOneOperationsFacade()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance),
+            configuration);
+        var keys = new[]
+        {
+            "active-languages", "directional-pairs", "learning-failures", "duplicate-prevention",
+            "approved-candidates", "eligible-pending", "rejected-ineligible", "readiness-duplicates-prevented", "pairs-awaiting-knowledge",
+            "same-language-bypasses", "translation-memory-hits", "provider-fallback-required", "trusted-contextual-served", "provider-avoidance", "provider-dependency",
+            "azure-characters-used", "consumed-live-characters", "consumed-corpus-characters", "provider-characters-reserved", "pending-learning-jobs",
+            "quality-needs-review", "quality-provider-observations", "quality-supported-observations", "quality-contradictions", "quality-human-verified",
+            "provider-operations", "provider-billable-characters", "same-language-avoided", "memory-avoided", "context-avoided", "quota-denied", "provider-failures", "group-target-reuse", "high-consumption-accounts",
+            "consented-accounts", "eligible-live-translations", "promoted-to-learning", "canonical-reuse-prevented-duplicates", "awaiting-corpus-processing",
+            "raw-submissions-retained", "atomic-learning-units", "active-directional-alignments", "legacy-multi-unit-assets-retired",
+            "capacity-monthly-limit", "capacity-monthly-consumed", "capacity-monthly-reserved", "capacity-monthly-remaining", "capacity-monthly-reserve", "capacity-monthly-corpus",
+            "capacity-hourly-limit", "capacity-hourly-consumed", "capacity-hourly-remaining", "capacity-safe"
+        };
+
+        foreach (var key in keys)
+        {
+            var detail = await operations.GetMetricDetailAsync(key);
+            Assert.Equal(key, detail.MetricKey);
+            Assert.NotEmpty(detail.Sections);
+        }
+    }
+
     private static IConfiguration Configuration(bool corpusAcquisitionEnabled = false) => new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?>
         {

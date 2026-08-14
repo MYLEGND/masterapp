@@ -310,102 +310,108 @@
     const title = modalElement.querySelector("[data-legend-summary-title]");
     const context = modalElement.querySelector("[data-legend-summary-context]");
     const description = modalElement.querySelector("[data-legend-summary-description]");
-    const selected = modalElement.querySelector("[data-legend-summary-selected]");
-    const breakdown = modalElement.querySelector("[data-legend-summary-breakdown]");
+    const body = modalElement.querySelector("[data-legend-summary-body]");
     const tiles = Array.from(page.querySelectorAll(".dashboard-stat-card"))
-        .filter(tile => !tile.closest(".modal"));
+        .filter(tile => !tile.closest(".modal") && metricKeyFor(tile));
     let activeTile = null;
-    let activeGroup = null;
-    let observer = null;
+    let requestVersion = 0;
 
-    if (!title || !context || !description || !selected || !breakdown || tiles.length === 0) return;
+    if (!title || !context || !description || !body || tiles.length === 0) return;
 
     const normalizedText = element => (element?.textContent || "").replace(/\s+/g, " ").trim();
 
-    function labelFor(tile) {
-        return normalizedText(tile.querySelector(".dashboard-stat-label")) || "Legend Connect metric";
+    function metricKeyFor(tile) {
+        if (tile.dataset.legendLiveCard) return tile.dataset.legendLiveCard;
+        const capacityValue = tile.querySelector("[data-azure-capacity-value]")?.dataset.azureCapacityValue;
+        return capacityValue ? `capacity-${capacityValue}` : null;
     }
 
-    function valueFor(tile) {
-        return normalizedText(tile.querySelector(".dashboard-stat-value")) || "Unavailable";
+    function appendText(parent, tagName, className, text) {
+        const element = document.createElement(tagName);
+        if (className) element.className = className;
+        element.textContent = text || "—";
+        parent.append(element);
+        return element;
     }
 
-    function contextFor(tile) {
-        const disclosure = tile.closest(".legend-connect-disclosure");
-        const disclosureTitle = disclosure?.querySelector(".dashboard-section-title");
-        if (disclosureTitle) return normalizedText(disclosureTitle);
-
-        const capacity = tile.closest(".dashboard-search-panel");
-        const capacityTitle = capacity?.querySelector(".dashboard-section-title");
-        if (capacityTitle) return normalizedText(capacityTitle);
-
-        const section = tile.closest("section, .dashboard-command-center-panel");
-        const sectionTitle = section?.querySelector("h1, h2, h3, .dashboard-section-title");
-        return normalizedText(sectionTitle) || "Legend Connect";
-    }
-
-    function cloneTile(tile) {
-        const copy = tile.cloneNode(true);
-        copy.classList.remove("legend-connect-summary-pill");
-        copy.removeAttribute("role");
-        copy.removeAttribute("tabindex");
-        copy.removeAttribute("aria-haspopup");
-        copy.removeAttribute("aria-controls");
-        copy.removeAttribute("data-legend-summary-tile");
-        copy.removeAttribute("data-legend-live-card");
-        copy.removeAttribute("data-legend-live-value");
-        copy.removeAttribute("data-azure-capacity-value");
-        copy.removeAttribute("data-azure-capacity-status");
-        copy.querySelector(".legend-connect-summary-pill-action")?.remove();
-        copy.querySelectorAll("[data-legend-live-card], [data-legend-live-value], [data-azure-capacity-value], [data-azure-capacity-status]")
-            .forEach(node => {
-                node.removeAttribute("data-legend-live-card");
-                node.removeAttribute("data-legend-live-value");
-                node.removeAttribute("data-azure-capacity-value");
-                node.removeAttribute("data-azure-capacity-status");
-            });
-        return copy;
-    }
-
-    function relatedTilesFor(tile) {
-        const group = tile.closest(".dashboard-hero-stats");
-        return group
-            ? Array.from(group.querySelectorAll(":scope > .dashboard-stat-card"))
-            : [tile];
-    }
-
-    function render() {
-        if (!activeTile) return;
-
-        const metricLabel = labelFor(activeTile);
-        const metricValue = valueFor(activeTile);
-        const section = contextFor(activeTile);
+    function renderLoading(metricLabel) {
         title.textContent = metricLabel;
-        context.textContent = section;
-        description.textContent = `${metricLabel} is currently ${metricValue}. This modal shows the full live summary for ${section}.`;
-        selected.replaceChildren(cloneTile(activeTile));
-        breakdown.replaceChildren(...relatedTilesFor(activeTile).map(cloneTile));
+        context.textContent = "Loading record-level detail";
+        description.textContent = "Loading the current server-backed records behind this metric. No operational data is changed.";
+        body.replaceChildren();
+        appendText(body, "p", "dashboard-section-copy", "Loading the current record-level detail…");
     }
 
-    function observeActiveGroup() {
-        observer?.disconnect();
-        if (!activeGroup) return;
-        observer = new MutationObserver(render);
-        observer.observe(activeGroup, {
-            subtree: true,
-            childList: true,
-            characterData: true,
-            attributes: true,
-            attributeFilter: ["class"]
+    function render(snapshot) {
+        title.textContent = snapshot.title || "Metric details";
+        context.textContent = snapshot.context || "Legend Connect";
+        description.textContent = snapshot.description || "Current record-level Legend Connect detail.";
+        body.replaceChildren();
+        const sections = Array.isArray(snapshot.sections) ? snapshot.sections : [];
+        if (sections.length === 0) {
+            appendText(body, "p", "dashboard-section-copy", "No current record-level data is available for this metric.");
+            return;
+        }
+        sections.forEach(section => {
+            const sectionElement = document.createElement("section");
+            sectionElement.className = "dashboard-detail-modal-section";
+            const heading = document.createElement("div");
+            heading.className = "dashboard-section-head dashboard-section-head-tight";
+            const headingContent = document.createElement("div");
+            appendText(headingContent, "span", "dashboard-section-kicker", "Record-level detail");
+            appendText(headingContent, "h3", "dashboard-section-title", section.title);
+            heading.append(headingContent);
+            sectionElement.append(heading);
+            appendText(sectionElement, "p", "dashboard-section-copy", section.description);
+            const rows = Array.isArray(section.rows) ? section.rows : [];
+            const columns = Array.isArray(section.columns) ? section.columns : [];
+            if (columns.length === 0 || rows.length === 0) {
+                appendText(sectionElement, "p", "dashboard-section-copy", "No matching current records.");
+            } else {
+                const surface = document.createElement("div");
+                surface.className = "dashboard-data-surface";
+                const table = document.createElement("table");
+                table.className = "table dashboard-data-table";
+                const thead = document.createElement("thead");
+                const headerRow = document.createElement("tr");
+                columns.forEach(column => appendText(headerRow, "th", "", column));
+                thead.append(headerRow);
+                const tbody = document.createElement("tbody");
+                rows.forEach(row => {
+                    const dataRow = document.createElement("tr");
+                    columns.forEach((_, index) => appendText(dataRow, "td", "", Array.isArray(row) ? row[index] : ""));
+                    tbody.append(dataRow);
+                });
+                table.append(thead, tbody);
+                surface.append(table);
+                sectionElement.append(surface);
+            }
+            body.append(sectionElement);
         });
     }
 
-    function open(tile) {
+    async function open(tile) {
         activeTile = tile;
-        activeGroup = tile.closest(".dashboard-hero-stats");
-        render();
-        observeActiveGroup();
+        const metricKey = metricKeyFor(tile);
+        const request = ++requestVersion;
+        renderLoading(normalizedText(tile.querySelector(".dashboard-stat-label")) || "Legend Connect metric");
         modal.show();
+        try {
+            const response = await fetch(`/founder/legend-connect/metric-details?metric=${encodeURIComponent(metricKey)}`, {
+                cache: "no-store",
+                credentials: "same-origin",
+                headers: { Accept: "application/json" }
+            });
+            if (!response.ok) throw new Error("Metric detail request failed.");
+            const snapshot = await response.json();
+            if (request === requestVersion && activeTile === tile) render(snapshot);
+        } catch {
+            if (request !== requestVersion || activeTile !== tile) return;
+            context.textContent = "Record-level detail unavailable";
+            description.textContent = "The current dashboard value remains unchanged, but its detailed records could not be loaded. Try again shortly.";
+            body.replaceChildren();
+            appendText(body, "p", "dashboard-section-copy", "No records were changed or recalculated.");
+        }
     }
 
     tiles.forEach(tile => {
@@ -434,10 +440,9 @@
     });
 
     modalElement.addEventListener("hidden.bs.modal", () => {
-        observer?.disconnect();
         const returnFocus = activeTile;
-        activeGroup = null;
         activeTile = null;
+        requestVersion++;
         returnFocus?.focus();
     });
 })();

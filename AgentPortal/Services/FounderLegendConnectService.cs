@@ -93,6 +93,19 @@ public sealed class FounderLegendConnectService
     }
 
     /// <summary>
+    /// Founder-gated read-through to the existing Legend Connect operational
+    /// authorities for the record-level evidence behind a dashboard metric.
+    /// </summary>
+    public async Task<LegendConnectMetricDetailSnapshot> GetMetricDetailAsync(
+        ClaimsPrincipal user,
+        string? metricKey,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.GetMetricDetailAsync(metricKey, cancellationToken);
+    }
+
+    /// <summary>
     /// Retrieves the current aggregate display metrics from the existing
     /// server-owned authorities. This deliberately has no client-side
     /// calculations, cached counters, or operational side effects.

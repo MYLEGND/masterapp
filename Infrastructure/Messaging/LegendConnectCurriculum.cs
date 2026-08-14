@@ -6,8 +6,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Infrastructure.Messaging;
 
 /// <summary>
-/// Generic, server-side curriculum authority. Founder-authored English examples
-/// describe controlled semantic changes; every language derives its structural
+/// Generic, server-side curriculum authority. Founder-authored controlled
+/// examples describe semantic changes; every language derives its structural
 /// observations only by comparing canonical examples in that same language.
 /// This service owns neither a corpus nor a provider: it extends the existing
 /// corpus candidate and Azure-expansion pipeline.
@@ -84,7 +84,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     // advanced only when the canonical grouping meaning changes, allowing the
     // existing bounded evaluator replay to supersede its prior derived row
     // without rewriting or conflating historical evidence.
-    private const string ReusableStructuralRelationshipIdentityVersion = "controlled-anchor-order-v2";
+    private const string ReusableStructuralRelationshipIdentityVersion = "controlled-anchor-order-v3";
     private readonly MasterAppDbContext _db;
     private readonly ILegendLanguageRegistry _languages;
     private readonly LegendConnectCorpusService _corpus;
@@ -190,7 +190,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var structuredSourceUnits = await _db.Set<LegendLanguageTextUnit>()
             .Where(item => structuredSourceUnitIds.Contains(item.Id))
             .ToDictionaryAsync(item => item.Id, cancellationToken);
-        var structuredEnglishInputs = sourceExamples
+        var structuredSourceInputs = sourceExamples
             .DistinctBy(item => item.TextUnitId)
             .Select(item => new AtomicInput(
                 structuredSourceUnits[item.TextUnitId],
@@ -199,8 +199,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 null,
                 null))
             .ToList();
-        await EnsureLanguageLexicalObservationsAsync(structuredEnglishInputs, english, cancellationToken);
-        await AttachExplicitEnglishSemanticAnchorsAsync(family, sourceExamples, cancellationToken);
+        await EnsureLanguageLexicalObservationsAsync(structuredSourceInputs, english, cancellationToken);
+        await AttachExplicitFounderSemanticAnchorsAsync(family, sourceExamples, english, cancellationToken);
 
         // This is the existing expansion authority. It is idempotent by source
         // asset and directional pair, and it carries curriculum lineage only as
@@ -559,8 +559,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 ).Distinct().OrderBy(item => item).ToListAsync(cancellationToken);
                 foreach (var languageCode in languages)
                 {
-                    if (string.Equals(languageCode, "en", StringComparison.OrdinalIgnoreCase))
-                        await ReconcileFounderApprovedEnglishEvidenceAsync(familyId, cancellationToken);
+                    await ReconcileFounderApprovedSourceEvidenceAsync(familyId, languageCode, cancellationToken);
                     await AnalyzeFamilyLanguageAsync(familyId, languageCode, pairKey: null, cancellationToken);
                 }
             }
@@ -1124,31 +1123,32 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             await _db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task AttachExplicitEnglishSemanticAnchorsAsync(
+    private async Task AttachExplicitFounderSemanticAnchorsAsync(
         LegendCurriculumFamily family,
         IReadOnlyList<LegendCurriculumExample> examples,
+        string languageCode,
         CancellationToken cancellationToken)
     {
-        var englishCandidates = examples
-            .Where(item => string.Equals(item.LanguageCode, "en", StringComparison.OrdinalIgnoreCase) && item.SupersededUtc is null)
+        var candidates = examples
+            .Where(item => string.Equals(item.LanguageCode, languageCode, StringComparison.OrdinalIgnoreCase) && item.SupersededUtc is null)
             .DistinctBy(item => item.Id)
             .ToList();
-        if (englishCandidates.Count == 0)
+        if (candidates.Count == 0)
             return;
 
         var founderApprovedUnitIds = await _db.Set<LegendLanguageTextUnit>()
-            .Where(item => englishCandidates.Select(example => example.TextUnitId).Contains(item.Id) &&
-                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+            .Where(item => candidates.Select(example => example.TextUnitId).Contains(item.Id) &&
+                item.LanguageCode == languageCode && item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
             .Select(item => item.Id)
             .ToHashSetAsync(cancellationToken);
-        var englishExamples = englishCandidates
+        var founderExamples = candidates
             .Where(item => founderApprovedUnitIds.Contains(item.TextUnitId))
             .ToList();
-        if (englishExamples.Count == 0)
+        if (founderExamples.Count == 0)
             return;
 
-        var exampleIds = englishExamples.Select(item => item.Id).ToArray();
-        var textUnitIds = englishExamples.Select(item => item.TextUnitId).ToArray();
+        var exampleIds = founderExamples.Select(item => item.Id).ToArray();
+        var textUnitIds = founderExamples.Select(item => item.TextUnitId).ToArray();
         var exampleVariations = await _db.Set<LegendCurriculumExampleVariation>()
             .Where(item => exampleIds.Contains(item.CurriculumExampleId))
             .ToListAsync(cancellationToken);
@@ -1166,7 +1166,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .Select(item => item.AnchorSignature)
             .ToHashSetAsync(cancellationToken);
         var pending = false;
-        foreach (var example in englishExamples)
+        foreach (var example in founderExamples)
         {
             if (!variationsByExample.TryGetValue(example.Id, out var variations))
                 continue;
@@ -1179,7 +1179,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     _db.Set<LegendLanguageCompositionalAnchor>().Add(new LegendLanguageCompositionalAnchor
                     {
                         Id = Guid.NewGuid(),
-                        LanguageCode = "en",
+                        LanguageCode = languageCode,
                         TextUnitId = example.TextUnitId,
                         CurriculumFamilyId = family.Id,
                         CurriculumExampleId = example.Id,
@@ -1211,7 +1211,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     _db.Set<LegendLanguageCompositionalAnchor>().Add(new LegendLanguageCompositionalAnchor
                     {
                         Id = Guid.NewGuid(),
-                        LanguageCode = "en",
+                        LanguageCode = languageCode,
                         TextUnitId = example.TextUnitId,
                         LexemeId = occurrence.LexemeId,
                         ComponentStartTokenIndex = occurrence.TokenIndex,
@@ -1234,13 +1234,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     }
 
     /// <summary>
-    /// Replays existing Founder-approved English curriculum through the same
+    /// Replays existing Founder-approved source curriculum through the same
     /// lexical and semantic-anchor authority used for a new curriculum batch.
     /// It creates no raw submission, corpus asset, or second parser; historic
     /// examples simply receive the missing reusable evidence projection.
     /// </summary>
-    private async Task ReconcileFounderApprovedEnglishEvidenceAsync(
+    private async Task ReconcileFounderApprovedSourceEvidenceAsync(
         Guid familyId,
+        string languageCode,
         CancellationToken cancellationToken)
     {
         var family = await _db.Set<LegendCurriculumFamily>()
@@ -1249,7 +1250,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return;
 
         var examples = await _db.Set<LegendCurriculumExample>()
-            .Where(item => item.CurriculumFamilyId == familyId && item.LanguageCode == "en" &&
+            .Where(item => item.CurriculumFamilyId == familyId && item.LanguageCode == languageCode &&
                 item.DerivedFromCurriculumExampleId == null && item.SupersededUtc == null)
             .ToListAsync(cancellationToken);
         if (examples.Count == 0)
@@ -1266,8 +1267,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (inputs.Count == 0)
             return;
 
-        await EnsureLanguageLexicalObservationsAsync(inputs, "en", cancellationToken);
-        await AttachExplicitEnglishSemanticAnchorsAsync(family, examples, cancellationToken);
+        await EnsureLanguageLexicalObservationsAsync(inputs, languageCode, cancellationToken);
+        await AttachExplicitFounderSemanticAnchorsAsync(family, examples, languageCode, cancellationToken);
     }
 
     private async Task EnsureParagraphNeighborRelationshipsAsync(
@@ -1798,9 +1799,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     }
 
     /// <summary>
-    /// Loads only explicit, Founder-approved component anchors. A sentence
-    /// without those durable anchors remains unknown for reusable structural
-    /// learning even when its surface form resembles another sentence.
+    /// Loads explicit, Founder-approved controlled anchors. A sentence-level
+    /// semantic anchor preserves a supplied variation even when that value is
+    /// not itself a literal surface span; reusable relationships still require
+    /// an independently stable, observed surface component and never infer an
+    /// unanchored role from text.
     /// </summary>
     private async Task<Dictionary<Guid, IReadOnlyList<ExplicitControlledAnchor>>> LoadExplicitControlledAnchorsByExampleAsync(
         IReadOnlyCollection<Guid> exampleIds,
@@ -1813,13 +1816,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 item.SupersededUtc == null &&
                 item.SemanticSignature != null && item.SemanticSignature != string.Empty &&
-                item.ComponentStartTokenIndex != null && item.ComponentLength != null && item.ComponentLength > 0)
+                ((item.ComponentStartTokenIndex == null && item.ComponentLength == null) ||
+                 (item.ComponentStartTokenIndex != null && item.ComponentLength != null &&
+                    item.ComponentStartTokenIndex >= 0 && item.ComponentLength > 0)))
             .Select(item => new ExplicitControlledAnchor(
                 item.CurriculumExampleId,
                 item.Dimension,
                 item.SemanticSignature!,
-                item.ComponentStartTokenIndex!.Value,
-                item.ComponentLength!.Value))
+                item.ComponentStartTokenIndex ?? -1,
+                item.ComponentLength ?? 0))
             .ToListAsync(cancellationToken);
 
         return anchors
@@ -1837,9 +1842,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// <summary>
     /// Builds a candidate relationship only where controlled component
     /// anchors establish one changed dimension and at least one separately
-    /// stable component. The signature intentionally contains no words or
-    /// proposition values, enabling explicitly anchored lexical substitutions
-    /// to contribute without guessing their semantics.
+    /// stable, observed surface component. The changed dimension may be an
+    /// explicit sentence-level semantic anchor when its supplied value does
+    /// not name a literal span; no span is guessed. The signature intentionally
+    /// contains no words or proposition values, enabling explicitly anchored
+    /// lexical substitutions to contribute without guessing their semantics.
     /// </summary>
     private static ReusableStructuralRelationshipCandidate? TryCreateReusableStructuralRelationship(
         string changedDimension,
@@ -1879,6 +1886,17 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .ToList();
         if (invariantDimensions.Count == 0)
             return null;
+
+        // Sentence-level semantic anchors preserve Founder-supplied controlled
+        // variation meaning, but cannot by themselves assert a reusable
+        // structural layout. At least one invariant must be an observed
+        // component span in both examples.
+        if (!invariantDimensions.Any(dimension =>
+                baselineByDimension[dimension].Any(item => item.ComponentLength > 0) &&
+                comparedByDimension[dimension].Any(item => item.ComponentLength > 0)))
+        {
+            return null;
+        }
 
         // The evidence establishes that precisely one explicitly controlled
         // dimension changed. Any other anchored component must retain the

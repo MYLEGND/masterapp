@@ -1,3 +1,4 @@
+using System.Globalization;
 using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
@@ -201,6 +202,563 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 DateTime.UtcNow.AddMinutes(-AzureTranslatorSubscriptionCapacity.CapacityWindowMinutes),
                 DateTime.UtcNow, null, 0, 0, null, null, null, DateTime.UtcNow,
                 "Azure Translator capacity synchronization is unavailable."));
+
+    /// <summary>
+    /// Returns the underlying, privacy-safe records for one dashboard metric.
+    /// The dashboard values and this detail projection deliberately read the
+    /// same ledgers, corpus lineage, and operational evidence; this is a read
+    /// surface only and does not create another metrics authority.
+    /// </summary>
+    public async Task<LegendConnectMetricDetailSnapshot> GetMetricDetailAsync(
+        string? metricKey,
+        CancellationToken cancellationToken = default)
+    {
+        var key = metricKey?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(key))
+            return EmptyMetricDetail("unknown", "Metric details", "A Legend Connect metric was not specified.");
+
+        if (key.StartsWith("capacity-", StringComparison.Ordinal))
+            return await BuildCapacityMetricDetailAsync(key, cancellationToken);
+
+        var state = await LoadStateAsync(cancellationToken);
+        return key switch
+        {
+            "active-languages" => BuildLanguageMetricDetail(state),
+            "directional-pairs" => BuildPairMetricDetail(state),
+            "learning-failures" => BuildLearningFailureMetricDetail(state),
+            "duplicate-prevention" or "readiness-duplicates-prevented" => BuildDuplicateMetricDetail(state, key),
+            "approved-candidates" or "eligible-pending" or "rejected-ineligible" or "pairs-awaiting-knowledge" => BuildCandidateMetricDetail(state, key),
+            "same-language-bypasses" or "translation-memory-hits" or "provider-fallback-required" or "trusted-contextual-served" or "provider-avoidance" or "provider-dependency" => BuildDemandMetricDetail(state, key),
+            "azure-characters-used" or "consumed-live-characters" or "consumed-corpus-characters" or "provider-characters-reserved" => await BuildCapacityMetricDetailAsync(key, cancellationToken),
+            "pending-learning-jobs" => BuildPendingLearningMetricDetail(state),
+            "quality-needs-review" or "quality-provider-observations" or "quality-supported-observations" or "quality-contradictions" or "quality-human-verified" => await BuildQualityMetricDetailAsync(state, key, cancellationToken),
+            "provider-operations" or "provider-billable-characters" or "same-language-avoided" or "memory-avoided" or "context-avoided" or "quota-denied" or "provider-failures" or "group-target-reuse" or "high-consumption-accounts" => await BuildUsageMetricDetailAsync(key, cancellationToken),
+            "consented-accounts" or "eligible-live-translations" or "promoted-to-learning" or "canonical-reuse-prevented-duplicates" or "awaiting-corpus-processing" => BuildConsentedLearningMetricDetail(state, key),
+            "raw-submissions-retained" or "atomic-learning-units" or "active-directional-alignments" or "legacy-multi-unit-assets-retired" => BuildFounderTrainingMetricDetail(state, key),
+            _ => EmptyMetricDetail(key, "Metric details", "This card has no configured Legend Connect detail projection.")
+        };
+    }
+
+    private async Task<LegendConnectMetricDetailSnapshot> BuildCapacityMetricDetailAsync(
+        string key,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = await GetProviderCapacityAsync(cancellationToken);
+        var capacities = await _db.Set<LegendTranslationProviderCapacity>().AsNoTracking()
+            .Where(item => item.Provider == "AzureTranslator")
+            .OrderByDescending(item => item.BillingPeriodStart)
+            .ToListAsync(cancellationToken);
+        var reservations = await _db.Set<LegendTranslationProviderReservation>().AsNoTracking()
+            .Where(item => item.Provider == "AzureTranslator")
+            .OrderByDescending(item => item.CreatedUtc)
+            .ToListAsync(cancellationToken);
+        var currentCapacity = capacities.FirstOrDefault(item => item.BillingPeriodStart == snapshot.BillingPeriodStart);
+
+        var fields = new[]
+        {
+            new[] { "Selected metric", CapacityValueFor(key, snapshot, currentCapacity) },
+            new[] { "Resource", snapshot.ResourceName ?? "Azure Translator" },
+            new[] { "Resource tier", snapshot.Tier ?? "Unavailable" },
+            new[] { "Synchronization", snapshot.Status },
+            new[] { "Billing period", $"{snapshot.BillingPeriodStart:yyyy-MM-dd} through {snapshot.BillingPeriodEnd:yyyy-MM-dd}" },
+            new[] { "Monthly allowance", Display(snapshot.MonthlyIncludedCharacterAllowance) },
+            new[] { "Monthly consumed", Display(snapshot.MonthlyCharactersConsumed) },
+            new[] { "Monthly reserved", Display(snapshot.MonthlyReservedCharacters) },
+            new[] { "Monthly remaining", Display(snapshot.MonthlyRemainingCharacters) },
+            new[] { "Protected live reserve", Display(snapshot.MonthlyLiveReserveCharacters) },
+            new[] { "Maximum safe corpus", Display(snapshot.MaximumSafeCorpusConsumptionCharacters) },
+            new[] { "Hourly window", $"{snapshot.HourlyWindowStartUtc:u} through {snapshot.HourlyWindowEndUtc:u}" },
+            new[] { "Hourly limit", Display(snapshot.HourlyCharacterLimit) },
+            new[] { "Hourly consumed", Display(snapshot.HourlyCharactersConsumed) },
+            new[] { "Hourly reserved", Display(snapshot.HourlyReservedCharacters) },
+            new[] { "Hourly remaining", Display(snapshot.HourlyRemainingCharacters) },
+            new[] { "Safe acquisition now", Display(snapshot.SafeAcquisitionCharacters) },
+            new[] { "Last synchronized", snapshot.RefreshedUtc.ToString("u", CultureInfo.InvariantCulture) }
+        };
+
+        return Detail(key, TitleFor(key), "Azure Translator capacity authority",
+            snapshot.Detail ?? "The selected value is calculated from the synchronized provider subscription and the canonical capacity reservation ledger.",
+            Section("Live capacity projection", "The exact current subscription and capacity values used by this metric.",
+                new[] { "Field", "Value" }, fields),
+            Section("Monthly capacity ledger", "Persisted billing-period capacity rows used by the planner.",
+                new[] { "Period", "Configured", "Live consumed", "Corpus consumed", "Reserved", "Updated" },
+                capacities.Select(item => new[]
+                {
+                    item.BillingPeriodStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Display(item.ConfiguredCapacityCharacters),
+                    Display(item.LiveCharactersConsumed), Display(item.BootstrapCharactersConsumed + item.TrainingCharactersConsumed),
+                    Display(item.ReservedLiveCharacters), item.UpdatedUtc.ToString("u", CultureInfo.InvariantCulture)
+                })),
+            Section("Capacity reservations", "Individual provider-capacity reservations. These are operational reservations, not translated message content.",
+                new[] { "Reference", "Purpose", "Characters", "State", "Created", "Completed" },
+                reservations.Select(item => new[]
+                {
+                    item.ReservationReference, item.Purpose, Display(item.Characters), item.State,
+                    item.CreatedUtc.ToString("u", CultureInfo.InvariantCulture), Display(item.CompletedUtc)
+                })));
+    }
+
+    private static LegendConnectMetricDetailSnapshot BuildLanguageMetricDetail(LegendConnectOperationalState state) =>
+        Detail("active-languages", "Active languages", "Language registry authority",
+            "Each row is one enabled language definition and its current canonical dataset identity.",
+            Section("Enabled language records", "The server-owned language registry records behind the count.",
+                new[] { "Language", "Name", "Dataset namespace", "Storage partition", "Translation", "Learning", "Updated" },
+                state.Languages.Where(item => item.IsEnabled).OrderBy(item => item.CanonicalName).Select(item => new[]
+                {
+                    item.LanguageCode, item.CanonicalName, item.DatasetNamespace, item.StoragePartition,
+                    YesNo(item.IsTranslationEnabled), YesNo(item.IsLearningEnabled), item.UpdatedUtc.ToString("u", CultureInfo.InvariantCulture)
+                })));
+
+    private static LegendConnectMetricDetailSnapshot BuildPairMetricDetail(LegendConnectOperationalState state) =>
+        Detail("directional-pairs", "Directional pairs", "Language pair registry authority",
+            "Each row is an enabled directional pair. Directionality and pair state are not inferred by the browser.",
+            Section("Enabled directional pairs", "Canonical pair records behind the dashboard total.",
+                new[] { "Pair", "Source", "Target", "Coverage", "Quality", "Provider fallback", "Updated" },
+                state.Pairs.Where(item => item.IsEnabled).OrderBy(item => item.PairKey).Select(item => new[]
+                {
+                    item.PairKey, item.SourceLanguageCode, item.TargetLanguageCode, Display(item.CorpusCoverage), item.QualityState,
+                    item.ProviderFallbackPolicy, item.UpdatedUtc.ToString("u", CultureInfo.InvariantCulture)
+                })));
+
+    private static LegendConnectMetricDetailSnapshot BuildLearningFailureMetricDetail(LegendConnectOperationalState state)
+    {
+        var eventRows = state.LearningEvents.Where(item => !string.IsNullOrWhiteSpace(item.FailureCode))
+            .OrderByDescending(item => item.ProcessedUtc ?? item.CreatedUtc)
+            .Select(item => new[] { item.PairKey, item.Provenance, item.EligibilityState, item.ProcessingState, item.FailureCode ?? string.Empty, Display(item.ProcessedUtc ?? item.CreatedUtc) });
+        var candidateRows = state.Candidates.Where(item => !string.IsNullOrWhiteSpace(item.FailureCode))
+            .OrderByDescending(item => item.ProcessedUtc ?? item.CreatedUtc)
+            .Select(item => new[] { Pair(item.SourceLanguageCode, item.TargetLanguageCode), item.Provenance, item.ProcessingState, item.FailureCode ?? string.Empty, Display(item.ProviderCharactersConsumed), Display(item.ProcessedUtc ?? item.CreatedUtc) });
+        return Detail("learning-failures", "Learning failures", "Canonical learning and acquisition records",
+            "Only persisted failure codes are shown. Opening this modal neither retries nor changes a worker record.",
+            Section("Learning event failures", "Failed canonical learning hand-offs.", new[] { "Pair", "Provenance", "Eligibility", "State", "Failure", "Last activity" }, eventRows),
+            Section("Corpus acquisition failures", "Failed approved acquisition candidates.", new[] { "Pair", "Provenance", "State", "Failure", "Provider characters", "Last activity" }, candidateRows));
+    }
+
+    private static LegendConnectMetricDetailSnapshot BuildDuplicateMetricDetail(LegendConnectOperationalState state, string key) =>
+        Detail(key, TitleFor(key), "Canonical duplicate-prevention authority",
+            "These are the auditable events and Founder actions that the existing idempotency rules prevented from creating duplicate knowledge.",
+            Section("Operational duplicate-prevention events", "Sanitized operational events recorded by the canonical pipeline.",
+                new[] { "When", "Language", "Pair", "Code", "Summary", "Resolved" },
+                state.OperationalEvents.Where(item => item.Category == "DuplicatePrevention" && item.Status == "Prevented")
+                    .OrderByDescending(item => item.OccurredUtc).Select(item => new[] { Display(item.OccurredUtc), item.LanguageCode ?? string.Empty, item.PairKey ?? string.Empty, item.ErrorCode ?? string.Empty, item.Summary ?? string.Empty, YesNo(item.IsResolved) })),
+            Section("Founder duplicate-prevention audit", "Append-only Founder action evidence; no duplicate corpus or alignment is created.",
+                new[] { "When", "Action", "Language", "Pair", "Detail" },
+                state.AuditEntries.Where(item => item.Result == "DuplicatePrevented").OrderByDescending(item => item.OccurredUtc)
+                    .Select(item => new[] { Display(item.OccurredUtc), item.Action, item.LanguageCode, item.PairKey ?? string.Empty, item.Detail ?? string.Empty })));
+
+    private static LegendConnectMetricDetailSnapshot BuildCandidateMetricDetail(LegendConnectOperationalState state, string key)
+    {
+        var candidates = key switch
+        {
+            "approved-candidates" => state.Candidates.Where(item => item.IsApproved),
+            "eligible-pending" => state.Candidates.Where(item => item.IsApproved && item.ProcessingState is "Pending" or "Processing"),
+            "rejected-ineligible" => state.Candidates.Where(item => !item.IsApproved || item.ProcessingState == "Rejected"),
+            _ => state.Candidates.Where(item => item.IsApproved && item.ProcessingState is "Pending" or "Processing")
+        };
+        var title = key == "pairs-awaiting-knowledge" ? "Pairs awaiting knowledge" : TitleFor(key);
+        var candidateSection = Section("Canonical corpus candidates", "Exact candidate records behind this readiness metric.",
+            new[] { "Pair", "Category", "Provenance", "Approved", "State", "Attempts", "Provider characters", "Created" },
+            candidates.OrderByDescending(item => item.CreatedUtc).Select(item => new[]
+            {
+                Pair(item.SourceLanguageCode, item.TargetLanguageCode), item.Category, item.Provenance, YesNo(item.IsApproved), item.ProcessingState,
+                Display(item.AttemptCount), Display(item.ProviderCharactersConsumed), Display(item.CreatedUtc)
+            }));
+        if (key != "pairs-awaiting-knowledge")
+            return Detail(key, title, "Corpus readiness authority", "The table contains the actual approved-corpus queue records, not a duplicate dashboard summary.", candidateSection);
+        return Detail(key, title, "Corpus readiness authority", "Each row identifies a directional pair with actual approved work still awaiting knowledge acquisition.",
+            Section("Pairs with eligible pending work", "Grouped from the existing approved candidate queue.", new[] { "Pair", "Pending candidates", "Earliest queued", "Latest queued" },
+                candidates.GroupBy(item => Pair(item.SourceLanguageCode, item.TargetLanguageCode)).OrderBy(item => item.Key).Select(group => new[]
+                {
+                    group.Key, Display(group.LongCount()), Display(group.Min(item => item.CreatedUtc)), Display(group.Max(item => item.CreatedUtc))
+                })), candidateSection);
+    }
+
+    private static LegendConnectMetricDetailSnapshot BuildDemandMetricDetail(LegendConnectOperationalState state, string key)
+    {
+        if (key == "same-language-bypasses")
+            return Detail(key, TitleFor(key), "Privacy-safe system usage authority", "Same-language routes are recorded only in the system aggregate; they have no directional pair or message body record.",
+                Section("Daily same-language bypasses", "Daily aggregate records behind the count.", new[] { "Date", "Bypasses", "Updated" }, state.SystemUsage.OrderByDescending(item => item.UsageDate).Select(item => new[] { item.UsageDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Display(item.SameLanguageBypassCount), Display(item.UpdatedUtc) })));
+        return Detail(key, TitleFor(key), "Directional demand authority", "Each row is the server-owned directional demand record used for routing and planner decisions.",
+            Section("Directional routing evidence", "The relevant routing counters by canonical pair.",
+                new[] { "Pair", "Requests", "Memory hits", "Provider work required", "Context served", "Provider characters", "Last request" },
+                state.Demand.OrderByDescending(item => item.LastRequestedUtc).Select(item => new[]
+                {
+                    item.PairKey, Display(item.TranslationRequestCount), Display(item.TranslationMemoryHitCount), Display(item.AzureFallbackCount),
+                    Display(item.ContextualInternalServeCount), Display(item.ProviderCharacterCount), Display(item.LastRequestedUtc)
+                })));
+    }
+
+    private static LegendConnectMetricDetailSnapshot BuildPendingLearningMetricDetail(LegendConnectOperationalState state) =>
+        Detail("pending-learning-jobs", "Pending learning jobs", "Canonical learning hand-off authority",
+            "These are the existing eligible learning events that remain pending or are currently being processed. No job is created or advanced by viewing this data.",
+            Section("Eligible learning events", "Privacy-safe pipeline records; retained text is intentionally not exposed here.",
+                new[] { "Pair", "Provenance", "Provider", "State", "Attempts", "Queued", "Lease expires" },
+                ActiveLearningEvents(state).Where(item => item.EligibilityState == "Eligible" && item.ProcessingState is "Pending" or "Processing")
+                    .OrderBy(item => item.CreatedUtc).Select(item => new[]
+                    {
+                        item.PairKey, item.Provenance, item.Provider, item.ProcessingState, Display(item.AttemptCount),
+                        Display(item.CreatedUtc), Display(item.LeaseExpiresUtc)
+                    })));
+
+    private async Task<LegendConnectMetricDetailSnapshot> BuildQualityMetricDetailAsync(
+        LegendConnectOperationalState state,
+        string key,
+        CancellationToken cancellationToken)
+    {
+        var evidence = await _db.Set<LegendTranslationQualityEvidence>().AsNoTracking()
+            .OrderByDescending(item => item.UpdatedUtc)
+            .ToListAsync(cancellationToken);
+        var quality = await _intelligence.GetTranslationQualityAsync(cancellationToken);
+        if (key == "quality-needs-review")
+            return Detail(key, TitleFor(key), "Translation quality evidence authority",
+                "These are the actual provider observations the existing quality authority has placed in review; the modal does not approve, reject, or modify them.",
+                Section("Observations requiring Founder review", "The current review queue from the canonical quality projection.",
+                    new[] { "Pair", "Source", "Provider target", "Provider", "Provenance", "Reason", "Observed" },
+                    quality.ReviewItems.Select(item => new[]
+                    {
+                        item.PairKey, $"{item.SourceLanguageCode}: {item.SourceText}", $"{item.TargetLanguageCode}: {item.ProviderTargetText}", item.Provider,
+                        item.Provenance, item.ReasonForReview, Display(item.ObservedUtc)
+                    })));
+
+        if (key == "quality-human-verified")
+        {
+            var textById = state.TextUnits.Where(item => item.IsTrainingEligible &&
+                    !string.Equals(item.Provenance, "ConsentedLiveTranslation", StringComparison.Ordinal))
+                .ToDictionary(item => item.Id);
+            return Detail(key, TitleFor(key), "Translation alignment authority",
+                "Human verification is shown only where the existing alignment record carries that state. Provider observations do not gain this authority by appearing here.",
+                Section("Human-verified active alignments", "Active alignment records with explicit human verification.",
+                    new[] { "Pair", "Source", "Target", "Provider", "Quality", "Observations", "Updated" },
+                    state.Alignments.Where(item => item.SupersededUtc is null && item.HumanVerified && textById.ContainsKey(item.SourceTextUnitId) && textById.ContainsKey(item.TargetTextUnitId))
+                        .OrderByDescending(item => item.UpdatedUtc).Select(item => new[]
+                        {
+                            item.PairKey, $"{textById[item.SourceTextUnitId].LanguageCode}: {textById[item.SourceTextUnitId].Text}",
+                            $"{textById[item.TargetTextUnitId].LanguageCode}: {textById[item.TargetTextUnitId].Text}", item.Provider,
+                            item.QualityState, Display(item.ObservationCount), Display(item.UpdatedUtc)
+                        })));
+        }
+
+        var filtered = key switch
+        {
+            "quality-supported-observations" => evidence.Where(item => item.Signal == "Supported"),
+            "quality-contradictions" => evidence.Where(item => item.Signal == "Contradictory"),
+            _ => evidence
+        };
+        return Detail(key, TitleFor(key), "Translation quality evidence authority",
+            "Every row is a persisted quality-evidence record. Signals are evidence, not automatic promotion to trusted or production-eligible knowledge.",
+            Section("Quality evidence records", "The actual evidence attached to provider observations.",
+                new[] { "Pair", "Signal", "Reason", "Resolution", "Observed alignment", "Related alignment", "Structural pattern", "Updated" },
+                filtered.Select(item => new[]
+                {
+                    item.PairKey, item.Signal, item.ReasonCode, item.ResolutionState, item.ObservedAlignmentId.ToString("N"),
+                    item.RelatedAlignmentId?.ToString("N") ?? string.Empty, item.StructuralPatternId?.ToString("N") ?? string.Empty, Display(item.UpdatedUtc)
+                })));
+    }
+
+    private async Task<LegendConnectMetricDetailSnapshot> BuildUsageMetricDetailAsync(
+        string key,
+        CancellationToken cancellationToken)
+    {
+        var usage = await _db.Set<LegendTranslationSystemUsage>().AsNoTracking()
+            .OrderByDescending(item => item.UsageDate).ToListAsync(cancellationToken);
+        var periods = await _db.Set<LegendTranslationUsagePeriod>().AsNoTracking()
+            .OrderByDescending(item => item.PeriodStart).ThenBy(item => item.ParticipantType).ToListAsync(cancellationToken);
+        var ledger = await _db.Set<LegendTranslationUsageLedger>().AsNoTracking()
+            .OrderByDescending(item => item.CompletedUtc ?? item.CreatedUtc).ToListAsync(cancellationToken);
+
+        if (key == "high-consumption-accounts")
+        {
+            var period = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+            var entitlements = await _db.Set<LegendTranslationEntitlement>().AsNoTracking().ToListAsync(cancellationToken);
+            var entitlementByAccount = entitlements.ToDictionary(item => (item.UserId.Trim().ToLowerInvariant(), item.ParticipantType), item => item);
+            var defaultAllowance = Math.Max(0, _configuration.GetValue<long?>("LegendConnect:Entitlements:DefaultMonthlyCharacterAllowance") ?? 0);
+            return Detail(key, TitleFor(key), "Translation entitlement and usage authority",
+                "This uses the same current-period 80% finite-allowance threshold as the Founder scale projection. Unlimited accounts are excluded.",
+                Section("Accounts at or above 80%", "Current period consumption plus active reservations against the canonical finite allowance.",
+                    new[] { "Account reference", "Type", "Allowance", "Consumed", "Reserved", "Utilization", "Last activity" },
+                    periods.Where(item => item.PeriodStart == period).Select(item => new
+                        {
+                            Usage = item,
+                            Entitlement = entitlementByAccount.GetValueOrDefault((item.UserId.Trim().ToLowerInvariant(), item.ParticipantType)),
+                            Allowance = Math.Max(0, entitlementByAccount.GetValueOrDefault((item.UserId.Trim().ToLowerInvariant(), item.ParticipantType))?.MonthlyCharacterAllowance ?? defaultAllowance)
+                        })
+                        .Where(item => item.Entitlement is not { IsUnlimited: true } && item.Allowance > 0 &&
+                            ((decimal)(Math.Max(0, item.Usage.ConsumedCharacters) + Math.Max(0, item.Usage.ReservedCharacters)) / item.Allowance) >= 0.8m)
+                        .OrderByDescending(item => item.Usage.ConsumedCharacters + item.Usage.ReservedCharacters).Select(item => new[]
+                        {
+                            item.Usage.UserId, item.Usage.ParticipantType, Display(item.Allowance), Display(item.Usage.ConsumedCharacters),
+                            Display(item.Usage.ReservedCharacters), ((decimal)(Math.Max(0, item.Usage.ConsumedCharacters) + Math.Max(0, item.Usage.ReservedCharacters)) / item.Allowance).ToString("P1", CultureInfo.InvariantCulture),
+                            Display(item.Usage.LastTranslationActivityUtc)
+                        })));
+        }
+
+        var ledgerRows = key switch
+        {
+            "provider-operations" => ledger.Where(item => item.ProviderExecuted),
+            "provider-billable-characters" => ledger.Where(item => item.ProviderExecuted && item.BillableCharacters > 0),
+            "quota-denied" => ledger.Where(item => item.State == "QuotaDenied"),
+            "provider-failures" => ledger.Where(item => item.ProviderExecuted && !item.Succeeded),
+            _ => Enumerable.Empty<LegendTranslationUsageLedger>()
+        };
+        var aggregateColumn = UsageColumnFor(key);
+        var accountColumn = UsagePeriodColumnFor(key);
+        var sections = new List<LegendConnectMetricDetailSectionSnapshot>();
+        if (ledgerRows.Any())
+        {
+            sections.Add(Section("Translation usage ledger", "Individual privacy-safe ledger rows behind this operational metric. Request references are one-way identifiers; conversation bodies are not retained here.",
+                new[] { "Request reference", "Account reference", "Type", "Source", "Target", "Provider", "Characters", "State", "Failure", "Completed" },
+                ledgerRows.Select(item => new[]
+                {
+                    item.RequestReference, item.UserId, item.ParticipantType, item.SourceLanguageCode, item.TargetLanguageCode, item.Provider,
+                    Display(item.BillableCharacters), item.State, item.FailureCode ?? string.Empty, Display(item.CompletedUtc ?? item.CreatedUtc)
+                })));
+        }
+        sections.Add(Section("Daily system aggregate", "The deployed aggregate record that supplies the dashboard total without exposing conversation content.",
+            new[] { "Date", "Metric value", "Updated" }, usage.Select(item => new[] { item.UsageDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Display(UsageValue(item, aggregateColumn)), Display(item.UpdatedUtc) })));
+        sections.Add(Section("Account-period aggregate", "The account usage authority for the same metric, shown without message content.",
+            new[] { "Period", "Account reference", "Type", "Metric value", "Updated" }, periods.Select(item => new[] { item.PeriodStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), item.UserId, item.ParticipantType, Display(UsagePeriodValue(item, accountColumn)), Display(item.UpdatedUtc) })));
+        return new LegendConnectMetricDetailSnapshot(key, TitleFor(key), "Translation usage authority", UsageDescriptionFor(key), sections);
+    }
+
+    private static LegendConnectMetricDetailSnapshot BuildConsentedLearningMetricDetail(LegendConnectOperationalState state, string key)
+    {
+        var events = state.LearningEvents.Where(item => item.Provenance == "ConsentedLiveTranslation");
+        events = key switch
+        {
+            "eligible-live-translations" => events.Where(item => item.EligibilityState == "Eligible"),
+            "promoted-to-learning" => events.Where(item => item.PromotionOutcome == "Promoted"),
+            "canonical-reuse-prevented-duplicates" => events.Where(item => item.PromotionOutcome == "Reused"),
+            "awaiting-corpus-processing" => events.Where(item => item.ProcessingState is "Pending" or "Processing"),
+            _ => events
+        };
+        return Detail(key, TitleFor(key), "Consented live-learning authority",
+            key == "consented-accounts"
+                ? "Consent is intentionally represented as a privacy-safe aggregate. The detailed event records below contain no account identity or conversation text."
+                : "These are the consent-governed pipeline events behind this metric. Conversation bodies and account identities are intentionally excluded from Founder telemetry.",
+            Section("Consented learning events", "The existing live-learning hand-off records, displayed without private retained text or account identity.",
+                new[] { "Pair", "Provider", "Eligibility", "State", "Promotion", "Attempts", "Queued", "Processed" },
+                events.OrderByDescending(item => item.ProcessedUtc ?? item.CreatedUtc).Select(item => new[]
+                {
+                    item.PairKey, item.Provider, item.EligibilityState, item.ProcessingState, item.PromotionOutcome ?? string.Empty,
+                    Display(item.AttemptCount), Display(item.CreatedUtc), Display(item.ProcessedUtc)
+                })));
+    }
+
+    private static LegendConnectMetricDetailSnapshot BuildFounderTrainingMetricDetail(LegendConnectOperationalState state, string key)
+    {
+        if (key == "raw-submissions-retained")
+            return Detail(key, TitleFor(key), "Founder training provenance authority",
+                "Each row is one immutable Founder raw-training submission. This is source provenance, not a second corpus.",
+                Section("Raw Founder submissions", "Retained raw submission provenance behind the count.",
+                    new[] { "Submitted", "Source language", "Characters", "Atomic units", "Context", "Usage", "State" },
+                    state.FounderTrainingSubmissions.OrderByDescending(item => item.CreatedUtc).Select(item => new[]
+                    {
+                        Display(item.CreatedUtc), item.SourceLanguageCode, Display(item.RawCharacterCount), Display(item.AtomicUnitCount),
+                        item.ContextCategory ?? string.Empty, item.UsageRegister ?? string.Empty, item.ProcessingState
+                    })));
+
+        if (key == "atomic-learning-units")
+        {
+            var submissionById = state.FounderTrainingSubmissions.ToDictionary(item => item.Id);
+            var textById = state.TextUnits.ToDictionary(item => item.Id);
+            return Detail(key, TitleFor(key), "Founder training atomic-unit authority",
+                "Each row is an existing submission-to-atomic-unit relationship. It is the canonical decomposition lineage, not a re-parse or a new corpus.",
+                Section("Atomic learning units", "Atomic units produced from retained Founder submissions.",
+                    new[] { "Submission", "Sequence", "Paragraph", "Unit type", "Language", "Atomic text", "Created" },
+                    state.FounderTrainingSubmissionUnits.Where(item => submissionById.ContainsKey(item.SubmissionId) && textById.ContainsKey(item.TextUnitId))
+                        .OrderByDescending(item => item.CreatedUtc).Select(item => new[]
+                        {
+                            submissionById[item.SubmissionId].CreatedUtc.ToString("u", CultureInfo.InvariantCulture), Display(item.SequenceNumber), Display(item.ParagraphNumber), item.UnitType,
+                            textById[item.TextUnitId].LanguageCode, textById[item.TextUnitId].Text, Display(item.CreatedUtc)
+                        })));
+        }
+
+        if (key == "active-directional-alignments")
+        {
+            var textById = state.TextUnits.Where(item => item.IsTrainingEligible && !string.Equals(item.Provenance, "ConsentedLiveTranslation", StringComparison.Ordinal))
+                .ToDictionary(item => item.Id);
+            return Detail(key, TitleFor(key), "Directional alignment authority",
+                "Only active alignments whose source and target are canonical training-eligible assets are shown. Private consented text is not exposed.",
+                Section("Active canonical directional alignments", "Existing reusable directional alignment records.",
+                    new[] { "Pair", "Source", "Target", "Provider", "Provenance", "Quality", "Human verified", "Updated" },
+                    state.Alignments.Where(item => item.SupersededUtc is null && textById.ContainsKey(item.SourceTextUnitId) && textById.ContainsKey(item.TargetTextUnitId))
+                        .OrderByDescending(item => item.UpdatedUtc).Select(item => new[]
+                        {
+                            item.PairKey, $"{textById[item.SourceTextUnitId].LanguageCode}: {textById[item.SourceTextUnitId].Text}",
+                            $"{textById[item.TargetTextUnitId].LanguageCode}: {textById[item.TargetTextUnitId].Text}", item.Provider, item.Provenance,
+                            item.QualityState, YesNo(item.HumanVerified), Display(item.UpdatedUtc)
+                        })));
+        }
+
+        var legacyById = state.TextUnits.ToDictionary(item => item.Id);
+        return Detail(key, TitleFor(key), "Founder legacy reconciliation authority",
+            "These rows are the existing raw-submission provenance records whose legacy multi-unit asset has been retired from reusable training eligibility.",
+            Section("Retired legacy multi-unit assets", "Founder submissions linked to a legacy source asset that is no longer training eligible.",
+                new[] { "Submitted", "Language", "Characters", "Atomic units", "Legacy asset", "State" },
+                state.FounderTrainingSubmissions.Where(item => item.LegacySourceTextUnitId is Guid legacyId && legacyById.TryGetValue(legacyId, out var unit) && !unit.IsTrainingEligible)
+                    .OrderByDescending(item => item.CreatedUtc).Select(item => new[]
+                    {
+                        Display(item.CreatedUtc), item.SourceLanguageCode, Display(item.RawCharacterCount), Display(item.AtomicUnitCount), item.LegacySourceTextUnitId!.Value.ToString("N"), item.ProcessingState
+                    })));
+    }
+
+    private static LegendConnectMetricDetailSnapshot Detail(
+        string key,
+        string title,
+        string context,
+        string description,
+        params LegendConnectMetricDetailSectionSnapshot[] sections) =>
+        new(key, title, context, description, sections);
+
+    private static LegendConnectMetricDetailSnapshot EmptyMetricDetail(string key, string title, string description) =>
+        Detail(key, title, "Legend Connect", description,
+            Section("No matching records", "The selected metric currently has no configured record-level detail.", Array.Empty<string>(), Array.Empty<string[]>()));
+
+    private static LegendConnectMetricDetailSectionSnapshot Section(
+        string title,
+        string description,
+        IReadOnlyList<string> columns,
+        IEnumerable<string[]> rows) =>
+        new(title, description, columns, rows.Select(item => (IReadOnlyList<string>)item).ToList());
+
+    private static string CapacityValueFor(
+        string key,
+        LegendConnectProviderCapacitySnapshot snapshot,
+        LegendTranslationProviderCapacity? currentCapacity) => key switch
+    {
+        "capacity-monthly-limit" => Display(snapshot.MonthlyIncludedCharacterAllowance),
+        "capacity-monthly-consumed" or "azure-characters-used" => Display(snapshot.MonthlyCharactersConsumed),
+        "capacity-monthly-reserved" or "provider-characters-reserved" => Display(snapshot.MonthlyReservedCharacters),
+        "capacity-monthly-remaining" => Display(snapshot.MonthlyRemainingCharacters),
+        "capacity-monthly-reserve" => Display(snapshot.MonthlyLiveReserveCharacters),
+        "capacity-monthly-corpus" => Display(snapshot.MaximumSafeCorpusConsumptionCharacters),
+        "capacity-hourly-limit" => Display(snapshot.HourlyCharacterLimit),
+        "capacity-hourly-consumed" => Display(snapshot.HourlyCharactersConsumed),
+        "capacity-hourly-remaining" => Display(snapshot.HourlyRemainingCharacters),
+        "capacity-safe" => Display(snapshot.SafeAcquisitionCharacters),
+        "consumed-live-characters" => Display(currentCapacity?.LiveCharactersConsumed),
+        "consumed-corpus-characters" => Display(currentCapacity is null ? null : currentCapacity.BootstrapCharactersConsumed + currentCapacity.TrainingCharactersConsumed),
+        _ => snapshot.Status
+    };
+
+    private static string TitleFor(string key) => key switch
+    {
+        "approved-candidates" => "Approved candidates",
+        "eligible-pending" => "Eligible pending",
+        "rejected-ineligible" => "Rejected / ineligible",
+        "pairs-awaiting-knowledge" => "Pairs awaiting knowledge",
+        "readiness-duplicates-prevented" => "Duplicates prevented",
+        "same-language-bypasses" => "Same-language bypasses",
+        "translation-memory-hits" => "Translation Memory hits",
+        "provider-fallback-required" => "Provider fallback required",
+        "trusted-contextual-served" => "Trusted contextual served",
+        "provider-avoidance" => "Provider avoidance",
+        "provider-dependency" => "Provider dependency",
+        "azure-characters-used" => "Azure characters used",
+        "consumed-live-characters" => "Consumed live characters",
+        "consumed-corpus-characters" => "Consumed corpus characters",
+        "provider-characters-reserved" => "Provider characters reserved",
+        "pending-learning-jobs" => "Pending learning jobs",
+        "quality-needs-review" => "Quality needs review",
+        "quality-provider-observations" => "Provider observations",
+        "quality-supported-observations" => "Supported observations",
+        "quality-contradictions" => "Quality contradictions",
+        "quality-human-verified" => "Human-verified alignments",
+        "provider-operations" => "Provider operations",
+        "provider-billable-characters" => "Provider-billable characters",
+        "same-language-avoided" => "Same-language avoided",
+        "memory-avoided" => "Memory avoided",
+        "context-avoided" => "Context avoided",
+        "quota-denied" => "Quota denied",
+        "provider-failures" => "Provider failures",
+        "group-target-reuse" => "Group target reuse",
+        "high-consumption-accounts" => "High consumption accounts",
+        "consented-accounts" => "Consented accounts",
+        "eligible-live-translations" => "Eligible live translations",
+        "promoted-to-learning" => "Promoted to learning",
+        "canonical-reuse-prevented-duplicates" => "Canonical reuse prevented duplicates",
+        "awaiting-corpus-processing" => "Awaiting corpus processing",
+        "raw-submissions-retained" => "Raw submissions retained",
+        "atomic-learning-units" => "Atomic learning units",
+        "active-directional-alignments" => "Active directional alignments",
+        "legacy-multi-unit-assets-retired" => "Legacy multi-unit assets retired",
+        "capacity-status" => "Azure capacity status",
+        _ => "Legend Connect metric details"
+    };
+
+    private static string UsageDescriptionFor(string key) => key switch
+    {
+        "quota-denied" => "Individual quota denials are shown from the one-way usage ledger, alongside the privacy-safe daily and account-period authorities that produce the current total.",
+        "provider-billable-characters" => "The ledger rows show each provider-billable request reference, route, provider, character count, state, and completion time without conversation text.",
+        "provider-operations" => "The ledger rows show actual provider execution attempts; provider fallback-required remains a separate routing measure.",
+        "provider-failures" => "Only persisted failed provider execution rows are included, with their existing failure code.",
+        _ => "The table shows the deployed daily and account-period records that calculate this privacy-safe operational total."
+    };
+
+    private static string UsageColumnFor(string key) => key switch
+    {
+        "provider-operations" => nameof(LegendTranslationSystemUsage.ProviderOperationCount),
+        "provider-billable-characters" => nameof(LegendTranslationSystemUsage.ProviderBillableCharacters),
+        "same-language-avoided" => nameof(LegendTranslationSystemUsage.SameLanguageCharactersAvoided),
+        "memory-avoided" => nameof(LegendTranslationSystemUsage.TranslationMemoryCharactersAvoided),
+        "context-avoided" => nameof(LegendTranslationSystemUsage.ContextualCharactersAvoided),
+        "quota-denied" => nameof(LegendTranslationSystemUsage.QuotaDeniedRequestCount),
+        "provider-failures" => nameof(LegendTranslationSystemUsage.ProviderFailureCount),
+        "group-target-reuse" => nameof(LegendTranslationSystemUsage.GroupUniqueTargetReuseCount),
+        _ => string.Empty
+    };
+
+    private static string UsagePeriodColumnFor(string key) => key switch
+    {
+        "provider-operations" => nameof(LegendTranslationUsagePeriod.ProviderOperationCount),
+        "provider-billable-characters" => nameof(LegendTranslationUsagePeriod.ProviderBillableCharacters),
+        "same-language-avoided" => nameof(LegendTranslationUsagePeriod.SameLanguageCharactersAvoided),
+        "memory-avoided" => nameof(LegendTranslationUsagePeriod.TranslationMemoryCharactersAvoided),
+        "context-avoided" => nameof(LegendTranslationUsagePeriod.ContextualCharactersAvoided),
+        "quota-denied" => nameof(LegendTranslationUsagePeriod.QuotaDeniedRequestCount),
+        "provider-failures" => nameof(LegendTranslationUsagePeriod.ProviderFailureCount),
+        "group-target-reuse" => nameof(LegendTranslationUsagePeriod.GroupUniqueTargetReuseCount),
+        _ => string.Empty
+    };
+
+    private static long UsageValue(LegendTranslationSystemUsage usage, string column) => column switch
+    {
+        nameof(LegendTranslationSystemUsage.ProviderOperationCount) => usage.ProviderOperationCount,
+        nameof(LegendTranslationSystemUsage.ProviderBillableCharacters) => usage.ProviderBillableCharacters,
+        nameof(LegendTranslationSystemUsage.SameLanguageCharactersAvoided) => usage.SameLanguageCharactersAvoided,
+        nameof(LegendTranslationSystemUsage.TranslationMemoryCharactersAvoided) => usage.TranslationMemoryCharactersAvoided,
+        nameof(LegendTranslationSystemUsage.ContextualCharactersAvoided) => usage.ContextualCharactersAvoided,
+        nameof(LegendTranslationSystemUsage.QuotaDeniedRequestCount) => usage.QuotaDeniedRequestCount,
+        nameof(LegendTranslationSystemUsage.ProviderFailureCount) => usage.ProviderFailureCount,
+        nameof(LegendTranslationSystemUsage.GroupUniqueTargetReuseCount) => usage.GroupUniqueTargetReuseCount,
+        _ => 0
+    };
+
+    private static long UsagePeriodValue(LegendTranslationUsagePeriod usage, string column) => column switch
+    {
+        nameof(LegendTranslationUsagePeriod.ProviderOperationCount) => usage.ProviderOperationCount,
+        nameof(LegendTranslationUsagePeriod.ProviderBillableCharacters) => usage.ProviderBillableCharacters,
+        nameof(LegendTranslationUsagePeriod.SameLanguageCharactersAvoided) => usage.SameLanguageCharactersAvoided,
+        nameof(LegendTranslationUsagePeriod.TranslationMemoryCharactersAvoided) => usage.TranslationMemoryCharactersAvoided,
+        nameof(LegendTranslationUsagePeriod.ContextualCharactersAvoided) => usage.ContextualCharactersAvoided,
+        nameof(LegendTranslationUsagePeriod.QuotaDeniedRequestCount) => usage.QuotaDeniedRequestCount,
+        nameof(LegendTranslationUsagePeriod.ProviderFailureCount) => usage.ProviderFailureCount,
+        nameof(LegendTranslationUsagePeriod.GroupUniqueTargetReuseCount) => usage.GroupUniqueTargetReuseCount,
+        _ => 0
+    };
+
+    private static string Pair(string source, string target) => $"{source}:{target}";
+
+    private static string YesNo(bool value) => value ? "Yes" : "No";
+
+    private static string Display(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
+
+    private static string Display(long? value) => value?.ToString("N0", CultureInfo.InvariantCulture) ?? "Unavailable";
+
+    private static string Display(int value) => value.ToString("N0", CultureInfo.InvariantCulture);
+
+    private static string Display(DateTime value) => value.ToString("u", CultureInfo.InvariantCulture);
+
+    private static string Display(DateTime? value) => value?.ToString("u", CultureInfo.InvariantCulture) ?? "—";
 
     public async Task<LegendConnectLanguageHealthSnapshot?> GetLanguageHealthAsync(
         string languageCode,

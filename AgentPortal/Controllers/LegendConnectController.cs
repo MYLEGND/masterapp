@@ -91,6 +91,27 @@ public sealed class LegendConnectController : Controller
         }
     }
 
+    [HttpGet]
+    [Route("founder/legend-connect/metric-details")]
+    public async Task<IActionResult> GetMetricDetails(
+        [FromQuery(Name = "metric")] string? metricKey,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _service.GetMetricDetailAsync(User, metricKey, cancellationToken));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Legend Connect metric detail projection failed for {MetricKey}.", metricKey);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route("founder/legend-connect/knowledge")]

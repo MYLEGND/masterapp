@@ -326,9 +326,15 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
 
         if (signalsRecorded)
         {
+            // Only retire the generic fallback once concrete evidence exists.
+            // Component-level insufficiency is itself durable anomaly evidence
+            // about this ProviderDerived observation and must remain available
+            // for Founder review alongside its contradictory signal.
             var insufficient = await _db.Set<LegendTranslationQualityEvidence>()
                 .Where(item => item.ObservedAlignmentId == observation.Alignment.Id &&
-                    item.Signal == "Insufficient" && item.SupersededUtc == null)
+                    item.Signal == "Insufficient" &&
+                    item.ReasonCode == "no_established_pair_specific_evidence" &&
+                    item.SupersededUtc == null)
                 .ToListAsync(cancellationToken);
             foreach (var item in insufficient)
             {

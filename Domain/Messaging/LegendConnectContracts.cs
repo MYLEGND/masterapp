@@ -431,6 +431,24 @@ public sealed record LegendConnectDashboardSnapshot(
     LegendConnectProviderCapacitySnapshot? ProviderCapacity = null);
 
 /// <summary>
+/// A Founder-safe, record-level explanation for one live dashboard metric.
+/// These rows are projections of the established operational ledgers and
+/// corpus records; they never create a second reporting or learning store.
+/// </summary>
+public sealed record LegendConnectMetricDetailSectionSnapshot(
+    string Title,
+    string Description,
+    IReadOnlyList<string> Columns,
+    IReadOnlyList<IReadOnlyList<string>> Rows);
+
+public sealed record LegendConnectMetricDetailSnapshot(
+    string MetricKey,
+    string Title,
+    string Context,
+    string Description,
+    IReadOnlyList<LegendConnectMetricDetailSectionSnapshot> Sections);
+
+/// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation
 /// layers may use it only after their established Founder authorization guard
 /// succeeds; it owns neither identity authorization nor mobile contracts.
@@ -441,6 +459,10 @@ public interface ILegendConnectOperations
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectMetricDetailSnapshot> GetMetricDetailAsync(
+        string? metricKey,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectLanguageHealthSnapshot?> GetLanguageHealthAsync(
