@@ -1256,10 +1256,12 @@ internal sealed class LegendConnectCorpusService
 /// </summary>
 internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
 {
-    // v5 adds candidate target-realization derivation to the existing
-    // curriculum replay. Historical directional pairs therefore traverse the
-    // same bounded, resumable evaluator used for present and future evidence.
-    internal const int Current = 5;
+    // v6 makes target-realization derivation prove a minimal, exclusive
+    // target span from independent Founder-controlled contrasts before it can
+    // reach Founder review. Historical directional pairs therefore traverse
+    // the same bounded, resumable evaluator used for present and future
+    // evidence.
+    internal const int Current = 6;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService

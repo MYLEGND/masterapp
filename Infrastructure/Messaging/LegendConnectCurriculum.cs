@@ -89,7 +89,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     // Candidate identities retain the evidence interpretation that produced
     // them. Advance only with the existing evaluator version when the
     // canonical contrast meaning materially changes.
-    private const string TargetRealizationCandidateDerivationVersion = "target-contrast-v1";
+    private const string TargetRealizationCandidateDerivationVersion = "target-contrast-exclusive-v2";
     private readonly MasterAppDbContext _db;
     private readonly ILegendLanguageRegistry _languages;
     private readonly LegendConnectCorpusService _corpus;
@@ -785,6 +785,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     {
         var candidates = await _db.Set<LegendLanguageTargetRealizationCandidate>()
             .AsNoTracking()
+            .Where(item => item.SupersededUtc == null)
             .OrderBy(item => item.VerificationState == "Candidate" || item.VerificationState == "Contradicted" ? 0 : 1)
             .ThenByDescending(item => item.UpdatedUtc)
             .Take(100)
@@ -813,9 +814,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     item.item.Provenance))
                 .ToList());
         return new LegendTargetRealizationReviewSnapshot(
-            await _db.Set<LegendLanguageTargetRealizationCandidate>().LongCountAsync(cancellationToken),
-            await _db.Set<LegendLanguageTargetRealizationCandidate>().LongCountAsync(item => item.VerificationState == "FounderVerified", cancellationToken),
-            await _db.Set<LegendLanguageTargetRealizationCandidate>().LongCountAsync(item => item.VerificationState == "Rejected", cancellationToken),
+            await _db.Set<LegendLanguageTargetRealizationCandidate>().LongCountAsync(item => item.SupersededUtc == null, cancellationToken),
+            await _db.Set<LegendLanguageTargetRealizationCandidate>().LongCountAsync(item => item.SupersededUtc == null && item.VerificationState == "FounderVerified", cancellationToken),
+            await _db.Set<LegendLanguageTargetRealizationCandidate>().LongCountAsync(item => item.SupersededUtc == null && item.VerificationState == "Rejected", cancellationToken),
             await _db.Set<LegendLanguageTargetRealizationCandidate>().LongCountAsync(item => item.ContradictionCount > 0 && item.SupersededUtc == null, cancellationToken),
             candidates.Select(item =>
             {
@@ -1976,99 +1977,104 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             await DeriveTargetRealizationCandidatesAsync(
                 pairKey,
                 languageCode,
-                examples,
-                variationsByExample,
                 cancellationToken);
     }
 
     private async Task DeriveTargetRealizationCandidatesAsync(
         string pairKey,
         string targetLanguageCode,
-        IReadOnlyList<AnalysisExample> examples,
-        IReadOnlyDictionary<Guid, Dictionary<string, string>> variationsByExample,
         CancellationToken cancellationToken)
     {
-        if (examples.Count < 2)
-            return;
-
         var separator = pairKey.IndexOf(':', StringComparison.Ordinal);
         if (separator <= 0 || separator == pairKey.Length - 1)
             return;
         var sourceLanguageCode = pairKey[..separator];
-        var affectedCandidateIds = new HashSet<Guid>();
 
-        for (var leftIndex = 0; leftIndex < examples.Count - 1; leftIndex++)
+        // A material change in candidate semantics must retire only the
+        // unverified v1 projection. The retained candidate/evidence rows are
+        // historical provenance; v2 derives its active replacement through
+        // this same evaluator and never creates a parallel review authority.
+        await RetireObsoleteTargetRealizationCandidatesAsync(pairKey, cancellationToken);
+
+        var examples = await LoadPairScopedAnalysisExamplesAsync(
+            pairKey,
+            targetLanguageCode,
+            cancellationToken);
+        if (examples.Count < 2)
         {
-            var left = examples[leftIndex];
-            if (!variationsByExample.TryGetValue(left.Example.Id, out var leftVariations) ||
-                left.Example.DerivedFromCurriculumExampleId is null || left.AlignmentId is null)
-            {
-                continue;
-            }
+            await RetireNoLongerExclusiveTargetRealizationCandidatesAsync(
+                pairKey,
+                new HashSet<string>(StringComparer.Ordinal),
+                cancellationToken);
+            if (_db.ChangeTracker.HasChanges())
+                await _db.SaveChangesAsync(cancellationToken);
+            return;
+        }
 
-            for (var rightIndex = leftIndex + 1; rightIndex < examples.Count; rightIndex++)
+        var exampleIds = examples.Select(item => item.Example.Id).ToArray();
+        var variationsByExample = await _db.Set<LegendCurriculumExampleVariation>()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync(cancellationToken);
+        var variationMaps = variationsByExample
+            .GroupBy(item => item.CurriculumExampleId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.ToDictionary(item => item.Dimension, item => item.Value, StringComparer.Ordinal));
+        var observations = BuildTargetContrastObservations(examples, variationMaps);
+        var affectedCandidateIds = new HashSet<Guid>();
+        var activeCandidateIdentities = new HashSet<string>(StringComparer.Ordinal);
+
+        // A proposal is eligible only when the smallest recurring target span
+        // is uniquely attributable to this semantic value across independent
+        // human-controlled contrasts. Provider observations can be retained as
+        // supplemental evidence after that proof, but can never establish it.
+        foreach (var realization in DeriveExclusiveTargetRealizations(observations))
+        {
+            foreach (var evidenceGroup in realization.Evidence
+                         .GroupBy(item => item.Span.SlotSignature, StringComparer.Ordinal))
             {
-                var right = examples[rightIndex];
-                if (!variationsByExample.TryGetValue(right.Example.Id, out var rightVariations) ||
-                    right.Example.DerivedFromCurriculumExampleId is null || right.AlignmentId is null)
+                var evidence = evidenceGroup.ToList();
+                if (evidence.Where(item => item.Observation.IsHumanVerifiedContrast)
+                        .Select(item => item.Observation.Example.SourceTextUnitId)
+                        .Distinct()
+                        .Count() < 2)
                 {
                     continue;
                 }
 
-                // Only an isolated, Founder-controlled semantic difference
-                // may produce a realization hypothesis. Comparisons with two
-                // changed values are not evidence of either target span.
-                var changedDimensions = leftVariations.Keys
-                    .Intersect(rightVariations.Keys, StringComparer.Ordinal)
-                    .Where(dimension => !string.Equals(
-                        leftVariations[dimension], rightVariations[dimension], StringComparison.Ordinal))
-                    .ToList();
-                if (changedDimensions.Count != 1 ||
-                    leftVariations.Count != rightVariations.Count ||
-                    leftVariations.Keys.Except(rightVariations.Keys, StringComparer.Ordinal).Any())
+                var representative = evidence[0];
+                activeCandidateIdentities.Add(TargetRealizationCandidateIdentity(
+                    pairKey,
+                    SemanticSignature(realization.Dimension, realization.SemanticValue),
+                    representative.Span.Realization,
+                    representative.Span.SlotSignature,
+                    realization.ContextSignature));
+                var candidate = await GetOrCreateTargetRealizationCandidateAsync(
+                    pairKey,
+                    sourceLanguageCode,
+                    targetLanguageCode,
+                    realization.Dimension,
+                    realization.SemanticValue,
+                    representative.Span,
+                    realization.ContextSignature,
+                    cancellationToken);
+                foreach (var item in evidence)
                 {
-                    continue;
+                    await AddTargetRealizationEvidenceIfAbsentAsync(
+                        candidate,
+                        item.Observation.Example,
+                        item.Span,
+                        item.Observation.IsHumanVerifiedContrast,
+                        cancellationToken);
                 }
-
-                var dimension = changedDimensions[0];
-                var contrast = TryGetSafeTargetContrast(left.Text, right.Text, dimension);
-                if (contrast is null)
-                    continue;
-
-                var contextSignature = CandidateContextSignature(leftVariations, dimension);
-                var leftCandidate = await GetOrCreateTargetRealizationCandidateAsync(
-                    pairKey,
-                    sourceLanguageCode,
-                    targetLanguageCode,
-                    dimension,
-                    leftVariations[dimension],
-                    contrast.Left,
-                    contextSignature,
-                    cancellationToken);
-                var rightCandidate = await GetOrCreateTargetRealizationCandidateAsync(
-                    pairKey,
-                    sourceLanguageCode,
-                    targetLanguageCode,
-                    dimension,
-                    rightVariations[dimension],
-                    contrast.Right,
-                    contextSignature,
-                    cancellationToken);
-
-                await AddTargetRealizationEvidenceIfAbsentAsync(
-                    leftCandidate,
-                    left,
-                    contrast.Left,
-                    cancellationToken);
-                await AddTargetRealizationEvidenceIfAbsentAsync(
-                    rightCandidate,
-                    right,
-                    contrast.Right,
-                    cancellationToken);
-                affectedCandidateIds.Add(leftCandidate.Id);
-                affectedCandidateIds.Add(rightCandidate.Id);
+                affectedCandidateIds.Add(candidate.Id);
             }
         }
+
+        await RetireNoLongerExclusiveTargetRealizationCandidatesAsync(
+            pairKey,
+            activeCandidateIdentities,
+            cancellationToken);
 
         // Persist the candidate/evidence identities before computing their
         // aggregate counts. Relational queries intentionally do not rely on
@@ -2109,6 +2115,271 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             await _db.SaveChangesAsync(cancellationToken);
     }
 
+    private async Task RetireObsoleteTargetRealizationCandidatesAsync(
+        string pairKey,
+        CancellationToken cancellationToken)
+    {
+        var candidates = await _db.Set<LegendLanguageTargetRealizationCandidate>()
+            .Where(item => item.PairKey == pairKey && item.SupersededUtc == null &&
+                item.VerificationState != "FounderVerified" && item.VerificationState != "Rejected")
+            .ToListAsync(cancellationToken);
+        if (candidates.Count == 0)
+            return;
+
+        var now = DateTime.UtcNow;
+        foreach (var candidate in candidates.Where(item => !HasCurrentTargetRealizationCandidateIdentity(item)))
+        {
+            candidate.SupersededUtc = now;
+            candidate.MaturityState = "Superseded";
+            candidate.IsProductionEligible = false;
+            candidate.UpdatedUtc = now;
+        }
+    }
+
+    private async Task RetireNoLongerExclusiveTargetRealizationCandidatesAsync(
+        string pairKey,
+        IReadOnlySet<string> activeCandidateIdentities,
+        CancellationToken cancellationToken)
+    {
+        var candidates = await _db.Set<LegendLanguageTargetRealizationCandidate>()
+            .Where(item => item.PairKey == pairKey && item.SupersededUtc == null &&
+                item.VerificationState != "FounderVerified" && item.VerificationState != "Rejected")
+            .ToListAsync(cancellationToken);
+        if (candidates.Count == 0)
+            return;
+
+        var now = DateTime.UtcNow;
+        foreach (var candidate in candidates.Where(item =>
+                     HasCurrentTargetRealizationCandidateIdentity(item) &&
+                     !activeCandidateIdentities.Contains(item.CandidateIdentity)))
+        {
+            candidate.SupersededUtc = now;
+            candidate.MaturityState = "Superseded";
+            candidate.IsProductionEligible = false;
+            candidate.UpdatedUtc = now;
+        }
+    }
+
+    private static List<TargetContrastObservation> BuildTargetContrastObservations(
+        IReadOnlyList<AnalysisExample> examples,
+        IReadOnlyDictionary<Guid, Dictionary<string, string>> variationsByExample)
+    {
+        var observations = new List<TargetContrastObservation>();
+        foreach (var family in examples.GroupBy(item => item.Example.CurriculumFamilyId))
+        {
+            var members = family.OrderBy(item => item.Example.Id).ToList();
+            for (var leftIndex = 0; leftIndex < members.Count - 1; leftIndex++)
+            {
+                var left = members[leftIndex];
+                if (!variationsByExample.TryGetValue(left.Example.Id, out var leftVariations) ||
+                    left.Example.DerivedFromCurriculumExampleId is null || left.AlignmentId is null)
+                {
+                    continue;
+                }
+
+                for (var rightIndex = leftIndex + 1; rightIndex < members.Count; rightIndex++)
+                {
+                    var right = members[rightIndex];
+                    if (!variationsByExample.TryGetValue(right.Example.Id, out var rightVariations) ||
+                        right.Example.DerivedFromCurriculumExampleId is null || right.AlignmentId is null ||
+                        !TryGetIsolatedVariationDimension(leftVariations, rightVariations, out var dimension))
+                    {
+                        continue;
+                    }
+
+                    var contrast = TryGetSafeTargetContrast(left.Text, right.Text, dimension);
+                    if (contrast is null)
+                        continue;
+
+                    var contextSignature = CandidateContextSignature(leftVariations, dimension);
+                    var isHumanVerifiedContrast = left.IsHumanVerifiedSupport && right.IsHumanVerifiedSupport;
+                    observations.Add(new TargetContrastObservation(
+                        left,
+                        dimension,
+                        leftVariations[dimension],
+                        contextSignature,
+                        contrast.Left,
+                        isHumanVerifiedContrast));
+                    observations.Add(new TargetContrastObservation(
+                        right,
+                        dimension,
+                        rightVariations[dimension],
+                        contextSignature,
+                        contrast.Right,
+                        isHumanVerifiedContrast));
+                }
+            }
+        }
+
+        return observations;
+    }
+
+    private static bool TryGetIsolatedVariationDimension(
+        IReadOnlyDictionary<string, string> leftVariations,
+        IReadOnlyDictionary<string, string> rightVariations,
+        out string dimension)
+    {
+        dimension = string.Empty;
+        if (leftVariations.Count != rightVariations.Count ||
+            leftVariations.Keys.Except(rightVariations.Keys, StringComparer.Ordinal).Any())
+        {
+            return false;
+        }
+
+        var changedDimensions = leftVariations.Keys
+            .Where(key => !string.Equals(leftVariations[key], rightVariations[key], StringComparison.Ordinal))
+            .ToArray();
+        if (changedDimensions.Length != 1)
+            return false;
+
+        dimension = changedDimensions[0];
+        return true;
+    }
+
+    private static IReadOnlyList<ExclusiveTargetRealization> DeriveExclusiveTargetRealizations(
+        IReadOnlyList<TargetContrastObservation> observations)
+    {
+        var derived = new List<ExclusiveTargetRealization>();
+        foreach (var group in observations.GroupBy(item => new
+                 {
+                     item.Dimension,
+                     item.SemanticValue,
+                     item.ContextSignature
+                 }))
+        {
+            var human = group.Where(item => item.IsHumanVerifiedContrast).ToList();
+            if (human.Select(item => item.Example.SourceTextUnitId).Distinct().Count() < 2)
+                continue;
+
+            var competitors = observations.Where(item =>
+                    item.IsHumanVerifiedContrast &&
+                    string.Equals(item.Dimension, group.Key.Dimension, StringComparison.Ordinal) &&
+                    string.Equals(item.ContextSignature, group.Key.ContextSignature, StringComparison.Ordinal) &&
+                    !string.Equals(item.SemanticValue, group.Key.SemanticValue, StringComparison.Ordinal))
+                .ToList();
+            var eligible = EnumerateCandidateTokenSequences(human[0].Span)
+                .Where(tokens => IsExclusiveTargetRealization(tokens, human, competitors))
+                .ToList();
+            if (eligible.Count == 0)
+                continue;
+
+            var minimumLength = eligible.Min(tokens => tokens.Count);
+            var smallest = eligible
+                .Where(tokens => tokens.Count == minimumLength)
+                .Distinct(TokenSequenceComparer.Instance)
+                .ToList();
+            // More than one equally-small target span means the retained
+            // evidence cannot prove which material realizes this dimension.
+            if (smallest.Count != 1)
+                continue;
+
+            var tokens = smallest[0];
+            var refined = observations
+                .Where(item =>
+                    string.Equals(item.Dimension, group.Key.Dimension, StringComparison.Ordinal) &&
+                    string.Equals(item.SemanticValue, group.Key.SemanticValue, StringComparison.Ordinal) &&
+                    string.Equals(item.ContextSignature, group.Key.ContextSignature, StringComparison.Ordinal))
+                .Select(item => TryRefineTargetContrastSpan(item.Span, tokens, item.Dimension, out var span)
+                    ? new RefinedTargetContrastObservation(item, span)
+                    : null)
+                .Where(item => item is not null)
+                .Select(item => item!)
+                .ToList();
+            if (refined.Where(item => item.Observation.IsHumanVerifiedContrast)
+                    .Select(item => item.Observation.Example.SourceTextUnitId)
+                    .Distinct()
+                    .Count() < 2)
+            {
+                continue;
+            }
+
+            derived.Add(new ExclusiveTargetRealization(
+                group.Key.Dimension,
+                group.Key.SemanticValue,
+                group.Key.ContextSignature,
+                string.Join(' ', tokens),
+                refined));
+        }
+
+        return derived;
+    }
+
+    private static IReadOnlyList<IReadOnlyList<string>> EnumerateCandidateTokenSequences(
+        TargetContrastSpan span)
+    {
+        var candidates = new List<IReadOnlyList<string>>();
+        var end = span.StartTokenIndex + span.TokenLength;
+        for (var start = span.StartTokenIndex; start < end; start++)
+        for (var length = 1; start + length <= end; length++)
+            candidates.Add(span.TargetTokens.Skip(start).Take(length).ToArray());
+        return candidates;
+    }
+
+    private static bool IsExclusiveTargetRealization(
+        IReadOnlyList<string> tokens,
+        IReadOnlyList<TargetContrastObservation> humanSupport,
+        IReadOnlyList<TargetContrastObservation> competitors)
+    {
+        if (tokens.Count == 0)
+            return false;
+
+        // The proposed material must occur once, inside the observed target
+        // difference, for every independently human-verified contrast.
+        if (humanSupport.Any(item => !TryRefineTargetContrastSpan(item.Span, tokens, item.Dimension, out _)))
+            return false;
+
+        // If the same surface appears anywhere in a competing semantic value,
+        // it is not exclusively attributable to this controlled dimension.
+        return competitors.All(item => CountTokenSequenceOccurrences(item.Span.TargetTokens, tokens) == 0);
+    }
+
+    private static bool TryRefineTargetContrastSpan(
+        TargetContrastSpan source,
+        IReadOnlyList<string> realizationTokens,
+        string dimension,
+        out TargetContrastSpan refined)
+    {
+        refined = default!;
+        var starts = FindTokenSequenceOccurrences(source.TargetTokens, realizationTokens);
+        if (starts.Count != 1)
+            return false;
+
+        var start = starts[0];
+        var sourceEnd = source.StartTokenIndex + source.TokenLength;
+        if (start < source.StartTokenIndex || start + realizationTokens.Count > sourceEnd)
+            return false;
+
+        refined = BuildTargetContrastSpan(
+            source.TargetTokens,
+            Enumerable.Range(start, realizationTokens.Count).ToArray(),
+            dimension)!;
+        return true;
+    }
+
+    private static int CountTokenSequenceOccurrences(
+        IReadOnlyList<string> source,
+        IReadOnlyList<string> candidate) =>
+        FindTokenSequenceOccurrences(source, candidate).Count;
+
+    private static IReadOnlyList<int> FindTokenSequenceOccurrences(
+        IReadOnlyList<string> source,
+        IReadOnlyList<string> candidate)
+    {
+        if (candidate.Count == 0 || candidate.Count > source.Count)
+            return [];
+
+        var starts = new List<int>();
+        for (var start = 0; start <= source.Count - candidate.Count; start++)
+        {
+            if (source.Skip(start).Take(candidate.Count)
+                    .SequenceEqual(candidate, StringComparer.Ordinal))
+            {
+                starts.Add(start);
+            }
+        }
+        return starts;
+    }
+
     private async Task<LegendLanguageTargetRealizationCandidate> GetOrCreateTargetRealizationCandidateAsync(
         string pairKey,
         string sourceLanguageCode,
@@ -2120,9 +2391,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         CancellationToken cancellationToken)
     {
         var semanticSignature = SemanticSignature(dimension, semanticValue);
-        var identity = LegendLanguageIdentity.TextHash(string.Join('|',
-            "target-realization", TargetRealizationCandidateDerivationVersion, pairKey,
-            semanticSignature, span.Realization, span.SlotSignature, contextSignature));
+        var identity = TargetRealizationCandidateIdentity(
+            pairKey,
+            semanticSignature,
+            span.Realization,
+            span.SlotSignature,
+            contextSignature);
         var candidate = _db.Set<LegendLanguageTargetRealizationCandidate>().Local
             .SingleOrDefault(item => item.CandidateIdentity == identity)
             ?? await _db.Set<LegendLanguageTargetRealizationCandidate>()
@@ -2159,10 +2433,38 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         return candidate;
     }
 
+    private static string TargetRealizationCandidateIdentity(
+        string pairKey,
+        string semanticSignature,
+        string targetRealization,
+        string slotSignature,
+        string contextSignature) =>
+        LegendLanguageIdentity.TextHash(string.Join('|',
+            "target-realization",
+            TargetRealizationCandidateDerivationVersion,
+            pairKey,
+            semanticSignature,
+            targetRealization,
+            slotSignature,
+            contextSignature));
+
+    private static bool HasCurrentTargetRealizationCandidateIdentity(
+        LegendLanguageTargetRealizationCandidate candidate) =>
+        string.Equals(
+            candidate.CandidateIdentity,
+            TargetRealizationCandidateIdentity(
+                candidate.PairKey,
+                candidate.SemanticSignature,
+                candidate.TargetRealization,
+                candidate.SlotSignature,
+                candidate.ContextSignature),
+            StringComparison.Ordinal);
+
     private async Task AddTargetRealizationEvidenceIfAbsentAsync(
         LegendLanguageTargetRealizationCandidate candidate,
         AnalysisExample example,
         TargetContrastSpan span,
+        bool isHumanVerifiedSupport,
         CancellationToken cancellationToken)
     {
         var sourceExampleId = example.Example.DerivedFromCurriculumExampleId;
@@ -2191,7 +2493,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             TargetStartTokenIndex = span.StartTokenIndex,
             TargetTokenLength = span.TokenLength,
             EvidenceIdentity = identity,
-            IsHumanVerifiedSupport = example.IsHumanVerifiedSupport,
+            IsHumanVerifiedSupport = isHumanVerifiedSupport,
             // Trust and origin are deliberately separate. A Founder can
             // verify a provider observation through the established review
             // path, but its retained provenance must remain ProviderDerived.
@@ -2252,6 +2554,17 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .SingleOrDefaultAsync(item => item.Id == candidateId, cancellationToken);
         if (candidate is null)
             return;
+
+        // A v1 review candidate remains retained historical provenance after
+        // v2 supersedes it. Do not let an unrelated alignment replay reopen
+        // that over-broad proposal merely because its old evidence still
+        // exists.
+        if (candidate.SupersededUtc is not null && !HasCurrentTargetRealizationCandidateIdentity(candidate))
+        {
+            candidate.MaturityState = "Superseded";
+            candidate.IsProductionEligible = false;
+            return;
+        }
 
         var evidence = await _db.Set<LegendLanguageTargetRealizationEvidence>()
             .Where(item => item.CandidateId == candidateId && item.SupersededUtc == null)
@@ -2391,6 +2704,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             ? $"<{dimension}>"
             : token);
         return new TargetContrastSpan(
+            tokens.ToArray(),
             realization,
             start,
             length,
@@ -2465,6 +2779,53 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             item.HumanVerified,
             item.Provenance,
             item.Id)).ToList();
+    }
+
+    private async Task<List<AnalysisExample>> LoadPairScopedAnalysisExamplesAsync(
+        string pairKey,
+        string targetLanguageCode,
+        CancellationToken cancellationToken)
+    {
+        var targetExamples = await (
+            from targetExample in _db.Set<LegendCurriculumExample>()
+            join target in _db.Set<LegendLanguageTextUnit>() on targetExample.TextUnitId equals target.Id
+            join sourceExample in _db.Set<LegendCurriculumExample>()
+                on targetExample.DerivedFromCurriculumExampleId equals sourceExample.Id
+            join alignment in _db.Set<LegendTranslationAlignment>()
+                on new { SourceTextUnitId = sourceExample.TextUnitId, TargetTextUnitId = targetExample.TextUnitId }
+                equals new { alignment.SourceTextUnitId, alignment.TargetTextUnitId }
+            where targetExample.LanguageCode == targetLanguageCode && targetExample.SupersededUtc == null &&
+                sourceExample.SupersededUtc == null && target.IsTrainingEligible &&
+                alignment.PairKey == pairKey && alignment.SupersededUtc == null
+            orderby targetExample.CurriculumFamilyId, targetExample.Id, alignment.HumanVerified descending, alignment.Id
+            select new
+            {
+                Example = targetExample,
+                Text = target.Text,
+                TargetTextUnitId = target.Id,
+                SourceTextUnitId = sourceExample.TextUnitId,
+                alignment.HumanVerified,
+                alignment.Provenance,
+                alignment.Id
+            }
+        ).ToListAsync(cancellationToken);
+
+        // One active target example may be retained by more than one
+        // alignment lineage. Prefer the human-verified lineage when its text
+        // is identical; otherwise each target example remains a distinct
+        // canonical observation.
+        return targetExamples
+            .GroupBy(item => item.Example.Id)
+            .Select(group => group.First())
+            .Select(item => new AnalysisExample(
+                item.Example,
+                item.Text,
+                item.TargetTextUnitId,
+                item.SourceTextUnitId,
+                item.HumanVerified,
+                item.Provenance,
+                item.Id))
+            .ToList();
     }
 
     private async Task<bool> HasTrustedDirectionalConflictAsync(
@@ -3032,11 +3393,48 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         TargetContrastSpan Right);
 
     private sealed record TargetContrastSpan(
+        IReadOnlyList<string> TargetTokens,
         string Realization,
         int StartTokenIndex,
         int TokenLength,
         string TemplateSignature,
         string SlotSignature);
+
+    private sealed record TargetContrastObservation(
+        AnalysisExample Example,
+        string Dimension,
+        string SemanticValue,
+        string ContextSignature,
+        TargetContrastSpan Span,
+        bool IsHumanVerifiedContrast);
+
+    private sealed record RefinedTargetContrastObservation(
+        TargetContrastObservation Observation,
+        TargetContrastSpan Span);
+
+    private sealed record ExclusiveTargetRealization(
+        string Dimension,
+        string SemanticValue,
+        string ContextSignature,
+        string TargetRealization,
+        IReadOnlyList<RefinedTargetContrastObservation> Evidence);
+
+    private sealed class TokenSequenceComparer : IEqualityComparer<IReadOnlyList<string>>
+    {
+        internal static readonly TokenSequenceComparer Instance = new();
+
+        public bool Equals(IReadOnlyList<string>? left, IReadOnlyList<string>? right) =>
+            ReferenceEquals(left, right) ||
+            (left is not null && right is not null && left.SequenceEqual(right, StringComparer.Ordinal));
+
+        public int GetHashCode(IReadOnlyList<string> value)
+        {
+            var hash = new HashCode();
+            foreach (var token in value)
+                hash.Add(token, StringComparer.Ordinal);
+            return hash.ToHashCode();
+        }
+    }
 
     private sealed record StructuralEvidenceImpact(
         Guid StructuralPatternId,

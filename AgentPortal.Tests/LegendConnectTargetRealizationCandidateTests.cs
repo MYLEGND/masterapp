@@ -118,37 +118,23 @@ public sealed class LegendConnectTargetRealizationCandidateTests
     }
 
     [Fact]
-    public async Task ProviderOnlyCandidatesRemainObservational_AndFounderRejectionRetainsHistoryWithoutTrust()
+    public async Task ProviderOnlyContrastsRemainObservational_AndCannotReachFounderReview()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
         await SeedFamiliesAsync(fixture, "en", "x-alpha", "pe", "dwe", humanVerified: false);
 
-        var candidate = await db.LegendLanguageTargetRealizationCandidates.SingleAsync(item =>
-            item.PairKey == "en:x-alpha" && item.SemanticValue == "may" && item.TargetRealization == "pe");
-        Assert.Equal("Candidate", candidate.VerificationState);
-        Assert.Equal(0, candidate.HumanVerifiedSupportCount);
-        Assert.Equal(3, candidate.ProviderOnlySupportCount);
-        Assert.False(candidate.IsProductionEligible);
-        Assert.All(await db.LegendLanguageTargetRealizationEvidence
-            .Where(item => item.CandidateId == candidate.Id)
-            .ToListAsync(), item => Assert.Equal(LegendConnectKnowledgeProvenance.ProviderDerived, item.Provenance));
-
-        var rejected = await fixture.Operations.RejectTargetRealizationCandidateAsync("founder", candidate.Id);
-        Assert.True(rejected.Succeeded, rejected.Message);
-        var retained = await db.LegendLanguageTargetRealizationCandidates.SingleAsync(item => item.Id == candidate.Id);
-        Assert.Equal("Rejected", retained.VerificationState);
-        Assert.Equal("Superseded", retained.MaturityState);
-        Assert.False(retained.IsProductionEligible);
-        Assert.Null(retained.VerifiedAnchorId);
-        Assert.Equal(3, await db.LegendLanguageTargetRealizationEvidence.CountAsync(item => item.CandidateId == candidate.Id));
-
+        Assert.Empty(await db.LegendLanguageTargetRealizationCandidates.ToListAsync());
+        Assert.NotEmpty(await db.LegendLanguageStructuralEvidence
+            .Where(item => item.PairKey == "en:x-alpha" &&
+                item.Provenance == LegendConnectKnowledgeProvenance.ProviderDerived)
+            .ToListAsync());
         await fixture.Curriculum.ReevaluateHistoricalAlignmentsAsync(100);
-        Assert.Equal("Rejected", (await db.LegendLanguageTargetRealizationCandidates.SingleAsync(item => item.Id == candidate.Id)).VerificationState);
+        Assert.Empty(await db.LegendLanguageTargetRealizationCandidates.ToListAsync());
     }
 
     [Fact]
-    public async Task ConflictingCandidatesFailClosed_AndDirectNonEnglishPairUsesTheSameAuthority()
+    public async Task AmbiguousTargetRealizationsFailClosed_AndDirectNonEnglishPairUsesTheSameAuthority()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
@@ -156,22 +142,165 @@ public sealed class LegendConnectTargetRealizationCandidateTests
         await SeedFamiliesAsync(fixture, "x-alpha", "x-beta", "ta", "ra", humanVerified: true, familyPrefix: "conflict");
 
         var candidates = await db.LegendLanguageTargetRealizationCandidates
-            .Where(item => item.PairKey == "x-alpha:x-beta" && item.SemanticValue == "may")
+            .Where(item => item.PairKey == "x-alpha:x-beta" && item.SemanticValue == "may" && item.SupersededUtc == null)
             .OrderBy(item => item.TargetRealization)
             .ToListAsync();
-        Assert.Equal(2, candidates.Count);
-        Assert.All(candidates, item =>
-        {
-            Assert.True(item.ContradictionCount > 0);
-            Assert.Equal("Contradicted", item.VerificationState);
-            Assert.False(item.IsProductionEligible);
-        });
-        var attemptedVerification = await fixture.Operations.VerifyTargetRealizationCandidateAsync("founder", candidates[0].Id);
-        Assert.False(attemptedVerification.Succeeded);
-        Assert.Equal("candidate_contradicted", attemptedVerification.ErrorCode);
+        Assert.Empty(candidates);
         Assert.Empty(await db.LegendLanguageCompositionalAnchors
             .Where(item => item.LanguageCode == "x-beta" && item.Dimension == "modality" && item.Value == "may")
             .ToListAsync());
+    }
+
+    [Fact]
+    public async Task SubjectContaminationDoesNotSurfaceSubjectMaterialAsAFormRealization()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        await SeedFamiliesAsync(
+            fixture,
+            "en",
+            "x-alpha",
+            "pe",
+            "dwe",
+            humanVerified: true,
+            mayTargetPrefix: "subject-a",
+            shouldTargetPrefix: "subject-b");
+
+        Assert.Empty(await db.LegendLanguageTargetRealizationCandidates
+            .Where(item => item.PairKey == "en:x-alpha" && item.VariationDimension == "modality")
+            .ToListAsync());
+    }
+
+    [Fact]
+    public async Task TemporalAdjunctContaminationFailsClosedWhenTheEvidenceCannotSeparateItFromTense()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        await SeedFamiliesAsync(
+            fixture,
+            "en",
+            "x-alpha",
+            "worked yesterday",
+            "works tomorrow",
+            humanVerified: true);
+
+        Assert.Empty(await db.LegendLanguageTargetRealizationCandidates
+            .Where(item => item.PairKey == "en:x-alpha" && item.VariationDimension == "modality")
+            .ToListAsync());
+    }
+
+    [Fact]
+    public async Task IndependentFounderEvidenceCreatesOneMinimalCandidateAcrossANonEnglishPair()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        await SeedFamiliesAsync(fixture, "x-alpha", "x-beta", "ka", "ra", humanVerified: true);
+
+        var candidate = await db.LegendLanguageTargetRealizationCandidates.SingleAsync(item =>
+            item.PairKey == "x-alpha:x-beta" && item.VariationDimension == "modality" &&
+            item.SemanticValue == "may");
+        Assert.Equal("ka", candidate.TargetRealization);
+        Assert.Equal(3, candidate.HumanVerifiedSupportCount);
+        Assert.False(candidate.IsProductionEligible);
+    }
+
+    [Fact]
+    public async Task HistoricalV1CandidateIsSupersededAndReplacedByOneExclusiveV2Candidate()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        await SeedFamiliesAsync(fixture, "en", "x-alpha", "pe", "dwe", humanVerified: true);
+
+        var current = await db.LegendLanguageTargetRealizationCandidates.SingleAsync(item =>
+            item.PairKey == "en:x-alpha" && item.SemanticValue == "may" && item.TargetRealization == "pe");
+        var legacy = new LegendLanguageTargetRealizationCandidate
+        {
+            Id = Guid.NewGuid(),
+            PairKey = current.PairKey,
+            SourceLanguageCode = current.SourceLanguageCode,
+            TargetLanguageCode = current.TargetLanguageCode,
+            SemanticSignature = current.SemanticSignature,
+            VariationDimension = current.VariationDimension,
+            SemanticValue = current.SemanticValue,
+            TargetRealization = "za pe",
+            ContextSignature = current.ContextSignature,
+            TemplateSignature = current.TemplateSignature,
+            SlotSignature = current.SlotSignature,
+            CandidateIdentity = "target-contrast-v1-retained-history",
+            VerificationState = "Candidate",
+            MaturityState = "Observation",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        db.LegendLanguageTargetRealizationCandidates.Add(legacy);
+        var currentEvidence = await db.LegendLanguageTargetRealizationEvidence
+            .Where(item => item.CandidateId == current.Id)
+            .OrderBy(item => item.Id)
+            .FirstAsync();
+        db.LegendLanguageTargetRealizationEvidence.Add(new LegendLanguageTargetRealizationEvidence
+        {
+            Id = Guid.NewGuid(),
+            CandidateId = legacy.Id,
+            SourceCurriculumExampleId = currentEvidence.SourceCurriculumExampleId,
+            TargetCurriculumExampleId = currentEvidence.TargetCurriculumExampleId,
+            SourceTextUnitId = currentEvidence.SourceTextUnitId,
+            TargetTextUnitId = currentEvidence.TargetTextUnitId,
+            SourceAlignmentId = currentEvidence.SourceAlignmentId,
+            TargetStartTokenIndex = 0,
+            TargetTokenLength = 2,
+            EvidenceIdentity = "target-contrast-v1-retained-evidence",
+            IsHumanVerifiedSupport = true,
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        await fixture.Curriculum.ReevaluateHistoricalAlignmentsAsync(100);
+
+        var retainedLegacy = await db.LegendLanguageTargetRealizationCandidates.SingleAsync(item => item.Id == legacy.Id);
+        Assert.NotNull(retainedLegacy.SupersededUtc);
+        Assert.Equal("Superseded", retainedLegacy.MaturityState);
+        Assert.Single(await db.LegendLanguageTargetRealizationEvidence
+            .Where(item => item.CandidateId == legacy.Id)
+            .ToListAsync());
+        var active = await db.LegendLanguageTargetRealizationCandidates
+            .Where(item => item.PairKey == "en:x-alpha" && item.SemanticValue == "may" && item.SupersededUtc == null)
+            .ToListAsync();
+        Assert.Single(active);
+        Assert.Equal("pe", active[0].TargetRealization);
+        var review = await fixture.Operations.GetTargetRealizationReviewAsync();
+        Assert.Equal(2, review.CandidateCount);
+
+        var beforeSecondReplay = await db.LegendLanguageTargetRealizationCandidates
+            .Select(item => new { item.Id, item.SupersededUtc, item.CandidateIdentity })
+            .OrderBy(item => item.Id)
+            .ToListAsync();
+        await fixture.Curriculum.ReevaluateHistoricalAlignmentsAsync(100);
+        var afterSecondReplay = await db.LegendLanguageTargetRealizationCandidates
+            .Select(item => new { item.Id, item.SupersededUtc, item.CandidateIdentity })
+            .OrderBy(item => item.Id)
+            .ToListAsync();
+        Assert.Equal(beforeSecondReplay, afterSecondReplay);
+    }
+
+    [Fact]
+    public async Task FounderRejectionRetainsExclusiveCandidateEvidenceWithoutTrust()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        await SeedFamiliesAsync(fixture, "en", "x-alpha", "pe", "dwe", humanVerified: true);
+
+        var candidate = await db.LegendLanguageTargetRealizationCandidates.SingleAsync(item =>
+            item.PairKey == "en:x-alpha" && item.SemanticValue == "may" && item.TargetRealization == "pe");
+        var rejected = await fixture.Operations.RejectTargetRealizationCandidateAsync("founder", candidate.Id);
+        Assert.True(rejected.Succeeded, rejected.Message);
+        var retained = await db.LegendLanguageTargetRealizationCandidates.SingleAsync(item => item.Id == candidate.Id);
+        Assert.Equal("Rejected", retained.VerificationState);
+        Assert.Equal("Superseded", retained.MaturityState);
+        Assert.False(retained.IsProductionEligible);
+        Assert.Equal(3, await db.LegendLanguageTargetRealizationEvidence
+            .CountAsync(item => item.CandidateId == candidate.Id));
     }
 
     private static async Task SeedFamiliesAsync(
@@ -181,7 +310,9 @@ public sealed class LegendConnectTargetRealizationCandidateTests
         string mayTarget,
         string shouldTarget,
         bool humanVerified,
-        string familyPrefix = "seed")
+        string familyPrefix = "seed",
+        string mayTargetPrefix = "za",
+        string shouldTargetPrefix = "za")
     {
         foreach (var (verb, @object) in new[]
         {
@@ -199,7 +330,9 @@ public sealed class LegendConnectTargetRealizationCandidateTests
                 @object,
                 mayTarget,
                 shouldTarget,
-                humanVerified);
+                humanVerified,
+                mayTargetPrefix: mayTargetPrefix,
+                shouldTargetPrefix: shouldTargetPrefix);
         }
     }
 
@@ -213,7 +346,9 @@ public sealed class LegendConnectTargetRealizationCandidateTests
         string mayTarget,
         string shouldTarget,
         bool humanVerified,
-        bool includeShouldExample = true)
+        bool includeShouldExample = true,
+        string mayTargetPrefix = "za",
+        string shouldTargetPrefix = "za")
     {
         var pair = await fixture.Registry.GetOrCreateEnabledPairAsync(sourceLanguage, targetLanguage);
         Assert.NotNull(pair);
@@ -227,10 +362,10 @@ public sealed class LegendConnectTargetRealizationCandidateTests
         fixture.Db.Add(family);
         var sources = new List<(string Value, string Text, string Target)>
         {
-            ("may", $"I may {verb} {@object}.", $"za {mayTarget} {verb} {@object}")
+            ("may", $"I may {verb} {@object}.", $"{mayTargetPrefix} {mayTarget} {verb} {@object}")
         };
         if (includeShouldExample)
-            sources.Add(("should", $"I should {verb} {@object}.", $"za {shouldTarget} {verb} {@object}"));
+            sources.Add(("should", $"I should {verb} {@object}.", $"{shouldTargetPrefix} {shouldTarget} {verb} {@object}"));
         var alignments = new List<(LegendTranslationAlignment Alignment, LegendLanguageTextUnit Source)>();
         foreach (var source in sources)
         {
