@@ -852,6 +852,132 @@ public sealed class LegendConnectOperationalProofTests
     }
 
     [Fact]
+    public async Task TranslationRouteAudit_UsesPersistedRouteAndLearningRecordsWithoutPrivateMessageContent()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration);
+        var now = DateTime.UtcNow;
+        var conversation = new MessageConversation
+        {
+            Id = Guid.NewGuid(),
+            ConversationType = "Direct",
+            CreatedByUserId = "route-audit-founder",
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
+        var memoryMessage = new InternalMessage
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = conversation.Id,
+            SenderUserId = "private-memory-sender",
+            SenderType = MessagingParticipantTypes.Agent,
+            Body = "Private exact-memory source body",
+            SenderPreferredLanguage = "en",
+            OriginalLanguage = "en",
+            SentUtc = now.AddMinutes(-2)
+        };
+        var azureMessage = new InternalMessage
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = conversation.Id,
+            SenderUserId = "private-azure-sender",
+            SenderType = MessagingParticipantTypes.Agent,
+            Body = "Private Azure source body",
+            SenderPreferredLanguage = "en",
+            OriginalLanguage = "en",
+            SentUtc = now.AddMinutes(-1)
+        };
+        var azureReference = TranslationUsageReference.ForMessage(azureMessage.Id, "ht");
+        db.AddRange(
+            conversation,
+            memoryMessage,
+            azureMessage,
+            new MessageTranslation
+            {
+                Id = Guid.NewGuid(),
+                InternalMessageId = memoryMessage.Id,
+                TargetLanguage = "ht",
+                TranslatedText = "Memwa prive",
+                Provider = "LegendConnectTranslationMemory",
+                CreatedUtc = now.AddMinutes(-1)
+            },
+            new MessageTranslation
+            {
+                Id = Guid.NewGuid(),
+                InternalMessageId = azureMessage.Id,
+                TargetLanguage = "ht",
+                TranslatedText = "Rezilta Azure prive",
+                Provider = "AzureTranslator",
+                CreatedUtc = now
+            },
+            new LegendTranslationLearningEvent
+            {
+                Id = Guid.NewGuid(),
+                IdempotencyKey = "route-audit-memory",
+                SourceMessageId = memoryMessage.Id,
+                SourceLanguageCode = "en",
+                TargetLanguageCode = "ht",
+                PairKey = "en:ht",
+                Provider = "LegendConnectTranslationMemory",
+                Provenance = "ConsentedLiveTranslation",
+                EligibilityState = "Eligible",
+                ProcessingState = "Processed",
+                PromotionOutcome = "Reused",
+                CreatedUtc = now
+            },
+            new LegendTranslationLearningEvent
+            {
+                Id = Guid.NewGuid(),
+                IdempotencyKey = "route-audit-azure",
+                SourceMessageId = azureMessage.Id,
+                SourceLanguageCode = "en",
+                TargetLanguageCode = "ht",
+                PairKey = "en:ht",
+                Provider = "AzureTranslator",
+                Provenance = "ConsentedLiveTranslation",
+                EligibilityState = "Eligible",
+                ProcessingState = "Processed",
+                PromotionOutcome = "Promoted",
+                CreatedUtc = now
+            },
+            new LegendTranslationUsageLedger
+            {
+                Id = Guid.NewGuid(),
+                RequestReference = azureReference,
+                UserId = "private-azure-account",
+                ParticipantType = MessagingParticipantTypes.Agent,
+                PeriodStart = new DateOnly(now.Year, now.Month, 1),
+                SourceLanguageCode = "en",
+                TargetLanguageCode = "ht",
+                Provider = "AzureTranslator",
+                BillableCharacters = 25,
+                ProviderExecuted = true,
+                Succeeded = true,
+                State = "Completed",
+                CreatedUtc = now,
+                CompletedUtc = now
+            });
+        await db.SaveChangesAsync();
+
+        var detail = await operations.GetMetricDetailAsync("translation-routing-audit");
+
+        Assert.Equal("Translation route audit", detail.Title);
+        var routes = Assert.Single(detail.Sections.Where(section => section.Title == "Completed translation routes"));
+        Assert.Contains(routes.Rows, row => row.Contains("Legend trusted exact memory") && row.Contains("Not called"));
+        var azureRoute = Assert.Single(routes.Rows.Where(row => row.Contains("Azure Translator full fallback")));
+        Assert.Contains("Called · completed", azureRoute);
+        Assert.True(azureRoute.Any(value => value.Contains("Promoted", StringComparison.Ordinal)), string.Join(" | ", azureRoute));
+        Assert.DoesNotContain(routes.Rows.SelectMany(row => row), value =>
+            value.Contains("Private", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("private-azure-account", StringComparison.OrdinalIgnoreCase));
+        var providerOutcomes = Assert.Single(detail.Sections.Where(section => section.Title == "Azure fallback outcomes"));
+        Assert.Contains(providerOutcomes.Rows, row => row.Contains(azureReference) && row.Contains("Called") && row.Contains("Succeeded"));
+    }
+
+    [Fact]
     public async Task MetricDetails_ResolvesEveryDashboardMetricKeyThroughTheOneOperationsFacade()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -866,7 +992,7 @@ public sealed class LegendConnectOperationalProofTests
         {
             "active-languages", "directional-pairs", "learning-failures", "duplicate-prevention",
             "approved-candidates", "eligible-pending", "rejected-ineligible", "readiness-duplicates-prevented", "pairs-awaiting-knowledge",
-            "same-language-bypasses", "translation-memory-hits", "provider-fallback-required", "trusted-contextual-served", "provider-avoidance", "provider-dependency",
+            "translation-routing-audit", "same-language-bypasses", "translation-memory-hits", "provider-fallback-required", "trusted-contextual-served", "provider-avoidance", "provider-dependency",
             "azure-characters-used", "consumed-live-characters", "consumed-corpus-characters", "provider-characters-reserved", "pending-learning-jobs",
             "quality-needs-review", "quality-provider-observations", "quality-supported-observations", "quality-contradictions", "quality-human-verified",
             "provider-operations", "provider-billable-characters", "same-language-avoided", "memory-avoided", "context-avoided", "quota-denied", "provider-failures", "group-target-reuse", "high-consumption-accounts",

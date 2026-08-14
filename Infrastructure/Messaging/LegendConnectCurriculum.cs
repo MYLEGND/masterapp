@@ -2,6 +2,7 @@ using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query;
 
 namespace Infrastructure.Messaging;
 
@@ -350,51 +351,85 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return;
 
         var now = DateTime.UtcNow;
-        var examples = await (
+        var exampleIds = await (
             from targetExample in _db.Set<LegendCurriculumExample>()
             join sourceExample in _db.Set<LegendCurriculumExample>()
                 on targetExample.DerivedFromCurriculumExampleId equals sourceExample.Id
             where targetExample.SupersededUtc == null &&
                 targetExample.TextUnitId == targetTextUnitId &&
                 sourceExample.TextUnitId == sourceTextUnitId
-            select targetExample
+            select targetExample.Id
         ).ToListAsync(cancellationToken);
 
-        foreach (var example in examples)
-        {
-            example.SupersededUtc = now;
-            example.UpdatedUtc = now;
-        }
-
-        var exampleIds = examples.Select(item => item.Id).ToArray();
-        var evidence = exampleIds.Length == 0
-            ? new List<LegendLanguageStructuralEvidence>()
+        var evidence = exampleIds.Count == 0
+            ? new List<StructuralEvidenceImpact>()
             : await _db.Set<LegendLanguageStructuralEvidence>()
+                .AsNoTracking()
                 .Where(item => item.SupersededUtc == null &&
                     (exampleIds.Contains(item.BaselineCurriculumExampleId) ||
                      exampleIds.Contains(item.ComparedCurriculumExampleId)))
+                .Select(item => new StructuralEvidenceImpact(
+                    item.StructuralPatternId,
+                    item.StructuralRelationshipId))
                 .ToListAsync(cancellationToken);
-        foreach (var item in evidence)
-            item.SupersededUtc = now;
 
         // Contextual examples originate directly from the alignment. Controlled
         // variation contexts are pair-scoped projections of its target example.
         // Both must become historical when that realization is corrected, while
         // contexts for other pairs and other source/target identities remain live.
-        var contexts = await _db.Set<LegendLanguageContextRelationship>()
+        var contextQuery = _db.Set<LegendLanguageContextRelationship>()
             .Where(item => item.SupersededUtc == null && item.PairKey == pairKey &&
                 ((item.RelationshipKind == "ContextualExample" &&
                     item.SourceTextUnitId == sourceTextUnitId && item.RelatedTextUnitId == targetTextUnitId) ||
                  (item.RelationshipKind == "ControlledVariation" &&
-                    (item.SourceTextUnitId == targetTextUnitId || item.RelatedTextUnitId == targetTextUnitId))))
-            .ToListAsync(cancellationToken);
-        foreach (var context in contexts)
-        {
-            context.SupersededUtc = now;
-            context.UpdatedUtc = now;
-        }
+                    (item.SourceTextUnitId == targetTextUnitId || item.RelatedTextUnitId == targetTextUnitId))));
 
-        await _db.SaveChangesAsync(cancellationToken);
+        // This is the same reconciliation state transition as the tracked
+        // implementation, expressed as bounded set-based writes. A correction
+        // can retire many derived observations; materializing every one inside
+        // the Founder request previously held the transaction long enough for
+        // IIS to cancel the request before its authoritative redirect.
+        var usesSetBasedUpdates = _db.Database.IsRelational();
+        var exampleRetirementQuery = _db.Set<LegendCurriculumExample>()
+            .Where(item => exampleIds.Contains(item.Id) && item.SupersededUtc == null);
+        var retiredExampleCount = exampleIds.Count == 0
+            ? 0
+            : await ApplyRetirementAsync(
+                exampleRetirementQuery,
+                setters => setters
+                    .SetProperty(item => item.SupersededUtc, (DateTime?)now)
+                    .SetProperty(item => item.UpdatedUtc, now),
+                item =>
+                {
+                    item.SupersededUtc = now;
+                    item.UpdatedUtc = now;
+                },
+                cancellationToken);
+        var evidenceRetirementQuery = _db.Set<LegendLanguageStructuralEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                (exampleIds.Contains(item.BaselineCurriculumExampleId) ||
+                 exampleIds.Contains(item.ComparedCurriculumExampleId)));
+        var retiredEvidenceCount = exampleIds.Count == 0
+            ? 0
+            : await ApplyRetirementAsync(
+                evidenceRetirementQuery,
+                setters => setters.SetProperty(item => item.SupersededUtc, (DateTime?)now),
+                item => item.SupersededUtc = now,
+                cancellationToken);
+        var retiredContextCount = await ApplyRetirementAsync(
+            contextQuery,
+            setters => setters
+                .SetProperty(item => item.SupersededUtc, (DateTime?)now)
+                .SetProperty(item => item.UpdatedUtc, now),
+            item =>
+            {
+                item.SupersededUtc = now;
+                item.UpdatedUtc = now;
+            },
+            cancellationToken);
+
+        if (!usesSetBasedUpdates)
+            await _db.SaveChangesAsync(cancellationToken);
 
         // A corrected target can retain current lexical/component observations
         // only when another active canonical lineage still uses that text unit.
@@ -407,31 +442,44 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     (item.SourceTextUnitId == targetTextUnitId || item.TargetTextUnitId == targetTextUnitId), cancellationToken);
         if (!targetRemainsCurrent)
         {
-            var occurrences = await _db.Set<LegendLanguageLexicalOccurrence>()
-                .Where(item => item.TextUnitId == targetTextUnitId && item.SupersededUtc == null)
-                .ToListAsync(cancellationToken);
-            foreach (var occurrence in occurrences)
-            {
-                occurrence.SupersededUtc = now;
-                occurrence.UpdatedUtc = now;
-            }
-            var lexicalRelationships = await _db.Set<LegendLanguageLexicalRelationship>()
-                .Where(item => item.TextUnitId == targetTextUnitId && item.SupersededUtc == null)
-                .ToListAsync(cancellationToken);
-            foreach (var lexicalRelationship in lexicalRelationships)
-            {
-                lexicalRelationship.SupersededUtc = now;
-                lexicalRelationship.UpdatedUtc = now;
-            }
-            var anchors = await _db.Set<LegendLanguageCompositionalAnchor>()
-                .Where(item => item.TextUnitId == targetTextUnitId && item.SupersededUtc == null)
-                .ToListAsync(cancellationToken);
-            foreach (var anchor in anchors)
-                anchor.SupersededUtc = now;
-            await _db.SaveChangesAsync(cancellationToken);
+            var occurrenceRetirementQuery = _db.Set<LegendLanguageLexicalOccurrence>()
+                .Where(item => item.TextUnitId == targetTextUnitId && item.SupersededUtc == null);
+            await ApplyRetirementAsync(
+                occurrenceRetirementQuery,
+                setters => setters
+                    .SetProperty(item => item.SupersededUtc, (DateTime?)now)
+                    .SetProperty(item => item.UpdatedUtc, now),
+                item =>
+                {
+                    item.SupersededUtc = now;
+                    item.UpdatedUtc = now;
+                },
+                cancellationToken);
+            var relationshipRetirementQuery = _db.Set<LegendLanguageLexicalRelationship>()
+                .Where(item => item.TextUnitId == targetTextUnitId && item.SupersededUtc == null);
+            await ApplyRetirementAsync(
+                relationshipRetirementQuery,
+                setters => setters
+                    .SetProperty(item => item.SupersededUtc, (DateTime?)now)
+                    .SetProperty(item => item.UpdatedUtc, now),
+                item =>
+                {
+                    item.SupersededUtc = now;
+                    item.UpdatedUtc = now;
+                },
+                cancellationToken);
+            var anchorRetirementQuery = _db.Set<LegendLanguageCompositionalAnchor>()
+                .Where(item => item.TextUnitId == targetTextUnitId && item.SupersededUtc == null);
+            await ApplyRetirementAsync(
+                anchorRetirementQuery,
+                setters => setters.SetProperty(item => item.SupersededUtc, (DateTime?)now),
+                item => item.SupersededUtc = now,
+                cancellationToken);
+            if (!usesSetBasedUpdates)
+                await _db.SaveChangesAsync(cancellationToken);
         }
 
-        if (examples.Count == 0 && evidence.Count == 0 && contexts.Count == 0)
+        if (retiredExampleCount == 0 && retiredEvidenceCount == 0 && retiredContextCount == 0)
             return;
 
         foreach (var patternId in evidence.Select(item => item.StructuralPatternId).Distinct())
@@ -442,6 +490,28 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .Distinct())
             await RefreshStructuralRelationshipMaturityAsync(relationshipId, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// SQL Server performs correction retirement as one statement per affected
+    /// projection. The in-memory provider used by the isolated proof suite has
+    /// no ExecuteUpdate support, so it uses the same state transition through
+    /// the tracked context and the caller persists that single unit of work.
+    /// </summary>
+    private async Task<int> ApplyRetirementAsync<TEntity>(
+        IQueryable<TEntity> query,
+        Action<UpdateSettersBuilder<TEntity>> relationalSetters,
+        Action<TEntity> inMemorySetter,
+        CancellationToken cancellationToken)
+        where TEntity : class
+    {
+        if (_db.Database.IsRelational())
+            return await query.ExecuteUpdateAsync(relationalSetters, cancellationToken);
+
+        var entities = await query.ToListAsync(cancellationToken);
+        foreach (var entity in entities)
+            inMemorySetter(entity);
+        return entities.Count;
     }
 
     /// <summary>
@@ -2268,6 +2338,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private sealed record ReusableStructuralRelationshipCandidate(
         string RelationshipSignature,
         string AnchorLayoutSignature);
+
+    private sealed record StructuralEvidenceImpact(
+        Guid StructuralPatternId,
+        Guid? StructuralRelationshipId);
 
     private static IReadOnlyList<NormalizedCurriculumExample>? NormalizeExamples(
         IReadOnlyList<LegendConnectCurriculumExampleSubmission>? examples)

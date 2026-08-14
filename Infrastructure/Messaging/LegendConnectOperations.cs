@@ -15,6 +15,7 @@ namespace Infrastructure.Messaging;
 internal sealed class LegendConnectOperations : ILegendConnectOperations
 {
     private const int LanguageKnowledgeDetailRecordLimit = 250;
+    private const int TranslationRouteAuditRecordLimit = 250;
 
     private readonly MasterAppDbContext _db;
     private readonly ILegendLanguageRegistry _registry;
@@ -245,6 +246,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (string.IsNullOrWhiteSpace(key))
             return EmptyMetricDetail("unknown", "Metric details", "A Legend Connect metric was not specified.");
 
+        if (key == "translation-routing-audit")
+            return await BuildTranslationRoutingAuditMetricDetailAsync(cancellationToken);
+
         if (key.StartsWith("capacity-", StringComparison.Ordinal) ||
             key is "azure-characters-used" or "consumed-live-characters" or "consumed-corpus-characters" or
                 "provider-characters-reserved")
@@ -270,6 +274,139 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "raw-submissions-retained" or "atomic-learning-units" or "active-directional-alignments" or "legacy-multi-unit-assets-retired" => BuildFounderTrainingMetricDetail(state, key),
             _ => EmptyMetricDetail(key, "Metric details", "This card has no configured Legend Connect detail projection.")
         };
+    }
+
+    /// <summary>
+    /// Projects the actual persisted route of each completed message translation
+    /// from the operational presentation cache, then joins only the existing
+    /// privacy-governed learning hand-off and provider usage ledger. This is a
+    /// read-only explanation of the single router's outcome; it never stores
+    /// message bodies, participant identities, or a parallel route authority.
+    /// </summary>
+    private async Task<LegendConnectMetricDetailSnapshot> BuildTranslationRoutingAuditMetricDetailAsync(
+        CancellationToken cancellationToken)
+    {
+        var routes = await (
+                from translation in _db.MessageTranslations.AsNoTracking()
+                join message in _db.InternalMessages.AsNoTracking()
+                    on translation.InternalMessageId equals message.Id
+                where !message.IsDeleted
+                orderby translation.CreatedUtc descending
+                select new TranslationRouteAuditRow(
+                    message.Id,
+                    message.SenderPreferredLanguage,
+                    message.OriginalLanguage,
+                    translation.TargetLanguage,
+                    translation.Provider,
+                    translation.CreatedUtc))
+            .Take(TranslationRouteAuditRecordLimit)
+            .ToListAsync(cancellationToken);
+
+        var messageIds = routes.Select(item => item.MessageId).Distinct().ToArray();
+        var learningEvents = messageIds.Length == 0
+            ? new List<TranslationRouteLearningRow>()
+            : await _db.Set<LegendTranslationLearningEvent>().AsNoTracking()
+                .Where(item => item.SourceMessageId != null && messageIds.Contains(item.SourceMessageId.Value))
+                .Select(item => new TranslationRouteLearningRow(
+                    item.SourceMessageId!.Value,
+                    item.SourceLanguageCode,
+                    item.TargetLanguageCode,
+                    item.Provenance,
+                    item.EligibilityState,
+                    item.ProcessingState,
+                    item.PromotionOutcome,
+                    item.CreatedUtc))
+                .ToListAsync(cancellationToken);
+        var learningByRoute = learningEvents
+            .GroupBy(item => TranslationRouteKey(item.MessageId, item.TargetLanguageCode), StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(item => item.CreatedUtc).First(),
+                StringComparer.Ordinal);
+
+        var references = routes
+            .Select(item => TranslationUsageReference.ForMessage(item.MessageId, item.TargetLanguageCode))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var ledgerByReference = references.Length == 0
+            ? new Dictionary<string, TranslationRouteLedgerRow>(StringComparer.Ordinal)
+            : (await _db.Set<LegendTranslationUsageLedger>().AsNoTracking()
+                    .Where(item => references.Contains(item.RequestReference))
+                    .Select(item => new TranslationRouteLedgerRow(
+                        item.RequestReference,
+                        item.ProviderExecuted,
+                        item.Succeeded,
+                        item.State,
+                        item.FailureCode,
+                        item.CompletedUtc,
+                        item.CreatedUtc))
+                    .ToListAsync(cancellationToken))
+                .GroupBy(item => item.RequestReference, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.OrderByDescending(item => item.CompletedUtc ?? item.CreatedUtc).First(),
+                    StringComparer.Ordinal);
+
+        var routeRows = routes.Select(item =>
+        {
+            var reference = TranslationUsageReference.ForMessage(item.MessageId, item.TargetLanguageCode);
+            learningByRoute.TryGetValue(TranslationRouteKey(item.MessageId, item.TargetLanguageCode), out var learning);
+            ledgerByReference.TryGetValue(reference, out var ledger);
+            var route = DescribeTranslationRoute(item.Provider);
+            return new[]
+            {
+                reference,
+                RoutedSourceLanguage(item, learning),
+                item.TargetLanguageCode,
+                route.Route,
+                AzureInvocation(item.Provider, ledger),
+                route.KnowledgeBasis,
+                LearningHandoff(learning),
+                Display(item.CreatedUtc)
+            };
+        });
+
+        var providerOutcomeRecords = await _db.Set<LegendTranslationUsageLedger>().AsNoTracking()
+            .Where(item => item.Provider == "AzureTranslator")
+            .OrderByDescending(item => item.CompletedUtc ?? item.CreatedUtc)
+            .Take(TranslationRouteAuditRecordLimit)
+            .Select(item => new ProviderRouteOutcomeRow(
+                item.RequestReference,
+                item.SourceLanguageCode,
+                item.TargetLanguageCode,
+                item.ProviderExecuted,
+                item.Succeeded,
+                item.State,
+                item.FailureCode,
+                item.CompletedUtc,
+                item.CreatedUtc))
+            .ToListAsync(cancellationToken);
+        var providerOutcomes = providerOutcomeRecords.Select(item => new[]
+        {
+            item.RequestReference,
+            item.SourceLanguageCode,
+            item.TargetLanguageCode,
+            item.ProviderExecuted ? "Called" : "Not called",
+            item.Succeeded ? "Succeeded" : item.State,
+            item.FailureCode ?? string.Empty,
+            Display(item.CompletedUtc ?? item.CreatedUtc)
+        });
+
+        return Detail(
+            "translation-routing-audit",
+            "Translation route audit",
+            "Canonical router, persisted translation, learning, and usage authorities",
+            "Completed translations show the actual persisted route. Azure invocation is cross-checked against the existing one-way usage ledger when one exists. Learning status is the existing consent-governed hand-off only; this view never exposes message bodies or account identities.",
+            Section(
+                "Completed translation routes",
+                $"Newest {TranslationRouteAuditRecordLimit} persisted translation results. The request reference is a one-way server identifier; routed source prefers the sender preference captured at send time, then the canonical learning hand-off, then only persisted detection metadata.",
+                new[] { "Request reference", "Routed source", "Target", "Actual route", "Azure invocation", "Knowledge basis", "Learning hand-off", "Completed" },
+                routeRows),
+            Section(
+                "Azure fallback outcomes",
+                "Recent Azure-accounting outcomes from the existing usage ledger, including denied and failed attempts that cannot create a completed translation result.",
+                new[] { "Request reference", "Source", "Target", "Azure invocation", "Outcome", "Failure", "Completed" },
+                providerOutcomes));
     }
 
     private async Task<LegendConnectMetricDetailSnapshot> BuildCapacityMetricDetailAsync(
@@ -646,6 +783,69 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private static LegendConnectMetricDetailSnapshot EmptyMetricDetail(string key, string title, string description) =>
         Detail(key, title, "Legend Connect", description,
             Section("No matching records", "The selected metric currently has no configured record-level detail.", Array.Empty<string>(), Array.Empty<string[]>()));
+
+    private static string TranslationRouteKey(Guid messageId, string targetLanguageCode) =>
+        $"{messageId:N}:{targetLanguageCode.Trim().ToUpperInvariant()}";
+
+    private static string RoutedSourceLanguage(
+        TranslationRouteAuditRow route,
+        TranslationRouteLearningRow? learning) =>
+        !string.IsNullOrWhiteSpace(route.SenderPreferredLanguage)
+            ? $"{route.SenderPreferredLanguage} (sender preference at send time)"
+            : !string.IsNullOrWhiteSpace(learning?.SourceLanguageCode)
+                ? $"{learning.SourceLanguageCode} (learning hand-off)"
+                : !string.IsNullOrWhiteSpace(route.DetectedLanguage)
+                    ? $"{route.DetectedLanguage} (detected fallback)"
+                    : "Not retained";
+
+    private static TranslationRouteDescription DescribeTranslationRoute(string provider) => provider switch
+    {
+        "LegendConnectSameLanguage" => new(
+            "Legend same-language bypass",
+            "Same language; no translation provider is needed."),
+        "LegendConnectTranslationMemory" => new(
+            "Legend trusted exact memory",
+            "Trusted exact directional memory; provider was not called."),
+        "LegendConnectContextualComposition" => new(
+            "Legend verified contextual knowledge",
+            "Existing contextual relationship served inside the active canonical boundary."),
+        "LegendConnectStructuralComposition" => new(
+            "Legend structural composition",
+            "Existing structural composition gate served the result; provider was not called."),
+        "AzureTranslator" => new(
+            "Azure Translator full fallback",
+            "Azure result is provider-derived evidence and is never trusted merely because it was returned."),
+        _ => new(
+            provider,
+            "Recorded provider route; the provider name is the persisted operational result.")
+    };
+
+    private static string AzureInvocation(string provider, TranslationRouteLedgerRow? ledger)
+    {
+        if (!string.Equals(provider, "AzureTranslator", StringComparison.Ordinal))
+            return "Not called";
+
+        if (ledger is null)
+            return "Called · persisted result";
+
+        if (ledger.ProviderExecuted && ledger.Succeeded)
+            return "Called · completed";
+
+        return ledger.ProviderExecuted
+            ? $"Called · {ledger.State}"
+            : $"Not called · {ledger.State}";
+    }
+
+    private static string LearningHandoff(TranslationRouteLearningRow? learning)
+    {
+        if (learning is null)
+            return "No persisted learning hand-off";
+
+        var promotion = string.IsNullOrWhiteSpace(learning.PromotionOutcome)
+            ? "No promotion outcome yet"
+            : learning.PromotionOutcome;
+        return string.Join(" · ", learning.Provenance, learning.EligibilityState, learning.ProcessingState, promotion);
+    }
 
     private static LegendConnectMetricDetailSectionSnapshot Section(
         string title,
@@ -2057,4 +2257,44 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         IReadOnlyList<LegendConnectKnowledgeAuditEntry> AuditEntries,
         IReadOnlyList<LegendFounderTrainingSubmission> FounderTrainingSubmissions,
         IReadOnlyList<LegendFounderTrainingSubmissionUnit> FounderTrainingSubmissionUnits);
+
+    private sealed record TranslationRouteAuditRow(
+        Guid MessageId,
+        string? SenderPreferredLanguage,
+        string? DetectedLanguage,
+        string TargetLanguageCode,
+        string Provider,
+        DateTime CreatedUtc);
+
+    private sealed record TranslationRouteLearningRow(
+        Guid MessageId,
+        string SourceLanguageCode,
+        string TargetLanguageCode,
+        string Provenance,
+        string EligibilityState,
+        string ProcessingState,
+        string? PromotionOutcome,
+        DateTime CreatedUtc);
+
+    private sealed record TranslationRouteLedgerRow(
+        string RequestReference,
+        bool ProviderExecuted,
+        bool Succeeded,
+        string State,
+        string? FailureCode,
+        DateTime? CompletedUtc,
+        DateTime CreatedUtc);
+
+    private sealed record ProviderRouteOutcomeRow(
+        string RequestReference,
+        string SourceLanguageCode,
+        string TargetLanguageCode,
+        bool ProviderExecuted,
+        bool Succeeded,
+        string State,
+        string? FailureCode,
+        DateTime? CompletedUtc,
+        DateTime CreatedUtc);
+
+    private sealed record TranslationRouteDescription(string Route, string KnowledgeBasis);
 }
