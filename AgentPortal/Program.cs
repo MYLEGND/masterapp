@@ -96,6 +96,10 @@ builder.Services.AddMasterAppFinancialIntelligence(builder.Configuration);
 builder.Services.AddMasterAppMessaging(builder.Configuration);
 var mobileAuthConfiguration = MobileAuthConfiguration.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(mobileAuthConfiguration);
+var mobileReviewAuthConfiguration =
+    MobileReviewAuthenticationConfiguration.FromConfiguration(builder.Configuration);
+builder.Services.AddSingleton(mobileReviewAuthConfiguration);
+builder.Services.AddScoped<MobileReviewAuthenticationService>();
 builder.Services.AddScoped<IMobileActorResolver, MobileActorResolver>();
 builder.Services.AddScoped<IMobileAccountService, MobileAccountService>();
 builder.Services.AddScoped<IAccountLifecycleService, AccountLifecycleService>();
@@ -285,6 +289,7 @@ builder.Services.AddRateLimiter(options =>
     // names and limits are app profiles. IP partitioning preserved exactly.
     Infrastructure.Security.PlatformRateLimiting.AddFixedWindowPolicy(options, "ingest", 300, TimeSpan.FromMinutes(1));
     Infrastructure.Security.PlatformRateLimiting.AddFixedWindowPolicy(options, "anon-public", 30, TimeSpan.FromMinutes(1));
+    Infrastructure.Security.PlatformRateLimiting.AddFixedWindowPolicy(options, "mobile-review-auth", 10, TimeSpan.FromMinutes(1));
 
     // App-specific global limiter profile: SignalR hubs remain exempt; the
     // identity-or-IP partition uses the shared partition-key helper.
@@ -458,7 +463,11 @@ builder.Services
 builder.Services
     .AddAuthentication()
     .AddJwtBearer(MobileApiAuthorization.BearerScheme, options =>
-        MobileBearerOptions.Configure(options, mobileAuthConfiguration));
+        MobileBearerOptions.Configure(options, mobileAuthConfiguration))
+    .AddJwtBearer(MobileApiAuthorization.ReviewBearerScheme, options =>
+        MobileReviewBearerOptions.Configure(
+            options,
+            mobileReviewAuthConfiguration));
 
 // ------------------------------------------------------------
 // APP-ONLY GRAPH CLIENT (ClientSecretCredential) FOR PROVISIONING

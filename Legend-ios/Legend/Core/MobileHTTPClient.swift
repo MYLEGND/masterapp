@@ -169,6 +169,22 @@ struct MobileHTTPClient: Sendable {
         return temporaryURL
     }
 
+    /// Used only for endpoints that are deliberately anonymous at the
+    /// server boundary, such as the dedicated App Review credential exchange.
+    /// Protected application APIs continue to require the bearer overloads.
+    func postPublic<Body: Encodable, Response: Decodable>(
+        _ path: String,
+        body: Body,
+        response: Response.Type
+    ) async throws -> Response {
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder.mobile.encode(body)
+        return try await perform(request, response: response)
+    }
+
     func post<Body: Encodable, Response: Decodable>(
         _ path: String,
         body: Body,

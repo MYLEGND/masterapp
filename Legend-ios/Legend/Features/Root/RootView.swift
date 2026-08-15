@@ -232,6 +232,7 @@ private struct ConfigurationStateView: View {
 
 private struct SignInView: View {
     @EnvironmentObject private var session: MobileSessionCoordinator
+    @State private var showingAppReviewSignIn = false
 
     var body: some View {
         NavigationStack {
@@ -254,6 +255,13 @@ private struct SignInView: View {
                 .buttonStyle(LegendNextButtonStyle(kind: .primary))
                 .accessibilityHint("Opens secure Legend sign-in and verification.")
 
+                Button("App Review Sign In") {
+                    showingAppReviewSignIn = true
+                }
+                .font(LegendNextTypography.supporting)
+                .foregroundStyle(LegendNextColor.navyElevated)
+                .accessibilityHint("Opens the dedicated App Store review sign-in.")
+
                 Text("Face ID is optional and can be enabled after sign in in Profile settings.")
                     .font(LegendNextTypography.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
@@ -268,6 +276,63 @@ private struct SignInView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)
+            .sheet(isPresented: $showingAppReviewSignIn) {
+                AppReviewSignInView()
+                    .environmentObject(session)
+            }
+        }
+    }
+}
+
+private struct AppReviewSignInView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var session: MobileSessionCoordinator
+    @State private var username = ""
+    @State private var password = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Username", text: $username)
+                        .textContentType(.username)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    SecureField("Password", text: $password)
+                        .textContentType(.password)
+                } header: {
+                    Text("App Review Access")
+                } footer: {
+                    Text("Use the review credentials provided in App Store Connect.")
+                }
+
+                Section {
+                    Button("Sign In") {
+                        let submittedUsername = username
+                        let submittedPassword = password
+                        password = ""
+                        dismiss()
+                        session.signInForAppReview(
+                            username: submittedUsername,
+                            password: submittedPassword)
+                    }
+                    .disabled(
+                        username.trimmingCharacters(
+                            in: .whitespacesAndNewlines).isEmpty ||
+                        password.isEmpty)
+                }
+            }
+            .navigationTitle("App Review Sign In")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        password = ""
+                        dismiss()
+                    }
+                }
+            }
         }
     }
 }

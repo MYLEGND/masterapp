@@ -4,6 +4,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using System.Linq;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -137,7 +138,12 @@ public sealed class MobileIntegrationTests
         var policyBuilder = new AuthorizationPolicyBuilder();
         MobileApiAuthorization.ConfigurePolicy(policyBuilder);
         var policy = policyBuilder.Build();
-        Assert.Equal([MobileApiAuthorization.BearerScheme], policy.AuthenticationSchemes);
+        Assert.Equal(
+            [
+                MobileApiAuthorization.BearerScheme,
+                MobileApiAuthorization.ReviewBearerScheme
+            ],
+            policy.AuthenticationSchemes);
 
         var requirement = Assert.IsType<MobileApiScopeRequirement>(policy.Requirements.Single(x => x is MobileApiScopeRequirement));
         var valid = Principal("valid-oid", tenantId: "test-tenant", scope: "mobile_access");
@@ -158,6 +164,101 @@ public sealed class MobileIntegrationTests
             null);
         await new MobileApiScopeAuthorizationHandler(configuration).HandleAsync(wrongTenant);
         Assert.False(wrongTenant.HasSucceeded);
+    }
+
+    [Fact]
+    public async Task MobileReviewAuthentication_IssuesAClientOnlySignedBearer_AndPreservesCanonicalOidAuthority()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = new ClientProfile
+        {
+            Id = Guid.NewGuid(),
+            ClientUserId = "review-canonical-oid",
+            ExternalIdentityObjectId = "review-canonical-oid",
+            FirstName = "Test",
+            LastName = "Account",
+            Email = "review@example.test",
+            NormalizedEmail = "review@example.test"
+        };
+        db.ClientProfiles.Add(profile);
+        await db.SaveChangesAsync();
+
+        const string password = "review-test-password";
+        var reviewConfiguration = ConfiguredMobileReviewAuth(
+            "review@example.test",
+            password);
+
+        var service = new MobileReviewAuthenticationService(
+            db,
+            reviewConfiguration,
+            new ConfigurationBuilder().Build());
+
+        var issued = await service.AuthenticateAsync(
+            "REVIEW@example.test",
+            password,
+            CancellationToken.None);
+
+        Assert.True(issued.Succeeded);
+        Assert.False(string.IsNullOrWhiteSpace(issued.AccessToken));
+        Assert.True(issued.ExpiresInSeconds > 300);
+
+        var bearerOptions =
+            new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions();
+        MobileReviewBearerOptions.Configure(
+            bearerOptions,
+            reviewConfiguration);
+
+        var tokenHandler = new JwtSecurityTokenHandler
+        {
+            MapInboundClaims = false
+        };
+        var principal = tokenHandler.ValidateToken(
+            issued.AccessToken!,
+            bearerOptions.TokenValidationParameters,
+            out _);
+
+        Assert.Equal(
+            "review-canonical-oid",
+            principal.FindFirst("oid")?.Value);
+        Assert.Equal(
+            MobileReviewAuthenticationConfiguration.AuthenticationClaimValue,
+            principal.FindFirst(
+                MobileReviewAuthenticationConfiguration.AuthenticationClaimType)?.Value);
+
+        var requirement = new MobileApiScopeRequirement();
+        var authorizationContext = new AuthorizationHandlerContext(
+            [requirement],
+            principal,
+            null);
+
+        await new MobileApiScopeAuthorizationHandler(
+            ConfiguredMobileAuth(),
+            reviewConfiguration).HandleAsync(authorizationContext);
+
+        Assert.True(authorizationContext.HasSucceeded);
+
+        var wrongPassword = await service.AuthenticateAsync(
+            "review@example.test",
+            "wrong-password",
+            CancellationToken.None);
+        Assert.False(wrongPassword.Succeeded);
+
+        // The same canonical identity becoming an active Agent must immediately
+        // make the review path fail closed instead of exposing role switching.
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "review-canonical-oid",
+            AgentUpn = "review-agent@example.test",
+            FullName = "Review Agent",
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var elevatedIdentity = await service.AuthenticateAsync(
+            "review@example.test",
+            password,
+            CancellationToken.None);
+        Assert.False(elevatedIdentity.Succeeded);
     }
 
     [Fact]
@@ -1958,6 +2059,28 @@ public sealed class MobileIntegrationTests
                 ["MobileAuth:RequiredScope"] = "api://00000000-0000-0000-0000-000000000001/mobile_access"
             })
             .Build());
+
+    private static MobileReviewAuthenticationConfiguration ConfiguredMobileReviewAuth(
+        string username,
+        string password)
+    {
+        var passwordHash = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(password)));
+        var signingKey = Convert.ToBase64String(
+            Encoding.UTF8.GetBytes(
+                "legend-mobile-app-review-test-signing-key-2026"));
+
+        return MobileReviewAuthenticationConfiguration.FromConfiguration(
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["AppReviewAuthentication:Enabled"] = "true",
+                    ["AppReviewAuthentication:Username"] = username,
+                    ["AppReviewAuthentication:PasswordSha256"] = passwordHash,
+                    ["AppReviewAuthentication:SigningKey"] = signingKey
+                })
+                .Build());
+    }
 
     private static ClaimsPrincipal Principal(
         string oid,

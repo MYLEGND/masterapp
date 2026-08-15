@@ -379,6 +379,86 @@ final class MobileSessionCoordinator: ObservableObject {
         }
     }
 
+    /// Exchanges Apple's dedicated App Review credentials for a short-lived,
+    /// server-signed mobile bearer token. The token must then pass the exact same
+    /// server session bootstrap, actor resolution, capability projection, Keychain
+    /// storage, and protected API path as every normal signed-in Legend account.
+    func signInForAppReview(username: String, password: String) {
+        guard configuration.validation.isReady,
+              let apiBaseURL = configuration.apiBaseURL else {
+            transition(
+                to: .contractUnavailable(configuration.validation),
+                reason: "Configuration unavailable during App Review sign-in")
+            return
+        }
+
+        let normalizedUsername = username.trimmingCharacters(
+            in: .whitespacesAndNewlines)
+        guard !normalizedUsername.isEmpty, !password.isEmpty else {
+            transition(
+                to: .failed(UserFacingFailure(
+                    title: "App Review sign-in unavailable",
+                    message: "Enter the App Review username and password.",
+                    correlationID: nil)),
+                reason: "App Review credentials were incomplete")
+            return
+        }
+
+        Task {
+            transition(
+                to: .authenticating,
+                reason: "Server-backed App Review authentication started")
+            do {
+                let response = try await MobileHTTPClient(baseURL: apiBaseURL)
+                    .postPublic(
+                        "/api/v1/mobile/review-session",
+                        body: MobileReviewSignInRequest(
+                            username: normalizedUsername,
+                            password: password),
+                        response: MobileReviewTokenResponse.self)
+
+                // The coordinator renews ordinary Entra tokens five minutes
+                // before expiry. A review token has deliberately no refresh
+                // credential, so reject an unusably short token immediately.
+                guard response.expiresIn > 5 * 60 else {
+                    throw MobileAPIError.invalidServerResponse
+                }
+
+                let tokens = OAuthTokenSet(
+                    accessToken: response.accessToken,
+                    refreshToken: nil,
+                    expiresAt: Date().addingTimeInterval(
+                        TimeInterval(response.expiresIn)))
+
+                // Provisional until /api/v1/mobile/session independently resolves
+                // the signed token to an existing server-authorized Legend actor.
+                activeTokens = tokens
+                try await establishSession(using: tokens)
+
+                if case .authenticated(let session) = state {
+                    offerBiometricSignInIfNeeded(for: session)
+                }
+
+                diagnostics.record(
+                    category: .authentication,
+                    summary: "Server-confirmed App Review credential stored successfully.")
+            } catch {
+                activeTokens = nil
+                let apiError = error as? MobileAPIError
+                transition(
+                    to: .failed(UserFacingFailure(
+                        title: "App Review sign-in unavailable",
+                        message: "The App Review credentials could not be verified.",
+                        correlationID: apiError?.correlationID)),
+                    reason: "App Review authentication did not complete")
+                diagnostics.record(
+                    category: .authentication,
+                    summary: "App Review authentication did not complete.",
+                    correlationID: apiError?.correlationID)
+            }
+        }
+    }
+
     func signOut() {
         try? tokenStore.clear()
         activeTokens = nil
@@ -1394,6 +1474,16 @@ struct URLSessionOAuthTokenExchanger: OAuthTokenExchanging {
             expiresAt: Date().addingTimeInterval(TimeInterval(tokenResponse.expiresIn))
         )
     }
+}
+
+private struct MobileReviewSignInRequest: Encodable, Sendable {
+    let username: String
+    let password: String
+}
+
+private struct MobileReviewTokenResponse: Decodable, Sendable {
+    let accessToken: String
+    let expiresIn: Int
 }
 
 private struct OAuthTokenResponse: Decodable {
