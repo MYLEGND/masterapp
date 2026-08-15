@@ -865,6 +865,10 @@ internal sealed class MessagingService : IMessagingService
                     participant.UserId,
                     participant.ParticipantType))
                 .ToArray();
+            var notificationPresentations = await BuildNotificationPresentationsAsync(
+                message,
+                messageRecipients,
+                cancellationToken);
             notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
                 actor,
                 conversation.Id,
@@ -872,6 +876,7 @@ internal sealed class MessagingService : IMessagingService
                 message.Body,
                 nowUtc,
                 messageRecipients,
+                notificationPresentations,
                 cancellationToken);
         }
 
@@ -2085,9 +2090,13 @@ internal sealed class MessagingService : IMessagingService
         conversation.LastMessageUtc = nowUtc;
         conversation.UpdatedUtc = nowUtc;
         AddAudit(actor.UserId, "MessageSent", conversation.Id, message.Id, null, null, nowUtc);
-        // Keep this transaction independent of recipient-specific
-        // translation. Notification delivery is durable and asynchronous;
-        // Azure preview translation is not a prerequisite to this send.
+        // Recipient presentation belongs to the existing messaging translation
+        // authority. Notification transport persists that presentation verbatim
+        // and never decides language itself.
+        var notificationPresentations = await BuildNotificationPresentationsAsync(
+            message,
+            messageRecipients,
+            cancellationToken);
         var notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
             actor,
             conversation.Id,
@@ -2095,6 +2104,7 @@ internal sealed class MessagingService : IMessagingService
             message.Body,
             nowUtc,
             messageRecipients,
+            notificationPresentations,
             cancellationToken);
 
         try
@@ -3411,6 +3421,10 @@ internal sealed class MessagingService : IMessagingService
                     participant.UserId,
                     participant.ParticipantType))
                 .ToArray();
+            var notificationPresentations = await BuildNotificationPresentationsAsync(
+                message,
+                messageRecipients,
+                cancellationToken);
             notificationRecipients = await _notifications.StageMessageForRecipientsAsync(
                 actor,
                 conversation.Id,
@@ -3418,6 +3432,7 @@ internal sealed class MessagingService : IMessagingService
                 message.Body,
                 nowUtc,
                 messageRecipients,
+                notificationPresentations,
                 cancellationToken);
         }
 
@@ -4343,6 +4358,47 @@ internal sealed class MessagingService : IMessagingService
             ? new MessagingGroupImage(content, contentType)
             : null;
 
+    private async Task<IReadOnlyList<MessagingNotificationRecipient>> BuildNotificationPresentationsAsync(
+        InternalMessage message,
+        IEnumerable<MessagingActor> recipients,
+        CancellationToken cancellationToken)
+    {
+        var presentations = new List<MessagingNotificationRecipient>();
+        foreach (var recipient in recipients.Distinct())
+        {
+            if (IsSameParticipant(
+                    message.SenderUserId,
+                    message.SenderType,
+                    recipient.UserId,
+                    recipient.ParticipantType))
+            {
+                continue;
+            }
+
+            var targetLanguage = await _controlledResources.GetPreferredLanguageAsync(
+                recipient,
+                cancellationToken);
+            if (targetLanguage is null)
+                continue;
+
+            var translation = await GetOrCreateMessageTranslationAsync(
+                ToTranslationSource(message),
+                targetLanguage,
+                recipient,
+                cancellationToken,
+                persistChanges: false);
+
+            if (translation is not null)
+            {
+                presentations.Add(new MessagingNotificationRecipient(
+                    recipient,
+                    translation.TranslatedText));
+            }
+        }
+
+        return presentations;
+    }
+
     private async Task<List<MessagingMessageSummary>> ApplyTranslationPresentationAsync(
         MessagingActor actor,
         IReadOnlyList<MessagingMessageSummary> summaries,
@@ -4615,45 +4671,34 @@ internal sealed class MessagingService : IMessagingService
         MessageTranslationSource message,
         CancellationToken cancellationToken)
     {
-        // The route uses the canonical server preference captured from the
-        // actual sender. Provider detection remains distinct body metadata and
-        // can only be a legacy/no-preference fallback; it cannot silently
-        // overwrite an available sender preference.
+        // The language of the actual message body is authoritative for routing.
+        // A user's preferred communication language describes presentation
+        // preference; it does not constrain which language that user may type.
+        //
+        // Preserve the sender preference only as a fail-closed fallback when
+        // the body language cannot be established through the existing
+        // detection/metadata authority.
+        var detectedMessageLanguage = await ResolveDetectedMessageLanguageAsync(
+            message,
+            cancellationToken);
+        if (detectedMessageLanguage is not null)
+            return detectedMessageLanguage;
+
         var senderPreferredLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
             message.SenderPreferredLanguage,
             cancellationToken);
         if (senderPreferredLanguage is not null)
-        {
-            // Preserve provider-detected body metadata for its established
-            // diagnostics/quality role, but never let it alter the route.
-            await ResolveDetectedMessageLanguageAsync(message, cancellationToken);
             return senderPreferredLanguage;
-        }
 
         if (!string.IsNullOrWhiteSpace(message.SenderUserId) &&
             !string.IsNullOrWhiteSpace(message.SenderType))
         {
-            var currentCanonicalPreference = await _controlledResources.GetCanonicalPreferredLanguageAsync(
+            return await _controlledResources.GetCanonicalPreferredLanguageAsync(
                 new MessagingActor(message.SenderUserId, message.SenderType),
                 cancellationToken);
-            if (currentCanonicalPreference is not null)
-                return currentCanonicalPreference;
         }
 
-        var trackedLanguageCandidate = _db.InternalMessages.Local
-            .Where(candidate => candidate.Id == message.Id)
-            .Select(candidate => candidate.OriginalLanguage)
-            .FirstOrDefault();
-        var trackedLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
-            trackedLanguageCandidate,
-            cancellationToken);
-        var sourceLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
-            message.DetectedMessageLanguage,
-            cancellationToken) ?? trackedLanguage;
-        if (sourceLanguage is not null)
-            return sourceLanguage;
-
-        return await ResolveDetectedMessageLanguageAsync(message, cancellationToken);
+        return null;
     }
 
     private async Task<string?> ResolveDetectedMessageLanguageAsync(

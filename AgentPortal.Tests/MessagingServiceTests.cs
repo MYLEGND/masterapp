@@ -1264,18 +1264,25 @@ public sealed class MessagingServiceTests
 
         Assert.True(started.Succeeded);
         var message = Assert.Single(await db.InternalMessages.ToListAsync());
+
+        // Preferred language describes how the sender receives communication.
+        // The actual language detected from this individual body owns routing.
         Assert.Equal("en", message.SenderPreferredLanguage);
-        Assert.Null(message.OriginalLanguage);
-        Assert.Empty(translator.Routes);
-        Assert.Empty(await db.MessageTranslations.ToListAsync());
+        Assert.Equal("fr", message.OriginalLanguage);
+        Assert.Equal(("fr", "es"), Assert.Single(translator.Routes));
+
+        var cached = Assert.Single(await db.MessageTranslations.ToListAsync());
+        Assert.Equal("es", cached.TargetLanguage);
+
+        var notification = Assert.Single(await db.MobileActivityNotifications.ToListAsync());
+        Assert.Equal("I am sending this in English. (es)", notification.Detail);
 
         await service.GetConversationAsync(
             new MessagingActor("client-1", MessagingParticipantTypes.Client),
             started.Conversation!.Id);
 
-        message = Assert.Single(await db.InternalMessages.ToListAsync());
-        Assert.Equal("fr", message.OriginalLanguage);
-        Assert.Equal(("en", "es"), Assert.Single(translator.Routes));
+        // Reading reuses the send-time recipient presentation.
+        Assert.Single(translator.Routes);
         Assert.Single(await db.MessageTranslations.ToListAsync());
     }
 
@@ -1395,10 +1402,10 @@ public sealed class MessagingServiceTests
             InitialMessageBody: englishBody));
 
         Assert.True(started.Succeeded);
-        Assert.Equal(0, translator.DetectionCallCount);
+        Assert.Equal(1, translator.DetectionCallCount);
         Assert.Equal(0, translator.TranslationCallCount);
         var englishSource = Assert.Single(await db.InternalMessages.ToListAsync());
-        Assert.Null(englishSource.OriginalLanguage);
+        Assert.Equal("en", englishSource.OriginalLanguage);
         Assert.Empty(await db.MessageTranslations.ToListAsync());
         Assert.Equal(
             englishBody,
@@ -1410,7 +1417,6 @@ public sealed class MessagingServiceTests
         Assert.Null(englishPresented.Translation);
         Assert.Equal(1, translator.DetectionCallCount);
         Assert.Equal(0, translator.TranslationCallCount);
-        Assert.Equal("en", (await db.InternalMessages.SingleAsync(message => message.Id == englishSource.Id)).OriginalLanguage);
 
         agentSettings.PreferredCommunicationLanguage = "ht";
         clientSettings.PreferredCommunicationLanguage = "ht";
@@ -1422,10 +1428,10 @@ public sealed class MessagingServiceTests
             creoleBody));
 
         Assert.True(sent.Succeeded);
-        Assert.Equal(1, translator.DetectionCallCount);
+        Assert.Equal(2, translator.DetectionCallCount);
         Assert.Equal(0, translator.TranslationCallCount);
         var creoleSource = await db.InternalMessages.SingleAsync(message => message.Body == creoleBody);
-        Assert.Null(creoleSource.OriginalLanguage);
+        Assert.Equal("ht", creoleSource.OriginalLanguage);
         Assert.Empty(await db.MessageTranslations.ToListAsync());
         Assert.Equal(
             creoleBody,
@@ -1445,7 +1451,7 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
-    public async Task MessageTranslation_DefersRecipientPresentationUntilRead_AndPreservesTheOriginal()
+    public async Task MessageTranslation_StagesRecipientLocalizedNotification_AndReusesItOnRead()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
@@ -1488,25 +1494,29 @@ public sealed class MessagingServiceTests
             InitialMessageBody: original));
 
         Assert.True(started.Succeeded);
-        Assert.Equal(0, translator.DetectionCallCount);
-        Assert.Equal(0, translator.TranslationCallCount);
+        Assert.Equal(1, translator.DetectionCallCount);
+        Assert.Equal(1, translator.TranslationCallCount);
         var source = Assert.Single(await db.InternalMessages.ToListAsync());
         Assert.Equal(original, source.Body);
-        Assert.Null(source.OriginalLanguage);
+        Assert.Equal("en", source.OriginalLanguage);
         Assert.Equal(
-            original,
+            $"{original} (ht)",
             Assert.Single(await db.MobileActivityNotifications.ToListAsync()).Detail);
+        Assert.Single(await db.MessageTranslations.ToListAsync());
 
         var recipient = await service.GetConversationAsync(client, started.Conversation!.Id);
         var presented = Assert.Single(recipient.Conversation!.Messages);
         Assert.Equal($"{original} (ht)", presented.Body);
         Assert.Equal(original, presented.OriginalBody);
         Assert.Equal("ht", presented.Translation!.TargetLanguage);
+
+        // Push and in-app presentation share one translation result.
         Assert.Equal(1, translator.TranslationCallCount);
+        Assert.Single(await db.MessageTranslations.ToListAsync());
     }
 
     [Fact]
-    public async Task SendMessage_PersistsImmediatelyWithoutWaitingForRecipientTranslation()
+    public async Task SendMessage_PersistsOriginalAndStagesRecipientLocalizedNotification()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
@@ -1552,19 +1562,27 @@ public sealed class MessagingServiceTests
             "Your appointment is confirmed for tomorrow."));
 
         Assert.True(sent.Succeeded);
-        Assert.Equal(0, translator.DetectionCallCount);
-        Assert.Equal(0, translator.TranslationCallCount);
+        Assert.Equal(1, translator.DetectionCallCount);
+        Assert.Equal(1, translator.TranslationCallCount);
         var source = Assert.Single(await db.InternalMessages.ToListAsync());
         Assert.Equal("Your appointment is confirmed for tomorrow.", source.Body);
         Assert.Equal("en", source.SenderPreferredLanguage);
-        Assert.Null(source.OriginalLanguage);
-        Assert.Empty(await db.MessageTranslations.ToListAsync());
-        Assert.Equal(source.Body, Assert.Single(await db.MobileActivityNotifications.ToListAsync()).Detail);
+        Assert.Equal("en", source.OriginalLanguage);
+
+        var cached = Assert.Single(await db.MessageTranslations.ToListAsync());
+        Assert.Equal("ht", cached.TargetLanguage);
+
+        Assert.Equal(
+            "Your appointment is confirmed for tomorrow. (ht)",
+            Assert.Single(await db.MobileActivityNotifications.ToListAsync()).Detail);
 
         var recipient = await service.GetConversationAsync(client, conversationId);
         var presented = Assert.Single(recipient.Conversation!.Messages);
         Assert.Equal("Your appointment is confirmed for tomorrow. (ht)", presented.Body);
+
+        // Conversation projection must reuse the notification-stage cache.
         Assert.Equal(1, translator.TranslationCallCount);
+        Assert.Single(await db.MessageTranslations.ToListAsync());
     }
 
     [Fact]
@@ -1758,7 +1776,7 @@ public sealed class MessagingServiceTests
             SenderUserId = englishSender.AgentUserId,
             SenderType = MessagingParticipantTypes.Agent,
             Body = "Hello, how are you?",
-            OriginalLanguage = "fr",
+            OriginalLanguage = "en",
             SenderPreferredLanguage = "en",
             SentUtc = conversation.CreatedUtc
         });
@@ -1800,7 +1818,7 @@ public sealed class MessagingServiceTests
             Assert.Single(senderView.Conversation!.Messages).Body);
         var source = Assert.Single(await db.InternalMessages.ToListAsync());
         Assert.Equal("Hello, how are you?", source.Body);
-        Assert.Equal("fr", source.OriginalLanguage);
+        Assert.Equal("en", source.OriginalLanguage);
         Assert.Equal("en", source.SenderPreferredLanguage);
         Assert.Equal(0, translator.DetectionCallCount);
         Assert.Equal(3, translator.TranslationCallCount);
@@ -1973,12 +1991,20 @@ public sealed class MessagingServiceTests
                 clientView.Conversation).Messages);
 
         Assert.Equal(
-            "Welcome to Legend",
+            "Welcome to Legend (ht)",
             presentedMessage.Body);
 
-        Assert.Null(presentedMessage.OriginalBody);
+        Assert.Equal(
+            "Welcome to Legend",
+            presentedMessage.OriginalBody);
 
-        Assert.Null(presentedMessage.Translation);
+        Assert.NotNull(presentedMessage.Translation);
+        Assert.Equal(
+            "en",
+            presentedMessage.Translation!.OriginalLanguage);
+        Assert.Equal(
+            "ht",
+            presentedMessage.Translation.TargetLanguage);
 
         // Original authoritative message must remain untouched.
         var original = await db.InternalMessages.SingleAsync();
@@ -1994,7 +2020,8 @@ public sealed class MessagingServiceTests
         Assert.Equal(
             "ht",
             original.SenderPreferredLanguage);
-        Assert.Empty(await db.MessageTranslations.ToListAsync());
+        var cached = Assert.Single(await db.MessageTranslations.ToListAsync());
+        Assert.Equal("ht", cached.TargetLanguage);
     }
 
     [Fact]
