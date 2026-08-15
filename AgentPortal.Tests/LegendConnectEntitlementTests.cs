@@ -436,8 +436,17 @@ public sealed class LegendConnectEntitlementTests
             "actual English content"));
 
         Assert.True(created.Succeeded, created.ErrorMessage);
-        Assert.Equal(0, translator.DetectionCalls);
-        Assert.Equal(0, translator.AccountTranslationCalls);
+
+        // Group creation already builds localized notification presentation
+        // through the same canonical message-translation authority used by
+        // conversation reads. The actual body language is detected once and
+        // one provider translation is created per unique target language.
+        Assert.Equal(1, translator.DetectionCalls);
+        Assert.Equal("en", translator.LastDetectedLanguage);
+        Assert.Equal(2, translator.AccountTranslationCalls);
+        Assert.Equal(1, translator.TargetCounts["ht"]);
+        Assert.Equal(1, translator.TargetCounts["fr"]);
+        Assert.Equal(2, await db.MessageTranslations.CountAsync());
 
         foreach (var client in clients)
         {

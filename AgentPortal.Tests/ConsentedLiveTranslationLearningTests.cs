@@ -93,6 +93,23 @@ public sealed class ConsentedLiveTranslationLearningTests
         var alignment = await db.LegendTranslationAlignments.SingleAsync();
         Assert.Equal("en:ht", alignment.PairKey);
         Assert.Equal(1, alignment.ObservationCount);
+        Assert.False(alignment.HumanVerified);
+        Assert.Equal("ConsentedLive", alignment.QualityState);
+        Assert.Equal(0.98m, alignment.Confidence);
+
+        // Consent permits this successful live translation to contribute to
+        // the one governed learning corpus. It does not make Azure authoritative.
+        // Production exact-memory delivery remains owned by the existing
+        // explicit verification boundary in LegendConnectTranslationIntelligence.
+        var intelligence = new LegendConnectTranslationIntelligence(
+            db,
+            new ConfigurationBuilder().Build());
+        var trustedMemory = await intelligence.TryGetTrustedExactMemoryAsync(
+            "en",
+            "ht",
+            fixture.Candidate.SourceText);
+        Assert.Null(trustedMemory);
+
         var context = await db.LegendLanguageContextRelationships.SingleAsync();
         Assert.Equal("ConsentedLiveTranslation", context.Provenance);
 

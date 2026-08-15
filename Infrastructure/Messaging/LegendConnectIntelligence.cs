@@ -108,7 +108,6 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
     {
         var hash = LegendLanguageIdentity.TextHash(text);
         var pairKey = LegendLanguageIdentity.PairKey(sourceLanguageCode, targetLanguageCode);
-        var minimumConfidence = await MinimumConfidenceAsync(cancellationToken);
         var match = await (
             from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
             join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
@@ -117,15 +116,12 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 on alignment.TargetTextUnitId equals target.Id
             where alignment.PairKey == pairKey &&
                   alignment.SupersededUtc == null &&
+                  alignment.HumanVerified &&
                   source.IsTrainingEligible &&
                   target.IsTrainingEligible &&
                   source.LanguageCode == sourceLanguageCode &&
-                  source.NormalizedHash == hash &&
-                  (alignment.HumanVerified ||
-                   (alignment.Confidence != null && alignment.Confidence >= minimumConfidence &&
-                    (alignment.QualityState == "Verified" ||
-                     alignment.QualityState == "ConsentedLive")))
-            orderby alignment.HumanVerified descending, alignment.Confidence descending, alignment.UpdatedUtc descending
+                  source.NormalizedHash == hash
+            orderby alignment.Confidence descending, alignment.UpdatedUtc descending
             select new { target.Text, alignment.Confidence }
         ).FirstOrDefaultAsync(cancellationToken);
 
