@@ -52,6 +52,9 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
         Assert.Equal(0, relationship.ProviderOnlySupportCount);
         Assert.Equal(0, relationship.ContradictionCount);
         Assert.Equal("Supported", relationship.MaturityState);
+
+        // This is monolingual source evidence (PairKey == empty), so even
+        // perfect Founder support cannot authorize directional translation.
         Assert.False(relationship.IsProductionEligible);
 
         var projection = Assert.IsType<LegendConnectLanguageKnowledgeSnapshot>(
@@ -421,6 +424,7 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
         var contradicted = await db.LegendLanguageStructuralRelationships.SingleAsync(item => item.Id == relationship.Id);
         Assert.Equal(1, contradicted.ContradictionCount);
         Assert.Equal("Observation", contradicted.MaturityState);
+        Assert.False(contradicted.IsProductionEligible);
         Assert.Contains(await db.LegendLanguageStructuralEvidence.ToListAsync(), item =>
             item.StructuralRelationshipId == relationship.Id &&
             item.StructuralRelationshipContributionState == "Contradictory" && item.SupersededUtc is null);
@@ -439,7 +443,14 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
         Assert.Equal(4, resolved.SupportCount);
         Assert.Equal(0, resolved.ContradictionCount);
         Assert.Equal("Supported", resolved.MaturityState);
-        Assert.False(resolved.IsProductionEligible);
+
+        // Phase 3 production eligibility is evidence-derived. The contradiction
+        // above revoked eligibility; Founder correction plus canonical replay
+        // restores it once the directional relationship is Supported again.
+        Assert.True(resolved.IsProductionEligible);
+
+        // Eligibility is not formulation. The production composition boundary
+        // remains closed until a later phase proves bounded construction.
         Assert.Null(await fixture.Curriculum.TryComposeAsync("en", "x-test", "No production formulation."));
     }
 

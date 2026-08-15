@@ -148,10 +148,27 @@ public sealed class LegendConnectAutonomousLanguageUnderstandingTests
         Assert.Equal(0, pattern.ProviderOnlySupportCount);
         Assert.Equal("Supported", pattern.MaturityState);
         Assert.True(await fixture.Curriculum.TryValidatePatternAsync(pattern.Id));
-        Assert.False((await db.LegendLanguageStructuralPatterns.SingleAsync(item => item.Id == pattern.Id)).IsProductionEligible);
-        Assert.Null(await fixture.Curriculum.TryComposeAsync("en", "x-test", "A future-language sentence."));
-        Assert.DoesNotContain(await db.LegendLanguageStructuralPatterns.ToListAsync(), item =>
-            item.PairKey == "en:ht" && item.CurriculumFamilyId == pattern.CurriculumFamilyId);
+
+        var validated = await db.LegendLanguageStructuralPatterns
+            .SingleAsync(item => item.Id == pattern.Id);
+
+        // A directional pattern with sufficient independent Founder-backed
+        // evidence becomes production-eligible only after explicit validation.
+        Assert.Equal("Validated", validated.MaturityState);
+        Assert.True(validated.IsProductionEligible);
+
+        // Phase 3 eligibility does not formulate or serve output.
+        Assert.Null(
+            await fixture.Curriculum.TryComposeAsync(
+                "en",
+                "x-test",
+                "A future-language sentence."));
+
+        // Directional knowledge remains scoped to its registered pair.
+        Assert.DoesNotContain(
+            await db.LegendLanguageStructuralPatterns.ToListAsync(),
+            item => item.PairKey == "en:ht" &&
+                    item.CurriculumFamilyId == pattern.CurriculumFamilyId);
     }
 
     [Fact]

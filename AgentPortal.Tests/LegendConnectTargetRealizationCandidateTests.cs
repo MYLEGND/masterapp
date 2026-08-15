@@ -70,7 +70,7 @@ public sealed class LegendConnectTargetRealizationCandidateTests
         var refreshed = await db.LegendLanguageTargetRealizationCandidates.SingleAsync(item => item.Id == candidate.Id);
         Assert.Equal("FounderVerified", refreshed.VerificationState);
         Assert.Equal("Supported", refreshed.MaturityState);
-        Assert.False(refreshed.IsProductionEligible);
+        Assert.True(refreshed.IsProductionEligible);
         Assert.NotNull(refreshed.VerifiedAnchorId);
         var anchor = await db.LegendLanguageCompositionalAnchors.SingleAsync(item => item.Id == refreshed.VerifiedAnchorId);
         Assert.Equal("x-alpha", anchor.LanguageCode);

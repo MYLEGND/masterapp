@@ -740,7 +740,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return false;
 
         pattern.MaturityState = "Validated";
-        pattern.IsProductionEligible = false;
+        pattern.IsProductionEligible = IsPatternProductionEligible(pattern);
         pattern.UpdatedUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
         return true;
@@ -2605,7 +2605,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             ? 0m
             : decimal.Round((decimal)candidate.HumanVerifiedSupportCount /
                 Math.Max(1, candidate.SupportCount + candidate.ContradictionCount), 4);
-        candidate.IsProductionEligible = false;
         candidate.SupersededUtc = null;
         if (candidate.VerificationState is not "FounderVerified" and not "Rejected")
         {
@@ -2622,6 +2621,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             "FounderVerified" => "Observation",
             _ => "Observation"
         };
+        candidate.IsProductionEligible = IsTargetRealizationProductionEligible(candidate);
         candidate.UpdatedUtc = DateTime.UtcNow;
     }
 
@@ -3119,7 +3119,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             ? 0m
             : decimal.Round((decimal)relationship.HumanVerifiedSupportCount /
                 Math.Max(1, relationship.SupportCount + relationship.ContradictionCount), 4);
-        relationship.IsProductionEligible = false;
         relationship.SupersededUtc = evidence.Count == 0 ? DateTime.UtcNow : null;
         relationship.MaturityState = evidence.Count == 0
             ? "Superseded"
@@ -3130,6 +3129,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             : relationship.SupportCount == 2
             ? "Candidate"
             : "Observation";
+        relationship.IsProductionEligible =
+            IsStructuralRelationshipProductionEligible(relationship);
         relationship.UpdatedUtc = DateTime.UtcNow;
     }
 
@@ -3176,7 +3177,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             ? 0m
             : decimal.Round((decimal)pattern.HumanVerifiedSupportCount /
                 Math.Max(1, pattern.SupportCount + pattern.ContradictionCount), 4);
-        pattern.IsProductionEligible = false;
         pattern.SupersededUtc = evidence.Count == 0 ? DateTime.UtcNow : null;
         var wasValidated = pattern.MaturityState == "Validated";
         pattern.MaturityState = evidence.Count == 0
@@ -3188,8 +3188,52 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             : pattern.SupportCount == 2
             ? "Candidate"
             : "Observation";
+        pattern.IsProductionEligible = IsPatternProductionEligible(pattern);
         pattern.UpdatedUtc = DateTime.UtcNow;
     }
+
+    /// <summary>
+    /// One deterministic production-eligibility policy for already-learned
+    /// structural facts. Eligibility does NOT formulate output; it only marks
+    /// evidence that has earned the right to participate in a future bounded
+    /// formulation authority.
+    ///
+    /// Provider-derived repetition can never satisfy these gates.
+    /// Monolingual/source-only structure can never authorize a directional
+    /// translation.
+    /// </summary>
+    private static bool IsPatternProductionEligible(
+        LegendLanguageStructuralPattern pattern) =>
+        !string.IsNullOrWhiteSpace(pattern.PairKey) &&
+        pattern.SupersededUtc is null &&
+        pattern.MaturityState == "Validated" &&
+        pattern.SupportCount >= 3 &&
+        pattern.IndependentSourceCount >= 3 &&
+        pattern.HumanVerifiedSupportCount >= 3 &&
+        pattern.ProviderOnlySupportCount == 0 &&
+        pattern.ContradictionCount == 0;
+
+    private static bool IsStructuralRelationshipProductionEligible(
+        LegendLanguageStructuralRelationship relationship) =>
+        !string.IsNullOrWhiteSpace(relationship.PairKey) &&
+        relationship.SupersededUtc is null &&
+        relationship.MaturityState is "Supported" or "Validated" &&
+        relationship.SupportCount >= 3 &&
+        relationship.IndependentSourceCount >= 3 &&
+        relationship.HumanVerifiedSupportCount >= 3 &&
+        relationship.ProviderOnlySupportCount == 0 &&
+        relationship.ContradictionCount == 0;
+
+    private static bool IsTargetRealizationProductionEligible(
+        LegendLanguageTargetRealizationCandidate candidate) =>
+        candidate.SupersededUtc is null &&
+        candidate.VerificationState == "FounderVerified" &&
+        candidate.MaturityState == "Supported" &&
+        candidate.SupportCount >= 3 &&
+        candidate.IndependentSourceCount >= 3 &&
+        candidate.HumanVerifiedSupportCount >= 3 &&
+        candidate.ProviderOnlySupportCount == 0 &&
+        candidate.ContradictionCount == 0;
 
     private async Task EnsureHistoricalSemanticSignaturesAsync(CancellationToken cancellationToken)
     {

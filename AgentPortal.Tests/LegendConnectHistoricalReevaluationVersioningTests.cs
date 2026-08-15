@@ -22,6 +22,14 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectHistoricalReevaluationVersioningTests
 {
     [Fact]
+    public void CurrentEvaluatorVersion_IsEightForProductionEligibilityReplay()
+    {
+        Assert.Equal(
+            8,
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+    }
+
+    [Fact]
     public async Task MaterialEvaluatorVersionAdvanceReplaysAllActiveHistoryOnceAndThenConverges()
     {
         await using var db = ControllerTestHelpers.BuildDb();

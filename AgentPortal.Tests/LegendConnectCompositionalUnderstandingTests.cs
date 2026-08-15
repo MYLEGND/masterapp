@@ -84,9 +84,22 @@ public sealed class LegendConnectCompositionalUnderstandingTests
         var unrelatedAfterCorrection = await fixture.Curriculum.EvaluateShadowCompositionAsync(PolarityOnlyRequest());
         Assert.Equal(LegendShadowCompositionCapability.SupportedForShadowEvaluation, restored.State);
         Assert.Equal(LegendShadowCompositionCapability.SupportedForShadowEvaluation, unrelatedAfterCorrection.State);
+
+        // Shadow capability remains non-production because this method evaluates
+        // a caller-supplied construction; it does not itself authorize serving.
         Assert.False(restored.IsProductionEligible);
-        Assert.Null(await fixture.Curriculum.TryComposeAsync("en", "x-test", heldOut.ProposedTargetText));
-        Assert.All(await db.LegendLanguageStructuralPatterns.ToListAsync(), item => Assert.False(item.IsProductionEligible));
+
+        // Some directional structural facts may now earn production eligibility,
+        // but the formulation boundary remains closed in Phase 3.
+        Assert.Contains(
+            await db.LegendLanguageStructuralRelationships.ToListAsync(),
+            item => item.PairKey == "en:x-test" &&
+                    item.IsProductionEligible);
+        Assert.Null(
+            await fixture.Curriculum.TryComposeAsync(
+                "en",
+                "x-test",
+                heldOut.ProposedTargetText));
     }
 
     [Fact]

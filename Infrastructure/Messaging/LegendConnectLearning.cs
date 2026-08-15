@@ -1256,11 +1256,11 @@ internal sealed class LegendConnectCorpusService
 /// </summary>
 internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
 {
-    // v7 extends the same bounded, resumable historical replay through
-    // operational MessageTranslation projections so historical presentation
-    // converges to the same trusted intelligence governing current and future
-    // translation. No second worker, cache, or translation authority exists.
-    internal const int Current = 7;
+    // v8 recomputes production eligibility for the existing Founder-backed
+    // structural evidence graph. Historical source families and alignments
+    // traverse the same maturity/candidate authorities as present and future
+    // evidence before the existing provider and operational phases complete.
+    internal const int Current = 8;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService
