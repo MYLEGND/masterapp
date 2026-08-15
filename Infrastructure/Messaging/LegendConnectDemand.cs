@@ -14,6 +14,7 @@ internal interface ITranslationDemandRecorder
         bool azureFallback = false,
         bool contextualCompositionObserved = false,
         bool contextualInternalServed = false,
+        bool structuralInternalServed = false,
         CancellationToken cancellationToken = default);
 }
 
@@ -37,7 +38,8 @@ internal sealed record TranslationSystemUsageDelta(
     long QuotaDeniedRequests = 0,
     long ProviderFailures = 0,
     long GroupUniqueTargetReuses = 0,
-    long SameLanguageBypasses = 0);
+    long SameLanguageBypasses = 0,
+    long StructuralCompositionCharactersAvoided = 0);
 
 /// <summary>
 /// A retry-safe aggregate signal. It deliberately records pair metadata only;
@@ -61,6 +63,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
         bool azureFallback = false,
         bool contextualCompositionObserved = false,
         bool contextualInternalServed = false,
+        bool structuralInternalServed = false,
         CancellationToken cancellationToken = default)
     {
         try
@@ -76,6 +79,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
             var providerFallbackRequiredDelta = azureFallback ? 1 : 0;
             var contextualObservedDelta = contextualCompositionObserved ? 1 : 0;
             var contextualServedDelta = contextualInternalServed ? 1 : 0;
+            var structuralServedDelta = structuralInternalServed ? 1 : 0;
             var now = DateTime.UtcNow;
 
             if (_db.Database.IsRelational())
@@ -87,6 +91,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                     providerFallbackRequiredDelta,
                     contextualObservedDelta,
                     contextualServedDelta,
+                    structuralServedDelta,
                     now,
                     cancellationToken);
                 if (affected == 1)
@@ -102,6 +107,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                     AzureFallbackCount = providerFallbackRequiredDelta,
                     ContextualCompositionObservationCount = contextualObservedDelta,
                     ContextualInternalServeCount = contextualServedDelta,
+                    StructuralInternalServeCount = structuralServedDelta,
                     LastRequestedUtc = now
                 });
                 try
@@ -122,6 +128,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                         providerFallbackRequiredDelta,
                         contextualObservedDelta,
                         contextualServedDelta,
+                        structuralServedDelta,
                         now,
                         cancellationToken);
                     return;
@@ -141,6 +148,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
             demand.AzureFallbackCount += providerFallbackRequiredDelta;
             demand.ContextualCompositionObservationCount += contextualObservedDelta;
             demand.ContextualInternalServeCount += contextualServedDelta;
+            demand.StructuralInternalServeCount += structuralServedDelta;
             demand.LastRequestedUtc = now;
             await _db.SaveChangesAsync(cancellationToken);
         }
@@ -164,6 +172,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
         int providerFallbacksRequired,
         int contextualObserved,
         int contextualServed,
+        int structuralServed,
         DateTime now,
         CancellationToken cancellationToken) =>
         _db.Set<LegendTranslationPairDemand>()
@@ -175,6 +184,7 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                 .SetProperty(item => item.AzureFallbackCount, item => item.AzureFallbackCount + providerFallbacksRequired)
                 .SetProperty(item => item.ContextualCompositionObservationCount, item => item.ContextualCompositionObservationCount + contextualObserved)
                 .SetProperty(item => item.ContextualInternalServeCount, item => item.ContextualInternalServeCount + contextualServed)
+                .SetProperty(item => item.StructuralInternalServeCount, item => item.StructuralInternalServeCount + structuralServed)
                 .SetProperty(item => item.LastRequestedUtc, now), cancellationToken);
 }
 
@@ -278,6 +288,7 @@ internal sealed class TranslationSystemUsageRecorder : ITranslationSystemUsageRe
         var providerBillableCharacters = Math.Max(0, delta.ProviderBillableCharacters);
         var sameLanguageCharactersAvoided = Math.Max(0, delta.SameLanguageCharactersAvoided);
         var translationMemoryCharactersAvoided = Math.Max(0, delta.TranslationMemoryCharactersAvoided);
+        var structuralCompositionCharactersAvoided = Math.Max(0, delta.StructuralCompositionCharactersAvoided);
         var contextualCharactersAvoided = Math.Max(0, delta.ContextualCharactersAvoided);
         var quotaDeniedRequests = Math.Max(0, delta.QuotaDeniedRequests);
         var providerFailures = Math.Max(0, delta.ProviderFailures);
@@ -290,6 +301,7 @@ internal sealed class TranslationSystemUsageRecorder : ITranslationSystemUsageRe
                 .SetProperty(item => item.ProviderBillableCharacters, item => item.ProviderBillableCharacters + providerBillableCharacters)
                 .SetProperty(item => item.SameLanguageCharactersAvoided, item => item.SameLanguageCharactersAvoided + sameLanguageCharactersAvoided)
                 .SetProperty(item => item.TranslationMemoryCharactersAvoided, item => item.TranslationMemoryCharactersAvoided + translationMemoryCharactersAvoided)
+                .SetProperty(item => item.StructuralCompositionCharactersAvoided, item => item.StructuralCompositionCharactersAvoided + structuralCompositionCharactersAvoided)
                 .SetProperty(item => item.ContextualCharactersAvoided, item => item.ContextualCharactersAvoided + contextualCharactersAvoided)
                 .SetProperty(item => item.QuotaDeniedRequestCount, item => item.QuotaDeniedRequestCount + quotaDeniedRequests)
                 .SetProperty(item => item.ProviderFailureCount, item => item.ProviderFailureCount + providerFailures)
@@ -304,6 +316,7 @@ internal sealed class TranslationSystemUsageRecorder : ITranslationSystemUsageRe
         usage.ProviderBillableCharacters += Math.Max(0, delta.ProviderBillableCharacters);
         usage.SameLanguageCharactersAvoided += Math.Max(0, delta.SameLanguageCharactersAvoided);
         usage.TranslationMemoryCharactersAvoided += Math.Max(0, delta.TranslationMemoryCharactersAvoided);
+        usage.StructuralCompositionCharactersAvoided += Math.Max(0, delta.StructuralCompositionCharactersAvoided);
         usage.ContextualCharactersAvoided += Math.Max(0, delta.ContextualCharactersAvoided);
         usage.QuotaDeniedRequestCount += Math.Max(0, delta.QuotaDeniedRequests);
         usage.ProviderFailureCount += Math.Max(0, delta.ProviderFailures);

@@ -160,7 +160,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             state.AuditEntries.LongCount(item => item.Result == "DuplicatePrevented");
         var translationOpportunities = state.Demand.Sum(item => item.TranslationRequestCount);
         var contextualInternalServed = state.Demand.Sum(item => item.ContextualInternalServeCount);
-        var internalServed = state.Demand.Sum(item => item.TranslationMemoryHitCount) + contextualInternalServed;
+        var structuralInternalServed = state.Demand.Sum(item => item.StructuralInternalServeCount);
+        var internalServed =
+            state.Demand.Sum(item => item.TranslationMemoryHitCount) +
+            structuralInternalServed +
+            contextualInternalServed;
         var azureFallbacks = state.Demand.Sum(item => item.AzureFallbackCount);
         var consentedLiveEvents = state.LearningEvents
             .Where(item => item.Provenance == "ConsentedLiveTranslation")
@@ -215,7 +219,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             state.Alignments.LongCount(item => item.SupersededUtc is null &&
                 state.TextUnits.Any(unit => unit.Id == item.SourceTextUnitId && unit.IsTrainingEligible) &&
                 state.TextUnits.Any(unit => unit.Id == item.TargetTextUnitId && unit.IsTrainingEligible)),
-            providerCapacity);
+            providerCapacity,
+            StructuralCompositionCharactersAvoided:
+                state.SystemUsage.Sum(item => item.StructuralCompositionCharactersAvoided),
+            StructuralInternalServeCount:
+                structuralInternalServed);
     }
 
     public Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(
@@ -255,7 +263,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             return await BuildCapacityMetricDetailAsync(key, cancellationToken);
 
         if (key is "provider-operations" or "provider-billable-characters" or "same-language-avoided" or
-            "memory-avoided" or "context-avoided" or "quota-denied" or "provider-failures" or
+            "memory-avoided" or "structural-avoided" or "context-avoided" or "quota-denied" or "provider-failures" or
             "group-target-reuse" or "high-consumption-accounts")
             return await BuildUsageMetricDetailAsync(key, cancellationToken);
 
@@ -267,7 +275,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "learning-failures" => BuildLearningFailureMetricDetail(state),
             "duplicate-prevention" or "readiness-duplicates-prevented" => BuildDuplicateMetricDetail(state, key),
             "approved-candidates" or "eligible-pending" or "rejected-ineligible" or "pairs-awaiting-knowledge" => BuildCandidateMetricDetail(state, key),
-            "same-language-bypasses" or "translation-memory-hits" or "provider-fallback-required" or "trusted-contextual-served" or "provider-avoidance" or "provider-dependency" => BuildDemandMetricDetail(state, key),
+            "same-language-bypasses" or "translation-memory-hits" or "provider-fallback-required" or "trusted-structural-served" or "trusted-contextual-served" or "provider-avoidance" or "provider-dependency" => BuildDemandMetricDetail(state, key),
             "pending-learning-jobs" => BuildPendingLearningMetricDetail(state),
             "quality-needs-review" or "quality-provider-observations" or "quality-supported-observations" or "quality-contradictions" or "quality-human-verified" => await BuildQualityMetricDetailAsync(state, key, cancellationToken),
             "consented-accounts" or "eligible-live-translations" or "promoted-to-learning" or "canonical-reuse-prevented-duplicates" or "awaiting-corpus-processing" => BuildConsentedLearningMetricDetail(state, key),
@@ -549,11 +557,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 Section("Daily same-language bypasses", "Daily aggregate records behind the count.", new[] { "Date", "Bypasses", "Updated" }, state.SystemUsage.OrderByDescending(item => item.UsageDate).Select(item => new[] { item.UsageDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Display(item.SameLanguageBypassCount), Display(item.UpdatedUtc) })));
         return Detail(key, TitleFor(key), "Directional demand authority", "Each row is the server-owned directional demand record used for routing and planner decisions.",
             Section("Directional routing evidence", "The relevant routing counters by canonical pair.",
-                new[] { "Pair", "Requests", "Memory hits", "Provider work required", "Context served", "Provider characters", "Last request" },
+                new[] { "Pair", "Requests", "Memory hits", "Provider work required", "Structural served", "Context served", "Provider characters", "Last request" },
                 state.Demand.OrderByDescending(item => item.LastRequestedUtc).Select(item => new[]
                 {
                     item.PairKey, Display(item.TranslationRequestCount), Display(item.TranslationMemoryHitCount), Display(item.AzureFallbackCount),
-                    Display(item.ContextualInternalServeCount), Display(item.ProviderCharacterCount), Display(item.LastRequestedUtc)
+                    Display(item.StructuralInternalServeCount), Display(item.ContextualInternalServeCount),
+                    Display(item.ProviderCharacterCount), Display(item.LastRequestedUtc)
                 })));
     }
 
@@ -924,6 +933,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         "same-language-bypasses" => "Same-language bypasses",
         "translation-memory-hits" => "Translation Memory hits",
         "provider-fallback-required" => "Provider fallback required",
+        "trusted-structural-served" => "Trusted structural served",
         "trusted-contextual-served" => "Trusted contextual served",
         "provider-avoidance" => "Provider avoidance",
         "provider-dependency" => "Provider dependency",
@@ -941,6 +951,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         "provider-billable-characters" => "Provider-billable characters",
         "same-language-avoided" => "Same-language avoided",
         "memory-avoided" => "Memory avoided",
+        "structural-avoided" => "Structural composition avoided",
         "context-avoided" => "Context avoided",
         "quota-denied" => "Quota denied",
         "provider-failures" => "Provider failures",
@@ -974,6 +985,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         "provider-billable-characters" => nameof(LegendTranslationSystemUsage.ProviderBillableCharacters),
         "same-language-avoided" => nameof(LegendTranslationSystemUsage.SameLanguageCharactersAvoided),
         "memory-avoided" => nameof(LegendTranslationSystemUsage.TranslationMemoryCharactersAvoided),
+        "structural-avoided" => nameof(LegendTranslationSystemUsage.StructuralCompositionCharactersAvoided),
         "context-avoided" => nameof(LegendTranslationSystemUsage.ContextualCharactersAvoided),
         "quota-denied" => nameof(LegendTranslationSystemUsage.QuotaDeniedRequestCount),
         "provider-failures" => nameof(LegendTranslationSystemUsage.ProviderFailureCount),
@@ -987,6 +999,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         "provider-billable-characters" => nameof(LegendTranslationUsagePeriod.ProviderBillableCharacters),
         "same-language-avoided" => nameof(LegendTranslationUsagePeriod.SameLanguageCharactersAvoided),
         "memory-avoided" => nameof(LegendTranslationUsagePeriod.TranslationMemoryCharactersAvoided),
+        "structural-avoided" => nameof(LegendTranslationUsagePeriod.StructuralCompositionCharactersAvoided),
         "context-avoided" => nameof(LegendTranslationUsagePeriod.ContextualCharactersAvoided),
         "quota-denied" => nameof(LegendTranslationUsagePeriod.QuotaDeniedRequestCount),
         "provider-failures" => nameof(LegendTranslationUsagePeriod.ProviderFailureCount),
@@ -1000,6 +1013,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         nameof(LegendTranslationSystemUsage.ProviderBillableCharacters) => usage.ProviderBillableCharacters,
         nameof(LegendTranslationSystemUsage.SameLanguageCharactersAvoided) => usage.SameLanguageCharactersAvoided,
         nameof(LegendTranslationSystemUsage.TranslationMemoryCharactersAvoided) => usage.TranslationMemoryCharactersAvoided,
+        nameof(LegendTranslationSystemUsage.StructuralCompositionCharactersAvoided) => usage.StructuralCompositionCharactersAvoided,
         nameof(LegendTranslationSystemUsage.ContextualCharactersAvoided) => usage.ContextualCharactersAvoided,
         nameof(LegendTranslationSystemUsage.QuotaDeniedRequestCount) => usage.QuotaDeniedRequestCount,
         nameof(LegendTranslationSystemUsage.ProviderFailureCount) => usage.ProviderFailureCount,
@@ -1013,6 +1027,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         nameof(LegendTranslationUsagePeriod.ProviderBillableCharacters) => usage.ProviderBillableCharacters,
         nameof(LegendTranslationUsagePeriod.SameLanguageCharactersAvoided) => usage.SameLanguageCharactersAvoided,
         nameof(LegendTranslationUsagePeriod.TranslationMemoryCharactersAvoided) => usage.TranslationMemoryCharactersAvoided,
+        nameof(LegendTranslationUsagePeriod.StructuralCompositionCharactersAvoided) => usage.StructuralCompositionCharactersAvoided,
         nameof(LegendTranslationUsagePeriod.ContextualCharactersAvoided) => usage.ContextualCharactersAvoided,
         nameof(LegendTranslationUsagePeriod.QuotaDeniedRequestCount) => usage.QuotaDeniedRequestCount,
         nameof(LegendTranslationUsagePeriod.ProviderFailureCount) => usage.ProviderFailureCount,
@@ -2255,7 +2270,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var fallback = demand?.AzureFallbackCount ?? 0;
         var memoryHits = demand?.TranslationMemoryHitCount ?? 0;
         var contextualInternal = demand?.ContextualInternalServeCount ?? 0;
-        var internalServed = memoryHits + contextualInternal;
+        var structuralInternal = demand?.StructuralInternalServeCount ?? 0;
+        var internalServed = memoryHits + structuralInternal + contextualInternal;
         var approvedBacklog = activeCandidates.LongCount(item => item.IsApproved &&
             item.ProcessingState is "Pending" or "Processing" &&
             string.Equals(LegendLanguageIdentity.PairKey(item.SourceLanguageCode, item.TargetLanguageCode), pair.PairKey, StringComparison.OrdinalIgnoreCase));
@@ -2303,7 +2319,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             internalQuality,
             coverageAdditions,
             approvedBacklog,
-            lastProviderAcquisition);
+            lastProviderAcquisition,
+            structuralInternal);
     }
 
     private static List<LegendConnectOperationalEventSnapshot> ErrorsFor(

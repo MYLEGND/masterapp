@@ -265,6 +265,105 @@ public sealed class LegendConnectEntitlementTests
     }
 
     [Fact]
+    public async Task StructuralComposition_AvoidsProviderAndRecordsItsOwnCanonicalUsagePath()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration(0);
+        var access = new TranslationAccessStub(granted: true);
+        var authority = new TranslationEntitlementAuthority(
+            db,
+            access,
+            configuration,
+            NullLogger<TranslationEntitlementAuthority>.Instance);
+        var provider = new RecordingProvider();
+
+        var router = new LegendConnectTranslationRouter(
+            provider,
+            new LegendLanguageRegistry(db, configuration),
+            new TranslationCapacityAuthority(
+                db,
+                configuration,
+                NullLogger<TranslationCapacityAuthority>.Instance),
+            NullLogger<LegendConnectTranslationRouter>.Instance,
+            demand: new TranslationDemandRecorder(
+                db,
+                NullLogger<TranslationDemandRecorder>.Instance),
+            systemUsage: new TranslationSystemUsageRecorder(
+                db,
+                NullLogger<TranslationSystemUsageRecorder>.Instance),
+            intelligence:
+                new LegendConnectTranslationIntelligence(
+                    db,
+                    configuration),
+            entitlements: authority,
+            structuralComposition:
+                new StructuralCompositionStub(
+                    "LEGEND constructed translation"));
+
+        const string sourceText =
+            "LEGEND can construct this safely.";
+
+        var result = await router.TranslateForAccountAsync(
+            sourceText,
+            "ht",
+            "en",
+            Account,
+            Reference("structural-accounting"));
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(
+            "LEGEND constructed translation",
+            result.TranslatedText);
+        Assert.Equal(
+            "LegendConnectStructuralComposition",
+            result.Provider);
+
+        Assert.Equal(0, provider.TranslateCalls);
+
+        var accountUsage =
+            await db.LegendTranslationUsagePeriods.SingleAsync();
+
+        Assert.Equal(
+            sourceText.Length,
+            accountUsage.StructuralCompositionCharactersAvoided);
+        Assert.Equal(
+            0,
+            accountUsage.TranslationMemoryCharactersAvoided);
+        Assert.Equal(
+            0,
+            accountUsage.ContextualCharactersAvoided);
+        Assert.Equal(0, accountUsage.ConsumedCharacters);
+        Assert.Equal(0, accountUsage.ProviderOperationCount);
+        Assert.Equal(0, accountUsage.ProviderBillableCharacters);
+
+        var systemUsage =
+            await db.LegendTranslationSystemUsages.SingleAsync();
+
+        Assert.Equal(
+            sourceText.Length,
+            systemUsage.StructuralCompositionCharactersAvoided);
+        Assert.Equal(
+            0,
+            systemUsage.TranslationMemoryCharactersAvoided);
+        Assert.Equal(
+            0,
+            systemUsage.ContextualCharactersAvoided);
+        Assert.Equal(0, systemUsage.ProviderOperationCount);
+        Assert.Equal(0, systemUsage.ProviderBillableCharacters);
+
+        var demand =
+            await db.LegendTranslationPairDemands.SingleAsync();
+
+        Assert.Equal("en:ht", demand.PairKey);
+        Assert.Equal(1, demand.TranslationRequestCount);
+        Assert.Equal(1, demand.StructuralInternalServeCount);
+        Assert.Equal(0, demand.TranslationMemoryHitCount);
+        Assert.Equal(0, demand.ContextualInternalServeCount);
+        Assert.Equal(0, demand.AzureFallbackCount);
+        Assert.Equal(0, demand.ProviderCharacterCount);
+    }
+
+    [Fact]
     public async Task EntitlementMutation_RequiresFounderAuthorityAndDoesNotContainMessageBodies()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -529,6 +628,38 @@ public sealed class LegendConnectEntitlementTests
 
         public Task<string?> GetPreferredLanguageAsync(MessagingActor actor, CancellationToken cancellationToken = default) =>
             Task.FromResult<string?>(null);
+    }
+
+    private sealed class StructuralCompositionStub :
+        ILegendConnectStructuralCompositionGate
+    {
+        private readonly string _translation;
+
+        public StructuralCompositionStub(string translation) =>
+            _translation = translation;
+
+        public Task<LegendContextualTranslationSuggestion?> TryComposeAsync(
+            string sourceLanguageCode,
+            string targetLanguageCode,
+            string text,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<LegendContextualTranslationSuggestion?>(
+                new LegendContextualTranslationSuggestion(
+                    _translation,
+                    1.0m));
+
+        public Task<LegendShadowSourceUnderstanding>
+            AnalyzeShadowSourceSemanticsAsync(
+                string sourceLanguageCode,
+                string text,
+                CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<LegendShadowCompositionCapability>
+            EvaluateShadowCompositionAsync(
+                LegendShadowCompositionRequest request,
+                CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class RecordingProvider : ITranslationProvider

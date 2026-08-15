@@ -724,6 +724,7 @@ public sealed class LegendTranslationPairDemand
     public long TranslationRequestCount { get; set; }
     public long ProviderCharacterCount { get; set; }
     public long TranslationMemoryHitCount { get; set; }
+    public long StructuralInternalServeCount { get; set; }
     /// <summary>
     /// Requests for which trusted internal knowledge did not satisfy the
     /// route, so provider-backed work was required next. This legacy column
@@ -752,6 +753,7 @@ public sealed class LegendTranslationSystemUsage
     public long ProviderBillableCharacters { get; set; }
     public long SameLanguageCharactersAvoided { get; set; }
     public long TranslationMemoryCharactersAvoided { get; set; }
+    public long StructuralCompositionCharactersAvoided { get; set; }
     public long ContextualCharactersAvoided { get; set; }
     public long QuotaDeniedRequestCount { get; set; }
     public long ProviderFailureCount { get; set; }

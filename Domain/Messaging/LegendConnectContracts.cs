@@ -226,7 +226,8 @@ public sealed record LegendConnectPairHealthSnapshot(
     decimal InternalQualityConfidence = 0m,
     int CoverageAdditionsLast30Days = 0,
     long ApprovedBacklog = 0,
-    DateTime? LastProviderAcquisitionUtc = null);
+    DateTime? LastProviderAcquisitionUtc = null,
+    long StructuralInternalServeCount = 0);
 
 public sealed record LegendConnectAlignmentSnapshot(
     Guid Id,
@@ -485,7 +486,9 @@ public sealed record LegendConnectDashboardSnapshot(
     long FounderAtomicLearningUnitCount = 0,
     long SupersededLegacyMultiUnitAssetCount = 0,
     long ActiveDirectionalAtomicAlignmentCount = 0,
-    LegendConnectProviderCapacitySnapshot? ProviderCapacity = null);
+    LegendConnectProviderCapacitySnapshot? ProviderCapacity = null,
+    long StructuralCompositionCharactersAvoided = 0,
+    long StructuralInternalServeCount = 0);
 
 /// <summary>
 /// One coherent Founder dashboard read. The selected language and pair are

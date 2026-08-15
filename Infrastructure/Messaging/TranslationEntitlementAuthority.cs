@@ -218,7 +218,8 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
             usage.Sum(item => Math.Max(0, item.QuotaDeniedRequestCount)),
             usage.Sum(item => Math.Max(0, item.ProviderFailureCount)),
             usage.Sum(item => Math.Max(0, item.GroupUniqueTargetReuseCount)),
-            highConsumption);
+            highConsumption,
+            usage.Sum(item => Math.Max(0, item.StructuralCompositionCharactersAvoided)));
     }
 
     public async Task<TranslationAccountEntitlementSnapshot> SetEntitlementAsync(
@@ -470,6 +471,12 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
                     .SetProperty(item => item.LastTranslationActivityUtc, now)
                     .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
                 break;
+            case TranslationAvoidedPath.StructuralComposition:
+                await query.ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.StructuralCompositionCharactersAvoided, item => item.StructuralCompositionCharactersAvoided + amount)
+                    .SetProperty(item => item.LastTranslationActivityUtc, now)
+                    .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
+                break;
             case TranslationAvoidedPath.ContextualComposition:
                 await query.ExecuteUpdateAsync(setters => setters
                     .SetProperty(item => item.ContextualCharactersAvoided, item => item.ContextualCharactersAvoided + amount)
@@ -715,6 +722,9 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
             case TranslationAvoidedPath.TranslationMemory:
                 usage.TranslationMemoryCharactersAvoided += amount;
                 break;
+            case TranslationAvoidedPath.StructuralComposition:
+                usage.StructuralCompositionCharactersAvoided += amount;
+                break;
             case TranslationAvoidedPath.ContextualComposition:
                 usage.ContextualCharactersAvoided += amount;
                 break;
@@ -787,7 +797,8 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         usage?.ContextualCharactersAvoided ?? 0,
         usage?.QuotaDeniedRequestCount ?? 0,
         usage?.ProviderFailureCount ?? 0,
-        usage?.GroupUniqueTargetReuseCount ?? 0);
+        usage?.GroupUniqueTargetReuseCount ?? 0,
+        usage?.StructuralCompositionCharactersAvoided ?? 0);
 
     private long DefaultAllowance() => Math.Max(0,
         _configuration.GetValue<long?>("LegendConnect:Entitlements:DefaultMonthlyCharacterAllowance") ?? 0);

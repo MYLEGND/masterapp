@@ -153,6 +153,30 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                         cancellationToken);
                     if (structural is not null)
                     {
+                        if (_demand is not null)
+                        {
+                            await _demand.TryRecordAsync(
+                                pairKey!,
+                                0,
+                                structuralInternalServed: true,
+                                cancellationToken: cancellationToken);
+                        }
+
+                        if (_systemUsage is not null)
+                        {
+                            await _systemUsage.TryRecordAsync(
+                                new TranslationSystemUsageDelta(
+                                    StructuralCompositionCharactersAvoided:
+                                        text?.Length ?? 0),
+                                cancellationToken);
+                        }
+
+                        await RecordAvoidedSafelyAsync(
+                            account,
+                            TranslationAvoidedPath.StructuralComposition,
+                            text?.Length ?? 0,
+                            cancellationToken);
+
                         return new TranslationProviderResult(
                             true,
                             structural.Text,

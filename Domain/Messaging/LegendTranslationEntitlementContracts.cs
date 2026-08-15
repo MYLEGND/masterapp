@@ -57,7 +57,8 @@ public sealed record TranslationAccountUsageMetrics(
     long ContextualCharactersAvoided,
     long QuotaDeniedRequestCount,
     long ProviderFailureCount,
-    long GroupUniqueTargetReuseCount);
+    long GroupUniqueTargetReuseCount,
+    long StructuralCompositionCharactersAvoided = 0);
 
 public sealed record TranslationFounderScaleSnapshot(
     long ProviderOperationCount,
@@ -68,7 +69,8 @@ public sealed record TranslationFounderScaleSnapshot(
     long QuotaDeniedRequestCount,
     long ProviderFailureCount,
     long GroupUniqueTargetReuseCount,
-    long HighConsumptionAccountCount);
+    long HighConsumptionAccountCount,
+    long StructuralCompositionCharactersAvoided = 0);
 
 /// <summary>
 /// Server configuration can publish named allowance presets without moving an
@@ -105,6 +107,7 @@ public enum TranslationAvoidedPath
 {
     SameLanguage,
     TranslationMemory,
+    StructuralComposition,
     ContextualComposition,
     GroupUniqueTargetReuse
 }
