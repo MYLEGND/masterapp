@@ -140,6 +140,7 @@ public sealed record FounderLegendConnectLiveMetricsSnapshot(
     {
         var metrics = new Dictionary<string, FounderLegendConnectLiveMetricSnapshot>(StringComparer.Ordinal);
         var routedRequestCount = dashboard.TranslationMemoryHitCount +
+            dashboard.StructuralInternalServeCount +
             dashboard.ContextualInternalServeCount +
             dashboard.AzureFallbackCount;
 
@@ -156,9 +157,11 @@ public sealed record FounderLegendConnectLiveMetricsSnapshot(
 
         Add(metrics, "same-language-bypasses", dashboard.SameLanguageBypassCount, LegendConnectMetricTone.BeneficialActivity(dashboard.SameLanguageBypassCount));
         Add(metrics, "translation-memory-hits", dashboard.TranslationMemoryHitCount, LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryHitCount));
-        Add(metrics, "provider-fallback-required", dashboard.AzureFallbackCount, LegendConnectMetricTone.PendingWork(dashboard.AzureFallbackCount));
+        Add(metrics, "trusted-structural-served", dashboard.StructuralInternalServeCount, LegendConnectMetricTone.BeneficialActivity(dashboard.StructuralInternalServeCount));
         Add(metrics, "trusted-contextual-served", dashboard.ContextualInternalServeCount, LegendConnectMetricTone.BeneficialActivity(dashboard.ContextualInternalServeCount));
+        AddPercent(metrics, "internal-coverage", dashboard.InternalCoverageRate, LegendConnectMetricTone.Avoidance(dashboard.InternalCoverageRate, routedRequestCount));
         AddPercent(metrics, "provider-avoidance", dashboard.ProviderAvoidanceRate, LegendConnectMetricTone.Avoidance(dashboard.ProviderAvoidanceRate, routedRequestCount));
+        Add(metrics, "provider-fallback-required", dashboard.AzureFallbackCount, LegendConnectMetricTone.PendingWork(dashboard.AzureFallbackCount));
         AddPercent(metrics, "provider-dependency", dashboard.AzureDependencyRate, LegendConnectMetricTone.Dependency(dashboard.AzureDependencyRate, routedRequestCount));
         Add(metrics, "azure-characters-used", dashboard.AzureCharactersUsed, LegendConnectMetricTone.InformationalActivity(dashboard.AzureCharactersUsed));
         Add(metrics, "consumed-live-characters", dashboard.ConsumedLiveCharacters, LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedLiveCharacters));
@@ -176,6 +179,7 @@ public sealed record FounderLegendConnectLiveMetricsSnapshot(
         Add(metrics, "provider-billable-characters", dashboard.ProviderBillableCharacters, LegendConnectMetricTone.InformationalActivity(dashboard.ProviderBillableCharacters));
         Add(metrics, "same-language-avoided", dashboard.SameLanguageCharactersAvoided, LegendConnectMetricTone.BeneficialActivity(dashboard.SameLanguageCharactersAvoided));
         Add(metrics, "memory-avoided", dashboard.TranslationMemoryCharactersAvoided, LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryCharactersAvoided));
+        Add(metrics, "structural-avoided", dashboard.StructuralCompositionCharactersAvoided, LegendConnectMetricTone.BeneficialActivity(dashboard.StructuralCompositionCharactersAvoided));
         Add(metrics, "context-avoided", dashboard.ContextualCharactersAvoided, LegendConnectMetricTone.BeneficialActivity(dashboard.ContextualCharactersAvoided));
         Add(metrics, "quota-denied", dashboard.QuotaDeniedRequestCount, LegendConnectMetricTone.Failure(dashboard.QuotaDeniedRequestCount));
         Add(metrics, "provider-failures", dashboard.ProviderFailureCount, LegendConnectMetricTone.Failure(dashboard.ProviderFailureCount));
