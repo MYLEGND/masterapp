@@ -142,8 +142,80 @@ public sealed class LegendConnectTranslationQualityTests
         var source = Unit("en", "She reads before dinner.", "FounderApproved");
         var providerTarget = Unit("ht", "Li li anvan dine.", "ProviderDerived");
         var provider = ProviderObservation(pair, source, providerTarget);
-        db.AddRange(source, providerTarget, provider);
+
+        var conversation = new MessageConversation
+        {
+            Id = Guid.NewGuid(),
+            ConversationType = MessagingConversationTypes.Group,
+            Subject = "Correction projection regression",
+            CreatedByUserId = "founder",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        var correctedSourceMessage = new InternalMessage
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = conversation.Id,
+            SenderUserId = "founder",
+            SenderType = MessagingParticipantTypes.Agent,
+            Body = source.Text,
+            OriginalLanguage = "en",
+            SenderPreferredLanguage = "en",
+            SentUtc = DateTime.UtcNow
+        };
+        var unrelatedSourceMessage = new InternalMessage
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = conversation.Id,
+            SenderUserId = "founder",
+            SenderType = MessagingParticipantTypes.Agent,
+            Body = "A different English source.",
+            OriginalLanguage = "en",
+            SenderPreferredLanguage = "en",
+            SentUtc = DateTime.UtcNow
+        };
+
+        var staleAzureProjection = new MessageTranslation
+        {
+            Id = Guid.NewGuid(),
+            InternalMessageId = correctedSourceMessage.Id,
+            TargetLanguage = "ht",
+            TranslatedText = providerTarget.Text,
+            Provider = "AzureTranslator",
+            CreatedUtc = DateTime.UtcNow
+        };
+        var differentTargetProjection = new MessageTranslation
+        {
+            Id = Guid.NewGuid(),
+            InternalMessageId = correctedSourceMessage.Id,
+            TargetLanguage = "fr",
+            TranslatedText = "Projection française distincte.",
+            Provider = "AzureTranslator",
+            CreatedUtc = DateTime.UtcNow
+        };
+        var differentSourceProjection = new MessageTranslation
+        {
+            Id = Guid.NewGuid(),
+            InternalMessageId = unrelatedSourceMessage.Id,
+            TargetLanguage = "ht",
+            TranslatedText = "Yon lòt tradiksyon.",
+            Provider = "AzureTranslator",
+            CreatedUtc = DateTime.UtcNow
+        };
+
+        db.AddRange(
+            source,
+            providerTarget,
+            provider,
+            conversation,
+            correctedSourceMessage,
+            unrelatedSourceMessage,
+            staleAzureProjection,
+            differentTargetProjection,
+            differentSourceProjection);
         await db.SaveChangesAsync();
+
+        Assert.Equal(3, await db.MessageTranslations.CountAsync());
 
         var corrected = await fixture.Operations.CorrectFounderKnowledgeAsync(
             "founder",
@@ -162,9 +234,122 @@ public sealed class LegendConnectTranslationQualityTests
         Assert.Contains(await db.LegendTranslationQualityEvidence.ToListAsync(), item =>
             item.ObservedAlignmentId == provider.Id && item.Signal == "Contradictory" &&
             item.RelatedAlignmentId == replacement.Id && item.ResolutionState == "Corrected");
+
+        // The matching operational projection is corrected immediately from
+        // current trusted exact memory. Unrelated directional/source caches
+        // remain untouched.
+        var reconciledProjection = await db.MessageTranslations
+            .SingleAsync(item => item.Id == staleAzureProjection.Id);
+
+        Assert.Equal(
+            "Li konn li anvan dine.",
+            reconciledProjection.TranslatedText);
+        Assert.Equal(
+            "LegendConnectTranslationMemory",
+            reconciledProjection.Provider);
+
+        Assert.Contains(
+            await db.MessageTranslations.ToListAsync(),
+            item => item.Id == differentTargetProjection.Id &&
+                    item.TranslatedText == "Projection française distincte.");
+        Assert.Contains(
+            await db.MessageTranslations.ToListAsync(),
+            item => item.Id == differentSourceProjection.Id &&
+                    item.TranslatedText == "Yon lòt tradiksyon.");
+        Assert.Equal(3, await db.MessageTranslations.CountAsync());
+
         var memory = await fixture.Intelligence.TryGetTrustedExactMemoryAsync("en", "ht", source.Text);
         Assert.NotNull(memory);
         Assert.Equal("Li konn li anvan dine.", memory!.Text);
+    }
+
+    [Fact]
+    public async Task HistoricalOperationalReplay_RewritesOldProviderProjectionFromCurrentTrustedMemory()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        var pair = await PairAsync(fixture.Registry, "ht");
+
+        var source = Unit(
+            "en",
+            "Historical correction source.",
+            "FounderApproved");
+        var target = Unit(
+            "ht",
+            "Koreksyon istorik verifye.",
+            "FounderApproved");
+        var alignment = HumanAlignment(pair, source, target);
+
+        var conversation = new MessageConversation
+        {
+            Id = Guid.NewGuid(),
+            ConversationType = MessagingConversationTypes.Group,
+            Subject = "Historical correction replay",
+            CreatedByUserId = "founder",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+
+        var message = new InternalMessage
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = conversation.Id,
+            SenderUserId = "founder",
+            SenderType = MessagingParticipantTypes.Agent,
+            Body = "  Historical   correction source.  ",
+            OriginalLanguage = "en",
+            SenderPreferredLanguage = "en",
+            SentUtc = DateTime.UtcNow
+        };
+
+        var oldProjection = new MessageTranslation
+        {
+            Id = Guid.NewGuid(),
+            InternalMessageId = message.Id,
+            TargetLanguage = "ht",
+            TranslatedText = "Ansyen rezilta Azure ki pa kòrèk.",
+            Provider = "AzureTranslator",
+            CreatedUtc = DateTime.UtcNow
+        };
+
+        db.AddRange(
+            source,
+            target,
+            alignment,
+            conversation,
+            message,
+            oldProjection);
+        await db.SaveChangesAsync();
+
+        var first = await fixture.Operations
+            .ReconcileHistoricalOperationalTranslationsAsync(
+                100,
+                null);
+
+        Assert.True(first.PhaseComplete);
+
+        var reconciled = await db.MessageTranslations
+            .SingleAsync(item => item.Id == oldProjection.Id);
+
+        Assert.Equal(target.Text, reconciled.TranslatedText);
+        Assert.Equal(
+            "LegendConnectTranslationMemory",
+            reconciled.Provider);
+
+        var second = await fixture.Operations
+            .ReconcileHistoricalOperationalTranslationsAsync(
+                100,
+                null);
+
+        Assert.True(second.PhaseComplete);
+
+        var unchanged = await db.MessageTranslations
+            .SingleAsync(item => item.Id == oldProjection.Id);
+
+        Assert.Equal(target.Text, unchanged.TranslatedText);
+        Assert.Equal(
+            "LegendConnectTranslationMemory",
+            unchanged.Provider);
     }
 
     [Fact]

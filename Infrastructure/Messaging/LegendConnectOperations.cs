@@ -1435,6 +1435,36 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             prior.SupersededByAlignmentId = result.AlignmentId;
             prior.QualityState = "Superseded";
             prior.UpdatedUtc = DateTime.UtcNow;
+
+            // MessageTranslations is an operational projection, never
+            // language truth. Immediate correction and historical replay use
+            // the same trusted-memory reconciliation decision.
+            var correctionProjectionRows = await (
+                from translation in _db.MessageTranslations
+                join message in _db.InternalMessages
+                    on translation.InternalMessageId equals message.Id
+                where translation.TargetLanguage == target &&
+                      (message.OriginalLanguage == source ||
+                       ((message.OriginalLanguage == null ||
+                         message.OriginalLanguage == string.Empty) &&
+                        message.SenderPreferredLanguage == source))
+                select new
+                {
+                    Translation = translation,
+                    Message = message
+                }
+            ).ToListAsync(cancellationToken);
+
+            foreach (var row in correctionProjectionRows.Where(row =>
+                         LegendLanguageIdentity.TextHash(row.Message.Body) ==
+                         priorSource.NormalizedHash))
+            {
+                await ReconcileOperationalTranslationFromTrustedMemoryAsync(
+                    row.Translation,
+                    row.Message,
+                    cancellationToken);
+            }
+
             await _db.SaveChangesAsync(cancellationToken);
             await _curriculum.ReconcileSupersededAlignmentAsync(
                 prior.PairKey,
@@ -1469,6 +1499,113 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             if (transaction is not null)
                 await transaction.DisposeAsync();
         }
+    }
+
+    /// <summary>
+    /// Replays historical operational translation projections through the
+    /// same trusted exact-memory authority used by current corrections.
+    /// </summary>
+    public async Task<LegendConnectHistoricalReevaluationProgress>
+        ReconcileHistoricalOperationalTranslationsAsync(
+            int take,
+            Guid? afterId,
+            CancellationToken cancellationToken = default)
+    {
+        var pageSize = Math.Clamp(take, 1, 250);
+
+        var rows = await (
+            from translation in _db.MessageTranslations
+            join message in _db.InternalMessages
+                on translation.InternalMessageId equals message.Id
+            where !afterId.HasValue ||
+                  translation.Id.CompareTo(afterId.Value) > 0
+            orderby translation.Id
+            select new
+            {
+                Translation = translation,
+                Message = message
+            }
+        ).Take(pageSize).ToListAsync(cancellationToken);
+
+        var changed = false;
+
+        foreach (var row in rows)
+        {
+            changed |= await ReconcileOperationalTranslationFromTrustedMemoryAsync(
+                row.Translation,
+                row.Message,
+                cancellationToken);
+        }
+
+        if (changed)
+            await _db.SaveChangesAsync(cancellationToken);
+
+        return new LegendConnectHistoricalReevaluationProgress(
+            rows.Count,
+            rows.Count == 0 ? null : rows[^1].Translation.Id,
+            rows.Count < pageSize);
+    }
+
+    /// <summary>
+    /// Single reconciliation decision shared by present correction and
+    /// historical replay. Only trusted exact memory may rewrite presentation.
+    /// </summary>
+    private async Task<bool> ReconcileOperationalTranslationFromTrustedMemoryAsync(
+        MessageTranslation translation,
+        InternalMessage message,
+        CancellationToken cancellationToken)
+    {
+        var sourceLanguage = await _registry.NormalizeEnabledTranslationLanguageAsync(
+            message.OriginalLanguage,
+            cancellationToken);
+
+        if (sourceLanguage is null)
+        {
+            sourceLanguage = await _registry.NormalizeEnabledTranslationLanguageAsync(
+                message.SenderPreferredLanguage,
+                cancellationToken);
+        }
+
+        var targetLanguage = await _registry.NormalizeEnabledTranslationLanguageAsync(
+            translation.TargetLanguage,
+            cancellationToken);
+
+        if (sourceLanguage is null ||
+            targetLanguage is null ||
+            string.Equals(
+                sourceLanguage,
+                targetLanguage,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var trusted = await _intelligence.TryGetTrustedExactMemoryAsync(
+            sourceLanguage,
+            targetLanguage,
+            message.Body,
+            cancellationToken);
+
+        if (trusted is null || string.IsNullOrWhiteSpace(trusted.Text))
+            return false;
+
+        var trustedText = trusted.Text.Trim();
+
+        if (string.Equals(
+                translation.TranslatedText,
+                trustedText,
+                StringComparison.Ordinal) &&
+            string.Equals(
+                translation.Provider,
+                "LegendConnectTranslationMemory",
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        translation.TranslatedText = trustedText;
+        translation.Provider = "LegendConnectTranslationMemory";
+        return true;
     }
 
     /// <summary>

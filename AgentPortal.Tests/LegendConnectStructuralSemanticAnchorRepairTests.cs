@@ -64,7 +64,7 @@ public sealed class LegendConnectStructuralSemanticAnchorRepairTests
         // Simulate a deployment whose prior evaluator checkpoint had already
         // completed before this historical corpus became eligible for the
         // corrected evaluator semantics.
-        await DrainCanonicalReplayAsync(historical.Runtime, historical.Curriculum, historical.Intelligence, 2);
+        await DrainCanonicalReplayAsync(historical.Runtime, historical.Curriculum, historical.Intelligence, historical.Operations, 2);
         foreach (var batch in ControlledBatches())
             AddHistoricalFounderFamily(historicalDb, "x-alpha", batch);
         await historicalDb.SaveChangesAsync();
@@ -88,6 +88,7 @@ public sealed class LegendConnectStructuralSemanticAnchorRepairTests
             historical.Runtime,
             historical.Curriculum,
             historical.Intelligence,
+            historical.Operations,
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
 
         var historicalRelationship = await historicalDb.LegendLanguageStructuralRelationships.SingleAsync(item =>
@@ -117,6 +118,7 @@ public sealed class LegendConnectStructuralSemanticAnchorRepairTests
             historical.Runtime,
             historical.Curriculum,
             historical.Intelligence,
+            historical.Operations,
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
         var secondPass = new
         {
@@ -228,6 +230,7 @@ public sealed class LegendConnectStructuralSemanticAnchorRepairTests
         LegendConnectRuntimePolicyAuthority runtime,
         LegendConnectCurriculumService curriculum,
         ILegendConnectTranslationIntelligence intelligence,
+        ILegendConnectOperations operations,
         int evaluatorVersion)
     {
         for (var pass = 0; pass < 32; pass++)
@@ -235,9 +238,26 @@ public sealed class LegendConnectStructuralSemanticAnchorRepairTests
             var state = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(evaluatorVersion);
             if (!state.RequiresWork)
                 return;
-            var progress = state.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations
-                ? await intelligence.ReevaluateHistoricalProviderObservationsAsync(25, state.Cursor)
-                : await curriculum.ReevaluateHistoricalAlignmentsAsync(25, state.Phase, state.Cursor);
+            LegendConnectHistoricalReevaluationProgress progress;
+            if (state.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
+            {
+                progress = await intelligence.ReevaluateHistoricalProviderObservationsAsync(
+                    25,
+                    state.Cursor);
+            }
+            else if (state.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations)
+            {
+                progress = await operations.ReconcileHistoricalOperationalTranslationsAsync(
+                    25,
+                    state.Cursor);
+            }
+            else
+            {
+                progress = await curriculum.ReevaluateHistoricalAlignmentsAsync(
+                    25,
+                    state.Phase,
+                    state.Cursor);
+            }
             await runtime.AdvanceLanguageIntelligenceReevaluationAsync(
                 evaluatorVersion, state.Phase, progress.LastProcessedId, progress.PhaseComplete);
         }
@@ -269,13 +289,28 @@ public sealed class LegendConnectStructuralSemanticAnchorRepairTests
         var intelligence = new LegendConnectTranslationIntelligence(db, configuration, runtime);
         var corpus = new LegendConnectCorpusService(
             db, registry, NullLogger<LegendConnectCorpusService>.Instance, intelligence: intelligence);
-        return new Fixture(runtime, intelligence, new LegendConnectCurriculumService(db, registry, corpus));
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            runtimePolicy: runtime,
+            curriculum: curriculum,
+            intelligence: intelligence);
+
+        return new Fixture(
+            runtime,
+            intelligence,
+            curriculum,
+            operations);
     }
 
     private sealed record Fixture(
         LegendConnectRuntimePolicyAuthority Runtime,
         ILegendConnectTranslationIntelligence Intelligence,
-        LegendConnectCurriculumService Curriculum);
+        LegendConnectCurriculumService Curriculum,
+        ILegendConnectOperations Operations);
 
     private sealed class FounderAccess : IControlledResourceAccessService
     {

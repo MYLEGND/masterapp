@@ -1256,12 +1256,11 @@ internal sealed class LegendConnectCorpusService
 /// </summary>
 internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
 {
-    // v6 makes target-realization derivation prove a minimal, exclusive
-    // target span from independent Founder-controlled contrasts before it can
-    // reach Founder review. Historical directional pairs therefore traverse
-    // the same bounded, resumable evaluator used for present and future
-    // evidence.
-    internal const int Current = 6;
+    // v7 extends the same bounded, resumable historical replay through
+    // operational MessageTranslation projections so historical presentation
+    // converges to the same trusted intelligence governing current and future
+    // translation. No second worker, cache, or translation authority exists.
+    internal const int Current = 7;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService
@@ -1305,6 +1304,12 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                         progress = await scope.ServiceProvider
                             .GetRequiredService<ILegendConnectTranslationIntelligence>()
                             .ReevaluateHistoricalProviderObservationsAsync(100, replay.Cursor, stoppingToken);
+                    }
+                    else if (replay.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations)
+                    {
+                        progress = await scope.ServiceProvider
+                            .GetRequiredService<ILegendConnectOperations>()
+                            .ReconcileHistoricalOperationalTranslationsAsync(100, replay.Cursor, stoppingToken);
                     }
                     else
                     {

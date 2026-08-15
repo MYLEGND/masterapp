@@ -634,6 +634,11 @@ public interface ILegendConnectOperations
         CancellationToken cancellationToken = default,
         Guid? reusableTargetTextUnitId = null);
 
+    Task<LegendConnectHistoricalReevaluationProgress> ReconcileHistoricalOperationalTranslationsAsync(
+        int take,
+        Guid? afterId,
+        CancellationToken cancellationToken = default);
+
     Task<LegendConnectVerifiedTargetBatchResult> SubmitFounderVerifiedTargetsAsync(
         string founderUserId,
         LegendConnectVerifiedTargetSubmission submission,

@@ -449,6 +449,8 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
                         LegendConnectLanguageIntelligenceReevaluationPhases.Alignments,
                     LegendConnectLanguageIntelligenceReevaluationPhases.Alignments =>
                         LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations,
+                    LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations =>
+                        LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations,
                     _ => LegendConnectLanguageIntelligenceReevaluationPhases.Complete
                 };
                 if (inMemoryPolicy.LanguageIntelligenceReevaluationPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)
@@ -484,6 +486,8 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
                     LegendConnectLanguageIntelligenceReevaluationPhases.Alignments,
                 LegendConnectLanguageIntelligenceReevaluationPhases.Alignments =>
                     LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations,
+                LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations =>
+                    LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations,
                 _ => LegendConnectLanguageIntelligenceReevaluationPhases.Complete
             };
             if (nextPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)

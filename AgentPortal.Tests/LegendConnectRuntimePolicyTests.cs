@@ -63,6 +63,77 @@ public sealed class LegendConnectRuntimePolicyTests
     }
 
     [Fact]
+    public async Task HistoricalReevaluation_V7_RequiresOperationalTranslationsBeforeCompletion()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var policy = Policy(db, registry, configuration);
+
+        var replay =
+            await policy.GetOrStartLanguageIntelligenceReevaluationAsync(7);
+
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            replay.Phase);
+
+        await policy.AdvanceLanguageIntelligenceReevaluationAsync(
+            7,
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            null,
+            true);
+
+        replay =
+            await policy.GetOrStartLanguageIntelligenceReevaluationAsync(7);
+
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceReevaluationPhases.Alignments,
+            replay.Phase);
+
+        await policy.AdvanceLanguageIntelligenceReevaluationAsync(
+            7,
+            LegendConnectLanguageIntelligenceReevaluationPhases.Alignments,
+            null,
+            true);
+
+        replay =
+            await policy.GetOrStartLanguageIntelligenceReevaluationAsync(7);
+
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations,
+            replay.Phase);
+
+        await policy.AdvanceLanguageIntelligenceReevaluationAsync(
+            7,
+            LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations,
+            null,
+            true);
+
+        replay =
+            await policy.GetOrStartLanguageIntelligenceReevaluationAsync(7);
+
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations,
+            replay.Phase);
+        Assert.True(replay.RequiresWork);
+
+        await policy.AdvanceLanguageIntelligenceReevaluationAsync(
+            7,
+            LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations,
+            null,
+            true);
+
+        replay =
+            await policy.GetOrStartLanguageIntelligenceReevaluationAsync(7);
+
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceReevaluationPhases.Complete,
+            replay.Phase);
+        Assert.Equal(7, replay.CompletedEvaluatorVersion);
+        Assert.False(replay.RequiresWork);
+    }
+
+    [Fact]
     public async Task ProductionCompositionMode_OnlyPermitsTheExistingGatedInternalPath()
     {
         await using var db = ControllerTestHelpers.BuildDb();

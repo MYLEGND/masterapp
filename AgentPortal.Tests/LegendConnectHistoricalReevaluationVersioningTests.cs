@@ -34,6 +34,14 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
         var corpus = new LegendConnectCorpusService(
             db, registry, NullLogger<LegendConnectCorpusService>.Instance, intelligence: intelligence);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            runtimePolicy: runtime,
+            curriculum: curriculum,
+            intelligence: intelligence);
 
         foreach (var familyKey in new[] { "version.one", "version.two", "version.three" })
         {
@@ -62,7 +70,7 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
 
         var initial = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(1);
         Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, initial.Phase);
-        await DrainCanonicalWorkerCycleAsync(runtime, curriculum, intelligence, 1, take: 1);
+        await DrainCanonicalWorkerCycleAsync(runtime, curriculum, intelligence, operations, 1, take: 1);
 
         var versionOne = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(1);
         Assert.False(versionOne.RequiresWork);
@@ -91,7 +99,7 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
         Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, versionTwoStart.Phase);
         Assert.Null(versionTwoStart.Cursor);
 
-        await DrainCanonicalWorkerCycleAsync(runtime, curriculum, intelligence, 2, take: 1);
+        await DrainCanonicalWorkerCycleAsync(runtime, curriculum, intelligence, operations, 2, take: 1);
 
         var versionTwo = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(2);
         var sourceLineageAfter = new
@@ -119,7 +127,7 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             Quality = await db.LegendTranslationQualityEvidence.CountAsync(),
             Relationships = await db.LegendLanguageStructuralRelationships.CountAsync()
         };
-        await DrainCanonicalWorkerCycleAsync(runtime, curriculum, intelligence, 2, take: 1);
+        await DrainCanonicalWorkerCycleAsync(runtime, curriculum, intelligence, operations, 2, take: 1);
         var secondPass = new
         {
             Patterns = await db.LegendLanguageStructuralPatterns.CountAsync(),
@@ -144,10 +152,24 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             historicalDb, historicalRegistry, NullLogger<LegendConnectCorpusService>.Instance,
             intelligence: historicalIntelligence);
         var historicalCurriculum = new LegendConnectCurriculumService(historicalDb, historicalRegistry, historicalCorpus);
+        var historicalOperations = new LegendConnectOperations(
+            historicalDb,
+            historicalRegistry,
+            historicalCorpus,
+            configuration,
+            runtimePolicy: historicalRuntime,
+            curriculum: historicalCurriculum,
+            intelligence: historicalIntelligence);
 
         // The v3 checkpoint represents the already-deployed evaluator before
         // this precise provider-quality retention correction.
-        await DrainCanonicalWorkerCycleAsync(historicalRuntime, historicalCurriculum, historicalIntelligence, 3, take: 1);
+        await DrainCanonicalWorkerCycleAsync(
+            historicalRuntime,
+            historicalCurriculum,
+            historicalIntelligence,
+            historicalOperations,
+            3,
+            take: 1);
         var historicalSeed = await SeedFounderConflictAsync(historicalDb, historicalRegistry);
         var replay = await historicalRuntime.GetOrStartLanguageIntelligenceReevaluationAsync(
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
@@ -158,6 +180,7 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             historicalRuntime,
             historicalCurriculum,
             historicalIntelligence,
+            historicalOperations,
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
             take: 1);
 
@@ -188,6 +211,7 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             historicalRuntime,
             historicalCurriculum,
             historicalIntelligence,
+            historicalOperations,
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
             take: 1);
         var historicalSecondPass = new
@@ -258,6 +282,7 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
         LegendConnectRuntimePolicyAuthority runtime,
         LegendConnectCurriculumService curriculum,
         ILegendConnectTranslationIntelligence intelligence,
+        ILegendConnectOperations operations,
         int evaluatorVersion,
         int take)
     {
@@ -266,9 +291,26 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             var state = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(evaluatorVersion);
             if (!state.RequiresWork)
                 return;
-            var progress = state.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations
-                ? await intelligence.ReevaluateHistoricalProviderObservationsAsync(take, state.Cursor)
-                : await curriculum.ReevaluateHistoricalAlignmentsAsync(take, state.Phase, state.Cursor);
+            LegendConnectHistoricalReevaluationProgress progress;
+            if (state.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
+            {
+                progress = await intelligence.ReevaluateHistoricalProviderObservationsAsync(
+                    take,
+                    state.Cursor);
+            }
+            else if (state.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations)
+            {
+                progress = await operations.ReconcileHistoricalOperationalTranslationsAsync(
+                    take,
+                    state.Cursor);
+            }
+            else
+            {
+                progress = await curriculum.ReevaluateHistoricalAlignmentsAsync(
+                    take,
+                    state.Phase,
+                    state.Cursor);
+            }
             await runtime.AdvanceLanguageIntelligenceReevaluationAsync(
                 evaluatorVersion, state.Phase, progress.LastProcessedId, progress.PhaseComplete);
         }

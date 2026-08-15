@@ -43,9 +43,11 @@ public static class LegendConnectLanguageIntelligenceReevaluationPhases
     public const string SourceFamilies = "SourceFamilies";
     public const string Alignments = "Alignments";
     public const string ProviderObservations = "ProviderObservations";
+    public const string OperationalTranslations = "OperationalTranslations";
     public const string Complete = "Complete";
 
-    public static bool IsWorkPhase(string? phase) => phase is SourceFamilies or Alignments or ProviderObservations;
+    public static bool IsWorkPhase(string? phase) =>
+        phase is SourceFamilies or Alignments or ProviderObservations or OperationalTranslations;
 }
 
 /// <summary>
