@@ -23,7 +23,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.VerticalPager
@@ -2790,25 +2789,6 @@ private fun MessageThread(
     manageGroup: (ConversationDetail) -> Unit,
     resolveVerification: (VerificationReview, Boolean, String?) -> Unit,
 ) {
-    val messageListState = rememberLazyListState()
-    var positionedConversationId by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(conversation.id, conversation.messages.lastOrNull()?.id) {
-        if (conversation.messages.isEmpty()) return@LaunchedEffect
-
-        val lastIndex = conversation.messages.lastIndex
-
-        if (positionedConversationId != conversation.id) {
-            // Opening/reopening a conversation starts at the newest message.
-            // Keep canonical chronological data order intact.
-            messageListState.scrollToItem(lastIndex)
-            positionedConversationId = conversation.id
-        } else {
-            // Existing LEGEND thread behavior follows newly appended messages.
-            messageListState.animateScrollToItem(lastIndex)
-        }
-    }
-
     val context = LocalContext.current
     var draft by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<ConversationMessage?>(null) }
@@ -2830,15 +2810,15 @@ private fun MessageThread(
             }
         }
         LazyColumn(
-            state = messageListState,
             modifier = Modifier.weight(1f),
+            reverseLayout = true,
             contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md),
             verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
         ) {
-            if (conversation.hasOlderMessages) {
-                item { TextButton(onClick = loadOlder, modifier = Modifier.fillMaxWidth()) { Text("Load earlier messages", color = LegendColors.Gold) } }
-            }
-            items(conversation.messages, key = { it.id }) { message ->
+            // reverseLayout makes item 0 the physical bottom of the thread.
+            // Present a reversed view of the canonical chronological collection
+            // so visual order remains oldest at the top and newest at the bottom.
+            items(conversation.messages.asReversed(), key = { it.id }) { message ->
                 LegendMessageBubble(
                     message = message,
                     mediaRepository = mediaRepository,
@@ -2847,6 +2827,19 @@ private fun MessageThread(
                     delete = { delete(message) },
                     resolveVerification = resolveVerification,
                 )
+            }
+
+            // With reverseLayout this remains visually above the oldest loaded
+            // message and loading history does not disturb the current viewport.
+            if (conversation.hasOlderMessages) {
+                item {
+                    TextButton(
+                        onClick = loadOlder,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Load earlier messages", color = LegendColors.Gold)
+                    }
+                }
             }
         }
         if (conversation.isClosed) {

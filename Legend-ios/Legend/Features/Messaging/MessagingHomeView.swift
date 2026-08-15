@@ -3181,31 +3181,10 @@ private struct LegendMessageTimeline: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .scrollIndicators(.hidden)
-            .onAppear {
-                if !messages.isEmpty {
-                    Task { @MainActor in
-                        await Task.yield()
-                        scrollToBottom(proxy, animated: false)
-                    }
-                }
-            }
+            .defaultScrollAnchor(.bottom)
             .onChange(of: messages.last?.id) { oldValue, newValue in
-                guard newValue != nil else { return }
-
-                Task { @MainActor in
-                    await Task.yield()
-
-                    // When the timeline receives its first server-backed
-                    // message set, establish the normal messaging position
-                    // without animating through the conversation.
-                    //
-                    // Subsequent appended messages retain the existing
-                    // animated follow behavior.
-                    scrollToBottom(
-                        proxy,
-                        animated: oldValue != nil
-                    )
-                }
+                guard oldValue != nil, newValue != nil else { return }
+                scrollToBottom(proxy, animated: true)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
