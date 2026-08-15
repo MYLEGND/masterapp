@@ -107,12 +107,19 @@ public sealed class LegendConnectCompositionalUnderstandingTests
             textUnitCountBefore,
             await db.LegendLanguageTextUnits.CountAsync());
 
-        // Phase 4A still cannot formulate or serve.
-        Assert.Null(
-            await fixture.Curriculum.TryComposeAsync(
-                "en",
-                "x-test",
-                unseenSource));
+        // Source-semantic analysis above remains independently read-only.
+        // Phase 4C may now serve only because this fixture separately contains
+        // the complete Founder-verified directional and structural production
+        // evidence required by the canonical composition authority.
+        var production = await fixture.Curriculum.TryComposeAsync(
+            "en",
+            "x-test",
+            unseenSource);
+
+        Assert.NotNull(production);
+        Assert.Equal(
+            "za affirmative combine packets",
+            production!.Text);
     }
 
     [Fact]
@@ -335,12 +342,90 @@ public sealed class LegendConnectCompositionalUnderstandingTests
             formulation.Realizations,
             replay.Realizations);
 
-        // Production serving remains deliberately closed.
+        // Phase 4C opens production serving only after the same learned
+        // formulation has independently earned the existing production gates.
+        var production = await fixture.Curriculum.TryComposeAsync(
+            "en",
+            "x-test",
+            unseenSource);
+
+        Assert.NotNull(production);
+        Assert.Equal(formulation.Text, production!.Text);
+    }
+
+    [Fact]
+    public async Task ProductionCompositionRequiresExistingProductionStructuralAuthority()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        await SeedSupportedCompositionAsync(fixture);
+
+        const string unseenSource =
+            "I affirmative combine packets.";
+
+        var shadow = await fixture.Curriculum.FormulateShadowTargetAsync(
+            "en",
+            "x-test",
+            unseenSource);
+
+        Assert.Equal(
+            LegendShadowTargetFormulation.SupportedForShadowEvaluation,
+            shadow.State);
+
+        var production = await fixture.Curriculum.TryComposeAsync(
+            "en",
+            "x-test",
+            unseenSource);
+
+        Assert.NotNull(production);
+        Assert.Equal(shadow.Text, production!.Text);
+
+        var relationship = await db.LegendLanguageStructuralRelationships
+            .Where(item =>
+                item.PairKey == "en:x-test" &&
+                item.LanguageCode == "x-test" &&
+                item.SupersededUtc == null &&
+                item.IsProductionEligible)
+            .FirstAsync();
+
+        relationship.ContradictionCount = 1;
+        relationship.IsProductionEligible = false;
+        await db.SaveChangesAsync();
+
+        var remainingEligible =
+            await db.LegendLanguageStructuralRelationships.AnyAsync(item =>
+                item.PairKey == "en:x-test" &&
+                item.LanguageCode == "x-test" &&
+                item.SupersededUtc == null &&
+                item.IsProductionEligible &&
+                item.SupportCount >= 3 &&
+                item.IndependentSourceCount >= 3 &&
+                item.HumanVerifiedSupportCount >= 3 &&
+                item.ProviderOnlySupportCount == 0 &&
+                item.ContradictionCount == 0);
+
+        if (!remainingEligible)
+        {
+            Assert.Null(
+                await fixture.Curriculum.TryComposeAsync(
+                    "en",
+                    "x-test",
+                    unseenSource));
+        }
+    }
+
+    [Fact]
+    public async Task ProductionCompositionFailsClosedForUnknownSourceSemantics()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        await SeedSupportedCompositionAsync(fixture);
+
         Assert.Null(
             await fixture.Curriculum.TryComposeAsync(
                 "en",
                 "x-test",
-                unseenSource));
+                "I affirmative combine mysteries."));
     }
 
     [Fact]

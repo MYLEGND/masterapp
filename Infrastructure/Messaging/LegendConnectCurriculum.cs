@@ -1051,20 +1051,75 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string text,
         CancellationToken cancellationToken = default)
     {
-        var source = await _languages.NormalizeEnabledTranslationLanguageAsync(sourceLanguageCode, cancellationToken);
-        var target = await _languages.NormalizeEnabledTranslationLanguageAsync(targetLanguageCode, cancellationToken);
-        if (source is null || target is null || string.Equals(source, target, StringComparison.OrdinalIgnoreCase))
+        var source = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            sourceLanguageCode,
+            cancellationToken);
+        var target = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            targetLanguageCode,
+            cancellationToken);
+
+        if (source is null ||
+            target is null ||
+            string.Equals(
+                source,
+                target,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        // Reuse the existing Phase 4B formulation authority. It already
+        // requires complete source-semantic coverage, Founder-verified
+        // directional candidates, human-verified support, no provider-only
+        // support, no contradictions, a verified anchor, unambiguous target
+        // realization, unambiguous Founder-approved target position evidence,
+        // and contiguous atomic target arrangement.
+        //
+        // Do not duplicate those rules here.
+        var formulation = await FormulateShadowTargetAsync(
+            source,
+            target,
+            text,
+            cancellationToken);
+
+        if (!string.Equals(
+                formulation.State,
+                LegendShadowTargetFormulation.SupportedForShadowEvaluation,
+                StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(formulation.Text) ||
+            formulation.Realizations.Count == 0)
+        {
+            return null;
+        }
+
+        var pairKey = LegendLanguageIdentity.PairKey(source, target);
+
+        // Phase 4C adds only the missing production-level structural gate.
+        // Formulation evidence alone cannot authorize serving.
+        var hasProductionStructuralAuthority = await _db
+            .Set<LegendLanguageStructuralRelationship>()
+            .AsNoTracking()
+            .AnyAsync(
+                item =>
+                    item.PairKey == pairKey &&
+                    item.LanguageCode == target &&
+                    item.SupersededUtc == null &&
+                    (item.MaturityState == "Supported" ||
+                     item.MaturityState == "Validated") &&
+                    item.SupportCount >= 3 &&
+                    item.IndependentSourceCount >= 3 &&
+                    item.HumanVerifiedSupportCount >= 3 &&
+                    item.ProviderOnlySupportCount == 0 &&
+                    item.ContradictionCount == 0 &&
+                    item.IsProductionEligible,
+                cancellationToken);
+
+        if (!hasProductionStructuralAuthority)
             return null;
 
-        // Querying the maturity gate keeps its runtime boundary explicit and
-        // auditable. There is intentionally no text generator in this phase;
-        // no result may be returned merely because evidence exists.
-        var pairKey = LegendLanguageIdentity.PairKey(source, target);
-        _ = await _db.Set<LegendLanguageStructuralPattern>().AsNoTracking().AnyAsync(item =>
-            item.PairKey == pairKey && item.LanguageCode == target && item.SupersededUtc == null &&
-            item.MaturityState == "Validated" && item.IsProductionEligible,
-            cancellationToken);
-        return null;
+        return new LegendContextualTranslationSuggestion(
+            formulation.Text,
+            1.0m);
     }
 
     /// <summary>
