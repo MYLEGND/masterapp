@@ -1256,11 +1256,12 @@ internal sealed class LegendConnectCorpusService
 /// </summary>
 internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
 {
-    // v8 recomputes production eligibility for the existing Founder-backed
-    // structural evidence graph. Historical source families and alignments
-    // traverse the same maturity/candidate authorities as present and future
-    // evidence before the existing provider and operational phases complete.
-    internal const int Current = 8;
+    // v9 replays historical language intelligence through the same canonical
+    // evaluator after the Phase 4 structural-identity, formulation, and
+    // production-eligibility corrections. Existing source families,
+    // alignments, provider observations, and operational translations converge
+    // under the same rules used by present and future evidence.
+    internal const int Current = 9;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService
