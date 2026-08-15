@@ -21,6 +21,329 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectCompositionalUnderstandingTests
 {
     [Fact]
+    public async Task UnseenSourceSemanticFrameIsDerivedFromFounderEvidenceWithoutTargetOrProviderInput()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        await SeedSupportedCompositionAsync(fixture);
+
+        const string unseenSource = "I affirmative combine packets.";
+
+        Assert.False(await db.LegendLanguageTextUnits.AnyAsync(item =>
+            item.LanguageCode == "en" &&
+            item.Text == unseenSource));
+
+        var before = Counts(
+            await db.LegendLanguageStructuralPatterns.ToListAsync(),
+            await db.LegendLanguageStructuralRelationships.ToListAsync(),
+            await db.LegendLanguageStructuralEvidence.ToListAsync());
+
+        var anchorCountBefore =
+            await db.LegendLanguageCompositionalAnchors.CountAsync();
+        var textUnitCountBefore =
+            await db.LegendLanguageTextUnits.CountAsync();
+
+        var understood =
+            await fixture.Curriculum.AnalyzeShadowSourceSemanticsAsync(
+                "en",
+                unseenSource);
+
+        Assert.Equal(
+            LegendShadowSourceUnderstanding.SupportedForShadowEvaluation,
+            understood.State);
+        Assert.False(understood.IsProductionEligible);
+
+        Assert.Collection(
+            understood.Components,
+            item =>
+            {
+                Assert.Equal("agent", item.Dimension);
+                Assert.Equal("I", item.Value);
+                Assert.Equal("i", item.SurfaceForm);
+                Assert.Equal(0, item.StartTokenIndex);
+                Assert.Equal(1, item.TokenLength);
+            },
+            item =>
+            {
+                Assert.Equal("polarity", item.Dimension);
+                Assert.Equal("affirmative", item.Value);
+                Assert.Equal("affirmative", item.SurfaceForm);
+                Assert.Equal(1, item.StartTokenIndex);
+                Assert.Equal(1, item.TokenLength);
+            },
+            item =>
+            {
+                Assert.Equal("predicate", item.Dimension);
+                Assert.Equal("combine", item.Value);
+                Assert.Equal("combine", item.SurfaceForm);
+                Assert.Equal(2, item.StartTokenIndex);
+                Assert.Equal(1, item.TokenLength);
+            },
+            item =>
+            {
+                Assert.Equal("object", item.Dimension);
+                Assert.Equal("packets", item.Value);
+                Assert.Equal("packets", item.SurfaceForm);
+                Assert.Equal(3, item.StartTokenIndex);
+                Assert.Equal(1, item.TokenLength);
+            });
+
+        Assert.Contains(
+            "complete_founder_backed_source_semantic_coverage",
+            understood.Reasons);
+
+        Assert.Equal(
+            before,
+            Counts(
+                await db.LegendLanguageStructuralPatterns.ToListAsync(),
+                await db.LegendLanguageStructuralRelationships.ToListAsync(),
+                await db.LegendLanguageStructuralEvidence.ToListAsync()));
+
+        Assert.Equal(
+            anchorCountBefore,
+            await db.LegendLanguageCompositionalAnchors.CountAsync());
+
+        Assert.Equal(
+            textUnitCountBefore,
+            await db.LegendLanguageTextUnits.CountAsync());
+
+        // Phase 4A still cannot formulate or serve.
+        Assert.Null(
+            await fixture.Curriculum.TryComposeAsync(
+                "en",
+                "x-test",
+                unseenSource));
+    }
+
+    [Fact]
+    public async Task SourceUnderstandingFailsClosedForUnknownOrAmbiguousSemantics()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        await SeedSupportedCompositionAsync(fixture);
+
+        var unknown =
+            await fixture.Curriculum.AnalyzeShadowSourceSemanticsAsync(
+                "en",
+                "I affirmative combine mysteries.");
+
+        Assert.Equal(
+            LegendShadowSourceUnderstanding.InsufficientEvidence,
+            unknown.State);
+        Assert.False(unknown.IsProductionEligible);
+        Assert.Empty(unknown.Components);
+        Assert.Contains(
+            "source_semantic_component_unknown",
+            unknown.Reasons);
+
+        var sourceExample = await (
+            from example in db.LegendCurriculumExamples
+            join unit in db.LegendLanguageTextUnits
+                on example.TextUnitId equals unit.Id
+            where example.LanguageCode == "en" &&
+                example.DerivedFromCurriculumExampleId == null &&
+                unit.Text.StartsWith(
+                    "I affirmative ",
+                    StringComparison.Ordinal)
+            select new
+            {
+                Example = example,
+                Unit = unit
+            }
+        ).FirstAsync();
+
+        var firstOccurrence =
+            await db.LegendLanguageLexicalOccurrences
+                .Where(item =>
+                    item.TextUnitId == sourceExample.Unit.Id &&
+                    item.TokenIndex == 0 &&
+                    item.SupersededUtc == null)
+                .SingleAsync();
+
+        db.LegendLanguageCompositionalAnchors.Add(
+            new LegendLanguageCompositionalAnchor
+            {
+                Id = Guid.NewGuid(),
+                LanguageCode = "en",
+                TextUnitId = sourceExample.Unit.Id,
+                LexemeId = firstOccurrence.LexemeId,
+                ComponentStartTokenIndex = 0,
+                ComponentLength = 1,
+                CurriculumFamilyId =
+                    sourceExample.Example.CurriculumFamilyId,
+                CurriculumExampleId =
+                    sourceExample.Example.Id,
+                Dimension = "speaker-role",
+                Value = "speaker",
+                SemanticSignature = SemanticSignature(
+                    "speaker-role",
+                    "speaker"),
+                AnchorSignature = LegendLanguageIdentity.TextHash(
+                    $"phase4a-ambiguity|" +
+                    $"{sourceExample.Example.Id:D}"),
+                Provenance = "FounderApproved"
+            });
+
+        await db.SaveChangesAsync();
+
+        var ambiguous =
+            await fixture.Curriculum.AnalyzeShadowSourceSemanticsAsync(
+                "en",
+                "I affirmative combine packets.");
+
+        Assert.Equal(
+            LegendShadowSourceUnderstanding.Ambiguous,
+            ambiguous.State);
+        Assert.False(ambiguous.IsProductionEligible);
+        Assert.Empty(ambiguous.Components);
+        Assert.Contains(
+            "ambiguous_source_semantic_identity",
+            ambiguous.Reasons);
+
+        Assert.Null(
+            await fixture.Curriculum.TryComposeAsync(
+                "en",
+                "x-test",
+                "I affirmative combine packets."));
+    }
+
+    [Fact]
+    public async Task UnseenSourceCanBeIndependentlyFormulatedFromVerifiedTargetEvidenceWithoutExactMemoryOrProviderInput()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        await SeedSupportedCompositionAsync(fixture);
+
+        const string unseenSource = "I affirmative combine packets.";
+        var heldOut = HeldOutRequest();
+
+        // This must remain a true holdout. LEGEND may know each component and
+        // target-language structure independently, but it may not already have
+        // the complete source→target sentence stored as a trusted alignment.
+        var exactAlignmentExists = await db.LegendTranslationAlignments
+            .Where(item =>
+                item.PairKey == "en:x-test" &&
+                item.HumanVerified &&
+                item.SupersededUtc == null)
+            .Join(
+                db.LegendLanguageTextUnits,
+                alignment => alignment.SourceTextUnitId,
+                unit => unit.Id,
+                (alignment, unit) => new
+                {
+                    Alignment = alignment,
+                    SourceText = unit.Text
+                })
+            .Join(
+                db.LegendLanguageTextUnits,
+                item => item.Alignment.TargetTextUnitId,
+                unit => unit.Id,
+                (item, unit) => new
+                {
+                    item.SourceText,
+                    TargetText = unit.Text
+                })
+            .AnyAsync(item =>
+                item.SourceText == unseenSource &&
+                item.TargetText == heldOut.ProposedTargetText);
+
+        Assert.False(exactAlignmentExists);
+
+        var before = (
+            TextUnits: await db.LegendLanguageTextUnits.CountAsync(),
+            Alignments: await db.LegendTranslationAlignments.CountAsync(),
+            Candidates: await db.LegendLanguageTargetRealizationCandidates.CountAsync(),
+            CandidateEvidence: await db.LegendLanguageTargetRealizationEvidence.CountAsync(),
+            Patterns: await db.LegendLanguageStructuralPatterns.CountAsync(),
+            Relationships: await db.LegendLanguageStructuralRelationships.CountAsync(),
+            StructuralEvidence: await db.LegendLanguageStructuralEvidence.CountAsync());
+
+        var formulation = await fixture.Curriculum.FormulateShadowTargetAsync(
+            "en",
+            "x-test",
+            unseenSource);
+
+
+        Assert.Equal(
+            LegendShadowTargetFormulation.SupportedForShadowEvaluation,
+            formulation.State);
+
+        Assert.False(formulation.IsProductionEligible);
+
+        Assert.Equal(
+            heldOut.ProposedTargetText,
+            formulation.Text);
+
+        Assert.Equal(4, formulation.Realizations.Count);
+
+        Assert.Collection(
+            formulation.Realizations
+                .OrderBy(item => item.ObservedTargetStartTokenIndex),
+            item =>
+            {
+                Assert.Equal("agent", item.Dimension);
+                Assert.Equal("I", item.Value);
+                Assert.Equal("za", item.SurfaceForm);
+                Assert.Equal(0, item.ObservedTargetStartTokenIndex);
+            },
+            item =>
+            {
+                Assert.Equal("polarity", item.Dimension);
+                Assert.Equal("affirmative", item.Value);
+                Assert.Equal("affirmative", item.SurfaceForm);
+                Assert.Equal(1, item.ObservedTargetStartTokenIndex);
+            },
+            item =>
+            {
+                Assert.Equal("predicate", item.Dimension);
+                Assert.Equal("combine", item.Value);
+                Assert.Equal("combine", item.SurfaceForm);
+                Assert.Equal(2, item.ObservedTargetStartTokenIndex);
+            },
+            item =>
+            {
+                Assert.Equal("object", item.Dimension);
+                Assert.Equal("packets", item.Value);
+                Assert.Equal("packets", item.SurfaceForm);
+                Assert.Equal(3, item.ObservedTargetStartTokenIndex);
+            });
+
+        Assert.Contains(
+            "target_formulated_from_verified_directional_evidence",
+            formulation.Reasons);
+
+        var after = (
+            TextUnits: await db.LegendLanguageTextUnits.CountAsync(),
+            Alignments: await db.LegendTranslationAlignments.CountAsync(),
+            Candidates: await db.LegendLanguageTargetRealizationCandidates.CountAsync(),
+            CandidateEvidence: await db.LegendLanguageTargetRealizationEvidence.CountAsync(),
+            Patterns: await db.LegendLanguageStructuralPatterns.CountAsync(),
+            Relationships: await db.LegendLanguageStructuralRelationships.CountAsync(),
+            StructuralEvidence: await db.LegendLanguageStructuralEvidence.CountAsync());
+
+        // Shadow formulation is read-only and deterministic.
+        Assert.Equal(before, after);
+
+        var replay = await fixture.Curriculum.FormulateShadowTargetAsync(
+            "en",
+            "x-test",
+            unseenSource);
+
+        Assert.Equal(formulation.State, replay.State);
+        Assert.Equal(formulation.Text, replay.Text);
+        Assert.Equal(
+            formulation.Realizations,
+            replay.Realizations);
+
+        // Production serving remains deliberately closed.
+        Assert.Null(
+            await fixture.Curriculum.TryComposeAsync(
+                "en",
+                "x-test",
+                unseenSource));
+    }
+
+    [Fact]
     public async Task HeldOutCompositionUsesActiveFounderEvidenceAndCorrectionPropagationWithoutProducingOutput()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -157,39 +480,203 @@ public sealed class LegendConnectCompositionalUnderstandingTests
 
     private static async Task SeedSupportedCompositionAsync(CompositionFixture fixture)
     {
+        // Keep only two independent ordinary families. The orthogonal
+        // predicate/object families below also contribute independent
+        // agent/polarity evidence, so the former four-family matrix produced
+        // far more support than the production maturity gates require.
         foreach (var (familyKey, predicate, @object) in new[]
         {
             ("composition.observe.records", "observe", "records"),
-            ("composition.review.reports", "review", "reports"),
-            ("composition.combine.notes", "combine", "notes"),
-            ("composition.inspect.packets", "inspect", "packets")
+            ("composition.review.reports", "review", "reports")
         })
         {
-            var batch = new LegendConnectCurriculumBatchSubmission(familyKey, "Controlled composition evidence",
-            [
-                Source("I", "affirmative", predicate, @object),
-                Source("You", "affirmative", predicate, @object),
-                Source("I", "negative", predicate, @object),
-                Source("You", "negative", predicate, @object)
-            ]);
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
-            foreach (var (agent, polarity) in new[]
-                { ("I", "affirmative"), ("You", "affirmative"), ("I", "negative"), ("You", "negative") })
-            {
-                var sourceText = SourceText(agent, polarity, predicate, @object);
-                var sourceId = await fixture.Db.LegendLanguageTextUnits
-                    .Where(item => item.LanguageCode == "en" && item.Text == sourceText)
-                    .Select(item => item.Id)
-                    .SingleAsync();
-                var target = $"{AgentSurface(agent)} {polarity} {predicate} {@object}";
-                var result = await fixture.Operations.SubmitFounderKnowledgeAsync("founder", new LegendConnectKnowledgeSubmission(
-                    "en", sourceText, "x-test", target, "Training", null, null, "FounderApproved"),
-                    reusableSourceTextUnitId: sourceId);
-                Assert.True(result.Succeeded, result.Message);
-            }
+            await SubmitControlledCompositionFamilyAsync(
+                fixture,
+                familyKey,
+                predicates: [predicate],
+                objects: [@object]);
         }
+
+        // Isolate the held-out predicate using the smallest controlled matrix
+        // that still supplies multiple independent Founder-verified contrasts.
+        // "combine packets" itself remains absent.
+        await SubmitControlledCompositionFamilyAsync(
+            fixture,
+            "composition.orthogonal.predicate",
+            predicates: ["combine", "inspect"],
+            objects: ["notes"]);
+
+        // Independently isolate the held-out object while keeping predicate
+        // fixed. Again, the held-out combine+packets pair is never supplied.
+        await SubmitControlledCompositionFamilyAsync(
+            fixture,
+            "composition.orthogonal.object",
+            predicates: ["inspect"],
+            objects: ["notes", "packets"]);
+
+        // Each Founder submission already enters the canonical curriculum
+        // attachment/evaluation path. Complete missing controlled target
+        // anchors, then verify the resulting candidates through the existing
+        // Founder review authority.
         await AddFounderTargetAnchorsAsync(fixture.Db, "x-test");
+        await VerifySupportedTargetRealizationsAsync(fixture);
+
+        // Founder verification creates canonical target anchors and may alter
+        // structural maturity. One final replay is sufficient to converge the
+        // same evaluator before the held-out assertions run.
         await fixture.Curriculum.ReevaluateHistoricalAlignmentsAsync(100);
+    }
+
+    private static async Task SubmitControlledCompositionFamilyAsync(
+        CompositionFixture fixture,
+        string familyKey,
+        IReadOnlyCollection<string> predicates,
+        IReadOnlyCollection<string> objects)
+    {
+        var examples = (
+            from predicate in predicates
+            from @object in objects
+            from agent in new[] { "I", "You" }
+            from polarity in new[] { "affirmative", "negative" }
+            select Source(agent, polarity, predicate, @object)
+        ).ToArray();
+
+        var batch = new LegendConnectCurriculumBatchSubmission(
+            familyKey,
+            "Controlled composition evidence",
+            examples);
+
+        var submitted =
+            await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch);
+
+        Assert.True(submitted.Succeeded, submitted.Message);
+
+        foreach (var example in examples)
+        {
+            var sourceText = example.Text;
+
+            // Parse only the TEST fixture's known synthetic source convention.
+            // No equivalent branch exists in production.
+            var parts = sourceText
+                .TrimEnd('.')
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            Assert.Equal(4, parts.Length);
+
+            var agent = parts[0];
+            var polarity = parts[1];
+            var predicate = parts[2];
+            var @object = parts[3];
+
+            // Never seed the held-out source/target pair.
+            Assert.False(
+                agent == "I" &&
+                polarity == "affirmative" &&
+                predicate == "combine" &&
+                @object == "packets");
+
+            var sourceId = await fixture.Db.LegendLanguageTextUnits
+                .Where(item =>
+                    item.LanguageCode == "en" &&
+                    item.Text == sourceText)
+                .Select(item => item.Id)
+                .SingleAsync();
+
+            var targetText =
+                $"{AgentSurface(agent)} {polarity} {predicate} {@object}";
+
+            var alreadyAligned = await (
+                from alignment in fixture.Db.LegendTranslationAlignments
+                join target in fixture.Db.LegendLanguageTextUnits
+                    on alignment.TargetTextUnitId equals target.Id
+                where alignment.PairKey == "en:x-test" &&
+                    alignment.SourceTextUnitId == sourceId &&
+                    alignment.HumanVerified &&
+                    alignment.SupersededUtc == null &&
+                    target.Text == targetText
+                select alignment.Id
+            ).AnyAsync();
+
+            if (alreadyAligned)
+                continue;
+
+            var result =
+                await fixture.Operations.SubmitFounderKnowledgeAsync(
+                    "founder",
+                    new LegendConnectKnowledgeSubmission(
+                        "en",
+                        sourceText,
+                        "x-test",
+                        targetText,
+                        "Training",
+                        null,
+                        null,
+                        "FounderApproved"),
+                    reusableSourceTextUnitId: sourceId);
+
+            Assert.True(result.Succeeded, result.Message);
+        }
+    }
+
+    private static async Task VerifySupportedTargetRealizationsAsync(
+        CompositionFixture fixture)
+    {
+        var candidateIds = await fixture.Db
+            .LegendLanguageTargetRealizationCandidates
+            .Where(item =>
+                item.PairKey == "en:x-test" &&
+                item.SupersededUtc == null &&
+                item.VerificationState == "Candidate" &&
+                item.HumanVerifiedSupportCount >= 3 &&
+                item.IndependentSourceCount >= 3 &&
+                item.ProviderOnlySupportCount == 0 &&
+                item.ContradictionCount == 0)
+            .OrderBy(item => item.VariationDimension)
+            .ThenBy(item => item.SemanticValue)
+            .Select(item => item.Id)
+            .ToListAsync();
+
+        Assert.NotEmpty(candidateIds);
+
+        foreach (var candidateId in candidateIds)
+        {
+            var verified =
+                await fixture.Curriculum.VerifyTargetRealizationCandidateAsync(
+                    "founder",
+                    candidateId);
+
+            Assert.True(verified.Succeeded, verified.Message);
+        }
+
+        var supported = await fixture.Db
+            .LegendLanguageTargetRealizationCandidates
+            .Where(item =>
+                item.PairKey == "en:x-test" &&
+                item.SupersededUtc == null &&
+                item.VerificationState == "FounderVerified" &&
+                item.MaturityState == "Supported" &&
+                item.IsProductionEligible)
+            .ToListAsync();
+
+        // The proof is dimension-generic. These assertions live only in the
+        // synthetic fixture and demonstrate that every supplied semantic
+        // dimension can mature through the same production authority.
+        Assert.Contains(
+            supported,
+            item => item.VariationDimension == "agent" &&
+                    item.SemanticValue == "I");
+        Assert.Contains(
+            supported,
+            item => item.VariationDimension == "polarity" &&
+                    item.SemanticValue == "affirmative");
+        Assert.Contains(
+            supported,
+            item => item.VariationDimension == "predicate" &&
+                    item.SemanticValue == "combine");
+        Assert.Contains(
+            supported,
+            item => item.VariationDimension == "object" &&
+                    item.SemanticValue == "packets");
     }
 
     private static async Task<ConflictFixture> AddConflictingAgentFamilyAsync(CompositionFixture fixture)
@@ -227,17 +714,27 @@ public sealed class LegendConnectCompositionalUnderstandingTests
         ).ToListAsync();
         foreach (var target in targets)
         {
-            if (await db.LegendLanguageCompositionalAnchors.AnyAsync(item =>
-                item.CurriculumExampleId == target.Example.Id && item.SupersededUtc == null))
-            {
-                continue;
-            }
             var variations = await db.LegendCurriculumExampleVariations
                 .Where(item => item.CurriculumExampleId == target.Example.Id)
                 .ToDictionaryAsync(item => item.Dimension, item => item.Value);
             var tokens = target.Unit.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             foreach (var variation in variations)
             {
+                var semanticSignature = SemanticSignature(variation.Key, variation.Value);
+
+                // A target example may already contain a canonical anchor created
+                // by the real candidate-verification authority. Preserve it and
+                // fill only the missing controlled dimensions required to make
+                // this synthetic fixture's known composition explicit.
+                var alreadyAnchored = await db.LegendLanguageCompositionalAnchors.AnyAsync(item =>
+                    item.CurriculumExampleId == target.Example.Id &&
+                    item.Dimension == variation.Key &&
+                    item.SemanticSignature == semanticSignature &&
+                    item.SupersededUtc == null);
+
+                if (alreadyAnchored)
+                    continue;
+
                 var surface = variation.Key == "agent" ? AgentSurface(variation.Value) : variation.Value.ToLowerInvariant();
                 var index = Array.FindIndex(tokens, item => string.Equals(item, surface, StringComparison.OrdinalIgnoreCase));
                 Assert.True(index >= 0, $"Expected surface '{surface}' in '{target.Unit.Text}'.");
@@ -250,7 +747,7 @@ public sealed class LegendConnectCompositionalUnderstandingTests
                     ComponentStartTokenIndex = index, ComponentLength = 1,
                     CurriculumFamilyId = target.Example.CurriculumFamilyId, CurriculumExampleId = target.Example.Id,
                     Dimension = variation.Key, Value = variation.Value,
-                    SemanticSignature = SemanticSignature(variation.Key, variation.Value),
+                    SemanticSignature = semanticSignature,
                     AnchorSignature = LegendLanguageIdentity.TextHash($"composition-anchor|{target.Example.Id:D}|{variation.Key}"),
                     Provenance = "FounderApproved"
                 });
