@@ -423,12 +423,13 @@ public sealed class FounderLegendConnectService
         CancellationToken cancellationToken = default)
     {
         var founder = await ResolveFounderActorAsync(user, cancellationToken);
-        if (!TryToCurriculumSubmission(input, out var submission, out var error))
+        if (!TryToCurriculumManifest(input, out var submission, out var error))
         {
             return new LegendConnectCurriculumSubmissionResult(
-                false, false, "invalid_curriculum_examples", error, input.FamilyKey?.Trim(), null, 0, 0);
+                false, false, "invalid_curriculum_manifest", error, null, null, 0, 0);
         }
-        return await _operations.SubmitFounderCurriculumAsync(founder, submission!, cancellationToken);
+
+        return await _operations.SubmitFounderCurriculumManifestAsync(founder, submission!, cancellationToken);
     }
 
     private static LegendConnectKnowledgeSubmission ToSubmission(FounderLegendConnectKnowledgeInput input) => new(
@@ -485,47 +486,138 @@ public sealed class FounderLegendConnectService
         return true;
     }
 
-    private static bool TryToCurriculumSubmission(
+    /// <summary>
+    /// Parses only explicit Founder-authored family boundaries. It does not
+    /// infer semantic families or duplicate core curriculum validation.
+    ///
+    /// Format:
+    /// @family conversation.greeting.basic | Conversation greeting
+    /// Hi. | function=greeting; intent=start_conversation
+    /// Hello. | function=greeting; intent=start_conversation
+    /// @end
+    /// </summary>
+    private static bool TryToCurriculumManifest(
         FounderLegendConnectCurriculumInput input,
-        out LegendConnectCurriculumBatchSubmission? submission,
+        out LegendConnectCurriculumManifestSubmission? submission,
         out string? error)
     {
         submission = null;
         error = null;
-        var examples = new List<LegendConnectCurriculumExampleSubmission>();
-        var lines = input.Examples?
+
+        var lines = input.Manifest?
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             ?? [];
-        foreach (var line in lines)
+        if (lines.Length == 0)
         {
+            error = "Enter at least one explicit @family ... @end curriculum block.";
+            return false;
+        }
+
+        var families = new List<LegendConnectCurriculumBatchSubmission>();
+        var seenFamilyKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string? familyKey = null;
+        string? semanticCategory = null;
+        List<LegendConnectCurriculumExampleSubmission>? examples = null;
+
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var line = lines[index];
+            if (line.StartsWith("@family ", StringComparison.OrdinalIgnoreCase))
+            {
+                if (familyKey is not null)
+                {
+                    error = $"Line {index + 1}: close family '{familyKey}' with @end before starting another family.";
+                    return false;
+                }
+
+                var header = line["@family ".Length..].Trim();
+                var headerParts = header.Split('|', 2, StringSplitOptions.TrimEntries);
+                if (headerParts.Length == 0 || string.IsNullOrWhiteSpace(headerParts[0]))
+                {
+                    error = $"Line {index + 1}: use @family family.key | Semantic category.";
+                    return false;
+                }
+
+                familyKey = headerParts[0];
+                semanticCategory = headerParts.Length == 2 && !string.IsNullOrWhiteSpace(headerParts[1])
+                    ? headerParts[1]
+                    : null;
+                if (!seenFamilyKeys.Add(familyKey))
+                {
+                    error = $"Line {index + 1}: family '{familyKey}' appears more than once in this manifest. Put all controlled examples for that family in one block.";
+                    return false;
+                }
+
+                examples = [];
+                continue;
+            }
+
+            if (string.Equals(line, "@end", StringComparison.OrdinalIgnoreCase))
+            {
+                if (familyKey is null || examples is null)
+                {
+                    error = $"Line {index + 1}: @end has no open @family block.";
+                    return false;
+                }
+
+                families.Add(new LegendConnectCurriculumBatchSubmission(
+                    familyKey,
+                    semanticCategory,
+                    examples));
+                familyKey = null;
+                semanticCategory = null;
+                examples = null;
+                continue;
+            }
+
+            if (familyKey is null || examples is null)
+            {
+                error = $"Line {index + 1}: curriculum examples must be inside an explicit @family ... @end block.";
+                return false;
+            }
+
             var parts = line.Split('|', 2, StringSplitOptions.TrimEntries);
             if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]))
             {
-                error = "Enter each example as English text | dimension=value; dimension=value.";
+                error = $"Line {index + 1}: enter each example as English text | dimension=value; dimension=value.";
                 return false;
             }
+
             var variations = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in parts[1].Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
                 var pair = item.Split('=', 2, StringSplitOptions.TrimEntries);
-                if (pair.Length != 2 || string.IsNullOrWhiteSpace(pair[0]) || string.IsNullOrWhiteSpace(pair[1]) ||
+                if (pair.Length != 2 ||
+                    string.IsNullOrWhiteSpace(pair[0]) ||
+                    string.IsNullOrWhiteSpace(pair[1]) ||
                     !variations.TryAdd(pair[0], pair[1]))
                 {
-                    error = "Each controlled variation must use dimension=value and dimensions cannot repeat within an example.";
+                    error = $"Line {index + 1}: controlled variations must use unique dimension=value entries separated by semicolons.";
                     return false;
                 }
             }
+
             if (variations.Count == 0)
             {
-                error = "Each curriculum example needs at least one controlled variation.";
+                error = $"Line {index + 1}: each curriculum example needs at least one controlled variation.";
                 return false;
             }
+
             examples.Add(new LegendConnectCurriculumExampleSubmission(parts[0], variations));
         }
-        submission = new LegendConnectCurriculumBatchSubmission(
-            input.FamilyKey,
-            input.SemanticCategory,
-            examples);
+
+        if (familyKey is not null)
+        {
+            error = $"Family '{familyKey}' is missing its closing @end.";
+            return false;
+        }
+        if (families.Count == 0)
+        {
+            error = "The curriculum manifest did not contain a complete @family ... @end block.";
+            return false;
+        }
+
+        submission = new LegendConnectCurriculumManifestSubmission(families);
         return true;
     }
 

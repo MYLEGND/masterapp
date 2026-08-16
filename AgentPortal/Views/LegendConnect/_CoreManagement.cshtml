@@ -127,17 +127,33 @@
     </form>
 
     <details class="legend-connect-disclosure legend-connect-disclosure--curriculum">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title">Teach an English semantic family</span></span><span class="legend-connect-disclosure-status">Curriculum</span></summary>
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title">Teach English conversation semantics</span></span><span class="legend-connect-disclosure-status">Curriculum</span></summary>
         <div class="legend-connect-disclosure-body">
-            <p class="dashboard-section-copy">Teach only deliberate semantic distinctions. Evidence remains language-isolated and production-gated.</p>
+            <p class="dashboard-section-copy">
+                Teach multiple explicit semantic families in one Founder curriculum. Each family remains independently language-isolated and production-gated.
+                Declare every family yourself; LEGEND will not guess, merge, silently split, or truncate semantic families.
+            </p>
+            <div class="dashboard-search-panel" role="note" aria-label="Curriculum authoring rules">
+                <strong>Internal authoring rules</strong>
+                <p class="dashboard-section-copy">
+                    Use <code>@@family family.key | Semantic category</code>, then 2–100 distinct controlled English examples, then <code>@@end</code>.
+                    Keep different conversational functions—greeting, response, clarification, request, disagreement, closing, and others—in separate deliberate families.
+                    The existing curriculum authority, canonical corpus, Azure expansion, evidence maturity, contradiction handling, and production gates remain the only learning path.
+                </p>
+            </div>
             <form method="post" asp-action="SubmitCurriculum" class="dashboard-search-panel">
                 @Html.AntiForgeryToken()
                 <div class="dashboard-form-grid">
-                    <label class="dashboard-form-field"><span>Family key</span><input name="FamilyKey" required maxlength="160" placeholder="possession.basic" /></label>
-                    <label class="dashboard-form-field"><span>Semantic category</span><input name="SemanticCategory" maxlength="120" placeholder="Possession" /></label>
-                    <label class="dashboard-form-field dashboard-form-field--wide"><span>English examples and controlled variations</span><textarea name="Examples" required maxlength="30000" placeholder="The child reads the book. | subject=child; action=reads; object=book; time=present; intent=statement&#10;The child read the book yesterday. | subject=child; action=read; object=book; time=past; intent=statement"></textarea></label>
+                    <label class="dashboard-form-field dashboard-form-field--wide">
+                        <span>English semantic curriculum manifest</span>
+                        <textarea name="Manifest" required maxlength="120000" spellcheck="false"
+                            placeholder="@@family conversation.greeting.basic | Conversation greeting&#10;Hi. | function=greeting; intent=start_conversation; tone=neutral&#10;Hello. | function=greeting; intent=start_conversation; tone=neutral&#10;@@end&#10;&#10;@@family conversation.wellbeing.inquiry | Wellbeing inquiry&#10;How are you? | function=wellbeing_inquiry; intent=request_wellbeing; tone=neutral&#10;How are you doing? | function=wellbeing_inquiry; intent=request_wellbeing; tone=friendly&#10;@@end"></textarea>
+                        <small>
+                            Every family is preflighted before any family is written. One invalid family rejects the entire manifest with zero partial curriculum mutation.
+                        </small>
+                    </label>
                 </div>
-                <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save curriculum family</button></div>
+                <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Validate and save curriculum</button></div>
             </form>
         </div>
     </details>

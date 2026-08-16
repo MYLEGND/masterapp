@@ -171,6 +171,150 @@ public sealed class LegendConnectCurriculumTests
         Assert.Empty(await db.LegendCurriculumFamilies.ToListAsync());
     }
 
+    [Fact]
+    public async Task FounderCurriculumManifest_MultipleFamiliesCommitThroughExistingAuthority()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+
+        var result = await operations.SubmitFounderCurriculumManifestAsync(
+            "founder-test",
+            new LegendConnectCurriculumManifestSubmission(
+            [
+                ConversationBatch(
+                    "conversation.greeting.basic",
+                    "Conversation greeting",
+                    ("Hi.", "greeting"),
+                    ("Hello.", "greeting")),
+                ConversationBatch(
+                    "conversation.clarification.basic",
+                    "Conversation clarification",
+                    ("What do you mean?", "clarification_request"),
+                    ("Can you explain that?", "clarification_request"))
+            ]));
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(2, await db.LegendCurriculumFamilies.CountAsync());
+        Assert.Equal(4, await db.LegendCurriculumExamples.CountAsync(item => item.LanguageCode == "en"));
+        Assert.Equal(4, result.EnglishExampleCount);
+    }
+
+    [Fact]
+    public async Task FounderCurriculumManifest_InvalidLaterFamilyCausesZeroPartialMutation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+
+        var result = await operations.SubmitFounderCurriculumManifestAsync(
+            "founder-test",
+            new LegendConnectCurriculumManifestSubmission(
+            [
+                ConversationBatch(
+                    "conversation.greeting.basic",
+                    "Conversation greeting",
+                    ("Hi.", "greeting"),
+                    ("Hello.", "greeting")),
+                ConversationBatch(
+                    "conversation.invalid.single",
+                    "Invalid single example",
+                    ("Only one example.", "statement"))
+            ]));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("invalid_curriculum_examples", result.ErrorCode);
+        Assert.Empty(await db.LegendCurriculumFamilies.ToListAsync());
+        Assert.Empty(await db.LegendCurriculumExamples.ToListAsync());
+        Assert.Empty(await db.LegendLanguageTextUnits.ToListAsync());
+    }
+
+    [Fact]
+    public async Task FounderCurriculumManifest_RejectsFamilyOverOneHundredExamplesBeforeMutation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+
+        var oversized = new LegendConnectCurriculumBatchSubmission(
+            "conversation.oversized",
+            "Conversation test",
+            Enumerable.Range(1, 101)
+                .Select(index => new LegendConnectCurriculumExampleSubmission(
+                    $"Utterance {index}.",
+                    new Dictionary<string, string> { ["function"] = $"variation_{index}" }))
+                .ToArray());
+
+        var result = await operations.SubmitFounderCurriculumManifestAsync(
+            "founder-test",
+            new LegendConnectCurriculumManifestSubmission([oversized]));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("invalid_curriculum_examples", result.ErrorCode);
+        Assert.Empty(await db.LegendCurriculumFamilies.ToListAsync());
+        Assert.Empty(await db.LegendLanguageTextUnits.ToListAsync());
+    }
+
+    [Fact]
+    public async Task FounderCurriculumManifest_RejectsConflictingSemanticCategoryForExistingFamily()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+
+        var first = await curriculum.SubmitFounderEnglishBatchAsync(
+            ConversationBatch(
+                "conversation.greeting.basic",
+                "Conversation greeting",
+                ("Hi.", "greeting"),
+                ("Hello.", "greeting")));
+        Assert.True(first.Succeeded, first.Message);
+        var originalTextUnitCount = await db.LegendLanguageTextUnits.CountAsync();
+
+        var result = await operations.SubmitFounderCurriculumManifestAsync(
+            "founder-test",
+            new LegendConnectCurriculumManifestSubmission(
+            [
+                ConversationBatch(
+                    "conversation.greeting.basic",
+                    "Unrelated apology category",
+                    ("Hey.", "greeting"),
+                    ("Hey there.", "greeting"))
+            ]));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("curriculum_family_category_conflict", result.ErrorCode);
+        Assert.Equal(originalTextUnitCount, await db.LegendLanguageTextUnits.CountAsync());
+        Assert.Single(await db.LegendCurriculumFamilies.ToListAsync());
+    }
+
+    private static LegendConnectCurriculumBatchSubmission ConversationBatch(
+        string familyKey,
+        string category,
+        params (string Text, string Function)[] examples) =>
+        new(
+            familyKey,
+            category,
+            examples.Select(item => new LegendConnectCurriculumExampleSubmission(
+                item.Text,
+                new Dictionary<string, string>
+                {
+                    ["function"] = item.Function,
+                    ["intent"] = item.Function
+                })).ToArray());
+
     private static LegendConnectCurriculumBatchSubmission Batch(string familyKey) => new(
         familyKey,
         "Possession",

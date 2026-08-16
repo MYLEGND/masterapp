@@ -166,6 +166,14 @@ public sealed record LegendConnectCurriculumBatchSubmission(
     string? SemanticCategory,
     IReadOnlyList<LegendConnectCurriculumExampleSubmission> Examples);
 
+/// <summary>
+/// One Founder action may carry multiple explicitly bounded semantic families.
+/// Every family still uses the canonical single-family curriculum submission
+/// and is validated/persisted only by the existing Legend Connect authority.
+/// </summary>
+public sealed record LegendConnectCurriculumManifestSubmission(
+    IReadOnlyList<LegendConnectCurriculumBatchSubmission> Families);
+
 public sealed record LegendConnectCurriculumSubmissionResult(
     bool Succeeded,
     bool DuplicatePrevented,
@@ -660,6 +668,11 @@ public interface ILegendConnectOperations
     Task<LegendConnectQualityReviewActionResult> LeaveProviderObservationUnresolvedAsync(
         string founderUserId,
         Guid alignmentId,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectCurriculumSubmissionResult> SubmitFounderCurriculumManifestAsync(
+        string founderUserId,
+        LegendConnectCurriculumManifestSubmission submission,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectCurriculumSubmissionResult> SubmitFounderCurriculumAsync(

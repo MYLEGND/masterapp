@@ -69,15 +69,14 @@ public sealed class FounderLegendConnectTargetRealizationReviewInput
 }
 
 /// <summary>
-/// Founder form transport for a semantic curriculum family. Examples are
-/// entered one per line as: English text | dimension=value; dimension=value.
-/// Parsing happens at the Founder boundary; persistence remains relational.
+/// Founder form transport for an explicit multi-family English curriculum manifest.
+/// Family boundaries are declared by the Founder; the presentation layer never
+/// guesses, merges, or silently splits semantic families. Core validation and
+/// persistence remain owned by the existing Legend Connect curriculum authority.
 /// </summary>
 public sealed class FounderLegendConnectCurriculumInput
 {
-    public string FamilyKey { get; set; } = string.Empty;
-    public string? SemanticCategory { get; set; }
-    public string Examples { get; set; } = string.Empty;
+    public string Manifest { get; set; } = string.Empty;
 }
 
 public sealed class FounderLegendConnectEntitlementInput

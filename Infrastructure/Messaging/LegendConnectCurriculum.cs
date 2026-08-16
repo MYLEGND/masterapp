@@ -168,7 +168,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         _corpus = corpus;
     }
 
-    public async Task<LegendConnectCurriculumSubmissionResult> SubmitFounderEnglishBatchAsync(
+    /// <summary>
+    /// Preflights one family using the exact same authority and normalization
+    /// rules used by persistence. This method performs no mutation. It exists
+    /// so a multi-family Founder manifest can be validated completely before
+    /// the first family is written.
+    /// </summary>
+    internal async Task<LegendConnectCurriculumSubmissionResult?> PreflightFounderEnglishBatchAsync(
         LegendConnectCurriculumBatchSubmission submission,
         CancellationToken cancellationToken = default)
     {
@@ -176,13 +182,41 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var examples = NormalizeExamples(submission.Examples);
         var english = await _languages.NormalizeEnabledTranslationLanguageAsync("en", cancellationToken);
         if (english is null || !string.Equals(english, "en", StringComparison.OrdinalIgnoreCase))
-        {
             return Rejected("english_training_unavailable", "English must be an enabled direct Founder training language.", familyKey);
-        }
         if (familyKey is null)
-            return Rejected("invalid_curriculum_family", "Use a concise semantic family key such as possession.basic.", null);
+            return Rejected("invalid_curriculum_family", "Use a concise semantic family key such as conversation.greeting.basic.", null);
         if (examples is null)
             return Rejected("invalid_curriculum_examples", "A structured curriculum family requires 2–100 distinct English examples with controlled variations.", familyKey);
+
+        var semanticCategory = NormalizeOptional(submission.SemanticCategory, 120);
+        var existingFamily = await _db.Set<LegendCurriculumFamily>()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.FamilyKey == familyKey, cancellationToken);
+        if (existingFamily is not null &&
+            !string.IsNullOrWhiteSpace(existingFamily.SemanticCategory) &&
+            !string.IsNullOrWhiteSpace(semanticCategory) &&
+            !string.Equals(existingFamily.SemanticCategory, semanticCategory, StringComparison.OrdinalIgnoreCase))
+        {
+            return Rejected(
+                "curriculum_family_category_conflict",
+                $"Family '{familyKey}' is already classified as '{existingFamily.SemanticCategory}'. Use the existing semantic category or a different deliberate family key.",
+                familyKey);
+        }
+
+        return null;
+    }
+
+    public async Task<LegendConnectCurriculumSubmissionResult> SubmitFounderEnglishBatchAsync(
+        LegendConnectCurriculumBatchSubmission submission,
+        CancellationToken cancellationToken = default)
+    {
+        var validation = await PreflightFounderEnglishBatchAsync(submission, cancellationToken);
+        if (validation is not null)
+            return validation;
+
+        var familyKey = NormalizeFamilyKey(submission.FamilyKey)!;
+        var examples = NormalizeExamples(submission.Examples)!;
+        const string english = "en";
 
         LegendCurriculumFamily family;
         try

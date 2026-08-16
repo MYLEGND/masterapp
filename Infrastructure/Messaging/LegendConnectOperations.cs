@@ -2045,6 +2045,94 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         return ToQualityReviewActionResult(result);
     }
 
+    /// <summary>
+    /// Executes one Founder-authored multi-family curriculum manifest without
+    /// introducing a second curriculum engine. Every family is preflighted by
+    /// the existing curriculum authority before any mutation. Only after the
+    /// complete manifest is valid are the same canonical single-family writes
+    /// executed, under one database transaction.
+    /// </summary>
+    public async Task<LegendConnectCurriculumSubmissionResult> SubmitFounderCurriculumManifestAsync(
+        string founderUserId,
+        LegendConnectCurriculumManifestSubmission submission,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = NormalizeFounder(founderUserId);
+        if (founder is null)
+        {
+            return new LegendConnectCurriculumSubmissionResult(
+                false, false, "founder_identity_required",
+                "A verified Founder identity is required.", null, null, 0, 0);
+        }
+
+        var families = submission.Families?.ToArray() ?? [];
+        if (families.Length == 0)
+        {
+            return new LegendConnectCurriculumSubmissionResult(
+                false, false, "empty_curriculum_manifest",
+                "The curriculum manifest must contain at least one explicit semantic family.",
+                null, null, 0, 0);
+        }
+
+        foreach (var family in families)
+        {
+            var validation = await _curriculum.PreflightFounderEnglishBatchAsync(family, cancellationToken);
+            if (validation is not null)
+                return validation;
+        }
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+        var results = new List<LegendConnectCurriculumSubmissionResult>(families.Length);
+        try
+        {
+            foreach (var family in families)
+            {
+                var result = await _curriculum.SubmitFounderEnglishBatchAsync(family, cancellationToken);
+                if (!result.Succeeded)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    _db.ChangeTracker.Clear();
+                    return result;
+                }
+
+                results.Add(result);
+                _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
+                {
+                    Id = Guid.NewGuid(),
+                    FounderUserId = founder,
+                    Action = "FounderCurriculumSubmitted",
+                    Result = result.DuplicatePrevented ? "DuplicatePrevented" : "Succeeded",
+                    LanguageCode = "en",
+                    Detail = Bound(result.Message ?? result.ErrorCode, 500),
+                    OccurredUtc = DateTime.UtcNow
+                });
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            _db.ChangeTracker.Clear();
+            throw;
+        }
+
+        var exampleCount = results.Sum(item => item.EnglishExampleCount);
+        var targetExpansionCount = results.Sum(item => item.TargetExpansionCount);
+        var duplicateFamilies = results.Count(item => item.DuplicatePrevented);
+        return new LegendConnectCurriculumSubmissionResult(
+            true,
+            duplicateFamilies == results.Count,
+            null,
+            $"Saved {results.Count:N0} explicit semantic families with {exampleCount:N0} canonical English examples. " +
+            $"{duplicateFamilies:N0} families were canonical reuse only. Existing language-isolated evidence, Azure expansion, maturity, contradiction, and production gates remain in force.",
+            null,
+            null,
+            exampleCount,
+            targetExpansionCount);
+    }
+
     public async Task<LegendConnectCurriculumSubmissionResult> SubmitFounderCurriculumAsync(
         string founderUserId,
         LegendConnectCurriculumBatchSubmission submission,
