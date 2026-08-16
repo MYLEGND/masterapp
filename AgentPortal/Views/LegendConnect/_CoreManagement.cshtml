@@ -127,18 +127,21 @@
     </form>
 
     <details class="legend-connect-disclosure legend-connect-disclosure--curriculum">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title">Teach English conversation semantics</span></span><span class="legend-connect-disclosure-status">Curriculum</span></summary>
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title">Teach advanced English conversation intelligence</span></span><span class="legend-connect-disclosure-status">Curriculum</span></summary>
         <div class="legend-connect-disclosure-body">
             <p class="dashboard-section-copy">
-                Teach multiple explicit semantic families in one Founder curriculum. Each family remains independently language-isolated and production-gated.
-                Declare every family yourself; LEGEND will not guess, merge, silently split, or truncate semantic families.
+                Train reusable meaning, realization, composition, and discourse—not canned sentences. A manifest may contain many explicit semantic families; every family remains independently language-isolated, evidence-backed, contradiction-aware, and production-gated.
             </p>
-            <div class="dashboard-search-panel" role="note" aria-label="Curriculum authoring rules">
-                <strong>Internal authoring rules</strong>
+            <div class="dashboard-search-panel" role="note" aria-label="Advanced curriculum authoring rules">
+                <strong>Founder authoring standard</strong>
                 <p class="dashboard-section-copy">
-                    Use <code>@@family family.key | Semantic category</code>, then 2–100 distinct controlled English examples, then <code>@@end</code>.
-                    Keep different conversational functions—greeting, response, clarification, request, disagreement, closing, and others—in separate deliberate families.
-                    The existing curriculum authority, canonical corpus, Azure expansion, evidence maturity, contradiction handling, and production gates remain the only learning path.
+                    Use <code>@@family family.key | Semantic category</code>, then 2–100 distinct controlled English examples, then <code>@@end</code>. Build deliberate contrasts across conversation function, intent, polarity, tense/aspect, modality, mood, certainty, register, discourse role, condition, reference, and clause behavior. When meaning is visibly realized in the utterance, also identify exact surface components such as <code>agent=you</code>, <code>predicate=send</code>, <code>object=the document</code>, <code>time_expression=tomorrow</code>, <code>modal_marker=would</code>, or a multi-word <code>phrase=give up</code>. Stable dimensions and exact phrases let the existing structural authority accumulate reusable evidence instead of memorizing sentence shells.
+                </p>
+                <p class="dashboard-section-copy">
+                    Model real interaction: openings, questions and answers, acknowledgment, clarification, repair, requests, offers, permissions, commitments, refusals, agreement and disagreement, negotiation, scheduling, causality, conditions, reference/coreference, embedded clauses, reported speech, idioms, lexical senses, politeness, topic shifts, interruption recovery, summaries, and closings. Vary vocabulary, participants, predicates, objects, sentence length, and context so support comes from independent evidence. Do not label slang, sarcasm, dialect, humor, or culturally specific pragmatics as universal unless the family deliberately scopes that distinction.
+                </p>
+                <p class="dashboard-section-copy">
+                    Declare every family yourself. LEGEND will not guess, merge, silently split, truncate, promote provider repetition to Founder truth, or bypass the canonical curriculum/corpus/evidence/composition/Azure fallback authorities.
                 </p>
             </div>
             <form method="post" asp-action="SubmitCurriculum" class="dashboard-search-panel">
@@ -147,9 +150,9 @@
                     <label class="dashboard-form-field dashboard-form-field--wide">
                         <span>English semantic curriculum manifest</span>
                         <textarea name="Manifest" required maxlength="120000" spellcheck="false"
-                            placeholder="@@family conversation.greeting.basic | Conversation greeting&#10;Hi. | function=greeting; intent=start_conversation; tone=neutral&#10;Hello. | function=greeting; intent=start_conversation; tone=neutral&#10;@@end&#10;&#10;@@family conversation.wellbeing.inquiry | Wellbeing inquiry&#10;How are you? | function=wellbeing_inquiry; intent=request_wellbeing; tone=neutral&#10;How are you doing? | function=wellbeing_inquiry; intent=request_wellbeing; tone=friendly&#10;@@end"></textarea>
+                            placeholder="@@family conversation.request.action | Action request&#10;Could you send the document today? | function=request; intent=request_action; mood=interrogative; register=polite; agent=you; predicate=send; object=the document; time_expression=today; modal_marker=Could&#10;Please send the document today. | function=request; intent=request_action; mood=imperative; register=polite; agent=you; predicate=send; object=the document; time_expression=today&#10;Send the document today. | function=request; intent=request_action; mood=imperative; register=direct; agent=you; predicate=send; object=the document; time_expression=today&#10;@@end&#10;&#10;@@family conversation.clarification.repair | Clarification and repair&#10;What do you mean by that? | function=clarification_request; intent=clarify_meaning; mood=interrogative; agent=you&#10;I mean the meeting tomorrow. | function=clarification_response; intent=clarify_meaning; mood=declarative; agent=I; object=the meeting; time_expression=tomorrow&#10;Do you mean the meeting tomorrow? | function=confirmation_request; intent=confirm_understanding; mood=interrogative; agent=you; object=the meeting; time_expression=tomorrow&#10;No, I mean the call tomorrow. | function=correction; intent=correct_misunderstanding; polarity=negative; mood=declarative; agent=I; object=the call; time_expression=tomorrow&#10;@@end&#10;&#10;@@family conversation.condition.commitment | Conditional commitment&#10;If you call, I will answer. | function=commitment; intent=conditional_commitment; condition_type=real; condition_marker=If; agent=I; predicate=answer; modal_marker=will&#10;If you send the address, I will come. | function=commitment; intent=conditional_commitment; condition_type=real; condition_marker=If; agent=I; predicate=come; object=the address; modal_marker=will&#10;If you called, I would answer. | function=hypothetical_commitment; intent=conditional_commitment; condition_type=hypothetical; condition_marker=If; agent=I; predicate=answer; modal_marker=would&#10;@@end"></textarea>
                         <small>
-                            Every family is preflighted before any family is written. One invalid family rejects the entire manifest with zero partial curriculum mutation.
+                            Preflight is manifest-wide: one invalid family rejects the manifest with zero partial curriculum mutation. Use deliberate semantic dimensions plus exact surface components where known; preserve multi-word phrases; vary independent evidence; never create dimensions merely as decorative metadata.
                         </small>
                     </label>
                 </div>
@@ -157,29 +160,4 @@
             </form>
         </div>
     </details>
-</section>
-
-<section class="category-container legend-connect-active-languages" aria-labelledby="active-languages-title" data-legend-copy-source="active-languages-registry">
-    <div class="category-head"><div><span class="dashboard-section-kicker">Registry health</span><h2 class="dashboard-section-title" id="active-languages-title">Active languages</h2></div><partial name="_CopyButton" model="@("active-languages-registry")" /></div>
-    <div class="dashboard-data-surface">
-        <table class="table dashboard-data-table">
-            <thead><tr><th>Language</th><th>Dataset</th><th>Entries</th><th>Pairs</th><th>Approved / pending candidates</th><th>Provider dependency</th><th>Last provider / Founder expansion</th><th>Health</th></tr></thead>
-            <tbody>
-            @foreach (var language in dashboard.Languages)
-            {
-                var providerDependencyTone = LegendConnectMetricTone.Dependency(language.AzureDependencyRate, language.DemandCount);
-                <tr>
-                    <td><a asp-action="Index" asp-route-language="@language.LanguageCode" aria-haspopup="dialog">@language.DisplayName (@language.LanguageCode)</a></td>
-                    <td><span class="@LegendConnectMetricTone.Info">@language.StoragePartition</span></td>
-                    <td><span class="@LegendConnectMetricTone.BeneficialActivity(language.CanonicalEntryCount)">@language.CanonicalEntryCount</span></td>
-                    <td><span class="@LegendConnectMetricTone.BeneficialActivity(language.DirectionalPairs.Count)">@language.DirectionalPairs.Count</span></td>
-                    <td><span class="@LegendConnectMetricTone.BeneficialActivity(language.ApprovedCandidateCount)">@language.ApprovedCandidateCount</span> <span class="legend-connect-metric-separator">/</span> <span class="@LegendConnectMetricTone.PendingWork(language.PendingCandidateCount)">@language.PendingCandidateCount</span></td>
-                    <td><span class="@providerDependencyTone">@language.AzureDependencyRate.ToString("P0")</span></td>
-                    <td><span class="@LegendConnectMetricTone.Expansion(language.LastProviderAcquisitionUtc)">@(language.LastProviderAcquisitionUtc?.ToString("u") ?? "None")</span><br /><small>Founder: <span class="@LegendConnectMetricTone.Expansion(language.LastFounderTrainingUtc)">@(language.LastFounderTrainingUtc?.ToString("u") ?? "None")</span></small></td>
-                    <td><span class="@LegendConnectMetricTone.Health(language.HealthState)">@language.HealthState</span><span class="legend-connect-metric-separator"> · </span><span class="@LegendConnectMetricTone.Quality(language.QualityState)">@language.QualityState</span></td>
-                </tr>
-            }
-            </tbody>
-        </table>
-    </div>
 </section>
