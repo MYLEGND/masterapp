@@ -153,7 +153,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     // Candidate identities retain the evidence interpretation that produced
     // them. Advance only with the existing evaluator version when the
     // canonical contrast meaning materially changes.
-    private const string TargetRealizationCandidateDerivationVersion = "target-contrast-exclusive-v2";
+    private const string TargetRealizationCandidateDerivationVersion = "target-contrast-contextual-v3";
     private readonly MasterAppDbContext _db;
     private readonly ILegendLanguageRegistry _languages;
     private readonly LegendConnectCorpusService _corpus;
@@ -978,21 +978,39 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     [$"missing_founder_target_evidence:{component.Dimension}:{component.Value}"]);
             }
 
-            var positions = evidence
-                .Select(item => (
-                    item.TargetStartTokenIndex,
-                    item.TargetTokenLength))
+            var tokenLengths = evidence
+                .Select(item => item.TargetTokenLength)
                 .Distinct()
                 .ToArray();
 
-            if (positions.Length != 1)
+            // Founder-backed realization boundaries must agree on span size.
+            // Absolute sentence position is not semantic identity: legitimate
+            // target syntax may place the same realization differently.
+            if (tokenLengths.Length != 1 ||
+                tokenLengths[0] < 1)
             {
                 return new LegendShadowTargetFormulation(
                     LegendShadowTargetFormulation.Ambiguous,
                     null,
                     false,
                     resolved,
-                    [$"ambiguous_target_position:{component.Dimension}:{component.Value}"]);
+                    [$"ambiguous_target_boundary:{component.Dimension}:{component.Value}"]);
+            }
+
+            var observedStarts = evidence
+                .Select(item => item.TargetStartTokenIndex)
+                .Distinct()
+                .OrderBy(item => item)
+                .ToArray();
+
+            if (observedStarts.Length == 0)
+            {
+                return new LegendShadowTargetFormulation(
+                    LegendShadowTargetFormulation.InsufficientEvidence,
+                    null,
+                    false,
+                    resolved,
+                    [$"missing_target_position_evidence:{component.Dimension}:{component.Value}"]);
             }
 
             resolved.Add(
@@ -1001,8 +1019,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     component.Value,
                     component.SemanticSignature,
                     realizedSurfaces[0],
-                    positions[0].TargetStartTokenIndex,
-                    positions[0].TargetTokenLength));
+                    observedStarts[0],
+                    tokenLengths[0]));
         }
 
         if (resolved.Count != understanding.Components.Count)
@@ -1019,18 +1037,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .OrderBy(item => item.ObservedTargetStartTokenIndex)
             .ToArray();
 
-        // Phase 4B foundation allows only independently observed atomic
-        // realizations. We do not guess multi-token adjacency.
-        if (ordered.Any(item => item.ObservedTargetTokenLength != 1))
-        {
-            return new LegendShadowTargetFormulation(
-                LegendShadowTargetFormulation.InsufficientEvidence,
-                null,
-                false,
-                resolved,
-                ["multi_token_target_realization_requires_boundary_evidence"]);
-        }
-
         if (ordered
             .GroupBy(item => item.ObservedTargetStartTokenIndex)
             .Any(group => group.Count() != 1))
@@ -1045,8 +1051,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
         for (var index = 1; index < ordered.Length; index++)
         {
-            if (ordered[index].ObservedTargetStartTokenIndex !=
-                ordered[index - 1].ObservedTargetStartTokenIndex + 1)
+            var previousEnd =
+                ordered[index - 1].ObservedTargetStartTokenIndex +
+                ordered[index - 1].ObservedTargetTokenLength;
+
+            if (ordered[index].ObservedTargetStartTokenIndex != previousEnd)
             {
                 return new LegendShadowTargetFormulation(
                     LegendShadowTargetFormulation.InsufficientEvidence,

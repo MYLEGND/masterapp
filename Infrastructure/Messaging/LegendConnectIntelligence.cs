@@ -130,7 +130,9 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
 
         return match is null
             ? null
-            : new LegendTranslationMemoryMatch(match.Text, match.Confidence ?? (match.Text.Length > 0 ? 1m : 0m));
+            : new LegendTranslationMemoryMatch(
+                match.Text,
+                match.Confidence ?? (match.Text.Length > 0 ? 1m : 0m));
     }
 
     public async Task<LegendContextualTranslationSuggestion?> EvaluateContextAsync(
