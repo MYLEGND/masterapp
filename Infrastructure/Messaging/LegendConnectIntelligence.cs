@@ -139,7 +139,10 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                       (
                           alignment.Provenance ==
                               LegendConnectKnowledgeProvenance.ProviderDerived &&
-                          alignment.QualityState == "SystemValidated"
+                          (
+                              alignment.QualityState == "SystemValidated" ||
+                              alignment.QualityState == "Observation"
+                          )
                       )
                   )
             select new

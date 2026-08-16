@@ -481,7 +481,7 @@ public sealed class LegendConnectTranslationQualityTests
     }
 
     [Fact]
-    public async Task ExactHumanVerifiedMemory_PrecedesAnyProviderObservation_WhileObservationAloneDoesNotBecomeMemory()
+    public async Task ExactHumanVerifiedMemory_PrecedesProviderObservation_WhileObservationAloneRemainsReusableFallback()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
@@ -496,7 +496,30 @@ public sealed class LegendConnectTranslationQualityTests
         await db.SaveChangesAsync();
 
         Assert.Equal("Sib egzak verifye.", (await fixture.Intelligence.TryGetTrustedExactMemoryAsync("en", "ht", trustedSource.Text))?.Text);
-        Assert.Null(await fixture.Intelligence.TryGetTrustedExactMemoryAsync("en", "ht", observedSource.Text));
+        var observedMemory =
+            await fixture.Intelligence.TryGetTrustedExactMemoryAsync(
+                "en",
+                "ht",
+                observedSource.Text);
+
+        Assert.NotNull(observedMemory);
+        Assert.Equal("Sib obsèvasyon sèlman.", observedMemory!.Text);
+        Assert.Equal("ProviderDerived", observedMemory.Provenance);
+        Assert.Equal("Observation", observedMemory.QualityState);
+
+        var persistedObservation =
+            await db.LegendTranslationAlignments.SingleAsync(item =>
+                item.SourceTextUnitId == observedSource.Id &&
+                item.Provenance ==
+                    LegendConnectKnowledgeProvenance.ProviderDerived);
+
+        Assert.False(persistedObservation.HumanVerified);
+        Assert.Equal(
+            "ProviderDerived",
+            persistedObservation.Provenance);
+        Assert.Equal(
+            "Observation",
+            persistedObservation.QualityState);
     }
 
     [Fact]

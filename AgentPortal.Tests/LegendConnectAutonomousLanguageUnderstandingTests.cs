@@ -108,10 +108,30 @@ public sealed class LegendConnectAutonomousLanguageUnderstandingTests
         };
 
         Assert.Equal(first, second);
-        Assert.Equal("Observation", (await db.LegendTranslationAlignments.SingleAsync(item => item.Id == provider.Id)).QualityState);
-        Assert.Null(await fixture.Intelligence.TryGetTrustedExactMemoryAsync("en", "x-test", source.Text));
-        Assert.Contains(await db.LegendTranslationQualityEvidence.ToListAsync(), item =>
-            item.ObservedAlignmentId == provider.Id && item.Signal == "Insufficient");
+        var persistedProvider =
+            await db.LegendTranslationAlignments.SingleAsync(item =>
+                item.Id == provider.Id);
+
+        Assert.Equal("Observation", persistedProvider.QualityState);
+        Assert.Equal("ProviderDerived", persistedProvider.Provenance);
+        Assert.False(persistedProvider.HumanVerified);
+
+        var reusableMemory =
+            await fixture.Intelligence.TryGetTrustedExactMemoryAsync(
+                "en",
+                "x-test",
+                source.Text);
+
+        Assert.NotNull(reusableMemory);
+        Assert.Equal("candidate one", reusableMemory!.Text);
+        Assert.Equal("ProviderDerived", reusableMemory.Provenance);
+        Assert.Equal("Observation", reusableMemory.QualityState);
+
+        Assert.Contains(
+            await db.LegendTranslationQualityEvidence.ToListAsync(),
+            item =>
+                item.ObservedAlignmentId == provider.Id &&
+                item.Signal == "Insufficient");
     }
 
     [Fact]
