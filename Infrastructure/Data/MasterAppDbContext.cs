@@ -10,6 +10,8 @@ namespace Infrastructure.Data;
 
 public class MasterAppDbContext : DbContext
 {
+    public DbSet<LegendCurriculumManifestWorkItem> LegendCurriculumManifestWorkItems => Set<LegendCurriculumManifestWorkItem>();
+
     public MasterAppDbContext(DbContextOptions<MasterAppDbContext> options) : base(options) { }
 
     public DbSet<ClientProfile> ClientProfiles => Set<ClientProfile>();
@@ -158,6 +160,62 @@ public class MasterAppDbContext : DbContext
         SocialFeedModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         var isSqlServer = Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
         var unboundedTextColumnType = isSqlServer ? "nvarchar(max)" : "TEXT";
+
+        // Durable orchestration only for large Founder curriculum manifests.
+        // This table contains no language authority. It exists so accepted
+        // manifests survive request completion, cancellation, and process
+        // recycle while the existing curriculum authority processes one
+        // bounded family at a time.
+        modelBuilder.Entity<LegendCurriculumManifestWorkItem>(entity =>
+        {
+            entity.ToTable("LegendCurriculumManifestWorkItems");
+            entity.HasKey(item => item.Id);
+
+            entity.Property(item => item.FounderUserId)
+                .HasMaxLength(256)
+                .IsRequired();
+
+            entity.Property(item => item.ManifestHash)
+                .HasMaxLength(64)
+                .IsRequired();
+
+            entity.Property(item => item.PayloadJson)
+                .HasColumnType(unboundedTextColumnType)
+                .IsRequired();
+
+            entity.Property(item => item.ProcessingState)
+                .HasMaxLength(32)
+                .IsRequired();
+
+            entity.Property(item => item.LastErrorCode)
+                .HasMaxLength(120);
+
+            entity.Property(item => item.LastErrorMessage)
+                .HasMaxLength(1000);
+
+            // Defense-in-depth for deterministic work identity. The work-item
+            // Guid is already derived from Founder + manifest hash, but this
+            // unique index prevents accidental duplicate durable acceptance
+            // if that identity implementation ever changes.
+            entity.HasIndex(item => new
+                {
+                    item.FounderUserId,
+                    item.ManifestHash
+                })
+                .IsUnique()
+                .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_Identity");
+
+            // The hosted processor polls Pending work and expired Processing
+            // leases ordered by creation time. Keep that hot path indexed
+            // rather than repeatedly scanning durable JSON payload rows.
+            entity.HasIndex(item => new
+                {
+                    item.ProcessingState,
+                    item.LeaseExpiresUtc,
+                    item.CreatedUtc
+                })
+                .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_Processing");
+        });
 
         modelBuilder.Entity<AccountLifecycleRecord>(entity =>
         {

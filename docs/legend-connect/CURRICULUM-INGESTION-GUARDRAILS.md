@@ -124,6 +124,33 @@ Curriculum is evidence, not an instruction to bypass production safety.
 
 Tests should prove the 2–100 family boundary; zero partial mutation on invalid manifests; explicit multi-family orchestration; category-conflict rejection; malformed syntax rejection; duplicate idempotency; no automatic family merging; distinction between abstract semantics and surface-realized anchors; reusable multi-word components; lexical-sense separation; cross-family evidence accumulation without automatic production opening; provider-only evidence cannot mature trusted patterns; correction history and maturity recalculation; held-out composition only with independently supported semantics and relationships; ambiguity and missing evidence fail closed; and Azure fallback/production gates remain intact.
 
+
+## Bulk execution boundary
+
+Large valid manifests must never execute complete curriculum learning synchronously inside the Founder HTTP request.
+
+The permanent separation is:
+
+1. parse and preflight the complete manifest;
+2. durably accept the exact Founder-authored manifest and its progress state;
+3. return a truthful **Accepted / Processing** receipt promptly;
+4. process one bounded family at a time through the existing `LegendConnectCurriculumService`;
+5. retain resumable progress after every completed family;
+6. let the existing corpus/candidate/Azure-expansion/evidence/maturity authorities perform their normal work.
+
+The orchestration queue is not a curriculum engine and must never contain language rules, semantic inference, corpus persistence logic, provider routing, evidence evaluation, or production gating.
+
+A process recycle, cancellation, or transient failure must resume from durable progress. Reprocessing must remain safe because canonical examples, target candidates, semantic anchors, structural evidence, and relationships retain their existing idempotency/uniqueness boundaries.
+
+Never solve bulk scale by:
+- asking the Founder to manually submit valid families one at a time;
+- weakening the curriculum;
+- raising semantic-family limits;
+- removing structural analysis;
+- skipping target-language expansion;
+- holding one web request/transaction open for full-manifest intelligence processing;
+- or adding a second learning authority.
+
 ## Historical incident — 2026-08-15
 
 A large conversation-oriented curriculum was originally prepared as hundreds of examples under a single family. The server correctly rejected it because a semantic family permits at most 100 examples. The deeper lesson is not merely to split a paste: curriculum must declare genuine semantic boundaries and deliberately expose reusable contrasts.

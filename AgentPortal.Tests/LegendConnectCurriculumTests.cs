@@ -198,9 +198,26 @@ public sealed class LegendConnectCurriculumTests
             ]));
 
         Assert.True(result.Succeeded, result.Message);
+        Assert.Contains("durably queued", result.Message ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await db.LegendCurriculumFamilies.ToListAsync());
+        Assert.Empty(await db.LegendCurriculumExamples.ToListAsync());
+
+        var processor = new LegendConnectCurriculumManifestProcessor(
+            db,
+            curriculum,
+            NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+
+        Assert.Equal(1, await processor.ProcessPendingAsync(1));
+        Assert.Single(await db.LegendCurriculumFamilies.ToListAsync());
+        Assert.Equal(2, await db.LegendCurriculumExamples.CountAsync(item => item.LanguageCode == "en"));
+
+        Assert.Equal(1, await processor.ProcessPendingAsync(1));
         Assert.Equal(2, await db.LegendCurriculumFamilies.CountAsync());
         Assert.Equal(4, await db.LegendCurriculumExamples.CountAsync(item => item.LanguageCode == "en"));
-        Assert.Equal(4, result.EnglishExampleCount);
+
+        var work = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        Assert.Equal("Completed", work.ProcessingState);
+        Assert.Equal(2, work.NextFamilyIndex);
     }
 
     [Fact]
@@ -298,6 +315,138 @@ public sealed class LegendConnectCurriculumTests
         Assert.Equal("curriculum_family_category_conflict", result.ErrorCode);
         Assert.Equal(originalTextUnitCount, await db.LegendLanguageTextUnits.CountAsync());
         Assert.Single(await db.LegendCurriculumFamilies.ToListAsync());
+    }
+
+
+    [Fact]
+    public async Task FounderCurriculumManifest_LargeShapeQueuesWithoutSynchronousLearning()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+
+        var families = new List<LegendConnectCurriculumBatchSubmission>();
+        var remaining = 719;
+        for (var familyIndex = 0; familyIndex < 42; familyIndex++)
+        {
+            var familiesLeft = 42 - familyIndex;
+            var count = Math.Min(100, Math.Max(2, (int)Math.Ceiling(remaining / (double)familiesLeft)));
+            remaining -= count;
+            families.Add(new LegendConnectCurriculumBatchSubmission(
+                $"conversation.scale.family_{familyIndex:D2}",
+                "Scale regression",
+                Enumerable.Range(1, count)
+                    .Select(exampleIndex => new LegendConnectCurriculumExampleSubmission(
+                        $"Family {familyIndex} example {exampleIndex}.",
+                        new Dictionary<string, string>
+                        {
+                            ["function"] = $"function_{familyIndex}",
+                            ["variation"] = $"value_{exampleIndex}"
+                        }))
+                    .ToArray()));
+        }
+
+        Assert.Equal(0, remaining);
+        Assert.Equal(719, families.Sum(item => item.Examples.Count));
+
+        var result = await operations.SubmitFounderCurriculumManifestAsync(
+            "founder-scale",
+            new LegendConnectCurriculumManifestSubmission(families));
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(719, result.EnglishExampleCount);
+        Assert.Empty(await db.LegendCurriculumFamilies.ToListAsync());
+        Assert.Empty(await db.LegendCurriculumExamples.ToListAsync());
+        Assert.Empty(await db.LegendLanguageTextUnits.ToListAsync());
+
+        var work = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        Assert.Equal("Pending", work.ProcessingState);
+        Assert.Equal(42, work.FamilyCount);
+        Assert.Equal(719, work.ExampleCount);
+        Assert.Equal(0, work.NextFamilyIndex);
+    }
+
+    [Fact]
+    public async Task FounderCurriculumManifest_ExactResubmissionIsOneDurableWorkItem()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var manifest = new LegendConnectCurriculumManifestSubmission(
+        [
+            ConversationBatch(
+                "conversation.retry.basic",
+                "Retry safety",
+                ("Please try again.", "retry"),
+                ("Let's try again.", "retry"))
+        ]);
+
+        var first = await operations.SubmitFounderCurriculumManifestAsync("founder-test", manifest);
+        var second = await operations.SubmitFounderCurriculumManifestAsync("founder-test", manifest);
+
+        Assert.True(first.Succeeded);
+        Assert.True(second.Succeeded);
+        Assert.True(second.DuplicatePrevented);
+        Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        Assert.Empty(await db.LegendCurriculumFamilies.ToListAsync());
+    }
+
+    [Fact]
+    public async Task FounderCurriculumManifest_ExpiredLeaseResumesWithoutDuplicateFamilyKnowledge()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var processor = new LegendConnectCurriculumManifestProcessor(
+            db,
+            curriculum,
+            NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+
+        var manifest = new LegendConnectCurriculumManifestSubmission(
+        [
+            ConversationBatch(
+                "conversation.resume.first",
+                "Resume first",
+                ("I understand.", "understood"),
+                ("I don't understand.", "not_understood")),
+            ConversationBatch(
+                "conversation.resume.second",
+                "Resume second",
+                ("Can you repeat that?", "repeat"),
+                ("Could you say that again?", "repeat"))
+        ]);
+
+        Assert.True((await operations.SubmitFounderCurriculumManifestAsync("founder-test", manifest)).Succeeded);
+        Assert.Equal(1, await processor.ProcessPendingAsync(1));
+
+        var work = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        Assert.Equal(1, work.NextFamilyIndex);
+
+        work.ProcessingState = "Processing";
+        work.LeaseExpiresUtc = DateTime.UtcNow.AddMinutes(-1);
+        await db.SaveChangesAsync();
+
+        Assert.Equal(1, await processor.ProcessPendingAsync(1));
+        Assert.Equal(2, await db.LegendCurriculumFamilies.CountAsync());
+
+        var completed = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        Assert.Equal("Completed", completed.ProcessingState);
+        Assert.Equal(2, completed.NextFamilyIndex);
+
+        var duplicate = await operations.SubmitFounderCurriculumManifestAsync("founder-test", manifest);
+        Assert.True(duplicate.Succeeded);
+        Assert.True(duplicate.DuplicatePrevented);
+        Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        Assert.Equal(2, await db.LegendCurriculumFamilies.CountAsync());
     }
 
     private static LegendConnectCurriculumBatchSubmission ConversationBatch(

@@ -5,6 +5,12 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
+using System.Security.Cryptography;
+
+using System.Text;
+
+using System.Text.Json;
+
 namespace Infrastructure.Messaging;
 
 /// <summary>
@@ -2074,6 +2080,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 null, null, 0, 0);
         }
 
+        // Manifest-wide preflight remains synchronous and mutation-free.
+        // One invalid family rejects the complete manifest before durable
+        // acceptance. Expensive learning does not run inside the HTTP request.
         foreach (var family in families)
         {
             var validation = await _curriculum.PreflightFounderEnglishBatchAsync(family, cancellationToken);
@@ -2081,56 +2090,85 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 return validation;
         }
 
-        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
-        var results = new List<LegendConnectCurriculumSubmissionResult>(families.Length);
-        try
-        {
-            foreach (var family in families)
-            {
-                var result = await _curriculum.SubmitFounderEnglishBatchAsync(family, cancellationToken);
-                if (!result.Succeeded)
-                {
-                    await transaction.RollbackAsync(cancellationToken);
-                    _db.ChangeTracker.Clear();
-                    return result;
-                }
+        var payload = JsonSerializer.Serialize(
+            new LegendConnectCurriculumManifestSubmission(families));
+        var manifestHash = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
+        var workIdentityBytes = SHA256.HashData(
+            Encoding.UTF8.GetBytes($"{founder}|{manifestHash}"));
+        var workId = new Guid(workIdentityBytes.AsSpan(0, 16));
+        var exampleCount = families.Sum(item => item.Examples?.Count ?? 0);
+        var now = DateTime.UtcNow;
 
-                results.Add(result);
-                _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
-                {
-                    Id = Guid.NewGuid(),
-                    FounderUserId = founder,
-                    Action = "FounderCurriculumSubmitted",
-                    Result = result.DuplicatePrevented ? "DuplicatePrevented" : "Succeeded",
-                    LanguageCode = "en",
-                    Detail = Bound(result.Message ?? result.ErrorCode, 500),
-                    OccurredUtc = DateTime.UtcNow
-                });
+        var work = await _db.Set<LegendCurriculumManifestWorkItem>()
+            .SingleOrDefaultAsync(item => item.Id == workId, cancellationToken);
+        if (work is not null)
+        {
+            if (string.Equals(work.ProcessingState, "Failed", StringComparison.Ordinal))
+            {
+                work.ProcessingState = "Pending";
+                work.AttemptCount = 0;
+                work.LastErrorCode = null;
+                work.LastErrorMessage = null;
+                work.LeaseExpiresUtc = null;
+                work.UpdatedUtc = now;
+                await _db.SaveChangesAsync(cancellationToken);
+                return new LegendConnectCurriculumSubmissionResult(
+                    true, true, null,
+                    $"Curriculum manifest was requeued for bounded background processing. " +
+                    $"{work.FamilyCount:N0} families / {work.ExampleCount:N0} examples are durable; " +
+                    $"processing resumes from family {work.NextFamilyIndex + 1:N0}.",
+                    null, null, work.ExampleCount, 0);
             }
 
-            await _db.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            _db.ChangeTracker.Clear();
-            throw;
+            var completed = string.Equals(work.ProcessingState, "Completed", StringComparison.Ordinal);
+            return new LegendConnectCurriculumSubmissionResult(
+                true, true, null,
+                completed
+                    ? $"This exact curriculum manifest already completed. " +
+                      $"{work.FamilyCount:N0} families / {work.ExampleCount:N0} examples were retained without duplicate confidence."
+                    : $"This exact curriculum manifest is already {work.ProcessingState.ToLowerInvariant()}. " +
+                      $"{work.FamilyCount:N0} families / {work.ExampleCount:N0} examples are durably queued; " +
+                      $"{work.NextFamilyIndex:N0} families have completed.",
+                null, null, work.ExampleCount, 0);
         }
 
-        var exampleCount = results.Sum(item => item.EnglishExampleCount);
-        var targetExpansionCount = results.Sum(item => item.TargetExpansionCount);
-        var duplicateFamilies = results.Count(item => item.DuplicatePrevented);
+        work = new LegendCurriculumManifestWorkItem
+        {
+            Id = workId,
+            FounderUserId = founder,
+            ManifestHash = manifestHash,
+            PayloadJson = payload,
+            FamilyCount = families.Length,
+            ExampleCount = exampleCount,
+            NextFamilyIndex = 0,
+            ProcessingState = "Pending",
+            AttemptCount = 0,
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
+
+        _db.Set<LegendCurriculumManifestWorkItem>().Add(work);
+        _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
+        {
+            Id = Guid.NewGuid(),
+            FounderUserId = founder,
+            Action = "FounderCurriculumManifestAccepted",
+            Result = "Accepted",
+            LanguageCode = "en",
+            Detail = Bound(
+                $"Manifest {manifestHash[..12]} accepted: {families.Length} families / {exampleCount} examples. " +
+                "Full learning executes through the existing curriculum authority in bounded background work.",
+                500),
+            OccurredUtc = now
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+
         return new LegendConnectCurriculumSubmissionResult(
-            true,
-            duplicateFamilies == results.Count,
-            null,
-            $"Saved {results.Count:N0} explicit semantic families with {exampleCount:N0} canonical English examples. " +
-            $"{duplicateFamilies:N0} families were canonical reuse only. Existing language-isolated evidence, Azure expansion, maturity, contradiction, and production gates remain in force.",
-            null,
-            null,
-            exampleCount,
-            targetExpansionCount);
+            true, false, null,
+            $"Curriculum accepted. {families.Length:N0} families / {exampleCount:N0} examples are durably queued for bounded background learning. " +
+            "The browser request no longer performs full structural analysis. Existing curriculum, corpus, Azure expansion, evidence, contradiction, maturity, and production gates remain authoritative.",
+            null, null, exampleCount, 0);
     }
 
     public async Task<LegendConnectCurriculumSubmissionResult> SubmitFounderCurriculumAsync(

@@ -663,6 +663,11 @@ builder.Services.ConfigureApplicationCookie(options =>
 
 builder.Services.AddAuthorization();
 
+// Durable bounded orchestration for large Founder curriculum manifests.
+// The worker delegates every family to the existing curriculum authority;
+// it does not create a second learning stack.
+builder.Services.AddHostedService<Infrastructure.Messaging.LegendConnectCurriculumManifestHostedService>();
+
 var app = builder.Build();
 await app.Services
     .GetRequiredService<MigrationHealthHostedService>()

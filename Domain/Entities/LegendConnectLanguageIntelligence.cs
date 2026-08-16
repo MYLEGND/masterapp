@@ -870,3 +870,28 @@ public sealed class LegendConnectAutonomousLanguageFocus
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Durable orchestration state for one Founder-authored multi-family curriculum
+/// manifest. This is not a second curriculum authority. It stores only the
+/// accepted payload, progress, retry, and lease state needed so large work
+/// survives HTTP completion, cancellation, and App Service recycle.
+/// </summary>
+public sealed class LegendCurriculumManifestWorkItem
+{
+    public Guid Id { get; set; }
+    public string FounderUserId { get; set; } = string.Empty;
+    public string ManifestHash { get; set; } = string.Empty;
+    public string PayloadJson { get; set; } = string.Empty;
+    public int FamilyCount { get; set; }
+    public int ExampleCount { get; set; }
+    public int NextFamilyIndex { get; set; }
+    public string ProcessingState { get; set; } = "Pending";
+    public int AttemptCount { get; set; }
+    public string? LastErrorCode { get; set; }
+    public string? LastErrorMessage { get; set; }
+    public DateTime? LeaseExpiresUtc { get; set; }
+    public DateTime CreatedUtc { get; set; }
+    public DateTime UpdatedUtc { get; set; }
+    public DateTime? CompletedUtc { get; set; }
+}
