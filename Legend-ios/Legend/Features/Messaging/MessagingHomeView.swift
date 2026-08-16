@@ -2105,6 +2105,7 @@ struct ConversationThreadView: View {
                         review: review)
                 }
             )
+            .id(conversation.id)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if conversation.isClosed {

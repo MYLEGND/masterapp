@@ -2809,13 +2809,14 @@ private fun MessageThread(
                 }
             }
         }
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            reverseLayout = true,
-            contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md),
-            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
-        ) {
-            // reverseLayout makes item 0 the physical bottom of the thread.
+        key(conversation.id) {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                reverseLayout = true,
+                contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md),
+                verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
+            ) {
+                // reverseLayout makes item 0 the physical bottom of the thread.
             // Present a reversed view of the canonical chronological collection
             // so visual order remains oldest at the top and newest at the bottom.
             items(conversation.messages.asReversed(), key = { it.id }) { message ->
@@ -2831,13 +2832,14 @@ private fun MessageThread(
 
             // With reverseLayout this remains visually above the oldest loaded
             // message and loading history does not disturb the current viewport.
-            if (conversation.hasOlderMessages) {
-                item {
-                    TextButton(
-                        onClick = loadOlder,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Load earlier messages", color = LegendColors.Gold)
+                if (conversation.hasOlderMessages) {
+                    item {
+                        TextButton(
+                            onClick = loadOlder,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Load earlier messages", color = LegendColors.Gold)
+                        }
                     }
                 }
             }
