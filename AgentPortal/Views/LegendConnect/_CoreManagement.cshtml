@@ -161,3 +161,28 @@
         </div>
     </details>
 </section>
+
+<section class="category-container legend-connect-active-languages" aria-labelledby="active-languages-title" data-legend-copy-source="active-languages-registry">
+    <div class="category-head"><div><span class="dashboard-section-kicker">Registry health</span><h2 class="dashboard-section-title" id="active-languages-title">Active languages</h2></div><partial name="_CopyButton" model="@("active-languages-registry")" /></div>
+    <div class="dashboard-data-surface">
+        <table class="table dashboard-data-table">
+            <thead><tr><th>Language</th><th>Dataset</th><th>Entries</th><th>Pairs</th><th>Approved / pending candidates</th><th>Provider dependency</th><th>Last provider / Founder expansion</th><th>Health</th></tr></thead>
+            <tbody>
+            @foreach (var language in dashboard.Languages)
+            {
+                var providerDependencyTone = LegendConnectMetricTone.Dependency(language.AzureDependencyRate, language.DemandCount);
+                <tr>
+                    <td><a asp-action="Index" asp-route-language="@language.LanguageCode" aria-haspopup="dialog">@language.DisplayName (@language.LanguageCode)</a></td>
+                    <td><span class="@LegendConnectMetricTone.Info">@language.StoragePartition</span></td>
+                    <td><span class="@LegendConnectMetricTone.BeneficialActivity(language.CanonicalEntryCount)">@language.CanonicalEntryCount</span></td>
+                    <td><span class="@LegendConnectMetricTone.BeneficialActivity(language.DirectionalPairs.Count)">@language.DirectionalPairs.Count</span></td>
+                    <td><span class="@LegendConnectMetricTone.BeneficialActivity(language.ApprovedCandidateCount)">@language.ApprovedCandidateCount</span> <span class="legend-connect-metric-separator">/</span> <span class="@LegendConnectMetricTone.PendingWork(language.PendingCandidateCount)">@language.PendingCandidateCount</span></td>
+                    <td><span class="@providerDependencyTone">@language.AzureDependencyRate.ToString("P0")</span></td>
+                    <td><span class="@LegendConnectMetricTone.Expansion(language.LastProviderAcquisitionUtc)">@(language.LastProviderAcquisitionUtc?.ToString("u") ?? "None")</span><br /><small>Founder: <span class="@LegendConnectMetricTone.Expansion(language.LastFounderTrainingUtc)">@(language.LastFounderTrainingUtc?.ToString("u") ?? "None")</span></small></td>
+                    <td><span class="@LegendConnectMetricTone.Health(language.HealthState)">@language.HealthState</span><span class="legend-connect-metric-separator"> · </span><span class="@LegendConnectMetricTone.Quality(language.QualityState)">@language.QualityState</span></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
