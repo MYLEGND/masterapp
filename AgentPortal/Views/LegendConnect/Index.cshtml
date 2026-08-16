@@ -24,19 +24,22 @@
             : "Unavailable";
 }
 
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/legend-connect.css" asp-append-version="true" />
+}
+
 <main class="dashboard-page-shell legend-connect-page">
     <section class="dashboard-command-center-panel" aria-labelledby="legend-connect-title">
         <div class="dashboard-command-center-top">
             <div class="dashboard-hero-copy">
                 <span class="dashboard-eyebrow">Founder · Language intelligence</span>
                 <h1 class="dashboard-hero-title" id="legend-connect-title">Legend® Connect</h1>
-                <p>Server-owned language, learning, quality, and capacity operations.</p>
                 <section class="legend-connect-production-control" aria-labelledby="production-composition-title">
                     <div class="legend-connect-production-control-head">
                         <span><span class="legend-connect-production-kicker">Production composition</span><span class="legend-connect-production-title" id="production-composition-title">Internal composition boundary</span></span>
                         <span class="legend-connect-composition-status legend-connect-composition-status--@compositionStateClass" aria-label="Current server mode: @compositionMode">@compositionMode</span>
                     </div>
-                    <p>Controls the existing production-eligible internal composition boundary before Azure fallback. All evidence, confidence, language-isolation, consent, and Translation Memory gates remain intact.</p>
                     <div class="legend-connect-production-actions">
                         @if (compositionMode == "Active")
                         {
@@ -87,9 +90,9 @@
 
     <partial name="_CoreManagement" model="Model" />
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="production-readiness-title" data-legend-copy-source="production-readiness">
+    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--readiness" aria-labelledby="production-readiness-title" data-legend-copy-source="production-readiness">
         <summary class="legend-connect-disclosure-summary">
-            <span><span class="dashboard-section-kicker">Founder operations / activation</span><span class="dashboard-section-title" id="production-readiness-title">Legend® Connect production readiness</span></span>
+            <span><span class="dashboard-section-title" id="production-readiness-title">Legend® Connect production readiness</span></span>
             <span class="dashboard-status-chip">@readiness.State</span>
         </summary>
         <div class="legend-connect-disclosure-body">
@@ -113,7 +116,7 @@
                 <span><span class="dashboard-section-kicker">Azure resource synchronization</span><span class="dashboard-section-title">Azure Translator capacity</span></span>
                 <span class="dashboard-status-chip" data-azure-capacity-status>@(providerCapacity?.Status ?? "Unavailable")</span>
             </div>
-            <p class="dashboard-section-copy" data-azure-capacity-resource>@(providerCapacity?.ResourceName ?? "Azure Translator") · tier @(providerCapacity?.Tier ?? "unavailable"). Monthly billing allowance and rolling hourly velocity are enforced independently.</p>
+            <p class="dashboard-section-copy" data-azure-capacity-resource>@(providerCapacity?.ResourceName ?? "Azure Translator") · tier @(providerCapacity?.Tier ?? "unavailable")</p>
             <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--five">
                 <div class="dashboard-stat-card @LegendConnectMetricTone.CapacityLimit(providerCapacity?.MonthlyIncludedCharacterAllowance ?? 0)"><span class="dashboard-stat-label">Monthly included allowance</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-limit">@AzureCapacityDisplay(providerCapacity?.MonthlyIncludedCharacterAllowance, true)</span></div>
                 <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(providerCapacity?.MonthlyCharactersConsumed ?? 0)"><span class="dashboard-stat-label">Used this billing month</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-consumed">@AzureCapacityDisplay(providerCapacity?.MonthlyCharactersConsumed)</span></div>
@@ -142,7 +145,7 @@
                 <span><span class="dashboard-section-kicker">Step 1 of 2 · Optional</span><span class="dashboard-section-title">Focus this English learning run</span></span>
                 <span class="legend-connect-focus-status @(focusEnabled ? "legend-connect-focus-status--on" : "legend-connect-focus-status--off")" data-language-focus-status aria-live="polite"><span class="legend-connect-focus-status-dot" aria-hidden="true"></span><span data-language-focus-status-text>Focus @(focusEnabled ? "on" : "off")</span></span>
             </div>
-            <p class="dashboard-section-copy">Use the same approved English learning sets for only the languages you choose. Leave focus off to return to automatic demand-driven work across every enabled language.</p>
+            <p class="dashboard-section-copy">Optional: limit this run to selected target languages. Off returns to automatic demand-driven acquisition.</p>
             <div class="legend-connect-focus-controls">
                 <div class="legend-connect-focus-switch-field">
                     <span class="legend-connect-focus-label">Learning focus</span>
@@ -179,17 +182,15 @@
         </div>
     </details>
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="legend-translation-operations-title" data-legend-copy-source="legend-translation-operations" open>
+    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--internal" aria-labelledby="legend-translation-operations-title" data-legend-copy-source="legend-translation-operations" open>
         <summary class="legend-connect-disclosure-summary">
             <span>
-                <span class="dashboard-section-kicker">LEGEND internal translation</span>
                 <span class="dashboard-section-title" id="legend-translation-operations-title">Legend® Connect Translation Operations</span>
             </span>
             <span class="legend-connect-disclosure-status">Internal</span>
         </summary>
         <div class="legend-connect-disclosure-body">
             <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("legend-translation-operations")" /></div>
-            <p class="dashboard-section-copy">Only Legend® Connect-owned translation activity is shown here. These metrics describe translation work resolved or avoided by LEGEND before Azure fallback.</p>
             <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--four">
                 <div class="dashboard-stat-card @LegendConnectMetricTone.Authority" data-legend-live-card="translation-routing-audit"><span class="dashboard-stat-label">Translation route audit</span><span class="dashboard-stat-value">Open route trace</span></div>
 
@@ -222,17 +223,15 @@
         </div>
     </details>
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="azure-translation-operations-title" data-legend-copy-source="azure-translation-operations">
+    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--azure" aria-labelledby="azure-translation-operations-title" data-legend-copy-source="azure-translation-operations">
         <summary class="legend-connect-disclosure-summary">
             <span>
-                <span class="dashboard-section-kicker">Azure Translator</span>
                 <span class="dashboard-section-title" id="azure-translation-operations-title">Azure Translation Operations</span>
             </span>
             <span class="legend-connect-disclosure-status">Provider</span>
         </summary>
         <div class="legend-connect-disclosure-body">
             <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("azure-translation-operations")" /></div>
-            <p class="dashboard-section-copy">Only Azure/provider execution is shown here. Monthly allowance, hourly velocity and protected reserve remain in the dedicated Azure Translator Capacity section above.</p>
             <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--four">
 
                 <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.AzureFallbackCount)" data-legend-live-card="provider-fallback-required"><span class="dashboard-stat-label">Azure fallback required</span><span class="dashboard-stat-value" data-legend-live-value="provider-fallback-required">@dashboard.AzureFallbackCount.ToString("N0")</span></div>
@@ -256,8 +255,8 @@
         </div>
     </details>
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="translation-quality-title" data-legend-copy-source="translation-quality">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Shared evidence authority</span><span class="dashboard-section-title" id="translation-quality-title">Translation quality review</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="translation-quality-needs-review-summary">@Model.TranslationQuality.NeedsReviewCount.ToString("N0") needs review</span></summary>
+    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--quality" aria-labelledby="translation-quality-title" data-legend-copy-source="translation-quality">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title" id="translation-quality-title">Translation quality review</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="translation-quality-needs-review-summary">@Model.TranslationQuality.NeedsReviewCount.ToString("N0") needs review</span></summary>
         <div class="legend-connect-disclosure-body">
             <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("translation-quality")" /></div>
             <p class="dashboard-section-copy">Provider output remains an observation. This queue contains only Founder-owned training material with a recorded contradiction; private-message bodies are never shown here.</p>
@@ -295,8 +294,8 @@
         </div>
     </details>
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="target-realizations-title" data-legend-copy-source="target-realizations">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker @LegendConnectMetricTone.Info">Founder review required</span><span class="dashboard-section-title @LegendConnectMetricTone.Info" id="target-realizations-title">Target realization candidates</span></span><span class="legend-connect-disclosure-status @LegendConnectMetricTone.PendingWork(Model.TargetRealizations.CandidateCount - Model.TargetRealizations.FounderVerifiedCount - Model.TargetRealizations.RejectedCount)">@Model.TargetRealizations.CandidateCount.ToString("N0") retained</span></summary>
+    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--candidates" aria-labelledby="target-realizations-title" data-legend-copy-source="target-realizations">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title @LegendConnectMetricTone.Info" id="target-realizations-title">Target realization candidates</span></span><span class="legend-connect-disclosure-status @LegendConnectMetricTone.PendingWork(Model.TargetRealizations.CandidateCount - Model.TargetRealizations.FounderVerifiedCount - Model.TargetRealizations.RejectedCount)">@Model.TargetRealizations.CandidateCount.ToString("N0") retained</span></summary>
         <div class="legend-connect-disclosure-body">
             <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("target-realizations")" /></div>
             <p class="dashboard-section-copy">These are evidence-backed target-language hypotheses, not translations. Only a Founder verification creates a trusted canonical anchor; maturity and production eligibility remain independently gated.</p>
@@ -343,8 +342,8 @@
         </div>
     </details>
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="active-pairs-title" data-legend-copy-source="active-directional-pairs">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Directional health</span><span class="dashboard-section-title" id="active-pairs-title">Active directional pairs</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="active-pairs-summary">@dashboard.Pairs.Count.ToString("N0") pairs</span></summary>
+    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--pairs" aria-labelledby="active-pairs-title" data-legend-copy-source="active-directional-pairs">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title" id="active-pairs-title">Active directional pairs</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="active-pairs-summary">@dashboard.Pairs.Count.ToString("N0") pairs</span></summary>
         <div class="legend-connect-disclosure-body">
         <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("active-directional-pairs")" /></div>
         <div class="dashboard-data-surface">
@@ -365,8 +364,8 @@
 
     @if (Model.SelectedPair is { } selectedPair)
     {
-        <details class="dashboard-analytics-panel legend-connect-disclosure" open aria-labelledby="pair-health-title" data-legend-copy-source="selected-directional-pair">
-            <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Pair health</span><span class="dashboard-section-title" id="pair-health-title">@selectedPair.PairKey</span></span><span class="legend-connect-disclosure-status">Selected</span></summary>
+        <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--pair-detail" open aria-labelledby="pair-health-title" data-legend-copy-source="selected-directional-pair">
+            <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title" id="pair-health-title">@selectedPair.PairKey</span></span><span class="legend-connect-disclosure-status">Selected</span></summary>
             <div class="legend-connect-disclosure-body">
             <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("selected-directional-pair")" /></div>
             <p class="dashboard-section-copy">Operational health: @selectedPair.HealthState · Pair state: @selectedPair.QualityState · @selectedPair.FailureCount failure@(selectedPair.FailureCount == 1 ? string.Empty : "s"). Pair state reports the directional dataset pipeline; it is not a claim that every retained alignment is linguistically verified.</p>
@@ -385,8 +384,8 @@
 
     @if (Model.SelectedPair is { } correctionPair && correctionPair.RecentAlignments.Count > 0)
     {
-        <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="correction-title">
-            <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Audit-preserving correction</span><span class="dashboard-section-title" id="correction-title">Supersede a pair alignment</span></span><span class="legend-connect-disclosure-status">Correction</span></summary>
+        <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--correction" aria-labelledby="correction-title">
+            <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title" id="correction-title">Supersede a pair alignment</span></span><span class="legend-connect-disclosure-status">Correction</span></summary>
             <div class="legend-connect-disclosure-body">
             <form method="post" asp-action="CorrectKnowledge" class="dashboard-search-panel">
                 @Html.AntiForgeryToken()
@@ -404,8 +403,8 @@
         </details>
     }
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="runtime-audit-title" data-legend-copy-source="runtime-audit">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Founder audit</span><span class="dashboard-section-title" id="runtime-audit-title">Recent operational changes</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="runtime-audit-entries">@Model.RuntimeAudit.Count.ToString("N0") entries</span></summary>
+    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--audit" aria-labelledby="runtime-audit-title" data-legend-copy-source="runtime-audit">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title" id="runtime-audit-title">Recent operational changes</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="runtime-audit-entries">@Model.RuntimeAudit.Count.ToString("N0") entries</span></summary>
         <div class="legend-connect-disclosure-body">
         <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("runtime-audit")" /></div>
         @if (Model.RuntimeAudit.Count == 0)
@@ -424,8 +423,8 @@
         </div>
     </details>
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure" aria-labelledby="operational-events-title" data-legend-copy-source="operational-events">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-kicker">Bounded diagnostics</span><span class="dashboard-section-title" id="operational-events-title">Recent backend events</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="operational-events-summary">@dashboard.RecentOperationalEvents.Count.ToString("N0") events</span></summary>
+    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--diagnostics" aria-labelledby="operational-events-title" data-legend-copy-source="operational-events">
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title" id="operational-events-title">Recent backend events</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="operational-events-summary">@dashboard.RecentOperationalEvents.Count.ToString("N0") events</span></summary>
         <div class="legend-connect-disclosure-body">
         <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("operational-events")" /></div>
         @if (dashboard.RecentOperationalEvents.Count == 0)
