@@ -123,6 +123,71 @@ public sealed class LegendConnectCompositionalUnderstandingTests
     }
 
     [Fact]
+    public async Task SourceUnderstandingUsesMatureFounderStructureToDisambiguateCrossFamilySurfaceRoles()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        await SeedSupportedCompositionAsync(fixture);
+
+        // A second Founder family legitimately gives the same surface "I" a
+        // different semantic role. Its own two-example observation is not
+        // mature enough to override the independently supported composition
+        // structure learned above.
+        var competingRole = new LegendConnectCurriculumBatchSubmission(
+            "composition.competing.speaker-role",
+            "Controlled competing source role evidence",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "I greet politely.",
+                    new Dictionary<string, string>
+                    {
+                        ["speaker-role"] = "I",
+                        ["predicate"] = "greet",
+                        ["manner"] = "politely"
+                    }),
+                new LegendConnectCurriculumExampleSubmission(
+                    "You greet politely.",
+                    new Dictionary<string, string>
+                    {
+                        ["speaker-role"] = "You",
+                        ["predicate"] = "greet",
+                        ["manner"] = "politely"
+                    })
+            ]);
+
+        var submitted =
+            await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                competingRole);
+
+        Assert.True(submitted.Succeeded, submitted.Message);
+
+        // Exercise the same canonical historical path as production. The
+        // replay is idempotent and must not manufacture duplicate authority.
+        await fixture.Curriculum.ReevaluateHistoricalAlignmentsAsync(100);
+
+        var understood =
+            await fixture.Curriculum.AnalyzeShadowSourceSemanticsAsync(
+                "en",
+                "I affirmative combine packets.");
+
+        Assert.Equal(
+            LegendShadowSourceUnderstanding.SupportedForShadowEvaluation,
+            understood.State);
+
+        var first = Assert.Single(
+            understood.Components.Where(item =>
+                item.StartTokenIndex == 0 &&
+                item.TokenLength == 1));
+
+        Assert.Equal("agent", first.Dimension);
+        Assert.Equal("I", first.Value);
+
+        Assert.DoesNotContain(
+            understood.Components,
+            item => item.Dimension == "speaker-role");
+    }
+
+    [Fact]
     public async Task SourceUnderstandingFailsClosedForUnknownOrAmbiguousSemantics()
     {
         await using var db = ControllerTestHelpers.BuildDb();

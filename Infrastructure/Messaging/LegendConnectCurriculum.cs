@@ -1460,6 +1460,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 SemanticSignature = anchor.SemanticSignature!,
                 StartTokenIndex = anchor.ComponentStartTokenIndex!.Value,
                 TokenLength = anchor.ComponentLength!.Value,
+                anchor.CurriculumExampleId,
                 unit.Text
             }
         ).ToListAsync(cancellationToken);
@@ -1504,15 +1505,28 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                             .Take(proofTokens.Length)),
                     start,
                     proofTokens.Length,
-                    proof.SemanticSignature));
+                    proof.SemanticSignature,
+                    [proof.CurriculumExampleId]));
             }
         }
 
         var distinctCandidates = candidates
-            .DistinctBy(item => (
+            .GroupBy(item => (
                 item.StartTokenIndex,
                 item.TokenLength,
                 item.SemanticSignature))
+            .Select(group =>
+            {
+                var first = group.First();
+                return first with
+                {
+                    CurriculumExampleIds = group
+                        .SelectMany(item => item.CurriculumExampleIds)
+                        .Distinct()
+                        .OrderBy(item => item)
+                        .ToArray()
+                };
+            })
             .ToList();
 
         if (distinctCandidates.Count == 0)
@@ -1524,16 +1538,91 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 ["source_semantic_component_unknown"]);
         }
 
-        // Repetition does not cure ambiguity. One observed span may not
-        // silently represent more than one semantic identity.
-        foreach (var span in distinctCandidates.GroupBy(item =>
-                     (item.StartTokenIndex, item.TokenLength)))
+        var spanGroups = distinctCandidates
+            .GroupBy(item => (
+                item.StartTokenIndex,
+                item.TokenLength))
+            .Select(group => group
+                .GroupBy(
+                    item => item.SemanticSignature,
+                    StringComparer.Ordinal)
+                .Select(signatureGroup => signatureGroup.First())
+                .ToList())
+            .ToList();
+
+        var resolvedCandidates = spanGroups
+            .Where(group => group.Count == 1)
+            .Select(group => group[0])
+            .ToList();
+
+        var unresolvedSpans = spanGroups
+            .Where(group => group.Count > 1)
+            .ToList();
+
+        while (unresolvedSpans.Count > 0)
         {
-            if (span
-                .Select(item => item.SemanticSignature)
-                .Distinct(StringComparer.Ordinal)
-                .Skip(1)
-                .Any())
+            var progressed = false;
+
+            foreach (var span in unresolvedSpans.ToList())
+            {
+                // Two different Founder semantic identities explicitly attached
+                // to the same training example remain a genuine contradiction.
+                // Context from another example may not silently override it.
+                var hasDirectFounderIdentityConflict = span
+                    .SelectMany(candidate =>
+                        candidate.CurriculumExampleIds.Select(exampleId =>
+                            (
+                                ExampleId: exampleId,
+                                candidate.SemanticSignature)))
+                    .GroupBy(item => item.ExampleId)
+                    .Any(group => group
+                        .Select(item => item.SemanticSignature)
+                        .Distinct(StringComparer.Ordinal)
+                        .Skip(1)
+                        .Any());
+
+                if (hasDirectFounderIdentityConflict)
+                {
+                    return new LegendShadowSourceUnderstanding(
+                        LegendShadowSourceUnderstanding.Ambiguous,
+                        false,
+                        [],
+                        ["ambiguous_source_semantic_identity"]);
+                }
+
+                var structurallySupported =
+                    new List<ShadowSourceSemanticCandidate>();
+
+                foreach (var candidate in span)
+                {
+                    var hypothesis = resolvedCandidates
+                        .Append(candidate)
+                        .OrderBy(item => item.StartTokenIndex)
+                        .ThenBy(item => item.TokenLength)
+                        .ThenBy(item => item.Dimension, StringComparer.Ordinal)
+                        .ToList();
+
+                    if (await HasSupportedSourceSemanticContextAsync(
+                            sourceLanguage,
+                            hypothesis,
+                            cancellationToken))
+                    {
+                        structurallySupported.Add(candidate);
+                    }
+                }
+
+                // Context is authoritative only when the existing Founder-backed
+                // structural graph identifies exactly one remaining meaning.
+                // Zero or multiple supported meanings continue to fail closed.
+                if (structurallySupported.Count != 1)
+                    continue;
+
+                resolvedCandidates.Add(structurallySupported[0]);
+                unresolvedSpans.Remove(span);
+                progressed = true;
+            }
+
+            if (!progressed)
             {
                 return new LegendShadowSourceUnderstanding(
                     LegendShadowSourceUnderstanding.Ambiguous,
@@ -1543,11 +1632,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             }
         }
 
-        var uniqueSpans = distinctCandidates
-            .GroupBy(item => (
-                item.StartTokenIndex,
-                item.TokenLength))
-            .Select(group => group.First())
+        var uniqueSpans = resolvedCandidates
             .OrderBy(item => item.StartTokenIndex)
             .ThenBy(item => item.TokenLength)
             .ToList();
@@ -1730,12 +1815,53 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             ["active_founder_supported_semantics", "active_supported_structural_relationships"]);
     }
 
+    private async Task<bool> HasSupportedSourceSemanticContextAsync(
+        string sourceLanguage,
+        IReadOnlyList<ShadowSourceSemanticCandidate> components,
+        CancellationToken cancellationToken)
+    {
+        if (components.Count < 2)
+            return false;
+
+        var requestedLayout = RelativeShadowAnchorLayout(
+            components.Select(item => (
+                item.Dimension,
+                item.StartTokenIndex,
+                item.TokenLength)));
+
+        var supported = false;
+
+        foreach (var dimension in components
+                     .Select(item => item.Dimension)
+                     .Distinct(StringComparer.Ordinal))
+        {
+            var state = await EvaluateShadowRelationshipAsync(
+                string.Empty,
+                sourceLanguage,
+                dimension,
+                requestedLayout,
+                cancellationToken,
+                useRelativeLayout: true);
+
+            // A contradiction anywhere in this proposed source layout keeps the
+            // hypothesis closed even if another dimension has support.
+            if (state == ShadowRelationshipState.Contradicted)
+                return false;
+
+            if (state == ShadowRelationshipState.Supported)
+                supported = true;
+        }
+
+        return supported;
+    }
+
     private async Task<ShadowRelationshipState> EvaluateShadowRelationshipAsync(
         string pairKey,
         string targetLanguage,
         string dimension,
         string requestedLayout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool useRelativeLayout = false)
     {
         // The request has a maximum of eight relationship dimensions and each
         // dimension reads at most sixteen existing supporting observations.
@@ -1778,7 +1904,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .ToListAsync(cancellationToken);
         var layouts = anchors
             .GroupBy(item => item.CurriculumExampleId)
-            .ToDictionary(group => group.Key, group => ShadowAnchorLayout(group), EqualityComparer<Guid>.Default);
+            .ToDictionary(
+                group => group.Key,
+                group => useRelativeLayout
+                    ? RelativeShadowAnchorLayout(group.Select(item => (
+                        item.Dimension,
+                        item.StartTokenIndex,
+                        item.TokenLength)))
+                    : ShadowAnchorLayout(group),
+                EqualityComparer<Guid>.Default);
 
         var compatibleRelationshipIds = evidence
             .Where(item => layouts.GetValueOrDefault(item.BaselineCurriculumExampleId) == requestedLayout ||
@@ -1883,6 +2017,21 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .ThenBy(item => item.TokenLength)
             .ThenBy(item => item.Dimension, StringComparer.Ordinal)
             .Select(item => $"{item.Dimension}:{item.StartTokenIndex}:{item.TokenLength}"));
+
+    private static string RelativeShadowAnchorLayout(
+        IEnumerable<(
+            string Dimension,
+            int StartTokenIndex,
+            int TokenLength)> components) =>
+        string.Join('|', components
+            .DistinctBy(item => (
+                item.Dimension,
+                item.StartTokenIndex,
+                item.TokenLength))
+            .OrderBy(item => item.StartTokenIndex)
+            .ThenBy(item => item.TokenLength)
+            .ThenBy(item => item.Dimension, StringComparer.Ordinal)
+            .Select(item => $"{item.Dimension}:{item.TokenLength}"));
 
     private static LegendShadowCompositionCapability Insufficient(string reason) => new(
         LegendShadowCompositionCapability.InsufficientEvidence,
@@ -4022,7 +4171,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string SurfaceForm,
         int StartTokenIndex,
         int TokenLength,
-        string SemanticSignature);
+        string SemanticSignature,
+        IReadOnlyList<Guid> CurriculumExampleIds);
 
     private sealed record ShadowCompositionComponent(
         string Dimension,
